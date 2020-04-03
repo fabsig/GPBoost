@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\0329e212773f0c994c4d64973c57ef2e\INSTALL_force.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{397EE42E-DDD0-392A-84D1-0451E03447EF}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

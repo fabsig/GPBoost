@@ -1,0 +1,130 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\CSparse\Source\cs_dfs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\CSparse\Source\cs_reach.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\CSparse\Source\cs_spsolve.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\GPBoost\GP_utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\GPBoost\Vecchia_utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\GPBoost\gpboost_c_api.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\GPBoost\gpboost_r_api.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\GPBoost\re_model.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\GPBoost\sparse_matrix_utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\application\application.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\boosting\boosting.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\boosting\gbdt.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\boosting\gbdt_model_text.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\boosting\gbdt_prediction.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\boosting\prediction_early_stop.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\io\bin.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\io\config.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\io\config_auto.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\io\dataset.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\io\dataset_loader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\io\file_io.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\io\json11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\io\metadata.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\io\parser.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\io\tree.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\metric\dcg_calculator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\metric\metric.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\network\linker_topo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\network\linkers_mpi.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\network\linkers_socket.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\network\network.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\objective\objective_function.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\treelearner\data_parallel_tree_learner.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\treelearner\feature_parallel_tree_learner.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\treelearner\gpu_tree_learner.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\treelearner\serial_tree_learner.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\treelearner\tree_learner.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\treelearner\voting_parallel_tree_learner.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\src\LightGBM\c_api.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\compile\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{7BA5D5DB-926A-3862-8312-1272FBBD3DBC}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

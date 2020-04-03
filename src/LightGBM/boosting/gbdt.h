@@ -1,0 +1,543 @@
+/*!
+ * Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+ * Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+ * Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+ */
+#ifndef LIGHTGBM_BOOSTING_GBDT_H_
+#define LIGHTGBM_BOOSTING_GBDT_H_
+
+#include <LightGBM/boosting.h>
+#include <LightGBM/objective_function.h>
+#include <LightGBM/prediction_early_stop.h>
+
+#include <string>
+#include <algorithm>
+#include <cstdio>
+#include <fstream>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include <LightGBM/json11.hpp>
+#include "score_updater.hpp"
+
+using namespace json11;
+
+namespace LightGBM {
+
+/*!
+* \brief GBDT algorithm implementation. including Training, prediction, bagging.
+*/
+class GBDT : public GBDTBase {
+ public:
+  /*!
+  * \brief Constructor
+  */
+  GBDT();
+
+  /*!
+  * \brief Destructor
+  */
+  ~GBDT();
+
+  /*!
+  * \brief Initialization logic
+  * \param gbdt_config Config for boosting
+  * \param train_data Training data
+  * \param objective_function Training objective function
+  * \param training_metrics Training metrics
+  */
+  void Init(const Config* gbdt_config, const Dataset* train_data,
+            const ObjectiveFunction* objective_function,
+            const std::vector<const Metric*>& training_metrics) override;
+
+  /*!
+  * \brief Merge model from other boosting object. Will insert to the front of current boosting object
+  * \param other
+  */
+  void MergeFrom(const Boosting* other) override {
+    auto other_gbdt = reinterpret_cast<const GBDT*>(other);
+    // tmp move to other vector
+    auto original_models = std::move(models_);
+    models_ = std::vector<std::unique_ptr<Tree>>();
+    // push model from other first
+    for (const auto& tree : other_gbdt->models_) {
+      auto new_tree = std::unique_ptr<Tree>(new Tree(*(tree.get())));
+      models_.push_back(std::move(new_tree));
+    }
+    num_init_iteration_ = static_cast<int>(models_.size()) / num_tree_per_iteration_;
+    // push model in current object
+    for (const auto& tree : original_models) {
+      auto new_tree = std::unique_ptr<Tree>(new Tree(*(tree.get())));
+      models_.push_back(std::move(new_tree));
+    }
+    num_iteration_for_pred_ = static_cast<int>(models_.size()) / num_tree_per_iteration_;
+  }
+
+  void ShuffleModels(int start_iter, int end_iter) override {
+    int total_iter = static_cast<int>(models_.size()) / num_tree_per_iteration_;
+    start_iter = std::max(0, start_iter);
+    if (end_iter <= 0) {
+      end_iter = total_iter;
+    }
+    end_iter = std::min(total_iter, end_iter);
+    auto original_models = std::move(models_);
+    std::vector<int> indices(total_iter);
+    for (int i = 0; i < total_iter; ++i) {
+      indices[i] = i;
+    }
+    Random tmp_rand(17);
+    for (int i = start_iter; i < end_iter - 1; ++i) {
+      int j = tmp_rand.NextShort(i + 1, end_iter);
+      std::swap(indices[i], indices[j]);
+    }
+    models_ = std::vector<std::unique_ptr<Tree>>();
+    for (int i = 0; i < total_iter; ++i) {
+      for (int j = 0; j < num_tree_per_iteration_; ++j) {
+        int tree_idx = indices[i] * num_tree_per_iteration_ + j;
+        auto new_tree = std::unique_ptr<Tree>(new Tree(*(original_models[tree_idx].get())));
+        models_.push_back(std::move(new_tree));
+      }
+    }
+  }
+
+  /*!
+  * \brief Reset the training data
+  * \param train_data New Training data
+  * \param objective_function Training objective function
+  * \param training_metrics Training metrics
+  */
+  void ResetTrainingData(const Dataset* train_data, const ObjectiveFunction* objective_function,
+                         const std::vector<const Metric*>& training_metrics) override;
+
+  /*!
+  * \brief Reset Boosting Config
+  * \param gbdt_config Config for boosting
+  */
+  void ResetConfig(const Config* gbdt_config) override;
+
+  /*!
+  * \brief Adding a validation dataset
+  * \param valid_data Validation dataset
+  * \param valid_metrics Metrics for validation dataset
+  */
+  void AddValidDataset(const Dataset* valid_data,
+                       const std::vector<const Metric*>& valid_metrics) override;
+
+  /*!
+  * \brief Perform a full training procedure
+  * \param snapshot_freq frequence of snapshot
+  * \param model_output_path path of model file
+  */
+  void Train(int snapshot_freq, const std::string& model_output_path) override;
+
+  void RefitTree(const std::vector<std::vector<int>>& tree_leaf_prediction) override;
+
+  /*!
+  * \brief Training logic
+  * \param gradients nullptr for using default objective, otherwise use self-defined boosting
+  * \param hessians nullptr for using default objective, otherwise use self-defined boosting
+  * \return True if cannot train any more
+  */
+  bool TrainOneIter(const score_t* gradients, const score_t* hessians) override;
+
+  /*!
+  * \brief Rollback one iteration
+  */
+  void RollbackOneIter() override;
+
+  /*!
+  * \brief Get current iteration
+  */
+  int GetCurrentIteration() const override { return static_cast<int>(models_.size()) / num_tree_per_iteration_; }
+
+  /*!
+  * \brief Can use early stopping for prediction or not
+  * \return True if cannot use early stopping for prediction
+  */
+  bool NeedAccuratePrediction() const override {
+    if (objective_function_ == nullptr) {
+      return true;
+    } else {
+      return objective_function_->NeedAccuratePrediction();
+    }
+  }
+
+  /*!
+  * \brief Get evaluation result at data_idx data
+  * \param data_idx 0: training data, 1: 1st validation data
+  * \return evaluation result
+  */
+  std::vector<double> GetEvalAt(int data_idx) const override;
+
+  /*!
+  * \brief Get current training score
+  * \param out_len length of returned score
+  * \return training score
+  */
+  const double* GetTrainingScore(int64_t* out_len) override;
+
+  /*!
+  * \brief Get size of prediction at data_idx data
+  * \param data_idx 0: training data, 1: 1st validation data
+  * \return The size of prediction
+  */
+  int64_t GetNumPredictAt(int data_idx) const override {
+    CHECK(data_idx >= 0 && data_idx <= static_cast<int>(valid_score_updater_.size()));
+    data_size_t num_data = train_data_->num_data();
+    if (data_idx > 0) {
+      num_data = valid_score_updater_[data_idx - 1]->num_data();
+    }
+    return num_data * num_class_;
+  }
+
+  /*!
+  * \brief Get prediction result at data_idx data
+  * \param data_idx 0: training data, 1: 1st validation data
+  * \param result used to store prediction result, should allocate memory before call this function
+  * \param out_len length of returned score
+  */
+  void GetPredictAt(int data_idx, double* out_result, int64_t* out_len) override;
+
+  /*!
+  * \brief Get number of prediction for one data
+  * \param num_iteration number of used iterations
+  * \param is_pred_leaf True if predicting  leaf index
+  * \param is_pred_contrib True if predicting feature contribution
+  * \return number of prediction
+  */
+  inline int NumPredictOneRow(int num_iteration, bool is_pred_leaf, bool is_pred_contrib) const override {
+    int num_preb_in_one_row = num_class_;
+    if (is_pred_leaf) {
+      int max_iteration = GetCurrentIteration();
+      if (num_iteration > 0) {
+        num_preb_in_one_row *= static_cast<int>(std::min(max_iteration, num_iteration));
+      } else {
+        num_preb_in_one_row *= max_iteration;
+      }
+    } else if (is_pred_contrib) {
+      num_preb_in_one_row = num_tree_per_iteration_ * (max_feature_idx_ + 2);  // +1 for 0-based indexing, +1 for baseline
+    }
+    return num_preb_in_one_row;
+  }
+
+  void PredictRaw(const double* features, double* output,
+                  const PredictionEarlyStopInstance* earlyStop) const override;
+
+  void PredictRawByMap(const std::unordered_map<int, double>& features, double* output,
+                       const PredictionEarlyStopInstance* early_stop) const override;
+
+  void Predict(const double* features, double* output,
+               const PredictionEarlyStopInstance* earlyStop) const override;
+
+  void PredictByMap(const std::unordered_map<int, double>& features, double* output,
+                    const PredictionEarlyStopInstance* early_stop) const override;
+
+  void PredictLeafIndex(const double* features, double* output) const override;
+
+  void PredictLeafIndexByMap(const std::unordered_map<int, double>& features, double* output) const override;
+
+  void PredictContrib(const double* features, double* output,
+                      const PredictionEarlyStopInstance* earlyStop) const override;
+
+  /*!
+  * \brief Dump model to json format string
+  * \param start_iteration The model will be saved start from
+  * \param num_iteration Number of iterations that want to dump, -1 means dump all
+  * \return Json format string of model
+  */
+  std::string DumpModel(int start_iteration, int num_iteration) const override;
+
+  /*!
+  * \brief Translate model to if-else statement
+  * \param num_iteration Number of iterations that want to translate, -1 means translate all
+  * \return if-else format codes of model
+  */
+  std::string ModelToIfElse(int num_iteration) const override;
+
+  /*!
+  * \brief Translate model to if-else statement
+  * \param num_iteration Number of iterations that want to translate, -1 means translate all
+  * \param filename Filename that want to save to
+  * \return is_finish Is training finished or not
+  */
+  bool SaveModelToIfElse(int num_iteration, const char* filename) const override;
+
+  /*!
+  * \brief Save model to file
+  * \param start_iteration The model will be saved start from
+  * \param num_iterations Number of model that want to save, -1 means save all
+  * \param filename Filename that want to save to
+  * \return is_finish Is training finished or not
+  */
+  bool SaveModelToFile(int start_iteration, int num_iterations, const char* filename) const override;
+
+  /*!
+  * \brief Save model to string
+  * \param start_iteration The model will be saved start from
+  * \param num_iterations Number of model that want to save, -1 means save all
+  * \return Non-empty string if succeeded
+  */
+  std::string SaveModelToString(int start_iteration, int num_iterations) const override;
+
+  /*!
+  * \brief Restore from a serialized buffer
+  */
+  bool LoadModelFromString(const char* buffer, size_t len) override;
+
+  /*!
+  * \brief Calculate feature importances
+  * \param num_iteration Number of model that want to use for feature importance, -1 means use all
+  * \param importance_type: 0 for split, 1 for gain
+  * \return vector of feature_importance
+  */
+  std::vector<double> FeatureImportance(int num_iteration, int importance_type) const override;
+
+  /*!
+  * \brief Get max feature index of this model
+  * \return Max feature index of this model
+  */
+  inline int MaxFeatureIdx() const override { return max_feature_idx_; }
+
+  /*!
+  * \brief Get feature names of this model
+  * \return Feature names of this model
+  */
+  inline std::vector<std::string> FeatureNames() const override { return feature_names_; }
+
+  /*!
+  * \brief Get index of label column
+  * \return index of label column
+  */
+  inline int LabelIdx() const override { return label_idx_; }
+
+  /*!
+  * \brief Get number of weak sub-models
+  * \return Number of weak sub-models
+  */
+  inline int NumberOfTotalModel() const override { return static_cast<int>(models_.size()); }
+
+  /*!
+  * \brief Get number of tree per iteration
+  * \return number of tree per iteration
+  */
+  inline int NumModelPerIteration() const override { return num_tree_per_iteration_; }
+
+  /*!
+  * \brief Get number of classes
+  * \return Number of classes
+  */
+  inline int NumberOfClasses() const override { return num_class_; }
+
+  inline void InitPredict(int num_iteration, bool is_pred_contrib) override {
+    num_iteration_for_pred_ = static_cast<int>(models_.size()) / num_tree_per_iteration_;
+    if (num_iteration > 0) {
+      num_iteration_for_pred_ = std::min(num_iteration, num_iteration_for_pred_);
+    }
+    if (is_pred_contrib) {
+      #pragma omp parallel for schedule(static)
+      for (int i = 0; i < static_cast<int>(models_.size()); ++i) {
+        models_[i]->RecomputeMaxDepth();
+      }
+    }
+  }
+
+  inline double GetLeafValue(int tree_idx, int leaf_idx) const override {
+    CHECK(tree_idx >= 0 && static_cast<size_t>(tree_idx) < models_.size());
+    CHECK(leaf_idx >= 0 && leaf_idx < models_[tree_idx]->num_leaves());
+    return models_[tree_idx]->LeafOutput(leaf_idx);
+  }
+
+  inline void SetLeafValue(int tree_idx, int leaf_idx, double val) override {
+    CHECK(tree_idx >= 0 && static_cast<size_t>(tree_idx) < models_.size());
+    CHECK(leaf_idx >= 0 && leaf_idx < models_[tree_idx]->num_leaves());
+    models_[tree_idx]->SetLeafOutput(leaf_idx, val);
+  }
+
+  /*!
+  * \brief Get Type name of this boosting object
+  */
+  const char* SubModelName() const override { return "tree"; }
+
+  /*! \brief Nesterov schedule */
+  inline double NesterovSchedule(int iter, int momentum_schedule_version = 0,
+    double nesterov_acc_rate = 0.5, int momentum_offset = 0) const {
+    if (iter < momentum_offset) {
+      return(0.);
+    }
+    else {
+      if (momentum_schedule_version == 0) {
+        return(nesterov_acc_rate);
+      }
+      else if (momentum_schedule_version == 1) {
+        return(1. - (3. / (6. + iter)));
+      }
+      else {
+        return(0.);
+      }
+    }
+  }
+
+ protected:
+  /*!
+  * \brief Print eval result and check early stopping
+  */
+  virtual bool EvalAndCheckEarlyStopping();
+
+  /*!
+  * \brief reset config for bagging
+  */
+  void ResetBaggingConfig(const Config* config, bool is_change_dataset);
+
+  /*!
+  * \brief Implement bagging logic
+  * \param iter Current interation
+  */
+  virtual void Bagging(int iter);
+
+  /*!
+  * \brief Helper function for bagging, used for multi-threading optimization
+  * \param start start indice of bagging
+  * \param cnt count
+  * \param buffer output buffer
+  * \return count of left size
+  */
+  data_size_t BaggingHelper(Random* cur_rand, data_size_t start, data_size_t cnt, data_size_t* buffer);
+
+
+  /*!
+  * \brief Helper function for bagging, used for multi-threading optimization, balanced sampling
+  * \param start start indice of bagging
+  * \param cnt count
+  * \param buffer output buffer
+  * \return count of left size
+  */
+  data_size_t BalancedBaggingHelper(Random* cur_rand, data_size_t start, data_size_t cnt, data_size_t* buffer);
+
+  /*!
+  * \brief calculate the object function
+  */
+  virtual void Boosting();
+
+  /*!
+  * \brief updating score after tree was trained
+  * \param tree Trained tree of this iteration
+  * \param cur_tree_id Current tree for multiclass training
+  */
+  virtual void UpdateScore(const Tree* tree, const int cur_tree_id);
+
+  /*!
+  * \brief eval results for one metric
+
+  */
+  virtual std::vector<double> EvalOneMetric(const Metric* metric, const double* score) const;
+
+  /*!
+  * \brief Print metric result of current iteration
+  * \param iter Current interation
+  * \return best_msg if met early_stopping
+  */
+  std::string OutputMetric(int iter);
+
+  double BoostFromAverage(int class_id, bool update_scorer);
+
+  /*! \brief current iteration */
+  int iter_;
+  /*! \brief Pointer to training data */
+  const Dataset* train_data_;
+  /*! \brief Config of gbdt */
+  std::unique_ptr<Config> config_;
+  /*! \brief Tree learner, will use this class to learn trees */
+  std::unique_ptr<TreeLearner> tree_learner_;
+  /*! \brief Objective function */
+  const ObjectiveFunction* objective_function_;
+  /*! \brief Store and update training data's score */
+  std::unique_ptr<ScoreUpdater> train_score_updater_;
+  /*! \brief Metrics for training data */
+  std::vector<const Metric*> training_metrics_;
+  /*! \brief Store and update validation data's scores */
+  std::vector<std::unique_ptr<ScoreUpdater>> valid_score_updater_;
+  /*! \brief Metric for validation data */
+  std::vector<std::vector<const Metric*>> valid_metrics_;
+  /*! \brief Number of rounds for early stopping */
+  int early_stopping_round_;
+  /*! \brief Only use first metric for early stopping */
+  bool es_first_metric_only_;
+  /*! \brief Best iteration(s) for early stopping */
+  std::vector<std::vector<int>> best_iter_;
+  /*! \brief Best score(s) for early stopping */
+  std::vector<std::vector<double>> best_score_;
+  /*! \brief output message of best iteration */
+  std::vector<std::vector<std::string>> best_msg_;
+  /*! \brief Trained models(trees) */
+  std::vector<std::unique_ptr<Tree>> models_;
+  /*! \brief Max feature index of training data*/
+  int max_feature_idx_;
+  /*! \brief First order derivative of training data */
+  std::vector<score_t> gradients_;
+  /*! \brief Secend order derivative of training data */
+  std::vector<score_t> hessians_;
+  /*! \brief Store the indices of in-bag data */
+  std::vector<data_size_t> bag_data_indices_;
+  /*! \brief Number of in-bag data */
+  data_size_t bag_data_cnt_;
+  /*! \brief Store the indices of in-bag data */
+  std::vector<data_size_t> tmp_indices_;
+  /*! \brief Number of training data */
+  data_size_t num_data_;
+  /*! \brief Number of trees per iterations */
+  int num_tree_per_iteration_;
+  /*! \brief Number of class */
+  int num_class_;
+  /*! \brief Index of label column */
+  data_size_t label_idx_;
+  /*! \brief number of used model */
+  int num_iteration_for_pred_;
+  /*! \brief Shrinkage rate for one iteration */
+  double shrinkage_rate_;
+  /*! \brief Number of loaded initial models */
+  int num_init_iteration_;
+  /*! \brief Feature names */
+  std::vector<std::string> feature_names_;
+  std::vector<std::string> feature_infos_;
+  /*! \brief number of threads */
+  int num_threads_;
+  /*! \brief Buffer for multi-threading bagging */
+  std::vector<data_size_t> offsets_buf_;
+  /*! \brief Buffer for multi-threading bagging */
+  std::vector<data_size_t> left_cnts_buf_;
+  /*! \brief Buffer for multi-threading bagging */
+  std::vector<data_size_t> right_cnts_buf_;
+  /*! \brief Buffer for multi-threading bagging */
+  std::vector<data_size_t> left_write_pos_buf_;
+  /*! \brief Buffer for multi-threading bagging */
+  std::vector<data_size_t> right_write_pos_buf_;
+  std::unique_ptr<Dataset> tmp_subset_;
+  bool is_use_subset_;
+  std::vector<bool> class_need_train_;
+  bool is_constant_hessian_;
+  std::unique_ptr<ObjectiveFunction> loaded_objective_;
+  bool average_output_;
+  bool need_re_bagging_;
+  bool balanced_bagging_;
+  std::string loaded_parameter_;
+  std::vector<int8_t> monotone_constraints_;
+  /*! \brief If true, Nesterov acceleration is used for boosting */
+  bool use_nesterov_acc_ = false;
+  /*! \brief Acceleration rate for momentum step in Nesterov step */
+  double nesterov_acc_rate_ = 0.5;
+  /*! \brief Choose the acceleration rate schedule */
+  int momentum_schedule_version_ = 0;
+  /*! \brief Acceleration rate is zero before the offset number */
+  int momentum_offset_ = 0;
+  /*! \brief If true, a Newton update step is done for the tree leaves after the gradient step (only releveant for GPBoost algorithm, i.e. if objective_function_->HasGPModel()==true) */
+  bool leaves_newton_update_ = false;
+
+  Json forced_splits_json_;
+};
+
+}  // namespace LightGBM
+#endif   // LightGBM_BOOSTING_GBDT_H_
