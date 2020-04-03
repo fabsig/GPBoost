@@ -33,7 +33,7 @@ It is assumed that the data is the sum of a non-linear mean function and so-call
 - Grouped random effects (including nested, crossed, and random coefficient effects)
 - A sum of the above
 
-The **model is trained using the GPBoost algorithm**, where trainings means estimating the variance and **covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm iteratively estimates the covariance parameters and adds a tree to the ensemble using boosting steps. Trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See the [reference paper](XXX) for more details.
+The **model is trained using the GPBoost algorithm**, where trainings means estimating the variance and **covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm iteratively estimates the covariance parameters and adds a tree to the ensemble using boosting steps. Trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See the [reference paper](#references) for more details.
 
 ## News
 
