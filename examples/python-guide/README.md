@@ -16,6 +16,6 @@ python boosting_example.py
 Examples include:
 
 * [Gaussian process and other mixed effects model examples (without boosting)](https://github.com/fabsig/GPBoost/blob/master/examples/python-guide/Gaussian_process_mixed_effects_models_example.py)
-* [Boosting functionality (without Gaussian process / random effects)](https://github.com/fabsig/GPBoost/blob/master/examples/python-guide/boosting_example.py.R)
+* [Boosting functionality (without Gaussian process / random effects)](https://github.com/fabsig/GPBoost/blob/master/examples/python-guide/boosting_example.py)
 * [Combining tree-boosting with Gaussian process and random effects models](https://github.com/fabsig/GPBoost/blob/master/examples/python-guide/combined_boosting_GP_example.py)
 * [Cross Validation](https://github.com/fabsig/GPBoost/blob/master/examples/python-guide/cross_validation_example.py)

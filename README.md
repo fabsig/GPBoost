@@ -14,11 +14,11 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 
 **GPBoost is a machine learning software library that combines tree-boosting with Gaussian process and mixed effects models.**
 
-The GPBoost library is mainly written in C++ and it has a C API. There exist both a [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and an [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package). The [**GPBoost R and Python demo**](https://github.com/fabsig/GPBoost/tree/master/examples/GPBoost_demo.html) explains how the GPBoost library can be used from R and Python.
+The GPBoost library is mainly written in C++ and it has a C API. There exist both a [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and an [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package). The [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) explains how the GPBoost library can be used from R and Python.
 
 For more information, you may want to have a look at:
 
-* The [**GPBoost R and Python demo**](https://github.com/fabsig/GPBoost/tree/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
+* The [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
 * Additional [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) presents the most important parameters / settings for using the GPBoost library
 * [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst) is an exhaustive list of all possible parametes and customizations for the tree-boosting part

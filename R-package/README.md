@@ -83,7 +83,7 @@ summary(gp_model)
 Examples
 --------
 
-* [**GPBoost R and Python demo**](https://github.com/fabsig/GPBoost/tree/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
+* [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
 
 * [**More examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo):
   * [Gaussian process and other mixed effects model examples (without boosting)](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/Gaussian_process_mixed_effects_models.R)

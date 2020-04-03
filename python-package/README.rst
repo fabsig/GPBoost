@@ -103,7 +103,7 @@ If you get any errors during installation or due to any other reasons, you may w
 Examples
 --------
 
-- `GPBoost R and Python demo <https://github.com/fabsig/GPBoost/tree/master/examples/GPBoost_demo.html)>`_
+- `GPBoost R and Python demo <https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html>`_
 - More examples in the `Python guide folder <https://github.com/fabsig/GPBoost/tree/master/examples/python-guide>`_
 
 
