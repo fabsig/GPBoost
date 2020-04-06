@@ -392,31 +392,42 @@ $(document).ready(function () {
 </ol>
 <div id="get-started" class="section level2">
 <h2>Get started</h2>
-<p><strong>GPBoost is a machine learning software library that combines tree-boosting with Gaussian process and mixed effects models.</strong></p>
-<p>The GPBoost library is mainly written in C++ and it has a C API. There exist both a <a href="https://github.com/fabsig/GPBoost/tree/master/python-package"><strong>Python package</strong></a> and an <a href="https://github.com/fabsig/GPBoost/tree/master/R-package"><strong>R package</strong></a>. The <a href="https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html"><strong>GPBoost R and Python demo</strong></a> explains how the GPBoost library can be used from R and Python.</p>
+<p><strong>GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.</strong></p>
+<p>The GPBoost library is written in C++ and it has a C API. There exist both a <a href="https://github.com/fabsig/GPBoost/tree/master/python-package"><strong>Python package</strong></a> and an <a href="https://github.com/fabsig/GPBoost/tree/master/R-package"><strong>R package</strong></a>.</p>
 <p>For more information, you may want to have a look at:</p>
 <ul>
-<li>The <a href="https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html"><strong>GPBoost R and Python demo</strong></a> illustrates how GPBoost can be used in R and Python</li>
+<li>The <a href="https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html"><strong>GPBoost R and Python demo</strong></a> illustrating how GPBoost can be used in R and Python</li>
+<li>The <a href="https://github.com/fabsig/GPBoost/tree/master/python-package"><strong>Python package</strong></a> and <a href="https://github.com/fabsig/GPBoost/tree/master/R-package"><strong>R package</strong></a> with installation instructions for the Python and R packages</li>
 <li>Additional <a href="https://github.com/fabsig/GPBoost/tree/master/examples/python-guide"><strong>Python examples</strong></a> and <a href="https://github.com/fabsig/GPBoost/tree/master/R-package/demo"><strong>R examples</strong></a></li>
-<li><a href="https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst"><strong>Main parameters</strong></a> presents the most important parameters / settings for using the GPBoost library</li>
-<li><a href="https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst"><strong>Parameters</strong></a> is an exhaustive list of all possible parametes and customizations for the tree-boosting part</li>
-<li>See <a href="https://github.com/fabsig/GPBoost/tree/master/python-package"><strong>Python package</strong></a> and <a href="https://github.com/fabsig/GPBoost/tree/master/R-package"><strong>R package</strong></a> for installation instructions for the Python and R packages</li>
-<li>The <a href="https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst"><strong>CLI installation guide</strong></a> explains how to install the command line interface (CLI) version</li>
+<li><a href="https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst"><strong>Main parameters</strong></a> presenting the most important parameters / settings for using the GPBoost library</li>
+<li><a href="https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst"><strong>Parameters</strong></a> an exhaustive list of all possible parametes and customizations for the tree-boosting part</li>
+<li>The <a href="https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst"><strong>CLI installation guide</strong></a> explaining how to install the command line interface (CLI) version</li>
 </ul>
 </div>
 <div id="modeling-background" class="section level2">
 <h2>Modeling Background</h2>
-<p>It is assumed that the data is the sum of a non-linear mean function and so-called random effects. The <strong>random effects</strong> can consists of</p>
+<p>Both tree-boosting and Gaussian processes are techniques that achieve <strong>state-of-the-art predictive accuracy</strong>. Besides this, <strong>tree-boosting</strong> has the following <strong>advantages</strong>:</p>
+<ul>
+<li>Automatic modeling of non-linearities, discontinuities, and complex high-order interactions</li>
+<li>Robust to outliers in and multicollinearity among predictor variables</li>
+<li>Scale-invariant to monotone transformations of the predictor variables</li>
+<li>Automatic handling of missing values in predictor variables</li>
+</ul>
+<p><strong>Gaussian process</strong> models have the following <strong>advantage</strong>:</p>
+<ul>
+<li>Probabilistic predictions which allows for uncertainty quantification</li>
+</ul>
+<p>For the GPBoost algorithm, it is assumed that the response variable (label) is the sum of a non-linear mean function and so-called random effects. The <strong>random effects</strong> can consists of</p>
 <ul>
 <li>Gaussian processes (including random coefficient processes)</li>
 <li>Grouped random effects (including nested, crossed, and random coefficient effects)</li>
 <li>A sum of the above</li>
 </ul>
-<p>The <strong>model is trained using the GPBoost algorithm</strong>, where trainings means estimating the variance and <strong>covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm iteratively estimates the covariance parameters and adds a tree to the ensemble using boosting steps. Trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See the <a href="#references">reference paper</a> for more details.</p>
+<p>The <strong>model is trained using the GPBoost algorithm</strong>, where trainings means estimating the <strong>covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See the <a href="#references">reference paper</a> for more details.</p>
 </div>
 <div id="news" class="section level2">
 <h2>News</h2>
-<p>04/01/2020 : First release of GPBoost</p>
+<p>04/06/2020 : First release of GPBoost</p>
 </div>
 <div id="open-issues---contribute" class="section level2">
 <h2>Open Issues - Contribute</h2>

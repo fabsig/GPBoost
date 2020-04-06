@@ -9,35 +9,44 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 5. [References](#references)
 6. [License](#license)
 
-
 ## Get started
+**GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.** 
 
-**GPBoost is a machine learning software library that combines tree-boosting with Gaussian process and mixed effects models.**
-
-The GPBoost library is mainly written in C++ and it has a C API. There exist both a [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and an [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package). The [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) explains how the GPBoost library can be used from R and Python.
+The GPBoost library is written in C++ and it has a C API. There exist both a [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and an [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package).
 
 For more information, you may want to have a look at:
 
-* The [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
+* The [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrating how GPBoost can be used in R and Python
+* The [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package) with installation instructions for the Python and R packages
 * Additional [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
-* [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) presents the most important parameters / settings for using the GPBoost library
-* [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst) is an exhaustive list of all possible parametes and customizations for the tree-boosting part
-* See [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package) for installation instructions for the Python and R packages
-* The [**CLI installation guide**](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst) explains how to install the command line interface (CLI) version
+* [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) presenting the most important parameters / settings for using the GPBoost library
+* [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst) an exhaustive list of all possible parametes and customizations for the tree-boosting part
+* The [**CLI installation guide**](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst) explaining how to install the command line interface (CLI) version
 
 
 ## Modeling Background
-It is assumed that the data is the sum of a non-linear mean function and so-called random effects. The **random effects** can consists of
+Both tree-boosting and Gaussian processes are techniques that achieve **state-of-the-art predictive accuracy**. Besides this, **tree-boosting** has the following **advantages**: 
+
+* Automatic modeling of non-linearities, discontinuities, and complex high-order interactions
+* Robust to outliers in and multicollinearity among predictor variables
+* Scale-invariant to monotone transformations of the predictor variables
+* Automatic handling of missing values in predictor variables
+
+**Gaussian process** models have the following **advantage**:
+
+* Probabilistic predictions which allows for uncertainty quantification
+
+For the GPBoost algorithm, it is assumed that the response variable (label) is the sum of a non-linear mean function and so-called random effects. The **random effects** can consists of
 
 - Gaussian processes (including random coefficient processes)
 - Grouped random effects (including nested, crossed, and random coefficient effects)
 - A sum of the above
 
-The **model is trained using the GPBoost algorithm**, where trainings means estimating the variance and **covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm iteratively estimates the covariance parameters and adds a tree to the ensemble using boosting steps. Trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See the [reference paper](#references) for more details.
+The **model is trained using the GPBoost algorithm**, where trainings means estimating the **covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See the [reference paper](#references) for more details.
 
 ## News
 
-04/01/2020 : First release of GPBoost
+04/06/2020 : First release of GPBoost
 
 ## Open Issues - Contribute
 
