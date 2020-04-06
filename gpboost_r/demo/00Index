@@ -1,4 +1,0 @@
-boosting               Basic boosting walkthrough (without Gausssian process or random effects)
-Gaussian_process_mixed_effects_models           Gaussian process and other mixed effects model examples (without boosting)
-combined_boosting_GP_random_effects           Combining tree-boosting with Gaussian process and random effects models
-cross_validation               Cross validation for finding the number of boosting iterations
