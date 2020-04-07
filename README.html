@@ -423,7 +423,7 @@ $(document).ready(function () {
 <li>Grouped random effects (including nested, crossed, and random coefficient effects)</li>
 <li>A sum of the above</li>
 </ul>
-<p>The model is trained using the <strong>GPBoost algorithm, where trainings means learning the covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (Nesterov accelerated) gradient descent or Fisher scoring. Further, trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See <a href="http://arxiv.org/abs/2004.02653">Sigrist (2020)</a> for more details.</p>
+<p>The model is trained using the <strong>GPBoost algorithm, where trainings means learning the covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, <strong>covariance parameters can be learned using (Nesterov accelerated) gradient descent or Fisher scoring. Further, trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See <a href="http://arxiv.org/abs/2004.02653">Sigrist (2020)</a> for more details.</strong></p>
 </div>
 <div id="news" class="section level2">
 <h2>News</h2>
