@@ -297,7 +297,7 @@ if __name__ == "__main__":
           url='https://github.com/fabsig/GPBoost',
           classifiers=['Development Status :: 5 - Production/Stable',
                        'Intended Audience :: Science/Research',
-                       'License :: OSI Approved :: Apache License 2.0',
+                       'License :: OSI Approved :: Apache Software License',
                        'Natural Language :: English',
                        'Operating System :: MacOS',
                        'Operating System :: Microsoft :: Windows',

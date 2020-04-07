@@ -25,24 +25,24 @@ For more information, you may want to have a look at:
 
 
 ## Modeling Background
-Both tree-boosting and Gaussian processes are techniques that achieve **state-of-the-art predictive accuracy**. Besides this, **tree-boosting** has the following **advantages**: 
+Both tree-boosting and Gaussian processes are techniques that achieve **state-of-the-art predictive accuracy**. Besides this, **tree-boosting** has the following advantages: 
 
 * Automatic modeling of non-linearities, discontinuities, and complex high-order interactions
 * Robust to outliers in and multicollinearity among predictor variables
 * Scale-invariant to monotone transformations of the predictor variables
 * Automatic handling of missing values in predictor variables
 
-**Gaussian process** models have the following **advantage**:
+**Gaussian process** models have the following advantage:
 
 * Probabilistic predictions which allows for uncertainty quantification
 
-For the GPBoost algorithm, it is assumed that the response variable (label) is the sum of a non-linear mean function and so-called random effects. The **random effects** can consists of
+For the GPBoost algorithm, it is assumed that the **response variable (label) is the sum of a non-linear mean function and so-called random effects**. The **random effects** can consists of
 
 - Gaussian processes (including random coefficient processes)
 - Grouped random effects (including nested, crossed, and random coefficient effects)
 - A sum of the above
 
-The **model is trained using the GPBoost algorithm**, where trainings means estimating the **covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See the [reference paper](http://arxiv.org/abs/2004.02653) for more details.
+The model is trained using the **GPBoost algorithm, where trainings means learning the covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) for more details.
 
 ## News
 

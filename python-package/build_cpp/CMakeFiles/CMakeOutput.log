@@ -9,7 +9,7 @@ The output was:
 Microsoft (R) Build Engine version 16.4.0+e901037fe for .NET Framework
 Copyright (C) Microsoft Corporation. All rights reserved.
 
-Build started 4/3/2020 4:39:24 PM.
+Build started 4/7/2020 8:38:13 AM.
 Project "C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\3.17.0-rc1\CompilerIdC\CompilerIdC.vcxproj" on node 1 (default targets).
 PrepareForBuild:
   Creating directory "Debug\".
@@ -35,7 +35,7 @@ Build succeeded.
     0 Warning(s)
     0 Error(s)
 
-Time Elapsed 00:00:00.81
+Time Elapsed 00:00:00.87
 
 
 Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.exe"
@@ -54,7 +54,7 @@ The output was:
 Microsoft (R) Build Engine version 16.4.0+e901037fe for .NET Framework
 Copyright (C) Microsoft Corporation. All rights reserved.
 
-Build started 4/3/2020 4:39:25 PM.
+Build started 4/7/2020 8:38:14 AM.
 Project "C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\3.17.0-rc1\CompilerIdCXX\CompilerIdCXX.vcxproj" on node 1 (default targets).
 PrepareForBuild:
   Creating directory "Debug\".
@@ -92,56 +92,56 @@ The CXX compiler identification is MSVC, found in "C:/Users/whsigris/Dropbox/HSL
 Determining if the C compiler works passed with the following output:
 Change Dir: C:/Users/whsigris/Dropbox/HSLU/Projects/MixedBoost/GPBoost/python-package/build_cpp/CMakeFiles/CMakeTmp
 
-Run Build Command(s):C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin/MSBuild.exe cmTC_7118e.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:m && Microsoft (R) Build Engine version 16.4.0+e901037fe for .NET Framework
+Run Build Command(s):C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin/MSBuild.exe cmTC_4eaf1.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:m && Microsoft (R) Build Engine version 16.4.0+e901037fe for .NET Framework
 Copyright (C) Microsoft Corporation. All rights reserved.
 
   Microsoft (R) C/C++ Optimizing Compiler Version 19.24.28315 for x64
   testCCompiler.c
   Copyright (C) Microsoft Corporation.  All rights reserved.
-  cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_7118e.dir\Debug\\" /Fd"cmTC_7118e.dir\Debug\vc142.pdb" /Gd /TC /errorReport:queue "C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\testCCompiler.c"
-  cmTC_7118e.vcxproj -> C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\Debug\cmTC_7118e.exe
+  cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_4eaf1.dir\Debug\\" /Fd"cmTC_4eaf1.dir\Debug\vc142.pdb" /Gd /TC /errorReport:queue "C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\testCCompiler.c"
+  cmTC_4eaf1.vcxproj -> C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\Debug\cmTC_4eaf1.exe
 
 
 
 Detecting C compiler ABI info compiled with the following output:
 Change Dir: C:/Users/whsigris/Dropbox/HSLU/Projects/MixedBoost/GPBoost/python-package/build_cpp/CMakeFiles/CMakeTmp
 
-Run Build Command(s):C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin/MSBuild.exe cmTC_74e9f.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:m && Microsoft (R) Build Engine version 16.4.0+e901037fe for .NET Framework
+Run Build Command(s):C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin/MSBuild.exe cmTC_dd847.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:m && Microsoft (R) Build Engine version 16.4.0+e901037fe for .NET Framework
 Copyright (C) Microsoft Corporation. All rights reserved.
 
   Microsoft (R) C/C++ Optimizing Compiler Version 19.24.28315 for x64
   CMakeCCompilerABI.c
   Copyright (C) Microsoft Corporation.  All rights reserved.
-  cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_74e9f.dir\Debug\\" /Fd"cmTC_74e9f.dir\Debug\vc142.pdb" /Gd /TC /errorReport:queue "C:\Program Files\CMake\share\cmake-3.17\Modules\CMakeCCompilerABI.c"
-  cmTC_74e9f.vcxproj -> C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\Debug\cmTC_74e9f.exe
+  cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_dd847.dir\Debug\\" /Fd"cmTC_dd847.dir\Debug\vc142.pdb" /Gd /TC /errorReport:queue "C:\Program Files\CMake\share\cmake-3.17\Modules\CMakeCCompilerABI.c"
+  cmTC_dd847.vcxproj -> C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\Debug\cmTC_dd847.exe
 
 
 
 Determining if the CXX compiler works passed with the following output:
 Change Dir: C:/Users/whsigris/Dropbox/HSLU/Projects/MixedBoost/GPBoost/python-package/build_cpp/CMakeFiles/CMakeTmp
 
-Run Build Command(s):C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin/MSBuild.exe cmTC_e3661.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:m && Microsoft (R) Build Engine version 16.4.0+e901037fe for .NET Framework
+Run Build Command(s):C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin/MSBuild.exe cmTC_29921.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:m && Microsoft (R) Build Engine version 16.4.0+e901037fe for .NET Framework
 Copyright (C) Microsoft Corporation. All rights reserved.
 
   Microsoft (R) C/C++ Optimizing Compiler Version 19.24.28315 for x64
   testCXXCompiler.cxx
   Copyright (C) Microsoft Corporation.  All rights reserved.
-  cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_e3661.dir\Debug\\" /Fd"cmTC_e3661.dir\Debug\vc142.pdb" /Gd /TP /errorReport:queue "C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\testCXXCompiler.cxx"
-  cmTC_e3661.vcxproj -> C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\Debug\cmTC_e3661.exe
+  cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_29921.dir\Debug\\" /Fd"cmTC_29921.dir\Debug\vc142.pdb" /Gd /TP /errorReport:queue "C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\testCXXCompiler.cxx"
+  cmTC_29921.vcxproj -> C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\Debug\cmTC_29921.exe
 
 
 
 Detecting CXX compiler ABI info compiled with the following output:
 Change Dir: C:/Users/whsigris/Dropbox/HSLU/Projects/MixedBoost/GPBoost/python-package/build_cpp/CMakeFiles/CMakeTmp
 
-Run Build Command(s):C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin/MSBuild.exe cmTC_0cd6a.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:m && Microsoft (R) Build Engine version 16.4.0+e901037fe for .NET Framework
+Run Build Command(s):C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin/MSBuild.exe cmTC_b50bf.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:m && Microsoft (R) Build Engine version 16.4.0+e901037fe for .NET Framework
 Copyright (C) Microsoft Corporation. All rights reserved.
 
   Microsoft (R) C/C++ Optimizing Compiler Version 19.24.28315 for x64
   CMakeCXXCompilerABI.cpp
   Copyright (C) Microsoft Corporation.  All rights reserved.
-  cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_0cd6a.dir\Debug\\" /Fd"cmTC_0cd6a.dir\Debug\vc142.pdb" /Gd /TP /errorReport:queue "C:\Program Files\CMake\share\cmake-3.17\Modules\CMakeCXXCompilerABI.cpp"
-  cmTC_0cd6a.vcxproj -> C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\Debug\cmTC_0cd6a.exe
+  cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_b50bf.dir\Debug\\" /Fd"cmTC_b50bf.dir\Debug\vc142.pdb" /Gd /TP /errorReport:queue "C:\Program Files\CMake\share\cmake-3.17\Modules\CMakeCXXCompilerABI.cpp"
+  cmTC_b50bf.vcxproj -> C:\Users\whsigris\Dropbox\HSLU\Projects\MixedBoost\GPBoost\python-package\build_cpp\CMakeFiles\CMakeTmp\Debug\cmTC_b50bf.exe
 
 
 

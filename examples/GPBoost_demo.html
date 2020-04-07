@@ -437,17 +437,28 @@ $(document).ready(function () {
   });
 });</script>
 <!-- See https://stackoverflow.com/questions/37755037/how-to-add-code-folding-to-output-chunks-in-rmarkdown-html-documents -->
+<p>In this document, we illustrate how the GPBoost library can be used through the R and Python packages to learn models, make predictions, and choose tuning parameters. Further, we also compare the GPBoost algorithm to standard gradient boosting with a square loss and to standard Gaussian process regression.</p>
 <div id="modeling-background" class="section level1">
 <h1><span class="header-section-number">1</span> Modeling Background</h1>
-<p>It is assumed that the data y is the sum of a non-linear mean function <span class="math inline">\(F(X)\)</span> and so-called random effects <span class="math inline">\(Zb\)</span>: <span class="math display">\[ y = F(X) + Zb + \xi,\]</span> where <span class="math inline">\(\xi\)</span> is an independent error term and <span class="math inline">\(X\)</span> are covariates (=features).</p>
+<p>Both tree-boosting and Gaussian processes are techniques that achieve <strong>state-of-the-art predictive accuracy</strong>. Besides this, <strong>tree-boosting</strong> has the following advantages:</p>
+<ul>
+<li>Automatic modeling of non-linearities, discontinuities, and complex high-order interactions</li>
+<li>Robust to outliers in and multicollinearity among predictor variables</li>
+<li>Scale-invariant to monotone transformations of the predictor variables</li>
+<li>Automatic handling of missing values in predictor variables</li>
+</ul>
+<p><strong>Gaussian process</strong> models have the following advantage:</p>
+<ul>
+<li>Probabilistic predictions which allows for uncertainty quantification</li>
+</ul>
+<p>For the GPBoost algorithm, it is assumed that the <strong>response variable (label) <span class="math inline">\(y\)</span> is the sum of a non-linear mean function <span class="math inline">\(F(X)\)</span> and so-called random effects <span class="math inline">\(Zb\)</span></strong>: <span class="math display">\[ y = F(X) + Zb + \xi,\]</span> where <span class="math inline">\(\xi\)</span> is an independent error term and <span class="math inline">\(X\)</span> are covariates (=features).</p>
 <p>The <strong>random effects</strong> can consists of</p>
 <ul>
 <li>Gaussian processes (including random coefficient processes)</li>
 <li>Grouped random effects (including nested, crossed, and random coefficient effects)</li>
 <li>A sum of the above</li>
 </ul>
-<p>The <strong>model is trained using the GPBoost algorithm</strong>, where trainings means estimating the variance and <strong>covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm iteratively estimates the covariance parameters and adds a tree to the ensemble using gradient boosting steps. Trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See the <a href="XXX">reference paper</a> for more details.</p>
-<p>In this document, we illustrate how the <strong>GPBoost library can be used through the R and Python packages to learn models, make predictions, and choose tuning parameters.</strong> Further, we also <strong>compare the GPBoost algorithm to standard gradient boosting with a square loss and to standard Gaussian process regression</strong>.</p>
+<p>The model is trained using the <strong>GPBoost algorithm, where trainings means learning the covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See <a href="http://arxiv.org/abs/2004.02653">Sigrist (2020)</a> for more details.</p>
 </div>
 <div id="combined-tree-boosting-and-gaussian-process-example" class="section level1">
 <h1><span class="header-section-number">2</span> Combined Tree-Boosting and Gaussian Process Example</h1>

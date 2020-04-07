@@ -218,6 +218,7 @@ namespace GPBoost {
 		//std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
 		//Crash can occurr here on Linux (gcc 7.5.0 on Ubuntu 18.04) when row_idx is not increasing for all columns
+		//See https://gitlab.com/libeigen/eigen/-/issues/1852
 		A_inv_B = Eigen::Map<sp_mat_t>(A->n, B->n, val.size(), col_ptr.data(), row_idx.data(), val.data());
 
 		//Log::Info("Fine here END eigen_sp_Lower_sp_RHS_cs_solve");

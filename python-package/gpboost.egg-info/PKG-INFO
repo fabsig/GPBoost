@@ -111,7 +111,7 @@ Description: GPBoost Python Package
         Examples
         --------
         
-        - `GPBoost R and Python demo <https://github.com/fabsig/GPBoost/tree/master/examples/GPBoost_demo.html)>`_
+        - `GPBoost R and Python demo <https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html>`_
         - More examples in the `Python guide folder <https://github.com/fabsig/GPBoost/tree/master/examples/python-guide>`_
         
         
@@ -129,7 +129,7 @@ Description: GPBoost Python Package
 Platform: UNKNOWN
 Classifier: Development Status :: 5 - Production/Stable
 Classifier: Intended Audience :: Science/Research
-Classifier: License :: OSI Approved :: Apache License 2.0
+Classifier: License :: OSI Approved :: Apache Software License
 Classifier: Natural Language :: English
 Classifier: Operating System :: MacOS
 Classifier: Operating System :: Microsoft :: Windows

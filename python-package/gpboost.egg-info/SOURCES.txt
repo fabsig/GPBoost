@@ -6,6 +6,7 @@ compile/CMakeLists.txt
 compile/CSparse/README.txt
 compile/CSparse/Doc/License.txt
 compile/CSparse/Doc/lesser.txt
+compile/Release/lib_gpboost.dll
 compile/eigen/CMakeLists.txt
 compile/include/GPBoost/GP_utils.h
 compile/include/GPBoost/R_object_helper.h

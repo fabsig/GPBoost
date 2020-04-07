@@ -406,24 +406,24 @@ $(document).ready(function () {
 </div>
 <div id="modeling-background" class="section level2">
 <h2>Modeling Background</h2>
-<p>Both tree-boosting and Gaussian processes are techniques that achieve <strong>state-of-the-art predictive accuracy</strong>. Besides this, <strong>tree-boosting</strong> has the following <strong>advantages</strong>:</p>
+<p>Both tree-boosting and Gaussian processes are techniques that achieve <strong>state-of-the-art predictive accuracy</strong>. Besides this, <strong>tree-boosting</strong> has the following advantages:</p>
 <ul>
 <li>Automatic modeling of non-linearities, discontinuities, and complex high-order interactions</li>
 <li>Robust to outliers in and multicollinearity among predictor variables</li>
 <li>Scale-invariant to monotone transformations of the predictor variables</li>
 <li>Automatic handling of missing values in predictor variables</li>
 </ul>
-<p><strong>Gaussian process</strong> models have the following <strong>advantage</strong>:</p>
+<p><strong>Gaussian process</strong> models have the following advantage:</p>
 <ul>
 <li>Probabilistic predictions which allows for uncertainty quantification</li>
 </ul>
-<p>For the GPBoost algorithm, it is assumed that the response variable (label) is the sum of a non-linear mean function and so-called random effects. The <strong>random effects</strong> can consists of</p>
+<p>For the GPBoost algorithm, it is assumed that the <strong>response variable (label) is the sum of a non-linear mean function and so-called random effects</strong>. The <strong>random effects</strong> can consists of</p>
 <ul>
 <li>Gaussian processes (including random coefficient processes)</li>
 <li>Grouped random effects (including nested, crossed, and random coefficient effects)</li>
 <li>A sum of the above</li>
 </ul>
-<p>The <strong>model is trained using the GPBoost algorithm</strong>, where trainings means estimating the <strong>covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See the <a href="http://arxiv.org/abs/2004.02653">reference paper</a> for more details.</p>
+<p>The model is trained using the <strong>GPBoost algorithm, where trainings means learning the covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See <a href="http://arxiv.org/abs/2004.02653">Sigrist (2020)</a> for more details.</p>
 </div>
 <div id="news" class="section level2">
 <h2>News</h2>
