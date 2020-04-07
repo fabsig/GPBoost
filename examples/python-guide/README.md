@@ -7,7 +7,7 @@ Here are examples on how to use the gpboost Python package. You should install t
 pip install scikit-learn matplotlib -U
 ```
 
-Ideally, you run the examples in interactive mode in e.g. Spyder or PyCharm. Alternatively, you can run the examples from the command line in this folder, for example:
+Ideally, you **run the examples in interactive mode in e.g. Spyder or PyCharm**. Alternatively, you can run the examples from the command line in this folder, for example:
 
 ```
 python boosting_example.py
