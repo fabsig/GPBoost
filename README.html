@@ -392,7 +392,7 @@ $(document).ready(function () {
 </ol>
 <div id="get-started" class="section level2">
 <h2>Get started</h2>
-<p><strong>GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.</strong></p>
+<p><strong>GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.</strong> It also allows for doing independent tree-boosting as well as inference and prediction for linear Gaussian process and mixed effects models.</p>
 <p>The GPBoost library is written in C++ and it has a C API. There exist both a <a href="https://github.com/fabsig/GPBoost/tree/master/python-package"><strong>Python package</strong></a> and an <a href="https://github.com/fabsig/GPBoost/tree/master/R-package"><strong>R package</strong></a>.</p>
 <p>For more information, you may want to have a look at:</p>
 <ul>
@@ -423,7 +423,7 @@ $(document).ready(function () {
 <li>Grouped random effects (including nested, crossed, and random coefficient effects)</li>
 <li>A sum of the above</li>
 </ul>
-<p>The model is trained using the <strong>GPBoost algorithm, where trainings means learning the covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See <a href="http://arxiv.org/abs/2004.02653">Sigrist (2020)</a> for more details.</p>
+<p>The model is trained using the <strong>GPBoost algorithm, where trainings means learning the covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (Nesterov accelerated) gradient descent or Fisher scoring. Further, trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See <a href="http://arxiv.org/abs/2004.02653">Sigrist (2020)</a> for more details.</p>
 </div>
 <div id="news" class="section level2">
 <h2>News</h2>

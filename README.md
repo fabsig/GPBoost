@@ -10,7 +10,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 6. [License](#license)
 
 ## Get started
-**GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.** 
+**GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.** It also allows for doing independent tree-boosting as well as inference and prediction for linear Gaussian process and mixed effects models.
 
 The GPBoost library is written in C++ and it has a C API. There exist both a [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and an [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package).
 
@@ -42,7 +42,7 @@ For the GPBoost algorithm, it is assumed that the **response variable (label) is
 - Grouped random effects (including nested, crossed, and random coefficient effects)
 - A sum of the above
 
-The model is trained using the **GPBoost algorithm, where trainings means learning the covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) for more details.
+The model is trained using the **GPBoost algorithm, where trainings means learning the covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (Nesterov accelerated) gradient descent or Fisher scoring. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) for more details.
 
 ## News
 
