@@ -56,7 +56,7 @@ In the following, we start with an example where the random part of the model co
 First, you need to load your data. For simplicity and illustrational purposes, we use simulated data here. In the following, we simulate data (in R) and illustrate the data in the figure below.
 <div class="fold s">
 ```{r simulate_data, results='hide', message=F, cache=save_cache}
-# Simulate data Using  R
+# Simulate data using R
 n <- 200 # number of training samples
 set.seed(5)
 # Gaussian process: sample on a dense grid but observe only partially
