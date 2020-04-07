@@ -20,7 +20,7 @@ In brief, run:
 
 .. code:: sh
 
-    pip install gpboost
+    pip install gpboost -U
 
 Below is a more detailed installation guide.
 
