@@ -10,7 +10,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 6. [License](#license)
 
 ## Get started
-**GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.** It also allows for doing independent tree-boosting as well as inference and prediction for linear Gaussian process and mixed effects models.
+**GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.** It also allows for independently doing tree-boosting as well as inference and prediction for linear Gaussian process and mixed effects models. 
 
 The GPBoost library is written in C++ and it has a C API. There exist both a [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and an [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package).
 
