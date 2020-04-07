@@ -1,5 +1,0 @@
-C:/Users/whsigris/Dropbox/HSLU/Projects/MixedBoost/GPBoost/python-package/build_cpp/CMakeFiles/gpboost.dir
-C:/Users/whsigris/Dropbox/HSLU/Projects/MixedBoost/GPBoost/python-package/build_cpp/CMakeFiles/INSTALL.dir
-C:/Users/whsigris/Dropbox/HSLU/Projects/MixedBoost/GPBoost/python-package/build_cpp/CMakeFiles/_gpboost.dir
-C:/Users/whsigris/Dropbox/HSLU/Projects/MixedBoost/GPBoost/python-package/build_cpp/CMakeFiles/ALL_BUILD.dir
-C:/Users/whsigris/Dropbox/HSLU/Projects/MixedBoost/GPBoost/python-package/build_cpp/CMakeFiles/ZERO_CHECK.dir
