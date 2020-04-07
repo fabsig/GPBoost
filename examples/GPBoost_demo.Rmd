@@ -132,7 +132,7 @@ grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
 1. **Specifying the GP / random effects model as a `GPModel`** and, optionally, setting parameters for the optimization of the covariance parameters
 2. **Training the GPBoost model by calling `gpboost` or, equivalently, `gpb.train` and passing the `GPModel` as an argument**
 
-***Using  R***
+***In R***
 ```{r training, results='hold', message=F, cache=save_cache, eval=T}
 # 1. Create Gaussian process / random effects model
 library(gpboost)
@@ -159,7 +159,7 @@ print("True values:")
 print(c(sigma2,sigma2_1,rho))
 ```
 
-**Using  Python**
+***In Python***
 <div class="fold s o">
 ```{python training_python, collapse=T, message=F, cache=save_cache, eval=run_python}
 # 1. Create Gaussian process / random effects model
@@ -185,7 +185,7 @@ gp_model.summary()
 ## Prediction
 **Prediction is done by calling the `predict` function** and passing the covariates (=features) for the tree ensemble and the features that define the Gaussian process or random effect, i.e. the prediction locations in our case. Note that the predictions for the tree ensemble and the Gaussian process are returned separately. I.e., one needs to sum them to obtain a single point prediction.
 
-***Using  R***
+***In R***
 ```{r prediction, results='hold', message=F, cache=save_cache, fig.align='center', fig.cap='Prediction: Predicted (posterior) mean and prediction uncertainty (=standard deviation) of GP as well as predicted mean function F(X).'}
 # make predictions
 pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
@@ -204,7 +204,7 @@ print("Mean square error:")
 mean((y_pred-y_test)^2)
 ```
 
-**Using  Python**
+***In Python***
 <div class="fold s o">
 ```{python prediction_python, collapse=T, message=F, cache=save_cache, eval=run_python}
 pred = bst.predict(data=X_test, gp_coords_pred=coords_test, predict_cov_mat=True)
@@ -219,7 +219,7 @@ np.mean((y_pred-y_test)**2)
 ### Number of boosting iterations
 Boosting with trees as base learners has several tuning parameters. Arguably the most important one is the **number of boosting iterations** (=number of trees). For choosing this, you can use the **`gpb.cv` function which performs k-fold cross validation**. This can be done as shown in the following. A computationally cheaper alternative to full k-fold cross-validation is to pass a validation data set to `gpboost` or `gpb.train`. See the [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo) for more details.
 
-***Using  R***
+***In R***
 ```{r cv, results='show', message=F, cache=save_cache, eval=run_cv}
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 gp_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
@@ -236,7 +236,7 @@ cvbst <- gpb.cv(params = params, data = X, label = y,
 print(paste0("Optimal number of iterations: ", cvbst$best_iter))
 ```
 
-**Using  Python**
+***In Python***
 <div class="fold s o">
 ```{python cv_python, collapse=T, message=F, cache=save_cache, eval=run_python}
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
@@ -257,7 +257,7 @@ print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
 ### Other tuning paramters
 **Other tuning parameters** include the learning rate, the maximal tree depth, the minimal number of samples per leaf, and the number of leaves. These can be chosen, e.g., using k-fold cross-validation as shown in the following.
 
-***Using  R***
+***In R***
 <div class="fold s o">
 ```{r cv_full, eval=F}
 # GPModel
@@ -294,7 +294,7 @@ print(paste0("best_ntree: ", best_ntree, ", best_lr: ",
 ## Comparison to standard gradient boosting with a squared loss and a linear Gaussian process model
 In the following, we compare the GPBoost algorithm to using standard gradient boosting with a squared loss and to a linear Gaussian process model. For gradient boosting, we add the coordinates to the covariates (features) for the trees. Note that we need to allow for a much larger number of boosting iterations as the continuous spatial process is difficult to learn with discontinuous trees. For the linear Gaussian process, we include the covariates through a linear regression term. As the results below show, **both standard gradient boosting with a squared loss and a linear Gaussian process model result in considerably larger mean square errors (MSE) compared to the GPBoost algorithm**.
 
-***Using  R***
+***In R***
 ```{r comparison, results='hold', message=F, cache=save_cache, eval=T}
 # 1. Linear Gaussian process model
 X1 <- cbind(rep(1,n),X)# Need to add an intercept term to the model matrix
@@ -376,7 +376,7 @@ x_rand_slope_test = rep(0,n)
 ```
 </div>
 
-***Using  R***
+***In R***
 ```{r train_group_model, results='hold', message=F, cache=save_cache, eval=run_group_re}
 # 1. Create random effects model
 gp_model <- GPModel(group_data = cbind(group,group2),
