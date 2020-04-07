@@ -42,7 +42,7 @@ For the GPBoost algorithm, it is assumed that the response variable (label) is t
 - Grouped random effects (including nested, crossed, and random coefficient effects)
 - A sum of the above
 
-The **model is trained using the GPBoost algorithm**, where trainings means estimating the **covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See the [reference paper](#references) for more details.
+The **model is trained using the GPBoost algorithm**, where trainings means estimating the **covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See the [reference paper](http://arxiv.org/abs/2004.02653) for more details.
 
 ## News
 
@@ -63,7 +63,7 @@ The **model is trained using the GPBoost algorithm**, where trainings means esti
 
 ## References
 
-Sigrist Fabio. "[Gaussian Process Boosting](https://arxiv.org/abs/XXX)". Preprint (2020).
+Sigrist Fabio. "[Gaussian Process Boosting](http://arxiv.org/abs/2004.02653)". Preprint (2020).
 
 Guolin Ke, Qi Meng, Thomas Finley, Taifeng Wang, Wei Chen, Weidong Ma, Qiwei Ye, Tie-Yan Liu. "[LightGBM: A Highly Efficient Gradient Boosting Decision Tree](https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree)". Advances in Neural Information Processing Systems 30 (NIPS 2017), pp. 3149-3157.
 

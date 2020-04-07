@@ -5,11 +5,11 @@ Version: 0.0.1
 Date: 2020-04-06
 Author: Fabio Sigrist
 Maintainer: Fabio Sigrist <fabiosigrist@gmail.com>
-Description: An R package that allows for combining tree-boosting with Gaussian process and mixed effects models.
+Description: An R package that allows for combining tree-boosting with Gaussian process and mixed effects models. See <https://github.com/fabsig/GPBoost> for more information on the software and Sigrist (2020) <http://arxiv.org/abs/2004.02653> for more information on the methodology.
 Encoding: UTF-8
 License: Apache License (== 2.0) | file LICENSE
-URL: https://github.com/fabsig/
-BugReports: https://github.com/fabsig
+URL: https://github.com/fabsig/GPBoost
+BugReports: https://github.com/fabsig/GPBoost/issues
 Suggests:
     Ckmeans.1d.dp (>= 3.3.1),
     DiagrammeR (>= 0.8.1),

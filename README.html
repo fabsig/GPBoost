@@ -423,7 +423,7 @@ $(document).ready(function () {
 <li>Grouped random effects (including nested, crossed, and random coefficient effects)</li>
 <li>A sum of the above</li>
 </ul>
-<p>The <strong>model is trained using the GPBoost algorithm</strong>, where trainings means estimating the <strong>covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See the <a href="#references">reference paper</a> for more details.</p>
+<p>The <strong>model is trained using the GPBoost algorithm</strong>, where trainings means estimating the <strong>covariance parameters</strong> of the random effects and the <strong>mean function F(X) using a tree ensemble</strong>. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the <a href="https://github.com/microsoft/LightGBM/">LightGBM</a> library. See the <a href="http://arxiv.org/abs/2004.02653">reference paper</a> for more details.</p>
 </div>
 <div id="news" class="section level2">
 <h2>News</h2>
@@ -454,7 +454,7 @@ $(document).ready(function () {
 </div>
 <div id="references" class="section level2">
 <h2>References</h2>
-<p>Sigrist Fabio. “<a href="https://arxiv.org/abs/XXX">Gaussian Process Boosting</a>”. Preprint (2020).</p>
+<p>Sigrist Fabio. “<a href="http://arxiv.org/abs/2004.02653">Gaussian Process Boosting</a>”. Preprint (2020).</p>
 <p>Guolin Ke, Qi Meng, Thomas Finley, Taifeng Wang, Wei Chen, Weidong Ma, Qiwei Ye, Tie-Yan Liu. “<a href="https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree">LightGBM: A Highly Efficient Gradient Boosting Decision Tree</a>”. Advances in Neural Information Processing Systems 30 (NIPS 2017), pp. 3149-3157.</p>
 </div>
 <div id="license" class="section level2">
