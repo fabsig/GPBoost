@@ -53,7 +53,7 @@ The model is trained using the **GPBoost algorithm, where trainings means learni
 In the following, we start with an example where the random part of the model consists of a Gaussian process. After this, we also give a brief example when using grouped random effects instead of a Gaussian process.
 
 ## Data
-First, you need to load your data. For simplicity and illustrational purposes, we use simulated data here. We simulate data Using  R and illustrate the data in the figure below.
+First, you need to load your data. For simplicity and illustrational purposes, we use simulated data here. In the following, we simulate data (in R) and illustrate the data in the figure below.
 <div class="fold s">
 ```{r simulate_data, results='hide', message=F, cache=save_cache}
 # Simulate data Using  R
