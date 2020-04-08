@@ -17,7 +17,7 @@
 #' For multiclass classification, a \code{list} of \code{data.table} with the Feature column and Contribution columns to each class.
 #'
 #' @examples
-#'\dontrun{
+#' \dontrun{
 #' Sigmoid <- function(x) 1 / (1 + exp(-x))
 #' Logit <- function(x) log(x / (1 - x))
 #' data(agaricus.train, package = "gpboost")

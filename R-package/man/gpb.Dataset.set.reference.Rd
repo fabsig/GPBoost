@@ -18,6 +18,7 @@ passed dataset
 If you want to use validation data, you should set reference to training data
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package ="gpboost")
 train <- agaricus.train
@@ -26,5 +27,6 @@ data(agaricus.test, package = "gpboost")
 test <- agaricus.test
 dtest <- gpb.Dataset(test$data, test = train$label)
 gpb.Dataset.set.reference(dtest, dtrain)
+}
 
 }

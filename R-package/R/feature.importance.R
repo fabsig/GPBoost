@@ -16,6 +16,7 @@
 #' }
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -28,7 +29,8 @@
 #'
 #' tree_imp1 <- feature.importance(model, percentage = TRUE)
 #' tree_imp2 <- feature.importance(model, percentage = FALSE)
-#'
+#' }
+#' 
 #' @importFrom data.table := setnames setorderv
 #' @export
 feature.importance <- function(model, percentage = TRUE) {
@@ -92,6 +94,7 @@ feature.importance <- function(model, percentage = TRUE) {
 #' and silently returns a processed data.table with \code{top_n} features sorted by defined importance.
 #'
 #' @examples
+#' \dontrun{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -109,6 +112,7 @@ feature.importance <- function(model, percentage = TRUE) {
 #'
 #' tree_imp <- feature.importance(model, percentage = TRUE)
 #' plotImportance(tree_imp, top_n = 10, measure = "Gain")
+#' }
 #' @importFrom graphics barplot par
 #' @export
 plotImportance <- function(tree_imp,

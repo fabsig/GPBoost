@@ -44,6 +44,7 @@ number of columns corresponding to the number of trees.
 Predicted values based on class \code{gpb.Booster}
 }
 \examples{
+\dontrun{
 library(gpboost)
 
 #--------------------Example without a Gaussian process or random effects model--------------
@@ -120,7 +121,6 @@ re_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
 gp_model$set_optim_params(params=re_params)
 
 # Train model
-\dontrun{
 print("Train boosting with Process model")
 bst <- gpboost(data = X,
                label = y,

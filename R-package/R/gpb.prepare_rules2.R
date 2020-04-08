@@ -8,6 +8,7 @@
 #' @return A list with the cleaned dataset (\code{data}) and the rules (\code{rules}). The data must be converted to a matrix format (\code{as.matrix}) for input in \code{gpb.Dataset}.
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(iris)
 #'
@@ -40,6 +41,7 @@
 #'                                    "virginica" = 1L))
 #' newest_iris <- gpb.prepare_rules2(data = iris, rules = personal_rules)
 #' str(newest_iris$data) # SUCCESS!
+#' }
 #'
 #' @importFrom data.table set
 #' @export

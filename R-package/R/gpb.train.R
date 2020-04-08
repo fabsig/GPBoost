@@ -6,6 +6,7 @@
 #' @return a trained booster model \code{gpb.Booster}.
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' 
 #' #--------------------Example without a Gaussian process or random effects model--------------
@@ -57,7 +58,6 @@
 #' 
 #' 
 #' #--------------------Using validation set-------------------------
-#' \dontrun{
 #' # valids is a list of gpb.Dataset, each of them is tagged with a name
 #' dtest <- gpb.Dataset.create.valid(dtrain, data = Xtest, label = ytest)
 #' valids <- list(test = dtest)
@@ -178,7 +178,6 @@
 #' summary(gp_model)
 #' 
 #'
-#'
 #' #--------------------Prediction--------------
 #' group_test <- 1:m
 #' x <- seq(from=0,to=1,length.out=m)
@@ -257,11 +256,9 @@
 #'                  leaves_newton_update = TRUE)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter,
 #'              ", best test error: ", bst$best_score))
-#' }
 #' 
 #' 
 #' #--------------------GPBoostOOS algorithm: GP parameters estimated out-of-sample----------------
-#' \dontrun{
 #' # Simulate data
 #' f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
 #' set.seed(1)

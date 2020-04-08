@@ -24,6 +24,7 @@ Generic \code{dimnames} methods are used by \code{colnames}.
 Since row names are irrelevant, it is recommended to use \code{colnames} directly.
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -33,5 +34,6 @@ dimnames(dtrain)
 colnames(dtrain)
 colnames(dtrain) <- make.names(1:ncol(train$data))
 print(dtrain, verbose = TRUE)
+}
 
 }

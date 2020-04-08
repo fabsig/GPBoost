@@ -9,6 +9,7 @@
 #' @return NULL invisibly.
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -26,7 +27,6 @@
 #'                    learning_rate = 1,
 #'                    early_stopping_rounds = 5)
 #'
-#' \dontrun{
 #' gpb.unloader(restore = FALSE, wipe = FALSE, envir = .GlobalEnv)
 #' rm(model, dtrain, dtest) # Not needed if wipe = TRUE
 #' gc() # Not needed if wipe = TRUE

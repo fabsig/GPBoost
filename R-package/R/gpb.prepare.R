@@ -7,6 +7,7 @@
 #' @return The cleaned dataset. It must be converted to a matrix format (\code{as.matrix}) for input in \code{gpb.Dataset}.
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(iris)
 #'
@@ -14,7 +15,6 @@
 #'
 #' str(gpb.prepare(data = iris)) # Convert all factors/chars to numeric
 #'
-#' \dontrun{
 #' # When the gpboost package is installed, and you do not want to load it
 #' # You can still use the function!
 #' gpb.unloader()

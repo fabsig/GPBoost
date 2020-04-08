@@ -35,6 +35,7 @@ The \code{name} field can be one of the following:
 }
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -46,5 +47,6 @@ gpboost::setinfo(dtrain, "label", 1 - labels)
 
 labels2 <- gpboost::getinfo(dtrain, "label")
 stopifnot(all.equal(labels2, 1 - labels))
+}
 
 }

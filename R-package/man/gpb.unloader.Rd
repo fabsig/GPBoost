@@ -20,6 +20,7 @@ NULL invisibly.
 Attempts to unload gpboost packages so you can remove objects cleanly without having to restart R. This is useful for instance if an object becomes stuck for no apparent reason and you do not want to restart R to fix the lost object.
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -37,7 +38,6 @@ model <- gpb.train(params = params,
                    learning_rate = 1,
                    early_stopping_rounds = 5)
 
-\dontrun{
 gpb.unloader(restore = FALSE, wipe = FALSE, envir = .GlobalEnv)
 rm(model, dtrain, dtest) # Not needed if wipe = TRUE
 gc() # Not needed if wipe = TRUE

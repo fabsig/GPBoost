@@ -4,6 +4,9 @@ else()
   cmake_minimum_required(VERSION 2.8)
 endif()
 
+##Only relevant for R-package: Add correrct version (32- or 64-bit) of mingw to path 
+set(ENV{PATH} "${MINGW_PATH};$ENV{PATH}")
+
 PROJECT(gpboost)
 
 OPTION(USE_MPI "Enable MPI-based parallel learning" OFF)
@@ -15,6 +18,7 @@ OPTION(USE_R35 "Set to ON if your R version is not earlier than 3.5" OFF)
 OPTION(CMAKE_BUILD_TYPE "Do optimization and no debugging for Eigen" Release)
 OPTION(BUILD_FOR_R_REGISTER "Set to ON if building lib_gpboost for use with the R package and registering native routines" OFF)
 OPTION(BUILD_FOR_R "Set to ON if building lib_gpboost for use with the R packages but not registering native routines" OFF)
+OPTION(BUILD_32BIT_R "Set to ON if building 32-bit lib_gpboost for use with the R packages" OFF)
 
 if(BUILD_FOR_R_REGISTER)
 	if(WIN32)
@@ -26,6 +30,11 @@ if(BUILD_FOR_R_REGISTER)
 	elseif(VCPKG_CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 		set(CMAKE_FIND_LIBRARY_PREFIXES "lib")
 		set(CMAKE_FIND_LIBRARY_SUFFIXES ".dylib;.so;.a")
+	endif()
+	if(BUILD_32BIT_R)
+	  set(R_LIB_ARCH "i386")
+	else()
+		set(R_LIB_ARCH "x64")
 	endif()
 
 
@@ -43,6 +52,7 @@ if(BUILD_FOR_R_REGISTER)
 					  OUTPUT_STRIP_TRAILING_WHITESPACE)
 	  # the following command does nothing currently, but will be used when deprecated code is removed
 	  set(R_HOME ${R_ROOT_DIR} CACHE PATH "R home directory obtained from R RHOME")
+	
 
 	  find_path(R_INCLUDE_DIR R.h
 				HINTS ${R_ROOT_DIR} ${R_ROOT_DIR}/bin/${R_LIB_ARCH}
@@ -51,15 +61,15 @@ if(BUILD_FOR_R_REGISTER)
 				DOC "Path to file R.h")
 		
 	  find_library(R_LIBRARY_BASE R
-				HINTS ${R_ROOT_DIR}/lib
+				HINTS ${R_ROOT_DIR}/lib ${R_ROOT_DIR}/bin/${R_LIB_ARCH}
 				DOC "R library (example libR.a, libR.dylib, etc.).")
 
 	  find_library(R_LIBRARY_BLAS NAMES Rblas blas
-				HINTS ${R_ROOT_DIR}/lib
+				HINTS ${R_ROOT_DIR}/lib ${R_ROOT_DIR}/bin/${R_LIB_ARCH}
 				DOC "Rblas library (example libRblas.a, libRblas.dylib, etc.).")
 
 	  find_library(R_LIBRARY_LAPACK NAMES Rlapack lapack
-				HINTS ${R_ROOT_DIR}/lib
+				HINTS ${R_ROOT_DIR}/lib ${R_ROOT_DIR}/bin/${R_LIB_ARCH}
 				DOC "Rlapack library (example libRlapack.a, libRlapack.dylib, etc.).")
 
 	  find_library(R_LIBRARY_READLINE readline
@@ -202,6 +212,10 @@ if(WIN32 AND MINGW)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
 endif()
 
+# if(BUILD_32BIT_R)
+	# SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m32")
+# endif()
+
 if(MSVC)
     SET(variables
         CMAKE_C_FLAGS_DEBUG
@@ -234,8 +248,6 @@ SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR})
 SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR})
 
 if(BUILD_FOR_R_REGISTER)
-	# set(R_init_dir ${PROJECT_SOURCE_DIR}/R-package/src)
-	# include_directories(${R_init_dir})#for init.c
 	include_directories(${R_INCLUDE_DIR})#for R.h
 endif(BUILD_FOR_R_REGISTER)
 
@@ -273,13 +285,6 @@ if(BUILD_FOR_R OR BUILD_FOR_R_REGISTER)
 endif()
 
 add_library(_gpboost SHARED ${SOURCES})
-
-# if(BUILD_FOR_R_REGISTER AND NOT MSVC)#Linking to the R.dll library does not work for MSVC as there are no .lib files
-	# add_library(_gpboost SHARED init.c src/LightGBM/c_api.cpp src/LightGBM/lightgbm_R.cpp ${SOURCES})
-	# target_link_libraries(_gpboost ${R_LIBRARIES})
-# else()
-	# add_library(_gpboost SHARED src/LightGBM/c_api.cpp src/LightGBM/lightgbm_R.cpp ${SOURCES})
-# endif()
 
 if(MSVC)
     set_target_properties(_gpboost PROPERTIES OUTPUT_NAME "lib_gpboost")

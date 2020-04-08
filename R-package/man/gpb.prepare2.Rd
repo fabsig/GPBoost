@@ -16,6 +16,7 @@ The cleaned dataset. It must be converted to a matrix format (\code{as.matrix}) 
 Attempts to prepare a clean dataset to prepare to put in a \code{gpb.Dataset}. Factors and characters are converted to numeric (specifically: integer). Please use \code{gpb.prepare_rules2} if you want to apply this transformation to other datasets. This is useful if you have a specific need for integer dataset instead of numeric dataset. Note that there are programs which do not support integer-only input. Consider this as a half memory technique which is dangerous, especially for LightGBM.
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(iris)
 
@@ -24,7 +25,6 @@ str(iris)
 # Convert all factors/chars to integer
 str(gpb.prepare2(data = iris))
 
-\dontrun{
 # When gpboost package is installed, and you do not want to load it
 # You can still use the function!
 gpb.unloader()

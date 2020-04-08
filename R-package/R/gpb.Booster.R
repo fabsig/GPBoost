@@ -758,6 +758,7 @@ Booster <- R6::R6Class(
 #' number of columns corresponding to the number of trees.
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' 
 #' #--------------------Example without a Gaussian process or random effects model--------------
@@ -834,7 +835,6 @@ Booster <- R6::R6Class(
 #' gp_model$set_optim_params(params=re_params)
 #'
 #' # Train model
-#' \dontrun{
 #' print("Train boosting with Process model")
 #' bst <- gpboost(data = X,
 #'                label = y,
@@ -1012,6 +1012,7 @@ gpb.save <- function(booster, filename, num_iteration = NULL){
 #' @return json format of model
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -1029,7 +1030,8 @@ gpb.save <- function(booster, filename, num_iteration = NULL){
 #'                    learning_rate = 1,
 #'                    early_stopping_rounds = 5)
 #' json_model <- gpb.dump(model)
-#'
+#' }
+#' 
 #' @rdname gpb.dump
 #' @export
 gpb.dump <- function(booster, num_iteration = NULL){
@@ -1056,6 +1058,7 @@ gpb.dump <- function(booster, num_iteration = NULL){
 #' @return vector of evaluation result
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -1073,6 +1076,7 @@ gpb.dump <- function(booster, num_iteration = NULL){
 #'                    learning_rate = 1,
 #'                    early_stopping_rounds = 5)
 #' gpb.get.eval.result(model, "test", "l2")
+#' }
 #' @rdname gpb.get.eval.result
 #' @export
 gpb.get.eval.result <- function(booster, data_name, eval_name, iters = NULL, is_err = FALSE) {

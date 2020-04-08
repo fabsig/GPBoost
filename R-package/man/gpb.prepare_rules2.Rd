@@ -18,6 +18,7 @@ A list with the cleaned dataset (\code{data}) and the rules (\code{rules}). The 
 Attempts to prepare a clean dataset to prepare to put in a \code{gpb.Dataset}. Factors and characters are converted to numeric (specifically: integer). In addition, keeps rules created so you can convert other datasets using this converter. This is useful if you have a specific need for integer dataset instead of numeric dataset. Note that there are programs which do not support integer-only input. Consider this as a half memory technique which is dangerous.
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(iris)
 
@@ -50,5 +51,6 @@ personal_rules <- list(Species = c("setosa" = 3L,
                                    "virginica" = 1L))
 newest_iris <- gpb.prepare_rules2(data = iris, rules = personal_rules)
 str(newest_iris$data) # SUCCESS!
+}
 
 }

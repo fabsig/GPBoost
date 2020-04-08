@@ -37,6 +37,7 @@ CVBooster <- R6::R6Class(
 #' @return a trained model \code{gpb.CVBooster}.
 #'
 #' @examples
+#' \dontrun{
 #' require(gpboost)
 #'
 #' #--------------------Cross validation for tree-boosting without GP or random effects----------------
@@ -62,7 +63,6 @@ CVBooster <- R6::R6Class(
 #'                min_data_in_leaf = 5,
 #'                objective = "regression_l2")
 #'
-#'\dontrun{
 #' print("Running cross validation with mean squared error")
 #' bst <- gpb.cv(params = params,
 #'               data = dtrain,
@@ -71,9 +71,7 @@ CVBooster <- R6::R6Class(
 #'               eval = "l2",
 #'               early_stopping_rounds = 5)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter))
-#' }
 #'
-#'\dontrun{
 #' print("Running cross validation with mean absolute error")
 #' bst <- gpb.cv(params = params,
 #'               data = dtrain,
@@ -82,7 +80,6 @@ CVBooster <- R6::R6Class(
 #'               eval = "l1",
 #'               early_stopping_rounds = 5)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter))
-#' }
 #'
 #'
 #' #--------------------Custom loss function----------------
@@ -98,7 +95,6 @@ CVBooster <- R6::R6Class(
 #' }
 #'
 #' print("Running cross validation, with cutomsized loss function (quantile loss)")
-#' \dontrun{
 #' bst <- gpb.cv(params = params,
 #'               data = dtrain,
 #'               nrounds = nrounds,
@@ -106,7 +102,6 @@ CVBooster <- R6::R6Class(
 #'               eval = quantile_loss,
 #'               early_stopping_rounds = 5)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter))
-#' }
 #'
 #'
 #' #--------------------Combine tree-boosting and grouped random effects model----------------
@@ -137,7 +132,6 @@ CVBooster <- R6::R6Class(
 #'                min_data_in_leaf = 5,
 #'                objective = "regression_l2")
 #'
-#' \dontrun{
 #' print("Running cross validation for GPBoost model")
 #' bst <- gpb.cv(params = params,
 #'               data = dtrain,
@@ -147,10 +141,8 @@ CVBooster <- R6::R6Class(
 #'               eval = "l2",
 #'               early_stopping_rounds = 5)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter))
-#' }
 #'
 #' # Include random effect predictions for validation (observe the lower test error)
-#' \dontrun{
 #' gp_model <- GPModel(group_data = group)
 #' print("Running cross validation for GPBoost model and use_gp_model_for_validation = TRUE")
 #' bst <- gpb.cv(params = params,

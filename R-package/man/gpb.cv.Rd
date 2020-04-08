@@ -117,6 +117,7 @@ a trained model \code{gpb.CVBooster}.
 Cross validation logic used by GPBoost
 }
 \examples{
+\dontrun{
 require(gpboost)
 
 #--------------------Cross validation for tree-boosting without GP or random effects----------------
@@ -142,7 +143,6 @@ params <- list(learning_rate = 0.1,
                min_data_in_leaf = 5,
                objective = "regression_l2")
 
-\dontrun{
 print("Running cross validation with mean squared error")
 bst <- gpb.cv(params = params,
               data = dtrain,
@@ -151,9 +151,7 @@ bst <- gpb.cv(params = params,
               eval = "l2",
               early_stopping_rounds = 5)
 print(paste0("Optimal number of iterations: ", bst$best_iter))
-}
 
-\dontrun{
 print("Running cross validation with mean absolute error")
 bst <- gpb.cv(params = params,
               data = dtrain,
@@ -162,7 +160,6 @@ bst <- gpb.cv(params = params,
               eval = "l1",
               early_stopping_rounds = 5)
 print(paste0("Optimal number of iterations: ", bst$best_iter))
-}
 
 
 #--------------------Custom loss function----------------
@@ -178,7 +175,6 @@ quantile_loss <- function(preds, dtrain) {
 }
 
 print("Running cross validation, with cutomsized loss function (quantile loss)")
-\dontrun{
 bst <- gpb.cv(params = params,
               data = dtrain,
               nrounds = nrounds,
@@ -186,7 +182,6 @@ bst <- gpb.cv(params = params,
               eval = quantile_loss,
               early_stopping_rounds = 5)
 print(paste0("Optimal number of iterations: ", bst$best_iter))
-}
 
 
 #--------------------Combine tree-boosting and grouped random effects model----------------
@@ -217,7 +212,6 @@ params <- list(learning_rate = 0.05,
                min_data_in_leaf = 5,
                objective = "regression_l2")
 
-\dontrun{
 print("Running cross validation for GPBoost model")
 bst <- gpb.cv(params = params,
               data = dtrain,
@@ -227,10 +221,8 @@ bst <- gpb.cv(params = params,
               eval = "l2",
               early_stopping_rounds = 5)
 print(paste0("Optimal number of iterations: ", bst$best_iter))
-}
 
 # Include random effect predictions for validation (observe the lower test error)
-\dontrun{
 gp_model <- GPModel(group_data = group)
 print("Running cross validation for GPBoost model and use_gp_model_for_validation = TRUE")
 bst <- gpb.cv(params = params,

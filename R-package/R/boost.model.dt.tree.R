@@ -30,7 +30,7 @@
 #' }
 #'
 #' @examples
-#'
+#' \dontrun{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -41,6 +41,7 @@
 #' model <- gpb.train(params = params, data = dtrain, nrounds = 10)
 #'
 #' tree_dt <- boost.model.dt.tree(model)
+#' }
 #'
 #' @importFrom data.table := data.table rbindlist
 #' @importFrom jsonlite fromJSON

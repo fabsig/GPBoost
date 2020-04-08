@@ -16,6 +16,7 @@ The cleaned dataset. It must be converted to a matrix format (\code{as.matrix}) 
 Attempts to prepare a clean dataset to prepare to put in a \code{gpb.Dataset}. Factors and characters are converted to numeric without integers. Please use \code{gpb.prepare_rules} if you want to apply this transformation to other datasets.
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(iris)
 
@@ -23,7 +24,6 @@ str(iris)
 
 str(gpb.prepare(data = iris)) # Convert all factors/chars to numeric
 
-\dontrun{
 # When the gpboost package is installed, and you do not want to load it
 # You can still use the function!
 gpb.unloader()

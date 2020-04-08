@@ -13,10 +13,12 @@ gpb.Dataset.construct(dataset)
 Construct Dataset explicitly
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
 gpb.Dataset.construct(dtrain)
+}
 
 }

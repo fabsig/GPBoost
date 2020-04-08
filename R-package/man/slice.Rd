@@ -24,6 +24,7 @@ Get a new \code{gpb.Dataset} containing the specified rows of
 original \code{gpb.Dataset} object
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -32,5 +33,6 @@ dtrain <- gpb.Dataset(train$data, label = train$label)
 dsub <- gpboost::slice(dtrain, 1:42)
 gpb.Dataset.construct(dsub)
 labels <- gpboost::getinfo(dsub, "label")
+}
 
 }

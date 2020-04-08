@@ -700,6 +700,7 @@ gpb.Dataset <- function(data,
 #' @return constructed dataset
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -707,6 +708,7 @@ gpb.Dataset <- function(data,
 #' data(agaricus.test, package = "gpboost")
 #' test <- agaricus.test
 #' dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
+#' }
 #'
 #' @export
 gpb.Dataset.create.valid <- function(dataset, data, info = list(), ...) {
@@ -726,11 +728,13 @@ gpb.Dataset.create.valid <- function(dataset, data, info = list(), ...) {
 #' @param dataset Object of class \code{gpb.Dataset}
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
 #' gpb.Dataset.construct(dtrain)
+#' }
 #'
 #' @export
 gpb.Dataset.construct <- function(dataset) {
@@ -758,6 +762,7 @@ gpb.Dataset.construct <- function(dataset) {
 #' be directly used with an \code{gpb.Dataset} object.
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -766,6 +771,7 @@ gpb.Dataset.construct <- function(dataset) {
 #' stopifnot(nrow(dtrain) == nrow(train$data))
 #' stopifnot(ncol(dtrain) == ncol(train$data))
 #' stopifnot(all(dim(dtrain) == dim(train$data)))
+#' }
 #'
 #' @rdname dim
 #' @export
@@ -795,6 +801,7 @@ dim.gpb.Dataset <- function(x, ...) {
 #' Since row names are irrelevant, it is recommended to use \code{colnames} directly.
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -804,6 +811,7 @@ dim.gpb.Dataset <- function(x, ...) {
 #' colnames(dtrain)
 #' colnames(dtrain) <- make.names(1:ncol(train$data))
 #' print(dtrain, verbose = TRUE)
+#' }
 #'
 #' @rdname dimnames.gpb.Dataset
 #' @export
@@ -864,6 +872,7 @@ dimnames.gpb.Dataset <- function(x) {
 #' @return constructed sub dataset
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -872,6 +881,7 @@ dimnames.gpb.Dataset <- function(x) {
 #' dsub <- gpboost::slice(dtrain, 1:42)
 #' gpb.Dataset.construct(dsub)
 #' labels <- gpboost::getinfo(dsub, "label")
+#' }
 #'
 #' @export
 slice <- function(dataset, ...) {
@@ -910,6 +920,7 @@ slice.gpb.Dataset <- function(dataset, idxset, ...) {
 #' }
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -921,6 +932,7 @@ slice.gpb.Dataset <- function(dataset, idxset, ...) {
 #'
 #' labels2 <- gpboost::getinfo(dtrain, "label")
 #' stopifnot(all(labels2 == 1 - labels))
+#' }
 #'
 #' @export
 getinfo <- function(dataset, ...) {
@@ -960,6 +972,7 @@ getinfo.gpb.Dataset <- function(dataset, name, ...) {
 #' }
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -971,6 +984,7 @@ getinfo.gpb.Dataset <- function(dataset, name, ...) {
 #'
 #' labels2 <- gpboost::getinfo(dtrain, "label")
 #' stopifnot(all.equal(labels2, 1 - labels))
+#' }
 #'
 #' @export
 setinfo <- function(dataset, ...) {
@@ -1032,6 +1046,7 @@ gpb.Dataset.set.categorical <- function(dataset, categorical_feature) {
 #' @return passed dataset
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package ="gpboost")
 #' train <- agaricus.train
@@ -1040,6 +1055,7 @@ gpb.Dataset.set.categorical <- function(dataset, categorical_feature) {
 #' test <- agaricus.test
 #' dtest <- gpb.Dataset(test$data, test = train$label)
 #' gpb.Dataset.set.reference(dtest, dtrain)
+#' }
 #'
 #' @rdname gpb.Dataset.set.reference
 #' @export

@@ -7,6 +7,7 @@
 #' @return a trained booster model \code{gpb.Booster}.
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' 
 #' #--------------------Example without a Gaussian process or random effects model--------------
@@ -58,7 +59,6 @@
 #' 
 #' 
 #' #--------------------Doing Newton updates for tree leaves---------------
-#' \dontrun{
 #' bst <- gpboost(data = X,
 #'                label = y,
 #'                gp_model = gp_model,
@@ -66,7 +66,7 @@
 #'                objective = "regression_l2",
 #'                verbose = 0,
 #'                leaves_newton_update = TRUE)
-#' }
+#'
 #' 
 #' #--------------------Combine tree-boosting and Gaussian process model----------------
 #' ## SEE ALSO THE HELP OF 'gpb.train' FOR MORE EXAMPLES
@@ -96,7 +96,6 @@
 #' gp_model$set_optim_params(params=re_params)
 #'
 #' # Train model
-#' \dontrun{
 #' print("Train boosting with Process model")
 #' bst <- gpboost(data = X,
 #'                label = y,

@@ -1,4 +1,4 @@
-require(gpboost)
+library(gpboost)
 
 #--------------------Simulate data----------------
 # Non-linear function for simulation

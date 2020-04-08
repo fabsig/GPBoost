@@ -30,6 +30,7 @@ The graph represents each feature as a horizontal bar of length proportional to 
 Features are shown ranked in a decreasing importance order.
 }
 \examples{
+\dontrun{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -47,4 +48,5 @@ model <- gpb.train(params = params, data = dtrain, nrounds = 10)
 
 tree_imp <- feature.importance(model, percentage = TRUE)
 plotImportance(tree_imp, top_n = 10, measure = "Gain")
+}
 }
