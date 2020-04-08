@@ -32,6 +32,7 @@ Construct \code{gpb.Dataset} object from dense matrix, sparse matrix
 or local file (that was created previously by saving an \code{gpb.Dataset}).
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -39,5 +40,6 @@ dtrain <- gpb.Dataset(train$data, label = train$label)
 gpb.Dataset.save(dtrain, "gpb.Dataset.data")
 dtrain <- gpb.Dataset("gpb.Dataset.data")
 gpb.Dataset.construct(dtrain)
+}
 
 }

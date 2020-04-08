@@ -27,6 +27,7 @@ For multiclass classification, a \code{list} of \code{data.table} with the Featu
 Computes feature contribution components of rawscore prediction.
 }
 \examples{
+\dontrun{
 Sigmoid <- function(x) 1 / (1 + exp(-x))
 Logit <- function(x) log(x / (1 - x))
 data(agaricus.train, package = "gpboost")
@@ -47,5 +48,6 @@ params <- list(
 model <- gpb.train(params = params, data = dtrain, nrounds = 10)
 
 tree_interpretation <- interprete(model, test$data, 1:5)
+}
 
 }

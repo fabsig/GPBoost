@@ -20,6 +20,7 @@ Load takes in either a file path or model string
 If both are provided, Load will default to loading from file
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -40,5 +41,6 @@ gpb.save(model, "model.txt")
 load_booster <- gpb.load(filename = "model.txt")
 model_string <- model$save_model_to_string(NULL) # saves best iteration
 load_booster_from_str <- gpb.load(model_str = model_string)
+}
 
 }

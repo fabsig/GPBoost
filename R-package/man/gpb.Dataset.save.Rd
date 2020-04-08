@@ -18,10 +18,12 @@ passed dataset
 Save \code{gpb.Dataset} to a binary file
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
 gpb.Dataset.save(dtrain, "data.bin")
+}
 
 }

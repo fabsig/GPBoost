@@ -17,6 +17,7 @@
 #' For multiclass classification, a \code{list} of \code{data.table} with the Feature column and Contribution columns to each class.
 #'
 #' @examples
+#'\dontrun{
 #' Sigmoid <- function(x) 1 / (1 + exp(-x))
 #' Logit <- function(x) log(x / (1 - x))
 #' data(agaricus.train, package = "gpboost")
@@ -37,7 +38,8 @@
 #' model <- gpb.train(params = params, data = dtrain, nrounds = 10)
 #'
 #' tree_interpretation <- interprete(model, test$data, 1:5)
-#'
+#' }
+#' 
 #' @importFrom data.table as.data.table
 #' @export
 interprete <- function(model,
@@ -235,6 +237,7 @@ single.row.interprete <- function(tree_dt, num_class, tree_index_mat, leaf_index
 #' The \code{plotInterpretation} function creates a \code{barplot}.
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' Sigmoid <- function(x) {1 / (1 + exp(-x))}
 #' Logit <- function(x) {log(x / (1 - x))}
@@ -252,6 +255,7 @@ single.row.interprete <- function(tree_dt, num_class, tree_index_mat, leaf_index
 #'
 #' tree_interpretation <- interprete(model, test$data, 1:5)
 #' plotInterpretation(tree_interpretation[[1]], top_n = 10)
+#' }
 #' @importFrom data.table setnames
 #' @importFrom graphics barplot par
 #' @export

@@ -903,6 +903,7 @@ predict.gpb.Booster <- function(object,
 #' @return gpb.Booster
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -923,6 +924,7 @@ predict.gpb.Booster <- function(object,
 #' load_booster <- gpb.load(filename = "model.txt")
 #' model_string <- model$save_model_to_string(NULL) # saves best iteration
 #' load_booster_from_str <- gpb.load(model_str = model_string)
+#' }
 #'
 #' @rdname gpb.load
 #' @export
@@ -961,6 +963,7 @@ gpb.load <- function(filename = NULL, model_str = NULL){
 #' @return gpb.Booster
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -978,6 +981,7 @@ gpb.load <- function(filename = NULL, model_str = NULL){
 #'                    learning_rate = 1,
 #'                    early_stopping_rounds = 5)
 #' gpb.save(model, "model.txt")
+#' }
 #'
 #' @rdname gpb.save
 #' @export

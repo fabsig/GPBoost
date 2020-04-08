@@ -18,6 +18,7 @@ passed dataset
 Set categorical feature of \code{gpb.Dataset}
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -25,5 +26,6 @@ dtrain <- gpb.Dataset(train$data, label = train$label)
 gpb.Dataset.save(dtrain, "gpb.Dataset.data")
 dtrain <- gpb.Dataset("gpb.Dataset.data")
 gpb.Dataset.set.categorical(dtrain, 1:2)
+}
 
 }

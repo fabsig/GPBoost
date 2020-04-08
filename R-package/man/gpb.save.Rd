@@ -20,6 +20,7 @@ gpb.Booster
 Save model
 }
 \examples{
+\dontrun{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -37,5 +38,6 @@ model <- gpb.train(params = params,
                    learning_rate = 1,
                    early_stopping_rounds = 5)
 gpb.save(model, "model.txt")
+}
 
 }

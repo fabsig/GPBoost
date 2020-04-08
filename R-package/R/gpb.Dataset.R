@@ -654,6 +654,7 @@ Dataset <- R6::R6Class(
 #' @return constructed dataset
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -661,6 +662,7 @@ Dataset <- R6::R6Class(
 #' gpb.Dataset.save(dtrain, "gpb.Dataset.data")
 #' dtrain <- gpb.Dataset("gpb.Dataset.data")
 #' gpb.Dataset.construct(dtrain)
+#' }
 #'
 #' @export
 gpb.Dataset <- function(data,
@@ -996,6 +998,7 @@ setinfo.gpb.Dataset <- function(dataset, name, info, ...) {
 #' @return passed dataset
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -1003,6 +1006,7 @@ setinfo.gpb.Dataset <- function(dataset, name, info, ...) {
 #' gpb.Dataset.save(dtrain, "gpb.Dataset.data")
 #' dtrain <- gpb.Dataset("gpb.Dataset.data")
 #' gpb.Dataset.set.categorical(dtrain, 1:2)
+#' }
 #'
 #' @rdname gpb.Dataset.set.categorical
 #' @export
@@ -1058,12 +1062,14 @@ gpb.Dataset.set.reference <- function(dataset, reference) {
 #' @return passed dataset
 #'
 #' @examples
+#' \dontrun{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
 #' gpb.Dataset.save(dtrain, "data.bin")
-#'
+#' }
+#' 
 #' @rdname gpb.Dataset.save
 #' @export
 gpb.Dataset.save <- function(dataset, fname) {

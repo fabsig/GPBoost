@@ -29,6 +29,7 @@ The graph represents each feature as a horizontal bar of length proportional to 
 Features are shown ranked in a decreasing contribution order.
 }
 \examples{
+\dontrun{
 library(gpboost)
 Sigmoid <- function(x) {1 / (1 + exp(-x))}
 Logit <- function(x) {log(x / (1 - x))}
@@ -46,4 +47,5 @@ model <- gpb.train(params = params, data = dtrain, nrounds = 10)
 
 tree_interpretation <- interprete(model, test$data, 1:5)
 plotInterpretation(tree_interpretation[[1]], top_n = 10)
+}
 }
