@@ -1,6 +1,19 @@
 GPBoost R Package
 ==================
 
+This is the R package implementation of the GPBoost library. See https://github.com/fabsig/GPBoost for more information on the modelling background and the software implementation.
+
+Examples
+--------
+
+* [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
+
+* [**More examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo):
+  * [Gaussian process and other mixed effects model examples (without boosting)](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/Gaussian_process_mixed_effects_models.R)
+  * [Boosting functionality (without Gaussian process / random effects)](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/boosting.R)
+  * [Combining tree-boosting with Gaussian process and random effects models](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/combined_boosting_GP_random_effects.R)
+  * [Cross Validation](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/cross_validation.R)
+
 Installation
 ------------
 
@@ -79,14 +92,3 @@ y <- Z1 %*% b1 + sqrt(sigma2) * rnorm(n) # observed data
 gp_model <- fit.GPModel(group_data = group, y = y, std_dev = TRUE)
 summary(gp_model)
 ```
-
-Examples
---------
-
-* [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
-
-* [**More examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo):
-  * [Gaussian process and other mixed effects model examples (without boosting)](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/Gaussian_process_mixed_effects_models.R)
-  * [Boosting functionality (without Gaussian process / random effects)](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/boosting.R)
-  * [Combining tree-boosting with Gaussian process and random effects models](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/combined_boosting_GP_random_effects.R)
-  * [Cross Validation](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/cross_validation.R)

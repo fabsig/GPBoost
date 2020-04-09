@@ -3,6 +3,15 @@ GPBoost Python Package
 
 |License| |Python Versions| |PyPI Version| |Downloads|
 
+This is the Python package implementation of the GPBoost library. See https://github.com/fabsig/GPBoost for more information on the modelling background and the software implementation.
+
+Examples
+--------
+
+- `GPBoost R and Python demo <https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html>`_ illustrates how GPBoost can be used in R and Python
+- More examples in the `Python guide folder <https://github.com/fabsig/GPBoost/tree/master/examples/python-guide>`_
+
+
 Installation
 ------------
 
@@ -98,13 +107,6 @@ Install from GitHub
 Note: ``sudo`` (or administrator rights in **Windows**) may be needed to perform the command.
 
 If you get any errors during installation or due to any other reasons, you may want to build dynamic library from sources by any method you prefer and then just run ``python setup.py install --precompile``.
-
-
-Examples
---------
-
-- `GPBoost R and Python demo <https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html>`_
-- More examples in the `Python guide folder <https://github.com/fabsig/GPBoost/tree/master/examples/python-guide>`_
 
 
 .. |License| image:: https://img.shields.io/github/license/fabsig/gpboost.svg

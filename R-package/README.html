@@ -379,6 +379,20 @@ $(document).ready(function () {
 
 <div id="gpboost-r-package" class="section level1">
 <h1>GPBoost R Package</h1>
+<p><strong>This is the R package implementation of the GPBoost library. See <a href="https://github.com/fabsig/GPBoost" class="uri">https://github.com/fabsig/GPBoost</a> for more information on the modelling background and the software implementation.</strong></p>
+<div id="examples" class="section level2">
+<h2>Examples</h2>
+<ul>
+<li><p><a href="https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html"><strong>GPBoost R and Python demo</strong></a> illustrates how GPBoost can be used in R and Python</p></li>
+<li><p><a href="https://github.com/fabsig/GPBoost/tree/master/R-package/demo"><strong>More examples</strong></a>:</p>
+<ul>
+<li><a href="https://github.com/fabsig/GPBoost/blob/master/R-package/demo/Gaussian_process_mixed_effects_models.R">Gaussian process and other mixed effects model examples (without boosting)</a></li>
+<li><a href="https://github.com/fabsig/GPBoost/blob/master/R-package/demo/boosting.R">Boosting functionality (without Gaussian process / random effects)</a></li>
+<li><a href="https://github.com/fabsig/GPBoost/blob/master/R-package/demo/combined_boosting_GP_random_effects.R">Combining tree-boosting with Gaussian process and random effects models</a></li>
+<li><a href="https://github.com/fabsig/GPBoost/blob/master/R-package/demo/cross_validation.R">Cross Validation</a></li>
+</ul></li>
+</ul>
+</div>
 <div id="installation" class="section level2">
 <h2>Installation</h2>
 <p>The GPBoost package is (hopefully) soon on CRAN. In the meantime, you can follow these instructions for installation.</p>
@@ -408,7 +422,7 @@ Rscript build_r.R</code></pre></li>
 </div>
 <div id="mac-os-preparation" class="section level4">
 <h4>Mac OS Preparation</h4>
-<p>You can perform installation either with <strong>Apple Clang</strong> or <strong>gcc</strong>. In case you prefer <strong>Apple Clang</strong>, you should install <strong>OpenMP</strong> (details for installation can be found in the <a href="https://github.com/fabsig/GPBoost/blob/master/docs/Installation_Guide.rst#apple-clang">Installation Guide</a>) first and <strong>CMake</strong> version 3.12 or higher is required. In case you prefer <strong>gcc</strong>, you need to install it (details for installation can be found in the <a href="https://github.com/fabsig/GPBoost/blob/master/docs/Installation_Guide.rst#gcc">Installation Guide</a>) and set some environment variables to tell R to use <code>gcc</code> and <code>g++</code>. If you install these from Homebrew, your versions of <code>g++</code> and <code>gcc</code> are most likely in <code>/usr/local/bin</code>, as shown below.</p>
+<p>You can perform installation either with <strong>Apple Clang</strong> or <strong>gcc</strong>. In case you prefer <strong>Apple Clang</strong>, you should install <strong>OpenMP</strong> (details for installation can be found in the <a href="https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#apple-clang">Installation Guide</a>) first and <strong>CMake</strong> version 3.12 or higher is required. In case you prefer <strong>gcc</strong>, you need to install it (details for installation can be found in the <a href="https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#gcc">Installation Guide</a>) and set some environment variables to tell R to use <code>gcc</code> and <code>g++</code>. If you install these from Homebrew, your versions of <code>g++</code> and <code>gcc</code> are most likely in <code>/usr/local/bin</code>, as shown below.</p>
 <pre><code># replace 8 with version of gcc installed on your machine
 export CXX=/usr/local/bin/g++-8 CC=/usr/local/bin/gcc-8</code></pre>
 </div>
@@ -440,19 +454,6 @@ y &lt;- Z1 %*% b1 + sqrt(sigma2) * rnorm(n) # observed data
 gp_model &lt;- fit.GPModel(group_data = group, y = y, std_dev = TRUE)
 summary(gp_model)</code></pre>
 </div>
-</div>
-<div id="examples" class="section level2">
-<h2>Examples</h2>
-<ul>
-<li><p><a href="https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html"><strong>GPBoost R and Python demo</strong></a> illustrates how GPBoost can be used in R and Python</p></li>
-<li><p><a href="https://github.com/fabsig/GPBoost/tree/master/R-package/demo"><strong>More examples</strong></a>:</p>
-<ul>
-<li><a href="https://github.com/fabsig/GPBoost/blob/master/R-package/demo/Gaussian_process_mixed_effects_models.R">Gaussian process and other mixed effects model examples (without boosting)</a></li>
-<li><a href="https://github.com/fabsig/GPBoost/blob/master/R-package/demo/boosting.R">Boosting functionality (without Gaussian process / random effects)</a></li>
-<li><a href="https://github.com/fabsig/GPBoost/blob/master/R-package/demo/combined_boosting_GP_random_effects.R">Combining tree-boosting with Gaussian process and random effects models</a></li>
-<li><a href="https://github.com/fabsig/GPBoost/blob/master/R-package/demo/cross_validation.R">Cross Validation</a></li>
-</ul></li>
-</ul>
 </div>
 </div>
 
