@@ -458,11 +458,7 @@ gpb.GPModel <- R6::R6Class(
         
       }
       
-      num_it <- integer(1)
-      num_it <- gpb.call("GPB_GetNumIt_R",
-                         ret = num_it,
-                         private$handle)
-      message(paste0("gpb.GPModel: Number of iterations until convergence: ", num_it))
+      message(paste0("gpb.GPModel: Number of iterations until convergence: ", self$get_num_optim_iter()))
       
     },
     
@@ -1368,6 +1364,14 @@ gpb.GPModel <- R6::R6Class(
     
     get_num_data = function() {
       return(private$num_data)
+    },
+    
+    get_num_optim_iter = function() {
+      num_it <- integer(1)
+      num_it <- gpb.call("GPB_GetNumIt_R",
+                         ret = num_it,
+                         private$handle)
+      return(num_it)
     }
     
   ),
