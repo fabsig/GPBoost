@@ -1,7 +1,7 @@
 GPBoost R Package
 ==================
 
-This is the R package implementation of the GPBoost library. See https://github.com/fabsig/GPBoost for more information on the modelling background and the software implementation.
+This is the R package implementation of the GPBoost library. See https://github.com/fabsig/GPBoost for more information on the modeling background and the software implementation.
 
 Examples
 --------
