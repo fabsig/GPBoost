@@ -925,33 +925,6 @@ namespace GPBoost {
 			return(num_cov_par_);
 		}
 
-
-		//void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
-		//  if (num_clusters_ == 1 && vecchia_ordering_ == "none") {
-		//    if (vecchia_approx_) {
-		//      den_mat_t BX = B_[unique_clusters_[0]] * X;
-		//      XT_psi_inv_X = BX.transpose() * D_inv_[unique_clusters_[0]] * BX;
-		//    }
-		//    else {
-		//      XT_psi_inv_X = X.transpose() * chol_facts_solve_[unique_clusters_[0]].solve(X);
-		//    }
-		//  }
-		//  else {
-		//    XT_psi_inv_X = den_mat_t(X.cols(), X.cols());
-		//    XT_psi_inv_X.setZero();
-		//    den_mat_t BX;
-		//    for (const auto& cluster_i : unique_clusters_) {
-		//      if (vecchia_approx_) {
-		//        BX = B_[cluster_i] * X(data_indices_per_cluster_[cluster_i], Eigen::all);
-		//        XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
-		//      }
-		//      else {
-		//        XT_psi_inv_X += ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * chol_facts_solve_[cluster_i].solve((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all));
-		//      }
-		//    }
-		//  }
-		//}
-
 		/*!
 		* \brief Calculate the leaf values when performing a Newton update step after the tree structure has been found in tree-boosting
 		*    Note: only used in GPBoost for tree-boosting (this is called from regression_objective). It is assume that 'CalcYAux' has been called before.
@@ -995,21 +968,14 @@ namespace GPBoost {
 					CalcPsiInvSqrtH(PsiInvSqrtH, H_cluster_i, cluster_i);
 					den_mat_t HTPsiInvH_cluster_i = PsiInvSqrtH.transpose() * PsiInvSqrtH;
 					HTPsiInvH += HTPsiInvH_cluster_i;
-					/*       Log::Info("H_cluster_i[:,0] = %f, %f, %f, %f, %f, %f", H_cluster_i.coeffRef(0, 0), H_cluster_i.coeffRef(1, 0), H_cluster_i.coeffRef(2, 0), H_cluster_i.coeffRef(3, 0), H_cluster_i.coeffRef(4, 0), H_cluster_i.coeffRef(5, 0));
-						   Log::Info("H_cluster_i[:,1] = %f, %f, %f, %f, %f, %f", H_cluster_i.coeffRef(0, 1), H_cluster_i.coeffRef(1, 1), H_cluster_i.coeffRef(2, 1), H_cluster_i.coeffRef(3, 1), H_cluster_i.coeffRef(4, 1), H_cluster_i.coeffRef(5, 1));*/
 				}
 			}
-
-			//Log::Info("marg_variance: %f", marg_variance);
 
 			HTYAux *= marg_variance;
 			vec_t new_leaf_values = HTPsiInvH.llt().solve(HTYAux);
 			for (int i = 0; i < num_leaves; ++i) {
 				leaf_values[i] = new_leaf_values[i];
 			}
-			//Log::Info("HTYAux[:] = %f, %f", HTYAux(0), HTYAux(1));
-			//Log::Info("HTPsiInvH[0,:] = %f, %f", HTPsiInvH(0, 0), HTPsiInvH(0, 1));
-			//Log::Info("HTPsiInvH[1,:] = %f, %f", HTPsiInvH(1, 0), HTPsiInvH(1, 1));
 		}
 
 	private:
@@ -1344,89 +1310,89 @@ namespace GPBoost {
 		//* \param X Covariate data matrix X
 		//* \param[out] XT_psi_inv_X X^TPsi^(-1)X
 		//*/
-  //  template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
-  //  void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
-  //    den_mat_t BX;
-  //    if (num_clusters_ == 1) {
-  //      gp_id_t cluster0 = unique_clusters_[0];
-  //      if (vecchia_approx_) {
-  //        BX = B_[cluster0] * X;
-  //        XT_psi_inv_X = BX.transpose() * D_inv_[cluster0] * BX;
-  //      }
-  //      else {
-  //        BX = X;
-  //        #pragma omp parallel for schedule(static)
-  //        for (int j = 0; j < num_data_per_cluster_[cluster0]; ++j) {
-  //          L_solve(chol_facts_[cluster0].data(), num_data_per_cluster_[cluster0], BX.data() + j * num_data_per_cluster_[cluster0]);
-  //        }
-  //        XT_psi_inv_X = BX.transpose() * BX;
-  //      }
-  //    }
-  //    else {
-  //      XT_psi_inv_X = den_mat_t(X.cols(), X.cols());
-  //      XT_psi_inv_X.setZero();
-  //      for (const auto& cluster_i : unique_clusters_) {
-  //        if (vecchia_approx_) {
-  //          BX = B_[cluster_i] * X(data_indices_per_cluster_[cluster_i], Eigen::all);
-  //          XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
-  //        }
-  //        else {
-  //          BX = X(data_indices_per_cluster_[cluster_i], Eigen::all);
-  //          #pragma omp parallel for schedule(static)
-  //          for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-  //            L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], BX.data() + j * num_data_per_cluster_[cluster_i]);
-  //          }
-  //          XT_psi_inv_X += (BX.transpose() * BX);
-  //        }
-  //      }
-  //    }
-  //  }
-  //  //same for sparse matrices
-  //  template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
-  //  void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
-  //    den_mat_t BX;
-  //    if (num_clusters_ == 1) {
-  //      gp_id_t cluster0 = unique_clusters_[0];
-  //      if (vecchia_approx_) {
-  //        BX = B_[cluster0] * X;
-  //        XT_psi_inv_X = BX.transpose() * D_inv_[cluster0] * BX;
-  //      }
-  //      else {
-  //        BX = X;
-  //        #pragma omp parallel for schedule(static)
-  //        for (int j = 0; j < num_data_per_cluster_[cluster0]; ++j) {
-  //          sp_L_solve(chol_facts_[cluster0].valuePtr(), chol_facts_[cluster0].innerIndexPtr(), chol_facts_[cluster0].outerIndexPtr(),
-  //            num_data_per_cluster_[cluster0], BX.data() + j * num_data_per_cluster_[cluster0]);
-  //        }
-  //        XT_psi_inv_X = BX.transpose() * BX;
-  //      }
-  //    }
-  //    else {
-  //      XT_psi_inv_X = den_mat_t(X.cols(), X.cols());
-  //      XT_psi_inv_X.setZero();
-  //      for (const auto& cluster_i : unique_clusters_) {
-  //        if (vecchia_approx_) {
-  //          BX = B_[cluster_i] * X(data_indices_per_cluster_[cluster_i], Eigen::all);
-  //          XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
-  //        }
-  //        else {
-  //          BX = X(data_indices_per_cluster_[cluster_i], Eigen::all);
-  //          #pragma omp parallel for schedule(static)
-  //          for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-  //            sp_L_solve(chol_facts_[cluster_i].valuePtr(), chol_facts_[cluster_i].innerIndexPtr(), chol_facts_[cluster_i].outerIndexPtr(),
-  //              num_data_per_cluster_[cluster_i], BX.data() + j * num_data_per_cluster_[cluster_i]);
-  //          }
-  //          XT_psi_inv_X += (BX.transpose() * BX);
-  //        }
-  //      }
-  //    }
-  //  }
+		//  template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
+		//  void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
+		//    den_mat_t BX;
+		//    if (num_clusters_ == 1) {
+		//      gp_id_t cluster0 = unique_clusters_[0];
+		//      if (vecchia_approx_) {
+		//        BX = B_[cluster0] * X;
+		//        XT_psi_inv_X = BX.transpose() * D_inv_[cluster0] * BX;
+		//      }
+		//      else {
+		//        BX = X;
+		//        #pragma omp parallel for schedule(static)
+		//        for (int j = 0; j < num_data_per_cluster_[cluster0]; ++j) {
+		//          L_solve(chol_facts_[cluster0].data(), num_data_per_cluster_[cluster0], BX.data() + j * num_data_per_cluster_[cluster0]);
+		//        }
+		//        XT_psi_inv_X = BX.transpose() * BX;
+		//      }
+		//    }
+		//    else {
+		//      XT_psi_inv_X = den_mat_t(X.cols(), X.cols());
+		//      XT_psi_inv_X.setZero();
+		//      for (const auto& cluster_i : unique_clusters_) {
+		//        if (vecchia_approx_) {
+		//          BX = B_[cluster_i] * X(data_indices_per_cluster_[cluster_i], Eigen::all);
+		//          XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
+		//        }
+		//        else {
+		//          BX = X(data_indices_per_cluster_[cluster_i], Eigen::all);
+		//          #pragma omp parallel for schedule(static)
+		//          for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+		//            L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], BX.data() + j * num_data_per_cluster_[cluster_i]);
+		//          }
+		//          XT_psi_inv_X += (BX.transpose() * BX);
+		//        }
+		//      }
+		//    }
+		//  }
+		//  //same for sparse matrices
+		//  template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
+		//  void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
+		//    den_mat_t BX;
+		//    if (num_clusters_ == 1) {
+		//      gp_id_t cluster0 = unique_clusters_[0];
+		//      if (vecchia_approx_) {
+		//        BX = B_[cluster0] * X;
+		//        XT_psi_inv_X = BX.transpose() * D_inv_[cluster0] * BX;
+		//      }
+		//      else {
+		//        BX = X;
+		//        #pragma omp parallel for schedule(static)
+		//        for (int j = 0; j < num_data_per_cluster_[cluster0]; ++j) {
+		//          sp_L_solve(chol_facts_[cluster0].valuePtr(), chol_facts_[cluster0].innerIndexPtr(), chol_facts_[cluster0].outerIndexPtr(),
+		//            num_data_per_cluster_[cluster0], BX.data() + j * num_data_per_cluster_[cluster0]);
+		//        }
+		//        XT_psi_inv_X = BX.transpose() * BX;
+		//      }
+		//    }
+		//    else {
+		//      XT_psi_inv_X = den_mat_t(X.cols(), X.cols());
+		//      XT_psi_inv_X.setZero();
+		//      for (const auto& cluster_i : unique_clusters_) {
+		//        if (vecchia_approx_) {
+		//          BX = B_[cluster_i] * X(data_indices_per_cluster_[cluster_i], Eigen::all);
+		//          XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
+		//        }
+		//        else {
+		//          BX = X(data_indices_per_cluster_[cluster_i], Eigen::all);
+		//          #pragma omp parallel for schedule(static)
+		//          for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+		//            sp_L_solve(chol_facts_[cluster_i].valuePtr(), chol_facts_[cluster_i].innerIndexPtr(), chol_facts_[cluster_i].outerIndexPtr(),
+		//              num_data_per_cluster_[cluster_i], BX.data() + j * num_data_per_cluster_[cluster_i]);
+		//          }
+		//          XT_psi_inv_X += (BX.transpose() * BX);
+		//        }
+		//      }
+		//    }
+		//  }
 
-	/*!
-	* \brief Caclulate X^TPsi^(-1)X
-	* \param X Covariate data matrix X
-	* \param[out] XT_psi_inv_X X^TPsi^(-1)X
-	*/
+		/*!
+		* \brief Caclulate X^TPsi^(-1)X
+		* \param X Covariate data matrix X
+		* \param[out] XT_psi_inv_X X^TPsi^(-1)X
+		*/
 		void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
 			if (num_clusters_ == 1 && vecchia_ordering_ == "none") {
 				if (vecchia_approx_) {
@@ -1723,8 +1689,8 @@ namespace GPBoost {
 		}
 
 		/*!
-	  * \brief Calculate covariance matrices of the components
-	  */
+		* \brief Calculate covariance matrices of the components
+		*/
 		void CalcSigmaComps() {
 			for (const auto& cluster_i : unique_clusters_) {
 				for (int j = 0; j < num_comps_total_; ++j) {
@@ -1926,10 +1892,10 @@ namespace GPBoost {
 
 		/*!
 		* \brief Create the covariance matrix Psi and factorize it (either calculate a Cholesky factor or the inverse covariance matrix)
-	* \param calc_gradient If true, the gradient also be calculated (only for Vecchia approximation)
-	* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale. Default = true (only for Vecchia approximation)
-	* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale = false to transform back, normally this is equal to one, since the variance paramter is modelled separately and factored out)
-	* \param calc_gradient_nugget If true, derivatives are also taken with respect to the nugget / noise variance (only for Vecchia approximation)
+		* \param calc_gradient If true, the gradient also be calculated (only for Vecchia approximation)
+		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale. Default = true (only for Vecchia approximation)
+		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale = false to transform back, normally this is equal to one, since the variance paramter is modelled separately and factored out)
+		* \param calc_gradient_nugget If true, derivatives are also taken with respect to the nugget / noise variance (only for Vecchia approximation)
 		*/
 		void CalcCovFactor(bool calc_gradient = false, bool transf_scale = true, double nugget_var = 1., bool calc_gradient_nugget = false) {
 
@@ -1963,7 +1929,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate Psi^-1*y (=y_aux_) for RE model
-	* \param marg_variance The marginal variance. Default = 1.
+		* \param marg_variance The marginal variance. Default = 1.
 		*/
 		void CalcYAux(double marg_variance = 1.) {
 			for (const auto& cluster_i : unique_clusters_) {
@@ -2372,7 +2338,7 @@ namespace GPBoost {
 			const den_mat_t& gp_coords_mat_pred, const double* gp_rand_coef_data_pred,
 			bool predict_cov_mat, vec_t& mean_pred_id, T1& cov_mat_pred_id) {
 			// Vector which contains covariance matrices needed for making predictions in the following order:
-	  //		0. Ztilde*Sigma*Z^T, 1. Zstar*Sigmatilde^T*Z^T, 2. Ztilde*Sigma*Ztilde^T, 3. Ztilde*Sigmatilde*Zstar^T, 4. Zstar*Sigmastar*Zstar^T
+			//		0. Ztilde*Sigma*Z^T, 1. Zstar*Sigmatilde^T*Z^T, 2. Ztilde*Sigma*Ztilde^T, 3. Ztilde*Sigmatilde*Zstar^T, 4. Zstar*Sigmastar*Zstar^T
 			std::vector<T1> pred_mats(5);
 			//Define which covariance matrices are zero ('false') or non-zero ('true')
 			std::vector<bool> active_mats{ false, false, false, false, false };
