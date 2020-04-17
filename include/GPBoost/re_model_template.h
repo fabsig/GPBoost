@@ -2147,7 +2147,7 @@ namespace GPBoost {
 
 			vec_t grad = GetCovParGrad();
 			cov_pars.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - lr * grad.array()).exp().matrix();
-			for (int i = 0; i < (int)grad.size(); ++i) { Log::Debug("grad[%d]: %f", i, grad[i]); }//For debugging only
+			//for (int i = 0; i < (int)grad.size(); ++i) { Log::Debug("grad[%d]: %f", i, grad[i]); }//For debugging only
 		}
 
 		/*!
