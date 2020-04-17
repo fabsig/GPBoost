@@ -1772,7 +1772,8 @@ namespace GPBoost {
 					B_grad_cluster_i[ipar] = sp_mat_t(num_data_cluster_i, num_data_cluster_i);
 					B_grad_cluster_i[ipar].setFromTriplets(entries_init_B_grad_cluster_i.begin(), entries_init_B_grad_cluster_i.end());
 					D_grad_cluster_i[ipar] = sp_mat_t(num_data_cluster_i, num_data_cluster_i);
-					D_grad_cluster_i[ipar].setIdentity();//Put 1 on the diagonal but entries are overriden below
+					D_grad_cluster_i[ipar].setIdentity();//Put 0 on the diagonal
+					D_grad_cluster_i[ipar].diagonal().array() = 0.;
 				}
 			}//end initialization
 
@@ -2000,8 +2001,8 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate y^T*Psi^-1*y if sparse matrices are used 
-		* \param[out] yTPsiInvy y^T*Psi^-1*y 
+		* \brief Calculate y^T*Psi^-1*y if sparse matrices are used
+		* \param[out] yTPsiInvy y^T*Psi^-1*y
 		*/
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
 		void CalcYTPsiIInvY(double& yTPsiInvy) {
@@ -2107,7 +2108,7 @@ namespace GPBoost {
 		* \param nesterov_acc_rate Acceleration rate for Nesterov acceleration
 		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
 		* \param exclude_first_log_scale If true, no momentum is applied to the first value and the momentum step is done on the log-scale for the other values. Default = true
-	* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
+		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
 		*/
 		void ApplyMomentumStep(int it, vec_t& pars, vec_t& pars_lag1, bool use_nesterov_acc = true,
 			double nesterov_acc_rate = 0.5, int nesterov_schedule_version = 0, bool exclude_first_log_scale = true,
@@ -2146,7 +2147,7 @@ namespace GPBoost {
 
 			vec_t grad = GetCovParGrad();
 			cov_pars.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - lr * grad.array()).exp().matrix();
-			//for (int i = 0; i < (int)grad.size(); ++i) { Log::Debug("grad[%d]: %f", i, grad[i]); }//For debugging only
+			for (int i = 0; i < (int)grad.size(); ++i) { Log::Debug("grad[%d]: %f", i, grad[i]); }//For debugging only
 		}
 
 		/*!
@@ -2166,6 +2167,8 @@ namespace GPBoost {
 			CalcFisherInformation(cov_pars, FI, true, false);
 			vec_t update = FI.llt().solve(grad);
 			cov_pars.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - update.array()).exp().matrix();//make update on log-scale
+			//for (int i = 0; i < (int)grad.size(); ++i) { Log::Debug("grad[%d]: %f", i, grad[i]); }//For debugging only
+			//for (int i = 0; i < 2; ++i) { Log::Debug("FI[%d,:]: %f, %f, %f", i, FI.coeffRef(i,0), FI.coeffRef(i, 1))); }//For debugging only
 		}
 
 		/*!
@@ -2224,6 +2227,7 @@ namespace GPBoost {
 
 				if (vecchia_approx_) {
 
+					//Note: if transf_scale==false, then all matrices and derivatives have been calculated on the original scale for the Vecchia approximation, that is why there is no adjustment here
 					sp_mat_t Identity(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 					Identity.setIdentity();
 					sp_mat_t B_inv;
@@ -2292,7 +2296,15 @@ namespace GPBoost {
 					int par_j;
 					if (include_marg_var) {
 						//First for nugget effect / noise variance parameter
-						T1 psi_inv_grad_psi_sigma2 = psi_inv;//The gradient for the nugget variance is the identity matrix.
+						T1 psi_inv_grad_psi_sigma2;
+						if (transf_scale) {
+							psi_inv_grad_psi_sigma2 = T1(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);//The derivative for the nugget variance on the log scale is the original covariance matrix.
+							psi_inv_grad_psi_sigma2.setIdentity();
+						}
+						else {
+							psi_inv_grad_psi_sigma2 = psi_inv;//The derivative for the nugget variance is the identity matrix.
+						}
+
 						FI(par_i, par_i) += ((double)(psi_inv_grad_psi_sigma2.cwiseProduct(psi_inv_grad_psi_sigma2)).sum()) / 2.;
 						par_j = 1;
 						for (int j = 0; j < num_comps_total_; ++j) {//there is currently no possibility to loop over the parameters directly
