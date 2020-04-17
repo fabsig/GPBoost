@@ -374,13 +374,13 @@ gpb.GPModel <- R6::R6Class(
           
           if (dim(y)[2] != 1) {
             
-            stop("gpb.GPModel.predict: Can only use ", sQuote("vector"), " as ", sQuote("y"))
+            stop("gpb.GPModel.fit: Can only use ", sQuote("vector"), " as ", sQuote("y"))
             
           }
           
         } else{
           
-          stop("gpb.GPModel.predict: Can only use ", sQuote("vector"), " as ", sQuote("y"))
+          stop("gpb.GPModel.fit: Can only use ", sQuote("vector"), " as ", sQuote("y"))
           
         }
         
@@ -412,13 +412,13 @@ gpb.GPModel <- R6::R6Class(
           
         } else {
           
-          stop("gpb.GPModel: Can only use ", sQuote("matrix"), " as ", sQuote("X"))
+          stop("gpb.GPModel.fit: Can only use ", sQuote("matrix"), " as ", sQuote("X"))
           
         }
         
         
         if (dim(X)[1] != private$num_data) {
-          stop("gpb.GPModel: Number of data points in ", sQuote("X"), " does not match number of data points of initialized model")
+          stop("gpb.GPModel.fit: Number of data points in ", sQuote("X"), " does not match number of data points of initialized model")
         }
         
         private$has_covariates <- TRUE
@@ -459,6 +459,74 @@ gpb.GPModel <- R6::R6Class(
       }
       
       message(paste0("gpb.GPModel: Number of iterations until convergence: ", self$get_num_optim_iter()))
+      
+    },
+    
+    # Evaluate the negative log-ligelihood
+    neg_log_likelihood = function(cov_pars, y) {
+      
+      if (gpb.is.null.handle(private$handle)) {
+        stop("gpb.GPModel: Gaussian process model has not been initialized")
+      }
+
+      if (private$num_cov_pars == 1L) {
+        stop("gpb.GPModel.neg_log_likelihood: No random effects (grouped, spatial, etc.) have been defined")
+      }
+      
+      if (is.vector(cov_pars)) {
+        
+        if (storage.mode(cov_pars) != "double") {
+          storage.mode(cov_pars) <- "double"
+        }
+        
+        cov_pars <- as.vector(cov_pars)
+        
+      } else {
+        
+        stop("gpb.GPModel.neg_log_likelihood: Can only use ", sQuote("vector"), " as ", sQuote("cov_pars"))
+        
+      }
+      
+      if (length(cov_pars) != private$num_cov_pars) {
+        stop("gpb.GPModel.neg_log_likelihood: Number of parameters in ", sQuote("cov_pars"), " does not correspond to numbers of parameters")
+      }
+      
+      if (!is.vector(y)) {
+        
+        if (is.matrix(y)) {
+          
+          if (dim(y)[2] != 1) {
+            
+            stop("gpb.GPModel.neg_log_likelihood: Can only use ", sQuote("vector"), " as ", sQuote("y"))
+            
+          }
+          
+        } else{
+          
+          stop("gpb.GPModel.neg_log_likelihood: Can only use ", sQuote("vector"), " as ", sQuote("y"))
+          
+        }
+        
+      }
+      
+      if (storage.mode(y) != "double") {
+        storage.mode(y) <- "double"
+      }
+      
+      y <- as.vector(y)
+      
+      if (length(y) != private$num_data) {
+        stop("gpb.GPModel.neg_log_likelihood: Number of data points in ", sQuote("y"), " does not match number of data points of initialized model")
+      }
+      
+      negll = 0.
+      gpb.call("GPB_EvalNegLogLikelihood_R",
+               ret = negll,
+               private$handle,
+               y,
+               cov_pars)
+      
+      return(negll)
       
     },
     
@@ -1535,6 +1603,7 @@ fit <- function(gp_model, y, X, std_dev = FALSE, params) UseMethod("fit")
 #' ## SEE ALSO THE HELP OF 'fitGPModel' FOR MORE EXAMPLES
 #' library(gpboost)
 #' 
+#' \dontrun{
 #' #--------------------Grouped random effects model: single-level random effect----------------
 #' n <- 100 # number of samples
 #' m <- 25 # number of categories / levels for grouping variable
@@ -1568,9 +1637,11 @@ fit <- function(gp_model, y, X, std_dev = FALSE, params) UseMethod("fit")
 #'      main="Comparison of true and predicted random effects")
 #' abline(a=0,b=1)
 #'
-#' 
+#' # Evaluate negative log-likelihood
+#' gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
+#'  
+#'  
 #' #--------------------Gaussian process model----------------
-#' \dontrun{
 #' n <- 200 # number of samples
 #' set.seed(1)
 #' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
@@ -1616,6 +1687,9 @@ fit <- function(gp_model, y, X, std_dev = FALSE, params) UseMethod("fit")
 #' pred$mu
 #' print("Predicted (posterior/conditional) covariance matrix of GP")
 #' pred$cov
+#' 
+#' # Evaluate negative log-likelihood
+#' gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1,rho),y=y)
 #' }
 #' 
 #' @method fit gpb.GPModel 
@@ -1659,6 +1733,7 @@ fit.gpb.GPModel <- function(gp_model,
 #' @examples
 #' library(gpboost)
 #' 
+#' \dontrun{
 #' #--------------------Grouped random effects model: single-level random effect----------------
 #' n <- 100 # number of samples
 #' m <- 25 # number of categories / levels for grouping variable
@@ -1692,10 +1767,11 @@ fit.gpb.GPModel <- function(gp_model,
 #'      main="Comparison of true and predicted random effects")
 #' abline(a=0,b=1)
 #' 
+#' # Evaluate negative log-likelihood
+#' gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
 #' 
 #' #--------------------Two crossed random effects and a random slope----------------
 #' # NOTE: run the above example first to create the first random effect
-#' \dontrun{
 #' set.seed(1)
 #' x <- runif(n) # covariate data for random slope
 #' n_obs_gr <- n/m # number of sampels per group
@@ -1724,10 +1800,9 @@ fit.gpb.GPModel <- function(gp_model,
 #'                         ind_effect_group_rand_coef = 1,
 #'                         y = y, std_dev = TRUE)
 #' summary(gp_model)
-#' }
+#' 
 #' 
 #' #--------------------Mixed effects model: random effects and linear fixed effects----------------
-#' \dontrun{
 #' # NOTE: run one of the above examples first to create the random effects part
 #' set.seed(1)
 #' X <- cbind(rep(1,n),runif(n)) # desing matrix / covariate data for fixed effect
@@ -1746,10 +1821,9 @@ fit.gpb.GPModel <- function(gp_model,
 #'                         ind_effect_group_rand_coef = 1,
 #'                         y = y, X = X, std_dev = TRUE)
 #' summary(gp_model)
-#' }
+#' 
 #' 
 #' #--------------------Gaussian process model----------------
-#' \dontrun{
 #' n <- 200 # number of samples
 #' set.seed(1)
 #' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
@@ -1791,11 +1865,12 @@ fit.gpb.GPModel <- function(gp_model,
 #' pred$mu
 #' print("Predicted (posterior/conditional) covariance matrix of GP")
 #' pred$cov
-#' }
+#' 
+#' # Evaluate negative log-likelihood
+#' gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1,rho),y=y)
 #' 
 #' 
 #' #--------------------Gaussian process model with Vecchia approximation----------------
-#' \dontrun{
 #' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
 #'                     vecchia_approx = TRUE, num_neighbors = 30)
 #' # Fit model
@@ -1809,11 +1884,9 @@ fit.gpb.GPModel <- function(gp_model,
 #'                         y = y, params = list(optimizer_cov = "gradient_descent",
 #'                                       lr_cov = 0.1, maxit=100))
 #' summary(gp_model)
-#' }
 #' 
 #' 
 #' #--------------------Gaussian process model with random coefficents----------------
-#' \dontrun{
 #' n <- 500 # number of samples
 #' set.seed(1)
 #' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
@@ -1856,11 +1929,9 @@ fit.gpb.GPModel <- function(gp_model,
 #'                                       use_nesterov_acc = TRUE,
 #'                                       acc_rate_cov = 0.5))
 #' summary(gp_model)
-#' }
 #' 
 #' 
 #' #--------------------GP model with two independent observations of the GP----------------
-#' \dontrun{
 #' n <- 200 # number of samples
 #' set.seed(1)
 #' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
@@ -1894,10 +1965,9 @@ fit.gpb.GPModel <- function(gp_model,
 #'                         params = list(optimizer_cov = "gradient_descent",
 #'                                       lr_cov = 0.05))
 #' summary(gp_model)
-#' }
+#' 
 #' 
 #' #--------------------Combine Gaussian process with grouped random effects----------------
-#' \dontrun{
 #' n <- 200 # number of samples
 #' m <- 25 # number of categories / levels for grouping variable
 #' group <- rep(1,n) # grouping variable

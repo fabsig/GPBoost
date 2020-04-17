@@ -33,6 +33,8 @@ plot(b1, pred$mu, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 abline(a=0,b=1)
 
+# Evaluate negative log-likelihood
+gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
 
 #--------------------Two crossed random effects and a random slope----------------
 # NOTE: run the above example first to create the first random effect
@@ -136,6 +138,8 @@ pred$mu
 print("Predicted (posterior/conditional) covariance matrix of GP")
 pred$cov
 
+# Evaluate negative log-likelihood
+gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1,rho),y=y)
 
 #--------------------Gaussian process model with Vecchia approximation----------------
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",

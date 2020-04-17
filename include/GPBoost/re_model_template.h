@@ -9,6 +9,8 @@
 #ifndef GPB_RE_MODEL_TEMPLATE_H_
 #define GPB_RE_MODEL_TEMPLATE_H_
 
+#define _USE_MATH_DEFINES // for M_PI
+#include <cmath>
 #include <GPBoost/log.h>
 #include <GPBoost/type_defs.h>
 #include <GPBoost/re_comp.h>
@@ -480,6 +482,34 @@ namespace GPBoost {
 				}
 			}
 
+		}
+
+		/*!
+		* \brief Calculate the value of the negative log-likelihood
+		* \param y_data Response variable data
+		* \param cov_pars Values for covariance parameters of RE components
+		* \param[out] negll Negative log-likelihood
+		*/
+		void EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll) {
+			negll = 0.;
+			SetY(y_data);
+			vec_t cov_pars_vec = Eigen::Map<vec_t>(cov_pars, num_cov_par_);
+			SetCovParsComps(cov_pars_vec);
+			CalcCovFactor(false, true, 1., false);//Create covariance matrix and factorize it
+			//Calculate quadratic form
+			double yTPsiInvy = 0.;
+			CalcYTPsiIInvY<T1>(yTPsiInvy);
+			//Calculate log determinant
+			double log_det = 0;
+			for (const auto& cluster_i : unique_clusters_) {
+				if (vecchia_approx_) {
+					log_det -= D_inv_[cluster_i].diagonal().array().log().sum();
+				}
+				else {
+					log_det += (2. * chol_facts_[cluster_i].diagonal().array().log().sum());
+				}
+			}
+			negll = yTPsiInvy / 2. / cov_pars[0] + log_det / 2. + num_data_ / 2. * (std::log(cov_pars[0]) + std::log(2 * M_PI));
 		}
 
 		/*!
@@ -1156,7 +1186,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Set response variable data (y_) for RE model
+		* \brief Set response variable data (y_)
 		* \param y_data Response variable data
 		*/
 		void SetY(const double* y_data) {
@@ -1260,7 +1290,7 @@ namespace GPBoost {
 			//const sp_mat_t L_inv = L_inv_dens.sparseView();
 			//psi_inv = L_inv.transpose() * L_inv;
 
-			////Version 1
+			////Version 1: let Eigen do the solving
 			//cpsi_inv = chol_facts_solve_[cluster_i].solve(Id_[cluster_i]);
 		}
 
@@ -1629,8 +1659,6 @@ namespace GPBoost {
 								coef_vec(ii) = rand_coef_data[nearest_neighbors_cluster_i[i][ii - 1]];
 							}
 						}
-						//Log::Info("coef_vec * coef_vec.transpose(): %f", (coef_vec * coef_vec.transpose())(0,0));
-						//Log::Info("re_comps_[cluster_i] %s ", typeid(re_comps_[cluster_i]).name());
 						z_outer_z_obs_neighbors_cluster_i[i][j] = coef_vec * coef_vec.transpose();
 					}
 				}
@@ -1928,7 +1956,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate Psi^-1*y (=y_aux_) for RE model
+		* \brief Calculate Psi^-1*y (and save in y_aux_)
 		* \param marg_variance The marginal variance. Default = 1.
 		*/
 		void CalcYAux(double marg_variance = 1.) {
@@ -1954,7 +1982,7 @@ namespace GPBoost {
 					//Version 1: let Eigen do the computation
 					y_aux_[cluster_i] = chol_facts_solve_[cluster_i].solve(y_[cluster_i]);
 
-					//// Version 2 'do-it-yourself'
+					//// Version 2 'do-it-yourself' (for sparse matrices)
 					//y_aux_[cluster_i] = y_[cluster_i];
 					//const double* val = chol_facts_[cluster_i].valuePtr();
 					//const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
@@ -1968,9 +1996,68 @@ namespace GPBoost {
 					y_aux_[cluster_i] /= marg_variance;
 				}
 			}
-
 			y_aux_has_been_calculated_ = true;
+		}
 
+		/*!
+		* \brief Calculate y^T*Psi^-1*y if sparse matrices are used 
+		* \param[out] yTPsiInvy y^T*Psi^-1*y 
+		*/
+		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
+		void CalcYTPsiIInvY(double& yTPsiInvy) {
+			yTPsiInvy = 0;
+			for (const auto& cluster_i : unique_clusters_) {
+				if (y_.find(cluster_i) == y_.end()) {
+					Log::Fatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
+				}
+				if (vecchia_approx_) {
+					if (B_.find(cluster_i) == B_.end()) {
+						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+					}
+					vec_t y_aux_sqrt = B_[cluster_i] * y_[cluster_i];
+					yTPsiInvy += (y_aux_sqrt.transpose() * D_inv_[cluster_i] * y_aux_sqrt)(0, 0);
+				}//end Vecchia
+				else {
+					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
+						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+					}
+					vec_t y_aux_sqrt = y_[cluster_i];
+					const double* val = chol_facts_[cluster_i].valuePtr();
+					const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
+					const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
+					sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_sqrt.data());
+					yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
+				}//end non-Vecchia
+			}
+		}
+
+		/*!
+		* \brief Calculate y^T*Psi^-1*y if dense matrices are used
+		* \param[out] yTPsiInvy y^T*Psi^-1*y
+		*/
+		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
+		void CalcYTPsiIInvY(double& yTPsiInvy) {
+			yTPsiInvy = 0;
+			for (const auto& cluster_i : unique_clusters_) {
+				if (y_.find(cluster_i) == y_.end()) {
+					Log::Fatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
+				}
+				if (vecchia_approx_) {
+					if (B_.find(cluster_i) == B_.end()) {
+						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+					}
+					vec_t y_aux_sqrt = B_[cluster_i] * y_[cluster_i];
+					yTPsiInvy += (y_aux_sqrt.transpose() * D_inv_[cluster_i] * y_aux_sqrt)(0, 0);
+				}//end Vecchia
+				else {
+					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
+						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+					}
+					vec_t y_aux_sqrt = y_[cluster_i];
+					L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], y_aux_sqrt.data());
+					yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
+				}//end non-Vecchia
+			}
 		}
 
 		/*!
@@ -1982,7 +2069,6 @@ namespace GPBoost {
 			for (const auto& cluster_i : unique_clusters_) {
 
 				if (vecchia_approx_) {
-
 					vec_t u(num_data_per_cluster_[cluster_i]);
 					vec_t uk(num_data_per_cluster_[cluster_i]);
 					u = D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];//TODO: this is already calculated in CalcYAux -> save it there and re-use here?
@@ -1994,43 +2080,17 @@ namespace GPBoost {
 								0.5 * (D_inv_[cluster_i].diagonal()).dot(D_grad_[cluster_i][num_par_comp * j + ipar].diagonal()));
 						}
 					}
-
 				}//end Vecchia
 				else {
-
 					T1 psi_inv;
 					CalcPsiInv(psi_inv, cluster_i);
-
-					//////Version 2: doing sparse solving but ignoring sparse RHS
-					////const double* val = chol_facts_[cluster_i].valuePtr();
-					////const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
-					////const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
-					////den_mat_t L_inv_dens = den_mat_t(Id_[cluster_i]);
-					////for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-					////	sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], L_inv_dens.data() + j * num_data_per_cluster_[cluster_i]);
-					////}
-					////const sp_mat_t L_inv = L_inv_dens.sparseView();
-					////const sp_mat_t psi_inv = L_inv.transpose() * L_inv;
-
-					//////Version 1: let Eigen do the solve
-					////const sp_mat_t psi_inv = chol_facts_solve_[cluster_i].solve(Id_[cluster_i]);
-
-					//sp_mat_t psi_inv = re_comps_[cluster_i][0]->GetZSigmaZt(cov_pars);
 					for (int j = 0; j < num_comps_total_; ++j) {
 						for (int ipar = 0; ipar < re_comps_[cluster_i][j]->num_cov_par_; ++ipar) {
 							std::shared_ptr<T1> gradPsi = re_comps_[cluster_i][j]->GetZSigmaZtGrad(ipar);
-							//if (ipar == 1) {
-							//	for (int i = 0; i < 3; ++i) {
-							//		for (int j = i; j < 3; ++j) {
-							//			Log::Info("(*gradPsi)(%d,%d): %f", i, j, (*gradPsi).coeff(i, j));
-							//		}
-							//	}
-							//}
 							cov_grad[ind_par_[j] + ipar] += -1. * ((double)(y_aux_[cluster_i].transpose() * (*gradPsi) * y_aux_[cluster_i])) / sigma2_ / 2. +
 								((double)(((*gradPsi).cwiseProduct(psi_inv)).sum())) / 2.;
 						}
 					}
-
 				}//end standard (non-Vecchia) calculation
 
 			}// end loop over clusters

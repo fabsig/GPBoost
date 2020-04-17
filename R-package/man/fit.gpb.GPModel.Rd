@@ -55,6 +55,7 @@ Estimates the parameters of a \code{gpb.GPModel} using maximum likelihood estima
 ## SEE ALSO THE HELP OF 'fitGPModel' FOR MORE EXAMPLES
 library(gpboost)
 
+\dontrun{
 #--------------------Grouped random effects model: single-level random effect----------------
 n <- 100 # number of samples
 m <- 25 # number of categories / levels for grouping variable
@@ -88,9 +89,11 @@ plot(b1, pred$mu, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 abline(a=0,b=1)
 
-
+# Evaluate negative log-likelihood
+gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
+ 
+ 
 #--------------------Gaussian process model----------------
-\dontrun{
 n <- 200 # number of samples
 set.seed(1)
 coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
@@ -136,6 +139,9 @@ print("Predicted (posterior/conditional) mean of GP")
 pred$mu
 print("Predicted (posterior/conditional) covariance matrix of GP")
 pred$cov
+
+# Evaluate negative log-likelihood
+gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1,rho),y=y)
 }
 
 }

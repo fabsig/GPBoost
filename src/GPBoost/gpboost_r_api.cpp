@@ -45,12 +45,12 @@ LGBM_SE GPB_CreateREModel_R(LGBM_SE ndata,
 	LGBM_SE gp_rand_coef_data,
 	LGBM_SE num_gp_rand_coef,
 	LGBM_SE cov_fct,
-  LGBM_SE cov_fct_shape,
-  LGBM_SE vecchia_approx,
-  LGBM_SE num_neighbors,
-  LGBM_SE vecchia_ordering,
-  LGBM_SE vecchia_pred_type,
-  LGBM_SE num_neighbors_pred,
+	LGBM_SE cov_fct_shape,
+	LGBM_SE vecchia_approx,
+	LGBM_SE num_neighbors,
+	LGBM_SE vecchia_ordering,
+	LGBM_SE vecchia_pred_type,
+	LGBM_SE num_neighbors_pred,
 	LGBM_SE out,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
@@ -59,10 +59,10 @@ LGBM_SE GPB_CreateREModel_R(LGBM_SE ndata,
 	//int len = static_cast<int>(R_AS_INT(ndata));
 	//for (int i = 0; i < len; ++i) { Log::Info("R API re_group_rand_coef_data[i]: %f", R_REAL_PTR(re_group_rand_coef_data)[i]); }
 	CHECK_CALL(GPB_CreateREModel(R_AS_INT(ndata), R_INT_PTR(cluster_ids_data), R_CHAR_PTR(re_group_data),
-		R_AS_INT(num_re_group), R_REAL_PTR(re_group_rand_coef_data), R_INT_PTR(ind_effect_group_rand_coef), R_AS_INT(num_re_group_rand_coef), 
-		R_AS_INT(num_gp), R_REAL_PTR(gp_coords_data), R_AS_INT(dim_gp_coords), R_REAL_PTR(gp_rand_coef_data), R_AS_INT(num_gp_rand_coef), 
+		R_AS_INT(num_re_group), R_REAL_PTR(re_group_rand_coef_data), R_INT_PTR(ind_effect_group_rand_coef), R_AS_INT(num_re_group_rand_coef),
+		R_AS_INT(num_gp), R_REAL_PTR(gp_coords_data), R_AS_INT(dim_gp_coords), R_REAL_PTR(gp_rand_coef_data), R_AS_INT(num_gp_rand_coef),
 		R_CHAR_PTR(cov_fct), R_AS_DOUBLE(cov_fct_shape), R_AS_BOOL(vecchia_approx), R_AS_INT(num_neighbors), R_CHAR_PTR(vecchia_ordering), R_CHAR_PTR(vecchia_pred_type),
-    R_AS_INT(num_neighbors_pred), &handle));
+		R_AS_INT(num_neighbors_pred), &handle));
 	R_SET_PTR(out, handle);
 	R_API_END();
 }
@@ -78,52 +78,52 @@ LGBM_SE GPB_REModelFree_R(LGBM_SE handle,
 }
 
 LGBM_SE GPB_SetOptimConfig_R(LGBM_SE handle,
-  LGBM_SE init_cov_pars,
-  LGBM_SE lr,
-  LGBM_SE acc_rate_cov,
-  LGBM_SE max_iter,
-  LGBM_SE delta_rel_conv,
-  LGBM_SE use_nesterov_acc,
-  LGBM_SE nesterov_schedule_version,
-  LGBM_SE trace,
-  LGBM_SE optimizer,
-  LGBM_SE momentum_offset,
-  LGBM_SE call_state) {
-  R_API_BEGIN();
-  CHECK_CALL(GPB_SetOptimConfig(R_GET_PTR(handle), R_REAL_PTR(init_cov_pars),
-    R_AS_DOUBLE(lr), R_AS_DOUBLE(acc_rate_cov), R_AS_INT(max_iter),
-    R_AS_DOUBLE(delta_rel_conv), R_AS_BOOL(use_nesterov_acc),
-    R_AS_INT(nesterov_schedule_version), R_AS_BOOL(trace), R_CHAR_PTR(optimizer), R_AS_INT(momentum_offset)));
-  R_API_END();
+	LGBM_SE init_cov_pars,
+	LGBM_SE lr,
+	LGBM_SE acc_rate_cov,
+	LGBM_SE max_iter,
+	LGBM_SE delta_rel_conv,
+	LGBM_SE use_nesterov_acc,
+	LGBM_SE nesterov_schedule_version,
+	LGBM_SE trace,
+	LGBM_SE optimizer,
+	LGBM_SE momentum_offset,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_SetOptimConfig(R_GET_PTR(handle), R_REAL_PTR(init_cov_pars),
+		R_AS_DOUBLE(lr), R_AS_DOUBLE(acc_rate_cov), R_AS_INT(max_iter),
+		R_AS_DOUBLE(delta_rel_conv), R_AS_BOOL(use_nesterov_acc),
+		R_AS_INT(nesterov_schedule_version), R_AS_BOOL(trace), R_CHAR_PTR(optimizer), R_AS_INT(momentum_offset)));
+	R_API_END();
 }
 
 LGBM_SE GPB_SetOptimCoefConfig_R(LGBM_SE handle,
-  LGBM_SE num_covariates,
-  LGBM_SE init_coef,
-  LGBM_SE lr_coef,
-  LGBM_SE acc_rate_coef,
-  LGBM_SE optimizer,
-  LGBM_SE call_state) {
-  R_API_BEGIN();
-  CHECK_CALL(GPB_SetOptimCoefConfig(R_GET_PTR(handle), R_AS_INT(num_covariates),
-    R_REAL_PTR(init_coef), R_AS_DOUBLE(lr_coef), R_AS_DOUBLE(acc_rate_coef), R_CHAR_PTR(optimizer)));
-  R_API_END();
+	LGBM_SE num_covariates,
+	LGBM_SE init_coef,
+	LGBM_SE lr_coef,
+	LGBM_SE acc_rate_coef,
+	LGBM_SE optimizer,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_SetOptimCoefConfig(R_GET_PTR(handle), R_AS_INT(num_covariates),
+		R_REAL_PTR(init_coef), R_AS_DOUBLE(lr_coef), R_AS_DOUBLE(acc_rate_coef), R_CHAR_PTR(optimizer)));
+	R_API_END();
 }
 
 LGBM_SE GPB_OptimCovPar_R(LGBM_SE handle,
-  LGBM_SE y_data,
-  LGBM_SE calc_std_dev,
-  LGBM_SE call_state) {
-  R_API_BEGIN();
-  CHECK_CALL(GPB_OptimCovPar(R_GET_PTR(handle), R_REAL_PTR(y_data), R_AS_BOOL(calc_std_dev)));
-  R_API_END();
+	LGBM_SE y_data,
+	LGBM_SE calc_std_dev,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_OptimCovPar(R_GET_PTR(handle), R_REAL_PTR(y_data), R_AS_BOOL(calc_std_dev)));
+	R_API_END();
 }
 
 LGBM_SE GPB_OptimLinRegrCoefCovPar_R(LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE covariate_data,
 	LGBM_SE num_covariates,
-  LGBM_SE calc_std_dev,
+	LGBM_SE calc_std_dev,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_OptimLinRegrCoefCovPar(R_GET_PTR(handle), R_REAL_PTR(y_data), R_REAL_PTR(covariate_data),
@@ -131,47 +131,57 @@ LGBM_SE GPB_OptimLinRegrCoefCovPar_R(LGBM_SE handle,
 	R_API_END();
 }
 
+LGBM_SE GPB_EvalNegLogLikelihood_R(LGBM_SE handle,
+	LGBM_SE y_data,
+	LGBM_SE cov_pars,
+	LGBM_SE negll,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_EvalNegLogLikelihood(R_GET_PTR(handle), R_REAL_PTR(y_data), R_REAL_PTR(cov_pars), R_REAL_PTR(negll)));
+	R_API_END();
+}
+
 LGBM_SE GPB_GetCovPar_R(LGBM_SE handle,
-  LGBM_SE calc_std_dev,
-  LGBM_SE optim_cov_pars,
-  LGBM_SE call_state) {
-  R_API_BEGIN();
-  CHECK_CALL(GPB_GetCovPar(R_GET_PTR(handle), R_REAL_PTR(optim_cov_pars), R_AS_BOOL(calc_std_dev)));
-  R_API_END();
+	LGBM_SE calc_std_dev,
+	LGBM_SE optim_cov_pars,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetCovPar(R_GET_PTR(handle), R_REAL_PTR(optim_cov_pars), R_AS_BOOL(calc_std_dev)));
+	R_API_END();
 }
 
 LGBM_SE GPB_GetCoef_R(LGBM_SE handle,
-  LGBM_SE calc_std_dev,
-  LGBM_SE optim_coef,
-  LGBM_SE call_state) {
-  R_API_BEGIN();
-  CHECK_CALL(GPB_GetCoef(R_GET_PTR(handle), R_REAL_PTR(optim_coef), R_AS_BOOL(calc_std_dev)));
-  R_API_END();
+	LGBM_SE calc_std_dev,
+	LGBM_SE optim_coef,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetCoef(R_GET_PTR(handle), R_REAL_PTR(optim_coef), R_AS_BOOL(calc_std_dev)));
+	R_API_END();
 }
 
 LGBM_SE GPB_GetNumIt_R(LGBM_SE handle,
-  LGBM_SE num_it,
-  LGBM_SE call_state) {
-  R_API_BEGIN();
-  CHECK_CALL(GPB_GetNumIt(R_GET_PTR(handle), R_INT_PTR(num_it)));
-  R_API_END();
+	LGBM_SE num_it,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetNumIt(R_GET_PTR(handle), R_INT_PTR(num_it)));
+	R_API_END();
 }
 
 LGBM_SE GPB_SetPredictionData_R(LGBM_SE handle,
-  LGBM_SE num_data_pred,
-  LGBM_SE cluster_ids_data_pred,
-  LGBM_SE re_group_data_pred,
-  LGBM_SE re_group_rand_coef_data_pred,
-  LGBM_SE gp_coords_data_pred,
-  LGBM_SE gp_rand_coef_data_pred,
-  LGBM_SE covariate_data_pred,
-  LGBM_SE call_state) {
-  R_API_BEGIN();
-  CHECK_CALL(GPB_SetPredictionData(R_GET_PTR(handle),
-    R_AS_INT(num_data_pred), R_INT_PTR(cluster_ids_data_pred),
-    R_CHAR_PTR(re_group_data_pred), R_REAL_PTR(re_group_rand_coef_data_pred),
-    R_REAL_PTR(gp_coords_data_pred), R_REAL_PTR(gp_rand_coef_data_pred), R_REAL_PTR(covariate_data_pred)));
-  R_API_END();
+	LGBM_SE num_data_pred,
+	LGBM_SE cluster_ids_data_pred,
+	LGBM_SE re_group_data_pred,
+	LGBM_SE re_group_rand_coef_data_pred,
+	LGBM_SE gp_coords_data_pred,
+	LGBM_SE gp_rand_coef_data_pred,
+	LGBM_SE covariate_data_pred,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_SetPredictionData(R_GET_PTR(handle),
+		R_AS_INT(num_data_pred), R_INT_PTR(cluster_ids_data_pred),
+		R_CHAR_PTR(re_group_data_pred), R_REAL_PTR(re_group_rand_coef_data_pred),
+		R_REAL_PTR(gp_coords_data_pred), R_REAL_PTR(gp_rand_coef_data_pred), R_REAL_PTR(covariate_data_pred)));
+	R_API_END();
 }
 
 LGBM_SE GPB_PredictREModel_R(LGBM_SE handle,
@@ -183,11 +193,11 @@ LGBM_SE GPB_PredictREModel_R(LGBM_SE handle,
 	LGBM_SE re_group_rand_coef_data_pred,
 	LGBM_SE gp_coords_pred,
 	LGBM_SE gp_rand_coef_data_pred,
-  LGBM_SE cov_pars,
-  LGBM_SE covariate_data_pred,
-  LGBM_SE use_saved_data,
-  LGBM_SE vecchia_pred_type,
-  LGBM_SE num_neighbors_pred,
+	LGBM_SE cov_pars,
+	LGBM_SE covariate_data_pred,
+	LGBM_SE use_saved_data,
+	LGBM_SE vecchia_pred_type,
+	LGBM_SE num_neighbors_pred,
 	LGBM_SE out_predict,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
@@ -196,8 +206,8 @@ LGBM_SE GPB_PredictREModel_R(LGBM_SE handle,
 		R_AS_BOOL(predict_cov_mat), R_INT_PTR(cluster_ids_data_pred),
 		R_CHAR_PTR(re_group_data_pred), R_REAL_PTR(re_group_rand_coef_data_pred),
 		R_REAL_PTR(gp_coords_pred), R_REAL_PTR(gp_rand_coef_data_pred), R_REAL_PTR(cov_pars),
-    R_REAL_PTR(covariate_data_pred), R_AS_BOOL(use_saved_data),
-    R_CHAR_PTR(vecchia_pred_type), R_AS_INT(num_neighbors_pred)));
+		R_REAL_PTR(covariate_data_pred), R_AS_BOOL(use_saved_data),
+		R_CHAR_PTR(vecchia_pred_type), R_AS_INT(num_neighbors_pred)));
 	R_API_END();
 }
 
@@ -211,6 +221,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_SetOptimCoefConfig_R"         , (DL_FUNC)&GPB_SetOptimCoefConfig_R         , 7},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 4},
   {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 6},
+  {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},
   {"GPB_GetCovPar_R"                  , (DL_FUNC)&GPB_GetCovPar_R                  , 4},
   {"GPB_GetCoef_R"                    , (DL_FUNC)&GPB_GetCoef_R                    , 4},
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 3},
@@ -260,7 +271,7 @@ static const R_CallMethodDef CallEntries[] = {
 };
 
 void R_init_gpboost(DllInfo* dll) {
-  R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
-  R_useDynamicSymbols(dll, FALSE);
+	R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
+	R_useDynamicSymbols(dll, FALSE);
 }
 #endif

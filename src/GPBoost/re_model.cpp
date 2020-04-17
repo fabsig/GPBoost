@@ -174,6 +174,23 @@ namespace GPBoost {
       has_covariates_ = true;
     }
 
+    void REModel::EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll) {
+        vec_t cov_pars_orig = Eigen::Map<const vec_t>(cov_pars, num_cov_pars_);
+        vec_t cov_pars_trafo = vec_t(num_cov_pars_);
+        if (sparse_) {
+            re_model_sp_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
+        }
+        else {
+            re_model_den_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
+        }
+        if (sparse_) {
+            re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll);
+        }
+        else {
+            re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll);
+        }
+    }
+
     void REModel::CalcGetYAux(double* y, bool calc_cov_factor) {
       CheckCovParsInitialized(y);
       if (sparse_) {

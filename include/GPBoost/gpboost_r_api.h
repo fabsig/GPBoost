@@ -37,7 +37,7 @@
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_CreateREModel_R(
-  LGBM_SE ndata,
+	LGBM_SE ndata,
 	LGBM_SE cluster_ids_data,
 	LGBM_SE re_group_data,
 	LGBM_SE num_re_group,
@@ -50,12 +50,12 @@ GPBOOST_C_EXPORT LGBM_SE GPB_CreateREModel_R(
 	LGBM_SE gp_rand_coef_data,
 	LGBM_SE num_gp_rand_coef,
 	LGBM_SE cov_fct,
-  LGBM_SE cov_fct_shape,
-  LGBM_SE vecchia_approx,
-  LGBM_SE num_neighbors,
-  LGBM_SE vecchia_ordering,
-  LGBM_SE vecchia_pred_type,
-  LGBM_SE num_neighbors_pred,
+	LGBM_SE cov_fct_shape,
+	LGBM_SE vecchia_approx,
+	LGBM_SE num_neighbors,
+	LGBM_SE vecchia_ordering,
+	LGBM_SE vecchia_pred_type,
+	LGBM_SE num_neighbors_pred,
 	LGBM_SE out,
 	LGBM_SE call_state);
 
@@ -65,7 +65,7 @@ GPBOOST_C_EXPORT LGBM_SE GPB_CreateREModel_R(
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_REModelFree_R(
-  LGBM_SE handle,
+	LGBM_SE handle,
 	LGBM_SE call_state);
 
 /*!
@@ -84,18 +84,18 @@ GPBOOST_C_EXPORT LGBM_SE GPB_REModelFree_R(
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_SetOptimConfig_R(
-  LGBM_SE handle,
-  LGBM_SE init_cov_pars,
-  LGBM_SE lr,
-  LGBM_SE acc_rate_cov,
-  LGBM_SE max_iter,
-  LGBM_SE delta_rel_conv,
-  LGBM_SE use_nesterov_acc,
-  LGBM_SE nesterov_schedule_version,
-  LGBM_SE trace,
-  LGBM_SE optimizer,
-  LGBM_SE momentum_offset,
-  LGBM_SE call_state);
+	LGBM_SE handle,
+	LGBM_SE init_cov_pars,
+	LGBM_SE lr,
+	LGBM_SE acc_rate_cov,
+	LGBM_SE max_iter,
+	LGBM_SE delta_rel_conv,
+	LGBM_SE use_nesterov_acc,
+	LGBM_SE nesterov_schedule_version,
+	LGBM_SE trace,
+	LGBM_SE optimizer,
+	LGBM_SE momentum_offset,
+	LGBM_SE call_state);
 
 /*!
 * \brief Set configuration parameters for the optimizer for linear regression coefficients
@@ -108,13 +108,13 @@ GPBOOST_C_EXPORT LGBM_SE GPB_SetOptimConfig_R(
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_SetOptimCoefConfig_R(
-  LGBM_SE handle,
-  LGBM_SE num_covariates,
-  LGBM_SE init_coef,
-  LGBM_SE lr_coef,
-  LGBM_SE acc_rate_coef,
-  LGBM_SE optimizer,
-  LGBM_SE call_state);
+	LGBM_SE handle,
+	LGBM_SE num_covariates,
+	LGBM_SE init_coef,
+	LGBM_SE lr_coef,
+	LGBM_SE acc_rate_coef,
+	LGBM_SE optimizer,
+	LGBM_SE call_state);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)
@@ -124,10 +124,10 @@ GPBOOST_C_EXPORT LGBM_SE GPB_SetOptimCoefConfig_R(
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_OptimCovPar_R(
-  LGBM_SE handle,
-  LGBM_SE y_data,
-  LGBM_SE calc_std_dev,
-  LGBM_SE call_state);
+	LGBM_SE handle,
+	LGBM_SE y_data,
+	LGBM_SE calc_std_dev,
+	LGBM_SE call_state);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)
@@ -140,11 +140,26 @@ GPBOOST_C_EXPORT LGBM_SE GPB_OptimCovPar_R(
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_OptimLinRegrCoefCovPar_R(
-  LGBM_SE handle,
+	LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE covariate_data,
 	LGBM_SE num_covariates,
-  LGBM_SE calc_std_dev,
+	LGBM_SE calc_std_dev,
+	LGBM_SE call_state);
+
+/*!
+* \brief Calculate the value of the negative log-likelihood
+* \param handle Handle of REModel
+* \param y_data Response variable data
+* \param cov_pars Values for covariance parameters of RE components
+* \param[out] negll Negative log-likelihood
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT LGBM_SE GPB_EvalNegLogLikelihood_R(
+	LGBM_SE handle,
+	LGBM_SE y_data,
+	LGBM_SE cov_pars,
+	LGBM_SE negll,
 	LGBM_SE call_state);
 
 /*!
@@ -156,10 +171,10 @@ GPBOOST_C_EXPORT LGBM_SE GPB_OptimLinRegrCoefCovPar_R(
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_GetCovPar_R(
-  LGBM_SE handle,
-  LGBM_SE calc_std_dev,
-  LGBM_SE optim_cov_pars,
-  LGBM_SE call_state);
+	LGBM_SE handle,
+	LGBM_SE calc_std_dev,
+	LGBM_SE optim_cov_pars,
+	LGBM_SE call_state);
 
 /*!
 * \brief Get / export regression coefficients
@@ -170,10 +185,10 @@ GPBOOST_C_EXPORT LGBM_SE GPB_GetCovPar_R(
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_GetCoef_R(
-  LGBM_SE handle,
-  LGBM_SE calc_std_dev,
-  LGBM_SE optim_coef,
-  LGBM_SE call_state);
+	LGBM_SE handle,
+	LGBM_SE calc_std_dev,
+	LGBM_SE optim_coef,
+	LGBM_SE call_state);
 
 /*!
 * \brief Get / export the number of iterations until convergence
@@ -183,9 +198,9 @@ GPBOOST_C_EXPORT LGBM_SE GPB_GetCoef_R(
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_GetNumIt_R(
-  LGBM_SE handle,
-  LGBM_SE num_it,
-  LGBM_SE call_state);
+	LGBM_SE handle,
+	LGBM_SE num_it,
+	LGBM_SE call_state);
 
 /*!
 * \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
@@ -200,15 +215,15 @@ GPBOOST_C_EXPORT LGBM_SE GPB_GetNumIt_R(
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_SetPredictionData_R(
-  LGBM_SE handle,
-  LGBM_SE num_data_pred,
-  LGBM_SE cluster_ids_data_pred,
-  LGBM_SE re_group_data_pred,
-  LGBM_SE re_group_rand_coef_data_pred,
-  LGBM_SE gp_coords_data_pred,
-  LGBM_SE gp_rand_coef_data_pred,
-  LGBM_SE covariate_data_pred,
-  LGBM_SE call_state);
+	LGBM_SE handle,
+	LGBM_SE num_data_pred,
+	LGBM_SE cluster_ids_data_pred,
+	LGBM_SE re_group_data_pred,
+	LGBM_SE re_group_rand_coef_data_pred,
+	LGBM_SE gp_coords_data_pred,
+	LGBM_SE gp_rand_coef_data_pred,
+	LGBM_SE covariate_data_pred,
+	LGBM_SE call_state);
 
 /*!
 * \brief Make predictions: calculate conditional mean and covariance matrix
@@ -233,7 +248,7 @@ GPBOOST_C_EXPORT LGBM_SE GPB_SetPredictionData_R(
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_PredictREModel_R(
-  LGBM_SE handle,
+	LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE num_data_pred,
 	LGBM_SE predict_cov_mat,
@@ -242,11 +257,11 @@ GPBOOST_C_EXPORT LGBM_SE GPB_PredictREModel_R(
 	LGBM_SE re_group_rand_coef_data_pred,
 	LGBM_SE gp_coords_pred,
 	LGBM_SE gp_rand_coef_data_pred,
-  LGBM_SE cov_pars,
-  LGBM_SE covariate_data_pred,
-  LGBM_SE use_saved_data,
-  LGBM_SE vecchia_pred_type,
-  LGBM_SE num_neighbors_pred,
+	LGBM_SE cov_pars,
+	LGBM_SE covariate_data_pred,
+	LGBM_SE use_saved_data,
+	LGBM_SE vecchia_pred_type,
+	LGBM_SE num_neighbors_pred,
 	LGBM_SE out_predict,
 	LGBM_SE call_state);
 

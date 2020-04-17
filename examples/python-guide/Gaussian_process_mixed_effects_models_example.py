@@ -46,6 +46,9 @@ gp_model.fit(y=y, std_dev=True, params={"optimizer_cov": "gradient_descent", "lr
                                         "use_nesterov_acc": True})
 gp_model.summary()
 
+# Evaluate negative log-likelihood
+gp_model.neg_log_likelihood(cov_pars=np.array([sigma2, sigma2_1]), y=y)
+
 # --------------------Two crossed random effects and a random slope----------------
 # NOTE: run the above example first to create the first random effect
 # Simulate data
@@ -127,6 +130,9 @@ print("Predicted (posterior/conditional) mean of GP")
 pred['mu']
 print("Predicted (posterior/conditional) covariance matrix of GP")
 pred['cov']
+
+# Evaluate negative log-likelihood
+gp_model.neg_log_likelihood(cov_pars=np.array([sigma2, sigma2_1, rho]), y=y)
 
 # --------------------Gaussian process model with Vecchia approximation----------------
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential",

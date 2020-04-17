@@ -3172,7 +3172,7 @@ class GPModel(object):
 
         Parameters
         ----------
-        y : numpy array or None, optional (default=None)
+        y : numpy array
             Response variable data
         X : numpy array with numeric data or None, optional (default=None)
             Covariate data for fixed effects ( = linear regression term)
@@ -3268,6 +3268,46 @@ class GPModel(object):
             ctypes.byref(num_it)))
         print("Number of iterations until convergence: " + str(num_it.value))
 
+    def neg_log_likelihood(self, cov_pars, y):
+        """Evaluate the negative log-likelihood.
+
+        Parameters
+        ----------
+        cov_pars : numpy array
+            Covariance parameters of Gaussian process and random effects
+        y : numpy array
+            Response variable data
+
+        Returns
+        -------
+        result : the value of the negative log-likelihood
+        """
+        if not isinstance(y, np.ndarray):
+            raise ValueError("y needs to be a numpy.ndarray")
+        if len(y.shape) != 1:
+            raise ValueError("y needs to be a vector / one-dimensional numpy.ndarray ")
+        if y.shape[0] != self.num_data:
+            raise ValueError("Incorrect number of data points in y")
+        y_c = y.astype(np.dtype(np.float64))
+        y_c = y_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        if not isinstance(cov_pars, np.ndarray):
+            raise ValueError("cov_pars needs to be a numpy.ndarray")
+        if len(cov_pars.shape) != 1:
+            raise ValueError("cov_pars needs to be a vector / one-dimensional numpy.ndarray")
+        if cov_pars.shape[0] != self.num_cov_pars:
+            raise ValueError("params['init_cov_pars'] does not contain the correct number of parameters")
+        cov_pars = cov_pars.astype(np.float64)
+        cov_pars_c = cov_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+
+        negll = ctypes.c_double(0)
+        _safe_call(_LIB.GPB_EvalNegLogLikelihood(
+            self.handle,
+            y_c,
+            cov_pars_c,
+            ctypes.byref(negll)))
+
+        return negll.value
+
     def set_optim_params(self, params):
         """Set parameters for estimation of the covariance paramters.
 
@@ -3304,9 +3344,9 @@ class GPModel(object):
                 if params[param] is not None:
                     if not isinstance(params[param], np.ndarray):
                         raise ValueError("params['init_cov_pars'] needs to be a numpy.ndarray")
-                    if len(self.params[param].shape) != 1:
+                    if len(params[param].shape) != 1:
                         raise ValueError("params['init_cov_pars'] needs to be a vector / one-dimensional numpy.ndarray")
-                    if self.params[param].shape[0] != self.num_cov_pars:
+                    if params[param].shape[0] != self.num_cov_pars:
                         raise ValueError("params['init_cov_pars'] does not contain the correct number of parameters")
                     params[param] = params[param].astype(np.float64)
             if param in self.params:

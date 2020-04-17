@@ -120,6 +120,14 @@ namespace GPBoost {
     void OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates, bool calc_std_dev = false);
 
     /*!
+    * \brief Calculate the value of the negative log-likelihood
+    * \param y_data Response variable data
+    * \param cov_pars Values for covariance parameters of RE components
+    * \param[out] negll Negative log-likelihood
+    */
+    void EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll);
+
+    /*!
     * \brief Calculate y_aux = Psi^-1*y and write on input
     * \param[out] y Response data. Output Psi^-1*y (=y_aux_) is then written on it. This vector needs to be pre-allocated of length num_data_
     * \param[out] calc_cov_factor If true, the covariance matrix is factorized, otherwise the existing factorization is used

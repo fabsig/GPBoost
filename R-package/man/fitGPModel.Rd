@@ -103,6 +103,7 @@ Estimates the parameters of a \code{gpb.GPModel} using maximum likelihood estima
 \examples{
 library(gpboost)
 
+\dontrun{
 #--------------------Grouped random effects model: single-level random effect----------------
 n <- 100 # number of samples
 m <- 25 # number of categories / levels for grouping variable
@@ -136,10 +137,11 @@ plot(b1, pred$mu, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 abline(a=0,b=1)
 
+# Evaluate negative log-likelihood
+gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
 
 #--------------------Two crossed random effects and a random slope----------------
 # NOTE: run the above example first to create the first random effect
-\dontrun{
 set.seed(1)
 x <- runif(n) # covariate data for random slope
 n_obs_gr <- n/m # number of sampels per group
@@ -168,10 +170,9 @@ gp_model <- fitGPModel(group_data = cbind(group,group2),
                         ind_effect_group_rand_coef = 1,
                         y = y, std_dev = TRUE)
 summary(gp_model)
-}
+
 
 #--------------------Mixed effects model: random effects and linear fixed effects----------------
-\dontrun{
 # NOTE: run one of the above examples first to create the random effects part
 set.seed(1)
 X <- cbind(rep(1,n),runif(n)) # desing matrix / covariate data for fixed effect
@@ -190,10 +191,9 @@ gp_model <- fitGPModel(group_data = cbind(group,group2),
                         ind_effect_group_rand_coef = 1,
                         y = y, X = X, std_dev = TRUE)
 summary(gp_model)
-}
+
 
 #--------------------Gaussian process model----------------
-\dontrun{
 n <- 200 # number of samples
 set.seed(1)
 coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
@@ -235,11 +235,12 @@ print("Predicted (posterior/conditional) mean of GP")
 pred$mu
 print("Predicted (posterior/conditional) covariance matrix of GP")
 pred$cov
-}
+
+# Evaluate negative log-likelihood
+gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1,rho),y=y)
 
 
 #--------------------Gaussian process model with Vecchia approximation----------------
-\dontrun{
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                     vecchia_approx = TRUE, num_neighbors = 30)
 # Fit model
@@ -253,11 +254,9 @@ gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                         y = y, params = list(optimizer_cov = "gradient_descent",
                                       lr_cov = 0.1, maxit=100))
 summary(gp_model)
-}
 
 
 #--------------------Gaussian process model with random coefficents----------------
-\dontrun{
 n <- 500 # number of samples
 set.seed(1)
 coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
@@ -300,11 +299,9 @@ gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                       use_nesterov_acc = TRUE,
                                       acc_rate_cov = 0.5))
 summary(gp_model)
-}
 
 
 #--------------------GP model with two independent observations of the GP----------------
-\dontrun{
 n <- 200 # number of samples
 set.seed(1)
 coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
@@ -338,10 +335,9 @@ gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                         params = list(optimizer_cov = "gradient_descent",
                                       lr_cov = 0.05))
 summary(gp_model)
-}
+
 
 #--------------------Combine Gaussian process with grouped random effects----------------
-\dontrun{
 n <- 200 # number of samples
 m <- 25 # number of categories / levels for grouping variable
 group <- rep(1,n) # grouping variable
