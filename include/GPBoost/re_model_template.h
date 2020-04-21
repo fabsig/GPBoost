@@ -1769,7 +1769,7 @@ namespace GPBoost {
 					B_grad_cluster_i[ipar].setFromTriplets(entries_init_B_grad_cluster_i.begin(), entries_init_B_grad_cluster_i.end());
 					D_grad_cluster_i[ipar] = sp_mat_t(num_data_cluster_i, num_data_cluster_i);
 					D_grad_cluster_i[ipar].setIdentity();//Put 0 on the diagonal
-					D_grad_cluster_i[ipar].diagonal().array() = 0.;
+					D_grad_cluster_i[ipar].diagonal().array() = 0.;//TODO: maybe change initialization of this matrix by also using triplets -> faster?
 				}
 			}//end initialization
 
@@ -1923,9 +1923,7 @@ namespace GPBoost {
 		* \param calc_gradient_nugget If true, derivatives are also taken with respect to the nugget / noise variance (only for Vecchia approximation)
 		*/
 		void CalcCovFactor(bool calc_gradient = false, bool transf_scale = true, double nugget_var = 1., bool calc_gradient_nugget = false) {
-
 			if (vecchia_approx_) {
-
 				for (const auto& cluster_i : unique_clusters_) {
 					int num_data_cl_i = num_data_per_cluster_[cluster_i];
 					CalcCovFactorVecchia(num_data_cl_i, calc_gradient, re_comps_[cluster_i], nearest_neighbors_[cluster_i],
@@ -1933,10 +1931,8 @@ namespace GPBoost {
 						entries_init_B_[cluster_i], entries_init_B_grad_[cluster_i], z_outer_z_obs_neighbors_[cluster_i],
 						B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i], transf_scale, nugget_var, calc_gradient_nugget);
 				}
-
 			}
 			else {
-
 				CalcSigmaComps();
 				for (const auto& cluster_i : unique_clusters_) {
 					T1 psi;
@@ -1948,7 +1944,6 @@ namespace GPBoost {
 					CalcChol<T1>(psi, cluster_i, do_symbolic_decomposition_);
 				}
 				do_symbolic_decomposition_ = false;//Symbolic decompostion done only once (if sparse matrices are used)
-
 			}
 		}
 
@@ -1958,27 +1953,21 @@ namespace GPBoost {
 		*/
 		void CalcYAux(double marg_variance = 1.) {
 			for (const auto& cluster_i : unique_clusters_) {
-
 				if (y_.find(cluster_i) == y_.end()) {
 					Log::Fatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
 				}
-
 				if (vecchia_approx_) {
-
 					if (B_.find(cluster_i) == B_.end()) {
 						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 					}
 					y_aux_[cluster_i] = B_[cluster_i].transpose() * D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];
-
 				}//end Vecchia
 				else {
-
 					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
 						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 					}
 					//Version 1: let Eigen do the computation
 					y_aux_[cluster_i] = chol_facts_solve_[cluster_i].solve(y_[cluster_i]);
-
 					//// Version 2 'do-it-yourself' (for sparse matrices)
 					//y_aux_[cluster_i] = y_[cluster_i];
 					//const double* val = chol_facts_[cluster_i].valuePtr();
@@ -1988,7 +1977,6 @@ namespace GPBoost {
 					//sp_L_t_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_[cluster_i].data());
 
 				}//end non-Vecchia
-
 				if (marg_variance != 1.) {
 					y_aux_[cluster_i] /= marg_variance;
 				}
