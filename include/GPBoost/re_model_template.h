@@ -309,10 +309,10 @@ namespace GPBoost {
 				CalcCovFactor(vecchia_approx_, true, 1., false);//Create covariance matrix and factorize it (and also calculate derivatives if Vecchia approximation is used)
 				CalcYAux();
 				if (optimizer == "gradient_descent") {//gradient descent
-					UpdateCovParGradOneIter(lr, cov_pars);
+					UpdateCovParGradOneIter(lr, cov_pars, true);//closed_form_solution_sigma = true: we profile out sigma (=use closed for expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 				}
 				else if (optimizer == "fisher_scoring") {//Fisher scoring
-					UpdateCovParFisherScoringOneIter(cov_pars);
+					UpdateCovParFisherScoringOneIter(cov_pars, false);//closed_form_solution_sigma = false: we don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)
 				}
 				CheckNaN(cov_pars);
 
@@ -338,9 +338,7 @@ namespace GPBoost {
 					std_dev_cov_par[i] = std_dev_cov[i];
 				}
 			}
-
 			has_covariates_ = false;
-
 		}
 
 		/*!
@@ -413,17 +411,15 @@ namespace GPBoost {
 			vec_t resid;
 			num_it = max_iter;
 			for (int it = 0; it < max_iter; ++it) {
-
 				if (it > 0) {
 					ApplyMomentumStep(it, cov_pars, cov_pars_lag1, use_nesterov_acc, acc_rate_cov, nesterov_schedule_version, true, momentum_offset);
 					if (optimizer_coef == "gradient_descent") {
 						ApplyMomentumStep(it, beta, beta_lag1, use_nesterov_acc, acc_rate_coef, nesterov_schedule_version, false, momentum_offset);
 					}
 				}
-
 				SetCovParsComps(cov_pars);
 				CalcCovFactor(vecchia_approx_, true, 1., false);
-
+				//Update linear regression coefficients
 				if (optimizer_coef == "gradient_descent") {//one step of gradient descent
 					resid = y_vec_ - (X_ * beta);
 					SetY(resid.data());
@@ -436,18 +432,17 @@ namespace GPBoost {
 					beta_lag1 = beta;
 					UpdateCoefGLS(X_, beta);
 				}
+				//Update covariance parameters
 				resid = y_vec_ - (X_ * beta);
 				SetY(resid.data());
 				CalcYAux();
 				if (optimizer_cov == "gradient_descent") {//one step of gradient descent
-					UpdateCovParGradOneIter(lr_cov, cov_pars);
+					UpdateCovParGradOneIter(lr_cov, cov_pars, true);//closed_form_solution_sigma = true: we profile out sigma (=use closed for expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 				}
 				else if (optimizer_cov == "fisher_scoring") {//one step of Fisher scoring
-					UpdateCovParFisherScoringOneIter(cov_pars);
+					UpdateCovParFisherScoringOneIter(cov_pars, false);//closed_form_solution_sigma = false: we don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)
 				}
-
 				CheckNaN(cov_pars);
-
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
 					Log::Debug("Gradient descent iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
@@ -481,7 +476,6 @@ namespace GPBoost {
 					std_dev_coef[i] = std_dev_beta[i];
 				}
 			}
-
 		}
 
 		/*!
@@ -1069,6 +1063,8 @@ namespace GPBoost {
 		std::map<gp_id_t, vec_t> y_aux_;
 		/*! \brief Indicates whether y_aux_ has been calculated */
 		bool y_aux_has_been_calculated_ = false;
+		/*! \brief Collects inverse covariance matrices Psi^{-1} (usually not saved, but used e.g. in Fisher scoring without the Vecchia approximation) */
+		std::map<gp_id_t, T1> psi_inv_;
 		/*! \brief Copy of response data (used only in case there are also linear covariates since then y_ is modified during the algorithm) */
 		vec_t y_vec_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: Psi^-1*y_ (used for various computations) */
@@ -2063,21 +2059,39 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate gradient for covariance parameters
+		* \param include_error_var If true, the gradient for the marginal variance parameter (=error, nugget effect) is also calculated, otherwise not (set this to true if the nugget effect is not calculated by using the closed-form solution)
+		* \param save_psi_inv If true, the inverse covariance matrix Pis^-1 is saved for reuse later (e.g. when calculating the Fisher information in Fisher scoring). This option is ignored if the Vecchia approximation is used.
 		* \return Gradient for covariance parameters
 		*/
-		vec_t GetCovParGrad() {
-			vec_t cov_grad = vec_t::Zero(num_cov_par_ - 1);
+		vec_t GetCovParGrad(bool include_error_var = false, bool save_psi_inv = false) {
+			vec_t cov_grad;
+			if (include_error_var) {
+				cov_grad = vec_t::Zero(num_cov_par_);
+			}
+			else {
+				cov_grad = vec_t::Zero(num_cov_par_ - 1);
+			}
+			int first_cov_par = 0;
+			if (include_error_var) {
+				first_cov_par = 1;
+			}
 			for (const auto& cluster_i : unique_clusters_) {
-
-				if (vecchia_approx_) {
+				if (vecchia_approx_) {//Vechia approximation
 					vec_t u(num_data_per_cluster_[cluster_i]);
 					vec_t uk(num_data_per_cluster_[cluster_i]);
-					u = D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];//TODO: this is already calculated in CalcYAux -> save it there and re-use here?
+					if (include_error_var) {
+						u = B_[cluster_i] * y_[cluster_i];
+						cov_grad[0] += -1. * ((double)(u.transpose() * D_inv_[cluster_i] * u)) / sigma2_ / 2. + num_data_per_cluster_[cluster_i] / 2.;
+						u = D_inv_[cluster_i] * u;
+					}
+					else {
+						u = D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];//TODO: this is already calculated in CalcYAux -> save it there and re-use here?
+					}
 					for (int j = 0; j < num_comps_total_; ++j) {
 						int num_par_comp = re_comps_[cluster_i][j]->num_cov_par_;
 						for (int ipar = 0; ipar < num_par_comp; ++ipar) {
 							uk = B_grad_[cluster_i][num_par_comp * j + ipar] * y_[cluster_i];
-							cov_grad[ind_par_[j] + ipar] += ((uk.dot(u) - 0.5 * u.dot(D_grad_[cluster_i][num_par_comp * j + ipar] * u)) / sigma2_ +
+							cov_grad[first_cov_par + ind_par_[j] + ipar] += ((uk.dot(u) - 0.5 * u.dot(D_grad_[cluster_i][num_par_comp * j + ipar] * u)) / sigma2_ +
 								0.5 * (D_inv_[cluster_i].diagonal()).dot(D_grad_[cluster_i][num_par_comp * j + ipar].diagonal()));
 						}
 					}
@@ -2085,17 +2099,21 @@ namespace GPBoost {
 				else {
 					T1 psi_inv;
 					CalcPsiInv(psi_inv, cluster_i);
+					if (save_psi_inv) {
+						psi_inv_[cluster_i] = psi_inv;
+					}
+					if (include_error_var) {
+						cov_grad[0] += -1. * ((double)(y_[cluster_i].transpose() * y_aux_[cluster_i])) / sigma2_ / 2. + num_data_per_cluster_[cluster_i] / 2.;
+					}
 					for (int j = 0; j < num_comps_total_; ++j) {
 						for (int ipar = 0; ipar < re_comps_[cluster_i][j]->num_cov_par_; ++ipar) {
-							std::shared_ptr<T1> gradPsi = re_comps_[cluster_i][j]->GetZSigmaZtGrad(ipar);
-							cov_grad[ind_par_[j] + ipar] += -1. * ((double)(y_aux_[cluster_i].transpose() * (*gradPsi) * y_aux_[cluster_i])) / sigma2_ / 2. +
+							std::shared_ptr<T1> gradPsi = re_comps_[cluster_i][j]->GetZSigmaZtGrad(ipar, true, 1.);
+							cov_grad[first_cov_par + ind_par_[j] + ipar] += -1. * ((double)(y_aux_[cluster_i].transpose() * (*gradPsi) * y_aux_[cluster_i])) / sigma2_ / 2. +
 								((double)(((*gradPsi).cwiseProduct(psi_inv)).sum())) / 2.;
 						}
 					}
 				}//end standard (non-Vecchia) calculation
-
 			}// end loop over clusters
-
 			return(cov_grad);
 		}
 
@@ -2134,41 +2152,65 @@ namespace GPBoost {
 
 		/*!
 		* \brief Update covariance parameters doing one gradient descent step (except for the marginal variance which is updated using an explicit solution)
-	* \param lr Learning rate
+		* \param lr Learning rate
 		* \param[out] cov_pars Covariance parameters
+		* \param closed_form_solution_sigma If true, the error variance (nugget effect) is calculated exactly using a closed form expression
 		*/
-		void UpdateCovParGradOneIter(double lr, vec_t& cov_pars) {
-			cov_pars[0] = 0.;
-			for (const auto& cluster_i : unique_clusters_) {
-				cov_pars[0] += (double)(y_[cluster_i].transpose() * y_aux_[cluster_i]);
+		void UpdateCovParGradOneIter(double lr, vec_t& cov_pars, bool closed_form_solution_sigma=true) {
+			vec_t grad;
+			if (closed_form_solution_sigma) {
+				cov_pars[0] = 0.;
+				for (const auto& cluster_i : unique_clusters_) {
+					cov_pars[0] += (double)(y_[cluster_i].transpose() * y_aux_[cluster_i]);
+				}
+				cov_pars[0] /= num_data_;
+				sigma2_ = cov_pars[0];
+				grad = GetCovParGrad(false, false);
+				cov_pars.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - lr * grad.array()).exp().matrix();
 			}
-			cov_pars[0] /= num_data_;
-			sigma2_ = cov_pars[0];
-
-			vec_t grad = GetCovParGrad();
-			cov_pars.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - lr * grad.array()).exp().matrix();
+			else {
+				grad = GetCovParGrad(true, false);
+				cov_pars = (cov_pars.array().log() - lr * grad.array()).exp().matrix();
+			}
 			//for (int i = 0; i < (int)grad.size(); ++i) { Log::Debug("grad[%d]: %f", i, grad[i]); }//For debugging only
 		}
 
 		/*!
 		* \brief Update covariance parameters doing one step of Fisher scoring (except for the marginal variance which is updated using an explicit solution)
 		* \param[out] cov_pars Covariance parameters
+		* \param closed_form_solution_sigma If true, the error variance (nugget effect) is calculated exactly using a closed form expression
 		*/
-		void UpdateCovParFisherScoringOneIter(vec_t& cov_pars) {
-			cov_pars[0] = 0.;
-			for (const auto& cluster_i : unique_clusters_) {
-				cov_pars[0] += (double)(y_[cluster_i].transpose() * y_aux_[cluster_i]);
-			}
-			cov_pars[0] /= num_data_;
-			sigma2_ = cov_pars[0];
-
-			vec_t grad = GetCovParGrad();
+		void UpdateCovParFisherScoringOneIter(vec_t& cov_pars, bool closed_form_solution_sigma = false) {
+			vec_t grad;
 			den_mat_t FI;
-			CalcFisherInformation(cov_pars, FI, true, false);
-			vec_t update = FI.llt().solve(grad);
-			cov_pars.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - update.array()).exp().matrix();//make update on log-scale
-			//for (int i = 0; i < (int)grad.size(); ++i) { Log::Debug("grad[%d]: %f", i, grad[i]); }//For debugging only
-			//for (int i = 0; i < 2; ++i) { Log::Debug("FI[%d,:]: %f, %f, %f", i, FI.coeffRef(i,0), FI.coeffRef(i, 1))); }//For debugging only
+			if (closed_form_solution_sigma) {
+				cov_pars[0] = 0.;
+				for (const auto& cluster_i : unique_clusters_) {
+					cov_pars[0] += (double)(y_[cluster_i].transpose() * y_aux_[cluster_i]);
+				}
+				cov_pars[0] /= num_data_;
+				sigma2_ = cov_pars[0];
+
+				grad = GetCovParGrad(false, true);
+				CalcFisherInformation(cov_pars, FI, true, false, true);
+				vec_t update = FI.llt().solve(grad);
+				cov_pars.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - update.array()).exp().matrix();//make update on log-scale
+			}
+			else {
+				grad = GetCovParGrad(true, true);
+				CalcFisherInformation(cov_pars, FI, true, true, true);
+				vec_t update = FI.llt().solve(grad);
+				cov_pars = (cov_pars.array().log() - update.array()).exp().matrix();//make update on log-scale
+			}
+			////For debugging only
+			//for (int i = 0; i < (int)grad.size(); ++i) { Log::Debug("grad[%d]: %f", i, grad[i]); }
+			////For debugging only
+			//if (FI.cols() >= 3) {
+			//	for (int i = 0; i < FI.rows(); ++i) { Log::Debug("FI[%d,:]: %f, %f, %f", i, FI.coeffRef(i, 0), FI.coeffRef(i, 1), FI.coeffRef(i, 2)); }
+			//}
+			//else {
+			//	for (int i = 0; i < FI.rows(); ++i) { Log::Debug("FI[%d,:]: %f, %f", i, FI.coeffRef(i, 0), FI.coeffRef(i, 1)); }
+			//}		
 		}
 
 		/*!
@@ -2212,10 +2254,12 @@ namespace GPBoost {
 		* \param cov_pars Covariance parameters
 		* \param[out] FI Fisher information
 		* \param transf_scale If true, the derivative is taken on the transformed scale otherwise on the original scale. Default = true
-		* \param include_marg_var If true, the marginal variance parameter is also included, otherwise not
+		* \param include_error_var If true, the marginal variance parameter is also included, otherwise not
+		* \param use_saved_psi_inv If false, the inverse covariance matrix Psi^-1 is calculated, otherwise a saved version is used
 		*/
-		void CalcFisherInformation(const vec_t& cov_pars, den_mat_t& FI, bool transf_scale = true, bool include_marg_var = false) {
-			if (include_marg_var) {
+		void CalcFisherInformation(const vec_t& cov_pars, den_mat_t& FI, bool transf_scale = true,
+			bool include_error_var = false, bool use_saved_psi_inv = false) {
+			if (include_error_var) {
 				FI = den_mat_t(num_cov_par_, num_cov_par_);
 			}
 			else {
@@ -2224,134 +2268,117 @@ namespace GPBoost {
 			FI.setZero();
 
 			for (const auto& cluster_i : unique_clusters_) {
-
 				if (vecchia_approx_) {
-
 					//Note: if transf_scale==false, then all matrices and derivatives have been calculated on the original scale for the Vecchia approximation, that is why there is no adjustment here
+					//Calculate auxiliary matrices for use below
 					sp_mat_t Identity(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 					Identity.setIdentity();
 					sp_mat_t B_inv;
 					eigen_sp_Lower_sp_RHS_cs_solve(B_[cluster_i], Identity, B_inv, true);
-
 					sp_mat_t D = sp_mat_t(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 					D.setIdentity();
 					D.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(-1);
-
 					sp_mat_t D_inv_2 = sp_mat_t(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 					D_inv_2.setIdentity();
 					D_inv_2.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(2);
-
-					//Counters for the covariance parameters
-					int par_i, par_j;
-					int start_cov_pars = include_marg_var ? 1 : 0;
+					//Calculate derivative(B) * B^-1
+					std::vector<sp_mat_t> B_grad_B_inv(num_cov_par_ - 1);
+					for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+						B_grad_B_inv[par_nb] = B_grad_[cluster_i][par_nb] * B_inv;
+					}
+					//Calculate Fisher information
+					int start_cov_pars = include_error_var ? 1 : 0;
 					sp_mat_t D_inv_B_grad_B_inv, B_grad_B_inv_D;
+					if (include_error_var) {
+						//First calculate terms for nugget effect / noise variance parameter
+						if (transf_scale) {//Optimization is done on transformed scale (in particular, log-scale)
+							//The derivative for the nugget variance on the log scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
+							FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
+							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+								FI(0, par_nb + 1) += (double)((D_inv_[cluster_i].diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array()).sum()) / 2.;
+							}
+						}
+						else {//Original scale for asymptotic covariance matrix
+							int ind_grad_nugget = num_cov_par_ - 1;
+							D_inv_B_grad_B_inv = D_inv_[cluster_i] * B_grad_[cluster_i][ind_grad_nugget] * B_inv;
+							B_grad_B_inv_D = B_grad_[cluster_i][ind_grad_nugget] * B_inv * D;
+							double diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array()).sum());
+							FI(0, 0) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
 
-					if (include_marg_var) {
-						//First for nugget effect / noise variance parameter
-						int ind_grad_nugget = re_comps_[cluster_i][ind_intercept_gp_]->num_cov_par_ * num_gp_total_;
-						D_inv_B_grad_B_inv = D_inv_[cluster_i] * B_grad_[cluster_i][ind_grad_nugget] * B_inv;
-						B_grad_B_inv_D = B_grad_[cluster_i][ind_grad_nugget] * B_inv * D;
-						double diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array()).sum());
-						FI(0, 0) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
-
-						par_j = 0;
-						for (int j = 0; j < num_comps_total_; ++j) {
-							for (int jpar = 0; jpar < re_comps_[cluster_i][j]->num_cov_par_; ++jpar) {
-								B_grad_B_inv_D = B_grad_[cluster_i][par_j] * B_inv * D;
-								diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array() * D_grad_[cluster_i][par_j].diagonal().array()).sum());
-								FI(0, par_j + 1) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
-								par_j++;
+							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+								B_grad_B_inv_D = B_grad_B_inv[par_nb] * D;
+								diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array()).sum());
+								FI(0, par_nb + 1) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
 							}
 						}
 					}
-
-					par_i = 0;
 					//Remaining covariance parameters
-					for (int i = 0; i < num_comps_total_; ++i) {
-						for (int ipar = 0; ipar < re_comps_[cluster_i][i]->num_cov_par_; ++ipar) {
-							D_inv_B_grad_B_inv = D_inv_[cluster_i] * B_grad_[cluster_i][par_i] * B_inv;
-							par_j = 0;
-							for (int j = 0; j < num_comps_total_; ++j) {
-								for (int jpar = 0; jpar < re_comps_[cluster_i][j]->num_cov_par_; ++jpar) {
-									if (par_j >= par_i) {
-										B_grad_B_inv_D = B_grad_[cluster_i][par_j] * B_inv * D;
-										double diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][par_i].diagonal().array() * D_grad_[cluster_i][par_j].diagonal().array()).sum());
-										FI(par_i + start_cov_pars, par_j + start_cov_pars) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
-									}
-									par_j++;
-								}
-							}
-							par_i++;
+					for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+						D_inv_B_grad_B_inv = D_inv_[cluster_i] * B_grad_B_inv[par_nb];
+						for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
+							B_grad_B_inv_D = B_grad_B_inv[par_nb_cross] * D;
+							double diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array() * D_grad_[cluster_i][par_nb_cross].diagonal().array()).sum());
+							FI(par_nb + start_cov_pars, par_nb_cross + start_cov_pars) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
 						}
-					}//end loop over components
+					}
 				}//end Vecchia approximation
-				else {
+				else {//not Vecchia approximation
 					T1 psi_inv;
-					CalcPsiInv(psi_inv, cluster_i);
-
+					if (use_saved_psi_inv) {
+						psi_inv = psi_inv_[cluster_i];
+					}
+					else {
+						CalcPsiInv(psi_inv, cluster_i);
+					}
 					if (!transf_scale) {
 						psi_inv /= cov_pars[0];//psi_inv has been calculated with a transformed parametrization, so we need to divide everything by cov_pars[0] to obtain the covariance matrix
 					}
-					int par_i = 0;
-					int par_j;
-					if (include_marg_var) {
-						//First for nugget effect / noise variance parameter
-						T1 psi_inv_grad_psi_sigma2;
-						if (transf_scale) {
-							psi_inv_grad_psi_sigma2 = T1(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);//The derivative for the nugget variance on the log scale is the original covariance matrix.
-							psi_inv_grad_psi_sigma2.setIdentity();
+					//Calculate Psi^-1 * derivative(Psi)
+					std::vector<T1> psi_inv_deriv_psi(num_cov_par_-1);
+					int deriv_par_nb = 0;
+					for (int j = 0; j < num_comps_total_; ++j) {//there is currently no possibility to loop over the parameters directly
+						for (int jpar = 0; jpar < re_comps_[cluster_i][j]->num_cov_par_; ++jpar) {
+							psi_inv_deriv_psi[deriv_par_nb] = psi_inv * *(re_comps_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]));
+							deriv_par_nb++;
 						}
-						else {
-							psi_inv_grad_psi_sigma2 = psi_inv;//The derivative for the nugget variance is the identity matrix.
-						}
-
-						FI(par_i, par_i) += ((double)(psi_inv_grad_psi_sigma2.cwiseProduct(psi_inv_grad_psi_sigma2)).sum()) / 2.;
-						par_j = 1;
-						for (int j = 0; j < num_comps_total_; ++j) {//there is currently no possibility to loop over the parameters directly
-							for (int jpar = 0; jpar < re_comps_[cluster_i][j]->num_cov_par_; ++jpar) {
-								T1 psi_inv_grad_psi_par_j = psi_inv * *(re_comps_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]));
-								FI(par_i, par_j) += ((double)(psi_inv_grad_psi_sigma2.cwiseProduct(psi_inv_grad_psi_par_j)).sum()) / 2.;
-								par_j++;
+					}
+					//Calculate Fisher information
+					int start_cov_pars = include_error_var ? 1 : 0;
+					if (include_error_var) {
+						//First calculate terms for nugget effect / noise variance parameter
+						if (transf_scale) {//Optimization is done on transformed scale (in particular, log-scale)
+							//The derivative for the nugget variance on the log scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
+							FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
+							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+								FI(0, par_nb + 1) += psi_inv_deriv_psi[par_nb].diagonal().sum() / 2.;
 							}
 						}
-						par_i = 1;
+						else {//Original scale for asymptotic covariance matrix
+							//The derivative for the nugget variance is the identity matrix, i.e. psi_inv_grad_psi_sigma2 = psi_inv.
+							FI(0, 0) += ((double)(psi_inv.cwiseProduct(psi_inv)).sum()) / 2.;
+							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+								FI(0, par_nb + 1) += ((double)(psi_inv.cwiseProduct(psi_inv_deriv_psi[par_nb])).sum()) / 2.;
+							}
+						}
 					}
 					//Remaining covariance parameters
-					for (int i = 0; i < num_comps_total_; ++i) {
-						for (int ipar = 0; ipar < re_comps_[cluster_i][i]->num_cov_par_; ++ipar) {
-							T1 psi_inv_grad_psi_par_i = psi_inv * *(re_comps_[cluster_i][i]->GetZSigmaZtGrad(ipar, transf_scale, cov_pars[0]));
-							T1 psi_inv_grad_psi_par_i_T = psi_inv_grad_psi_par_i.transpose();
-							FI(par_i, par_i) += ((double)(psi_inv_grad_psi_par_i_T.cwiseProduct(psi_inv_grad_psi_par_i)).sum()) / 2.;
-							psi_inv_grad_psi_par_i.resize(0, 0);//not needed anymore
-							if (include_marg_var) {
-								par_j = 1;
-							}
-							else {
-								par_j = 0;
-							}
-							for (int j = 0; j < num_comps_total_; ++j) {//there is currently no possibility to loop over the parameters directly
-								for (int jpar = 0; jpar < re_comps_[cluster_i][j]->num_cov_par_; ++jpar) {
-									if (par_j > par_i) {
-										T1 psi_inv_grad_psi_par_j = psi_inv * *(re_comps_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]));
-										FI(par_i, par_j) += ((double)(psi_inv_grad_psi_par_i_T.cwiseProduct(psi_inv_grad_psi_par_j)).sum()) / 2.;
-									}
-									par_j++;
-								}
-							}
-							par_i++;
+					for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+						T1 psi_inv_grad_psi_par_nb_T = psi_inv_deriv_psi[par_nb].transpose();
+						FI(par_nb + start_cov_pars, par_nb + start_cov_pars) += ((double)(psi_inv_grad_psi_par_nb_T.cwiseProduct(psi_inv_deriv_psi[par_nb])).sum()) / 2.;
+						for (int par_nb_cross = par_nb + 1; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
+							FI(par_nb + start_cov_pars, par_nb_cross + start_cov_pars) += ((double)(psi_inv_grad_psi_par_nb_T.cwiseProduct(psi_inv_deriv_psi[par_nb_cross])).sum()) / 2.;
 						}
-					}//end loop over components
-				}//end non-Vecchia approximation
+						psi_inv_deriv_psi[par_nb].resize(0, 0);//not needed anymore
+						psi_inv_grad_psi_par_nb_T.resize(0, 0);
+					}
+				}//end not Vecchia approximation
 			}//end loop over clusters
-
 			FI.triangularView<Eigen::StrictlyLower>() = FI.triangularView<Eigen::StrictlyUpper>().transpose();
-
-			//for (int i = 0; i < (int)FI.rows(); ++i) {
-			   // for (int j = i; j < (int)FI.cols(); ++j) {
-				  //  Log::Info("FI(%d,%d) %f", i, j, FI(i, j));
-			   // }
+			//for (int i = 0; i < (int)FI.rows(); ++i) {//For debugging only
+			//    for (int j = i; j < (int)FI.cols(); ++j) {
+			//	    Log::Info("FI(%d,%d) %f", i, j, FI(i, j));
+			//    }
 			//}
-
 		}
 
 		/*!
@@ -2363,7 +2390,7 @@ namespace GPBoost {
 			SetCovParsComps(cov_pars);
 			CalcCovFactor(true, false, cov_pars[0], true);
 			den_mat_t FI;
-			CalcFisherInformation(cov_pars, FI, false, true);
+			CalcFisherInformation(cov_pars, FI, false, true, false);
 			std_dev = FI.inverse().diagonal().array().sqrt().matrix();
 		}
 

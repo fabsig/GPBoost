@@ -115,8 +115,7 @@ gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
 # gp_model = gpb.GPModel(gp_coords=coords, cov_function="gaussian")
 # gp_model = gpb.GPModel(gp_coords=coords, cov_function="matern", cov_fct_shape=1.5)
 # gp_model = gpb.GPModel(gp_coords=coords, cov_function="powered_exponential", cov_fct_shape=1.1)
-gp_model.fit(y=y, std_dev=True, params={"optimizer_cov": "gradient_descent",
-                                        "lr_cov": 0.1})
+gp_model.fit(y=y, std_dev=True)
 gp_model.summary()
 
 # Make predictions
@@ -134,11 +133,16 @@ pred['cov']
 # Evaluate negative log-likelihood
 gp_model.neg_log_likelihood(cov_pars=np.array([sigma2, sigma2_1, rho]), y=y)
 
+# Other optimization specifications (gradient descent with Nesterov acceleration)
+gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
+gp_model.fit(y=y, std_dev=True, params={"optimizer_cov": "gradient_descent",
+                                        "lr_cov": 0.05, "use_nesterov_acc": True})
+gp_model.summary()
+
 # --------------------Gaussian process model with Vecchia approximation----------------
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential",
                        vecchia_approx=True, num_neighbors=30)
-gp_model.fit(y=y, params={"optimizer_cov": "gradient_descent",
-                          "lr_cov": 0.1})
+gp_model.fit(y=y)
 gp_model.summary()
 
 # --------------------Gaussian process model with random coefficents----------------
@@ -167,10 +171,7 @@ xi = np.sqrt(sigma2) * np.random.normal(size=n)  # simulate error term
 y = eps + xi
 # Define and fit model (takes a few seconds)
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential", gp_rand_coef_data=X_SVC)
-gp_model.fit(y=y, std_dev=True, params={"optimizer_cov": "gradient_descent",
-                                        "lr_cov": 0.05,
-                                        "use_nesterov_acc": True,
-                                        "acc_rate_cov": 0.5})
+gp_model.fit(y=y, std_dev=True)
 gp_model.summary()
 
 # --------------------Combine Gaussian process with grouped random effects----------------
@@ -205,8 +206,5 @@ y = eps + xi
 
 # Create Gaussian process model
 gp_model = gpb.GPModel(group_data=group, gp_coords=coords, cov_function="exponential")
-gp_model.fit(y=y, std_dev=True, params={"optimizer_cov": "gradient_descent",
-                                        "lr_cov": 0.05,
-                                        "use_nesterov_acc": True,
-                                        "acc_rate_cov": 0.5})
+gp_model.fit(y=y, std_dev=True)
 gp_model.summary()

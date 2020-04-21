@@ -29,9 +29,9 @@ y <- y + eps + xi # add random effects and error to data
 gp_model <- GPModel(group_data = group)
 # The properties of the optimizer for the Gaussian process or 
 #   random effects model can be set as follows
+re_params <- list(optimizer_cov="fisher_scoring")
 # re_params <- list(trace=TRUE,optimizer_cov="gradient_descent",
 #                   lr_cov = 0.05, use_nesterov_acc = TRUE)
-re_params <- list(optimizer_cov="fisher_scoring")
 gp_model$set_optim_params(params=re_params)
 
 print("Train boosting with random effects model")
@@ -174,12 +174,14 @@ y <- y + eps + xi # add random effects and error to data
 
 # Create Gaussian process model
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-re_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
-                  use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
-gp_model$set_optim_params(params=re_params)
+# The default optimizer for covariance parameters is Fisher scoring.
+# This can be changed to e.g. Nesterov accelerated gradient descent as follows:
+# re_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
+#                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
+# gp_model$set_optim_params(params=re_params)
 
 # Train model
-print("Train boosting with Process model")
+print("Train boosting with Gaussian process model")
 bst <- gpboost(data = X,
                label = y,
                gp_model = gp_model,

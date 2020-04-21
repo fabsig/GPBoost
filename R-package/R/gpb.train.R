@@ -6,6 +6,7 @@
 #' @return a trained booster model \code{gpb.Booster}.
 #'
 #' @examples
+#' ## SEE ALSO THE HELP OF 'gpboost' FOR MORE EXAMPLES
 #' \dontrun{
 #' library(gpboost)
 #' 
@@ -118,7 +119,6 @@
 #'
 #'               
 #' #--------------------Combine tree-boosting and grouped random effects model----------------
-#' ## SEE ALSO THE HELP OF 'gpboost' FOR MORE EXAMPLES (in particular a Gaussian process example)
 #' # Simulate data
 #' # Function for non-linear mean. Two covariates of which only one has an effect
 #' f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
@@ -147,9 +147,9 @@
 #' gp_model <- GPModel(group_data = group)
 #' # The properties of the optimizer for the Gaussian process or 
 #' #   random effects model can be set as follows
+#' re_params <- list(optimizer_cov="fisher_scoring")
 #' # re_params <- list(trace=TRUE,optimizer_cov="gradient_descent",
 #' #                   lr_cov = 0.05, use_nesterov_acc = TRUE)
-#' re_params <- list(optimizer_cov="fisher_scoring")
 #' gp_model$set_optim_params(params=re_params)
 #' print("Train boosting with random effects model")
 #' bst <- gpboost(data = X,
@@ -256,6 +256,14 @@
 #'                  leaves_newton_update = TRUE)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter,
 #'              ", best test error: ", bst$best_score))
+#'
+#' bst <- gpboost(data = X,
+#'                label = y,
+#'                gp_model = gp_model,
+#'                nrounds = 1,
+#'                objective = "regression_l2",
+#'                verbose = 0,
+#'                leaves_newton_update = TRUE)
 #' 
 #' 
 #' #--------------------GPBoostOOS algorithm: GP parameters estimated out-of-sample----------------
@@ -312,6 +320,64 @@
 #'                  train_gp_model_cov_pars = FALSE)
 #' # The GPModel has not changed:
 #' summary(gp_model)
+#' 
+#' 
+#' #--------------------Combine tree-boosting and Gaussian process model----------------
+#' # Simulate data
+#' # Function for non-linear mean. Two covariates of which only one has an effect
+#' f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
+#' set.seed(2)
+#' n <- 200 # number of samples
+#' X <- matrix(runif(2*n),ncol=2)
+#' y <- f1d(X[,1]) # mean
+#' # Add Gaussian process
+#' sigma2_1 <- 1^2 # marginal variance of GP
+#' rho <- 0.1 # range parameter
+#' sigma2 <- 0.1^2 # error variance
+#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
+#' D <- as.matrix(dist(coords))
+#' Sigma <- sigma2_1*exp(-D/rho)+diag(1E-20,n)
+#' C <- t(chol(Sigma))
+#' b_1 <- rnorm(n) # simulate random effect
+#' eps <- C %*% b_1
+#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
+#' y <- y + eps + xi # add random effects and error to data
+#' # Create Gaussian process model
+#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
+#' # Default optimizer for covariance parameters is Fisher scoring.
+#' # This can be changed as follows:
+#' # re_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
+#' #                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
+#' # gp_model$set_optim_params(params=re_params)
+#'
+#' # Train model
+#' print("Train boosting with Gaussian process model")
+#' bst <- gpboost(data = X,
+#'                label = y,
+#'                gp_model = gp_model,
+#'                nrounds = 8,
+#'                learning_rate = 0.1,
+#'                max_depth = 6,
+#'                min_data_in_leaf = 5,
+#'                objective = "regression_l2",
+#'                verbose = 0)
+#' print("Estimated random effects model")
+#' summary(gp_model)
+#'
+#' # Make predictions
+#' set.seed(1)
+#' ntest <- 5
+#' Xtest <- matrix(runif(2*ntest),ncol=2)
+#' # prediction locations (=features) for Gaussian process
+#' coords_test <- cbind(runif(ntest),runif(ntest))/10
+#' pred <- predict(bst, data = Xtest, gp_coords_pred = coords_test,
+#'                 predict_cov_mat =TRUE)
+#' print("Predicted (posterior) mean of GP")
+#' pred$random_effect_mean
+#' print("Predicted (posterior) covariance matrix of GP")
+#' pred$random_effect_cov
+#' print("Predicted fixed effect from tree ensemble")
+#' pred$fixed_effect
 #' }
 #' @export
 gpb.train <- function(data,

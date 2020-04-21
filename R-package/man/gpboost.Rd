@@ -81,6 +81,7 @@ a trained booster model \code{gpb.Booster}.
 Simple interface for training a GPBoost model.
 }
 \examples{
+## SEE ALSO THE HELP OF 'gpb.train' FOR MORE EXAMPLES
 \dontrun{
 library(gpboost)
 
@@ -132,18 +133,7 @@ err <- mean((ytest-pred)^2)
 print(paste("test-RMSE =", err))
 
 
-#--------------------Doing Newton updates for tree leaves---------------
-bst <- gpboost(data = X,
-               label = y,
-               gp_model = gp_model,
-               nrounds = 1,
-               objective = "regression_l2",
-               verbose = 0,
-               leaves_newton_update = TRUE)
-
-
 #--------------------Combine tree-boosting and Gaussian process model----------------
-## SEE ALSO THE HELP OF 'gpb.train' FOR MORE EXAMPLES
 # Simulate data
 # Function for non-linear mean. Two covariates of which only one has an effect
 f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
@@ -165,12 +155,14 @@ xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- y + eps + xi # add random effects and error to data
 # Create Gaussian process model
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-re_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
-                  use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
-gp_model$set_optim_params(params=re_params)
+# Default optimizer for covariance parameters is Fisher scoring.
+# This can be changed as follows:
+# re_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
+#                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
+# gp_model$set_optim_params(params=re_params)
 
 # Train model
-print("Train boosting with Process model")
+print("Train boosting with Gaussian process model")
 bst <- gpboost(data = X,
                label = y,
                gp_model = gp_model,

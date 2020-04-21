@@ -141,7 +141,7 @@ gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 #   random effects model can be set as follows.
 #   Depending on the data, a different learning rate (lr_cov) is better.
 #   You can also try optimizer_cov = "fisher_scoring" which implements a 
-#   form of Newton's method and does not require  a learning rate
+#   form of (quasi-) Newton's method and does not require  a learning rate
 gp_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05, trace = FALSE,
                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5, delta_rel_conv = .Machine$double.eps^0.25)
 gp_model$set_optim_params(params=gp_params)
@@ -335,7 +335,7 @@ mean((y_pred-y_test)^2)
 # Combined Tree-Boosting and Grouped Random Effects Example
 In the following, we show how a non-linear mixed effects model can be trained using `gpboost`. We use a random effects model that includes two crossed grouped random effects as well as a random slope. 
 
-*Note that estimating such a random effects structure is computationally rather intensive, also in the linear case, as the two grouped random effects are crossed and the corresponding covariance matrix is rather dense. Consequently, training is relatively slow for the GPBoost algorithm. If you use only one grouped random effects, training is much faster as the covariance matrix is then much sparser, and the GPBoost library relies on sparse matrix calculations.*
+*Note that estimating such a random effects structure is computationally demanding, also in the linear case, as the two grouped random effects are crossed and the corresponding covariance matrix is rather dense. Consequently, training is relatively slow for the GPBoost algorithm. If you use only one grouped random effects, training is much faster as the covariance matrix is then much sparser, and the GPBoost library relies on sparse matrix calculations.*
 
 We first simulate data and then show how to train the GPBoost model and make predictions.
 <div class="fold s">

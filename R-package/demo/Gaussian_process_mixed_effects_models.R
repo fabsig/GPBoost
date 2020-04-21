@@ -33,8 +33,35 @@ plot(b1, pred$mu, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 abline(a=0,b=1)
 
+# Use other optimization technique: gradient descent instead of Fisher scoring
+gp_model <- fitGPModel(group_data = group, y = y, std_dev = TRUE,
+                       params = list(optimizer_cov = "gradient_descent",
+                                     lr_cov = 0.1, use_nesterov_acc = FALSE))
+summary(gp_model)
+
 # Evaluate negative log-likelihood
 gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
+# Do optimization using optim and e.g. Nelder-Mead
+gp_model <- GPModel(group_data = group)
+optim(par=c(1,1), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
+
+
+#--------------------Mixed effects model: random effects and linear fixed effects----------------
+# NOTE: run the above example first to create the random effects part
+set.seed(1)
+X <- cbind(rep(1,n),runif(n)) # desing matrix / covariate data for fixed effect
+beta <- c(3,3) # regression coefficents
+y <- eps + xi + X%*%beta # add fixed effect to observed data
+# Create random effects model
+gp_model <- GPModel(group_data = group)
+# Fit model
+fit(gp_model, y = y, X = X, std_dev = TRUE)
+summary(gp_model)
+# Alternatively, define and fit model directly using fitGPModel
+gp_model <- fitGPModel(group_data = group,
+                       y = y, X = X, std_dev = TRUE)
+summary(gp_model)
+
 
 #--------------------Two crossed random effects and a random slope----------------
 # NOTE: run the above example first to create the first random effect
@@ -68,27 +95,6 @@ gp_model <- fitGPModel(group_data = cbind(group,group2),
 summary(gp_model)
 
 
-#--------------------Mixed effects model: random effects and linear fixed effects----------------
-# NOTE: run the above example first to create the random effects part
-set.seed(1)
-X <- cbind(rep(1,n),runif(n)) # desing matrix / covariate data for fixed effect
-beta <- c(3,3) # regression coefficents
-y <- eps2 + xi + X%*%beta # add fixed effect to observed data
-# Create random effects model
-gp_model <- GPModel(group_data = cbind(group,group2),
-                    group_rand_coef_data = x,
-                    ind_effect_group_rand_coef = 1)
-# Fit model
-fit(gp_model, y = y, X = X, std_dev = TRUE)
-summary(gp_model)
-# Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(group_data = cbind(group,group2),
-                        group_rand_coef_data = x,
-                        ind_effect_group_rand_coef = 1,
-                        y = y, X = X, std_dev = TRUE)
-summary(gp_model)
-
-
 #--------------------Gaussian process model----------------
 library(gpboost)
 n <- 200 # number of samples
@@ -115,15 +121,11 @@ eps <- C %*% b_1
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE,
-    params = list(optimizer_cov = "gradient_descent",
-                  lr_cov = 0.1))
+fit(gp_model, y = y, std_dev = TRUE)
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        y = y, std_dev = TRUE,
-                        params = list(optimizer_cov = "gradient_descent",
-                                      lr_cov = 0.1))
+                        y = y, std_dev = TRUE)
 summary(gp_model)
 
 # Make predictions
@@ -138,23 +140,43 @@ pred$mu
 print("Predicted (posterior/conditional) covariance matrix of GP")
 pred$cov
 
+# Use other optimization technique: Nesterov accelerated gradient descent instead of Fisher scoring
+gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                       y = y, std_dev = TRUE,
+                       params = list(optimizer_cov = "gradient_descent",
+                                     lr_cov = 0.05, use_nesterov_acc = TRUE))
+summary(gp_model)
+
 # Evaluate negative log-likelihood
 gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1,rho),y=y)
+# Do optimization using optim and e.g. Nelder-Mead
+gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
+optim(par=c(1,1,0.2), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
+
+
+#--------------------Gaussian process model with linear mean function----------------
+# Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
+# NOTE: run the above example first to create the random effects part
+set.seed(1)
+X <- cbind(rep(1,n),runif(n)) # desing matrix / covariate data for fixed effect
+beta <- c(3,3) # regression coefficents
+y <- eps + xi + X%*%beta # add fixed effect to observed data
+gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                       y = y, X=X, std_dev = TRUE)
+summary(gp_model)
+
 
 #--------------------Gaussian process model with Vecchia approximation----------------
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                     vecchia_approx = TRUE, num_neighbors = 30)
 # Fit model
-fit(gp_model, y = y,
-    params = list(optimizer_cov = "gradient_descent",
-                  lr_cov = 0.1, maxit=200))
+fit(gp_model, y = y)
 summary(gp_model)
 
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                         vecchia_approx = TRUE, num_neighbors = 30,
-                        y = y, params = list(optimizer_cov = "gradient_descent",
-                                             lr_cov = 0.1, maxit=200))
+                        y = y)
 summary(gp_model)
 
 
@@ -181,19 +203,12 @@ eps <- C %*% b_1 + X_SVC[,1] * C %*% b_2 + X_SVC[,2] * C %*% b_3
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
 # Fit model (takes a few seconds)
-fit(gp_model, y = y, std_dev = TRUE,
-    params = list(optimizer_cov = "gradient_descent",
-                  lr_cov = 0.05, use_nesterov_acc = TRUE,
-                  acc_rate_cov = 0.5))
+fit(gp_model, y = y, std_dev = TRUE)
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                         gp_rand_coef_data = X_SVC,
-                        y = y, std_dev = TRUE,
-                        params = list(optimizer_cov = "gradient_descent",
-                                      lr_cov = 0.05,
-                                      use_nesterov_acc = TRUE,
-                                      acc_rate_cov = 0.5))
+                        y = y, std_dev = TRUE)
 summary(gp_model)
 
 
@@ -219,16 +234,12 @@ eps <- c(C %*% b_1[1:n], C %*% b_1[1:n + n])
 xi <- sqrt(sigma2) * rnorm(2 * n) # simulate error term
 y <- eps + xi
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE,
-    params = list(optimizer_cov = "gradient_descent",
-                  lr_cov = 0.05))
+fit(gp_model, y = y, std_dev = TRUE)
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                         cluster_ids = cluster_ids,
-                        y = y, std_dev = TRUE,
-                        params = list(optimizer_cov = "gradient_descent",
-                                      lr_cov = 0.05))
+                        y = y, std_dev = TRUE)
 summary(gp_model)
 
 
@@ -260,14 +271,10 @@ eps <- Z1 %*% b1 + C %*% b_2
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE,
-    params = list(optimizer_cov = "gradient_descent",
-                  lr_cov = 0.05, use_nesterov_acc = TRUE))
+fit(gp_model, y = y, std_dev = TRUE)
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(group_data = group,
                         gp_coords = coords, cov_function = "exponential",
-                        y = y, std_dev = TRUE,
-                        params = list(optimizer_cov = "gradient_descent",
-                                      lr_cov = 0.05, use_nesterov_acc = TRUE))
+                        y = y, std_dev = TRUE)
 summary(gp_model)

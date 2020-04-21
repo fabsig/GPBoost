@@ -89,8 +89,17 @@ plot(b1, pred$mu, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 abline(a=0,b=1)
 
+# Use other optimization technique: gradient descent instead of Fisher scoring
+gp_model <- fitGPModel(group_data = group, y = y, std_dev = TRUE,
+                       params = list(optimizer_cov = "gradient_descent",
+                                     lr_cov = 0.1, use_nesterov_acc = FALSE))
+summary(gp_model)
+
 # Evaluate negative log-likelihood
 gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
+# Do optimization using optim and e.g. Nelder-Mead
+gp_model <- GPModel(group_data = group)
+optim(par=c(1,1), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
  
  
 #--------------------Gaussian process model----------------
@@ -117,15 +126,11 @@ eps <- C \%*\% b_1
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE,
-    params = list(optimizer_cov = "gradient_descent",
-                  lr_cov = 0.1))
+fit(gp_model, y = y, std_dev = TRUE)
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        y = y, std_dev = TRUE,
-                        params = list(optimizer_cov = "gradient_descent",
-                                      lr_cov = 0.1))
+                        y = y, std_dev = TRUE)
 summary(gp_model)
 
 # Make predictions
@@ -140,8 +145,18 @@ pred$mu
 print("Predicted (posterior/conditional) covariance matrix of GP")
 pred$cov
 
+# Use other optimization technique: Nesterov accelerated gradient descent instead of Fisher scoring
+gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                       y = y, std_dev = TRUE,
+                       params = list(optimizer_cov = "gradient_descent",
+                                     lr_cov = 0.05, use_nesterov_acc = TRUE))
+summary(gp_model)
+
 # Evaluate negative log-likelihood
 gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1,rho),y=y)
+# Do optimization using optim and e.g. Nelder-Mead
+gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
+optim(par=c(1,1,0.2), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
 }
 
 }

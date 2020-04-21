@@ -109,15 +109,11 @@ eps <- C \%*\% b_1
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE,
-    params = list(optimizer_cov = "gradient_descent",
-                  lr_cov = 0.1))
+fit(gp_model, y = y, std_dev = TRUE)
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        y = y, std_dev = TRUE,
-                        params = list(optimizer_cov = "gradient_descent",
-                                      lr_cov = 0.1))
+                        y = y, std_dev = TRUE)
 summary(gp_model)
 
 # Make predictions

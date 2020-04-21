@@ -179,8 +179,10 @@ y = F + eps + xi  # observed data
 
 # define GPModel
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
-gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent", "lr_cov": 0.05,
-                                  "use_nesterov_acc": True, "acc_rate_cov": 0.5})
+# Default optimizer for covariance parameters is Fisher scoring.
+# This can be changed as follows:
+# gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent", "lr_cov": 0.05,
+#                                   "use_nesterov_acc": True, "acc_rate_cov": 0.5})
 # create dataset for gpb.train
 data_train = gpb.Dataset(X, y)
 # specify your configurations as a dict
