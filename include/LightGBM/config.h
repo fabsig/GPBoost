@@ -27,7 +27,7 @@ namespace LightGBM {
 enum TaskType {
   kTrain, kPredict, kConvertModel, KRefitTree
 };
-const int kDefaultNumLeaves = 131072;
+const int kDefaultNumLeaves = 31;
 
 struct Config {
  public:
@@ -245,12 +245,12 @@ struct Config {
 
   // desc = maximal depth of a tree
   // desc = ``<= 0`` means no limit
-  int max_depth = 6;
+  int max_depth = -1;
 
   // alias = min_data_per_leaf, min_data, min_child_samples
   // check = >=0
   // desc = minimal number of samples in a leaf
-  int min_data_in_leaf = 5;
+  int min_data_in_leaf = 20;
 
   // alias = min_sum_hessian_per_leaf, min_sum_hessian, min_hessian, min_child_weight
   // check = >=0.0
