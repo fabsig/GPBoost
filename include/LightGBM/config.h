@@ -165,7 +165,7 @@ struct Config {
   // desc = in ``dart``, it also affects on normalization weights of dropped trees
   double learning_rate = 0.1;
 
-  // default = 131072
+  // default = 31
   // alias = num_leaf, max_leaves, max_leaf
   // check = >1
   // check = <=131072
