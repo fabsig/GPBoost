@@ -25,8 +25,8 @@
 #include <algorithm>    // std::shuffle
 #include <random>       // std::default_random_engine
 //#include <typeinfo> // Only needed for debugging
-//#include <chrono>  // only needed for debugging
-//#include <thread> // only needed for debugging
+#include <chrono>  // only needed for debugging
+#include <thread> // only needed for debugging
 //Log::Info("Fine here ");// Only for debugging
 //std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
@@ -1504,7 +1504,7 @@ namespace GPBoost {
 		* \param[out] XT_psi_inv_X X^TPsi^(-1)X
 		*/
 		void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
-			if (num_clusters_ == 1 && vecchia_ordering_ == "none") {
+			if (num_clusters_ == 1 && vecchia_ordering_ == "none") {//only one cluster / idependent GP realization
 				if (vecchia_approx_) {
 					den_mat_t BX = B_[unique_clusters_[0]] * X;
 					XT_psi_inv_X = BX.transpose() * D_inv_[unique_clusters_[0]] * BX;
@@ -1519,7 +1519,7 @@ namespace GPBoost {
 					}	
 				}
 			}
-			else {
+			else {//more than one cluster / idependent GP realization
 				XT_psi_inv_X = den_mat_t(X.cols(), X.cols());
 				XT_psi_inv_X.setZero();
 				den_mat_t BX;
@@ -1530,8 +1530,8 @@ namespace GPBoost {
 					}
 					else {
 						if (use_woodbury_identity_) {
-							den_mat_t ZtX = Zt_[cluster_i] * ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose();
-							XT_psi_inv_X = ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all) -
+							den_mat_t ZtX = Zt_[cluster_i] * (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all);
+							XT_psi_inv_X += ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all) -
 								ZtX.transpose() * chol_facts_solve_[unique_clusters_[0]].solve(ZtX);
 						}
 						else {
