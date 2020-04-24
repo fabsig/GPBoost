@@ -246,6 +246,12 @@ gpb.cv <- function(params = list(),
     data <- gpb.Dataset(data, label = label)
   }
   
+  if (!is.null(gp_model)) {
+    if (gp_model$get_num_data() != data$dim()[1]) {
+      stop("Different number of samples in data and gp_model")
+    }
+  }
+  
   # Check for weights
   if (!is.null(weight)) {
     data$setinfo("weight", weight)

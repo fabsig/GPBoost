@@ -68,11 +68,10 @@ namespace GPBoost {
 		*/
 		virtual void CalcSigma() = 0;
 
-		/*
-		!
+		/*!
 		* \brief Virtual function that calculates the covariance matrix Z*Sigma*Z^T
 		* \return Covariance matrix Z*Sigma*Z^T of this component
-	*   Note that since sigma_ is saved (since it is used in GetZSigmaZt and GetZSigmaZtGrad) we return a pointer and do not write on an input paramter in order to avoid copying
+		*   Note that since sigma_ is saved (since it is used in GetZSigmaZt and GetZSigmaZtGrad) we return a pointer and do not write on an input paramter in order to avoid copying
 		*/
 		virtual std::shared_ptr<T> GetZSigmaZt() = 0;
 
@@ -84,6 +83,12 @@ namespace GPBoost {
 		* \return Derivative of covariance matrix Z*Sigma*Z^T with respect to the parameter number ind_par
 		*/
 		virtual std::shared_ptr<T> GetZSigmaZtGrad(int ind_par = 0, bool transf_scale = true, double = 1.) = 0;
+
+		/*!
+		* \brief Virtual function that returns the matrix Z
+		* \return A pointer to the matrix Z
+		*/
+		virtual sp_mat_t* GetZ() = 0;
 
 		/*!
 		* \brief Ignore this. It is only used for the class RECompGP and not for other derived classes. It is here in order that the base class can have this as a virtual method and no conversion needs to be made in the Vecchia approximation calculation (slightly a hack)
@@ -247,6 +252,14 @@ namespace GPBoost {
 			else {
 				Log::Fatal("No covariance parameter for index number %d", ind_par);
 			}
+		}
+
+		/*!
+		* \brief Function that returns the matrix Z
+		* \return A pointer to the matrix Z
+		*/
+		sp_mat_t* GetZ() override {
+			return(&(this->Z_));
 		}
 
 		/*!
@@ -459,7 +472,7 @@ namespace GPBoost {
 		* \param dist Pointer to incidence matrix Z of corresponding base intercept GP
 		* \param rand_coef_data Covariate data for random coefficient
 		* \param cov_fct Type of covariance function
-	* \param shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
+		* \param shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
 		*/
 		RECompGP(std::shared_ptr<den_mat_t> dist, bool base_effect_has_Z, sp_mat_t* Z,
 			const std::vector<double>& rand_coef_data, string_t cov_fct = "exponential", double shape = 0.) {
@@ -670,8 +683,19 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Function that returns the matrix Z
+		* \return A pointer to the matrix Z
+		*/
+		sp_mat_t* GetZ() override {
+			if (!has_Z_) {
+				Log::Fatal("Gaussian process has no matrix Z");
+			}
+			return(&(this->Z_));
+		}
+
+		/*!
 		* \brief Calculate covariance matrices needed for prediction
-	* \param coords Coordinates for observed data
+		* \param coords Coordinates for observed data
 		* \param coords_pred Coordinates for predictions
 		* \param[out] pred_mats Add covariance matrices from this component to this parameter which contains covariance matrices needed for making predictions in the following order: 0. Ztilde*Sigma*Z^T, 1. Zstar*Sigmatilde^T*Z^T (=0 for grouped RE), 2. Ztilde*Sigma*Ztilde^T, 3. Ztilde*Sigmatilde*Zstar^T (=0 for grouped RE), 4. Zstar*Sigmastar*Zstar^T.
 		* \param predict_cov_mat If true, all matrices are calculated. If false only Ztilde*Sigma*Z^T required for the conditional mean is calculated

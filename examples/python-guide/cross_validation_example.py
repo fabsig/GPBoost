@@ -2,9 +2,9 @@
 # pylint: disable = invalid-name, C0111
 import gpboost as gpb
 import numpy as np
-from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
+print("It is recommended that the examples are run in interactive mode")
 
 #--------------------Cross validation for tree-boosting without GP or random effects----------------
 print('Simulating data...')
@@ -106,6 +106,5 @@ print("Running cross validation for GPBoost model and use_gp_model_for_validatio
 cvbst = gpb.cv(params=params, train_set=data_train,
                gp_model=gp_model, use_gp_model_for_validation=True,
                num_boost_round=100, early_stopping_rounds=5,
-               nfold=2, verbose_eval=True, show_stdv=Falsem, seed=1)
+               nfold=2, verbose_eval=True, show_stdv=False, seed=1)
 print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
-cvbst.best_iteration

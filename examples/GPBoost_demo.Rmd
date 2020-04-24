@@ -56,14 +56,14 @@ In the following, we start with an example where the random part of the model co
 First, you need to load your data. For simplicity and illustrational purposes, we use simulated data here. In the following, we simulate data (in R) and illustrate the data in the figure below.
 <div class="fold s">
 ```{r simulate_data, results='hide', message=F, cache=save_cache}
-# Simulate data using R
+# Simulate data
 n <- 200 # number of training samples
 set.seed(5)
-# Gaussian process: sample on a dense grid but observe only partially
 cov_function <- "exponential"
 sigma2_1 <- 0.25^2 # marginal variance of GP
 rho <- 0.2 # range parameter
 sigma2 <- 0.1^2 # error variance
+# Gaussian process: sample on a dense grid but observe only partially
 nx <- 30 # test data: number of grid points on each axis
 x2=x1=rep((1:nx)/nx,nx)
 for(i in 1:nx) x2[((i-1)*nx+1):(i*nx)]=i/nx
@@ -193,11 +193,12 @@ pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_cov_ma
 plot5 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=pred$random_effect_mean),aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + ggtitle("Predicted GP mean")
 plot6 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=sqrt(diag(pred$random_effect_cov))),aes(x=s_1,y=s_2,color=b)) +
-  geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + labs(title="Predicted GP standard deviation",  subtitle=" = prediction uncertainty")
+  geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + labs(title="Predicted GP standard deviation", subtitle=" = prediction uncertainty")
 plot7 <- ggplot(data=data.frame(x=X_test[,1],f=pred$fixed_effect), aes(x=x,y=f)) + geom_line(size=1) +
   geom_line(data=data.frame(x=x,f=f1d(x)), aes(x=x,y=f), size=1.5, color="darkred") +
-  ggtitle("Predicted F(X)") + xlab("X") + ylab("y")
-grid.arrange(plot5, plot6, plot7, ncol=2)
+  ggtitle("Predicted and true F(X)") + xlab("X") + ylab("y")
+plot8 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=b_all[1:nx^2]),aes(x=s_1,y=s_2,color=b)) + geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + ggtitle("'True' GP and obs. locations") + geom_point(data = data.frame(s_1=coords[,1],s_2=coords[,2],y=y),aes(x=s_1,y=s_2),size=1,col="white", alpha=1, shape=3)
+grid.arrange(plot8, plot5, plot6, plot7, ncol=2)
 # sum the predictions of the trees and the GP
 y_pred <- pred$fixed_effect + pred$random_effect_mean
 print("Mean square error:")

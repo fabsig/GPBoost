@@ -206,6 +206,7 @@
 #' valids <- list(test = dtest)
 #' gp_model <- GPModel(group_data = group[train_ind])
 #'
+#' # Do not include random effect predictions for validation
 #' print("Training with validation data and use_gp_model_for_validation = FALSE ")
 #' bst <- gpb.train(data = dtrain,
 #'                  gp_model = gp_model,
@@ -220,6 +221,11 @@
 #'                  use_gp_model_for_validation = FALSE)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter,
 #'              ", best test error: ", bst$best_score))
+#' # Plot validation error
+#' val_error <- unlist(bst$record_evals$test$l2$eval)
+#' plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
+#'      xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
+#'
 #'
 #' # Include random effect predictions for validation (observe the lower test error)
 #' gp_model <- GPModel(group_data = group[train_ind])
@@ -238,7 +244,11 @@
 #'                  use_gp_model_for_validation = TRUE)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter,
 #'              ", best test error: ", bst$best_score))
-#' 
+#' # Plot validation error
+#' val_error <- unlist(bst$record_evals$test$l2$eval)
+#' plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
+#'      xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
+#'
 #' 
 #' #--------------------Do Newton updates for tree leaves---------------
 #' print("Training with Newton updates for tree leaves")
@@ -256,9 +266,13 @@
 #'                  leaves_newton_update = TRUE)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter,
 #'              ", best test error: ", bst$best_score))
+#' # Plot validation error
+#' val_error <- unlist(bst$record_evals$test$l2$eval)
+#' plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
+#'      xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
 #'
-#' bst <- gpboost(data = X,
-#'                label = y,
+#' # Using gpboost function
+#' bst <- gpboost(data = dtrain,
 #'                gp_model = gp_model,
 #'                nrounds = 1,
 #'                objective = "regression_l2",

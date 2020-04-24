@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
+print("It is recommended that the examples are run in interactive mode")
 
 print('Simulating data...')
 # Simulate and create your dataset

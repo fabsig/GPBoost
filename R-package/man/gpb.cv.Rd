@@ -57,7 +57,7 @@ gpb.cv(params = list(), data, nrounds = 100, nfold = 4, label = NULL,
 \code{regression_l2}, \code{regression_l1}, \code{huber},
 \code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}. Currently only "regression_l2" supports Gaussian process boosting.}
 
-\item{gp_model}{A \code{gpb.GPModel} object that contains the random effect (Gaussian process) model. Can currently only be used for objective = "regression"}
+\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model. Can currently only be used for objective = "regression"}
 
 \item{use_gp_model_for_validation}{Boolean (default = FALSE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data}
 
