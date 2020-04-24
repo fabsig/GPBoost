@@ -2,10 +2,9 @@
 # pylint: disable = invalid-name, C0111
 import gpboost as gpb
 import numpy as np
-from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
-
 plt.style.use('ggplot')
+print("It is recommended that the examples are run in interactive mode")
 
 # --------------------Combine tree-boosting and grouped random effects model----------------
 print('Simulating data...')
@@ -108,7 +107,7 @@ bst = gpb.train(params=params,
 gpb.plot_metric(evals_result, figsize=(10, 5))
 plt.show()
 
-# Do not include random effect predictions for validation (observe the lower test error)
+# Include random effect predictions for validation (observe the lower test error)
 print("Training with validation data and use_gp_model_for_validation = False")
 gp_model.set_prediction_data(group_data_pred=group[test_ind])
 evals_result = {}  # record eval results for plotting

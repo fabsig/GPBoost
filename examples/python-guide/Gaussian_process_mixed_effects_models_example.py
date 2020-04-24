@@ -2,9 +2,10 @@
 # pylint: disable = invalid-name, C0111
 import gpboost as gpb
 import numpy as np
-# import pandas as pd
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
+print("It is recommended that the examples are run in interactive mode")
+
 
 # --------------------Grouped random effects model: single-level random effect----------------
 # Simulate data
@@ -39,6 +40,11 @@ plt.title("Comparison of true and predicted random effects")
 plt.xlabel("truth")
 plt.ylabel("predicted")
 plt.show()
+# Also predict covariance matrix
+pred = gp_model.predict(group_data_pred=np.array([1, 1, 2, 2, -1, -1]),
+                        predict_cov_mat=True)
+pred['mu']# Predicted mean
+pred['cov']# Predicted covariance
 
 # Other optimization specifications (gradient descent with Nesterov acceleration)
 gp_model = gpb.GPModel(group_data=group)
