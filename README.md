@@ -46,7 +46,8 @@ The model is trained using the **GPBoost algorithm, where training means learnin
 
 ## News
 
-04/06/2020 : First release of GPBoost
+* See the [GitHub releases](https://github.com/fabsig/GPBoost/releases) page
+* 04/06/2020 : First release of GPBoost
 
 ## Open Issues - Contribute
 
