@@ -53,8 +53,8 @@ Booster <- R6::R6Class(
           if (!is.null(gp_model)) {
             
             # Check if gp_model is gpb.Dataset or not
-            if (!gpb.check.r6.class(gp_model, "GPModel")) {
-              stop("gpb.Booster: Can only use GPModel as gp_model")
+            if (!gpb.check.r6.class(gp_model, "gpb.GPModel")) {
+              stop("gpb.Booster: Can only use gpb.GPModel as gp_model")
             }
             
             train_set$construct()

@@ -25,9 +25,9 @@
 
 namespace GPBoost {
 
-	/*! \brief Type of Eigen matrices */
+	/*! \brief Type of Eigen matrices *///TODO: (i) move this inside #ifdef SCORE_T_USE_DOUBLE and also define float types. This requires a modification of the C and R api (change types to float there as for score initilization, see setfield...)
 	typedef Eigen::SparseMatrix<double> sp_mat_t; // column-major sparse matrix type of double
-	typedef Eigen::SparseMatrix<double, Eigen::RowMajor> sp_mat_rm_t; // row-major sparse matrix type of double
+  typedef Eigen::SparseMatrix<double, Eigen::RowMajor> sp_mat_rm_t; // row-major sparse matrix type of double
 	typedef Eigen::Triplet<double> Triplet_t;
 	typedef Eigen::MatrixXd den_mat_t;
 	typedef Eigen::VectorXd vec_t;//typedef Eigen::VectorXf vec_t;

@@ -23,7 +23,7 @@ namespace GPBoost {
 	* \param ncol Number of columns
 	* \param[out] x Right-hand side vector (solution written on input)
 	*/
-	void L_solve(const double* val, const int ncol, double* x);
+  void L_solve(const double* val, const int ncol, double* x);
 
 	/*!
 	* \brief Solve equation system with a sparse lower triangular matrix as left-hand side (Lx=b)
@@ -33,7 +33,7 @@ namespace GPBoost {
 	* \param ncol Number of columns
 	* \param[out] x Right-hand side vector (solution written on input)
 	*/
-	void sp_L_solve(const double* val, const int* row_idx, const int* col_ptr, const int ncol, double* x);
+  void sp_L_solve(const double* val, const int* row_idx, const int* col_ptr, const int ncol, double* x);
 
 	/*!
 	* \brief Solve equation system with the transpose of a sparse lower triangular matrix as left-hand side: (L'x=b)
@@ -43,35 +43,25 @@ namespace GPBoost {
 	* \param ncol Number of columns
 	* \param[out] x Right-hand side vector (solution written on input)
 	*/
-	void sp_L_t_solve(const double* val, const int* row_idx, const int* col_ptr, const int ncol, double* x);
+  void sp_L_t_solve(const double* val, const int* row_idx, const int* col_ptr, const int ncol, double* x);
 
 	/*!
 	* \brief Solve equation system with a sparse left-hand side and a sparse right-hand side (Ax=B) using CSparse function cs_spsolve
 	* \param A left-hand side
 	* \param B right-hand side
-	* \param[out] Solution A^(-1)B
+  * \param[out] Solution A^(-1)B
 	* \param lower true if A is a lower triangular matrix
 	*/
-	void sp_Lower_sp_RHS_cs_solve(cs* A, cs* B, sp_mat_t& A_inv_B, bool lower = true);
+  void sp_Lower_sp_RHS_cs_solve(cs* A, cs* B, sp_mat_t& A_inv_B, bool lower = true);
 
-	/*!
-	* \brief Solve equation system with a sparse left-hand side and a sparse right-hand side (Ax=B) using CSparse function cs_spsolve
-	* \param A left-hand side. Sparse Eigen matrix is column major format
-	* \param B right-hand side. Sparse Eigen matrix is column major format
-	* \param[out] Solution A^(-1)B
-	* \param lower true if A is a lower triangular matrix
-	*/
-	void eigen_sp_Lower_sp_RHS_cs_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower = true);
-
-
-	/*!
-	* \brief Solve equation system with a sparse left-hand side and a sparse right-hand side (Ax=B)
-	* \param A left-hand side. Sparse Eigen matrix is column major format
-	* \param B right-hand side. Sparse Eigen matrix is column major format
-	* \param[out] Solution A^(-1)B
-	* \param lower true if A is a lower triangular matrix
-	*/
-	void eigen_sp_Lower_sp_RHS_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower = true);
+  /*!
+* \brief Solve equation system with a sparse left-hand side and a sparse right-hand side (Ax=B) using CSparse function cs_spsolve
+* \param A left-hand side. Sparse Eigen matrix is column major format (=default)
+* \param B right-hand side. Sparse Eigen matrix is column major format (=default)
+* \param[out] Solution A^(-1)B
+* \param lower true if A is a lower triangular matrix
+*/
+  void eigen_sp_Lower_sp_RHS_cs_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower = true);
 
 }  // namespace GPBoost
 

@@ -1,7 +1,6 @@
 README.html
-[Bb]uild/
+build/
 gpboost_r/
-[Rr]elease/
 python-package/LICENSE
 python-package/build/
 python-package/build_cpp/

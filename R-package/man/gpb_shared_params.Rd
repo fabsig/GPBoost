@@ -82,7 +82,7 @@ type str represents feature names}
 \item{callbacks}{list of callback functions
 List of callback functions that are applied at each iteration.}
 
-\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model. Can currently only be used for objective = "regression"}
+\item{gp_model}{A \code{gpb.GPModel} object that contains the random effect (Gaussian process) model. Can currently only be used for objective = "regression"}
 
 \item{use_gp_model_for_validation}{Boolean (default = FALSE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data}
 

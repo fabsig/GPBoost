@@ -195,7 +195,7 @@ namespace GPBoost {
 		std::vector<double> x(A->n);
 
 		col_ptr[0] = 0;
-		for (int k = 0; k < B->n; k++) {//TODO: make the following in parallel???
+		for (int k = 0; k < B->n; k++) {//TODO make the following in parallel???
 			int top = cs_spsolve(A, B, k, xi.data(), x.data(), (int*)NULL, lo);
 			int nz = A->n - top;
 
@@ -218,7 +218,6 @@ namespace GPBoost {
 		//std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
 		//Crash can occurr here on Linux (gcc 7.5.0 on Ubuntu 18.04) when row_idx is not increasing for all columns
-		//Update 23.04.2020: Problems can also occur on Windows
 		//See https://gitlab.com/libeigen/eigen/-/issues/1852
 		A_inv_B = Eigen::Map<sp_mat_t>(A->n, B->n, val.size(), col_ptr.data(), row_idx.data(), val.data());
 
@@ -231,10 +230,10 @@ namespace GPBoost {
 		A.makeCompressed();
 		B.makeCompressed();
 
-		 //Prepocessor flag: Workaround since problems can occurr when calling 'sp_Lower_sp_RHS_cs_solve' from Linux (likely also from macOS); see comment above in sp_Lower_sp_RHS_cs_solve.
+		 //Prepocessor flag: Workaround since problems can occurr when calling 'sp_Lower_sp_RHS_cs_solve' from Linux (likely also from macOS)
 #ifdef _WIN32
 
-		//This is faster than the version below (in particular if B is very sparse) but it can crash on Linux. Update 23.04.2020: Problems can also occur on Windows
+		//This is much than the version below (in particular if B is very sparse) but it can crash on Linux
 		//Prepare LHS
 		cs L_cs = cs();
 		L_cs.nzmax = (int)A.nonZeros();
@@ -258,17 +257,6 @@ namespace GPBoost {
 
 #else
 
-		eigen_sp_Lower_sp_RHS_solve(A, B, A_inv_B, lower);
-
-#endif
-
-	}
-
-	void eigen_sp_Lower_sp_RHS_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower) {
-		//Convert Eigen matrices to correct format
-		A.makeCompressed();
-		B.makeCompressed();
-
 		const double* val = A.valuePtr();
 		const int* row_idx = A.innerIndexPtr();
 		const int* col_ptr = A.outerIndexPtr();
@@ -289,5 +277,8 @@ namespace GPBoost {
 			}
 			A_inv_B = U_inv_dens.sparseView();
 		}
+
+#endif
+
 	}
 }  // namespace GPBoost

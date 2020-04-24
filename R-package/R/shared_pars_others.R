@@ -37,33 +37,26 @@
 #' @param params A \code{list} with parameters for the model fitting / optimization
 #'             \itemize{
 #'                \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
-#'                Options: "gradient_descent" or "fisher_scoring". Default="fisher_scoring".}
+#'                Options: "gradient_descent" or "fisher_scoring" }
 #'                \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
 #'                (for the GPBoost algorithm there are usually no). 
 #'                Options: "gradient_descent" or "wls". Gradient descent steps are done simultaneously 
 #'                with gradient descent steps for the covariance paramters. 
-#'                "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
-#'                Default="wls".}
-#'                \item{maxit}{ Maximal number of iterations for optimization algorithm. Default=1000.}
+#'                "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.}
+#'                \item{maxit}{ Maximal number of iterations for optimization algorithm}
 #'                \item{delta_rel_conv}{ Convergence criterion: stop optimization if relative change 
-#'                in parameters is below this value. Default=1E-6.}
-#'                \item{init_coef}{ Initial values for the regression coefficients (if there are any, can be NULL).
-#'                Default=NULL.}
+#'                in parameters is below this value}
+#'                \item{init_coef}{ Initial values for the regression coefficients (if there are any, can be NULL)}
 #'                \item{init_cov_pars}{ Initial values for covariance parameters of Gaussian process and 
-#'                random effects (can be NULL). Default=NULL.}
-#'                \item{lr_coef}{ Learning rate for fixed effect regression coefficients if gradient descent is used.
-#'                Default=0.01.}
-#'                \item{lr_cov}{ Learning rate for covariance parameters if gradient descent is used.
-#'                Default=0.01.}
-#'                \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used. Default=FALSE.}
-#'                \item{acc_rate_coef}{ Acceleration rate for regression coefficients (if there are any) 
-#'                for Nesterov acceleration. Default=0.1.}
-#'                \item{acc_rate_cov}{ Acceleration rate for covariance parameters for Nesterov acceleration.
-#'                Default=0.5.}
-#'                \item{momentum_offset}{ Number of iterations for which no mometum is applied in the beginning.
-#'                Default=2.}
+#'                random effects (can be NULL)}
+#'                \item{lr_coef}{ Learning rate for fixed effect regression coefficients}
+#'                \item{lr_cov}{ Learning rate for covariance parameters}
+#'                \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used}
+#'                \item{acc_rate_coef}{ Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration}
+#'                \item{acc_rate_cov}{ Acceleration rate for covariance parameters for Nesterov acceleration}
+#'                \item{momentum_offset}{ Number of iterations for which no mometum is applied in the beginning}
 #'                \item{trace}{ If TRUE, the value of the gradient is printed for some iterations.
-#'                Useful for finding good learning rates. Default=FALSE.}
+#'                Useful for finding good learning rates.}
 #'            }
 NULL
 
@@ -131,7 +124,7 @@ NULL
 #'        type str represents feature names
 #' @param callbacks list of callback functions
 #'        List of callback functions that are applied at each iteration.
-#' @param gp_model A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model. Can currently only be used for objective = "regression"
+#' @param gp_model A \code{gpb.GPModel} object that contains the random effect (Gaussian process) model. Can currently only be used for objective = "regression"
 #' @param use_gp_model_for_validation Boolean (default = FALSE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data
 #' @param train_gp_model_cov_pars Boolean (default = TRUE). If TRUE, the covariance parameters of the Gaussian process are estimated in every boosting iterations, 
 #'                otherwise the GPModel parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 

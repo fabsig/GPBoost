@@ -27,13 +27,14 @@ y <- y + eps + xi # add random effects and error to data
 #--------------------Training using gpboost----------------
 # Create random effects model
 gp_model <- GPModel(group_data = group)
-# The default optimizer for covariance parameters is Fisher scoring.
-# This can be changed to e.g. Nesterov accelerated gradient descent as follows:
+# The properties of the optimizer for the Gaussian process or 
+#   random effects model can be set as follows
+re_params <- list(optimizer_cov="fisher_scoring")
 # re_params <- list(trace=TRUE,optimizer_cov="gradient_descent",
 #                   lr_cov = 0.05, use_nesterov_acc = TRUE)
-# gp_model$set_optim_params(params=re_params)
+gp_model$set_optim_params(params=re_params)
 
-# print("Train boosting with random effects model")
+print("Train boosting with random effects model")
 bst <- gpboost(data = X,
                label = y,
                gp_model = gp_model,
@@ -89,7 +90,7 @@ dtest <- gpb.Dataset.create.valid(dtrain, data = X[-train_ind,], label = y[-trai
 valids <- list(test = dtest)
 gp_model <- GPModel(group_data = group[train_ind])
 
-# Do not include random effect predictions for validation
+# Do not include random effect predictions for validation (observe the lower test error)
 print("Training with validation data and use_gp_model_for_validation = FALSE")
 bst <- gpb.train(data = dtrain,
                  gp_model = gp_model,
@@ -104,10 +105,6 @@ bst <- gpb.train(data = dtrain,
                  use_gp_model_for_validation = FALSE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
              ", best test error: ", bst$best_score))
-# Plot validation error
-val_error <- unlist(bst$record_evals$test$l2$eval)
-plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
-     xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
 
 # Include random effect predictions for validation (observe the lower test error)
 gp_model <- GPModel(group_data = group[train_ind])
@@ -126,10 +123,7 @@ bst <- gpb.train(data = dtrain,
                  use_gp_model_for_validation = TRUE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
              ", best test error: ", bst$best_score))
-# Plot validation error
-val_error <- unlist(bst$record_evals$test$l2$eval)
-plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
-     xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
+
 
 #--------------------Do Newton updates for tree leaves---------------
 print("Training with Newton updates for tree leaves")
@@ -147,13 +141,9 @@ bst <- gpb.train(data = dtrain,
                  leaves_newton_update = TRUE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
              ", best test error: ", bst$best_score))
-# Plot validation error
-val_error <- unlist(bst$record_evals$test$l2$eval)
-plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
-     xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
 
-# Using gpboost function
-bst <- gpboost(data = dtrain,
+bst <- gpboost(data = X,
+               label = y,
                gp_model = gp_model,
                nrounds = 1,
                objective = "regression_l2",

@@ -32,10 +32,6 @@ pred <- predict(gp_model, group_data_pred = group_test)
 plot(b1, pred$mu, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 abline(a=0,b=1)
-# Also predict covariance matrix
-pred <- predict(gp_model, group_data_pred = c(1,1,2,2,-1,-1), predict_cov_mat = TRUE)
-pred$mu# Predicted mean
-pred$cov# Predicted covariance
 
 # Use other optimization technique: gradient descent instead of Fisher scoring
 gp_model <- fitGPModel(group_data = group, y = y, std_dev = TRUE,

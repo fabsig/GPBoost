@@ -20,7 +20,7 @@ gpboost(data, label = NULL, nrounds = 100, obj = NULL, gp_model = NULL,
 \code{regression_l2}, \code{regression_l1}, \code{huber},
 \code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}. Currently only "regression_l2" supports Gaussian process boosting.}
 
-\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model. Can currently only be used for objective = "regression"}
+\item{gp_model}{A \code{gpb.GPModel} object that contains the random effect (Gaussian process) model. Can currently only be used for objective = "regression"}
 
 \item{train_gp_model_cov_pars}{Boolean (default = TRUE). If TRUE, the covariance parameters of the Gaussian process are estimated in every boosting iterations, 
 otherwise the GPModel parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 

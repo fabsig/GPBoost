@@ -25,10 +25,10 @@
 #include <algorithm>    // std::shuffle
 #include <random>       // std::default_random_engine
 //#include <typeinfo> // Only needed for debugging
-//#include <chrono>  // only needed for debugging
-//#include <thread> // only needed for debugging
+//#include <chrono>  // Only needed for debugging
+//#include <thread> // Only needed for debugging
 //Log::Info("Fine here ");// Only for debugging
-//std::this_thread::sleep_for(std::chrono::milliseconds(200));
+//std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
 namespace GPBoost {
 
@@ -173,17 +173,17 @@ namespace GPBoost {
 
 			if (num_re_group_ > 0 && num_gp_total_ == 0) {
 				do_symbolic_decomposition_ = true;//Symbolic decompostion is only done if sparse matrices are used
-				use_woodbury_identity_ = true;//Faster to use Woodbury identity since the dimension of the random effects is typically much smaller than the number of data points
 			}
 			else {
 				do_symbolic_decomposition_ = false;
-				use_woodbury_identity_ = false;
 			}
 
 			//Create RE/GP component models
 			for (const auto& cluster_i : unique_clusters_) {
+				ConstructI<T1>(cluster_i);//Idendity matrices needed for computing inverses of covariance matrices used in gradient descent
 				std::vector<std::shared_ptr<RECompBase<T1>>> re_comps_cluster_i;
 				if (vecchia_approx_) {
+
 					std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_data_per_cluster_[cluster_i]);
 					std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_data_per_cluster_[cluster_i]);
 					std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_per_cluster_[cluster_i]);
@@ -205,64 +205,20 @@ namespace GPBoost {
 					z_outer_z_obs_neighbors_.insert({ cluster_i, z_outer_z_obs_neighbors_cluster_i });
 
 					Log::Info("Nearest neighbors for Vecchia approximation found");
-				}//end vecchia_approx_
+				}
 				else {
+
 					CreateREComponents(num_data_, num_re_group_, data_indices_per_cluster_, cluster_i, re_group_levels, num_data_per_cluster_,
 						num_re_group_rand_coef_, re_group_rand_coef_data, ind_effect_group_rand_coef_, num_gp_, gp_coords_data,
 						dim_gp_coords_, gp_rand_coef_data, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, ind_intercept_gp_, re_comps_cluster_i);
 
-					if (use_woodbury_identity_) {//Create matrices Z and ZtZ if Woodbury identity is used (used only if there are only grouped REs and no GPs)
-						CHECK(num_comps_total_ == num_re_group_total_);
-						std::vector<data_size_t> cum_num_rand_eff_cluster_i(num_comps_total_+1);
-						cum_num_rand_eff_cluster_i[0] = 0;
-						//Determine number of rows and non-zero entries of Z
-						int non_zeros = 0;
-						int ncols = 0;
-						for (int j = 0; j < num_comps_total_; ++j) {
-							sp_mat_t* Z_j = re_comps_cluster_i[j]->GetZ();
-							ncols += (int)Z_j->cols();
-							non_zeros += (int)Z_j->nonZeros();
-							cum_num_rand_eff_cluster_i[j + 1] = ncols;
-						}
-						//Create matrix Z
-						std::vector<Triplet_t> triplets;
-						triplets.reserve(non_zeros);
-						int ncol_prev = 0;
-						for (int j = 0; j < num_comps_total_; ++j) {
-							sp_mat_t* Z_j = re_comps_cluster_i[j]->GetZ();
-							for (int k = 0; k < Z_j->outerSize(); ++k) {
-								for (sp_mat_t::InnerIterator it(*Z_j, k); it; ++it) {
-									triplets.emplace_back(it.row(), ncol_prev + it.col(), it.value());
-								}
-							}
-							ncol_prev += (int)Z_j->cols();
-						}
-						sp_mat_t Z_cluster_i(num_data_per_cluster_[cluster_i], ncols);
-						Z_cluster_i.setFromTriplets(triplets.begin(), triplets.end());
-						sp_mat_t Zt_cluster_i = Z_cluster_i.transpose();
-						sp_mat_t ZtZ_cluster_i = Zt_cluster_i * Z_cluster_i;
+				}
 
-						Zt_.insert({ cluster_i, Zt_cluster_i });
-						ZtZ_.insert({ cluster_i, ZtZ_cluster_i });
-						cum_num_rand_eff_.insert({ cluster_i, cum_num_rand_eff_cluster_i });
-						//for (int i = 0; i < (int)Z_cluster_i.rows(); ++i) {//For debugging only
-						//	for (int j = 0; j < (int)Z_cluster_i.cols(); ++j) {
-						//		Log::Info("Z(%d,%d) %f", i, j, Z_cluster_i.coeffRef(i, j));
-						//	}
-						//}
-						//for (int i = 0; i < (int)ZtZ_cluster_i.rows(); ++i) {//For debugging only
-						//	for (int j = 0; j < (int)ZtZ_cluster_i.cols(); ++j) {
-						//		Log::Info("ZtZ(%d,%d) %f", i, j, ZtZ_cluster_i.coeffRef(i, j));
-						//	}
-						//}
-					}//end use_woodbury_identity_
-					ConstructI<T1>(cluster_i);//Idendity matrices needed for computing inverses of covariance matrices used in gradient descent
-				}//end not vecchia_approx_
 				re_comps_.insert({ cluster_i, re_comps_cluster_i });
 			}
 
 
-			////Following only prints stuff for debugging
+			////Following only prints stuff for testing. TODO: delete
 
 			//Log::Info("********************** Meta data ********************************");
 			//Log::Info("num_data_ : %d", num_data_);
@@ -358,7 +314,7 @@ namespace GPBoost {
 				else if (optimizer == "fisher_scoring") {//Fisher scoring
 					UpdateCovParFisherScoringOneIter(cov_pars, false);//closed_form_solution_sigma = false: we don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)
 				}
-				CheckNaNInf(cov_pars);
+				CheckNaN(cov_pars);
 
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
 					Log::Debug("Covariance parameter estimation: iteration number %d", it + 1);
@@ -486,7 +442,7 @@ namespace GPBoost {
 				else if (optimizer_cov == "fisher_scoring") {//one step of Fisher scoring
 					UpdateCovParFisherScoringOneIter(cov_pars, false);//closed_form_solution_sigma = false: we don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)
 				}
-				CheckNaNInf(cov_pars);
+				CheckNaN(cov_pars);
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
 					Log::Debug("Gradient descent iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
@@ -544,16 +500,7 @@ namespace GPBoost {
 					log_det -= D_inv_[cluster_i].diagonal().array().log().sum();
 				}
 				else {
-					if (use_woodbury_identity_) {
-						log_det += (2. * chol_facts_[cluster_i].diagonal().array().log().sum());
-						for (int j = 0; j < num_comps_total_; ++j) {
-							int num_rand_eff = cum_num_rand_eff_[cluster_i][j + 1] - cum_num_rand_eff_[cluster_i][j];
-							log_det += (num_rand_eff * std::log(re_comps_[cluster_i][j]->cov_pars_[0]));
-						}
-					}
-					else {
-						log_det += (2. * chol_facts_[cluster_i].diagonal().array().log().sum());
-					}
+					log_det += (2. * chol_facts_[cluster_i].diagonal().array().log().sum());
 				}
 			}
 			negll = yTPsiInvy / 2. / cov_pars[0] + log_det / 2. + num_data_ / 2. * (std::log(cov_pars[0]) + std::log(2 * M_PI));
@@ -797,8 +744,9 @@ namespace GPBoost {
 
 			for (const auto& cluster_i : unique_clusters_pred) {
 
-				//Case 1: no data observed for this Gaussian process with ID 'cluster_i'. Thus use prior mean (0) and prior covariance matrix
+				//no data observed for this Gaussian process with ID 'cluster_i'. Thus use prior mean (0) and prior covariance matrix
 				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) == unique_clusters_.end()) {
+
 					if (!has_covariates_) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
@@ -811,6 +759,7 @@ namespace GPBoost {
 						std::vector<std::shared_ptr<RECompBase<T1>>> re_comps_cluster_i;
 
 						if (vecchia_approx_) {
+
 							std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
@@ -847,8 +796,11 @@ namespace GPBoost {
 							sp_mat_t B_inv_D_sqrt;
 							eigen_sp_Lower_sp_RHS_cs_solve(B_cluster_i, D_sqrt, B_inv_D_sqrt, true);
 							psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
-						}//end vecchia_approx_
-						else {//not vecchia_approx_
+
+						}//end Vecchia
+
+						else {
+
 							psi.resize(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
 							psi.setIdentity();
 							CreateREComponents(num_data_pred, num_re_group_, data_indices_per_cluster_pred, cluster_i, re_group_levels_pred, num_data_per_cluster_pred,
@@ -860,9 +812,10 @@ namespace GPBoost {
 								re_comps_cluster_i[j]->CalcSigma();
 								psi += (*(re_comps_cluster_i[j]->GetZSigmaZt().get()));
 							}
-						}//end not vecchia_approx_
+						}//end not Vecchia
 
 						psi *= cov_pars[0];
+
 						//write on output
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
@@ -870,9 +823,12 @@ namespace GPBoost {
 								out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred] = psi.coeff(j, i);
 							}
 						}
+
 					}//end predict_cov_mat
+
 				}//end cluster_i with no observed data
-				else {//Case 2: there exists observed data for this cluster_i (= typically the case)
+				else {//there exists observed data for this cluster_i (= typical case)
+
 					den_mat_t gp_coords_mat_pred;
 					if (num_gp_ > 0) {
 						std::vector<double> gp_coords_pred;
@@ -890,7 +846,8 @@ namespace GPBoost {
 						cov_mat_pred_id = T1(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
 					}
 
-					if (vecchia_approx_) {//vecchia_approx_
+					if (vecchia_approx_) {
+
 						std::shared_ptr<RECompGP<T1>> re_comp = std::dynamic_pointer_cast<RECompGP<T1>>(re_comps_[cluster_i][ind_intercept_gp_]);
 
 						int num_data_tot = num_data_per_cluster_[cluster_i] + num_data_per_cluster_pred[cluster_i];
@@ -923,13 +880,15 @@ namespace GPBoost {
 							CalcPredVecchiaLatentObservedFirstOrder(false, cluster_i, num_data_per_cluster_pred,
 								re_comp->coords_, gp_coords_mat_pred, predict_cov_mat, mean_pred_id, cov_mat_pred_id);
 						}
-					}//end vecchia_approx_
-					else {// not vecchia_approx_
+
+					}//end Vecchia approximation
+					else {
+
 						CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 							re_group_levels_pred, re_group_rand_coef_data_pred, gp_coords_mat_pred, gp_rand_coef_data_pred,
 							predict_cov_mat, mean_pred_id, cov_mat_pred_id);
 
-					}//end not vecchia_approx_
+					}//end not Vecchia approximation
 
 					//write on output
 #pragma omp parallel for schedule(static)
@@ -992,7 +951,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate the leaf values when performing a Newton update step after the tree structure has been found in tree-boosting
-		*    Note: only used in GPBoost for combined Gaussian process tree-boosting (this is called from 'objective_function_->NewtonUpdateLeafValues'). It is assumed that 'CalcYAux' has been called before (from 'objective_function_->GetGradients').
+		*    Note: only used in GPBoost for tree-boosting (this is called from regression_objective). It is assume that 'CalcYAux' has been called before.
 		* \param data_leaf_index Leaf index for every data point (array of size num_data)
 		* \param num_leaves Number of leaves
 		* \param[out] leaf_values Leaf values when performing a Newton update step (array of size num_leaves)
@@ -1000,7 +959,7 @@ namespace GPBoost {
 		*/
 		void NewtonUpdateLeafValues(const int* data_leaf_index,
 			const int num_leaves, double* leaf_values, double marg_variance = 1.) {
-			CHECK(y_aux_has_been_calculated_);//y_aux_ has already been calculated when calculating the gradient for finding the tree structure from 'GetGradients' in 'regression_objetive.hpp'
+			CHECK(y_aux_has_been_calculated_);
 			den_mat_t HTPsiInvH(num_leaves, num_leaves);
 			vec_t HTYAux(num_leaves);
 			HTPsiInvH.setZero();
@@ -1015,33 +974,25 @@ namespace GPBoost {
 					entries_H_cluster_i[i] = Triplet_t(i, data_leaf_index[data_indices_per_cluster_[cluster_i][i]], 1.);
 				}
 
-				den_mat_t HTPsiInvH_cluster_i;
 				if (vecchia_approx_) {
 					sp_mat_t H_cluster_i(num_data_per_cluster_[cluster_i], num_leaves);//row major format is needed for Vecchia approx.
 					H_cluster_i.setFromTriplets(entries_H_cluster_i.begin(), entries_H_cluster_i.end());
 
 					HTYAux -= H_cluster_i.transpose() * y_aux_[cluster_i];//minus sign since y_aux_ has been calculated on the gradient = F-y (and not y-F)
 					sp_mat_t BH = B_[cluster_i] * H_cluster_i;
-					HTPsiInvH_cluster_i = den_mat_t(BH.transpose() * D_inv_[cluster_i] * BH);
+					den_mat_t HTPsiInvH_cluster_i = den_mat_t(BH.transpose() * D_inv_[cluster_i] * BH);
+					HTPsiInvH += HTPsiInvH_cluster_i;
 				}
 				else {
 					sp_mat_t H_cluster_i(num_data_per_cluster_[cluster_i], num_leaves);
 					H_cluster_i.setFromTriplets(entries_H_cluster_i.begin(), entries_H_cluster_i.end());
 
 					HTYAux -= H_cluster_i.transpose() * y_aux_[cluster_i];//minus sign since y_aux_ has been calculated on the gradient = F-y (and not y-F)
-					if (use_woodbury_identity_) {
-						sp_mat_t ZtH_cluster_i = Zt_[cluster_i] * H_cluster_i;
-						T1 MInvSqrtZtH;
-						CalcPsiInvSqrtH(MInvSqrtZtH, ZtH_cluster_i, cluster_i);
-						HTPsiInvH_cluster_i = H_cluster_i.transpose() * H_cluster_i - MInvSqrtZtH.transpose() * MInvSqrtZtH;
-					}
-					else {
-						T1 PsiInvSqrtH;
-						CalcPsiInvSqrtH(PsiInvSqrtH, H_cluster_i, cluster_i);
-						HTPsiInvH_cluster_i = PsiInvSqrtH.transpose() * PsiInvSqrtH;
-					}
+					T1 PsiInvSqrtH;
+					CalcPsiInvSqrtH(PsiInvSqrtH, H_cluster_i, cluster_i);
+					den_mat_t HTPsiInvH_cluster_i = PsiInvSqrtH.transpose() * PsiInvSqrtH;
+					HTPsiInvH += HTPsiInvH_cluster_i;
 				}
-				HTPsiInvH += HTPsiInvH_cluster_i;
 			}
 
 			HTYAux *= marg_variance;
@@ -1116,16 +1067,8 @@ namespace GPBoost {
 		std::map<gp_id_t, T1> psi_inv_;
 		/*! \brief Copy of response data (used only in case there are also linear covariates since then y_ is modified during the algorithm) */
 		vec_t y_vec_;
-		/*! \brief If true, a symbolic decomposition is first done when calculating the Cholesky factor of the covariance matrix (only for sparse matrices) */
+		/*! \brief Key: labels of independent realizations of REs/GPs, value: Psi^-1*y_ (used for various computations) */
 		bool do_symbolic_decomposition_ = true;
-		/*! \brief If true, the Woodbury, Sherman and Morrison matrix inversion formula is used for calculating the inverse of the covariance matrix (only used if there are only grouped REs and no Gaussian processes) */
-		bool use_woodbury_identity_ = false;
-		/*! \brief Collects matrices Z^T (usually not saved, only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
-		std::map<gp_id_t, sp_mat_t> Zt_;
-		/*! \brief Collects matrices Z^TZ (usually not saved, only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
-		std::map<gp_id_t, sp_mat_t> ZtZ_;
-		/*! \brief Cumulative number of random effects for components (usually not saved, only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
-		std::map<gp_id_t, std::vector<data_size_t>> cum_num_rand_eff_;//The random effects of component j start at cum_num_rand_eff_[0][j]+1 and end at cum_num_rand_eff_[0][j+1]
 
 		/*! \brief If true, the model linearly incluses covariates */
 		bool has_covariates_ = false;
@@ -1215,14 +1158,13 @@ namespace GPBoost {
 		/*! \brief Constructs identity matrices if sparse matrices are used (used for calculating inverse covariance matrix) */
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
 		void ConstructI(gp_id_t cluster_i) {
-			int dim_I = use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_comps_total_] : num_data_per_cluster_[cluster_i];
-			T3 I(dim_I, dim_I);//identity matrix for calculating precision matrix
+			T3 I(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);//identity matrix for calculating precision matrix
 			I.setIdentity();
 			Id_.insert({ cluster_i, I });
 			cs Id_cs = cs();//same for cs type //TODO: construct this independently of Id_ , but then care need to be taken for deleting the pointer objects.
-			Id_cs.nzmax = dim_I;
-			Id_cs.m = dim_I;
-			Id_cs.n = dim_I;
+			Id_cs.nzmax = num_data_per_cluster_[cluster_i];
+			Id_cs.m = num_data_per_cluster_[cluster_i];
+			Id_cs.n = num_data_per_cluster_[cluster_i];
 			Id_[cluster_i].makeCompressed();
 			Id_cs.p = reinterpret_cast<csi*>(Id_[cluster_i].outerIndexPtr());
 			Id_cs.i = reinterpret_cast<csi*>(Id_[cluster_i].innerIndexPtr());
@@ -1234,8 +1176,7 @@ namespace GPBoost {
 		/*! \brief Constructs identity matrices if dense matrices are used (used for calculating inverse covariance matrix) */
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
 		void ConstructI(gp_id_t cluster_i) {
-			int dim_I = use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_comps_total_] : num_data_per_cluster_[cluster_i];
-			T3 I(dim_I, dim_I);//identity matrix for calculating precision matrix
+			T3 I(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);//identity matrix for calculating precision matrix
 			I.setIdentity();
 			Id_.insert({ cluster_i, I });
 		}
@@ -1320,89 +1261,57 @@ namespace GPBoost {
 		/*! \brief Caclulate Psi^(-1) if sparse matrices are used */
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
 		void CalcPsiInv(T3& psi_inv, gp_id_t cluster_i) {
-			if (use_woodbury_identity_) {
-				sp_mat_t MInvSqrtZt;
-				sp_mat_t L_inv;
-				eigen_sp_Lower_sp_RHS_cs_solve(chol_facts_[cluster_i], Id_[cluster_i], L_inv, true);
-				MInvSqrtZt = L_inv * Zt_[cluster_i];
-				////Alternative option (crashes when eigen_sp_Lower_sp_RHS_cs_solve uses sp_Lower_sp_RHS_cs_solve / cs_spsolve due to Eigen bug)
-				//eigen_sp_Lower_sp_RHS_cs_solve(chol_facts_[cluster_i], Zt_[cluster_i], MInvSqrtZt, true);
+			//Using CSparse function 'cs_spsolve'
+			cs L_cs = cs();//Prepare LHS
+			L_cs.nzmax = (int)chol_facts_[cluster_i].nonZeros();
+			L_cs.m = num_data_per_cluster_[cluster_i];
+			L_cs.n = num_data_per_cluster_[cluster_i];
+			L_cs.p = reinterpret_cast<csi*>(chol_facts_[cluster_i].outerIndexPtr());
+			L_cs.i = reinterpret_cast<csi*>(chol_facts_[cluster_i].innerIndexPtr());
+			L_cs.x = chol_facts_[cluster_i].valuePtr();
+			L_cs.nz = -1;
 
-				psi_inv = -MInvSqrtZt.transpose() * MInvSqrtZt;
-				psi_inv.diagonal().array() += 1.0;
-			}
-			else {
-				//Using CSparse function 'cs_spsolve'
-				cs L_cs = cs();//Prepare LHS
-				L_cs.nzmax = (int)chol_facts_[cluster_i].nonZeros();
-				L_cs.m = num_data_per_cluster_[cluster_i];
-				L_cs.n = num_data_per_cluster_[cluster_i];
-				L_cs.p = reinterpret_cast<csi*>(chol_facts_[cluster_i].outerIndexPtr());
-				L_cs.i = reinterpret_cast<csi*>(chol_facts_[cluster_i].innerIndexPtr());
-				L_cs.x = chol_facts_[cluster_i].valuePtr();
-				L_cs.nz = -1;
-				//Invert Cholesky factor
-				sp_mat_t L_inv;
-				sp_Lower_sp_RHS_cs_solve(&L_cs, &Id_cs_[cluster_i], L_inv, true);
-				psi_inv = L_inv.transpose() * L_inv;
+			sp_mat_t L_inv;
+			sp_Lower_sp_RHS_cs_solve(&L_cs, &Id_cs_[cluster_i], L_inv, true);
+			psi_inv = L_inv.transpose() * L_inv;
 
-				////Version 2: doing sparse solving "by hand" but ignoring sparse RHS
-				//const double* val = chol_facts_[cluster_i].valuePtr();
-				//const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
-				//const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
-				//den_mat_t L_inv_dens = den_mat_t(Id_[cluster_i]);
-				//for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-				//	sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], L_inv_dens.data() + j * num_data_per_cluster_[cluster_i]);
-				//}
-				//const sp_mat_t L_inv = L_inv_dens.sparseView();
-				//psi_inv = L_inv.transpose() * L_inv;
+			////Version 2: doing sparse solving "by hand" but ignoring sparse RHS
+			//const double* val = chol_facts_[cluster_i].valuePtr();
+			//const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
+			//const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
+			//den_mat_t L_inv_dens = den_mat_t(Id_[cluster_i]);
+			//for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+			//	sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], L_inv_dens.data() + j * num_data_per_cluster_[cluster_i]);
+			//}
+			//const sp_mat_t L_inv = L_inv_dens.sparseView();
+			//psi_inv = L_inv.transpose() * L_inv;
 
-				////Version 1: let Eigen do the solving
-				//cpsi_inv = chol_facts_solve_[cluster_i].solve(Id_[cluster_i]);
-			}
-
+			////Version 1: let Eigen do the solving
+			//cpsi_inv = chol_facts_solve_[cluster_i].solve(Id_[cluster_i]);
 		}
 
 		/*! \brief Caclulate Psi^(-1) if dense matrices are used */
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
 		void CalcPsiInv(T3& psi_inv, gp_id_t cluster_i) {
-			if (use_woodbury_identity_) {//should currently not be called as use_woodbury_identity_ is only true for grouped REs only i.e. sparse matrices
-				T3 MInvSqrtZt = Zt_[cluster_i];
+			////Version 1
+			//psi_inv = chol_facts_solve_[cluster_i].solve(Id_[cluster_i]);
+
+			//Version 2: solving by hand
+			T3 L_inv = Id_[cluster_i];
 #pragma omp parallel for schedule(static)//TODO: maybe sometimes faster without parallelization?
-				for (int j = 0; j < (int)MInvSqrtZt.cols(); ++j) {
-					L_solve(chol_facts_[cluster_i].data(), (int)chol_facts_[cluster_i].cols(), MInvSqrtZt.data() + j * (int)MInvSqrtZt.cols());
-				}
-				psi_inv = -MInvSqrtZt.transpose() * MInvSqrtZt;
-				psi_inv.diagonal().array() += 1.0;
+			for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+				L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], L_inv.data() + j * num_data_per_cluster_[cluster_i]);
 			}
-			else {
-				////Version 1
-				//psi_inv = chol_facts_solve_[cluster_i].solve(Id_[cluster_i]);
+			//chol_facts_[cluster_i].triangularView<Eigen::Lower>().solveInPlace(L_inv); //slower
+			psi_inv = L_inv.transpose() * L_inv;
 
-				//Version 2: solving by hand
-				T3 L_inv = Id_[cluster_i];
-#pragma omp parallel for schedule(static)//TODO: maybe sometimes faster without parallelization?
-				for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-					L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], L_inv.data() + j * num_data_per_cluster_[cluster_i]);
-				}
-				//chol_facts_[cluster_i].triangularView<Eigen::Lower>().solveInPlace(L_inv); //slower
-				psi_inv = L_inv.transpose() * L_inv;
-
-				// Using dpotri from LAPACK does not work since LAPACK is not installed
-				//int info = 0;
-				//int n = num_data_per_cluster_[cluster_i];
-				//int lda = num_data_per_cluster_[cluster_i];
-				//char* uplo = "L";
-				//den_mat_t M = chol_facts_[cluster_i];
-				//BLASFUNC(dpotri)(uplo, &n, M.data(), &lda, &info);
-			}
-		}
-
-		/*! \brief Caclulate Psi^(-0.5)H if sparse matrices are used. Used in 'NewtonUpdateLeafValues' */
-		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
-		void CalcPsiInvSqrtH(T3& PsiInvSqrtH, sp_mat_t& H, gp_id_t cluster_i) {
-			eigen_sp_Lower_sp_RHS_solve(chol_facts_[cluster_i], H, PsiInvSqrtH, true);
-			//Note: Using CSparse function 'cs_spsolve' via 'eigen_sp_Lower_sp_RHS_cs_solve' crashes due to bug in Eigen
+			// Using dpotri from LAPACK does not work since LAPACK is not installed
+			//int info = 0;
+			//int n = num_data_per_cluster_[cluster_i];
+			//int lda = num_data_per_cluster_[cluster_i];
+			//char* uplo = "L";
+			//den_mat_t M = chol_facts_[cluster_i];
+			//BLASFUNC(dpotri)(uplo, &n, M.data(), &lda, &info);
 		}
 
 		/*! \brief Caclulate Psi^(-0.5)H if dense matrices are used. Used in 'NewtonUpdateLeafValues' */
@@ -1413,6 +1322,13 @@ namespace GPBoost {
 			for (int j = 0; j < H.cols(); ++j) {
 				L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], PsiInvSqrtH.data() + j * num_data_per_cluster_[cluster_i]);
 			}
+		}
+
+		/*! \brief Caclulate Psi^(-0.5)H if sparse matrices are used. Used in 'NewtonUpdateLeafValues' */
+		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
+		void CalcPsiInvSqrtH(T3& PsiInvSqrtH, sp_mat_t& H, gp_id_t cluster_i) {
+			//Using CSparse function 'cs_spsolve'
+			eigen_sp_Lower_sp_RHS_cs_solve(chol_facts_[cluster_i], H, PsiInvSqrtH, true);
 		}
 
 		///*!
@@ -1510,13 +1426,7 @@ namespace GPBoost {
 					XT_psi_inv_X = BX.transpose() * D_inv_[unique_clusters_[0]] * BX;
 				}
 				else {
-					if (use_woodbury_identity_) {
-						den_mat_t ZtX = Zt_[unique_clusters_[0]] * X;
-						XT_psi_inv_X = X.transpose() * X - ZtX.transpose() * chol_facts_solve_[unique_clusters_[0]].solve(ZtX);
-					}
-					else {
-						XT_psi_inv_X = X.transpose() * chol_facts_solve_[unique_clusters_[0]].solve(X);
-					}	
+					XT_psi_inv_X = X.transpose() * chol_facts_solve_[unique_clusters_[0]].solve(X);
 				}
 			}
 			else {
@@ -1529,14 +1439,7 @@ namespace GPBoost {
 						XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
 					}
 					else {
-						if (use_woodbury_identity_) {
-							den_mat_t ZtX = Zt_[cluster_i] * ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose();
-							XT_psi_inv_X = ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all) -
-								ZtX.transpose() * chol_facts_solve_[unique_clusters_[0]].solve(ZtX);
-						}
-						else {
-							XT_psi_inv_X += ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * chol_facts_solve_[cluster_i].solve((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all));
-						}
+						XT_psi_inv_X += ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * chol_facts_solve_[cluster_i].solve((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all));
 					}
 				}
 			}
@@ -1621,7 +1524,7 @@ namespace GPBoost {
 		* \param gp_rand_coef_data Covariate data for Gaussian process random coefficients
 		* \param num_gp_rand_coef Number of Gaussian process random coefficients
 		* \param cov_fct Type of covariance (kernel) function for Gaussian processes
-		* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern covariance)
+	* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern covariance)
 		* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps_') of the intercept GP associated with the random coefficient GPs
 		* \param[out] re_comps_cluster_i Container that collects the individual component models
 		*/
@@ -2032,43 +1935,13 @@ namespace GPBoost {
 			else {
 				CalcSigmaComps();
 				for (const auto& cluster_i : unique_clusters_) {
-					if (use_woodbury_identity_) {//Use Woodburry matrix inversion formula: used only if there are only grouped REs
-						//Construct matrix Sigma^-1
-						std::vector<Triplet_t> triplets;
-						triplets.reserve(cum_num_rand_eff_[cluster_i][num_comps_total_]);
-						for (int j = 0; j < num_comps_total_; ++j) {
-							double sigmaI = re_comps_[cluster_i][j]->cov_pars_[0];
-							sigmaI = 1.0 / sigmaI;
-							for (int i = cum_num_rand_eff_[cluster_i][j]; i < cum_num_rand_eff_[cluster_i][j + 1]; ++i) {
-								triplets.emplace_back(i, i, sigmaI);
-							}
-						}
-						sp_mat_t SigmaI(cum_num_rand_eff_[cluster_i][num_comps_total_], cum_num_rand_eff_[cluster_i][num_comps_total_]);
-						SigmaI.setFromTriplets(triplets.begin(), triplets.end());
-						T1 SigmaIplusZtZ = SigmaI + ZtZ_[cluster_i];
-						CalcChol<T1>(SigmaIplusZtZ, cluster_i, do_symbolic_decomposition_);
-						//for (int i = 0; i < (int)SigmaIplusZtZ.rows(); ++i) {//For debugging only
-						//	for (int j = 0; j < (int)SigmaIplusZtZ.cols(); ++j) {
-						//		Log::Info("SigmaIplusZtZ(%d,%d) %f", i, j, SigmaIplusZtZ.coeffRef(i, j));
-						//	}
-						//}
-						//Log::Info("");
-						//for (int i = 0; i < (int)chol_facts_[cluster_i].rows(); ++i) {//For debugging only
-						//	for (int j = 0; j < (int)chol_facts_[cluster_i].cols(); ++j) {
-						//		Log::Info("chol_facts_[cluster_i](%d,%d) %f", i, j, chol_facts_[cluster_i].coeffRef(i, j));
-						//	}
-						//}
-
-					}//end use_woodbury_identity_
-					else {
-						T1 psi;
-						psi.resize(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
-						psi.setIdentity();
-						for (int j = 0; j < num_comps_total_; ++j) {
-							psi += (*(re_comps_[cluster_i][j]->GetZSigmaZt()));
-						}
-						CalcChol<T1>(psi, cluster_i, do_symbolic_decomposition_);
+					T1 psi;
+					psi.resize(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
+					psi.setIdentity();
+					for (int j = 0; j < num_comps_total_; ++j) {
+						psi += (*(re_comps_[cluster_i][j]->GetZSigmaZt()));
 					}
+					CalcChol<T1>(psi, cluster_i, do_symbolic_decomposition_);
 				}
 				do_symbolic_decomposition_ = false;//Symbolic decompostion done only once (if sparse matrices are used)
 			}
@@ -2088,27 +1961,21 @@ namespace GPBoost {
 						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 					}
 					y_aux_[cluster_i] = B_[cluster_i].transpose() * D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];
-				}//end vecchia_approx_
-				else {//not vecchia_approx_
+				}//end Vecchia
+				else {
 					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
 						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 					}
-					if (use_woodbury_identity_) {
-						vec_t Zty = Zt_[cluster_i] * y_[cluster_i];
-						vec_t MInvZty = chol_facts_solve_[cluster_i].solve(Zty);
-						y_aux_[cluster_i] = y_[cluster_i] - Zt_[cluster_i].transpose() * MInvZty;
-					}
-					else {
-						//Version 1: let Eigen do the computation
-						y_aux_[cluster_i] = chol_facts_solve_[cluster_i].solve(y_[cluster_i]);
-						//// Version 2 'do-it-yourself' (for sparse matrices)
-						//y_aux_[cluster_i] = y_[cluster_i];
-						//const double* val = chol_facts_[cluster_i].valuePtr();
-						//const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
-						//const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
-						//sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_[cluster_i].data());
-						//sp_L_t_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_[cluster_i].data());
-					}
+					//Version 1: let Eigen do the computation
+					y_aux_[cluster_i] = chol_facts_solve_[cluster_i].solve(y_[cluster_i]);
+					//// Version 2 'do-it-yourself' (for sparse matrices)
+					//y_aux_[cluster_i] = y_[cluster_i];
+					//const double* val = chol_facts_[cluster_i].valuePtr();
+					//const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
+					//const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
+					//sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_[cluster_i].data());
+					//sp_L_t_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_[cluster_i].data());
+
 				}//end non-Vecchia
 				if (marg_variance != 1.) {
 					y_aux_[cluster_i] /= marg_variance;
@@ -2134,26 +2001,18 @@ namespace GPBoost {
 					}
 					vec_t y_aux_sqrt = B_[cluster_i] * y_[cluster_i];
 					yTPsiInvy += (y_aux_sqrt.transpose() * D_inv_[cluster_i] * y_aux_sqrt)(0, 0);
-				}//end vecchia_approx_
-				else {//not vecchia_approx_
+				}//end Vecchia
+				else {
 					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
 						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 					}
-					vec_t y_aux_sqrt;
+					vec_t y_aux_sqrt = y_[cluster_i];
 					const double* val = chol_facts_[cluster_i].valuePtr();
 					const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
 					const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
-					if (use_woodbury_identity_) {
-						y_aux_sqrt = Zt_[cluster_i] * y_[cluster_i];
-						sp_L_solve(val, row_idx, col_ptr, cum_num_rand_eff_[cluster_i][num_comps_total_], y_aux_sqrt.data());
-						yTPsiInvy += (y_[cluster_i].transpose() * y_[cluster_i])(0, 0) - (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
-					}
-					else {
-						y_aux_sqrt = y_[cluster_i];
-						sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_sqrt.data());
-						yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
-					}		
-				}//end not vecchia_approx_
+					sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_sqrt.data());
+					yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
+				}//end non-Vecchia
 			}
 		}
 
@@ -2174,23 +2033,15 @@ namespace GPBoost {
 					}
 					vec_t y_aux_sqrt = B_[cluster_i] * y_[cluster_i];
 					yTPsiInvy += (y_aux_sqrt.transpose() * D_inv_[cluster_i] * y_aux_sqrt)(0, 0);
-				}//end vecchia_approx_
-				else {//not vecchia_approx_
+				}//end Vecchia
+				else {
 					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
 						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 					}
-					vec_t y_aux_sqrt;
-					if (use_woodbury_identity_) {
-						y_aux_sqrt = Zt_[cluster_i] * y_[cluster_i];
-						L_solve(chol_facts_[cluster_i].data(), cum_num_rand_eff_[cluster_i][num_comps_total_], y_aux_sqrt.data());
-						yTPsiInvy += (y_[cluster_i].transpose() * y_[cluster_i])(0, 0) - (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
-					}
-					else {
-						y_aux_sqrt = y_[cluster_i];
-						L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], y_aux_sqrt.data());
-						yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
-					}
-				}//end not vecchia_approx_
+					vec_t y_aux_sqrt = y_[cluster_i];
+					L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], y_aux_sqrt.data());
+					yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
+				}//end non-Vecchia
 			}
 		}
 
@@ -2208,7 +2059,10 @@ namespace GPBoost {
 			else {
 				cov_grad = vec_t::Zero(num_cov_par_ - 1);
 			}
-			int first_cov_par = include_error_var ? 1 : 0;
+			int first_cov_par = 0;
+			if (include_error_var) {
+				first_cov_par = 1;
+			}
 			for (const auto& cluster_i : unique_clusters_) {
 				if (vecchia_approx_) {//Vechia approximation
 					vec_t u(num_data_per_cluster_[cluster_i]);
@@ -2229,8 +2083,8 @@ namespace GPBoost {
 								0.5 * (D_inv_[cluster_i].diagonal()).dot(D_grad_[cluster_i][num_par_comp * j + ipar].diagonal()));
 						}
 					}
-				}//end vecchia_approx_
-				else {//not vecchia_approx_
+				}//end Vecchia
+				else {
 					T1 psi_inv;
 					CalcPsiInv(psi_inv, cluster_i);
 					if (save_psi_inv) {
@@ -2290,7 +2144,7 @@ namespace GPBoost {
 		* \param[out] cov_pars Covariance parameters
 		* \param closed_form_solution_sigma If true, the error variance (nugget effect) is calculated exactly using a closed form expression
 		*/
-		void UpdateCovParGradOneIter(double lr, vec_t& cov_pars, bool closed_form_solution_sigma = true) {
+		void UpdateCovParGradOneIter(double lr, vec_t& cov_pars, bool closed_form_solution_sigma=true) {
 			vec_t grad;
 			if (closed_form_solution_sigma) {
 				cov_pars[0] = 0.;
@@ -2377,9 +2231,9 @@ namespace GPBoost {
 		* \brief Check whether NaN's are presend
 		* \param par Vector of parameters that should be checked
 		*/
-		void CheckNaNInf(vec_t& par) {
-			if (std::isnan(par[0]) || std::isinf(par[0])) {
-				Log::Fatal("NaN or Inf occurred. (if gradient descent is used, consider using a smaller learning rate)");
+		void CheckNaN(vec_t& par) {
+			if (std::isnan(par[0])) {
+				Log::Fatal("NaN occurred. (if gradient descent is used, consider using a smaller learning rate)");
 			}
 		}
 
@@ -2455,8 +2309,8 @@ namespace GPBoost {
 							FI(par_nb + start_cov_pars, par_nb_cross + start_cov_pars) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
 						}
 					}
-				}//end vecchia_approx_
-				else {//not vecchia_approx_
+				}//end Vecchia approximation
+				else {//not Vecchia approximation
 					T1 psi_inv;
 					if (use_saved_psi_inv) {
 						psi_inv = psi_inv_[cluster_i];
@@ -2468,7 +2322,7 @@ namespace GPBoost {
 						psi_inv /= cov_pars[0];//psi_inv has been calculated with a transformed parametrization, so we need to divide everything by cov_pars[0] to obtain the covariance matrix
 					}
 					//Calculate Psi^-1 * derivative(Psi)
-					std::vector<T1> psi_inv_deriv_psi(num_cov_par_ - 1);
+					std::vector<T1> psi_inv_deriv_psi(num_cov_par_-1);
 					int deriv_par_nb = 0;
 					for (int j = 0; j < num_comps_total_; ++j) {//there is currently no possibility to loop over the parameters directly
 						for (int jpar = 0; jpar < re_comps_[cluster_i][j]->num_cov_par_; ++jpar) {
@@ -2505,7 +2359,7 @@ namespace GPBoost {
 						psi_inv_deriv_psi[par_nb].resize(0, 0);//not needed anymore
 						psi_inv_grad_psi_par_nb_T.resize(0, 0);
 					}
-				}//end not vecchia_approx_
+				}//end not Vecchia approximation
 			}//end loop over clusters
 			FI.triangularView<Eigen::StrictlyLower>() = FI.triangularView<Eigen::StrictlyUpper>().transpose();
 			//for (int i = 0; i < (int)FI.rows(); ++i) {//For debugging only
@@ -2669,13 +2523,7 @@ namespace GPBoost {
 						}
 					}
 				}
-				if (use_woodbury_identity_) {
-					T1 ZtM_aux = T1(Zt_[cluster_i] * M_aux.transpose());
-					cov_mat_pred_id -= (M_aux * T1(M_aux.transpose()) - ZtM_aux.transpose() * chol_facts_solve_[cluster_i].solve(ZtM_aux));
-				}
-				else {
-					cov_mat_pred_id -= (M_aux * (chol_facts_solve_[cluster_i].solve(T1(M_aux.transpose()))));
-				}
+				cov_mat_pred_id -= (M_aux * (chol_facts_solve_[cluster_i].solve(T1(M_aux.transpose()))));
 			}
 		}
 
