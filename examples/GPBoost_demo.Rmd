@@ -19,7 +19,7 @@ library(reticulate)
 run_python = TRUE
 run_cv = TRUE
 run_group_re = TRUE
-save_cache = TRUE
+cache = TRUE
 ```
 
 In this document, we illustrate how the GPBoost library can be used through the R and Python packages to learn models, make predictions, and choose tuning parameters. Further, we also compare the GPBoost algorithm to standard gradient boosting with a square loss and to standard Gaussian process regression.
@@ -55,7 +55,7 @@ In the following, we start with an example where the random part of the model co
 ## Data
 First, you need to load your data. For simplicity and illustrational purposes, we use simulated data here. In the following, we simulate data (in R) and illustrate the data in the figure below.
 <div class="fold s">
-```{r simulate_data, results='hide', message=F, cache=save_cache}
+```{r simulate_data, results='hide', message=F, cache=cache}
 # Simulate data
 n <- 200 # number of training samples
 set.seed(5)
@@ -108,7 +108,7 @@ X_test = r.X_test
 y_test = r.y_test
 ```
 
-```{r plot_data, echo=F, results='hide', message=F, cache=save_cache, fig.align='center', fig.cap='Illustration of data: Mean function F(X) used for simulation, latent Gaussian process b, and observed data y (bottom plots)'}
+```{r plot_data, echo=F, results='hide', message=F, cache=cache, fig.align='center', fig.cap='Illustration of data: Mean function F(X) used for simulation, latent Gaussian process b, and observed data y (bottom plots)'}
 library(ggplot2)
 library(viridis)
 library(gridExtra)
@@ -133,7 +133,7 @@ grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
 2. **Training the GPBoost model by calling `gpboost` or, equivalently, `gpb.train` and passing the `GPModel` as an argument**
 
 ***In R***
-```{r training, results='hold', message=F, cache=save_cache, eval=T}
+```{r training, results='hold', message=F, cache=cache, eval=T}
 # 1. Create Gaussian process / random effects model
 library(gpboost)
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
@@ -161,7 +161,7 @@ print(c(sigma2,sigma2_1,rho))
 
 ***In Python***
 <div class="fold s o">
-```{python training_python, collapse=T, message=F, cache=save_cache, eval=run_python}
+```{python training_python, collapse=T, message=F, cache=cache, eval=run_python}
 # 1. Create Gaussian process / random effects model
 import gpboost as gpb
 import numpy as np
@@ -186,7 +186,7 @@ gp_model.summary()
 **Prediction is done by calling the `predict` function** and passing the covariates (=features) for the tree ensemble and the features that define the Gaussian process or random effect, i.e. the prediction locations in our case. Note that the predictions for the tree ensemble and the Gaussian process are returned separately. I.e., one needs to sum them to obtain a single point prediction.
 
 ***In R***
-```{r prediction, results='hold', message=F, cache=save_cache, fig.align='center', fig.cap='Prediction: Predicted (posterior) mean and prediction uncertainty (=standard deviation) of GP as well as predicted mean function F(X).'}
+```{r prediction, results='hold', message=F, cache=cache, fig.align='center', fig.cap='Prediction: Predicted (posterior) mean and prediction uncertainty (=standard deviation) of GP as well as predicted mean function F(X).'}
 # make predictions
 pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
 # plot predictions
@@ -197,7 +197,7 @@ plot6 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=sqrt
 plot7 <- ggplot(data=data.frame(x=X_test[,1],f=pred$fixed_effect), aes(x=x,y=f)) + geom_line(size=1) +
   geom_line(data=data.frame(x=x,f=f1d(x)), aes(x=x,y=f), size=1.5, color="darkred") +
   ggtitle("Predicted and true F(X)") + xlab("X") + ylab("y")
-plot8 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=b_all[1:nx^2]),aes(x=s_1,y=s_2,color=b)) + geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + ggtitle("'True' GP and obs. locations") + geom_point(data = data.frame(s_1=coords[,1],s_2=coords[,2],y=y),aes(x=s_1,y=s_2),size=1,col="white", alpha=1, shape=3)
+plot8 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=b_all[1:nx^2]),aes(x=s_1,y=s_2,color=b)) + geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + ggtitle("'True' GP and obs. locations") + geom_point(data = data.frame(s_1=coords[,1],s_2=coords[,2],y=y),aes(x=s_1,y=s_2),size=3,col="white", alpha=1, shape=43)
 grid.arrange(plot8, plot5, plot6, plot7, ncol=2)
 # sum the predictions of the trees and the GP
 y_pred <- pred$fixed_effect + pred$random_effect_mean
@@ -207,7 +207,7 @@ mean((y_pred-y_test)^2)
 
 ***In Python***
 <div class="fold s o">
-```{python prediction_python, collapse=T, message=F, cache=save_cache, eval=run_python}
+```{python prediction_python, collapse=T, message=F, cache=cache, eval=run_python}
 pred = bst.predict(data=X_test, gp_coords_pred=coords_test, predict_cov_mat=True)
 y_pred = pred['fixed_effect'] + pred['random_effect_mean']
 print("Mean square error (MSE):")
@@ -221,7 +221,7 @@ np.mean((y_pred-y_test)**2)
 Boosting with trees as base learners has several tuning parameters. Arguably the most important one is the **number of boosting iterations** (=number of trees). For choosing this, you can use the **`gpb.cv` function which performs k-fold cross validation**. This can be done as shown in the following. A computationally cheaper alternative to full k-fold cross-validation is to pass a validation data set to `gpboost` or `gpb.train`. See the [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo) for more details.
 
 ***In R***
-```{r cv, results='show', message=F, cache=save_cache, eval=run_cv}
+```{r cv, results='show', message=F, cache=cache, eval=run_cv}
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 gp_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5, delta_rel_conv = .Machine$double.eps^0.25)
@@ -239,7 +239,7 @@ print(paste0("Optimal number of iterations: ", cvbst$best_iter))
 
 ***In Python***
 <div class="fold s o">
-```{python cv_python, collapse=T, message=F, cache=save_cache, eval=run_python}
+```{python cv_python, collapse=T, message=F, cache=cache, eval=run_python}
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
 gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent", "lr_cov": 0.05,
                                   "use_nesterov_acc": True, "acc_rate_cov": 0.5,
@@ -296,7 +296,7 @@ print(paste0("best_ntree: ", best_ntree, ", best_lr: ",
 In the following, we compare the GPBoost algorithm to using standard gradient boosting with a squared loss and to a linear Gaussian process model. For gradient boosting, we add the coordinates to the covariates (features) for the trees. Note that we need to allow for a much larger number of boosting iterations as the continuous spatial process is difficult to learn with discontinuous trees. For the linear Gaussian process, we include the covariates through a linear regression term. As the results below show, **both standard gradient boosting with a squared loss and a linear Gaussian process model result in considerably larger mean square errors (MSE) compared to the GPBoost algorithm**.
 
 ***In R***
-```{r comparison, results='hold', message=F, cache=save_cache, eval=T}
+```{r comparison, results='hold', message=F, cache=cache, eval=T}
 # 1. Linear Gaussian process model
 X1 <- cbind(rep(1,n),X)# Need to add an intercept term to the model matrix
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -340,7 +340,7 @@ In the following, we show how a non-linear mixed effects model can be trained us
 
 We first simulate data and then show how to train the GPBoost model and make predictions.
 <div class="fold s">
-```{r simulate_group_data, results='hide', message=F, cache=save_cache}
+```{r simulate_group_data, results='hide', message=F, cache=cache}
 # Simulate data
 set.seed(1)
 n <- 1000 # number of samples
@@ -378,7 +378,7 @@ x_rand_slope_test = rep(0,n)
 </div>
 
 ***In R***
-```{r train_group_model, results='hold', message=F, cache=save_cache, eval=run_group_re}
+```{r train_group_model, results='hold', message=F, cache=cache, eval=run_group_re}
 # 1. Create random effects model
 gp_model <- GPModel(group_data = cbind(group,group2),
                     group_rand_coef_data = x_rand_slope,

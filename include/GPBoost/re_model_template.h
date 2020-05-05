@@ -2379,7 +2379,7 @@ namespace GPBoost {
 		*/
 		void CheckNaNInf(vec_t& par) {
 			if (std::isnan(par[0]) || std::isinf(par[0])) {
-				Log::Fatal("NaN or Inf occurred. (if gradient descent is used, consider using a smaller learning rate)");
+				Log::Fatal("NaN or Inf occurred. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
 			}
 		}
 
