@@ -1,13 +1,13 @@
 # coding: utf-8
 """Helper script for checking versions in the dynamic symbol table.
 
-This script checks that GPBoost library is linked to the appropriate symbol versions.
+This script checks that the GPBoost library is linked to the appropriate symbol versions.
 """
 import re
 import sys
 
 
-def check_dependicies(objdump_string):
+def check_dependencies(objdump_string):
     """Check the dynamic symbol versions.
 
     Parameters
@@ -19,8 +19,8 @@ def check_dependicies(objdump_string):
     versions = GLIBC_version.findall(objdump_string)
     assert len(versions) > 1
     for major, minor in versions:
-        assert int(major) <= 2
-        assert int(minor) <= 14
+        assert int(major) >= 2
+        assert int(minor) >= 14
 
     GLIBCXX_version = re.compile(r'0{16}[ \t]+GLIBCXX_(\d{1,2})[.](\d{1,2})[.]?(\d{,3})[ \t]+')
     versions = GLIBCXX_version.findall(objdump_string)
@@ -40,4 +40,4 @@ def check_dependicies(objdump_string):
 
 if __name__ == "__main__":
     with open(sys.argv[1], 'r') as f:
-        check_dependicies(f.read())
+        check_dependencies(f.read())
