@@ -18,9 +18,9 @@ def check_dependencies(objdump_string):
     GLIBC_version = re.compile(r'0{16}[ \t]+GLIBC_(\d{1,2})[.](\d{1,3})[.]?\d{,3}[ \t]+')
     versions = GLIBC_version.findall(objdump_string)
     assert len(versions) > 1
-    for major, minor in versions:
-        assert int(major) >= 2
-        assert int(minor) >= 14
+    for major, minor in versions:# Only for running on AZURE
+        assert int(major) <= 2
+        assert int(minor) <= 14
 
     GLIBCXX_version = re.compile(r'0{16}[ \t]+GLIBCXX_(\d{1,2})[.](\d{1,2})[.]?(\d{,3})[ \t]+')
     versions = GLIBCXX_version.findall(objdump_string)
