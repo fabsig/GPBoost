@@ -26,6 +26,7 @@ namespace GPBoost {
 		}
 	}
 
+	//Note: the following has not been tested on data (it's a simple function, so it's unlikely that there is an error, though)
 	void L_t_solve(const double* val, const int ncol, double* x) {
 		for (int j = ncol - 1; j >= 0; --j) {
 			if (x[j] != 0) {

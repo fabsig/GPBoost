@@ -1314,10 +1314,16 @@ gpb.GPModel <- R6::R6Class(
           }
           
           if (length(cluster_ids_pred) != num_data_pred) {
-            stop("predict.GPModel: Length of ", sQuote("cluster_ids_pred"), "does not match number of data points")
+            stop("predict.GPModel: Length of ", sQuote("cluster_ids_pred"), " does not match number of predicted data points")
           }
           
           cluster_ids_pred <- as.vector(cluster_ids_pred)
+          
+        } else {
+          
+          if (!is.null(cluster_ids_pred)) {
+            stop("predict.GPModel: Labels / IDs of independent clusters ", sQuote("cluster_ids_pred"), " for which predictions should be made is not provided")
+          }
           
         }
         

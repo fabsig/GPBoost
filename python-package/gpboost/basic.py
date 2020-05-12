@@ -3664,6 +3664,9 @@ class GPModel(object):
                 cluster_ids_preds_c = cluster_ids_pred.astype(np.dtype(int))
                 cluster_ids_preds_c = cluster_ids_preds_c.ctypes.data_as(
                     ctypes.POINTER(ctypes.c_int))
+            else:
+                if self.cluster_ids is not None:
+                    raise ValueError("cluster_ids_pred not provided")
             # Set data for linear fixed-effects
             if self.has_covariates > 0:
                 if X_pred is None:
