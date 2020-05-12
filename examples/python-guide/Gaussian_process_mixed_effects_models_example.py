@@ -46,10 +46,10 @@ pred = gp_model.predict(group_data_pred=np.array([1, 1, 2, 2, -1, -1]),
 pred['mu']# Predicted mean
 pred['cov']# Predicted covariance
 
-# Other optimization specifications (gradient descent with Nesterov acceleration)
+# Other optimization specifications: gradient descent (without Nesterov acceleration)
 gp_model = gpb.GPModel(group_data=group)
 gp_model.fit(y=y, std_dev=True, params={"optimizer_cov": "gradient_descent", "lr_cov": 0.1,
-                                        "use_nesterov_acc": True})
+                                        "use_nesterov_acc": False, "maxit": 100})
 gp_model.summary()
 
 # Evaluate negative log-likelihood

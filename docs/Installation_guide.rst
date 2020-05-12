@@ -37,7 +37,7 @@ Visual Studio (or VS Build Tools)
      cmake -A x64 ..
      cmake --build . --target ALL_BUILD --config Release
 
-The ``.exe`` and ``.dll`` files will be in ``GPBoost/Release`` folder.
+The ``.exe`` and ``.dll`` files will be in the ``GPBoost/Release`` folder.
 
 MinGW-w64
 ^^^^^^^^^
@@ -55,7 +55,7 @@ MinGW-w64
      cmake -G "MinGW Makefiles" ..
      mingw32-make.exe -j4
 
-The ``.exe`` and ``.dll`` files will be in ``GPBoost/`` folder.
+The ``.exe`` and ``.dll`` files will be in the ``GPBoost/`` folder.
 
 **Note**: You may need to run the ``cmake -G "MinGW Makefiles" ..`` one more time if you encounter the ``sh.exe was found in your PATH`` error.
 

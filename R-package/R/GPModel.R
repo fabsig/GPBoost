@@ -282,7 +282,7 @@ gpb.GPModel <- R6::R6Class(
       
       # Create handle
       handle <- 0.0
-      
+
       # Attempts to create a handle for the GPModel
       try({
         # Store handle

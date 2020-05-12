@@ -26,6 +26,17 @@ namespace GPBoost {
 		}
 	}
 
+	void L_t_solve(const double* val, const int ncol, double* x) {
+		for (int j = ncol - 1; j >= 0; --j) {
+			if (x[j] != 0) {
+				x[j] /= val[j * ncol + j];
+				for (int i = 0; i < j; ++i) {
+					x[i] -= val[i * ncol + j] * x[j];
+				}
+			}
+		}
+	}
+
 	void sp_L_solve(const double* val, const int* row_idx, const int* col_ptr, const int ncol, double* x) {
 		for (int j = 0; j < ncol; ++j) {
 			if (x[j] != 0) {
@@ -214,16 +225,10 @@ namespace GPBoost {
 			}
 		}
 
-		//Log::Info("Fine here MAP TEST");//only for debugging
-		//std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-		//Crash can occurr here on Linux (gcc 7.5.0 on Ubuntu 18.04) when row_idx is not increasing for all columns
+		//Crash can occurr here on Linux (gcc 7.5.0 on Ubuntu 18.04) when row_idx is not increasing for all columns. This seems to be a bug of Eigen
 		//Update 23.04.2020: Problems can also occur on Windows
-		//See https://gitlab.com/libeigen/eigen/-/issues/1852
+		//Bug report filed: https://gitlab.com/libeigen/eigen/-/issues/1852
 		A_inv_B = Eigen::Map<sp_mat_t>(A->n, B->n, val.size(), col_ptr.data(), row_idx.data(), val.data());
-
-		//Log::Info("Fine here END eigen_sp_Lower_sp_RHS_cs_solve");
-		//std::this_thread::sleep_for(std::chrono::milliseconds(200));
 	}
 
 	void eigen_sp_Lower_sp_RHS_cs_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower) {

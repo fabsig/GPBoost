@@ -18,16 +18,24 @@ extern "C" {
 namespace GPBoost {
 
 	/*!
-	* \brief Solve equation system with a dense lower triangular matrix as left-hand side (Lx=b)
-	* \param val Values of matrix in column-major format
+	* \brief Solve equation system with a dense lower triangular matrix as left-hand side (L'x=b)
+	* \param val Values of matrix L in column-major format
 	* \param ncol Number of columns
 	* \param[out] x Right-hand side vector (solution written on input)
 	*/
 	void L_solve(const double* val, const int ncol, double* x);
 
 	/*!
+	* \brief Solve equation system with the transpose of a dense lower triangular matrix as left-hand side (Lx=b)
+	* \param val Values of matrix L in column-major format
+	* \param ncol Number of columns
+	* \param[out] x Right-hand side vector (solution written on input)
+	*/
+	void L_t_solve(const double* val, const int ncol, double* x);
+
+	/*!
 	* \brief Solve equation system with a sparse lower triangular matrix as left-hand side (Lx=b)
-	* \param val Values of sparse matrix
+	* \param val Values of sparse matrix L
 	* \param row_idx Row indices corresponding to the values ('InnerIndices' in Eigen)
 	* \param col_ptr val indexes where each column starts ('OuterStarts' in Eigen)
 	* \param ncol Number of columns
@@ -37,7 +45,7 @@ namespace GPBoost {
 
 	/*!
 	* \brief Solve equation system with the transpose of a sparse lower triangular matrix as left-hand side: (L'x=b)
-	* \param val Values of sparse matrix
+	* \param val Values of sparse matrix L
 	* \param row_idx Row indices corresponding to the values ('InnerIndices' in Eigen)
 	* \param col_ptr val indexes where each column starts ('OuterStarts' in Eigen)
 	* \param ncol Number of columns

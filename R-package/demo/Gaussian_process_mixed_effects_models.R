@@ -37,10 +37,12 @@ pred <- predict(gp_model, group_data_pred = c(1,1,2,2,-1,-1), predict_cov_mat = 
 pred$mu# Predicted mean
 pred$cov# Predicted covariance
 
-# Use other optimization technique: gradient descent instead of Fisher scoring
+# Use other optimization technique: gradient descent without Nesterov acceleration 
+#   instead of Fisher scoring
 gp_model <- fitGPModel(group_data = group, y = y, std_dev = TRUE,
                        params = list(optimizer_cov = "gradient_descent",
-                                     lr_cov = 0.1, use_nesterov_acc = FALSE))
+                                     lr_cov = 0.1, use_nesterov_acc = TRUE,
+                                     maxit = 100))
 summary(gp_model)
 
 # Evaluate negative log-likelihood
