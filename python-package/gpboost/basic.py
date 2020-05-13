@@ -4,8 +4,6 @@
 """Wrapper for C API of GPBoost."""
 from __future__ import absolute_import
 
-import time
-
 import copy
 import ctypes
 import os
