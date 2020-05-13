@@ -26,9 +26,13 @@
 #include <random>       // std::default_random_engine
 //#include <typeinfo> // Only needed for debugging
 #include <chrono>  // only needed for debugging
-#include <thread> // only needed for debugging
+//#include <thread> // only needed for debugging
 //Log::Info("Fine here ");// Only for debugging
-//std::this_thread::sleep_for(std::chrono::milliseconds(200));
+//std::this_thread::sleep_for(std::chrono::milliseconds(200));// Only for debugging
+//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
+//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
+//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+//Log::Info("Time for : %f", el_time);// Only for debugging
 
 namespace GPBoost {
 
@@ -206,10 +210,11 @@ namespace GPBoost {
 
 					Log::Info("Nearest neighbors for Vecchia approximation found");
 				}//end vecchia_approx_
-				else {
+				else {//not vecchia_approx_
+
 					CreateREComponents(num_data_, num_re_group_, data_indices_per_cluster_, cluster_i, re_group_levels, num_data_per_cluster_,
 						num_re_group_rand_coef_, re_group_rand_coef_data, ind_effect_group_rand_coef_, num_gp_, gp_coords_data,
-						dim_gp_coords_, gp_rand_coef_data, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, ind_intercept_gp_, re_comps_cluster_i);
+						dim_gp_coords_, gp_rand_coef_data, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, ind_intercept_gp_, !use_woodbury_identity_, re_comps_cluster_i);
 
 					if (use_woodbury_identity_) {//Create matrices Z and ZtZ if Woodbury identity is used (used only if there are only grouped REs and no GPs)
 						CHECK(num_comps_total_ == num_re_group_total_);
@@ -876,7 +881,7 @@ namespace GPBoost {
 							psi.setIdentity();
 							CreateREComponents(num_data_pred, num_re_group_, data_indices_per_cluster_pred, cluster_i, re_group_levels_pred, num_data_per_cluster_pred,
 								num_re_group_rand_coef_, re_group_rand_coef_data_pred, ind_effect_group_rand_coef_, num_gp_, gp_coords_data_pred,
-								dim_gp_coords_, gp_rand_coef_data_pred, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, ind_intercept_gp_, re_comps_cluster_i);
+								dim_gp_coords_, gp_rand_coef_data_pred, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, ind_intercept_gp_, true, re_comps_cluster_i);
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j] + 1, ind_par_[j + 1] - ind_par_[j]);
 								re_comps_cluster_i[j]->SetCovPars(pars);
@@ -1703,12 +1708,13 @@ namespace GPBoost {
 		* \param cov_fct Type of covariance (kernel) function for Gaussian processes
 		* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern covariance)
 		* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps_') of the intercept GP associated with the random coefficient GPs
+		* \param calculateZZt If true, the matrix Z*Z^T is calculated for grouped random effects and saved (usually not needed if Woodbury identity is used)
 		* \param[out] re_comps_cluster_i Container that collects the individual component models
 		*/
 		void CreateREComponents(data_size_t num_data, data_size_t num_re_group, std::map<gp_id_t, std::vector<int>>& data_indices_per_cluster, gp_id_t cluster_i,
 			std::vector<std::vector<string_t>>& re_group_levels, std::map<gp_id_t, int>& num_data_per_cluster, data_size_t num_re_group_rand_coef,
 			const double* re_group_rand_coef_data, std::vector<int>& ind_effect_group_rand_coef, data_size_t num_gp, const double* gp_coords_data, int dim_gp_coords,
-			const double* gp_rand_coef_data, data_size_t num_gp_rand_coef, const string_t cov_fct, double cov_fct_shape, int ind_intercept_gp,
+			const double* gp_rand_coef_data, data_size_t num_gp_rand_coef, const string_t cov_fct, double cov_fct_shape, int ind_intercept_gp, bool calculateZZt,
 			std::vector<std::shared_ptr<RECompBase<T1>>>& re_comps_cluster_i) {
 			//Grouped REs
 			if (num_re_group > 0) {
@@ -1717,7 +1723,7 @@ namespace GPBoost {
 					for (const auto& id : data_indices_per_cluster[cluster_i]) {
 						group_data.push_back(re_group_levels[j][id]);//group_data_.push_back(std::string(re_group_data[j * num_data_ + id]));
 					}
-					re_comps_cluster_i.push_back(std::shared_ptr<RECompGroup<T1>>(new RECompGroup<T1>(group_data)));
+					re_comps_cluster_i.push_back(std::shared_ptr<RECompGroup<T1>>(new RECompGroup<T1>(group_data, calculateZZt)));
 				}
 				//Random slopes
 				if (num_re_group_rand_coef > 0) {
@@ -1727,7 +1733,8 @@ namespace GPBoost {
 							rand_coef_data.push_back(re_group_rand_coef_data[j * num_data + id]);
 						}
 						std::shared_ptr<RECompGroup<T1>> re_comp = std::dynamic_pointer_cast<RECompGroup<T1>>(re_comps_cluster_i[ind_effect_group_rand_coef[j] - 1]);//Subtract -1 since ind_effect_group_rand_coef[j] starts counting at 1 not 0
-						re_comps_cluster_i.push_back(std::shared_ptr<RECompGroup<T1>>(new RECompGroup<T1>(re_comp->group_data_, re_comp->map_group_label_index_, re_comp->num_group_, rand_coef_data)));
+						re_comps_cluster_i.push_back(std::shared_ptr<RECompGroup<T1>>(new RECompGroup<T1>(
+							re_comp->group_data_, re_comp->map_group_label_index_,re_comp->num_group_, rand_coef_data, calculateZZt)));
 					}
 				}
 			}

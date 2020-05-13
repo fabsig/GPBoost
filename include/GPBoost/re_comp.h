@@ -130,25 +130,36 @@ namespace GPBoost {
 		* \brief Constructor without random coefficient data
 		* \param group_data Group data: factorial variable between 1 and the number of different groups
 		* \param num_data Number of data points
+		* \param calculateZZt If true, the matrix Z*Z^T is calculated and saved (not needed if Woodbury identity is used)
 		*/
-		RECompGroup(std::vector<re_group_t>& group_data) {
+		RECompGroup(std::vector<re_group_t>& group_data, bool calculateZZt = true) {
 			this->num_data_ = (data_size_t)group_data.size();
 			this->is_rand_coef_ = false;
 			this->num_cov_par_ = 1;
 			num_group_ = 0;
 			std::map<re_group_t, int> map_group_label_index;
-			for (auto& el : group_data) {
+			for (const auto& el : group_data) {
 				if (map_group_label_index.find(el) == map_group_label_index.end()) {
 					map_group_label_index.insert({ el, num_group_ });
 					num_group_ += 1;
 				}
 			}
 			this->Z_.resize(this->num_data_, num_group_);
-			this->Z_.setZero();
+			//this->Z_.reserve(Eigen::VectorXi::Constant(this->num_data_, 1));//don't use this, it makes things much slower
 			for (int i = 0; i < this->num_data_; ++i) {
 				this->Z_.insert(i, map_group_label_index[group_data[i]]) = 1.;
 			}
-			ConstructZZt<T>();
+//			//Note: Setting from triplets (see below) is slower (takes approx. 2 times as much time)
+//			std::vector<Triplet_t> triplets(this->num_data_);
+//#pragma omp parallel for schedule(static)
+//			for (int i = 0; i < this->num_data_; ++i) {
+//				triplets[i] = Triplet_t(i, map_group_label_index[group_data[i]], 1);
+//			}
+//			this->Z_.resize(this->num_data_, num_group_);
+//			this->Z_.setFromTriplets(triplets.begin(), triplets.end());
+			if (calculateZZt) {
+				ConstructZZt<T>();
+			}
 			group_data_ = std::make_shared<std::vector<re_group_t>>(group_data);
 			map_group_label_index_ = std::make_shared<std::map<re_group_t, int>>(map_group_label_index);
 		}
@@ -158,10 +169,11 @@ namespace GPBoost {
 		* \param group_data Reference to group data of random intercept corresponding to this effect
 		* \param num_group Number of groups / levels
 		* \param rand_coef_data Covariate data for varying coefficients
+		* \param calculateZZt If true, the matrix Z*Z^T is calculated and saved (not needed if Woodbury identity is used)
 		*/
 		RECompGroup(std::shared_ptr<std::vector<re_group_t>> group_data,
 			std::shared_ptr<std::map<re_group_t, int>> map_group_label_index,
-			data_size_t num_group, std::vector<double>& rand_coef_data) {
+			data_size_t num_group, std::vector<double>& rand_coef_data, bool calculateZZt = true) {
 			this->num_data_ = (data_size_t)(*group_data).size();
 			num_group_ = num_group;
 			group_data_ = group_data;
@@ -174,7 +186,9 @@ namespace GPBoost {
 			for (int i = 0; i < this->num_data_; ++i) {
 				this->Z_.insert(i, (*map_group_label_index_)[(*group_data_)[i]]) = this->rand_coef_data_[i];
 			}
-			ConstructZZt<T>();
+			if (calculateZZt) {
+				ConstructZZt<T>();
+			}
 		}
 
 		/*! \brief Destructor */
@@ -233,6 +247,7 @@ namespace GPBoost {
 		*/
 		std::shared_ptr<T> GetZSigmaZt() override {
 			if (this->cov_pars_.size() == 0) { Log::Fatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
+			if (this->ZZt_.cols() == 0) { Log::Fatal("Matrix ZZt_ not defined"); }
 			return(std::make_shared<T>(this->cov_pars_[0] * ZZt_));
 		}
 
@@ -245,6 +260,7 @@ namespace GPBoost {
 		*/
 		std::shared_ptr<T> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double = 1.) override {
 			if (this->cov_pars_.size() == 0) { Log::Fatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
+			if (this->ZZt_.cols() == 0) { Log::Fatal("Matrix ZZt_ not defined"); }
 			if (ind_par == 0) {
 				double cm = transf_scale ? this->cov_pars_[0] : 1.;
 				return(std::make_shared<T>(cm * ZZt_));

@@ -69,10 +69,11 @@ gpb.GPModel <- R6::R6Class(
         if (storage.mode(group_data) != "character") {
           storage.mode(group_data) <- "character"
         }
-        group_data_c_str <- c()
-        for (i in 1:length(group_data)) {
-          group_data_c_str <- c(group_data_c_str,gpb.c_str(group_data[i]))
-        }
+        group_data_c_str <- unlist(lapply(group_data,gpb.c_str))
+        # group_data_c_str <- c()# much slower
+        # for (i in 1:length(group_data)) {
+        #   group_data_c_str <- c(group_data_c_str,gpb.c_str(group_data[i]))
+        # }
         
         # Set data for random coef for grouped REs
         if (!is.null(group_rand_coef_data)) {
@@ -279,7 +280,7 @@ gpb.GPModel <- R6::R6Class(
       }
       
       vecchia_pred_type_c_str <- gpb.c_str(private$vecchia_pred_type)
-      
+
       # Create handle
       handle <- 0.0
 
@@ -308,7 +309,7 @@ gpb.GPModel <- R6::R6Class(
                            vecchia_pred_type_c_str,
                            private$num_neighbors_pred)
       })
-      
+
       # Check whether the handle was created properly if it was not stopped earlier by a stop call
       if (gpb.is.null.handle(handle)) {
         

@@ -4,6 +4,8 @@
 """Wrapper for C API of GPBoost."""
 from __future__ import absolute_import
 
+import time
+
 import copy
 import ctypes
 import os
@@ -2919,7 +2921,6 @@ class GPModel(object):
                 If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python
                 after initialization
         """
-
         if num_neighbors_pred is None:
             num_neighbors_pred = num_neighbors
 
@@ -2996,7 +2997,8 @@ class GPModel(object):
                     self.cov_par_names.append('Group_' + str(ig + 1))
             else:
                 self.cov_par_names.extend(list(self.group_data.dtype.names))
-            self.group_data = self.group_data.astype(np.dtype(str))
+            if not self.group_data.dtype == np.dtype(str):
+                self.group_data = self.group_data.astype(np.dtype(str))
             # Convert to correct format for passing to C
             group_data_c = self.group_data.flatten(order='F')
             group_data_c = string_array_c_str(group_data_c)
