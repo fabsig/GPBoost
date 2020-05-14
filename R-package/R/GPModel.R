@@ -66,11 +66,11 @@ gpb.GPModel <- R6::R6Class(
         }
         # Convert to correct format for passing to C
         group_data <- as.vector(group_data)
-        if (storage.mode(group_data) != "character") {
-          storage.mode(group_data) <- "character"
-        }
-        group_data_c_str <- unlist(lapply(group_data,gpb.c_str))
-        # group_data_c_str <- c()# much slower
+        group_data_unique <- unique(group_data)
+        group_data_unique_c_str <- lapply(group_data_unique,gpb.c_str)
+        group_data_c_str <- unlist(group_data_unique_c_str[match(group_data,group_data_unique)])
+        # group_data_c_str <- unlist(lapply(group_data,gpb.c_str))# Version 2: slower than above
+        # group_data_c_str <- c()# Version 3: much slower
         # for (i in 1:length(group_data)) {
         #   group_data_c_str <- c(group_data_c_str,gpb.c_str(group_data[i]))
         # }
@@ -824,7 +824,6 @@ gpb.GPModel <- R6::R6Class(
         if (storage.mode(group_data_pred) != "character") {
           storage.mode(group_data_pred) <- "character"
         }
-        
         group_data_pred_c_str <- c()
         for (i in 1:length(group_data_pred)) {
           group_data_pred_c_str <- c(group_data_pred_c_str,gpb.c_str(group_data_pred[i]))
@@ -1136,16 +1135,9 @@ gpb.GPModel <- R6::R6Class(
           
           num_data_pred <- as.integer(dim(group_data_pred)[1])
           group_data_pred <- as.vector(group_data_pred)
-          
-          if (storage.mode(group_data_pred) != "character") {
-            storage.mode(group_data_pred) <- "character"
-          }
-          
-          group_data_pred_c_str <- c()
-          for (i in 1:length(group_data_pred)) {
-            group_data_pred_c_str <- c(group_data_pred_c_str,gpb.c_str(group_data_pred[i]))
-          }
-          group_data_pred <- group_data_pred_c_str
+          group_data_pred_unique <- unique(group_data_pred)
+          group_data_pred_unique_c_str <- lapply(group_data_pred_unique,gpb.c_str)
+          group_data_pred_c_str <- unlist(group_data_pred_unique_c_str[match(group_data_pred,group_data_pred_unique)])
           
           # Set data for random coef for grouped REs
           if (private$num_group_rand_coef > 0) {
@@ -1363,7 +1355,7 @@ gpb.GPModel <- R6::R6Class(
                         num_data_pred,
                         predict_cov_mat,
                         cluster_ids_pred,
-                        group_data_pred,
+                        group_data_pred_c_str,
                         group_rand_coef_data_pred,
                         gp_coords_pred,
                         gp_rand_coef_data_pred,
