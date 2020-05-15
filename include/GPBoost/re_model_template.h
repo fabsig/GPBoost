@@ -1128,9 +1128,9 @@ namespace GPBoost {
 		std::map<gp_id_t, T2> chol_facts_solve_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky factors of Psi matrices */ //TODO: above needed or can pattern be saved somewhere else?
 		std::map<gp_id_t, T1> chol_facts_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: **** */ //TODO: remove?
+		/*! \brief Key: labels of independent realizations of REs/GPs, values: Idendity matrices used for calculation of inverse covariance matrix */ //TODO: remove and construct on demand?
 		std::map<gp_id_t, T1> Id_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: Idendity matrices used for calculation of inverse covariance matrix **** */
+		/*! \brief Key: labels of independent realizations of REs/GPs, values: Idendity matrices used for calculation of inverse covariance matrix */
 		std::map<gp_id_t, cs> Id_cs_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: data y */
 		std::map<gp_id_t, vec_t> y_;
