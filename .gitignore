@@ -1,9 +1,13 @@
 README.html
 [Bb]uild/
-gpboost_r/
 [Rr]elease/
+
 python-package/LICENSE
 python-package/build/
 python-package/build_cpp/
 python-package/compile/
 python-package/gpboost.egg-info/
+
+gpboost_r/
+gpboost*.tar.gz
+gpboost.Rcheck/
