@@ -1,6 +1,11 @@
 GPBoost R Package
 ==================
 
+<img src="https://github.com/fabsig/GPBoost/blob/master/gpboost_sticker.jpg?raw=true"
+     alt="GPBoost icon"
+     align = "right"
+     width="50%" />
+     
 This is the R package implementation of the GPBoost library. See https://github.com/fabsig/GPBoost for more information on the modeling background and the software implementation.
 
 Examples
