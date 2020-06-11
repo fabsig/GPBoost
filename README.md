@@ -1,10 +1,10 @@
-GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
-===============================================================================
-
 <img src="https://github.com/fabsig/GPBoost/blob/master/gpboost_sticker.jpg?raw=true"
      alt="GPBoost icon"
      align = "right"
      width="50%" />
+     
+GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
+===============================================================================
      
 # Table of Contents
 1. [Get Started](#get-started)
