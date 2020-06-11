@@ -3,7 +3,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 
 <img src="https://github.com/fabsig/GPBoost/blob/master/gpboost_sticker.jpg?raw=true"
      alt="GPBoost icon"
-     style="float: right;"
+     align = "right"
      width="40%" />
      
 # Table of Contents
