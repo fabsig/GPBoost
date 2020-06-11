@@ -1,8 +1,6 @@
 .. raw:: html
-   <img src="https://github.com/fabsig/GPBoost/blob/master/gpboost_sticker.jpg?raw=true"
-     alt="GPBoost icon"
-     align = "right"
-     width="40%" />
+
+   <img src="https://github.com/fabsig/GPBoost/blob/master/gpboost_sticker.jpg?raw=true" alt="GPBoost icon" align = "right" width="40%" />
 
 GPBoost Python Package
 =======================
