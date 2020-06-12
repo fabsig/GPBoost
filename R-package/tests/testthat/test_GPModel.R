@@ -96,6 +96,14 @@ test_that("grouped random effects model ", {
   expect_lt(sum(abs(opt$par-cov_pars[1,])),1E-3)
   expect_lt(abs(opt$value-(-3.612738)),1E-5)
   expect_equal(as.integer(opt$counts[1]), 121)
+  
+  # Use non-ordered grouping data
+  shuffle_ind <- c(10, 2, 1, 9, 7, 8, 4, 5, 3, 6)
+  gp_model <- GPModel(group_data = group[shuffle_ind])
+  fit(gp_model, y = y[shuffle_ind], std_dev = TRUE, params = list(optimizer_cov = "fisher_scoring"))
+  cov_pars <- rbind(c(0.0002000001,2.020100),c(0.0001264912,1.277687))
+  cov_pars_est <- gp_model$get_cov_pars()
+  expect_lt(sum(abs(cov_pars_est-cov_pars)),1E-6)
 })
 
 
@@ -128,6 +136,7 @@ test_that("linear mixed effects model with grouped random effects ", {
 })
 
 
+# Ignore [GPBoost] [Warning]
 test_that("two crossed random effects and a random slope ", {
   
   y <- Z1%*%b1 + Z2%*%b2 + Z3%*%b3 + xi

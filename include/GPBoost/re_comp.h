@@ -144,19 +144,20 @@ namespace GPBoost {
 					num_group_ += 1;
 				}
 			}
+			// Create incidence matrix Z
 			this->Z_.resize(this->num_data_, num_group_);
-			//this->Z_.reserve(Eigen::VectorXi::Constant(this->num_data_, 1));//don't use this, it makes things much slower
+			std::vector<Triplet_t> triplets(this->num_data_);
+#pragma omp parallel for schedule(static)
 			for (int i = 0; i < this->num_data_; ++i) {
-				this->Z_.insert(i, map_group_label_index[group_data[i]]) = 1.;
+				triplets[i] = Triplet_t(i, map_group_label_index[group_data[i]], 1);
 			}
-//			//Note: Setting from triplets (see below) is slower (takes approx. 2 times as much time)
-//			std::vector<Triplet_t> triplets(this->num_data_);
-//#pragma omp parallel for schedule(static)
-//			for (int i = 0; i < this->num_data_; ++i) {
-//				triplets[i] = Triplet_t(i, map_group_label_index[group_data[i]], 1);
-//			}
-//			this->Z_.resize(this->num_data_, num_group_);
-//			this->Z_.setFromTriplets(triplets.begin(), triplets.end());
+			this->Z_.setFromTriplets(triplets.begin(), triplets.end());
+			// Alternative version: inserting elements directly
+			// Note: compare to using triples, this is much slower when group_data is not ordered (e.g. [1,2,3,1,2,3]), otherwise if group_data is ordered (e.g. [1,1,2,2,3,3]) there is no big difference
+			////this->Z_.reserve(Eigen::VectorXi::Constant(this->num_data_, 1));//don't use this, it makes things much slower
+			//for (int i = 0; i < this->num_data_; ++i) {
+			//	this->Z_.insert(i, map_group_label_index[group_data[i]]) = 1.;
+			//}
 			if (calculateZZt) {
 				ConstructZZt<T>();
 			}
@@ -182,10 +183,16 @@ namespace GPBoost {
 			this->is_rand_coef_ = true;
 			this->num_cov_par_ = 1;
 			this->Z_.resize(this->num_data_, num_group_);
-			this->Z_.setZero();
+			std::vector<Triplet_t> triplets(this->num_data_);
+#pragma omp parallel for schedule(static)
 			for (int i = 0; i < this->num_data_; ++i) {
-				this->Z_.insert(i, (*map_group_label_index_)[(*group_data_)[i]]) = this->rand_coef_data_[i];
+				triplets[i] = Triplet_t(i, (*map_group_label_index_)[(*group_data_)[i]], this->rand_coef_data_[i]);
 			}
+			this->Z_.setFromTriplets(triplets.begin(), triplets.end());
+			//// Alternative version: inserting elements directly (see constructor above)
+			//for (int i = 0; i < this->num_data_; ++i) {
+			//	this->Z_.insert(i, (*map_group_label_index_)[(*group_data_)[i]]) = this->rand_coef_data_[i];
+			//}
 			if (calculateZZt) {
 				ConstructZZt<T>();
 			}
