@@ -267,7 +267,7 @@ if __name__ == "__main__":
                                       os.path.join(CURRENT_DIR, 'gpboost', 'VERSION.txt'),
                                       verbose=0)
     version = io.open(os.path.join(CURRENT_DIR, 'gpboost', 'VERSION.txt'), encoding='utf-8').read().strip()
-    readme = io.open(os.path.join(CURRENT_DIR, 'README.rst'), encoding='utf-8').read()
+    readme = io.open(os.path.join(CURRENT_DIR, 'README.md'), encoding='utf-8').read()
 
     sys.path.insert(0, CURRENT_DIR)
 
@@ -278,6 +278,7 @@ if __name__ == "__main__":
           version=version,
           description='GPBoost Python Package',
           long_description=readme,
+          long_description_content_type='text/markdown',
           install_requires=[
               'numpy',
               'scipy',
