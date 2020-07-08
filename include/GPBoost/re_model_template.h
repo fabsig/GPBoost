@@ -1179,7 +1179,7 @@ namespace GPBoost {
 
 		/*! \brief If true, the Veccia approximation is used for the Gaussian process */
 		bool vecchia_approx_ = false;
-		/*! \brief If true, a memory optimized version of the Vecchia approximation is used (at the expense of being slightly slower) */
+		/*! \brief If true, a memory optimized version of the Vecchia approximation is used (at the expense of being slightly slower). THiS IS CURRENTLY NOT IMPLEMENTED */
 		bool vecchia_approx_optim_memory = false;
 		/*! \brief The number of neighbors used in the Vecchia approximation */
 		int num_neighbors_;
