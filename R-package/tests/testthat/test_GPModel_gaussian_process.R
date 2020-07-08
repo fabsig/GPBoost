@@ -44,17 +44,6 @@ C_multiple <- t(chol(Sigma_multiple))
 b_multiple <- qnorm(sim_rand_unif(n=n, init_c=0.8))
 eps_multiple <- as.vector(C_multiple %*% b_multiple)
 
-# ## DELETE
-# library(RandomFields)
-# estmodel <- RMexp(var=NA, scale=NA) + RMnugget(var=NA)
-# data_GF=RFspatialPointsDataFrame(data=eps+xi,coords=coords)
-# mod_RF = RFfit(estmodel, data=data_GF)
-# mod_RF
-# colnames(X) <- c("intercept","covar_1")
-# library(geoR)
-# data_train=cbind(data.frame(y=eps+xi),coords,X)
-# mod_geoR = likfit(coords=coords,data=eps + X%*%beta + xi,ini.cov.pars=c(1,1),messages=FALSE,cov.model=cov_function,trend=trend.spatial(y~1+covar_1,data_train))##
-# mod_geoR
 
 test_that("Gaussian process model ", {
   
@@ -64,10 +53,8 @@ test_that("Gaussian process model ", {
   fit(gp_model, y = y, std_dev = TRUE, params = list(optimizer_cov = "gradient_descent",
                                                      lr_cov = 0.1, use_nesterov_acc = TRUE,
                                                      acc_rate_cov = 0.5, delta_rel_conv=1E-6))
-  cov_pars <- c(0.03276544, 0.07715339, 1.07617623,
-                0.25177590, 0.11352557, 0.03770062)
-  cov_pars_est <- as.vector(gp_model$get_cov_pars())
-  expect_lt(sum(abs(cov_pars_est-cov_pars)),1E-6)
+  cov_pars <- c(0.03276544, 0.07715339, 1.07617623, 0.25177590, 0.11352557, 0.03770062)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(dim(gp_model$get_cov_pars())[2], 3)
   expect_equal(dim(gp_model$get_cov_pars())[1], 2)
   expect_equal(gp_model$get_num_optim_iter(), 382)
@@ -123,8 +110,7 @@ test_that("Gaussian process model with linear regression term ", {
                          y = y, X=X, std_dev = TRUE,
                          params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls",
                                        delta_rel_conv=1E-6, use_nesterov_acc = FALSE))
-  cov_pars <- c(0.008461342, 0.069973492, 1.001562822,
-                0.214358560, 0.094656409, 0.029400407)
+  cov_pars <- c(0.008461342, 0.069973492, 1.001562822, 0.214358560, 0.094656409, 0.029400407)
   coef <- c(2.30780026, 0.21365770, 1.89951426, 0.09484768)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_lt(sum(abs( as.vector(gp_model$get_coef())-coef)),1E-6)
@@ -196,8 +182,7 @@ test_that("Gaussian process model with cluster_id's not constant ", {
                          params = list(optimizer_cov = "gradient_descent",
                                        lr_cov = 0.1, use_nesterov_acc = TRUE,
                                        acc_rate_cov = 0.5, delta_rel_conv=1E-6))
-  cov_pars <- c(0.05414149, 0.08722111, 1.05789166,
-                0.22886740, 0.12702368, 0.04076914)
+  cov_pars <- c(0.05414149, 0.08722111, 1.05789166, 0.22886740, 0.12702368, 0.04076914)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 247)
   
@@ -206,8 +191,7 @@ test_that("Gaussian process model with cluster_id's not constant ", {
                          y = y, std_dev = TRUE, cluster_ids = cluster_ids,
                          params = list(optimizer_cov = "fisher_scoring",
                                        use_nesterov_acc = FALSE, delta_rel_conv=1E-6))
-  cov_pars <- c(0.05414149, 0.08722111, 1.05789166,
-                0.22886740, 0.12702368, 0.04076914)
+  cov_pars <- c(0.05414149, 0.08722111, 1.05789166, 0.22886740, 0.12702368, 0.04076914)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
   expect_equal(gp_model$get_num_optim_iter(), 20)
   
@@ -303,10 +287,8 @@ test_that("Vecchia approximation for Gaussian process model ", {
   fit(gp_model, y = y, std_dev = TRUE, params = list(optimizer_cov = "gradient_descent",
                                                      lr_cov = 0.1, use_nesterov_acc = TRUE,
                                                      acc_rate_cov = 0.5, delta_rel_conv=1E-6))
-  cov_pars <- c(0.03276544, 0.07715339, 1.07617623,
-                0.25177590, 0.11352557, 0.03770062)
-  cov_pars_est <- as.vector(gp_model$get_cov_pars())
-  expect_lt(sum(abs(cov_pars_est-cov_pars)),1E-6)
+  cov_pars <- c(0.03276544, 0.07715339, 1.07617623, 0.25177590, 0.11352557, 0.03770062)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(dim(gp_model$get_cov_pars())[2], 3)
   expect_equal(dim(gp_model$get_cov_pars())[1], 2)
   expect_equal(gp_model$get_num_optim_iter(), 382)

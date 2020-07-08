@@ -1179,6 +1179,8 @@ namespace GPBoost {
 
 		/*! \brief If true, the Veccia approximation is used for the Gaussian process */
 		bool vecchia_approx_ = false;
+		/*! \brief If true, a memory optimized version of the Vecchia approximation is used (at the expense of being slightly slower) */
+		bool vecchia_approx_optim_memory = false;
 		/*! \brief The number of neighbors used in the Vecchia approximation */
 		int num_neighbors_;
 		/*! \brief Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering */
@@ -1968,12 +1970,10 @@ namespace GPBoost {
 				std::vector<den_mat_t> cov_grad_mats_between_neighbors(num_par_gp);
 
 				if (i > 0) {
-
 					for (int j = 0; j < num_gp_total_; ++j) {
 						int ind_first_par = j * num_par_comp;//index of first parameter (variance) of component j in gradient vectors
-
 						if (j == 0) {
-							re_comps_cluster_i[ind_intercept_gp_ + j]->CalcSigmaAndSigmaGrad(dist_obs_neighbors_cluster_i[i],//re_comp->
+							re_comps_cluster_i[ind_intercept_gp_ + j]->CalcSigmaAndSigmaGrad(dist_obs_neighbors_cluster_i[i],
 								cov_mat_obs_neighbors, cov_grad_mats_obs_neighbors[ind_first_par], cov_grad_mats_obs_neighbors[ind_first_par + 1],
 								calc_gradient, transf_scale, nugget_var);//write on matrices directly for first GP component
 							re_comps_cluster_i[ind_intercept_gp_ + j]->CalcSigmaAndSigmaGrad(dist_between_neighbors_cluster_i[i],
@@ -1994,7 +1994,6 @@ namespace GPBoost {
 							cov_mat_between_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 1, num_nn, num_nn)).array();
 							cov_mat_obs_neighbors += cov_mat_obs_neighbors_j;
 							cov_mat_between_neighbors += cov_mat_between_neighbors_j;
-
 							if (calc_gradient) {
 								cov_grad_mats_obs_neighbors[ind_first_par].array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(0, 1, 1, num_nn)).array();
 								cov_grad_mats_obs_neighbors[ind_first_par + 1].array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(0, 1, 1, num_nn)).array();
@@ -2045,6 +2044,8 @@ namespace GPBoost {
 					den_mat_t cov_mat_between_neighbors_inv;
 					den_mat_t A_i_grad_sigma2;
 					if (calc_gradient) {
+						// Note: it is faster (approx. 1.5-2 times) to first calculate cov_mat_between_neighbors_inv and the multiply this with the matrices below 
+						//		instead of always using the Cholesky factor of cov_mat_between_neighbors to calculate cov_mat_between_neighbors_inv * (a matrix)
 						den_mat_t I(num_nn, num_nn);
 						I.setIdentity();
 						cov_mat_between_neighbors_inv = cov_mat_between_neighbors.llt().solve(I);
@@ -2090,7 +2091,6 @@ namespace GPBoost {
 							D_grad_cluster_i[num_par_gp - 1].coeffRef(i, i) -= (A_i_grad_sigma2 * cov_mat_obs_neighbors.transpose())(0, 0);
 						}
 					}//end calc_gradient
-
 				}//end if i > 0
 
 				D_inv_cluster_i.coeffRef(i, i) = 1. / D_inv_cluster_i.coeffRef(i, i);
