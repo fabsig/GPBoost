@@ -1033,6 +1033,7 @@ gpb.GPModel <- R6::R6Class(
                        X_pred = NULL,
                        use_saved_data = FALSE) {
       
+      group_data_pred_c_str <- NULL
       if (!is.null(vecchia_pred_type)) {
         if (!(vecchia_pred_type %in% private$VECCHIA_PRED_TYPES)) {
           stop("predict.GPModel: ", sQuote("vecchia_pred_type"), " needs to be either: ",
@@ -1323,7 +1324,7 @@ gpb.GPModel <- R6::R6Class(
       } else {
         
         cluster_ids_pred <- NULL
-        group_data_pred <- NULL
+        group_data_pred_c_str <- NULL
         group_rand_coef_data_pred <- NULL
         gp_coords_pred <- NULL
         gp_rand_coef_data_pred <- NULL

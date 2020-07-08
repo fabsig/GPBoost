@@ -52,28 +52,28 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported
   })
   
   
-  test_that("training continuation works", {
-    testthat::skip("This test is currently broken. See issue #2468 for details.")
-    dtrain <- gpb.Dataset(train$data, label = train$label, free_raw_data=FALSE)
-    watchlist = list(train=dtrain)
-    param <- list(objective = "binary", metric="binary_logloss", num_leaves = 5, learning_rate = 1)
-    
-    # for the reference, use 10 iterations at once:
-    bst <- gpb.train(param, dtrain, nrounds = 10, watchlist)
-    err_bst <- gpb.get.eval.result(bst, "train", "binary_logloss", 10)
-    # first 5 iterations:
-    bst1 <- gpb.train(param, dtrain, nrounds = 5, watchlist)
-    # test continuing from a model in file
-    gpb.save(bst1, "gpboost.model")
-    # continue for 5 more:
-    bst2 <- gpb.train(param, dtrain, nrounds = 5, watchlist, init_model = bst1)
-    err_bst2 <- gpb.get.eval.result(bst2, "train", "binary_logloss", 10)
-    expect_lt(abs(err_bst - err_bst2), 0.01)
-    
-    bst2 <- gpb.train(param, dtrain, nrounds = 5, watchlist, init_model = "gpboost.model")
-    err_bst2 <- gpb.get.eval.result(bst2, "train", "binary_logloss", 10)
-    expect_lt(abs(err_bst - err_bst2), 0.01)
-  })
+  # test_that("training continuation works", {
+  #   testthat::skip("This test is currently broken. See issue #2468 for details.")
+  #   dtrain <- gpb.Dataset(train$data, label = train$label, free_raw_data=FALSE)
+  #   watchlist = list(train=dtrain)
+  #   param <- list(objective = "binary", metric="binary_logloss", num_leaves = 5, learning_rate = 1)
+  #   
+  #   # for the reference, use 10 iterations at once:
+  #   bst <- gpb.train(param, dtrain, nrounds = 10, watchlist)
+  #   err_bst <- gpb.get.eval.result(bst, "train", "binary_logloss", 10)
+  #   # first 5 iterations:
+  #   bst1 <- gpb.train(param, dtrain, nrounds = 5, watchlist)
+  #   # test continuing from a model in file
+  #   gpb.save(bst1, "gpboost.model")
+  #   # continue for 5 more:
+  #   bst2 <- gpb.train(param, dtrain, nrounds = 5, watchlist, init_model = bst1)
+  #   err_bst2 <- gpb.get.eval.result(bst2, "train", "binary_logloss", 10)
+  #   expect_lt(abs(err_bst - err_bst2), 0.01)
+  #   
+  #   bst2 <- gpb.train(param, dtrain, nrounds = 5, watchlist, init_model = "gpboost.model")
+  #   err_bst2 <- gpb.get.eval.result(bst2, "train", "binary_logloss", 10)
+  #   expect_lt(abs(err_bst - err_bst2), 0.01)
+  # })
   
   
   test_that("cv works", {

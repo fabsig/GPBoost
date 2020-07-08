@@ -119,10 +119,10 @@ sigma2_1 <- 1^2 # marginal variance of GP
 rho <- 0.1 # range parameter
 sigma2 <- 0.5^2 # error variance
 D <- as.matrix(dist(coords))
-Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-# Sigma = sigma2_1*exp(-(D/rho)^2)+diag(1E-20,n)
-C = t(chol(Sigma))
-b_1=rnorm(n) # simulate random effect
+Sigma <- sigma2_1*exp(-D/rho)+diag(1E-20,n)
+# Sigma <- sigma2_1*exp(-(D/rho)^2)+diag(1E-20,n)# different covariance function
+C <- t(chol(Sigma))
+b_1 <- rnorm(n) # simulate random effect
 eps <- C %*% b_1
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
@@ -190,22 +190,22 @@ summary(gp_model)
 n <- 500 # number of samples
 set.seed(1)
 coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-X_SVC=cbind(runif(n),runif(n)) # covariate data for random coeffients
-colnames(X_SVC) = c("var1","var2")
+Z_SVC <- cbind(runif(n),runif(n)) # covariate data for random coeffients
+colnames(Z_SVC) <- c("var1","var2")
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                    gp_rand_coef_data = X_SVC)
+                    gp_rand_coef_data = Z_SVC)
 
 # Simulate data
 sigma2_1 <- 1^2 # marginal variance of GP (for simplicity, all GPs have the same parameters)
 rho <- 0.1 # range parameter
 sigma2 <- 0.5^2 # error variance
 D <- as.matrix(dist(coords))
-Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-C = t(chol(Sigma))
-b_1=rnorm(n) # simulate random effect
-b_2=rnorm(n)
-b_3=rnorm(n)
-eps <- C %*% b_1 + X_SVC[,1] * C %*% b_2 + X_SVC[,2] * C %*% b_3
+Sigma <- sigma2_1*exp(-D/rho)+diag(1E-20,n)
+C <- t(chol(Sigma))
+b_1 <- rnorm(n) # simulate random effect
+b_2 <- rnorm(n)
+b_3 <- rnorm(n)
+eps <- C %*% b_1 + Z_SVC[,1] * C %*% b_2 + Z_SVC[,2] * C %*% b_3
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
 # Fit model (takes a few seconds)
@@ -213,7 +213,7 @@ fit(gp_model, y = y, std_dev = TRUE)
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        gp_rand_coef_data = X_SVC,
+                        gp_rand_coef_data = Z_SVC,
                         y = y, std_dev = TRUE)
 summary(gp_model)
 
@@ -233,9 +233,9 @@ sigma2_1 <- 1^2 # marginal variance of GP
 rho <- 0.1 # range parameter
 sigma2 <- 0.5^2 # error variance
 D <- as.matrix(dist(coords[1:n,]))
-Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-C = t(chol(Sigma))
-b_1=rnorm(2 * n) # simulate random effect
+Sigma <- sigma2_1*exp(-D/rho)+diag(1E-20,n)
+C <- t(chol(Sigma))
+b_1 <- rnorm(2 * n) # simulate random effect
 eps <- c(C %*% b_1[1:n], C %*% b_1[1:n + n])
 xi <- sqrt(sigma2) * rnorm(2 * n) # simulate error term
 y <- eps + xi
@@ -270,9 +270,9 @@ Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
 set.seed(156)
 b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
 D <- as.matrix(dist(coords))
-Sigma = sigma2_2*exp(-D/rho)+diag(1E-20,n)
-C = t(chol(Sigma))
-b_2=rnorm(n) # simulate random effect
+Sigma <- sigma2_2*exp(-D/rho)+diag(1E-20,n)
+C <- t(chol(Sigma))
+b_2 <- rnorm(n) # simulate random effect
 eps <- Z1 %*% b1 + C %*% b_2
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi

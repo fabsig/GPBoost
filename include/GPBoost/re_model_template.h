@@ -207,11 +207,8 @@ namespace GPBoost {
 					entries_init_B_.insert({ cluster_i, entries_init_B_cluster_i });
 					entries_init_B_grad_.insert({ cluster_i, entries_init_B_grad_cluster_i });
 					z_outer_z_obs_neighbors_.insert({ cluster_i, z_outer_z_obs_neighbors_cluster_i });
-
-					Log::Info("Nearest neighbors for Vecchia approximation found");
 				}//end vecchia_approx_
 				else {//not vecchia_approx_
-
 					CreateREComponents(num_data_, num_re_group_, data_indices_per_cluster_, cluster_i, re_group_levels, num_data_per_cluster_,
 						num_re_group_rand_coef_, re_group_rand_coef_data, ind_effect_group_rand_coef_, num_gp_, gp_coords_data,
 						dim_gp_coords_, gp_rand_coef_data, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, ind_intercept_gp_, !use_woodbury_identity_, re_comps_cluster_i);
@@ -274,6 +271,9 @@ namespace GPBoost {
 					ConstructI<T1>(cluster_i);//Idendity matrices needed for computing inverses of covariance matrices used in gradient descent
 				}//end not vecchia_approx_
 				re_comps_.insert({ cluster_i, re_comps_cluster_i });
+			}//end loop over clusters
+			if (vecchia_approx_) {
+				Log::Info("Nearest neighbors for Vecchia approximation found");
 			}
 
 
