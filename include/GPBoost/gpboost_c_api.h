@@ -92,7 +92,7 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \brief Set configuration parameters for the optimizer
 * \param handle Handle of REModel
 * \param init_cov_pars Initial values for covariance parameters of RE components
-* \param lr Learning rate
+* \param lr Learning rate. If <= 0, default values are used. Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
 * \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 * \param max_iter Maximal number of iterations
 * \param delta_rel_conv Convergence criterion: stop iteration if relative change is below this value
@@ -106,7 +106,7 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 */
 GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
 	double* init_cov_pars = nullptr,
-	double lr = 0.01,
+	double lr = -1.,
 	double acc_rate_cov = 0.5,
 	int max_iter = 1000,
 	double delta_rel_conv = 1.0e-6,

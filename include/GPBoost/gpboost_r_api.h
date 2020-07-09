@@ -72,7 +72,7 @@ GPBOOST_C_EXPORT LGBM_SE GPB_REModelFree_R(
 * \brief Set configuration parameters for the optimizer
 * \param handle Handle of REModel
 * \param init_cov_pars Initial values for covariance parameters of RE components
-* \param lr Learning rate
+* \param lr Learning rate. If <= 0, default values are used. Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
 * \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 * \param max_iter Maximal number of iterations
 * \param delta_rel_conv Convergence criterion: stop iteration if relative change is below this value

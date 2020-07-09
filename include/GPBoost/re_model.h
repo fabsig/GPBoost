@@ -71,7 +71,7 @@ namespace GPBoost {
     /*!
     * \brief Set configuration parameters for the optimizer
     * \param init_cov_pars Initial values for covariance parameters of RE components
-    * \param lr Learning rate
+    * \param lr Learning rate. If <= 0, default values are used. Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
     * \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
     * \param max_iter Maximal number of iterations
     * \param delta_rel_conv Convergence criterion: stop iteration if relative change in parameters is below this value
@@ -82,7 +82,7 @@ namespace GPBoost {
     * \param momentum_offset Number of iterations for which no mometum is applied in the beginning
     * \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
     */
-    void SetOptimConfig(double* init_cov_pars = nullptr, double lr = 0.01,
+    void SetOptimConfig(double* init_cov_pars = nullptr, double lr = -1.,
       double acc_rate_cov = 0.5, int max_iter = 1000, double delta_rel_conv = 1.0e-6,
       bool use_nesterov_acc = true, int nesterov_schedule_version = 0, bool trace = true,
       const char* optimizer = nullptr, int momentum_offset = 2, const char* convergence_criterion = nullptr);
@@ -223,7 +223,7 @@ namespace GPBoost {
     vec_t std_dev_cov_pars_;
     int num_cov_pars_;
     int num_it_ = 0;
-    double lr_cov_ = 0.01;
+    double lr_cov_ = -1.;
     double acc_rate_cov_ = 0.5;
     int momentum_offset_ = 2;
     int max_iter_ = 1000;

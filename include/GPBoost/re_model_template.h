@@ -215,7 +215,7 @@ namespace GPBoost {
 
 					if (use_woodbury_identity_) {//Create matrices Z and ZtZ if Woodbury identity is used (used only if there are only grouped REs and no GPs)
 						CHECK(num_comps_total_ == num_re_group_total_);
-						std::vector<data_size_t> cum_num_rand_eff_cluster_i(num_comps_total_+1);
+						std::vector<data_size_t> cum_num_rand_eff_cluster_i(num_comps_total_ + 1);
 						cum_num_rand_eff_cluster_i[0] = 0;
 						//Determine number of rows and non-zero entries of Z
 						int non_zeros = 0;
@@ -336,7 +336,7 @@ namespace GPBoost {
 		* \param init_cov_pars Initial values for covariance parameters of RE components
 		* \param[out] optim_cov_pars Optimal covariance parameters
 		* \param[out] num_it Number of iterations
-		* \param lr Learning rate
+		* \param lr Learning rate. If <= 0, default values are used. Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
 		* \param max_iter Maximal number of iterations
@@ -350,7 +350,7 @@ namespace GPBoost {
 		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
 		*/
 		void OptimCovPar(const double* y_data, double* init_cov_pars, double* optim_cov_pars,
-			int& num_it, double lr = 0.01, double acc_rate_cov = 0.5, int momentum_offset = 2,
+			int& num_it, double lr = -1., double acc_rate_cov = 0.5, int momentum_offset = 2,
 			int max_iter = 1000, double delta_rel_conv = 1.0e-6, string_t optimizer = "fisher_scoring",
 			bool use_nesterov_acc = true, int nesterov_schedule_version = 0,
 			double* std_dev_cov_par = nullptr, bool calc_std_dev = false, double* cov_pars_lag_1 = nullptr,
@@ -361,16 +361,26 @@ namespace GPBoost {
 			}
 			CHECK(SUPPORTED_CONF_CRIT_.find(convergence_criterion) != SUPPORTED_CONF_CRIT_.end());
 			// Initialization
+			if (lr <= 0.) {
+				if (optimizer == "fisher_scoring") {
+					lr = 1.;
+				}
+				else if (optimizer == "gradient_descent") {
+					lr = 0.01;
+				}
+			}
 			SetY(y_data);
 			vec_t cov_pars = Eigen::Map<vec_t>(init_cov_pars, num_cov_par_);
 			vec_t cov_pars_lag1 = (cov_pars_lag_1 == nullptr) ? cov_pars : cov_pars_lag1;
 			Log::Debug("Initial covariance parameters");
 			for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
 			num_it = max_iter;
-			bool terminate_algo = false;
+			bool terminate_optim = false;
 			double neg_log_like = 1e99;
+			double neg_log_like_new = 1e99;
 			// Start optimization
 			for (int it = 0; it < max_iter; ++it) {
+				//Apply momentum step and set cov_pars_lag1 = cov_pars
 				ApplyMomentumStep(it, cov_pars, cov_pars_lag1, use_nesterov_acc, acc_rate_cov, nesterov_schedule_version, true, momentum_offset);
 				SetCovParsComps(cov_pars);
 				CalcCovFactor(vecchia_approx_, true, 1., false);//Create covariance matrix and factorize it (and also calculate derivatives if Vecchia approximation is used)
@@ -384,32 +394,42 @@ namespace GPBoost {
 					UpdateCovParGradOneIter(lr, cov_pars, true);//closed_form_solution_sigma = true: we profile out sigma (=use closed for expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 				}
 				else if (optimizer == "fisher_scoring") {//Fisher scoring
-					UpdateCovParFisherScoringOneIter(cov_pars, false);//closed_form_solution_sigma = false: we don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
+					UpdateCovParFisherScoringOneIter(cov_pars, false, lr);//closed_form_solution_sigma = false: we don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
 				}
 				CheckNaNInf(cov_pars);
+				if (convergence_criterion == "relative_change_in_log_likelihood" || optim_learning_rate_halving_) {
+					EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_like_new, false);
+				}
 				if (convergence_criterion == "relative_change_in_parameters") {
 					if ((cov_pars - cov_pars_lag1).norm() / cov_pars_lag1.norm() < delta_rel_conv) {
-						terminate_algo = true;
+						terminate_optim = true;
 					}
 				}
-				else if (convergence_criterion == "relative_change_in_log_likelihood") {
-					double neg_log_like_new;
-					EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_like_new, false);
-					if (it > 0) {
-						if (std::abs(neg_log_like_new - neg_log_like) / neg_log_like < delta_rel_conv) {
-							terminate_algo = true;
-						}
+				else if (convergence_criterion == "relative_change_in_log_likelihood" && it > 0) {
+					if (std::abs(neg_log_like_new - neg_log_like) / neg_log_like < delta_rel_conv) {
+						terminate_optim = true;
 					}
-					neg_log_like = neg_log_like_new;
 				}
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
 					Log::Debug("Covariance parameter estimation: iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
 					if (convergence_criterion == "relative_change_in_log_likelihood") {
-						Log::Debug("Negative log-likelihood: %f", neg_log_like);
+						Log::Debug("Negative log-likelihood: %f", neg_log_like_new);
 					}
 				}
-				if (terminate_algo) {
+				// Check whehter negative likelihood is decreased. Otherwise decrease the learning rate ("step halving")
+				if (optim_learning_rate_halving_ && it > 0) {
+					if (neg_log_like_new > neg_log_like) {
+						Log::Info("No decrease in negative log-likelihood in iteration number %d. The learning rate is halved and the parameters are not updated.", it + 1);
+						lr *= 0.5;
+						cov_pars = cov_pars_lag1;
+						continue;
+					}
+				}
+				if (convergence_criterion == "relative_change_in_log_likelihood" || optim_learning_rate_halving_) {
+					neg_log_like = neg_log_like_new;
+				}
+				if (terminate_optim) {
 					num_it = it + 1;
 					break;
 				}
@@ -443,7 +463,7 @@ namespace GPBoost {
 		* \param init_cov_pars Initial values for covariance parameters of RE components
 		* \param init_coef Initial values for the regression coefficients
 		* \param lr_coef Learning rate for fixed-effect linear coefficients
-		* \param lr_cov Learning rate for covariance parameters
+		* \param lr_cov Learning rate for covariance parameters. If <= 0, default values are used. Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
 		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
@@ -460,7 +480,7 @@ namespace GPBoost {
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates,
 			double* optim_cov_pars, double* optim_coef, int& num_it, double* init_cov_pars, double* init_coef = nullptr,
-			double lr_coef = 0.01, double lr_cov = 0.01, double acc_rate_coef = 0.1, double acc_rate_cov = 0.5, int momentum_offset = 2,
+			double lr_coef = 0.01, double lr_cov = -1., double acc_rate_coef = 0.1, double acc_rate_cov = 0.5, int momentum_offset = 2,
 			int max_iter = 1000, double delta_rel_conv = 1.0e-6, bool use_nesterov_acc = true, int nesterov_schedule_version = 0,
 			string_t optimizer_cov = "fisher_scoring", string_t optimizer_coef = "wls", double* std_dev_cov_par = nullptr,
 			double* std_dev_coef = nullptr, bool calc_std_dev = false, string_t convergence_criterion = "relative_change_in_log_likelihood") {
@@ -474,6 +494,14 @@ namespace GPBoost {
 			CHECK(covariate_data != nullptr);
 			CHECK(SUPPORTED_CONF_CRIT_.find(convergence_criterion) != SUPPORTED_CONF_CRIT_.end());
 			// Initialization
+			if (lr_cov <= 0.) {
+				if (optimizer_cov == "fisher_scoring") {
+					lr_cov = 1.;
+				}
+				else if (optimizer_cov == "gradient_descent") {
+					lr_cov = 0.01;
+				}
+			}
 			has_covariates_ = true;
 			num_coef_ = num_covariates;
 			X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_coef_);
@@ -503,8 +531,9 @@ namespace GPBoost {
 			vec_t beta_lag1 = beta;
 			vec_t resid;
 			num_it = max_iter;
-			bool terminate_algo = false;
+			bool terminate_optim = false;
 			double neg_log_like = 1e99;
+			double neg_log_like_new = 1e99;
 			// Start optimization
 			for (int it = 0; it < max_iter; ++it) {
 				if (it > 0) {
@@ -541,33 +570,43 @@ namespace GPBoost {
 					UpdateCovParGradOneIter(lr_cov, cov_pars, true);//closed_form_solution_sigma = true: we profile out sigma (=use closed for expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 				}
 				else if (optimizer_cov == "fisher_scoring") {//one step of Fisher scoring
-					UpdateCovParFisherScoringOneIter(cov_pars, false);//closed_form_solution_sigma = false: we don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)
+					UpdateCovParFisherScoringOneIter(cov_pars, false, lr_cov);//closed_form_solution_sigma = false: we don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)
 				}
 				CheckNaNInf(cov_pars);
+				if (convergence_criterion == "relative_change_in_log_likelihood" || optim_learning_rate_halving_) {
+					EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_like_new, false);
+				}
 				if (convergence_criterion == "relative_change_in_parameters") {
 					if (((beta - beta_lag1).norm() / beta_lag1.norm() < delta_rel_conv) && ((cov_pars - cov_pars_lag1).norm() / cov_pars_lag1.norm() < delta_rel_conv)) {
-						terminate_algo = true;
+						terminate_optim = true;
 					}
 				}
-				else if (convergence_criterion == "relative_change_in_log_likelihood") {
-					double neg_log_like_new;
-					EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_like_new, false);
-					if (it > 0) {
-						if (std::abs(neg_log_like_new - neg_log_like) / neg_log_like < delta_rel_conv) {
-							terminate_algo = true;
-						}
+				else if (convergence_criterion == "relative_change_in_log_likelihood" && it > 0) {
+					if (std::abs(neg_log_like_new - neg_log_like) / neg_log_like < delta_rel_conv) {
+						terminate_optim = true;
 					}
-					neg_log_like = neg_log_like_new;
 				}
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
 					Log::Debug("Gradient descent iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
 					for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %f", i, beta[i]); }
 					if (convergence_criterion == "relative_change_in_log_likelihood") {
-						Log::Debug("Negative log-likelihood: %f", neg_log_like);
+						Log::Debug("Negative log-likelihood: %f", neg_log_like_new);
 					}
 				}
-				if (terminate_algo) {
+				// Check whehter negative likelihood is decreased. Otherwise decrease the learning rate ("step halving")
+				if (optim_learning_rate_halving_ && it > 0) {
+					if (neg_log_like_new > neg_log_like) {
+						lr_cov *= 0.5;
+						cov_pars = cov_pars_lag1;
+						Log::Info("No decrease in negative log-likelihood in iteration number %d. The learning rate is halved and the parameters are not updated.", it + 1);
+						continue;
+					}
+				}
+				if (convergence_criterion == "relative_change_in_log_likelihood" || optim_learning_rate_halving_) {
+					neg_log_like = neg_log_like_new;
+				}
+				if (terminate_optim) {
 					num_it = it + 1;
 					break;
 				}
@@ -1239,6 +1278,8 @@ namespace GPBoost {
 		const std::set<string_t> SUPPORTED_OPTIM_COEF_{ "gradient_descent", "wls" };
 		/*! \brief List of supported convergence criteria used for terminating the optimization algorithm */
 		const std::set<string_t> SUPPORTED_CONF_CRIT_{ "relative_change_in_parameters", "relative_change_in_log_likelihood" };
+		/*! \brief If true, the learning rate is halved when the negative log-likelihood increases. Currently not used as it seems that despite occasional increases in the negative log-likelihood it is better (less iterations) to stick to a larger learning rate. */
+		bool optim_learning_rate_halving_ = false;
 
 		// VECCHIA APPROXIMATION for GP
 		/*! \brief If true, the Veccia approximation is used for the Gaussian process */
@@ -1446,7 +1487,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Caclulate Psi^(-1) if sparse matrices are used
-		* \param psi_inv[out] Inverse covariance matrix 
+		* \param psi_inv[out] Inverse covariance matrix
 		* \param cluster_i Cluster index for which Psi^(-1) is calculated
 		*/
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
@@ -1668,7 +1709,7 @@ namespace GPBoost {
 					}
 					else {
 						XT_psi_inv_X = X.transpose() * chol_facts_solve_[unique_clusters_[0]].solve(X);
-					}	
+					}
 				}
 			}
 			else {//more than one cluster / idependent GP realization
@@ -1801,7 +1842,7 @@ namespace GPBoost {
 						}
 						std::shared_ptr<RECompGroup<T1>> re_comp = std::dynamic_pointer_cast<RECompGroup<T1>>(re_comps_cluster_i[ind_effect_group_rand_coef[j] - 1]);//Subtract -1 since ind_effect_group_rand_coef[j] starts counting at 1 not 0
 						re_comps_cluster_i.push_back(std::shared_ptr<RECompGroup<T1>>(new RECompGroup<T1>(
-							re_comp->group_data_, re_comp->map_group_label_index_,re_comp->num_group_, rand_coef_data, calculateZZt)));
+							re_comp->group_data_, re_comp->map_group_label_index_, re_comp->num_group_, rand_coef_data, calculateZZt)));
 					}
 				}
 			}
@@ -2336,7 +2377,7 @@ namespace GPBoost {
 				}
 				if (vecchia_approx_) {
 					if (y_aux_already_calculated) {
-						yTPsiInvy += (y_[cluster_i].transpose() * y_aux_[cluster_i])(0,0);
+						yTPsiInvy += (y_[cluster_i].transpose() * y_aux_[cluster_i])(0, 0);
 					}
 					else {
 						if (B_.find(cluster_i) == B_.end()) {
@@ -2590,8 +2631,9 @@ namespace GPBoost {
 		* \brief Update covariance parameters doing one step of Fisher scoring (except for the marginal variance which is updated using an explicit solution)
 		* \param[out] cov_pars Covariance parameters
 		* \param closed_form_solution_sigma If true, the error variance (nugget effect) is calculated exactly using a closed form expression
+		* \param lr Learning rate
 		*/
-		void UpdateCovParFisherScoringOneIter(vec_t& cov_pars, bool closed_form_solution_sigma = false) {
+		void UpdateCovParFisherScoringOneIter(vec_t& cov_pars, bool closed_form_solution_sigma = false, double lr = 1.) {
 			vec_t grad;
 			den_mat_t FI;
 			if (closed_form_solution_sigma) {
@@ -2605,13 +2647,13 @@ namespace GPBoost {
 				GetCovParGrad(cov_pars, grad, false, true);
 				CalcFisherInformation(cov_pars, FI, true, false, true);
 				vec_t update = FI.llt().solve(grad);
-				cov_pars.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - update.array()).exp().matrix();//make update on log-scale
+				cov_pars.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - lr * update.array()).exp().matrix();//make update on log-scale
 			}
 			else {
 				GetCovParGrad(cov_pars, grad, true, true);
 				CalcFisherInformation(cov_pars, FI, true, true, true);
 				vec_t update = FI.llt().solve(grad);
-				cov_pars = (cov_pars.array().log() - update.array()).exp().matrix();//make update on log-scale
+				cov_pars = (cov_pars.array().log() - lr * update.array()).exp().matrix();//make update on log-scale
 			}
 
 			////For debugging only

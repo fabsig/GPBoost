@@ -528,10 +528,14 @@ Illustration of data: Mean function F(X) used for simulation, latent Gaussian pr
 library(gpboost)
 gp_model &lt;- GPModel(gp_coords = coords, cov_function = &quot;exponential&quot;)
 # The properties of the optimizer for the Gaussian process or 
-#   random effects model can be set as follows.
-#   Depending on the data, a different learning rate (lr_cov) is better.
-#   You can also try optimizer_cov = &quot;fisher_scoring&quot; which implements a 
-#   form of (quasi-) Newton&#39;s method and does not require  a learning rate
+# random effects model can be set as follows.
+# Depending on the data, a different learning rate (lr_cov) is better.
+# You can also try optimizer_cov = &quot;fisher_scoring&quot; which implements a
+# form of (quasi-) Newton&#39;s method (also called natural gradient descent in machine learning)
+# and does not require to specify a learning rate.
+# In this example, we use gradient descent instead of Fisher scoring since the 
+# negative likelihood of the GP model is very flat (or potentially non-convex) in some iterations
+# of the boosting algorithm. This can cause problems for Fisher scoring.
 gp_params &lt;- list(optimizer_cov = &quot;gradient_descent&quot;, lr_cov = 0.05, trace = FALSE,
                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
 gp_model$set_optim_params(params=gp_params)

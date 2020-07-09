@@ -53,8 +53,8 @@
 #'                random effects (can be NULL). Default=NULL.}
 #'                \item{lr_coef}{ Learning rate for fixed effect regression coefficients if gradient descent is used.
 #'                Default=0.01.}
-#'                \item{lr_cov}{ Learning rate for covariance parameters if gradient descent is used.
-#'                Default=0.01.}
+#'                \item{lr_cov}{ Learning rate for covariance parameters. If <= 0, internal default values are used.
+#'                Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"}
 #'                \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used. Default=FALSE.}
 #'                \item{acc_rate_coef}{ Acceleration rate for regression coefficients (if there are any) 
 #'                for Nesterov acceleration. Default=0.1.}

@@ -2961,7 +2961,7 @@ class GPModel(object):
                         "init_coef": None,
                         "init_cov_pars": None,
                         "lr_coef": 0.01,
-                        "lr_cov": 0.01,
+                        "lr_cov": -1.,
                         "use_nesterov_acc": False,
                         "acc_rate_coef": 0.1,
                         "acc_rate_cov": 0.5,
@@ -3200,8 +3200,9 @@ class GPModel(object):
                     Initial values for covariance parameters of Gaussian process and random effects (can be None)
                 lr_coef : double, optional (default = 0.01)
                     Learning rate for fixed effect regression coefficients
-                lr_cov : double, optional (default = 0.01)
-                    Learning rate for covariance parameters
+                lr_cov : double, optional (default = -1.)
+                    If <= 0, internal default values are used.
+                    Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
                 use_nesterov_acc : bool, optional (default = False)
                     If True Nesterov acceleration is used
                 acc_rate_coef : double, optional (default = 0.5)
@@ -3328,8 +3329,9 @@ class GPModel(object):
                     Convergence criterion: stop optimization if relative change in parameters is below this value
                 init_cov_pars : numpy array, optional (default = None)
                     Initial values for covariance parameters of Gaussian process and random effects (can be None)
-                lr_cov : double, optional (default = 0.01)
-                    Learning rate for covariance parameters
+                lr_cov : double, optional (default = -1.)
+                    If <= 0, internal default values are used.
+                    Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
                 use_nesterov_acc : bool, optional (default = False)
                     If True Nesterov acceleration is used
                 acc_rate_cov : double, optional (default = 0.5)
