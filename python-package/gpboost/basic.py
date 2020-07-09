@@ -2955,19 +2955,20 @@ class GPModel(object):
         self.free_raw_data = False
         self.num_data_pred = None
         self.params = {"optimizer_cov": "fisher_scoring",
-                      "optimizer_coef": "wls",
-                      "maxit": 1000,
-                      "delta_rel_conv": 1e-6,
-                      "init_coef": None,
-                      "init_cov_pars": None,
-                      "lr_coef": 0.01,
-                      "lr_cov": 0.01,
-                      "use_nesterov_acc": False,
-                      "acc_rate_coef": 0.1,
-                      "acc_rate_cov": 0.5,
-                      "nesterov_schedule_version": 0,
-                      "momentum_offset": 2,
-                      "trace": False}
+                        "optimizer_coef": "wls",
+                        "maxit": 1000,
+                        "delta_rel_conv": 1e-6,
+                        "init_coef": None,
+                        "init_cov_pars": None,
+                        "lr_coef": 0.01,
+                        "lr_cov": 0.01,
+                        "use_nesterov_acc": False,
+                        "acc_rate_coef": 0.1,
+                        "acc_rate_cov": 0.5,
+                        "nesterov_schedule_version": 0,
+                        "momentum_offset": 2,
+                        "trace": False,
+                        "convergence_criterion": "relative_change_in_log_likelihood"}
         self.prediction_data_is_set = False
         self.free_raw_data = False
 
@@ -3211,6 +3212,9 @@ class GPModel(object):
                     Number of iterations for which no mometum is applied in the beginning
                 trace : bool, optional (default = False)
                     If True, the value of the gradient is printed for some iterations. Useful for finding good learning rates.
+                convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
+                    The convergence criterion used for terminating the optimization algorithm.
+                    Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
         """
         if not isinstance(y, np.ndarray):
             raise ValueError("y needs to be a numpy.ndarray")
@@ -3334,6 +3338,9 @@ class GPModel(object):
                     Number of iterations for which no mometum is applied in the beginning
                 trace : bool, optional (default = False)
                     If True, the value of the gradient is printed for some iterations. Useful for finding good learning rates.
+                convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
+                    The convergence criterion used for terminating the optimization algorithm.
+                    Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
         """
         if not isinstance(params, dict):
             raise ValueError("params needs to be a dict")
@@ -3367,7 +3374,8 @@ class GPModel(object):
             ctypes.c_int(self.params["nesterov_schedule_version"]),
             ctypes.c_bool(self.params["trace"]),
             c_str(self.params["optimizer_cov"]),
-            ctypes.c_int(self.params["momentum_offset"])))
+            ctypes.c_int(self.params["momentum_offset"]),
+            c_str(self.params["convergence_criterion"])))
 
     def set_optim_coef_params(self, params):
         """Set parameters for estimation of the covariance paramters.

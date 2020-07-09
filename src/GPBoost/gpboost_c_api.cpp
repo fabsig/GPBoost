@@ -79,11 +79,12 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	int nesterov_schedule_version,
 	bool trace,
 	const char* optimizer,
-	int momentum_offset) {
+	int momentum_offset,
+	const char* convergence_criterion) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetOptimConfig(init_cov_pars, lr, acc_rate_cov, max_iter, delta_rel_conv,
-		use_nesterov_acc, nesterov_schedule_version, trace, optimizer, momentum_offset);
+		use_nesterov_acc, nesterov_schedule_version, trace, optimizer, momentum_offset, convergence_criterion);
 	API_END();
 }
 

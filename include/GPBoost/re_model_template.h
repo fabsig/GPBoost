@@ -341,27 +341,35 @@ namespace GPBoost {
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
 		* \param max_iter Maximal number of iterations
 		* \param delta_rel_conv Convergence criterion: stop iteration if relative change in parameters is below this value
-		* \param optimizer Options: "gradient_descent" or "fisher_scoring"
+		* \param optimizer Options: "gradient_descent" or "fisher_scoring" (default)
 		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters. Default = true
 		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
 		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters
 		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 		* \param cov_pars_lag_1 Covariance parameters from previous iteration used for Nesterov step (on transformed scale). Default = nullptr
+		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
 		*/
 		void OptimCovPar(const double* y_data, double* init_cov_pars, double* optim_cov_pars,
 			int& num_it, double lr = 0.01, double acc_rate_cov = 0.5, int momentum_offset = 2,
 			int max_iter = 1000, double delta_rel_conv = 1.0e-6, string_t optimizer = "fisher_scoring",
 			bool use_nesterov_acc = true, int nesterov_schedule_version = 0,
-			double* std_dev_cov_par = nullptr, bool calc_std_dev = false, double* cov_pars_lag_1 = nullptr) {
+			double* std_dev_cov_par = nullptr, bool calc_std_dev = false, double* cov_pars_lag_1 = nullptr,
+			string_t convergence_criterion = "relative_change_in_log_likelihood") {
+			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer) == SUPPORTED_OPTIM_COV_PAR_.end()) {
 				Log::Fatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer.c_str());
 			}
+			CHECK(SUPPORTED_CONF_CRIT_.find(convergence_criterion) != SUPPORTED_CONF_CRIT_.end());
+			// Initialization
 			SetY(y_data);
 			vec_t cov_pars = Eigen::Map<vec_t>(init_cov_pars, num_cov_par_);
 			vec_t cov_pars_lag1 = (cov_pars_lag_1 == nullptr) ? cov_pars : cov_pars_lag1;
-			num_it = max_iter;
 			Log::Debug("Initial covariance parameters");
 			for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
+			num_it = max_iter;
+			bool terminate_algo = false;
+			double neg_log_like = 1e99;
+			// Start optimization
 			for (int it = 0; it < max_iter; ++it) {
 				ApplyMomentumStep(it, cov_pars, cov_pars_lag1, use_nesterov_acc, acc_rate_cov, nesterov_schedule_version, true, momentum_offset);
 				SetCovParsComps(cov_pars);
@@ -379,11 +387,29 @@ namespace GPBoost {
 					UpdateCovParFisherScoringOneIter(cov_pars, false);//closed_form_solution_sigma = false: we don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
 				}
 				CheckNaNInf(cov_pars);
+				if (convergence_criterion == "relative_change_in_parameters") {
+					if ((cov_pars - cov_pars_lag1).norm() / cov_pars_lag1.norm() < delta_rel_conv) {
+						terminate_algo = true;
+					}
+				}
+				else if (convergence_criterion == "relative_change_in_log_likelihood") {
+					double neg_log_like_new;
+					EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_like_new, false);
+					if (it > 0) {
+						if (std::abs(neg_log_like_new - neg_log_like) / neg_log_like < delta_rel_conv) {
+							terminate_algo = true;
+						}
+					}
+					neg_log_like = neg_log_like_new;
+				}
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
 					Log::Debug("Covariance parameter estimation: iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
+					if (convergence_criterion == "relative_change_in_log_likelihood") {
+						Log::Debug("Negative log-likelihood: %f", neg_log_like);
+					}
 				}
-				if ((cov_pars - cov_pars_lag1).norm() / cov_pars_lag1.norm() < delta_rel_conv) {
+				if (terminate_algo) {
 					num_it = it + 1;
 					break;
 				}
@@ -425,18 +451,20 @@ namespace GPBoost {
 		* \param delta_rel_conv Convergence criterion: stop iteration if relative change in in parameters is below this value
 		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters. Default = true
 		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
-		* \param optimizer_cov Optimizer for covariance parameters. Options: "gradient_descent" or "fisher_scoring"
-		* \param optimizer_coef Optimizer for coefficients. Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares)
+		* \param optimizer_cov Optimizer for covariance parameters. Options: "gradient_descent" or "fisher_scoring" (default)
+		* \param optimizer_coef Optimizer for coefficients. Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares, default)
 		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters
 		* \param[out] std_dev_coef Standard deviations for the coefficients
 		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
+		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates,
 			double* optim_cov_pars, double* optim_coef, int& num_it, double* init_cov_pars, double* init_coef = nullptr,
 			double lr_coef = 0.01, double lr_cov = 0.01, double acc_rate_coef = 0.1, double acc_rate_cov = 0.5, int momentum_offset = 2,
 			int max_iter = 1000, double delta_rel_conv = 1.0e-6, bool use_nesterov_acc = true, int nesterov_schedule_version = 0,
 			string_t optimizer_cov = "fisher_scoring", string_t optimizer_coef = "wls", double* std_dev_cov_par = nullptr,
-			double* std_dev_coef = nullptr, bool calc_std_dev = false) {
+			double* std_dev_coef = nullptr, bool calc_std_dev = false, string_t convergence_criterion = "relative_change_in_log_likelihood") {
+			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
 				Log::Fatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov.c_str());
 			}
@@ -444,6 +472,8 @@ namespace GPBoost {
 				Log::Fatal("Optimizer option '%s' is not supported for regression coefficients.", optimizer_coef.c_str());
 			}
 			CHECK(covariate_data != nullptr);
+			CHECK(SUPPORTED_CONF_CRIT_.find(convergence_criterion) != SUPPORTED_CONF_CRIT_.end());
+			// Initialization
 			has_covariates_ = true;
 			num_coef_ = num_covariates;
 			X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_coef_);
@@ -473,6 +503,9 @@ namespace GPBoost {
 			vec_t beta_lag1 = beta;
 			vec_t resid;
 			num_it = max_iter;
+			bool terminate_algo = false;
+			double neg_log_like = 1e99;
+			// Start optimization
 			for (int it = 0; it < max_iter; ++it) {
 				if (it > 0) {
 					ApplyMomentumStep(it, cov_pars, cov_pars_lag1, use_nesterov_acc, acc_rate_cov, nesterov_schedule_version, true, momentum_offset);
@@ -504,7 +537,6 @@ namespace GPBoost {
 				else {
 					CalcYAux();//y_aux = Psi^-1 * y
 				}
-
 				if (optimizer_cov == "gradient_descent") {//one step of gradient descent
 					UpdateCovParGradOneIter(lr_cov, cov_pars, true);//closed_form_solution_sigma = true: we profile out sigma (=use closed for expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 				}
@@ -512,12 +544,30 @@ namespace GPBoost {
 					UpdateCovParFisherScoringOneIter(cov_pars, false);//closed_form_solution_sigma = false: we don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)
 				}
 				CheckNaNInf(cov_pars);
+				if (convergence_criterion == "relative_change_in_parameters") {
+					if (((beta - beta_lag1).norm() / beta_lag1.norm() < delta_rel_conv) && ((cov_pars - cov_pars_lag1).norm() / cov_pars_lag1.norm() < delta_rel_conv)) {
+						terminate_algo = true;
+					}
+				}
+				else if (convergence_criterion == "relative_change_in_log_likelihood") {
+					double neg_log_like_new;
+					EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_like_new, false);
+					if (it > 0) {
+						if (std::abs(neg_log_like_new - neg_log_like) / neg_log_like < delta_rel_conv) {
+							terminate_algo = true;
+						}
+					}
+					neg_log_like = neg_log_like_new;
+				}
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
 					Log::Debug("Gradient descent iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
 					for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %f", i, beta[i]); }
+					if (convergence_criterion == "relative_change_in_log_likelihood") {
+						Log::Debug("Negative log-likelihood: %f", neg_log_like);
+					}
 				}
-				if (((beta - beta_lag1).norm() / beta_lag1.norm() < delta_rel_conv) && ((cov_pars - cov_pars_lag1).norm() / cov_pars_lag1.norm() < delta_rel_conv)) {
+				if (terminate_algo) {
 					num_it = it + 1;
 					break;
 				}
@@ -552,21 +602,27 @@ namespace GPBoost {
 		* \param y_data Response variable data
 		* \param cov_pars Values for covariance parameters of RE components
 		* \param[out] negll Negative log-likelihood
+		* \param set_y_and_calc_cov_factor If true, the data y_ is set and the covariance matrix is factorized
 		*/
-		void EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll) {
+		void EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll, bool set_y_and_calc_cov_factor = true) {
 			negll = 0.;
-			SetY(y_data);
-			vec_t cov_pars_vec = Eigen::Map<vec_t>(cov_pars, num_cov_par_);
-			SetCovParsComps(cov_pars_vec);
-			CalcCovFactor(false, true, 1., false);//Create covariance matrix and factorize it
-			//Calculate quadratic form
-			double yTPsiInvy = 0.;
-			if (use_woodbury_identity_) {
-				CalcYtilde<T1>(false);//y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
+			double yTPsiInvy = 0.;//quadratic form
+			double log_det = 0;//log determinant
+			if (set_y_and_calc_cov_factor) {
+				SetY(y_data);
+				vec_t cov_pars_vec = Eigen::Map<vec_t>(cov_pars, num_cov_par_);
+				SetCovParsComps(cov_pars_vec);
+				CalcCovFactor(false, true, 1., false);//Create covariance matrix and factorize it
+				if (use_woodbury_identity_) {
+					CalcYtilde<T1>(false);//y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
+				}
+				CalcYTPsiIInvY<T1>(yTPsiInvy, true, 1, false);
 			}
-			CalcYTPsiIInvY<T1>(yTPsiInvy, true, 1);
+			else {
+				//assume that y_aux has already been calculated (this is the case in the optimzation algorithms)
+				CalcYTPsiIInvY<T1>(yTPsiInvy, true, 1, true);
+			}
 			//Calculate log determinant
-			double log_det = 0;
 			for (const auto& cluster_i : unique_clusters_) {
 				if (vecchia_approx_) {
 					log_det -= D_inv_[cluster_i].diagonal().array().log().sum();
@@ -1081,6 +1137,7 @@ namespace GPBoost {
 		/*! \brief Number of data points */
 		data_size_t num_data_;
 
+		// CLUSTERs of INDEPENDENT REALIZATIONS
 		/*! \brief Keys: Labels of independent realizations of REs/GPs, values: vectors with indices for data points */
 		std::map<gp_id_t, std::vector<int>> data_indices_per_cluster_;
 		/*! \brief Keys: Labels of independent realizations of REs/GPs, values: number of data points per independent realization */
@@ -1090,6 +1147,7 @@ namespace GPBoost {
 		/*! \brief Unique labels of independent realizations */
 		std::vector<gp_id_t> unique_clusters_;
 
+		// GROUPED RANDOM EFFECTS
 		/*! \brief Number of grouped (intercept) random effects */
 		data_size_t num_re_group_ = 0;
 		/*! \brief Number of grouped random coefficients */
@@ -1099,6 +1157,7 @@ namespace GPBoost {
 		/*! \brief Total number of grouped random effects (random intercepts plus random coefficients (slopes)) */
 		data_size_t num_re_group_total_ = 0;
 
+		// GAUSSIAN PROCESS
 		/*! \brief 1 if there is a Gaussian process 0 otherwise */
 		data_size_t num_gp_ = 0;
 		/*! \brief Type of GP. 0 = classical (spatial) GP, 1 = spatio-temporal GP */ //TODO: remove?
@@ -1165,6 +1224,7 @@ namespace GPBoost {
 		/*! \brief Collects matrices L^-1 * Z^T * Z_j for every random effect component (usually not saved, only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects and when Fisher scoring is done) */
 		std::map<gp_id_t, std::vector<T1>> LInvZtZj_;
 
+		// COVARIATE DATA for linear regression term
 		/*! \brief If true, the model linearly incluses covariates */
 		bool has_covariates_ = false;
 		/*! \brief Number of covariates */
@@ -1172,11 +1232,15 @@ namespace GPBoost {
 		/*! \brief Covariate data */
 		den_mat_t X_;
 
+		// OPTIMIZER PROPERTIES
 		/*! \brief List of supported optimizers for covariance parameters */
 		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring" };
 		/*! \brief List of supported optimizers for regression coefficients */
 		const std::set<string_t> SUPPORTED_OPTIM_COEF_{ "gradient_descent", "wls" };
+		/*! \brief List of supported convergence criteria used for terminating the optimization algorithm */
+		const std::set<string_t> SUPPORTED_CONF_CRIT_{ "relative_change_in_parameters", "relative_change_in_log_likelihood" };
 
+		// VECCHIA APPROXIMATION for GP
 		/*! \brief If true, the Veccia approximation is used for the Gaussian process */
 		bool vecchia_approx_ = false;
 		/*! \brief If true, a memory optimized version of the Vecchia approximation is used (at the expense of being slightly slower). THiS IS CURRENTLY NOT IMPLEMENTED */
@@ -1217,6 +1281,7 @@ namespace GPBoost {
 		/*! \brief Variance of idiosyncratic error term (nugget effect) */
 		double sigma2_;
 
+		// PREDICTION
 		/*! \brief Cluster IDs for prediction */
 		std::vector<gp_id_t> cluster_ids_data_pred_;
 		/*! \brief Levels of grouped RE for prediction */
@@ -2249,11 +2314,13 @@ namespace GPBoost {
 		/*!
 		* \brief Calculate y^T*Psi^-1*y if sparse matrices are used
 		* \param[out] yTPsiInvy y^T*Psi^-1*y
-		* \param cluster_ind Cluster index 
 		* \param all_clusters If true, then y^T*Psi^-1*y is calculated for all clusters / data and cluster_ind is ignored
+		* \param cluster_ind Cluster index
+		* \param y_aux_already_calculated If true, y_aux = Psi^-1y has already been calculated
 		*/
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
-		void CalcYTPsiIInvY(double& yTPsiInvy, bool all_clusters = true, gp_id_t cluster_ind = 1) {
+		void CalcYTPsiIInvY(double& yTPsiInvy, bool all_clusters = true,
+			gp_id_t cluster_ind = 1, bool y_aux_already_calculated = false) {
 			std::vector<gp_id_t> clusters_iterate;
 			if (all_clusters) {
 				clusters_iterate = unique_clusters_;
@@ -2268,11 +2335,16 @@ namespace GPBoost {
 					Log::Fatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
 				}
 				if (vecchia_approx_) {
-					if (B_.find(cluster_i) == B_.end()) {
-						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+					if (y_aux_already_calculated) {
+						yTPsiInvy += (y_[cluster_i].transpose() * y_aux_[cluster_i])(0,0);
 					}
-					vec_t y_aux_sqrt = B_[cluster_i] * y_[cluster_i];
-					yTPsiInvy += (y_aux_sqrt.transpose() * D_inv_[cluster_i] * y_aux_sqrt)(0, 0);
+					else {
+						if (B_.find(cluster_i) == B_.end()) {
+							Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+						}
+						vec_t y_aux_sqrt = B_[cluster_i] * y_[cluster_i];
+						yTPsiInvy += (y_aux_sqrt.transpose() * D_inv_[cluster_i] * y_aux_sqrt)(0, 0);
+					}
 				}//end vecchia_approx_
 				else {//not vecchia_approx_
 					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
@@ -2283,15 +2355,20 @@ namespace GPBoost {
 							Log::Fatal("y_tilde = L^-1 * Z^T * y has not the correct number of data points. Call 'CalcYtilde' first.");
 						}
 						yTPsiInvy += (y_[cluster_i].transpose() * y_[cluster_i])(0, 0) - (y_tilde_[cluster_i].transpose() * y_tilde_[cluster_i])(0, 0);
-					}
-					else {
-						vec_t y_aux_sqrt = y_[cluster_i];
-						const double* val = chol_facts_[cluster_i].valuePtr();
-						const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
-						const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
-						sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_sqrt.data());
-						yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
-					}		
+					}//end use_woodbury_identity_
+					else {//not use_woodbury_identity_
+						if (y_aux_already_calculated) {
+							yTPsiInvy += (y_[cluster_i].transpose() * y_aux_[cluster_i])(0, 0);
+						}
+						else {
+							vec_t y_aux_sqrt = y_[cluster_i];
+							const double* val = chol_facts_[cluster_i].valuePtr();
+							const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
+							const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
+							sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_sqrt.data());
+							yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
+						}
+					}//end not use_woodbury_identity_
 				}//end not vecchia_approx_
 			}
 		}
@@ -2299,11 +2376,13 @@ namespace GPBoost {
 		/*!
 		* \brief Calculate y^T*Psi^-1*y if dense matrices are used
 		* \param[out] yTPsiInvy y^T*Psi^-1*y
-		* \param cluster_ind Cluster index
 		* \param all_clusters If true, then y^T*Psi^-1*y is calculated for all clusters / data and cluster_ind is ignored
+		* \param cluster_ind Cluster index
+		* \param y_aux_already_calculated If true, y_aux = Psi^-1y has already been calculated
 		*/
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
-		void CalcYTPsiIInvY(double& yTPsiInvy, bool all_clusters = true, gp_id_t cluster_ind = 1) {
+		void CalcYTPsiIInvY(double& yTPsiInvy, bool all_clusters = true,
+			gp_id_t cluster_ind = 1, bool y_aux_already_calculated = false) {
 			std::vector<gp_id_t> clusters_iterate;
 			if (all_clusters) {
 				clusters_iterate = unique_clusters_;
@@ -2318,11 +2397,16 @@ namespace GPBoost {
 					Log::Fatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
 				}
 				if (vecchia_approx_) {
-					if (B_.find(cluster_i) == B_.end()) {
-						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+					if (y_aux_already_calculated) {
+						yTPsiInvy += (y_[cluster_i].transpose() * y_aux_[cluster_i])(0, 0);
 					}
-					vec_t y_aux_sqrt = B_[cluster_i] * y_[cluster_i];
-					yTPsiInvy += (y_aux_sqrt.transpose() * D_inv_[cluster_i] * y_aux_sqrt)(0, 0);
+					else {
+						if (B_.find(cluster_i) == B_.end()) {
+							Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+						}
+						vec_t y_aux_sqrt = B_[cluster_i] * y_[cluster_i];
+						yTPsiInvy += (y_aux_sqrt.transpose() * D_inv_[cluster_i] * y_aux_sqrt)(0, 0);
+					}
 				}//end vecchia_approx_
 				else {//not vecchia_approx_
 					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
@@ -2333,12 +2417,17 @@ namespace GPBoost {
 							Log::Fatal("y_tilde = L^-1 * Z^T * y has not the correct number of data points. Call 'CalcYtilde' first.");
 						}
 						yTPsiInvy += (y_[cluster_i].transpose() * y_[cluster_i])(0, 0) - (y_tilde_[cluster_i].transpose() * y_tilde_[cluster_i])(0, 0);
-					}
-					else {
-						vec_t y_aux_sqrt = y_[cluster_i];
-						L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], y_aux_sqrt.data());
-						yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
-					}
+					}//end use_woodbury_identity_
+					else {//not use_woodbury_identity_
+						if (y_aux_already_calculated) {
+							yTPsiInvy += (y_[cluster_i].transpose() * y_aux_[cluster_i])(0, 0);
+						}
+						else {
+							vec_t y_aux_sqrt = y_[cluster_i];
+							L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], y_aux_sqrt.data());
+							yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
+						}
+					}//end not use_woodbury_identity_
 				}//end not vecchia_approx_
 			}
 		}
@@ -2383,7 +2472,7 @@ namespace GPBoost {
 					if (use_woodbury_identity_) {
 						if (include_error_var) {
 							double yTPsiInvy;
-							CalcYTPsiIInvY<T1>(yTPsiInvy, false, cluster_i);
+							CalcYTPsiIInvY<T1>(yTPsiInvy, false, cluster_i, true);
 							cov_grad[0] += -1. * yTPsiInvy / sigma2_ / 2. + num_data_per_cluster_[cluster_i] / 2.;
 						}
 						std::vector<T1> LInvZtZj_cluster_i;
@@ -2473,17 +2562,18 @@ namespace GPBoost {
 		void UpdateCovParGradOneIter(double lr, vec_t& cov_pars, bool closed_form_solution_sigma = true) {
 			vec_t grad;
 			if (closed_form_solution_sigma) {
-				if (use_woodbury_identity_) {
-					double yTPsiInvy;
-					CalcYTPsiIInvY<T1>(yTPsiInvy, true, 1);
-					cov_pars[0] = yTPsiInvy;
-				}
-				else {
-					cov_pars[0] = 0.;
-					for (const auto& cluster_i : unique_clusters_) {
-						cov_pars[0] += (double)(y_[cluster_i].transpose() * y_aux_[cluster_i]);
-					}
-				}
+				//if (use_woodbury_identity_) {//DELETE
+				//	double yTPsiInvy;
+				//	CalcYTPsiIInvY<T1>(yTPsiInvy, true, 1);
+				//	cov_pars[0] = yTPsiInvy;
+				//}
+				//else {
+				//	cov_pars[0] = 0.;
+				//	for (const auto& cluster_i : unique_clusters_) {
+				//		cov_pars[0] += (double)(y_[cluster_i].transpose() * y_aux_[cluster_i]);
+				//	}
+				//}
+				CalcYTPsiIInvY<T1>(cov_pars[0], true, 1, true);
 				cov_pars[0] /= num_data_;
 				sigma2_ = cov_pars[0];
 				GetCovParGrad(cov_pars, grad, false, false);

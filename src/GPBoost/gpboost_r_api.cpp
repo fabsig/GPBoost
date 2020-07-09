@@ -88,12 +88,14 @@ LGBM_SE GPB_SetOptimConfig_R(LGBM_SE handle,
 	LGBM_SE trace,
 	LGBM_SE optimizer,
 	LGBM_SE momentum_offset,
+	LGBM_SE convergence_criterion,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetOptimConfig(R_GET_PTR(handle), R_REAL_PTR(init_cov_pars),
 		R_AS_DOUBLE(lr), R_AS_DOUBLE(acc_rate_cov), R_AS_INT(max_iter),
 		R_AS_DOUBLE(delta_rel_conv), R_AS_BOOL(use_nesterov_acc),
-		R_AS_INT(nesterov_schedule_version), R_AS_BOOL(trace), R_CHAR_PTR(optimizer), R_AS_INT(momentum_offset)));
+		R_AS_INT(nesterov_schedule_version), R_AS_BOOL(trace), R_CHAR_PTR(optimizer),
+		R_AS_INT(momentum_offset), R_CHAR_PTR(convergence_criterion)));
 	R_API_END();
 }
 
@@ -217,7 +219,7 @@ LGBM_SE GPB_PredictREModel_R(LGBM_SE handle,
 static const R_CallMethodDef CallEntries[] = {
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 21},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 2},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 12},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 13},
   {"GPB_SetOptimCoefConfig_R"         , (DL_FUNC)&GPB_SetOptimCoefConfig_R         , 7},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 4},
   {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 6},

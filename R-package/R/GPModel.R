@@ -352,7 +352,8 @@ gpb.GPModel <- R6::R6Class(
                                  acc_rate_cov = 0.5,
                                  nesterov_schedule_version = 0L,
                                  momentum_offset = 2L,
-                                 trace = FALSE)) {
+                                 trace = FALSE,
+                                 convergence_criterion = "relative_change_in_log_likelihood")) {
       
       if (gpb.is.null.handle(private$handle)) {
         stop("fit.GPModel: Gaussian process model has not been initialized")
@@ -541,7 +542,8 @@ gpb.GPModel <- R6::R6Class(
                                               acc_rate_cov = 0.5,
                                               nesterov_schedule_version = 0L,
                                               momentum_offset = 2L,
-                                              trace = FALSE)) {
+                                              trace = FALSE,
+                                              convergence_criterion = "relative_change_in_log_likelihood")) {
       if (gpb.is.null.handle(private$handle)) {
         stop("GPModel: Gaussian process model has not been initialized")
       }
@@ -597,6 +599,11 @@ gpb.GPModel <- R6::R6Class(
           stop("GPModel: Can only use ", sQuote("character"), " as ", sQuote("optimizer_cov"))
         }
       }
+      if (!is.null(params[["convergence_criterion"]])) {
+        if (!is.character(params[["convergence_criterion"]])) {
+          stop("GPModel: Can only use ", sQuote("character"), " as ", sQuote("convergence_criterion"))
+        }
+      }
       if (!is.null(params[["delta_rel_conv"]])) {
         params[["delta_rel_conv"]] <- as.numeric(params[["delta_rel_conv"]])
       }
@@ -627,6 +634,7 @@ gpb.GPModel <- R6::R6Class(
       trace <- private$params[["trace"]]
       optimizer_cov <- gpb.c_str(private$params[["optimizer_cov"]])
       momentum_offset <- private$params[["momentum_offset"]]
+      convergence_criterion <- gpb.c_str(private$params[["convergence_criterion"]])
       
       gpb.call("GPB_SetOptimConfig_R",
                ret = NULL,
@@ -640,7 +648,8 @@ gpb.GPModel <- R6::R6Class(
                nesterov_schedule_version,
                trace,
                optimizer_cov,
-               momentum_offset)
+               momentum_offset,
+               convergence_criterion)
       
       return(invisible(NULL))
       
@@ -1486,7 +1495,8 @@ gpb.GPModel <- R6::R6Class(
                   acc_rate_cov = 0.5,
                   nesterov_schedule_version = 0L,
                   momentum_offset = 2L,
-                  trace = FALSE),
+                  trace = FALSE,
+                  convergence_criterion = "relative_change_in_log_likelihood"),
     SUPPORTED_COV_FUNCTIONS = c("exponential", "gaussian", "powered_exponential", "matern"),
     SUPPORTED_VECCHIA_ORDERING = c("none", "random"),
     VECCHIA_PRED_TYPES = c("order_obs_first_cond_obs_only",
@@ -1731,7 +1741,8 @@ fit.GPModel <- function(gp_model,
                                           acc_rate_cov = 0.5,
                                           nesterov_schedule_version = 0L,
                                           momentum_offset = 2L,
-                                          trace = FALSE)) {
+                                          trace = FALSE,
+                                          convergence_criterion = "relative_change_in_log_likelihood")) {
   
   # Fit model
   invisible(gp_model$fit(y = y,
@@ -2070,7 +2081,8 @@ fitGPModel <- function(group_data = NULL,
                                      acc_rate_cov = 0.5,
                                      nesterov_schedule_version = 0L,
                                      momentum_offset = 2L,
-                                     trace = FALSE)) {
+                                     trace = FALSE,
+                                     convergence_criterion = "relative_change_in_log_likelihood")) {
   #Create model
   gpmodel <- gpb.GPModel$new(group_data = group_data,
                              group_rand_coef_data = group_rand_coef_data,

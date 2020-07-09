@@ -52,7 +52,8 @@ test_that("Gaussian process model ", {
   gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
   fit(gp_model, y = y, std_dev = TRUE, params = list(optimizer_cov = "gradient_descent",
                                                      lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                                     acc_rate_cov = 0.5, delta_rel_conv=1E-6))
+                                                     acc_rate_cov = 0.5, delta_rel_conv=1E-6,
+                                                     convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.03276544, 0.07715339, 1.07617623, 0.25177590, 0.11352557, 0.03770062)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(dim(gp_model$get_cov_pars())[2], 3)
@@ -63,14 +64,30 @@ test_that("Gaussian process model ", {
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                          y = y, std_dev = FALSE,
                          params = list(optimizer_cov = "fisher_scoring",
-                                       delta_rel_conv=1E-6, use_nesterov_acc = FALSE))
+                                       delta_rel_conv=1E-6, use_nesterov_acc = FALSE,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars_est <- as.vector(gp_model$get_cov_pars())
   expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3,5)])),1E-5)
   expect_equal(class(cov_pars_est), "numeric")
   expect_equal(length(cov_pars_est), 3)
   expect_equal(gp_model$get_num_optim_iter(), 16)
   
+  # Different termination criterion
+  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                         y = y, std_dev = TRUE,
+                         params = list(optimizer_cov = "fisher_scoring",
+                                       delta_rel_conv=1E-6, use_nesterov_acc = FALSE,
+                                       convergence_criterion = "relative_change_in_log_likelihood"))
+  cov_pars_other_crit <- c(0.03276936, 0.07715497, 1.07616993, 0.25177619, 0.11352629, 0.03770115)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other_crit)),1E-6)
+  expect_equal(gp_model$get_num_optim_iter(), 11)
+  
   # Prediction from fitted model
+  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                         y = y, std_dev = FALSE,
+                         params = list(optimizer_cov = "fisher_scoring",
+                                       delta_rel_conv=1E-6, use_nesterov_acc = FALSE,
+                                       convergence_criterion = "relative_change_in_parameters"))
   coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
   pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE)
   expected_mu <- c(0.06960478, 1.61299381, 0.44053480)
@@ -109,7 +126,8 @@ test_that("Gaussian process model with linear regression term ", {
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                          y = y, X=X, std_dev = TRUE,
                          params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls",
-                                       delta_rel_conv=1E-6, use_nesterov_acc = FALSE))
+                                       delta_rel_conv=1E-6, use_nesterov_acc = FALSE,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.008461342, 0.069973492, 1.001562822, 0.214358560, 0.094656409, 0.029400407)
   coef <- c(2.30780026, 0.21365770, 1.89951426, 0.09484768)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
@@ -181,7 +199,8 @@ test_that("Gaussian process model with cluster_id's not constant ", {
                          y = y, std_dev = TRUE, cluster_ids = cluster_ids,
                          params = list(optimizer_cov = "gradient_descent",
                                        lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                       acc_rate_cov = 0.5, delta_rel_conv=1E-6))
+                                       acc_rate_cov = 0.5, delta_rel_conv=1E-6,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.05414149, 0.08722111, 1.05789166, 0.22886740, 0.12702368, 0.04076914)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 247)
@@ -190,7 +209,8 @@ test_that("Gaussian process model with cluster_id's not constant ", {
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                          y = y, std_dev = TRUE, cluster_ids = cluster_ids,
                          params = list(optimizer_cov = "fisher_scoring",
-                                       use_nesterov_acc = FALSE, delta_rel_conv=1E-6))
+                                       use_nesterov_acc = FALSE, delta_rel_conv=1E-6,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.05414149, 0.08722111, 1.05789166, 0.22886740, 0.12702368, 0.04076914)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
   expect_equal(gp_model$get_num_optim_iter(), 20)
@@ -211,36 +231,6 @@ test_that("Gaussian process model with cluster_id's not constant ", {
 })
 
 
-# library(Matrix)
-# spatial_nll = function(par,yy,D,Z=NULL,cov_function="exponential"){
-#   sigma2=exp(par[1])
-#   nu2=exp(par[2])
-#   alpha=exp(par[3])
-#   n=length(yy)
-#   if(!is.null(Z)){
-#     if(cov_function=="exponential"){
-#       Psi = nu2*Z%*%exp(-alpha*D)%*%t(Z)+Diagonal(n,x=1)
-#     }else if (cov_function=="gaussian"){
-#       Psi = nu2*Z%*%exp(-(alpha*D)^2)%*%t(Z)+Diagonal(n,x=1)
-#     }
-#   }else{
-#     if(cov_function=="exponential"){
-#       Psi = nu2*exp(-alpha*D)+Diagonal(n,x=1)
-#     }else if (cov_function=="gaussian"){
-#       Psi = nu2*exp(-(alpha*D)^2)+Diagonal(n,x=1)
-#     }
-#   }
-#   return(as.numeric(t(yy)%*%solve(Psi)%*%yy)/sigma2/2+determinant(Psi,logarithm=TRUE)$modulus[1]/2+n/2*log(sigma2))
-# }
-# y <- eps_multiple + xi
-# pars=c(0.01,100,5)
-# system.time({opt = optim(par=log(pars),fn=spatial_nll,yy=y,D=D_multiple,Z=NULL,control=list(maxit=10000))})##,control=list(maxit=10000,reltol=1E-20)
-# paro = exp(opt$par)
-# parfit=paro
-# parfit[2]=parfit[1]*parfit[2]
-# parfit[3]=1/parfit[3]
-# parfit
-
 test_that("Gaussian process model with multiple observations at the same location ", {
   
   y <- eps_multiple + xi
@@ -249,7 +239,7 @@ test_that("Gaussian process model with multiple observations at the same locatio
                          params = list(optimizer_cov = "gradient_descent",
                                        lr_cov = 0.1, use_nesterov_acc = TRUE,
                                        acc_rate_cov = 0.5, delta_rel_conv=1E-6,
-                                       maxit = 500))
+                                       maxit = 500, convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.037136468, 0.006064182, 1.153629602, 0.435788127, 0.192080432, 0.102630899)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 23)
@@ -258,7 +248,8 @@ test_that("Gaussian process model with multiple observations at the same locatio
   gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential",
                          y = y, std_dev = TRUE,
                          params = list(optimizer_cov = "fisher_scoring",
-                                       use_nesterov_acc = FALSE, delta_rel_conv=1E-6))
+                                       use_nesterov_acc = FALSE, delta_rel_conv=1E-6,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.037136462, 0.006064181, 1.153630335, 0.435788570, 0.192080613, 0.102631006)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
   expect_equal(gp_model$get_num_optim_iter(), 14)
@@ -286,7 +277,8 @@ test_that("Vecchia approximation for Gaussian process model ", {
                       vecchia_approx=TRUE, num_neighbors=n-1)
   fit(gp_model, y = y, std_dev = TRUE, params = list(optimizer_cov = "gradient_descent",
                                                      lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                                     acc_rate_cov = 0.5, delta_rel_conv=1E-6))
+                                                     acc_rate_cov = 0.5, delta_rel_conv=1E-6,
+                                                     convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.03276544, 0.07715339, 1.07617623, 0.25177590, 0.11352557, 0.03770062)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(dim(gp_model$get_cov_pars())[2], 3)
@@ -299,7 +291,7 @@ test_that("Vecchia approximation for Gaussian process model ", {
   fit(gp_model, y = y, std_dev = TRUE, params = list(optimizer_cov = "gradient_descent",
                                                      lr_cov = 0.1, use_nesterov_acc = TRUE,
                                                      acc_rate_cov = 0.5, delta_rel_conv=1E-6,
-                                                     maxit=100))
+                                                     maxit=100, convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.02489967, 0.07380777, 1.05912123, 0.23201346, 0.11465592, 0.03571163)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   
@@ -309,7 +301,8 @@ test_that("Vecchia approximation for Gaussian process model ", {
                          y = y, std_dev = TRUE,
                          params = list(optimizer_cov = "fisher_scoring",
                                        use_nesterov_acc = FALSE,
-                                       delta_rel_conv=1E-6,maxit=100))
+                                       delta_rel_conv=1E-6, maxit=100,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.01692036, 0.06802553, 1.15762655, 0.26474644, 0.12429916, 0.03962540)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 17)
@@ -330,7 +323,8 @@ test_that("Vecchia approximation for Gaussian process model ", {
                          y = y, std_dev = TRUE,
                          params = list(optimizer_cov = "fisher_scoring",
                                        use_nesterov_acc = FALSE,
-                                       delta_rel_conv=1E-6,maxit=100))
+                                       delta_rel_conv=1E-6, maxit=100,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.01829104, 0.07043221, 1.06577048, 0.23037437, 0.11335918, 0.03484927)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 20)
@@ -398,7 +392,8 @@ test_that("Vecchia approximation for Gaussian process model with linear regressi
                          vecchia_approx=TRUE, num_neighbors=30,
                          y = y, X=X, std_dev = TRUE,
                          params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls",
-                                       delta_rel_conv=1E-6, use_nesterov_acc = FALSE))
+                                       delta_rel_conv=1E-6, use_nesterov_acc = FALSE,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(2.022073e-61, 6.645280e-02, 9.611996e-01, 1.903751e-01, 9.059417e-02, 2.660703e-02)
   coef <- c(2.35074728, 0.18885871, 1.91556300, 0.09439146)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
@@ -475,7 +470,8 @@ test_that("Gaussian process model with cluster_id's not constant ", {
                          y = y, std_dev = TRUE, cluster_ids = cluster_ids,
                          params = list(optimizer_cov = "gradient_descent",
                                        lr_cov = 0.05, use_nesterov_acc = TRUE,
-                                       acc_rate_cov = 0.5, delta_rel_conv=1E-6))
+                                       acc_rate_cov = 0.5, delta_rel_conv=1E-6,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.03359375, 0.07751222, 1.07019293,
                 0.22080542, 0.12201912, 0.03761778)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
@@ -486,7 +482,8 @@ test_that("Gaussian process model with cluster_id's not constant ", {
                          vecchia_approx=TRUE, num_neighbors=30,
                          y = y, std_dev = TRUE, cluster_ids = cluster_ids,
                          params = list(optimizer_cov = "fisher_scoring",
-                                       use_nesterov_acc = FALSE, delta_rel_conv=1E-6))
+                                       use_nesterov_acc = FALSE, delta_rel_conv=1E-6,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.03359131, 0.07751098, 1.07019567, 0.22080490, 0.12201865, 0.03761748)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
   expect_equal(gp_model$get_num_optim_iter(), 15)
@@ -517,7 +514,7 @@ test_that("Vecchia approximation for Gaussian process model with multiple observ
                          params = list(optimizer_cov = "gradient_descent",
                                        lr_cov = 0.1, use_nesterov_acc = TRUE,
                                        acc_rate_cov = 0.5, delta_rel_conv=1E-6,
-                                       maxit = 500))
+                                       maxit = 500, convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.038558383, 0.006428591, 1.084370670, 0.377374749, 0.169970093, 0.085155416)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 35)
@@ -527,7 +524,8 @@ test_that("Vecchia approximation for Gaussian process model with multiple observ
                          vecchia_approx=TRUE, num_neighbors=30,
                          y = y, std_dev = TRUE,
                          params = list(optimizer_cov = "fisher_scoring",
-                                       use_nesterov_acc = FALSE, delta_rel_conv=1E-6))
+                                       use_nesterov_acc = FALSE, delta_rel_conv=1E-6,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.038558364, 0.006428588, 1.084369959, 0.377374632, 0.169970239, 0.085155496)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
   expect_equal(gp_model$get_num_optim_iter(), 17)

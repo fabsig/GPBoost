@@ -52,6 +52,12 @@ gp_model.fit(y=y, std_dev=True, params={"optimizer_cov": "gradient_descent", "lr
                                         "use_nesterov_acc": False, "maxit": 100})
 gp_model.summary()
 
+# Other convergence criterion
+gp_model = gpb.GPModel(group_data=group)
+gp_model.fit(y=y, std_dev=True, params={"optimizer_cov": "fisher_scoring",
+                                        "convergence_criterion": "relative_change_in_parameters"})
+gp_model.summary()
+
 # Evaluate negative log-likelihood
 gp_model.neg_log_likelihood(cov_pars=np.array([sigma2, sigma2_1]), y=y)
 
@@ -93,6 +99,7 @@ y = eps2 + xi + X.dot(beta)  # add fixed effect to observed data
 gp_model = gpb.GPModel(group_data=group_data, group_rand_coef_data=x, ind_effect_group_rand_coef=[1])
 gp_model.fit(y=y, X=X, std_dev=True)
 gp_model.summary()
+
 
 # --------------------Gaussian process model----------------
 # Simulate data

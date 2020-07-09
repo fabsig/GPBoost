@@ -42,34 +42,32 @@ test_that("single level grouped random effects model ", {
   y <- as.vector(Z1 %*% b1) + xi
   # Estimation
   gp_model <- GPModel(group_data = group)
-  fit(gp_model, y = y, std_dev = TRUE, params = list(optimizer_cov = "fisher_scoring"))
+  fit(gp_model, y = y, std_dev = TRUE, params = list(optimizer_cov = "fisher_scoring",
+                                                     convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.0006328951, 0.0004002780, 2.0227167347, 1.2794785465)
-  cov_pars_est <- as.vector(gp_model$get_cov_pars())
-  expect_lt(sum(abs(cov_pars_est-cov_pars)),1E-6)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(dim(gp_model$get_cov_pars())[2], 2)
   expect_equal(dim(gp_model$get_cov_pars())[1], 2)
   expect_equal(gp_model$get_num_optim_iter(), 13)
   
-  # Other optimization settings
+  # Using gradient descent instead of Fisher scoring
   gp_model <- fitGPModel(group_data = group, y = y, std_dev = FALSE,
                          params = list(optimizer_cov = "gradient_descent",
-                                       lr_cov = 0.1, use_nesterov_acc = FALSE,
-                                       maxit = 1000))
+                                       lr_cov = 0.1, use_nesterov_acc = FALSE,maxit = 1000,
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars_est <- as.vector(gp_model$get_cov_pars())
   expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3)])),1E-5)
   expect_equal(class(cov_pars_est), "numeric")
   expect_equal(length(cov_pars_est), 2)
   expect_equal(gp_model$get_num_optim_iter(), 124)
   
-  gp_model <- fitGPModel(group_data = group, y = y, std_dev = FALSE,
-                         params = list(optimizer_cov = "gradient_descent",
-                                       lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                       acc_rate_cov = 0.5, maxit = 1000))
-  cov_pars_est <- as.vector(gp_model$get_cov_pars())
-  expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3)])),1E-5)
-  expect_equal(class(cov_pars_est), "numeric")
-  expect_equal(length(cov_pars_est), 2)
-  expect_equal(gp_model$get_num_optim_iter(), 52)
+  # Different termination criterion
+  gp_model <- fitGPModel(group_data = group, y = y, std_dev = TRUE,
+                         params = list(optimizer_cov = "fisher_scoring", maxit = 1000,
+                                       convergence_criterion = "relative_change_in_log_likelihood"))
+  cov_pars_other_crit <- c(0.0006398729, 0.0004046911, 2.0227167432, 1.2794807591)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other_crit)),1E-6)
+  expect_equal(gp_model$get_num_optim_iter(), 10)
   
   # Prediction 
   gp_model <- GPModel(group_data = group)
@@ -84,7 +82,8 @@ test_that("single level grouped random effects model ", {
   
   # Prediction from fitted model
   gp_model <- fitGPModel(group_data = group, y = y, std_dev = FALSE,
-                         params = list(optimizer_cov = "fisher_scoring"))
+                         params = list(optimizer_cov = "fisher_scoring",
+                                       convergence_criterion = "relative_change_in_parameters"))
   group_test <- c(1,2,7)
   pred <- predict(gp_model, group_data_pred = group_test, predict_cov_mat = TRUE)
   expected_mu <- c(-2.018476, -1.017437, 0.0000000)
@@ -107,7 +106,8 @@ test_that("single level grouped random effects model ", {
   # Use non-ordered grouping data
   shuffle_ind <- c(10, 2, 1, 9, 7, 8, 4, 5, 3, 6)
   gp_model <- GPModel(group_data = group[shuffle_ind])
-  fit(gp_model, y = y[shuffle_ind], std_dev = TRUE, params = list(optimizer_cov = "fisher_scoring"))
+  fit(gp_model, y = y[shuffle_ind], std_dev = TRUE, params = list(optimizer_cov = "fisher_scoring",
+                                                                  convergence_criterion = "relative_change_in_parameters"))
   cov_pars_est <- as.vector(gp_model$get_cov_pars())
   expect_lt(sum(abs(cov_pars_est-cov_pars)),1E-6)
 })
@@ -120,7 +120,8 @@ test_that("linear mixed effects model with grouped random effects ", {
   gp_model <- fitGPModel(group_data = group,
                          y = y, X = X, std_dev = TRUE,
                          params = list(optimizer_cov = "fisher_scoring",
-                                       optimizer_coef = "wls"))
+                                       optimizer_coef = "wls",
+                                       convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.0005890585, 0.0003725533, 2.0227180604, 1.2794655172)
   coef <- c(1.99219041, 0.63608373, 2.01453829, 0.02383676)
   cov_pars_est <- as.vector(gp_model$get_cov_pars())
@@ -194,7 +195,8 @@ test_that("not constant cluster_id's for grouped random effects ", {
   y <- Z1 %*% b1 + xi
   gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids,
                          y = y, std_dev = TRUE,
-                         params = list(optimizer_cov = "fisher_scoring", maxit=100))
+                         params = list(optimizer_cov = "fisher_scoring", maxit=100,
+                                       convergence_criterion = "relative_change_in_parameters"))
   expected_values <- c(0.0006328951, 0.0004002780, 2.0227167465, 1.2794785483)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 13)
@@ -203,7 +205,8 @@ test_that("not constant cluster_id's for grouped random effects ", {
   gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids,
                          y = y, std_dev = TRUE,
                          params = list(optimizer_cov = "gradient_descent",
-                                       lr_cov = 0.1, use_nesterov_acc = FALSE, maxit = 1000))
+                                       lr_cov = 0.1, use_nesterov_acc = FALSE, maxit = 1000,
+                                       convergence_criterion = "relative_change_in_parameters"))
   expected_values <- c(0.0006328973, 0.0004002794, 2.0227113725, 1.2794751488)
   cov_pars_est <- gp_model$get_cov_pars()
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)

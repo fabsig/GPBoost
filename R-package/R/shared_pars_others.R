@@ -64,6 +64,8 @@
 #'                Default=2.}
 #'                \item{trace}{ If TRUE, the value of the gradient is printed for some iterations.
 #'                Useful for finding good learning rates. Default=FALSE.}
+#'                \item{convergence_criterion}{ The convergence criterion used for terminating the optimization algorithm.
+#'                Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters".}
 #'            }
 NULL
 

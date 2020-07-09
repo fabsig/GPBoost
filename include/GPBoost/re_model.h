@@ -80,11 +80,12 @@ namespace GPBoost {
     * \param trace If true, the value of the gradient is printed for some iterations. Default = false
     * \param optimizer Options: "gradient_descent" or "fisher_scoring"
     * \param momentum_offset Number of iterations for which no mometum is applied in the beginning
+    * \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
     */
     void SetOptimConfig(double* init_cov_pars = nullptr, double lr = 0.01,
       double acc_rate_cov = 0.5, int max_iter = 1000, double delta_rel_conv = 1.0e-6,
       bool use_nesterov_acc = true, int nesterov_schedule_version = 0, bool trace = true,
-      const char* optimizer = nullptr, int momentum_offset = 2);
+      const char* optimizer = nullptr, int momentum_offset = 2, const char* convergence_criterion = nullptr);
 
     /*!
     * \brief Reset cov_pars_ (to their initial values).
@@ -238,6 +239,7 @@ namespace GPBoost {
     double lr_coef_ = 0.001;
     double acc_rate_coef_ = 0.5;
     string_t optimizer_coef_ = "wls";//"gradient_descent" or "wls"
+    string_t convergence_criterion_ = "relative_change_in_log_likelihood";//"relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
 
     /*!
     * \brief Check whether cov_pars_ is defined and if not define them as init_cov_pars_ and if init_cov_pars_ is not given, find "reasonable" default values for the intial values of the covariance parameters

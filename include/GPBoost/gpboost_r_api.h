@@ -81,6 +81,7 @@ GPBOOST_C_EXPORT LGBM_SE GPB_REModelFree_R(
 * \param trace If true, the value of the gradient is printed for some iterations. Default = false
 * \param optimizer Options: "gradient_descent" or "fisher_scoring"
 * \param momentum_offset Number of iterations for which no mometum is applied in the beginning
+* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT LGBM_SE GPB_SetOptimConfig_R(
@@ -95,6 +96,7 @@ GPBOOST_C_EXPORT LGBM_SE GPB_SetOptimConfig_R(
 	LGBM_SE trace,
 	LGBM_SE optimizer,
 	LGBM_SE momentum_offset,
+	LGBM_SE convergence_criterion,
 	LGBM_SE call_state);
 
 /*!
