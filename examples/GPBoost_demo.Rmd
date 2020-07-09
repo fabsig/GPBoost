@@ -143,7 +143,7 @@ gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 #   You can also try optimizer_cov = "fisher_scoring" which implements a 
 #   form of (quasi-) Newton's method and does not require  a learning rate
 gp_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05, trace = FALSE,
-                  use_nesterov_acc = TRUE, acc_rate_cov = 0.5, delta_rel_conv = .Machine$double.eps^0.25)
+                  use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
 gp_model$set_optim_params(params=gp_params)
 
 # 2. Train model
@@ -167,8 +167,7 @@ import gpboost as gpb
 import numpy as np
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
 gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent", "lr_cov": 0.05,
-                                  "use_nesterov_acc": True, "acc_rate_cov": 0.5,
-                                  "delta_rel_conv": np.finfo(float).eps**0.25, "trace": False})
+                                  "use_nesterov_acc": True, "acc_rate_cov": 0.5, "trace": False})
 
 # 2. Train model
 data_train = gpb.Dataset(X, y)
@@ -224,7 +223,7 @@ Boosting with trees as base learners has several tuning parameters. Arguably the
 ```{r cv, results='show', message=F, cache=cache, eval=run_cv}
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 gp_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
-                  use_nesterov_acc = TRUE, acc_rate_cov = 0.5, delta_rel_conv = .Machine$double.eps^0.25)
+                  use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
 gp_model$set_optim_params(params=gp_params)
 params <- list(learning_rate = 0.01, max_depth = 5,
                min_data_in_leaf = 10, objective = "regression_l2")
@@ -242,8 +241,7 @@ print(paste0("Optimal number of iterations: ", cvbst$best_iter))
 ```{python cv_python, collapse=T, message=F, cache=cache, eval=run_python}
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
 gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent", "lr_cov": 0.05,
-                                  "use_nesterov_acc": True, "acc_rate_cov": 0.5,
-                                  "delta_rel_conv": np.finfo(float).eps**0.25, "trace": False})
+                                  "use_nesterov_acc": True, "acc_rate_cov": 0.5, "trace": False})
 data_train = gpb.Dataset(X, y)
 params = { 'objective': 'regression_l2', 'learning_rate': 0.01,
             'max_depth': 5, 'min_data_in_leaf': 10, 'verbose': 0}
@@ -264,7 +262,7 @@ print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
 # GPModel
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 gp_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
-                  use_nesterov_acc = TRUE, acc_rate_cov = 0.5, delta_rel_conv = .Machine$double.eps^0.25)
+                  use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
 gp_model$set_optim_params(params=gp_params)
 # Find best test score by using k-fold cross validation considering a grid of possible tuning parameters
 best_score <- 1e99
@@ -303,7 +301,7 @@ gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                         y = y, X = X1,
                         params = list(optimizer_cov = "gradient_descent",
                                       lr_cov = 0.05, use_nesterov_acc = TRUE,
-                                      acc_rate_cov = 0.5, delta_rel_conv = .Machine$double.eps^0.25))
+                                      acc_rate_cov = 0.5))
 X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 print("Fitted linear Gaussian process model:")
 summary(gp_model)
@@ -335,8 +333,6 @@ mean((y_pred-y_test)^2)
 
 # Combined Tree-Boosting and Grouped Random Effects Example
 In the following, we show how a non-linear mixed effects model can be trained using `gpboost`. We use a random effects model that includes two crossed grouped random effects as well as a random slope. 
-
-*Note that estimating such a random effects structure is computationally demanding, also in the linear case, as the two grouped random effects are crossed and the corresponding covariance matrix is rather dense. Consequently, training is relatively slow for the GPBoost algorithm. If you use only one grouped random effects, training is much faster as the covariance matrix is then much sparser, and the GPBoost library relies on sparse matrix calculations.*
 
 We first simulate data and then show how to train the GPBoost model and make predictions.
 <div class="fold s">
@@ -383,9 +379,6 @@ x_rand_slope_test = rep(0,n)
 gp_model <- GPModel(group_data = cbind(group,group2),
                     group_rand_coef_data = x_rand_slope,
                     ind_effect_group_rand_coef = 1)# the random slope is for the first random effect
-re_params <- list(optimizer_cov = "fisher_scoring", trace = FALSE,
-                  delta_rel_conv = .Machine$double.eps^0.25)
-gp_model$set_optim_params(params=re_params)
 
 # # Use cross-validation to find the optimal number of iterations (approx. 15 here)
 # params <- list(learning_rate = 0.1, max_depth = 1,
@@ -394,6 +387,7 @@ gp_model$set_optim_params(params=re_params)
 #                 gp_model = gp_model, use_gp_model_for_validation = FALSE,
 #                 nrounds = 100, nfold = 4, verbose = 1,
 #                 eval = "l2", early_stopping_rounds = 5)
+# cvbst$best_iter
 
 # 2. Train model
 bst <- gpboost(data = X, label = y,
