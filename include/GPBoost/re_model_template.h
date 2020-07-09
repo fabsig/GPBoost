@@ -2603,17 +2603,6 @@ namespace GPBoost {
 		void UpdateCovParGradOneIter(double lr, vec_t& cov_pars, bool closed_form_solution_sigma = true) {
 			vec_t grad;
 			if (closed_form_solution_sigma) {
-				//if (use_woodbury_identity_) {//DELETE
-				//	double yTPsiInvy;
-				//	CalcYTPsiIInvY<T1>(yTPsiInvy, true, 1);
-				//	cov_pars[0] = yTPsiInvy;
-				//}
-				//else {
-				//	cov_pars[0] = 0.;
-				//	for (const auto& cluster_i : unique_clusters_) {
-				//		cov_pars[0] += (double)(y_[cluster_i].transpose() * y_aux_[cluster_i]);
-				//	}
-				//}
 				CalcYTPsiIInvY<T1>(cov_pars[0], true, 1, true);
 				cov_pars[0] /= num_data_;
 				sigma2_ = cov_pars[0];
