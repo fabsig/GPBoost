@@ -41,7 +41,7 @@ pred$cov# Predicted covariance
 #   instead of Fisher scoring
 gp_model <- fitGPModel(group_data = group, y = y, std_dev = TRUE,
                        params = list(optimizer_cov = "gradient_descent",
-                                     lr_cov = 0.1, use_nesterov_acc = TRUE,
+                                     lr_cov = 0.1, use_nesterov_acc = FALSE,
                                      maxit = 100))
 summary(gp_model)
 
@@ -173,16 +173,9 @@ summary(gp_model)
 
 
 #--------------------Gaussian process model with Vecchia approximation----------------
-gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                    vecchia_approx = TRUE, num_neighbors = 30)
-# Fit model
-fit(gp_model, y = y)
-summary(gp_model)
-
-# Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        vecchia_approx = TRUE, num_neighbors = 30,
-                        y = y)
+y <- eps + xi
+gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                       vecchia_approx = TRUE, num_neighbors = 30, y = y)
 summary(gp_model)
 
 

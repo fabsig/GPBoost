@@ -108,7 +108,7 @@ X_test = r.X_test
 y_test = r.y_test
 ```
 
-```{r plot_data, echo=F, results='hide', message=F, cache=cache, fig.align='center', fig.cap='Illustration of data: Mean function F(X) used for simulation, latent Gaussian process b, and observed data y (bottom plots)'}
+```{r plot_data, echo=F, results='hide', message=F, cache=cache, warning=FALSE, fig.align='center', fig.cap='Illustration of data: Mean function F(X) used for simulation, latent Gaussian process b, and observed data y (bottom plots)'}
 library(ggplot2)
 library(viridis)
 library(gridExtra)

@@ -40,7 +40,7 @@ cluster_ids <- c(rep(1,0.4*n),rep(2,0.6*n))
 test_that("single level grouped random effects model ", {
 
   y <- as.vector(Z1 %*% b1) + xi
-  # Estimation
+  # Estimation using Fisher scoring
   gp_model <- GPModel(group_data = group)
   fit(gp_model, y = y, std_dev = TRUE, params = list(optimizer_cov = "fisher_scoring",
                                                      convergence_criterion = "relative_change_in_parameters"))
@@ -53,7 +53,7 @@ test_that("single level grouped random effects model ", {
   # Using gradient descent instead of Fisher scoring
   gp_model <- fitGPModel(group_data = group, y = y, std_dev = FALSE,
                          params = list(optimizer_cov = "gradient_descent",
-                                       lr_cov = 0.1, use_nesterov_acc = FALSE,maxit = 1000,
+                                       lr_cov = 0.1, use_nesterov_acc = FALSE, maxit = 1000,
                                        convergence_criterion = "relative_change_in_parameters"))
   cov_pars_est <- as.vector(gp_model$get_cov_pars())
   expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3)])),1E-5)
@@ -61,13 +61,30 @@ test_that("single level grouped random effects model ", {
   expect_equal(length(cov_pars_est), 2)
   expect_equal(gp_model$get_num_optim_iter(), 124)
   
+  # Using gradient descent with Nesterov acceleration
+  gp_model <- fitGPModel(group_data = group, y = y, std_dev = FALSE,
+                         params = list(optimizer_cov = "gradient_descent",
+                                       lr_cov = 0.2, use_nesterov_acc = TRUE,
+                                       acc_rate_cov = 0.1, maxit = 1000,
+                                       convergence_criterion = "relative_change_in_parameters"))
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(1,3)])),1E-5)
+  expect_equal(gp_model$get_num_optim_iter(), 53)
+  
+  # Using gradient descent and a too large learning rate
+  gp_model <- fitGPModel(group_data = group, y = y, std_dev = FALSE,
+                         params = list(optimizer_cov = "gradient_descent",
+                                       lr_cov = 10, use_nesterov_acc = FALSE,
+                                       maxit = 1000, convergence_criterion = "relative_change_in_parameters"))
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(1,3)])),1E-6)
+  expect_equal(gp_model$get_num_optim_iter(), 27)
+  
   # Different termination criterion
   gp_model <- fitGPModel(group_data = group, y = y, std_dev = TRUE,
-                         params = list(optimizer_cov = "fisher_scoring", maxit = 1000,
+                         params = list(optimizer_cov = "fisher_scoring", maxit = 1000,#trace=T,delta_rel_conv=1E-50,
                                        convergence_criterion = "relative_change_in_log_likelihood"))
-  cov_pars_other_crit <- c(0.0006398729, 0.0004046911, 2.0227167432, 1.2794807591)
+  cov_pars_other_crit <- c(0.0007366689, 0.0004659103, 2.0227167489, 1.2795113758)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other_crit)),1E-6)
-  expect_equal(gp_model$get_num_optim_iter(), 10)
+  expect_equal(gp_model$get_num_optim_iter(), 9)
   
   # Prediction 
   gp_model <- GPModel(group_data = group)
@@ -108,8 +125,8 @@ test_that("single level grouped random effects model ", {
   gp_model <- GPModel(group_data = group[shuffle_ind])
   fit(gp_model, y = y[shuffle_ind], std_dev = TRUE, params = list(optimizer_cov = "fisher_scoring",
                                                                   convergence_criterion = "relative_change_in_parameters"))
-  cov_pars_est <- as.vector(gp_model$get_cov_pars())
-  expect_lt(sum(abs(cov_pars_est-cov_pars)),1E-6)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+  expect_equal(gp_model$get_num_optim_iter(), 13)
 })
 
 
@@ -124,10 +141,8 @@ test_that("linear mixed effects model with grouped random effects ", {
                                        convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.0005890585, 0.0003725533, 2.0227180604, 1.2794655172)
   coef <- c(1.99219041, 0.63608373, 2.01453829, 0.02383676)
-  cov_pars_est <- as.vector(gp_model$get_cov_pars())
-  coef_est <- as.vector(gp_model$get_coef())
-  expect_lt(sum(abs(cov_pars_est-cov_pars)),1E-6)
-  expect_lt(sum(abs(coef_est-coef)),1E-6)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 13)
   
   # Prediction 
@@ -140,6 +155,18 @@ test_that("linear mixed effects model with grouped random effects ", {
                     0.0008835448, 0.0000000000, 0.0000000000, 0.0000000000, 2.0233071188)
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+  
+  # Fit model using gradient descent instead of wls for regression coefficients
+  gp_model <- fitGPModel(group_data = group,
+                         y = y, X = X, std_dev = TRUE,
+                         params = list(optimizer_cov = "fisher_scoring",
+                                       optimizer_coef = "gradient_descent", lr_coef=0.001,maxit=10000,
+                                       convergence_criterion = "relative_change_in_parameters"))
+  cov_pars <- c(0.0005890585, 0.0003725533, 2.0227193907, 1.2794663580)
+  coef <- c(1.99104872, 0.63608394, 2.01453829, 0.02383676)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
+  expect_equal(gp_model$get_num_optim_iter(), 3437)
 })
 
 

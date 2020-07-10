@@ -135,14 +135,16 @@ namespace GPBoost {
 			std_dev_cov_par = nullptr;
 		}
 		if (sparse_) {
-			re_model_sp_->OptimCovPar(y_data, cov_pars_.data(), cov_pars_.data(), num_it_, lr_cov_, acc_rate_cov_, momentum_offset_,
-				max_iter_, delta_rel_conv_, optimizer_cov_pars_, use_nesterov_acc_, nesterov_schedule_version_, std_dev_cov_par, calc_std_dev,
-				nullptr, convergence_criterion_);
+			re_model_sp_->OptimLinRegrCoefCovPar(y_data, nullptr, 0,
+				cov_pars_.data(), nullptr, num_it_, cov_pars_.data(), nullptr, 1, lr_cov_, 1, acc_rate_cov_, momentum_offset_,
+				max_iter_, delta_rel_conv_, use_nesterov_acc_, nesterov_schedule_version_, optimizer_cov_pars_, "none", std_dev_cov_par, nullptr,
+				calc_std_dev, convergence_criterion_);
 		}
 		else {
-			re_model_den_->OptimCovPar(y_data, cov_pars_.data(), cov_pars_.data(), num_it_, lr_cov_, acc_rate_cov_, momentum_offset_,
-				max_iter_, delta_rel_conv_, optimizer_cov_pars_, use_nesterov_acc_, nesterov_schedule_version_, std_dev_cov_par, calc_std_dev,
-				nullptr, convergence_criterion_);
+			re_model_den_->OptimLinRegrCoefCovPar(y_data, nullptr, 0,
+				cov_pars_.data(), nullptr, num_it_, cov_pars_.data(), nullptr, 1, lr_cov_, 1, acc_rate_cov_, momentum_offset_,
+				max_iter_, delta_rel_conv_, use_nesterov_acc_, nesterov_schedule_version_, optimizer_cov_pars_, "none", std_dev_cov_par, nullptr,
+				calc_std_dev, convergence_criterion_);
 		}
 		has_covariates_ = false;
 	}
@@ -191,10 +193,10 @@ namespace GPBoost {
 			re_model_den_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
 		}
 		if (sparse_) {
-			re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, true);
+			re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
 		}
 		else {
-			re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, true);
+			re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
 		}
 	}
 

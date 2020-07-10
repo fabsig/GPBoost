@@ -3249,10 +3249,9 @@ class GPModel(object):
             self.has_covariates = False
         self.std_dev = std_dev
         # Set parameters for optimizer
-        if params is not None:
-            self.set_optim_params(params)
-            if X is not None:
-                self.set_optim_coef_params(params)
+        self.set_optim_params(params)
+        if X is not None:
+            self.set_optim_coef_params(params)
         # Do optimization
         if X is None:
             _safe_call(_LIB.GPB_OptimCovPar(
@@ -3344,24 +3343,25 @@ class GPModel(object):
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
         """
-        if not isinstance(params, dict):
-            raise ValueError("params needs to be a dict")
         if self.handle is None:
             raise ValueError("Gaussian process model has not been initialized")
-        for param in params:
-            if param == "init_cov_pars":
-                if params[param] is not None:
-                    if not isinstance(params[param], np.ndarray):
-                        raise ValueError("params['init_cov_pars'] needs to be a numpy.ndarray")
-                    if len(params[param].shape) != 1:
-                        raise ValueError("params['init_cov_pars'] needs to be a vector / one-dimensional numpy.ndarray")
-                    if params[param].shape[0] != self.num_cov_pars:
-                        raise ValueError("params['init_cov_pars'] does not contain the correct number of parameters")
-                    params[param] = params[param].astype(np.float64)
-            if param in self.params:
-                self.params[param] = params[param]
-            else:
-                raise ValueError("Unknown parameter: %s" % param)
+        if params is not None:
+            if not isinstance(params, dict):
+                raise ValueError("params needs to be a dict")
+            for param in params:
+                if param == "init_cov_pars":
+                    if params[param] is not None:
+                        if not isinstance(params[param], np.ndarray):
+                            raise ValueError("params['init_cov_pars'] needs to be a numpy.ndarray")
+                        if len(params[param].shape) != 1:
+                            raise ValueError("params['init_cov_pars'] needs to be a vector / one-dimensional numpy.ndarray")
+                        if params[param].shape[0] != self.num_cov_pars:
+                            raise ValueError("params['init_cov_pars'] does not contain the correct number of parameters")
+                        params[param] = params[param].astype(np.float64)
+                if param in self.params:
+                    self.params[param] = params[param]
+                else:
+                    raise ValueError("Unknown parameter: %s" % param)
         init_cov_pars_c = ctypes.c_void_p()
         if self.params["init_cov_pars"] is not None:
             init_cov_pars_c = self.params["init_cov_pars"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -3398,25 +3398,26 @@ class GPModel(object):
                 acc_rate_coef : double, optional (default = 0.5)
                     Acceleration rate for covariance parameters for Nesterov acceleration
         """
-        if not isinstance(params, dict):
-            raise ValueError("params needs to be a dict")
         if self.handle is None:
             raise ValueError("Gaussian process model has not been initialized")
-        for param in params:
-            if param == "init_coef":
-                if not isinstance(params[param], np.ndarray):
-                    raise ValueError("params['init_coef'] needs to be a numpy.ndarray")
-                if len(self.params[param].shape) != 1:
-                    raise ValueError("params['init_coef'] needs to be a vector / one-dimensional numpy.ndarray")
-                if self.num_coef is None:
-                    self.num_coef = self.params[param].shape[0]
-                if self.params[param].shape[0] != self.num_coef:
-                    raise ValueError("params['init_coef'] does not contain the correct number of parameters")
-                params[param] = params[param].astype(np.float64)
-            if param in self.params:
-                self.params[param] = params[param]
-            else:
-                raise ValueError("Unknown parameter: %s" % param)
+        if params is not None:
+            if not isinstance(params, dict):
+                raise ValueError("params needs to be a dict")
+            for param in params:
+                if param == "init_coef":
+                    if not isinstance(params[param], np.ndarray):
+                        raise ValueError("params['init_coef'] needs to be a numpy.ndarray")
+                    if len(self.params[param].shape) != 1:
+                        raise ValueError("params['init_coef'] needs to be a vector / one-dimensional numpy.ndarray")
+                    if self.num_coef is None:
+                        self.num_coef = self.params[param].shape[0]
+                    if self.params[param].shape[0] != self.num_coef:
+                        raise ValueError("params['init_coef'] does not contain the correct number of parameters")
+                    params[param] = params[param].astype(np.float64)
+                if param in self.params:
+                    self.params[param] = params[param]
+                else:
+                    raise ValueError("Unknown parameter: %s" % param)
         if self.params["init_coef"] is None:
             init_coef_c = ctypes.c_void_p()
         else:

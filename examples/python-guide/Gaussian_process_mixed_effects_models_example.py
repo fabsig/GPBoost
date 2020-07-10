@@ -217,7 +217,7 @@ eps = Z1.dot(b1) + C.dot(b2)
 xi = np.sqrt(sigma2) * np.random.normal(size=n)  # simulate error term
 y = eps + xi
 
-# Create Gaussian process model
+# Define and fit model
 gp_model = gpb.GPModel(group_data=group, gp_coords=coords, cov_function="exponential")
 gp_model.fit(y=y, std_dev=True)
 gp_model.summary()

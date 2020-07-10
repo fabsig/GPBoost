@@ -228,7 +228,7 @@ namespace GPBoost {
     int momentum_offset_ = 2;
     int max_iter_ = 1000;
     double delta_rel_conv_ = 1.0e-6;
-    bool use_nesterov_acc_ = true;
+    bool use_nesterov_acc_ = false;
     int nesterov_schedule_version_ = 0;
     bool optim_trace_ = false;
     string_t optimizer_cov_pars_ = "fisher_scoring";//"gradient_descent" or "fisher_scoring"
