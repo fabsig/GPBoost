@@ -66,7 +66,7 @@ The model is trained using the **GPBoost algorithm, where training means learnin
 #### Methodological issues
 - Add a spatio-temporal Gaussian process model (e.g. a separable one)
 - Add possibility to predict latent Gaussian processes and random effects (e.g. random coefficients)
-- Add backtracking (e.g. step-halving) to Fisher scoring to safeguard against potential convergence problems
+- Add some form of safeguard agains too large steps when applying Nesterov acceleration for covariance parameter estimation
 
 ## References
 
