@@ -405,8 +405,8 @@ namespace GPBoost {
 				else {
 					beta = Eigen::Map<const vec_t>(init_coef, num_covariates);
 				}
-				beta_lag1 = beta;
-				beta_acc = beta;
+				beta_lag1 = vec_t(num_covariates);
+				beta_acc = vec_t(num_covariates);
 			}
 			// Definition and initialization of covariance parameters related variables
 			if (lr_cov <= 0.) {
@@ -422,13 +422,13 @@ namespace GPBoost {
 				SetY(y_data);
 			}
 			vec_t cov_pars = Eigen::Map<const vec_t>(init_cov_pars, num_cov_par_);
-			vec_t cov_pars_lag1 = cov_pars;
-			vec_t cov_pars_acc = cov_pars;
+			vec_t cov_pars_lag1 = vec_t(num_cov_par_);
+			vec_t cov_pars_acc = vec_t(num_cov_par_);
 			Log::Debug("Initial covariance parameters");
 			for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
 			// Initialization of remaining variables
 			double neg_log_like = 1e99;
-			double neg_log_like_lag1 = neg_log_like;
+			double neg_log_like_lag1;
 			bool terminate_optim = false;
 			bool CalcCovFactor_already_done = false;
 			num_it = max_iter;
@@ -444,19 +444,20 @@ namespace GPBoost {
 				}
 				// Update linear regression coefficients using gradient descent or generalized least squares
 				if (has_covariates_) {
-					beta_lag1 = beta;
+					// Apply momentum step to regression coefficients
+					if (use_nesterov_acc && optimizer_coef == "gradient_descent" && it > 0) {
+						ApplyMomentumStep(it, beta, beta_lag1, beta_acc, acc_rate_coef, nesterov_schedule_version, false, momentum_offset, false);
+						beta_lag1 = beta;
+						beta = beta_acc;
+					}
+					else {
+						beta_lag1 = beta;
+					}
 					if (optimizer_coef == "gradient_descent") {// one step of gradient descent
-						if (use_nesterov_acc) {
-							beta = beta_acc;//calculate gradient update at accelerated location
-						}
 						resid = y_vec_ - (X_ * beta);
 						SetY(resid.data());
 						CalcYAux();
 						UpdateCoefGradOneIter(lr_coef, cov_pars[0], X_, beta);
-						// Apply momentum step
-						if (use_nesterov_acc) {
-							ApplyMomentumStep(it, beta, beta_lag1, beta_acc, acc_rate_coef, nesterov_schedule_version, false, momentum_offset);
-						}
 					}
 					else if (optimizer_coef == "wls") {// coordinate descent using generalized least squares
 						SetY(y_vec_.data());
@@ -476,11 +477,16 @@ namespace GPBoost {
 						CalcYAux();//y_aux = Psi^-1 * y
 					}
 				}
-				// Calculate gradient or natural gradient = FI^-1 * grad (for Fisher scoring)
-				cov_pars_lag1 = cov_pars;
-				if (use_nesterov_acc) {
-					cov_pars = cov_pars_acc;//calcualted gradient and FI at accelerated location
+				// Apply Nesterov momentum
+				if (use_nesterov_acc && it > 0) {
+					ApplyMomentumStep(it, cov_pars, cov_pars_lag1, cov_pars_acc, acc_rate_cov, nesterov_schedule_version, true, momentum_offset, true);
+					cov_pars_lag1 = cov_pars;
+					cov_pars = cov_pars_acc;
 				}
+				else {
+					cov_pars_lag1 = cov_pars;
+				}
+				// Calculate gradient or natural gradient = FI^-1 * grad (for Fisher scoring)
 				vec_t nat_grad; // nat_grad = grad for gradient descent and nat_grad = FI^-1 * grad for Fisher scoring (="natural" gradient)
 				if (optimizer_cov == "gradient_descent") {//gradient descent
 					// First, profile out sigma (=use closed for expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
@@ -540,7 +546,7 @@ namespace GPBoost {
 						Log::Debug("No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased. New learning rate = %f", it + 1, lr_cov);
 					}
 					if (halving_done && optimizer_cov == "fisher_scoring") {
-						// reset lr_cov to initial value for Fisher scoring for next iteration
+						// reset lr_cov to initial value for Fisher scoring for next iteration. I.e., step halving is done newly in every iterarion of Fisher scoring
 						lr_cov = lr_cov_init;
 					}
 					cov_pars = cov_pars_new;
@@ -571,10 +577,6 @@ namespace GPBoost {
 					}
 				}
 				CheckNaNInf(cov_pars);
-				if (use_nesterov_acc) {
-					cov_pars_acc[0] = cov_pars[0];
-					ApplyMomentumStep(it, cov_pars, cov_pars_lag1, cov_pars_acc, acc_rate_cov, nesterov_schedule_version, true, momentum_offset);
-				}
 				//Check convergence
 				if (convergence_criterion == "relative_change_in_parameters") {
 					if (has_covariates_) {
@@ -2577,16 +2579,24 @@ namespace GPBoost {
 		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
 		* \param exclude_first_log_scale If true, no momentum is applied to the first value and the momentum step is done on the log-scale for the other values. Default = true
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
+		* \param log_scale If true, the momentum step is done on the log-scale
 		*/
 		void ApplyMomentumStep(int it, vec_t& pars, vec_t& pars_lag1, vec_t& pars_acc, double nesterov_acc_rate = 0.5,
-			int nesterov_schedule_version = 0, bool exclude_first_log_scale = true, int momentum_offset = 2) {
+			int nesterov_schedule_version = 0, bool exclude_first_log_scale = true, int momentum_offset = 2, bool log_scale = false) {
 			double mu = NesterovSchedule(it, nesterov_schedule_version, nesterov_acc_rate, momentum_offset);
 			int num_par = (int)pars.size();
 			if (exclude_first_log_scale) {
+				pars_acc[0] = pars[0];
 				pars_acc.segment(1, num_par - 1) = ((mu + 1.) * (pars.segment(1, num_par - 1).array().log()) - mu * (pars_lag1.segment(1, num_par - 1).array().log())).exp().matrix();//Momentum is added on the log scale
 			}
 			else {
-				pars_acc = (mu + 1) * pars - mu * pars_lag1;
+				if (log_scale) {
+					pars_acc = ((mu + 1.) * (pars.array().log()) - mu * (pars_lag1.array().log())).exp().matrix();
+				}
+				else {
+					pars_acc = (mu + 1) * pars - mu * pars_lag1;
+				}
+				
 			}
 		}
 

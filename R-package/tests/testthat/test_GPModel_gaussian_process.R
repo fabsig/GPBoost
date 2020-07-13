@@ -58,7 +58,7 @@ test_that("Gaussian process model ", {
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(dim(gp_model$get_cov_pars())[2], 3)
   expect_equal(dim(gp_model$get_cov_pars())[1], 2)
-  expect_equal(gp_model$get_num_optim_iter(), 375)
+  expect_equal(gp_model$get_num_optim_iter(), 374)
   
   # Gradient descent without Nesterov acceleration
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -111,9 +111,9 @@ test_that("Gaussian process model ", {
                          y = y, std_dev = TRUE, params = list(optimizer_cov = "gradient_descent",
                                                               lr_cov = 0.1, use_nesterov_acc = TRUE,
                                                               acc_rate_cov = 0.2, delta_rel_conv=1E-6))
-  cov_pars_other_crit <- c(0.03947170, 0.08002476, 1.07088318, 0.25355535, 0.11483948, 0.03863668)
+  cov_pars_other_crit <- c(0.03956853, 0.08006581, 1.07081043, 0.25358121, 0.11485798, 0.03865007)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other_crit)),1E-6)
-  expect_equal(gp_model$get_num_optim_iter(), 83)
+  expect_equal(gp_model$get_num_optim_iter(), 82)
   
   # Prediction from fitted model
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -190,9 +190,9 @@ test_that("Gaussian process and two random coefficients ", {
                          params = list(optimizer_cov = "gradient_descent",
                                        lr_cov = 0.1, use_nesterov_acc = TRUE,
                                        acc_rate_cov = 0.5, maxit=10))
-  expected_values <- c(0.26292114, 0.22816164, 0.83311858, 0.42026516, 0.15011975,
-                       0.10121005, 1.61098404, 0.84395158, 0.08944294, 0.07083128,
-                       0.24831137, 0.62603702, 0.08881416, 0.32923916)
+  expected_values <- c(0.24968994, 0.22559907, 0.83542391, 0.41810207, 0.15034219,
+                       0.10037844, 1.65329625, 0.84506015, 0.08796681, 0.06828663,
+                       0.23702546, 0.61869306, 0.08649348, 0.33490111)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 10)
   
@@ -237,7 +237,7 @@ test_that("Gaussian process model with cluster_id's not constant ", {
                                        convergence_criterion = "relative_change_in_parameters"))
   cov_pars <- c(0.05414149, 0.08722111, 1.05789166, 0.22886740, 0.12702368, 0.04076914)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-  expect_equal(gp_model$get_num_optim_iter(), 240)
+  expect_equal(gp_model$get_num_optim_iter(), 239)
   
   # Fisher scoring
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -316,7 +316,7 @@ test_that("Vecchia approximation for Gaussian process model ", {
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(dim(gp_model$get_cov_pars())[2], 3)
   expect_equal(dim(gp_model$get_cov_pars())[1], 2)
-  expect_equal(gp_model$get_num_optim_iter(), 375)
+  expect_equal(gp_model$get_num_optim_iter(), 374)
   
   # Vechia approximation with 30 neighbors
   gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
@@ -325,7 +325,7 @@ test_that("Vecchia approximation for Gaussian process model ", {
                                                      lr_cov = 0.1, use_nesterov_acc = TRUE,
                                                      acc_rate_cov = 0.5, delta_rel_conv=1E-6,
                                                      maxit=100, convergence_criterion = "relative_change_in_parameters"))
-  cov_pars <- c(0.02475178, 0.07385233, 1.06134972, 0.23240919, 0.11461576, 0.03568528)
+  cov_pars <- c(0.02464980, 0.07379861, 1.06141118, 0.23237579, 0.11459636, 0.03567217)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 100)
   
@@ -461,7 +461,7 @@ test_that("Gaussian process model with cluster_id's not constant ", {
   cov_pars <- c(0.03359375, 0.07751222, 1.07019293,
                 0.22080542, 0.12201912, 0.03761778)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-  expect_equal(gp_model$get_num_optim_iter(), 657)
+  expect_equal(gp_model$get_num_optim_iter(), 656)
   
   # Fisher scoring
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
