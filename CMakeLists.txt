@@ -210,6 +210,9 @@ endif()
 
 if(WIN32 AND MINGW)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
+	# if(BUILD_32BIT_R)
+		# SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--no-gc-sections,--verbose")
+	# endif()
 endif()
 
 # if(BUILD_32BIT_R)
