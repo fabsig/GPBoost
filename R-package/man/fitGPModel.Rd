@@ -14,9 +14,9 @@ fitGPModel(group_data = NULL, group_rand_coef_data = NULL,
   free_raw_data = FALSE, y, X = NULL, std_dev = FALSE,
   params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls",
   maxit = 1000, delta_rel_conv = 1e-06, init_coef = NULL, init_cov_pars = NULL,
-  lr_coef = 0.01, lr_cov = 0.01, use_nesterov_acc = FALSE, acc_rate_coef = 0.1,
+  lr_coef = 0.01, lr_cov = -1, use_nesterov_acc = FALSE, acc_rate_coef = 0.1,
   acc_rate_cov = 0.5, nesterov_schedule_version = 0L, momentum_offset = 2L,
-  trace = FALSE))
+  trace = FALSE, convergence_criterion = "relative_change_in_log_likelihood"))
 }
 \arguments{
 \item{group_data}{A \code{vector} or \code{matrix} with labels of group levels for grouped random effects}
@@ -88,8 +88,8 @@ is freed in R after initialization}
     random effects (can be NULL). Default=NULL.}
     \item{lr_coef}{ Learning rate for fixed effect regression coefficients if gradient descent is used.
     Default=0.01.}
-    \item{lr_cov}{ Learning rate for covariance parameters if gradient descent is used.
-    Default=0.01.}
+    \item{lr_cov}{ Learning rate for covariance parameters. If <= 0, internal default values are used.
+    Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"}
     \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used. Default=FALSE.}
     \item{acc_rate_coef}{ Acceleration rate for regression coefficients (if there are any) 
     for Nesterov acceleration. Default=0.1.}
@@ -99,6 +99,8 @@ is freed in R after initialization}
     Default=2.}
     \item{trace}{ If TRUE, the value of the gradient is printed for some iterations.
     Useful for finding good learning rates. Default=FALSE.}
+    \item{convergence_criterion}{ The convergence criterion used for terminating the optimization algorithm.
+    Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters".}
 }}
 }
 \value{

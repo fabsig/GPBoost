@@ -1,4 +1,4 @@
-context("GPModel_grouped_random_effects")
+context("GPModel_gaussian_process")
 
 # Function that simulates uniform random variables
 sim_rand_unif <- function(n, init_c=0.1){
@@ -318,6 +318,19 @@ test_that("Vecchia approximation for Gaussian process model ", {
   expect_equal(dim(gp_model$get_cov_pars())[1], 2)
   expect_equal(gp_model$get_num_optim_iter(), 374)
   
+  # Prediction using given paraneters
+  gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                      vecchia_approx=TRUE, num_neighbors=n+2)
+  coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+  pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
+                  cov_pars = c(0.02,1.2,0.9), predict_cov_mat = TRUE,
+                  vecchia_pred_type = "order_obs_first_cond_all")
+  expected_mu <- c(0.08704577, 1.63875604, 0.48513581)
+  expected_cov <- c(1.189093e-01, 1.171632e-05, -4.172444e-07, 1.171632e-05,
+                    7.427727e-02, 1.492859e-06, -4.172444e-07, 1.492859e-06, 8.107455e-02)
+  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+  
   # Vechia approximation with 30 neighbors
   gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                       vecchia_approx=TRUE, num_neighbors=30)
@@ -531,49 +544,95 @@ test_that("Vecchia approximation for Gaussian process model with multiple observ
 })
 
 
-# Crashes currently. TODO: find bug
-# # Ignore [GPBoost] [Warning]
-# test_that("Vecchia approximation for Gaussian process and two random coefficients ", {
-#   
-#   y <- eps_svc + xi
-#   # Fit model
-#   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#                          vecchia_approx=TRUE, num_neighbors=30,
-#                          gp_rand_coef_data = Z_SVC, y = y, std_dev = TRUE,
-#                          params = list(optimizer_cov = "gradient_descent",
-#                                        lr_cov = 0.1, use_nesterov_acc = TRUE,
-#                                        acc_rate_cov = 0.5, maxit=10))
-#   expected_values <- c(0.24579587, 0.21600711, 0.80230753, 0.40094567,
-#                        0.15003184, 0.10035712, 1.52691187, 0.80317611, 0.09023968,
-#                        0.07149687, 0.23869704, 0.59534450, 0.08751736, 0.32229992)
-#   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
-#   
-#   # Prediction
-#   gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC, cov_function = "exponential")
-#   coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
-#   Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
-#   pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-#                            gp_rand_coef_data_pred=Z_SVC_test,
-#                            cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE)
-#   expected_mu <- c(-0.1669209, 1.6166381, 0.2861320)
-#   expected_cov <- c(9.643323e-01, 3.536846e-04, -1.783557e-04, 3.536846e-04,
-#                     5.155009e-01, 4.554321e-07, -1.783557e-04, 4.554321e-07, 7.701614e-01)
-#   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
-#   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
-#   
-#   # Fisher scoring
-#   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#                          vecchia_approx=TRUE, num_neighbors=30,
-#                          gp_rand_coef_data = Z_SVC, y = y, std_dev = TRUE,
-#                          params = list(optimizer_cov = "fisher_scoring",
-#                                        use_nesterov_acc= FALSE, maxit=5))
-#   expected_values <- c(0.000242813, 0.197623969, 1.120356660, 0.442501100,
-#                        0.141084495, 0.070778399, 1.670556231, 0.798785653, 0.055598038,
-#                        0.047379252, 0.430573036, 0.605871724, 0.038976112, 0.116595965)
-#   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
-#   expect_equal(gp_model$get_num_optim_iter(), 5)
-#   
-#   # Evaluate negative log-likelihood
-#   nll <- gp_model$neg_log_likelihood(cov_pars=c(0.1,1,0.1,0.8,0.15,1.1,0.08),y=y)
-#   expect_lt(abs(nll-149.4422184),1E-5)
-# })
+# Ignore [GPBoost] [Warning]
+test_that("Vecchia approximation for Gaussian process and two random coefficients ", {
+
+  y <- eps_svc + xi
+  # Fit model using gradient descent with Nesterov acceleration
+  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                         vecchia_approx=TRUE, num_neighbors=n-1,
+                         gp_rand_coef_data = Z_SVC, y = y, std_dev = TRUE,
+                         params = list(optimizer_cov = "gradient_descent",
+                                       lr_cov = 0.1, use_nesterov_acc = TRUE,
+                                       acc_rate_cov = 0.5, maxit=10))
+  expected_values <- c(0.24968994, 0.22559907, 0.83542391, 0.41810207, 0.15034219,
+                       0.10037844, 1.65329625, 0.84506015, 0.08796681, 0.06828663,
+                       0.23702546, 0.61869306, 0.08649348, 0.33490111)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
+  expect_equal(gp_model$get_num_optim_iter(), 10)
+  
+  # Prediction
+  gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC, cov_function = "exponential",
+                      vecchia_approx=TRUE, num_neighbors=n+2)
+  coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+  Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
+  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                           gp_rand_coef_data_pred=Z_SVC_test,
+                           cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08),
+                           predict_cov_mat = TRUE, vecchia_pred_type = "order_obs_first_cond_all")
+  expected_mu <- c(-0.1669209, 1.6166381, 0.2861320)
+  expected_cov <- c(9.643323e-01, 3.536846e-04, -1.783557e-04, 3.536846e-04,
+                    5.155009e-01, 4.554321e-07, -1.783557e-04, 4.554321e-07, 7.701614e-01)
+  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+  
+  # Fisher scoring
+  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                         vecchia_approx=TRUE, num_neighbors=n-1,
+                         gp_rand_coef_data = Z_SVC, y = y, std_dev = TRUE,
+                         params = list(optimizer_cov = "fisher_scoring",
+                                       use_nesterov_acc= FALSE, maxit=5))
+  expected_values <- c(0.000242813, 0.197623969, 1.120356660, 0.442501100,
+                       0.141084495, 0.070778399, 1.670556231, 0.798785653, 0.055598038,
+                       0.047379252, 0.430573036, 0.605871724, 0.038976112, 0.116595965)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
+  expect_equal(gp_model$get_num_optim_iter(), 5)
+  
+  # Evaluate negative log-likelihood
+  nll <- gp_model$neg_log_likelihood(cov_pars=c(0.1,1,0.1,0.8,0.15,1.1,0.08),y=y)
+  expect_lt(abs(nll-149.4422184),1E-5)
+  
+  # Fit model using gradient descent with Nesterov acceleration
+  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                         vecchia_approx=TRUE, num_neighbors=30,
+                         gp_rand_coef_data = Z_SVC, y = y, std_dev = TRUE,
+                         params = list(optimizer_cov = "gradient_descent",
+                                       lr_cov = 0.1, use_nesterov_acc = FALSE, maxit=10))
+  expected_values <- c(0.40353068, 0.25914955, 0.70029206, 0.42641715, 0.16737937,
+                       0.12728492, 1.14005726, 0.80008664, 0.11213991, 0.11988861,
+                       0.49234325, 0.70169773, 0.08919812, 0.20748266)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
+  expect_equal(gp_model$get_num_optim_iter(), 10)
+  
+  # Prediction
+  gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC, cov_function = "exponential",
+                      vecchia_approx=TRUE, num_neighbors=30)
+  coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+  Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
+  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                           gp_rand_coef_data_pred=Z_SVC_test,
+                           cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08),
+                           predict_cov_mat = TRUE, vecchia_pred_type = "order_obs_first_cond_all")
+  expected_mu <- c(-0.1688452, 1.6191401, 0.9079859)
+  expected_cov <- c(0.9643376, 0.0000000, 0.0000000, 0.0000000, 0.5155902,
+                    0.0000000, 0.0000000, 0.0000000, 1.0239525)
+  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+  
+  # Fisher scoring
+  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                         vecchia_approx=TRUE, num_neighbors=30,
+                         gp_rand_coef_data = Z_SVC, y = y, std_dev = TRUE,
+                         params = list(optimizer_cov = "fisher_scoring",
+                                       use_nesterov_acc= FALSE, maxit=5))
+  expected_values <- c(0.04427393, 0.20241802, 0.99631971, 0.43532853, 0.17012209,
+                       0.09359131, 1.40235416, 0.78811422, 0.07835884, 0.07553935,
+                       0.77593979, 0.64290472, 0.03673858, 0.07640891)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
+  expect_equal(gp_model$get_num_optim_iter(), 5)
+  
+  # Evaluate negative log-likelihood
+  nll <- gp_model$neg_log_likelihood(cov_pars=c(0.1,1,0.1,0.8,0.15,1.1,0.08),y=y)
+  expect_lt(abs(nll-152.6033062),1E-6)
+})
+

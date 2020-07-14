@@ -34,6 +34,10 @@
 //double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
 //Log::Info("Time for : %f", el_time);// Only for debugging
 
+#ifndef M_PI
+#define M_PI      3.1415926535897932384626433832795029
+#endif
+
 namespace GPBoost {
 
 	/*!
@@ -428,7 +432,7 @@ namespace GPBoost {
 			for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
 			// Initialization of remaining variables
 			double neg_log_like = 1e99;
-			double neg_log_like_lag1;
+			double neg_log_like_lag1 = neg_log_like;
 			bool terminate_optim = false;
 			bool CalcCovFactor_already_done = false;
 			num_it = max_iter;
@@ -597,7 +601,7 @@ namespace GPBoost {
 				}
 				// Output for debugging
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
-					Log::Debug("Gradient descent iteration number %d", it + 1);
+					Log::Debug("Covariance parameter optimization iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
 					for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %f", i, beta[i]); }
 					if (convergence_criterion == "relative_change_in_log_likelihood" || optim_learning_rate_halving) {
@@ -840,22 +844,19 @@ namespace GPBoost {
 				int mem_size = (int)(num_mem_d * 8. / 1000000.);
 				Log::Warning("The covariance matrix can be very large for large sample sizes which might lead to memory limitations. In your case (n = %d), the covariance needs at least approximately %d mb of memory. If you only need variances or covariances for linear combinations, contact the developer of this package and ask to implement this feature.", num_data_pred, mem_size);
 			}
-
 			if (vecchia_approx_) {
 				if (vecchia_pred_type != nullptr) {
 					string_t vecchia_pred_type_S = std::string(vecchia_pred_type);
-					CHECK(vecchia_pred_type_S == "order_obs_first_cond_obs_only" ||
-						vecchia_pred_type_S == "order_obs_first_cond_all" ||
-						vecchia_pred_type_S == "order_pred_first" ||
-						vecchia_pred_type_S == "latent_order_obs_first_cond_obs_only" ||
-						vecchia_pred_type_S == "latent_order_obs_first_cond_all");
+					if (SUPPORTED_VECCHIA_PRED_TYPES_.find(vecchia_pred_type_S) == SUPPORTED_VECCHIA_PRED_TYPES_.end()) {
+						Log::Fatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_S.c_str());
+					}
 					vecchia_pred_type_ = vecchia_pred_type_S;
 				}
 				if (num_neighbors_pred > 0) {
 					num_neighbors_pred_ = num_neighbors_pred;
 				}
 			}
-
+			// Add linear regression term to mean
 			vec_t coef;
 			if (has_covariates_) {
 				coef = Eigen::Map<const vec_t>(coef_pred, num_coef_);
@@ -874,7 +875,6 @@ namespace GPBoost {
 			data_size_t num_clusters_pred;
 			SetUpGPIds(num_data_pred, cluster_ids_data_pred, num_data_per_cluster_pred,
 				data_indices_per_cluster_pred, unique_clusters_pred, num_clusters_pred);
-
 			//Check whether predictions are made for existing clusters or if only for new independet clusters predictions are made
 			bool pred_for_observed_data = false;
 			for (const auto& cluster_i : unique_clusters_pred) {
@@ -883,7 +883,6 @@ namespace GPBoost {
 					break;
 				}
 			}
-
 			//Factorize covariance matrix and calculate Psi^{-1}y_obs (if required for prediction)
 			if (pred_for_observed_data) {//TODO: this acutally needs to be done only for the GP realizations for which predictions are made (currently it is done for all of them in unique_clusters_pred)
 				if (has_covariates_) {
@@ -902,7 +901,6 @@ namespace GPBoost {
 						SetY(y_obs);
 					}
 				}
-
 				SetCovParsComps(cov_pars);
 				if (!vecchia_approx_) {
 					CalcCovFactor(false, true, 1., false);//no need to do this for the Vecchia approximation, is done in the prediction steps
@@ -919,7 +917,6 @@ namespace GPBoost {
 			}
 
 			for (const auto& cluster_i : unique_clusters_pred) {
-
 				//Case 1: no data observed for this Gaussian process with ID 'cluster_i'. Thus use prior mean (0) and prior covariance matrix
 				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) == unique_clusters_.end()) {
 					if (!has_covariates_) {
@@ -928,11 +925,9 @@ namespace GPBoost {
 							out_predict[data_indices_per_cluster_pred[cluster_i][i]] = 0.;
 						}
 					}
-
 					if (predict_cov_mat) {
 						T1 psi;
 						std::vector<std::shared_ptr<RECompBase<T1>>> re_comps_cluster_i;
-
 						if (vecchia_approx_) {
 							std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
@@ -984,7 +979,6 @@ namespace GPBoost {
 								psi += (*(re_comps_cluster_i[j]->GetZSigmaZt().get()));
 							}
 						}//end not vecchia_approx_
-
 						psi *= cov_pars[0];
 						//write on output
 #pragma omp parallel for schedule(static)
@@ -1096,13 +1090,33 @@ namespace GPBoost {
 			init_cov_pars[0] = var;
 
 			int ind_par = 1;
-			for (int j = 0; j < num_comps_total_; ++j) {
-				int num_par_j = ind_par_[j + 1] - ind_par_[j];
+			if (vecchia_approx_) {//Neither distances nor coordinates are saved for random coefficient GPs in the Vecchia approximation -> cannot find initial parameters -> just copy the ones from the intercept GP
+				// find initial values for intercept process
+				int num_par_j = ind_par_[1] - ind_par_[0];
 				vec_t pars = vec_t(num_par_j);
-				re_comps_[unique_clusters_[0]][j]->FindInitCovPar(pars);
+				re_comps_[unique_clusters_[0]][0]->FindInitCovPar(pars);
 				for (int jj = 0; jj < num_par_j; ++jj) {
 					init_cov_pars[ind_par] = pars[jj];
 					ind_par++;
+				}
+				//set the same values to random coefficient processes
+				for (int j = 1; j < num_gp_total_; ++j) {
+					num_par_j = ind_par_[j + 1] - ind_par_[j];
+					for (int jj = 0; jj < num_par_j; ++jj) {
+						init_cov_pars[ind_par] = pars[jj];
+						ind_par++;
+					}
+				}
+			}
+			else {
+				for (int j = 0; j < num_comps_total_; ++j) {
+					int num_par_j = ind_par_[j + 1] - ind_par_[j];
+					vec_t pars = vec_t(num_par_j);
+					re_comps_[unique_clusters_[0]][j]->FindInitCovPar(pars);
+					for (int jj = 0; jj < num_par_j; ++jj) {
+						init_cov_pars[ind_par] = pars[jj];
+						ind_par++;
+					}
 				}
 			}
 		}
@@ -1938,7 +1952,9 @@ namespace GPBoost {
 					//save random coefficient data in the form ot outer product matrices
 #pragma omp for schedule(static)
 					for (int i = 0; i < num_data_per_cluster[cluster_i]; ++i) {
-						z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef);
+						if (j == 0) {
+							z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef);
+						}
 						int dim_z = (i == 0) ? 1 : ((int)nearest_neighbors_cluster_i[i].size() + 1);
 						vec_t coef_vec(dim_z);
 						coef_vec(0) = rand_coef_data[i];
@@ -2041,10 +2057,8 @@ namespace GPBoost {
 			std::vector<std::vector<den_mat_t>>& z_outer_z_obs_neighbors_cluster_i,
 			sp_mat_t& B_cluster_i, sp_mat_t& D_inv_cluster_i, std::vector<sp_mat_t>& B_grad_cluster_i, std::vector<sp_mat_t>& D_grad_cluster_i,
 			bool transf_scale = true, double nugget_var = 1., bool calc_gradient_nugget = false) {
-
 			int num_par_comp = re_comps_cluster_i[ind_intercept_gp_]->num_cov_par_;
 			int num_par_gp = num_par_comp * num_gp_total_ + calc_gradient_nugget;
-
 			//Initialize matrices B = I - A and D^-1 as well as their derivatives (in order that the code below can be run in parallel)
 			B_cluster_i = sp_mat_t(num_data_cluster_i, num_data_cluster_i);//B = I - A
 			B_cluster_i.setFromTriplets(entries_init_B_cluster_i.begin(), entries_init_B_cluster_i.end());//Note: 1's are put on the diagonal
@@ -2064,7 +2078,6 @@ namespace GPBoost {
 					D_grad_cluster_i[ipar].diagonal().array() = 0.;//TODO: maybe change initialization of this matrix by also using triplets -> faster?
 				}
 			}//end initialization
-
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_data_cluster_i; ++i) {
 				int num_nn = (int)nearest_neighbors_cluster_i[i].size();
@@ -2111,7 +2124,6 @@ namespace GPBoost {
 				}//end if(i>1)
 
 				//Calculate matrices B and D as well as their derivatives
-
 				//1. add first summand of matrix D (ZCZ^T_{ii}) and its derivatives
 				for (int j = 0; j < num_gp_total_; ++j) {
 					double d_comp_j = re_comps_cluster_i[ind_intercept_gp_ + j]->cov_pars_[0];
@@ -2127,25 +2139,27 @@ namespace GPBoost {
 							D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = d_comp_j;//derivative of the covariance function wrt the variance. derivative of the covariance function wrt to range is zero on the diagonal
 						}
 						else {
-							D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = 1.;//1's on the diagonal on the orignal scale
+							if (j == 0) {
+								D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = 1.;//1's on the diagonal on the orignal scale
+							}
+							else {
+								D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
+							}
 						}
 					}
 				}
-
 				if (calc_gradient && calc_gradient_nugget) {
 					D_grad_cluster_i[num_par_gp - 1].coeffRef(i, i) = 1.;
 				}
 
 				//2. remaining terms
 				if (i > 0) {
-
 					if (transf_scale) {
 						cov_mat_between_neighbors.diagonal().array() += 1.;//add nugget effect
 					}
 					else {
 						cov_mat_between_neighbors.diagonal().array() += nugget_var;
 					}
-
 					den_mat_t A_i(1, num_nn);
 					den_mat_t cov_mat_between_neighbors_inv;
 					den_mat_t A_i_grad_sigma2;
@@ -2168,7 +2182,6 @@ namespace GPBoost {
 						B_cluster_i.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i(0, inn);
 					}
 					D_inv_cluster_i.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
-
 					if (calc_gradient) {
 						den_mat_t A_i_grad(1, num_nn);
 						for (int j = 0; j < num_gp_total_; ++j) {
@@ -2198,7 +2211,6 @@ namespace GPBoost {
 						}
 					}//end calc_gradient
 				}//end if i > 0
-
 				D_inv_cluster_i.coeffRef(i, i) = 1. / D_inv_cluster_i.coeffRef(i, i);
 
 			}//end loop over data i
@@ -2662,7 +2674,8 @@ namespace GPBoost {
 					sp_mat_t Identity(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 					Identity.setIdentity();
 					sp_mat_t B_inv;
-					eigen_sp_Lower_sp_RHS_cs_solve(B_[cluster_i], Identity, B_inv, true);
+					eigen_sp_Lower_sp_RHS_solve(B_[cluster_i], Identity, B_inv, true);//No noticeable difference in (n=500, nn=100/30) compared to using eigen_sp_Lower_sp_RHS_cs_solve()
+					//eigen_sp_Lower_sp_RHS_cs_solve(B_[cluster_i], Identity, B_inv, true);
 					sp_mat_t D = sp_mat_t(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 					D.setIdentity();
 					D.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(-1);
@@ -2824,13 +2837,11 @@ namespace GPBoost {
 				}//end not vecchia_approx_
 			}//end loop over clusters
 			FI.triangularView<Eigen::StrictlyLower>() = FI.triangularView<Eigen::StrictlyUpper>().transpose();
-
-			//for (int i = 0; i < (int)FI.rows(); ++i) {//For debugging only
-			//    for (int j = i; j < (int)FI.cols(); ++j) {
+			//for (int i = 0; i < std::min((int)FI.rows(),4); ++i) {//For debugging only
+			//    for (int j = i; j < std::min((int)FI.cols(),4); ++j) {
 			//	    Log::Info("FI(%d,%d) %f", i, j, FI(i, j));
 			//    }
 			//}
-
 		}
 
 		/*!
@@ -3038,7 +3049,9 @@ namespace GPBoost {
 					}
 #pragma omp for schedule(static)
 					for (int i = 0; i < num_data_pred_cli; ++i) {
-						z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef_);
+						if (j == 0) {
+							z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef_);
+						}
 						int dim_z = (int)nearest_neighbors_cluster_i[i].size() + 1;
 						vec_t coef_vec(dim_z);
 						coef_vec(0) = rand_coef_data[num_data_cli + i];
@@ -3190,13 +3203,11 @@ namespace GPBoost {
 					for (int i = 0; i < num_data_cli; ++i) {
 						rand_coef_data[num_data_pred_cli + i] = re_comps_[cluster_i][ind_intercept_gp_ + j + 1]->rand_coef_data_[i];
 					}
-					//re_comps_[cluster_i][ind_intercept_gp_ + j + 1]->rand_coef_data_
-					//for (int i = 0; i < rand_coef_data.size(); ++i) {
-					//  Log::Info("rand_coef_data[%d]: %f", i, rand_coef_data[i]);
-					//}
 #pragma omp for schedule(static)
 					for (int i = 0; i < num_data_tot; ++i) {
-						z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef_);
+						if (j == 0) {
+							z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef_);
+						}
 						int dim_z = (int)nearest_neighbors_cluster_i[i].size() + 1;
 						vec_t coef_vec(dim_z);
 						coef_vec(0) = rand_coef_data[i];
@@ -3362,7 +3373,7 @@ namespace GPBoost {
 			const den_mat_t& gp_coords_mat_obs, const den_mat_t& gp_coords_mat_pred,
 			bool predict_cov_mat, vec_t& mean_pred_id, T1& cov_mat_pred_id) {
 			if (num_gp_rand_coef_ > 0) {
-				Log::Fatal("The Vecchia approximation for the latent process is currently not implemented when having random coefficients");
+				Log::Fatal("The Vecchia approximation for latent process(es) is currently not implemented when having random coefficients");
 			}
 			int num_data_cli = num_data_per_cluster_[cluster_i];
 			int num_data_pred_cli = num_data_per_cluster_pred[cluster_i];

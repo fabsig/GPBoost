@@ -467,10 +467,11 @@ namespace GPBoost {
 				dist_ = std::make_shared<den_mat_t>(dist);
 				dist_saved_ = true;
 			}
-			else {
+			else {//this option is used for the Vecchia approximation
 				coords_ = coords;
 				dist_saved_ = false;
 			}
+			coord_saved_ = true;
 		}
 
 		/*!
@@ -486,6 +487,7 @@ namespace GPBoost {
 			this->num_cov_par_ = 2;
 			cov_function_ = std::unique_ptr<CovFunction<T>>(new CovFunction<T>(cov_fct, shape));
 			dist_saved_ = false;
+			coord_saved_ = false;
 		}
 
 		/*!
@@ -517,6 +519,7 @@ namespace GPBoost {
 			else {
 				this->Z_ = coef_W;
 			}
+			coord_saved_ = false;
 		}
 
 		/*! \brief Destructor */
@@ -558,6 +561,9 @@ namespace GPBoost {
 		* \param[out] pars Vector with covariance parameters
 		*/
 		void FindInitCovPar(vec_t& pars) override {
+			if (!dist_saved_ && !coord_saved_) {
+				Log::Fatal("Cannot determine initial covariance parameters if neither distances nor coordinates are given");
+			}
 			pars[0] = 1;
 			double mean_dist = 0;
 			if (!dist_saved_) {//Calculate distances (of a Bootstrap sample) in case they have not been calculated (for the Vecchia approximation)
@@ -786,6 +792,8 @@ namespace GPBoost {
 		std::shared_ptr<den_mat_t> dist_;
 		/*! \brief If true, the distancess among all observations are calculated and saved here (false for Vecchia approximation) */
 		bool dist_saved_ = true;
+		/*! \brief If true, the coordinates are saved (false for random coefficients GPs) */
+		bool coord_saved_ = true;
 		/*! \brief Indicates whether the GP has a non-identity incidence matrix Z */
 		bool has_Z_;
 		/*! \brief Covariance function */

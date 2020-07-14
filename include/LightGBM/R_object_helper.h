@@ -16,8 +16,14 @@
 
 #define TYPE_BITS 5
 // use .Internal(internalsID()) to uuid
+//#define R_INTERNALS_UUID "2fdf6c18-697a-4ba7-b8ef-11c0d92f1327"//DELETE
+#ifdef GPB_R_BUILD
+#define R_NO_REMAP
+#define R_USE_C99_IN_CXX
+#include <Rinternals.h>
+#else
 #define R_INTERNALS_UUID "2fdf6c18-697a-4ba7-b8ef-11c0d92f1327"
-
+#endif
 
 #ifdef R_VER_ABOVE_35
 #define NAMED_BITS 16
@@ -37,11 +43,19 @@ struct lgbm_sxpinfo {
   unsigned int extra : 32 - NAMED_BITS;
 };
 
+//// 64bit pointer //DELETE
+//#if INTPTR_MAX == INT64_MAX
+//typedef int64_t xlen_t;
+//#else
+//typedef int xlen_t;
+//#endif
+#ifndef GPB_R_BUILD
 // 64bit pointer
 #if INTPTR_MAX == INT64_MAX
 typedef int64_t xlen_t;
 #else
 typedef int xlen_t;
+#endif
 #endif
 
 #else
@@ -110,8 +124,15 @@ typedef struct LGBM_SER {
 } LGBM_SER, *LGBM_SE;
 
 struct lgbm_vecsxp {
+  //xlen_t length;//DELETE
+  //xlen_t truelength;
+#ifdef GPB_R_BUILD
+  R_xlen_t length;
+  R_xlen_t truelength;
+#else
   xlen_t length;
   xlen_t truelength;
+#endif
 };
 
 typedef struct VECTOR_SER {

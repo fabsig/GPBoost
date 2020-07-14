@@ -237,8 +237,8 @@ namespace GPBoost {
 		A.makeCompressed();
 		B.makeCompressed();
 
-		 //Prepocessor flag: Workaround since problems can occurr when calling 'sp_Lower_sp_RHS_cs_solve' from Linux (likely also from macOS); see comment above in sp_Lower_sp_RHS_cs_solve.
-#ifdef _WIN32
+		 //Prepocessor flag: Workaround since problems can occurr when calling 'sp_Lower_sp_RHS_cs_solve' from certain gcc versions (e.g. gcc 7.5.0 on Ubuntu 18.04); see comment above in sp_Lower_sp_RHS_cs_solve.
+#if defined(_WIN32) && !defined(__GNUC__)
 
 		//This is faster than the version below (in particular if B is very sparse) but it can crash on Linux. Update 23.04.2020: Problems can also occur on Windows
 		//Prepare LHS

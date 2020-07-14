@@ -27,6 +27,25 @@ file.copy("../inst/bin/CMakeLists.txt", "../src/CMakeLists.txt", overwrite = TRU
 source_dir <- file.path(R_PACKAGE_SOURCE, "src", fsep = "/")
 build_dir <- file.path(source_dir, "build", fsep = "/")
 
+WINDOWS_BUILD_TOOLS <- list(
+  "MinGW" = c(
+    build_tool = "mingw32-make.exe"
+    , makefile_generator = "MinGW Makefiles"
+  )
+  , "MSYS2" = c(
+    build_tool = "make.exe"
+    , makefile_generator = "MSYS Makefiles"
+  )
+)
+# Rtools 4.0 moved from MinGW to MSYS toolchain.
+if (R_ver >= 4.0) {
+  windows_toolchain <- "MSYS2"
+} else {
+  windows_toolchain <- "MinGW"
+}
+windows_build_tool <- WINDOWS_BUILD_TOOLS[[windows_toolchain]][["build_tool"]]
+windows_makefile_generator <- WINDOWS_BUILD_TOOLS[[windows_toolchain]][["makefile_generator"]]
+
 # Check for precompilation
 if (!use_precompile) {
   
@@ -93,26 +112,36 @@ if (!use_precompile) {
   if (WINDOWS) {
     if (use_mingw) {
       ##Find correct version of mingw (32- or 64-bit)
-      mingw_locs <- system("where mingw32-make.exe",intern=TRUE)
-      if (R_ARCH == "/i386"){
-        for (loc in mingw_locs) {
-          if (grepl("mingw_32",loc)) {
-            mingw_make_exe <- loc
+      build_tool_locs <- system(paste0("where ",windows_build_tool),intern=TRUE)
+      if (R_ver >= 4.0) {
+        for (loc in build_tool_locs) {
+          if (grepl("make.exe",loc)) {
+            build_tool_exe <- loc
             break
           }
         }
-      }
-      else {
-        for (loc in mingw_locs) {
-          if (grepl("mingw_64",loc)) {
-            mingw_make_exe <- loc
-            break
+        mingw_path <- substr(build_tool_exe,1,gregexpr("make",build_tool_exe)[[1]][1]-10)
+      }else{
+        if (R_ARCH == "/i386"){
+          for (loc in build_tool_locs) {
+            if (grepl("mingw_32",loc)) {
+              build_tool_exe <- loc
+              break
+            }
           }
         }
+        else {
+          for (loc in build_tool_locs) {
+            if (grepl("mingw_64",loc)) {
+              build_tool_exe <- loc
+              break
+            }
+          }
+        }
+        mingw_path <- substr(build_tool_exe,1,gregexpr("mingw32-make",build_tool_exe)[[1]][1]-1)
       }
-      mingw_path <- substr(loc,1,gregexpr("mingw32-make",loc)[[1]][1]-1)
-      cmake_cmd <- paste0(cmake_cmd, " -G \"MinGW Makefiles\" -DMINGW_PATH=",mingw_path)
-      build_cmd <- paste0(mingw_make_exe," _gpboost")# no absolute path: build_cmd <- "mingw32-make.exe _gpboost"
+      cmake_cmd <- paste0(cmake_cmd, " -G ", shQuote(windows_makefile_generator)," -DMINGW_PATH=",mingw_path)
+      build_cmd <- paste0(build_tool_exe," _gpboost")# no absolute path: e.g. build_cmd <- "mingw32-make.exe _gpboost"
       system(paste0(cmake_cmd, " ..")) # Must build twice for Windows due sh.exe in Rtools
     } else {
       try_vs <- 0
@@ -130,9 +159,9 @@ if (!use_precompile) {
         }
       }
       if (try_vs == 1) {
-        cmake_cmd <- paste0(cmake_cmd, " -G \"MinGW Makefiles\" ") # Switch to MinGW on failure, try build once
+        cmake_cmd <- paste0(cmake_cmd, " -G ", shQuote(windows_makefile_generator)," ") # Switch to MinGW on failure, try build once
         system(paste0(cmake_cmd, " ..")) # Must build twice for Windows due sh.exe in Rtools
-        build_cmd <- "mingw32-make.exe _gpboost"
+        build_cmd <- paste0(build_tool_exe," _gpboost")
       } else {
         cmake_cmd <- paste0(cmake_cmd, local_vs_def)
         build_cmd <- "cmake --build . --target _gpboost --config Release"
