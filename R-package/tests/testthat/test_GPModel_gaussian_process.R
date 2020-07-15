@@ -351,17 +351,18 @@ test_that("Vecchia approximation for Gaussian process model ", {
                     0.0000000, 0.0000000, 0.0000000, 0.5662735)
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
-  
-  # Fisher scoring & random ordering
-  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                         vecchia_approx=TRUE, num_neighbors=30, vecchia_ordering="random",
-                         y = y, std_dev = TRUE,
-                         params = list(optimizer_cov = "fisher_scoring",
-                                       use_nesterov_acc = FALSE,
-                                       delta_rel_conv=1E-6, maxit=100,
-                                       convergence_criterion = "relative_change_in_parameters"))
-  cov_pars <- c(0.01692036, 0.06802553, 1.15762655, 0.26474644, 0.12429916, 0.03962540)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1)## can give different results on different compilers
+
+  ## Not tested anymore. Can give different results on different compilers (even NAs)
+  # # Fisher scoring & random ordering
+  # gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+  #                        vecchia_approx=TRUE, num_neighbors=30, vecchia_ordering="random",
+  #                        y = y, std_dev = TRUE,
+  #                        params = list(optimizer_cov = "fisher_scoring",
+  #                                      use_nesterov_acc = FALSE,
+  #                                      delta_rel_conv=1E-6, maxit=100,
+  #                                      convergence_criterion = "relative_change_in_parameters"))
+  # cov_pars <- c(0.01692036, 0.06802553, 1.15762655, 0.26474644, 0.12429916, 0.03962540)
+  # expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   # expect_equal(gp_model$get_num_optim_iter(), 17)
   
   # Fisher scoring & default ordering
@@ -436,27 +437,27 @@ test_that("Vecchia approximation for Gaussian process model with linear regressi
   y <- eps + X%*%beta + xi
   # Fit model
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                         vecchia_approx=TRUE, num_neighbors=30,
+                         vecchia_approx=TRUE, num_neighbors=n+2,
                          y = y, X=X, std_dev = TRUE,
                          params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls",
                                        delta_rel_conv=1E-6, use_nesterov_acc = FALSE,
                                        convergence_criterion = "relative_change_in_parameters"))
-  cov_pars <- c(2.022073e-61, 6.645280e-02, 9.611996e-01, 1.903751e-01, 9.059417e-02, 2.660703e-02)
-  coef <- c(2.35074728, 0.18885871, 1.91556300, 0.09439146)
+  cov_pars <- c(0.008461342, 0.069973492, 1.001562822, 0.214358560, 0.094656409, 0.029400407)
+  coef <- c(2.30780026, 0.21365770, 1.89951426, 0.09484768)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
-  expect_equal(gp_model$get_num_optim_iter(), 20)
+  expect_equal(gp_model$get_num_optim_iter(), 11)
   
   # Prediction 
-  coord_test <- cbind(c(0.1,0.10001,0.7),c(0.9,0.90001,0.55))
+  coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
   X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
   pred <- predict(gp_model, gp_coords_pred = coord_test,
                   X_pred = X_test, predict_cov_mat = TRUE,
-                  vecchia_pred_type = "order_obs_first_cond_all")
-  expected_mu <- c(1.191993, 2.532897, 3.619877)
-  expected_cov <- c(0.6139641, 0.6138193, 0.0000000, 0.6138193,
-                    0.6139746, 0.0000000, 0.0000000, 0.0000000, 0.5724550)
-  expect_lt(sum(abs(pred$mu-expected_mu)),1E-5)
+                  vecchia_pred_type = "latent_order_obs_first_cond_all")
+  expected_mu <- c(1.196952, 4.063324, 3.156427)
+  expected_cov <- c(6.305383e-01, 1.358861e-05, 8.317903e-08, 1.358861e-05,
+                    3.469270e-01, 2.686334e-07, 8.317903e-08, 2.686334e-07, 4.255400e-01)
+  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
 })
 

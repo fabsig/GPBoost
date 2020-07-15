@@ -1,3 +1,8 @@
+^build_r.R$
+\.gitkeep$
+^docs$
+^pkgdown$
+
 # Objects created by compilation
 ^.*\.a
 ^.*\.o
@@ -7,14 +12,9 @@
 ^.*\.bin
 README.html
 README.utf8.md
-\.fsrc$
 \.o$
 \.so$
-
-^build_package.R$
-\.gitkeep$
-^docs$
-^pkgdown$
+\.dll$
 
 # Code copied in at build time
 ^src/CMakeLists.txt$
@@ -29,3 +29,5 @@ README.utf8.md
 ^src/compute/index.html$
 ^src/compute/.git$
 ^src/compute/.gitignore$
+^src/compute/CONTRIBUTING.md$
+^src/compute/README.md$

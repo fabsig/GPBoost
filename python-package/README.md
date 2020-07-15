@@ -27,7 +27,7 @@ Installation
 
 [setuptools](https://pypi.org/project/setuptools) is needed. You can install this using ``pip install setuptools -U``
 
-32-bit Python is not supported. Please install the 64-bit version. See [build 32-bit Version with 32-bit Python section](#build-32-bit-version-with-32-bit-python).
+32-bit Python is not supported. Please install the 64-bit version. See [build 32-bit version with 32-bit Python section](#build-32-bit-version-with-32-bit-python).
 
 ### Install from [PyPI](https://pypi.org/project/gpboost) using ``pip``
 
@@ -85,7 +85,7 @@ pip install gpboost --install-option=--mingw
 
 It is recommended to use **Visual Studio** for its better multithreading efficiency in **Windows** for many-core systems
 
-##### Build 32-bit Version with 32-bit Python
+##### Build 32-bit version with 32-bit Python
 
 ```sh
 pip install gpboost --install-option=--bit32

@@ -543,11 +543,16 @@ namespace GPBoost {
 							}
 						}
 					}
-					if (!decrease_found) {
-						Log::Warning("No decrease in negative log-likelihood in iteration number %d after the maximal number of halving steps (%d). New learning rate = %f", it + 1, MAX_NUMBER_HALVING_STEPS_, lr_cov);
+					if (halving_done) {
+						if (optimizer_cov == "fisher_scoring") {
+							Log::Info("No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased in this iteration.", it + 1);
+						}
+						else if (optimizer_cov == "gradient_descent"){
+							Log::Info("No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased permanently. New learning rate = %f", it + 1, lr_cov);
+						}
 					}
-					else if (halving_done) {
-						Log::Debug("No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased. New learning rate = %f", it + 1, lr_cov);
+					if (!decrease_found) {
+						Log::Warning("No decrease in negative log-likelihood in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
 					}
 					if (halving_done && optimizer_cov == "fisher_scoring") {
 						// reset lr_cov to initial value for Fisher scoring for next iteration. I.e., step halving is done newly in every iterarion of Fisher scoring

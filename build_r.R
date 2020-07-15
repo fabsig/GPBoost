@@ -96,4 +96,4 @@ cmd <- sprintf("R CMD INSTALL %s --no-multiarch", tarball)
 .run_shell_command(cmd)
 
 # Run R CMD CHECK
-# R CMD CHECK gpboost_2.1.2.tar.gz --as-cran | tee check.log | cat
+# R CMD CHECK gpboost_0.2.0.tar.gz --as-cran | tee check.log | cat

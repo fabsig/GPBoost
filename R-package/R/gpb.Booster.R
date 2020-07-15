@@ -30,6 +30,11 @@ Booster <- R6::R6Class(
                           gp_model = NULL,
                           ...) {
 
+      R_ARCH <- Sys.getenv("R_ARCH")
+      if(R_ARCH == "/i386"){
+        warning("It is not recommended to run the tree-boosting functionality of GPBoost in its 32-bit version. Use the 64-bit version instead.")
+      }
+      
       # Create parameters and handle
       if (!is.null(gp_model)) {
         params["has_gp_model"] <- TRUE

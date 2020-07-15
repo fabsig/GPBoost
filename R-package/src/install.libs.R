@@ -70,7 +70,7 @@ if (!use_precompile) {
   }
   
   cmake_cmd <- paste0(cmake_cmd, " -DBUILD_FOR_R=ON ")
-  if (!WINDOWS | use_mingw) {##MSVS cannot find R library
+  if (!WINDOWS | use_mingw) {##MSVS cannot load R library
     cmake_cmd <- paste0(cmake_cmd, " -DBUILD_FOR_R_REGISTER=ON ")
   }
   if (R_ARCH == "/i386"){
@@ -121,6 +121,11 @@ if (!use_precompile) {
           }
         }
         mingw_path <- substr(build_tool_exe,1,gregexpr("make",build_tool_exe)[[1]][1]-10)
+        if (R_ARCH == "/i386"){
+          mingw_path <- file.path(mingw_path,"mingw32","bin")
+        }else{
+          mingw_path <- file.path(mingw_path,"mingw64","bin")
+        }
       }else{
         if (R_ARCH == "/i386"){
           for (loc in build_tool_locs) {
