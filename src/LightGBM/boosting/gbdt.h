@@ -12,7 +12,9 @@
 
 #include <string>
 #include <algorithm>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <fstream>
 #include <map>
 #include <memory>

@@ -128,7 +128,9 @@ struct PacketWrapper {
   template <typename Index>
   EIGEN_DEVICE_FUNC static Scalar scalarize(Index, PacketReturnType &) {
     eigen_assert(false && "THERE IS NO PACKETIZE VERSION FOR  THE CHOSEN TYPE");
+#ifndef GPB_R_BUILD
     abort();
+#endif
   }
   EIGEN_DEVICE_FUNC static PacketReturnType convert_to_packet_type(Scalar in,
                                                                    Scalar) {
@@ -136,7 +138,9 @@ struct PacketWrapper {
   }
   EIGEN_DEVICE_FUNC static void set_packet(PacketReturnType, Scalar *) {
     eigen_assert(false && "THERE IS NO PACKETIZE VERSION FOR  THE CHOSEN TYPE");
+#ifndef GPB_R_BUILD
     abort();
+#endif
   }
 };
 
@@ -158,7 +162,9 @@ struct PacketWrapper<PacketReturnType, 4> {
         return in.w();
       default:
         eigen_assert(false && "INDEX MUST BE BETWEEN 0 and 3");
+#ifndef GPB_R_BUILD
         abort();
+#endif
     }
   }
   EIGEN_DEVICE_FUNC static PacketReturnType convert_to_packet_type(
@@ -200,7 +206,9 @@ struct PacketWrapper<PacketReturnType, 2> {
         return in.y();
       default:
         eigen_assert(false && "INDEX MUST BE BETWEEN 0 and 1");
+#ifndef GPB_R_BUILD
         abort();
+#endif
     }
   }
   EIGEN_DEVICE_FUNC static PacketReturnType convert_to_packet_type(

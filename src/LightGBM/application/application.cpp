@@ -17,7 +17,9 @@
 
 #include <string>
 #include <chrono>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <ctime>
 #include <fstream>
 #include <sstream>

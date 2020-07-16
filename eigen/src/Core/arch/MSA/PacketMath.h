@@ -13,7 +13,9 @@
 #ifndef EIGEN_PACKET_MATH_MSA_H
 #define EIGEN_PACKET_MATH_MSA_H
 
+#ifndef GPB_R_BUILD
 #include <iostream>
+#endif
 #include <string>
 
 namespace Eigen {

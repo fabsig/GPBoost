@@ -4,7 +4,9 @@
  */
 #include <LightGBM/tree_learner.h>
 
+#ifndef GPB_R_BUILD
 #include "gpu_tree_learner.h"
+#endif
 #include "parallel_tree_learner.h"
 #include "serial_tree_learner.h"
 
@@ -22,6 +24,7 @@ TreeLearner* TreeLearner::CreateTreeLearner(const std::string& learner_type, con
       return new VotingParallelTreeLearner<SerialTreeLearner>(config);
     }
   } else if (device_type == std::string("gpu")) {
+#ifndef GPB_R_BUILD
     if (learner_type == std::string("serial")) {
       return new GPUTreeLearner(config);
     } else if (learner_type == std::string("feature")) {
@@ -31,6 +34,9 @@ TreeLearner* TreeLearner::CreateTreeLearner(const std::string& learner_type, con
     } else if (learner_type == std::string("voting")) {
       return new VotingParallelTreeLearner<GPUTreeLearner>(config);
     }
+#else
+      Log::Fatal("GPU tree learner is currently not supported in the R package");
+#endif
   }
   return nullptr;
 }

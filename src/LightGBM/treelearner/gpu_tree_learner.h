@@ -2,6 +2,9 @@
  * Copyright (c) 2017 Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See LICENSE file in the project root for license information.
  */
+
+#ifndef GPB_R_BUILD
+
 #ifndef LIGHTGBM_TREELEARNER_GPU_TREE_LEARNER_H_
 #define LIGHTGBM_TREELEARNER_GPU_TREE_LEARNER_H_
 
@@ -289,3 +292,4 @@ class GPUTreeLearner: public SerialTreeLearner {
 
 #endif   // LightGBM_TREELEARNER_GPU_TREE_LEARNER_H_
 
+#endif // GPB_R_BUILD

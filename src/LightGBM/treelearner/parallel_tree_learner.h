@@ -12,7 +12,9 @@
 #include <memory>
 #include <vector>
 
+#ifndef GPB_R_BUILD
 #include "gpu_tree_learner.h"
+#endif
 #include "serial_tree_learner.h"
 
 namespace LightGBM {

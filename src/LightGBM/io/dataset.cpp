@@ -11,7 +11,9 @@
 
 #include <limits>
 #include <chrono>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <sstream>
 #include <unordered_map>
 

@@ -12,7 +12,9 @@
 #include <string>
 #include <algorithm>
 #include <cmath>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <cstring>
 #include <vector>
 

@@ -13,7 +13,9 @@
 #include <string>
 #include <algorithm>
 #include <chrono>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <fstream>
 #include <vector>
 

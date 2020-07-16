@@ -22,7 +22,9 @@
 #include <GPBoost/re_model.h>
 
 #include <string>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <functional>
 #include <memory>
 #include <mutex>

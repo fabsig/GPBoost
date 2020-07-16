@@ -514,6 +514,8 @@ void VotingParallelTreeLearner<TREELEARNER_T>::Split(Tree* tree, int best_Leaf, 
 }
 
 // instantiate template classes, otherwise linker cannot find the code
+#ifndef GPB_R_BUILD
 template class VotingParallelTreeLearner<GPUTreeLearner>;
+#endif
 template class VotingParallelTreeLearner<SerialTreeLearner>;
 }  // namespace LightGBM

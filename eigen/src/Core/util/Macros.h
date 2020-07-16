@@ -878,8 +878,10 @@
     #define eigen_plain_assert(x) assert(x)
   #else
     // work around bug 89
+#ifndef GPB_R_BUILD
     #include <cstdlib>   // for abort
     #include <iostream>  // for std::cerr
+#endif
 
     namespace Eigen {
     namespace internal {
@@ -890,8 +892,10 @@
     }
     inline void assert_fail(const char *condition, const char *function, const char *file, int line)
     {
+#ifndef GPB_R_BUILD
       std::cerr << "assertion failed: " << condition << " in function " << function << " at " << file << ":" << line << std::endl;
       abort();
+#endif
     }
     }
     }
@@ -1174,9 +1178,11 @@ namespace Eigen {
 #  elif defined(EIGEN_HIP_DEVICE_COMPILE)
 #    define EIGEN_THROW_X(X) asm("s_trap 0")
 #    define EIGEN_THROW asm("s_trap 0")
-#  else
+#  else 
+#ifndef GPB_R_BUILD
 #    define EIGEN_THROW_X(X) std::abort()
 #    define EIGEN_THROW std::abort()
+#endif
 #  endif
 #  define EIGEN_TRY if (true)
 #  define EIGEN_CATCH(X) else

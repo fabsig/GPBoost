@@ -12,12 +12,15 @@
 
 #include <string>
 #include <cstdarg>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
+
+#ifndef GPB_R_BUILD
+#include <cstdlib>
+#include <cstdio>
 #include <exception>
 #include <iostream>
 #include <stdexcept>
+#endif
 
 #ifdef GPB_R_BUILD
 #define R_NO_REMAP

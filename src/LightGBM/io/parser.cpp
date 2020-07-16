@@ -5,9 +5,11 @@
 #include "parser.hpp"
 
 #include <string>
-#include <fstream>
 #include <functional>
+#ifndef GPB_R_BUILD
 #include <iostream>
+#include <fstream>
+#endif
 #include <memory>
 
 namespace LightGBM {

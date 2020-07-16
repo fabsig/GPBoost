@@ -14,7 +14,9 @@
 
 #include <string>
 #include <cmath>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <memory>
 #include <random>
 #include <vector>

@@ -4,9 +4,9 @@
  */
 #include <LightGBM/application.h>
 
+#ifndef GPB_R_BUILD
 #include <iostream>
 
-#ifndef GPB_R_BUILD
 int main(int argc, char** argv) {
   try {
     LightGBM::Application app(argc, argv);

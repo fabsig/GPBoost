@@ -9,7 +9,9 @@
 #include <LightGBM/metric.h>
 
 #include <string>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <fstream>
 #include <memory>
 #include <utility>

@@ -9,7 +9,9 @@
 #include <LightGBM/utils/log.h>
 
 #include <algorithm>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <functional>
 #include <memory>
 #include <thread>

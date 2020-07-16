@@ -6,11 +6,14 @@
 #define LIGHTGBM_UTILS_FILE_IO_H_
 
 #include <string>
+#include <cstring>
+#ifndef GPB_R_BUILD
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <iostream>
+#endif
 #include <memory>
+
 
 namespace LightGBM {
 

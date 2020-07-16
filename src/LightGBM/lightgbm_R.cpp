@@ -11,7 +11,9 @@
 #include <LightGBM/utils/text_reader.h>
 
 #include <string>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <cstring>
 #include <memory>
 #include <sstream>

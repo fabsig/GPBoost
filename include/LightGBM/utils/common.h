@@ -14,7 +14,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <functional>
 #include <iomanip>
 #include <iterator>

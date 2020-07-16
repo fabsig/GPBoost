@@ -10,7 +10,9 @@
 #include <LightGBM/utils/random.h>
 
 #include <string>
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <functional>
 #include <sstream>
 #include <vector>

@@ -9,7 +9,9 @@
 #include <LightGBM/meta.h>
 #include <LightGBM/utils/random.h>
 
+#ifndef GPB_R_BUILD
 #include <cstdio>
+#endif
 #include <memory>
 #include <vector>
 

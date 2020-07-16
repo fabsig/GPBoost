@@ -23,9 +23,9 @@
 #include <limits>
 #ifndef GPB_R_BUILD
 #include <cassert>
+#include <cstdio>
 #endif
 #include <cmath>
-#include <cstdio>
 #include <cstdlib>
 
 namespace json11 {
