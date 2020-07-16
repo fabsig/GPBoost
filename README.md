@@ -37,9 +37,10 @@ Both tree-boosting and Gaussian processes are techniques that achieve **state-of
 * Scale-invariant to monotone transformations of the predictor variables
 * Automatic handling of missing values in predictor variables
 
-**Gaussian process** models have the following advantage:
+**Gaussian process** and **mixed effects** models have the following advantages:
 
 * Probabilistic predictions which allows for uncertainty quantification
+* Modeling of dependency which, among other things, can allow for more efficient learning of the fixed effects / regression function
 
 For the GPBoost algorithm, it is assumed that the **response variable (label) is the sum of a non-linear mean function and so-called random effects**. The **random effects** can consists of
 
