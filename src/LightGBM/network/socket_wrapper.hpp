@@ -10,7 +10,9 @@
 
 #include <string>
 #include <cerrno>
+#ifndef GPB_R_BUILD
 #include <cstdlib>
+#endif
 #include <unordered_set>
 
 #if defined(_WIN32)

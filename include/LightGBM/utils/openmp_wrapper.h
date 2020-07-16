@@ -9,10 +9,12 @@
 #include <omp.h>
 #include <LightGBM/utils/log.h>
 
-#include <exception>
 #include <memory>
 #include <mutex>
+#ifndef GPB_R_BUILD
+#include <exception>
 #include <stdexcept>
+#endif
 #include <vector>
 
 class ThreadExceptionHelper {

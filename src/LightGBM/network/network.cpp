@@ -6,7 +6,9 @@
 
 #include <LightGBM/utils/common.h>
 
+#ifndef GPB_R_BUILD
 #include <cstdlib>
+#endif
 #include <cstring>
 
 #include "linkers.h"

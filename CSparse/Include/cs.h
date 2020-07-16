@@ -3,7 +3,9 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <math.h>
+#ifndef GPB_R_BUILD
 #include <stdio.h>
+#endif
 #include <stddef.h>
 #ifdef MATLAB_MEX_FILE
 #include "mex.h"

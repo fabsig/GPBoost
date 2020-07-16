@@ -24,11 +24,11 @@
 #include <string>
 #ifndef GPB_R_BUILD
 #include <cstdio>
+#include <stdexcept>
 #endif
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <stdexcept>
 #include <vector>
 
 #include "application/predictor.hpp"
