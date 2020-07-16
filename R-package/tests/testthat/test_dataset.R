@@ -15,14 +15,15 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported
     dtest2 <- gpb.Dataset(as.matrix(test_data), label=test_label)
     expect_equal(getinfo(dtest1, 'label'), getinfo(dtest2, 'label'))
     
-    # save to a local file
-    tmp_file <- tempfile('gpb.Dataset_')
-    gpb.Dataset.save(dtest1, tmp_file)
-    # read from a local file
-    dtest3 <- gpb.Dataset(tmp_file)
-    gpb.Dataset.construct(dtest3)
-    unlink(tmp_file)
-    expect_equal(getinfo(dtest1, 'label'), getinfo(dtest3, 'label'))
+    # No longer testes since R package should not write to file via C++ standard stream
+    # # save to a local file
+    # tmp_file <- tempfile('gpb.Dataset_')
+    # gpb.Dataset.save(dtest1, tmp_file)
+    # # read from a local file
+    # dtest3 <- gpb.Dataset(tmp_file)
+    # gpb.Dataset.construct(dtest3)
+    # unlink(tmp_file)
+    # expect_equal(getinfo(dtest1, 'label'), getinfo(dtest3, 'label'))
   })
   
   test_that("gpb.Dataset: getinfo & setinfo", {
