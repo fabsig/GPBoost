@@ -85,8 +85,10 @@ test_that("Combine tree-boosting and grouped random effects model ", {
                   early_stopping_rounds = 5,
                   use_gp_model_for_validation = FALSE,
                   fit_GP_cov_pars_OOS = FALSE,
-                  folds = folds)
+                  folds = folds,
+                  verbose=0)
   expect_equal(cvbst$best_iter, 62)
+  expect_lt(abs(cvbst$best_score-1.020787), 1E-6)
 
   # Create random effects model and train GPBoost model
   gp_model <- GPModel(group_data = group_data_train)
