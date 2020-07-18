@@ -1,7 +1,7 @@
 # User options
 use_precompile <- FALSE
 use_gpu <- FALSE
-use_mingw <- FALSE # use this option for CRAN submission
+use_mingw <- TRUE # use this option for CRAN submission
 
 # 32-bit version can be installed now (the following is no longer needed)
 # if (.Machine$sizeof.pointer != 8){
