@@ -12,13 +12,13 @@ sim_rand_unif <- function(n, init_c=0.1){
 # Create data
 n <- 100 # number of samples
 # Simulate locations / features of GP
-d <- 2 # dimension
+d <- 2 # dimension of GP locations
 coords <- matrix(sim_rand_unif(n=n*d, init_c=0.1), ncol=d)
 D <- as.matrix(dist(coords))
 # Simulate GP
 sigma2_1 <- 1^2 # marginal variance of GP
 rho <- 0.1 # range parameter
-Sigma <- sigma2_1*exp(-D/rho)+diag(1E-20,n)
+Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
 C <- t(chol(Sigma))
 b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.8))
 eps <- as.vector(C %*% b_1)

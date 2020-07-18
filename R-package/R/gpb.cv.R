@@ -284,6 +284,10 @@ gpb.cv <- function(params = list(),
       stop(sQuote("folds"), " must be a list with 2 or more elements that are vectors of indices for each CV-fold")
     }
     
+    if (!is.integer(folds[[1]][1])) {
+      stop(sQuote("folds"), " must contain integers. Use as.integer to change this")
+    }
+    
     # Set number of folds
     nfold <- length(folds)
     

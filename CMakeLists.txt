@@ -201,21 +201,21 @@ if(USE_HDFS)
     SET(HDFS_CXX_LIBRARIES ${HDFS_LIB} ${JAVA_JVM_LIBRARY})
 endif(USE_HDFS)
 
-if(UNIX OR MINGW OR CYGWIN)
+if(UNIX OR MINGW OR CYGWIN)# TODO: remove -Wno-error=cast-function-type flag (and others)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -O3 -Wextra -Wall -Wno-unknown-pragmas -Wno-return-type -Wno-ignored-attributes -Wno-cast-function-type -Wno-error=cast-function-type")
     if(USE_SWIG)
         SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-strict-aliasing")
     endif()
 endif()
 
-if(WIN32 AND MINGW)
+if(WIN32 AND MINGW) # TODO: remove -static-libstdc++ flag
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
 	# if(BUILD_32BIT_R) # uncomment this if you want information from the linker
 		# SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--verbose")#--no-gc-sections, -Wl,--verbose
 	# endif()
 endif()
 
-if(BUILD_32BIT_R)# DELETE?
+if(BUILD_32BIT_R)# NECESSARY?
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m32")
 endif()
 
