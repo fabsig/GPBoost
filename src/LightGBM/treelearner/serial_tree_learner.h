@@ -14,7 +14,7 @@
 
 #include <string>
 #include <cmath>
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <cstdio>
 #endif
 #include <memory>

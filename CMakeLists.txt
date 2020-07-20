@@ -16,8 +16,9 @@ OPTION(USE_SWIG "Enable SWIG to generate Java API" OFF)
 OPTION(USE_HDFS "Enable HDFS support (EXPERIMENTAL)" OFF)
 OPTION(USE_R35 "Set to ON if your R version is not earlier than 3.5" OFF)
 OPTION(CMAKE_BUILD_TYPE "Do optimization and no debugging for Eigen" Release)
+OPTION(USE_DEBUG "Set to ON for Debug mode" OFF)
+OPTION(BUILD_FOR_R "Set to ON if building lib_gpboost for use with the R packages" OFF)
 OPTION(BUILD_FOR_R_REGISTER "Set to ON if building lib_gpboost for use with the R package and registering native routines" OFF)
-OPTION(BUILD_FOR_R "Set to ON if building lib_gpboost for use with the R packages but not registering native routines" OFF)
 OPTION(BUILD_32BIT_R "Set to ON if building 32-bit lib_gpboost for use with the R packages" OFF)
 
 if(BUILD_FOR_R_REGISTER)
@@ -144,7 +145,15 @@ endif(USE_R35)
 
 if(BUILD_FOR_R_REGISTER)
     ADD_DEFINITIONS(-DGPB_R_BUILD)
+	ADD_DEFINITIONS(-DNDEBUG)	
+	if(MINGW)
+		ADD_DEFINITIONS(-DAVOID_NOT_CRAN_COMPLIANT_CALLS)
+	endif()
 endif(BUILD_FOR_R_REGISTER)
+
+if(USE_DEBUG)
+    ADD_DEFINITIONS(-DDEBUG)
+endif(USE_DEBUG)
 
 if(USE_MPI)
     find_package(MPI REQUIRED)
@@ -201,21 +210,29 @@ if(USE_HDFS)
     SET(HDFS_CXX_LIBRARIES ${HDFS_LIB} ${JAVA_JVM_LIBRARY})
 endif(USE_HDFS)
 
-if(UNIX OR MINGW OR CYGWIN)# TODO: remove -Wno-error=cast-function-type flag (and others)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -O3 -Wextra -Wall -Wno-unknown-pragmas -Wno-return-type -Wno-ignored-attributes -Wno-cast-function-type -Wno-error=cast-function-type")
+if(UNIX OR MINGW OR CYGWIN)
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -Wextra -Wall -Wno-unknown-pragmas -Wno-return-type -Wno-ignored-attributes")
+	if(MINGW)
+		SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-cast-function-type -Wno-error=cast-function-type")
+	endif()
+	if(USE_DEBUG)
+        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0")
+    else()
+        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+    endif()
     if(USE_SWIG)
         SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-strict-aliasing")
     endif()
 endif()
 
-if(WIN32 AND MINGW) # TODO: remove -static-libstdc++ flag
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
+if(WIN32 AND MINGW)
+    # SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++") # Where is this needed? Delete it?
 	# if(BUILD_32BIT_R) # uncomment this if you want information from the linker
 		# SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--verbose")#--no-gc-sections, -Wl,--verbose
 	# endif()
 endif()
 
-if(BUILD_32BIT_R)# NECESSARY?
+if(BUILD_32BIT_R)# TODO: is this required or can it be deleted?
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m32")
 endif()
 

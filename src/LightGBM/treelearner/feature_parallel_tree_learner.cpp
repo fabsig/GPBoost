@@ -71,7 +71,7 @@ void FeatureParallelTreeLearner<TREELEARNER_T>::FindBestSplitsFromHistograms(con
 }
 
 // instantiate template classes, otherwise linker cannot find the code
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 template class FeatureParallelTreeLearner<GPUTreeLearner>;
 #endif
 template class FeatureParallelTreeLearner<SerialTreeLearner>;

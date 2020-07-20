@@ -22,8 +22,7 @@ namespace GPBoost {
 	*
 	*    Some details:
 	*       1. It collects the different random effect components
-	*		    2. It allows for doing the necessary random effect related computations
-	*		    3. 
+	*		2. It allows for doing the necessary random effect related computations
 	*/
 
   class REModel {

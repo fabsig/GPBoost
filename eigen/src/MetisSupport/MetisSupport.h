@@ -114,7 +114,7 @@ public:
     if(output_error != METIS_OK) 
     {
       //FIXME The ordering interface should define a class of possible errors
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
      std::cerr << "ERROR WHILE CALLING THE METIS PACKAGE \n"; 
 #endif
      return; 

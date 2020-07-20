@@ -2971,7 +2971,8 @@ class GPModel(object):
                         "convergence_criterion": "relative_change_in_log_likelihood"}
         self.prediction_data_is_set = False
         self.free_raw_data = False
-
+        self.vecchia_approx = vecchia_approx
+        
         # Define default NULL values for calling C function
         group_data_c = ctypes.c_void_p()
         group_rand_coef_data_c = ctypes.c_void_p()
@@ -3071,7 +3072,6 @@ class GPModel(object):
             self.cov_fct_shape = cov_fct_shape
             self.vecchia_ordering = vecchia_ordering
             self.vecchia_pred_type = vecchia_pred_type
-            self.vecchia_approx = vecchia_approx
             self.num_neighbors = num_neighbors
             self.num_neighbors_pred = num_neighbors_pred
             self.cov_par_names.extend(["GP_var", "GP_range"])

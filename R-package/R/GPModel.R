@@ -37,6 +37,7 @@ gpb.GPModel <- R6::R6Class(
         stop("GPModel: Both ", sQuote("group_data"), " and " , sQuote("gp_coords"),
              " are NULL. Provide at least one of them.")
       }
+      private$vecchia_approx <- as.logical(vecchia_approx)
       private$cov_par_names <- c("Error_term")
       # Set data for grouped random effects
       group_data_c_str <- NULL
@@ -202,7 +203,6 @@ gpb.GPModel <- R6::R6Class(
         private$cov_function <- cov_function
         cov_function <- gpb.c_str(cov_function)
         private$cov_fct_shape <- as.numeric(cov_fct_shape)
-        private$vecchia_approx <- as.logical(vecchia_approx)
         private$num_neighbors <- as.integer(num_neighbors)
         private$vecchia_ordering <- vecchia_ordering
         vecchia_ordering <- gpb.c_str(vecchia_ordering)
@@ -286,6 +286,7 @@ gpb.GPModel <- R6::R6Class(
 
       # Attempts to create a handle for the GPModel
       try({
+        
         # Store handle
         handle <- gpb.call("GPB_CreateREModel_R",
                            ret = handle,

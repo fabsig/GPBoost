@@ -13,7 +13,7 @@
 #ifndef EIGEN_COMPLEX_MSA_H
 #define EIGEN_COMPLEX_MSA_H
 
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <iostream>
 #endif
 

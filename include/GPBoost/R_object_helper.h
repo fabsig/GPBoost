@@ -12,14 +12,18 @@
 #define R_OBJECT_HELPER_H_
 
 #include <cstdint>
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <cstdio>
 #endif
 
 #define TYPE_BITS 5
 // use .Internal(internalsID()) to uuid
-//#define R_INTERNALS_UUID "2fdf6c18-697a-4ba7-b8ef-11c0d92f1327"
-#ifdef GPB_R_BUILD
+
+//#ifdef GPB_R_BUILD
+//#define USE_RINTERNALS
+//#endif
+
+#ifdef USE_RINTERNALS
 #define R_NO_REMAP
 #define R_USE_C99_IN_CXX
 #include <Rinternals.h>
@@ -45,14 +49,14 @@ struct lgbm_sxpinfo {
   unsigned int extra : 32 - NAMED_BITS;
 };
 
-#ifndef GPB_R_BUILD
-// 64bit pointer
-#if INTPTR_MAX == INT64_MAX
-typedef int64_t xlen_t;
-#else
-typedef int xlen_t;
-#endif
-#endif // GPB_R_BUILD
+#ifndef USE_RINTERNALS
+    // 64bit pointer
+    #if INTPTR_MAX == INT64_MAX
+    typedef int64_t xlen_t;
+    #else
+    typedef int xlen_t;
+    #endif
+#endif // USE_RINTERNALS
 
 #else
 struct lgbm_sxpinfo {
@@ -120,7 +124,7 @@ typedef struct LGBM_SER {
 } LGBM_SER, *LGBM_SE;
 
 struct lgbm_vecsxp {
-#ifdef GPB_R_BUILD
+#ifdef USE_RINTERNALS
     R_xlen_t length;
     R_xlen_t truelength;
 #else

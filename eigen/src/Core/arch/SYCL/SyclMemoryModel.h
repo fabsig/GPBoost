@@ -25,7 +25,7 @@
 #define EIGEN_CXX11_TENSOR_TENSOR_SYCL_STORAGE_MEMORY_H
 
 #include <CL/sycl.hpp>
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #ifdef EIGEN_EXCEPTIONS
 #include <stdexcept>
 #endif

@@ -878,7 +878,7 @@
     #define eigen_plain_assert(x) assert(x)
   #else
     // work around bug 89
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
     #include <cstdlib>   // for abort
     #include <iostream>  // for std::cerr
 #endif
@@ -892,7 +892,7 @@
     }
     inline void assert_fail(const char *condition, const char *function, const char *file, int line)
     {
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
       std::cerr << "assertion failed: " << condition << " in function " << function << " at " << file << ":" << line << std::endl;
       abort();
 #endif
@@ -1179,7 +1179,7 @@ namespace Eigen {
 #    define EIGEN_THROW_X(X) asm("s_trap 0")
 #    define EIGEN_THROW asm("s_trap 0")
 #  else 
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #    define EIGEN_THROW_X(X) std::abort()
 #    define EIGEN_THROW std::abort()
 #endif

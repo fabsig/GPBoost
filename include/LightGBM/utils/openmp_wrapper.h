@@ -11,7 +11,7 @@
 
 #include <memory>
 #include <mutex>
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <exception>
 #include <stdexcept>
 #endif

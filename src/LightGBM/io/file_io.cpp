@@ -20,7 +20,7 @@ struct LocalFile : VirtualFileReader, VirtualFileWriter {
   LocalFile(const std::string& filename, const std::string& mode) : filename_(filename), mode_(mode) {}
   virtual ~LocalFile() {
     if (file_ != NULL) {
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
       fclose(file_);
 #endif
     }
@@ -28,7 +28,7 @@ struct LocalFile : VirtualFileReader, VirtualFileWriter {
 
   bool Init() {
     if (file_ == NULL) {
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #if _MSC_VER
       fopen_s(&file_, filename_.c_str(), mode_.c_str());
 #else
@@ -45,7 +45,7 @@ struct LocalFile : VirtualFileReader, VirtualFileWriter {
   }
 
   size_t Read(void* buffer, size_t bytes) const {
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
     return fread(buffer, 1, bytes, file_);
 #else
       return 0;
@@ -53,7 +53,7 @@ struct LocalFile : VirtualFileReader, VirtualFileWriter {
   }
 
   size_t Write(const void* buffer, size_t bytes) const {
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
     return fwrite(buffer, bytes, 1, file_) == 1 ? bytes : 0;
 #else
 return 0;
@@ -68,7 +68,7 @@ return 0;
 
 const char* kHdfsProto = "hdfs://";
 
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #ifdef USE_HDFS
 struct HDFSFile : VirtualFileReader, VirtualFileWriter {
   HDFSFile(const std::string& filename, int flags) : filename_(filename), flags_(flags) {}
@@ -170,7 +170,7 @@ std::unordered_map<std::string, hdfsFS> HDFSFile::fs_cache_ = std::unordered_map
 #endif  // USE_HDFS
 #else
 #define WITH_HDFS(x) Log::Fatal("HDFS support is not enabled")
-#endif // GPB_R_BUILD
+#endif // AVOID_NOT_CRAN_COMPLIANT_CALLS
 
 std::unique_ptr<VirtualFileReader> VirtualFileReader::Make(const std::string& filename) {
   if (0 == filename.find(kHdfsProto)) {

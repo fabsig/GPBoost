@@ -33,7 +33,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported
     
     bst <- gpboost(data = as.matrix(iris[, -5]), label = lb,
                    num_leaves = 4, learning_rate = 0.1, nrounds = 20, min_data=20, min_hess=20,
-                   objective = "multiclass", metric="multi_error", num_class=3)
+                   objective = "multiclass", metric="multi_error", num_class=3, verbose=1)
     
     expect_false(is.null(bst$record_evals))
     record_results <- gpb.get.eval.result(bst, "train", "multi_error")
@@ -47,7 +47,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported
   test_that("use of multiple eval metrics works", {
     bst <- gpboost(data = train$data, label = train$label, num_leaves = 4,
                    learning_rate=1, nrounds = 10, objective = "binary",
-                   metric = list("binary_error","auc","binary_logloss") )
+                   metric = list("binary_error","auc","binary_logloss"), verbose=0 )
     expect_false(is.null(bst$record_evals))
   })
   
@@ -79,7 +79,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported
   test_that("cv works", {
     dtrain <- gpb.Dataset(train$data, label=train$label)
     params <- list(objective="regression", metric="l2,l1")
-    bst <- gpb.cv(params, dtrain, 10, nfold=5, min_data=1, learning_rate=1, early_stopping_rounds=10)
+    bst <- gpb.cv(params, dtrain, 10, nfold=5, min_data=1, learning_rate=1, early_stopping_rounds=10, verbose=0)
     expect_false(is.null(bst$record_evals))
   })
   

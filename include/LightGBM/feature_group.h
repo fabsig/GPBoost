@@ -9,7 +9,7 @@
 #include <LightGBM/meta.h>
 #include <LightGBM/utils/random.h>
 
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <cstdio>
 #endif
 #include <memory>

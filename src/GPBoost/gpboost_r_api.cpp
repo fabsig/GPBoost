@@ -55,9 +55,13 @@ LGBM_SE GPB_CreateREModel_R(LGBM_SE ndata,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
 	REModelHandle handle = nullptr;
-
-	//int len = static_cast<int>(R_AS_INT(ndata));
-	//for (int i = 0; i < len; ++i) { Log::Info("R API re_group_rand_coef_data[i]: %f", R_REAL_PTR(re_group_rand_coef_data)[i]); }
+	//bool va = R_AS_BOOL(vecchia_approx);//FOR DEBUGGING
+	//Log::Info("type(va) = %s ", typeid(va).name());
+	//Log::Info("va = %d ", va);
+	//int va_int_convert = va ? 1 : 0;
+	//Log::Info("va_int_convert = %d ", va_int_convert);
+	//int va_int = R_AS_INT(vecchia_approx);
+	//Log::Info("va_int = %d ", va_int);
 	CHECK_CALL(GPB_CreateREModel(R_AS_INT(ndata), R_INT_PTR(cluster_ids_data), R_CHAR_PTR(re_group_data),
 		R_AS_INT(num_re_group), R_REAL_PTR(re_group_rand_coef_data), R_INT_PTR(ind_effect_group_rand_coef), R_AS_INT(num_re_group_rand_coef),
 		R_AS_INT(num_gp), R_REAL_PTR(gp_coords_data), R_AS_INT(dim_gp_coords), R_REAL_PTR(gp_rand_coef_data), R_AS_INT(num_gp_rand_coef),

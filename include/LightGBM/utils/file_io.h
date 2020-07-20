@@ -7,7 +7,7 @@
 
 #include <string>
 #include <cstring>
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>

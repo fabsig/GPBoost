@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <math.h>
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <stdio.h>
 #endif
 #include <stddef.h>

@@ -21,7 +21,7 @@
 #include <LightGBM/json11.hpp>
 
 #include <limits>
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -627,7 +627,7 @@ struct JsonParser final {
      * the input and return res. If not, flag an error.
      */
     Json expect(const string &expected, Json res) {
-        #ifndef GPB_R_BUILD
+        #ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
         assert(i != 0);
         #endif
         i--;

@@ -514,7 +514,7 @@ void VotingParallelTreeLearner<TREELEARNER_T>::Split(Tree* tree, int best_Leaf, 
 }
 
 // instantiate template classes, otherwise linker cannot find the code
-#ifndef GPB_R_BUILD
+#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 template class VotingParallelTreeLearner<GPUTreeLearner>;
 #endif
 template class VotingParallelTreeLearner<SerialTreeLearner>;
