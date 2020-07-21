@@ -228,7 +228,7 @@ endif()
 if(WIN32 AND MINGW)
     # SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++") # Where is this needed? Delete it?
 	# if(BUILD_32BIT_R) # uncomment this if you want information from the linker
-		# SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--verbose")#--no-gc-sections, -Wl,--verbose
+		# SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--verbose")
 	# endif()
 endif()
 
@@ -249,10 +249,7 @@ if(MSVC)
     )
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /O2 /Ob2 /Oi /Ot /Oy /GL /MP")
 else()
-    # if(NOT MINGW)#otherwise CRAN CHECK gives a note
-        # SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-    # endif()
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC") #otherwise CRAN CHECK gives a note
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops")
 endif(MSVC)
 
