@@ -29,7 +29,7 @@ Both tree-boosting and Gaussian processes are techniques that achieve **state-of
 
 * Automatic modeling of non-linearities, discontinuities, and complex high-order interactions
 * Robust to outliers in and multicollinearity among predictor variables
-* Scale-invariant to monotone transformations of the predictor variables
+* Scale-invariance to monotone transformations of the predictor variables
 * Automatic handling of missing values in predictor variables
 
 **Gaussian process** models have the following advantage:
