@@ -2480,7 +2480,14 @@ class Booster(object):
         predictor = self._to_predictor(copy.deepcopy(kwargs))
         if num_iteration is None:
             num_iteration = self.best_iteration
-        if self.has_gp_model:
+        make_random_effects_prediction = self.has_gp_model
+        if self.gp_model.num_group_re > 0 and group_data_pred is None:
+            warnings.warn("group_data_pred not provided. Predictions are done for the fixed effects only")
+            make_random_effects_prediction = False
+        if self.gp_model.num_gp > 0 and gp_coords_pred is None:
+            warnings.warn("gp_coords_pred not provided. Predictions are done for the fixed effects only")
+            make_random_effects_prediction = False
+        if make_random_effects_prediction:
             if self.train_set.data is None:
                 raise GPBoostError("cannot make predictions for Gaussian process. "
                 "Set free_raw_data = False when you construct the Dataset")
@@ -3690,7 +3697,7 @@ class GPModel(object):
                     X_pred = X_pred.reshape((len(X_pred), 1))
                 if X_pred.shape[0] != num_data_pred:
                     raise ValueError("Incorrect number of data points in X_pred")
-                if X_pred.shape[0] != self.num_coef:
+                if X_pred.shape[1] != self.num_coef:
                     raise ValueError("Incorrect number of covariates in X_pred")
                 X_pred_c = X_pred.astype(np.float64)
                 X_pred_c, _, _ = c_float_array(X_pred_c.flatten(order='F'))
