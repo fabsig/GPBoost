@@ -75,11 +75,9 @@ gpb.plot_importance(bst)
 # Partial dependence plots
 from pdpbox import pdp
 # Single variable plots
-for i in range(0,4):
-    var_name = 'variable_' + str(i + 1)
-    pdp_dist = pdp.pdp_isolate(model=bst, dataset=X_train, model_features=X_train.columns,
-                               feature=var_name, num_grid_points=100)
-    pdp.pdp_plot(pdp_dist, var_name, plot_lines=True)
+pdp_dist = pdp.pdp_isolate(model=bst, dataset=X_train, model_features=X_train.columns,
+                           feature='variable_2', num_grid_points=100)
+pdp.pdp_plot(pdp_dist, 'variable_2', plot_lines=True)
 # Two variable interaction plot
 inter_rf = pdp.pdp_interact(model=bst, dataset=X_train, model_features=X_train.columns,
                              features=['variable_1','variable_2'])
@@ -87,7 +85,7 @@ pdp.pdp_interact_plot(inter_rf, ['variable_1','variable_2'], x_quantile=True, pl
 
 # SHAP values and dependence plots
 import shap
-shap_values = shap.TreeExplainer(bst).shap_values(X_test)
+shap_values = shap.TreeExplainer(bst, feature_perturbation="tree_path_dependent").shap_values(X_test)
 shap.summary_plot(shap_values, X_test)
 shap.dependence_plot("variable_2", shap_values, X_test)
 

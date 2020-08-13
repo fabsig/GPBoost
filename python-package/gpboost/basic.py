@@ -2481,12 +2481,13 @@ class Booster(object):
         if num_iteration is None:
             num_iteration = self.best_iteration
         make_random_effects_prediction = self.has_gp_model
-        if self.gp_model.num_group_re > 0 and group_data_pred is None:
-            warnings.warn("group_data_pred not provided. Predictions are done for the fixed effects only")
-            make_random_effects_prediction = False
-        if self.gp_model.num_gp > 0 and gp_coords_pred is None:
-            warnings.warn("gp_coords_pred not provided. Predictions are done for the fixed effects only")
-            make_random_effects_prediction = False
+        if self.has_gp_model:
+            if self.gp_model.num_group_re > 0 and group_data_pred is None:
+                warnings.warn("group_data_pred not provided. Predictions are done for the fixed effects only")
+                make_random_effects_prediction = False
+            if self.gp_model.num_gp > 0 and gp_coords_pred is None:
+                warnings.warn("gp_coords_pred not provided. Predictions are done for the fixed effects only")
+                make_random_effects_prediction = False
         if make_random_effects_prediction:
             if self.train_set.data is None:
                 raise GPBoostError("cannot make predictions for Gaussian process. "
