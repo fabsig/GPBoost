@@ -113,6 +113,7 @@ if (!use_precompile) {
     if (use_mingw) {
       ##Find correct version of mingw (32- or 64-bit)
       build_tool_locs <- system(paste0("where ",windows_build_tool),intern=TRUE)
+      build_tool_exe <- NA
       if (R_ver >= 4.0) {
         for (loc in build_tool_locs) {
           if (grepl("make.exe",loc)) {
@@ -144,6 +145,9 @@ if (!use_precompile) {
           }
         }
         mingw_path <- substr(build_tool_exe,1,gregexpr("mingw32-make",build_tool_exe)[[1]][1]-1)
+      }
+      if(is.na(build_tool_exe)){
+        stop("The build tool for MinGW (make file) has not beed found. Please add rtools to your PATH environment variable.")
       }
       cmake_cmd <- paste0(cmake_cmd, " -G ", shQuote(windows_makefile_generator)," -DMINGW_PATH=",mingw_path)
       build_cmd <- paste0(build_tool_exe," _gpboost")# no absolute path: e.g. build_cmd <- "mingw32-make.exe _gpboost"
