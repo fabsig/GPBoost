@@ -23,7 +23,7 @@ The GPBoost library is written in C++ and it has a C API. There exist both a [**
 
 * The [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrating how GPBoost can be used in R and Python
 * The [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package) with installation instructions for the Python and R packages
-* The companion article [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) or this [**blog post on how to combine tree-boosting with mixed effects models**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) 
+* The companion article [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) or this [**blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb)  on how to combine tree-boosting with mixed effects models
 * Additional [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) presenting the most important parameters / settings for using the GPBoost library
 * [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst) an exhaustive list of all possible parametes and customizations for the tree-boosting part
