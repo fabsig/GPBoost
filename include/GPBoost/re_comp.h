@@ -475,22 +475,6 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Constructor for random coefficient Gaussian process when multiple locations are not modelled using an incidence matrix (used for Vecchia approximation)
-		* \param rand_coef_data Covariate data for random coefficient
-		* \param cov_fct Type of covariance function
-		* \param shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
-		*/
-		RECompGP(const std::vector<double>& rand_coef_data, string_t cov_fct = "exponential", double shape = 0.) {
-			this->rand_coef_data_ = rand_coef_data;
-			this->is_rand_coef_ = true;
-			has_Z_ = true;
-			this->num_cov_par_ = 2;
-			cov_function_ = std::unique_ptr<CovFunction<T>>(new CovFunction<T>(cov_fct, shape));
-			dist_saved_ = false;
-			coord_saved_ = false;
-		}
-
-		/*!
 		* \brief Constructor for random coefficient Gaussian processes
 		* \param dist Pointer to distance matrix of corresponding base intercept GP
 		* \param base_effect_has_Z Indicate whether the corresponding base GP has an incidence matrix Z or not
@@ -519,6 +503,22 @@ namespace GPBoost {
 			else {
 				this->Z_ = coef_W;
 			}
+			coord_saved_ = false;
+		}
+
+		/*!
+		* \brief Constructor for random coefficient Gaussian process when multiple locations are not modelled using an incidence matrix (used for Vecchia approximation)
+		* \param rand_coef_data Covariate data for random coefficient
+		* \param cov_fct Type of covariance function
+		* \param shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
+		*/
+		RECompGP(const std::vector<double>& rand_coef_data, string_t cov_fct = "exponential", double shape = 0.) {
+			this->rand_coef_data_ = rand_coef_data;
+			this->is_rand_coef_ = true;
+			has_Z_ = true;
+			this->num_cov_par_ = 2;
+			cov_function_ = std::unique_ptr<CovFunction<T>>(new CovFunction<T>(cov_fct, shape));
+			dist_saved_ = false;
 			coord_saved_ = false;
 		}
 

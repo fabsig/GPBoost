@@ -180,7 +180,7 @@ test_that("Gaussian process model with linear regression term ", {
 })
 
 
-# Ignore [GPBoost] [Warning]
+print("Ignore [GPBoost] [Warning]")
 test_that("Gaussian process and two random coefficients ", {
   
   y <- eps_svc + xi

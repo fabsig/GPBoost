@@ -547,7 +547,7 @@ namespace GPBoost {
 						if (optimizer_cov == "fisher_scoring") {
 							Log::Debug("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased in this iteration.", it + 1);
 						}
-						else if (optimizer_cov == "gradient_descent"){
+						else if (optimizer_cov == "gradient_descent") {
 							Log::Info("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased permanently. New learning rate = %f", it + 1, lr_cov);
 						}
 					}
@@ -580,7 +580,7 @@ namespace GPBoost {
 						}
 						CalcCovFactor_already_done = true;
 						EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_like, true, true, true);
-						if (neg_log_like > neg_log_like_lag1 && use_nesterov_acc) {
+						if (neg_log_like > neg_log_like_lag1&& use_nesterov_acc) {
 							Log::Warning("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. There is no safeguard (halving of the learning rate) in place when applying Nesterov acceleration ", it + 1);
 						}
 					}
@@ -651,7 +651,7 @@ namespace GPBoost {
 		* \param y_data Response variable data
 		* \param cov_pars Values for covariance parameters of RE components
 		* \param[out] negll Negative log-likelihood
-		* \param CalcCovFactor_already_done If true, it is assumed that the covariance matrix has already been factorized 
+		* \param CalcCovFactor_already_done If true, it is assumed that the covariance matrix has already been factorized
 		* \param CalcYAux_already_done If true, it is assumed that y_aux_=Psi^-1y_ has already been calculated (only relevant for not use_woodbury_identity_)
 		* \param CalcYtilde_already_done If true, it is assumed that y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z), has already been calculated (only relevant for use_woodbury_identity_)
 		*/
@@ -2613,7 +2613,6 @@ namespace GPBoost {
 				else {
 					pars_acc = (mu + 1) * pars - mu * pars_lag1;
 				}
-				
 			}
 		}
 
