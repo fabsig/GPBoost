@@ -294,6 +294,9 @@ class GPBoostModel(_GPBoostModelBase):
         If you want to get i-th row y_pred in j-th class, the access way is y_pred[j * num_data + i]
         and you should group grad and hess in this way as well.
         """
+
+        warnings.warn("The scikit-learn API does currently not support the use of a gp_model")
+
         if not SKLEARN_INSTALLED:
             raise GPBoostError('Scikit-learn is required for this module')
         elif SKLEARN_VERSION > '0.21.3':

@@ -282,7 +282,7 @@ if __name__ == "__main__":
           install_requires=[
               'numpy',
               'scipy',
-              'scikit-learn' # might lead to errors when not scikit-learn<=0.21.3
+              'scikit-learn' # might lead to errors in scikit-learn API when not scikit-learn<=0.21.3
           ],
           maintainer='Fabio Sigrist',
           maintainer_email='fabiosigrist@gmail.com',
