@@ -280,4 +280,4 @@ void R_init_gpboost(DllInfo* dll) {
 	R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
 	R_useDynamicSymbols(dll, FALSE);
 }
-#endif
+#endif //end GPB_R_BUILD

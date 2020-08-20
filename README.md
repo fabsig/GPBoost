@@ -59,7 +59,8 @@ The model is trained using the **GPBoost algorithm, where training means learnin
 ## Open Issues - Contribute
 
 #### Software issues
-- Add tests: [Python tests](https://github.com/fabsig/GPBoost/tree/master/tests) and [R tests](https://github.com/fabsig/GPBoost/tree/master/R-package/tests) such that the coverage is higher
+- Add possibility to save gp_model to file
+- Add [Python tests](https://github.com/fabsig/GPBoost/tree/master/tests) for gp_model (see corresponding [R tests](https://github.com/fabsig/GPBoost/tree/master/R-package/tests))
 - Setting up Travis CI for GPBoost 
 
 #### Computational issues
