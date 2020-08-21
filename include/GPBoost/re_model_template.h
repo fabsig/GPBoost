@@ -27,7 +27,6 @@
 //#include <typeinfo> // Only needed for debugging
 //#include <chrono>  // only needed for debugging
 //#include <thread> // only needed for debugging
-//Log::Info("Fine here ");// Only for debugging
 //std::this_thread::sleep_for(std::chrono::milliseconds(200));// Only for debugging
 //std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 //std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
@@ -88,7 +87,7 @@ namespace GPBoost {
 			//Set up GP IDs
 			SetUpGPIds(num_data_, cluster_ids_data, num_data_per_cluster_, data_indices_per_cluster_, unique_clusters_, num_clusters_);
 			//Indices of parameters of individual components in joint parameter vector
-			ind_par_.push_back(0);//0+1 is starting point of parameter for first component since the first parameter is the nugget effect variance
+			ind_par_.push_back(num_cov_par_);// 1 is starting point of parameter for first component since the first parameter is the nugget effect variance
 			num_comps_total_ = 0;
 
 			//Do some checks for grouped RE components and set meta data (number of components etc.)
@@ -113,7 +112,7 @@ namespace GPBoost {
 				num_comps_total_ += num_re_group_total_;
 				//Add indices of parameters of individual components in joint parameter vector
 				for (int j = 0; j < num_re_group_total_; ++j) {
-					ind_par_.push_back(1 + j);//end points of parameter indices of components
+					ind_par_.push_back(ind_par_.back() + 1);//end points of parameter indices of components
 				}
 				// Convert characters in 'const char* re_group_data' to matrix (num_re_group_ x num_data_) with strings of group labels
 				re_group_levels = std::vector<std::vector<string_t>>(num_re_group_, std::vector<string_t>(num_data_));
@@ -261,16 +260,6 @@ namespace GPBoost {
 						cum_num_rand_eff_.insert({ cluster_i, cum_num_rand_eff_cluster_i });
 						Zj_square_sum_.insert({ cluster_i, Zj_square_sum_cluster_i });
 						ZtZj_.insert({ cluster_i, ZtZj_cluster_i });
-						//for (int i = 0; i < (int)Z_cluster_i.rows(); ++i) {//For debugging only
-						//	for (int j = 0; j < (int)Z_cluster_i.cols(); ++j) {
-						//		Log::Info("Z(%d,%d) %f", i, j, Z_cluster_i.coeffRef(i, j));
-						//	}
-						//}
-						//for (int i = 0; i < (int)ZtZ_cluster_i.rows(); ++i) {//For debugging only
-						//	for (int j = 0; j < (int)ZtZ_cluster_i.cols(); ++j) {
-						//		Log::Info("ZtZ(%d,%d) %f", i, j, ZtZ_cluster_i.coeffRef(i, j));
-						//	}
-						//}
 					}//end use_woodbury_identity_
 					ConstructI<T1>(cluster_i);//Idendity matrices needed for computing inverses of covariance matrices used in gradient descent
 				}//end not vecchia_approx_
@@ -948,7 +937,7 @@ namespace GPBoost {
 								z_outer_z_obs_neighbors_cluster_i, "none", num_neighbors_pred_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
 
 							for (int j = 0; j < num_comps_total_; ++j) {
-								const vec_t pars = cov_pars.segment(ind_par_[j] + 1, ind_par_[j + 1] - ind_par_[j]);
+								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_cluster_i[j]->SetCovPars(pars);
 							}
 
@@ -978,7 +967,7 @@ namespace GPBoost {
 								num_re_group_rand_coef_, re_group_rand_coef_data_pred, ind_effect_group_rand_coef_, num_gp_, gp_coords_data_pred,
 								dim_gp_coords_, gp_rand_coef_data_pred, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, ind_intercept_gp_, true, re_comps_cluster_i);
 							for (int j = 0; j < num_comps_total_; ++j) {
-								const vec_t pars = cov_pars.segment(ind_par_[j] + 1, ind_par_[j + 1] - ind_par_[j]);
+								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_cluster_i[j]->SetCovPars(pars);
 								re_comps_cluster_i[j]->CalcSigma();
 								psi += (*(re_comps_cluster_i[j]->GetZSigmaZt().get()));
@@ -1235,7 +1224,7 @@ namespace GPBoost {
 
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components */
 		std::map<gp_id_t, std::vector<std::shared_ptr<RECompBase<T1>>>> re_comps_;
-		/*! \brief Indices of parameters of RE components in global parameter vector cov_pars. ind_par_[i] + 1 and ind_par_[i+1] are the indices of the first and last parameter of component number i */
+		/*! \brief Indices of parameters of RE components in global parameter vector cov_pars. ind_par_[i] and ind_par_[i+1] - 1 are the indices of the first and last parameter of component number i (counting starts at 1) */
 		std::vector<data_size_t> ind_par_;
 		/*! \brief Number of covariance parameters */
 		data_size_t num_cov_par_;
@@ -1412,8 +1401,6 @@ namespace GPBoost {
 		void SetY(const double* y_data) {
 			if (num_clusters_ == 1 && vecchia_ordering_ == "none") {
 				y_[unique_clusters_[0]] = Eigen::Map<const vec_t>(y_data, num_data_);
-				//y_[unique_clusters_[0]] = vec_t(num_data_);
-				//y_[unique_clusters_[0]].setZero();
 			}
 			else {
 				for (const auto& cluster_i : unique_clusters_) {
@@ -1984,8 +1971,7 @@ namespace GPBoost {
 			sigma2_ = cov_pars[0];
 			for (const auto& cluster_i : unique_clusters_) {
 				for (int j = 0; j < num_comps_total_; ++j) {
-					//const std::vector<double> pars = std::vector<double>(cov_pars.begin() + ind_par_[j] + 1, cov_pars.begin() + ind_par_[j + 1] + 1);
-					const vec_t pars = cov_pars.segment(ind_par_[j] + 1, ind_par_[j + 1] - ind_par_[j]);
+					const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 					re_comps_[cluster_i][j]->SetCovPars(pars);
 				}
 			}
@@ -2001,10 +1987,10 @@ namespace GPBoost {
 			cov_pars_trans = vec_t(num_cov_par_);
 			cov_pars_trans[0] = cov_pars[0];
 			for (int j = 0; j < num_comps_total_; ++j) {
-				const vec_t pars = cov_pars.segment(ind_par_[j] + 1, ind_par_[j + 1] - ind_par_[j]);
+				const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 				vec_t pars_trans = pars;
 				re_comps_[unique_clusters_[0]][j]->TransformCovPars(cov_pars[0], pars, pars_trans);
-				cov_pars_trans.segment(ind_par_[j] + 1, ind_par_[j + 1] - ind_par_[j]) = pars_trans;
+				cov_pars_trans.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]) = pars_trans;
 			}
 		}
 
@@ -2018,10 +2004,10 @@ namespace GPBoost {
 			cov_pars_orig = vec_t(num_cov_par_);
 			cov_pars_orig[0] = cov_pars[0];
 			for (int j = 0; j < num_comps_total_; ++j) {
-				const vec_t pars = cov_pars.segment(ind_par_[j] + 1, ind_par_[j + 1] - ind_par_[j]);
+				const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 				vec_t pars_orig = pars;
 				re_comps_[unique_clusters_[0]][j]->TransformBackCovPars(cov_pars[0], pars, pars_orig);
-				cov_pars_orig.segment(ind_par_[j] + 1, ind_par_[j + 1] - ind_par_[j]) = pars_orig;
+				cov_pars_orig.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]) = pars_orig;
 			}
 		}
 
@@ -2529,7 +2515,7 @@ namespace GPBoost {
 						int num_par_comp = re_comps_[cluster_i][j]->num_cov_par_;
 						for (int ipar = 0; ipar < num_par_comp; ++ipar) {
 							uk = B_grad_[cluster_i][num_par_comp * j + ipar] * y_[cluster_i];
-							cov_grad[first_cov_par + ind_par_[j] + ipar] += ((uk.dot(u) - 0.5 * u.dot(D_grad_[cluster_i][num_par_comp * j + ipar] * u)) / sigma2_ +
+							cov_grad[first_cov_par + ind_par_[j] - 1 + ipar] += ((uk.dot(u) - 0.5 * u.dot(D_grad_[cluster_i][num_par_comp * j + ipar] * u)) / sigma2_ +
 								0.5 * (D_inv_[cluster_i].diagonal()).dot(D_grad_[cluster_i][num_par_comp * j + ipar].diagonal()));
 						}
 					}
@@ -2577,7 +2563,7 @@ namespace GPBoost {
 						for (int j = 0; j < num_comps_total_; ++j) {
 							for (int ipar = 0; ipar < re_comps_[cluster_i][j]->num_cov_par_; ++ipar) {
 								std::shared_ptr<T1> gradPsi = re_comps_[cluster_i][j]->GetZSigmaZtGrad(ipar, true, 1.);
-								cov_grad[first_cov_par + ind_par_[j] + ipar] += -1. * ((double)(y_aux_[cluster_i].transpose() * (*gradPsi) * y_aux_[cluster_i])) / sigma2_ / 2. +
+								cov_grad[first_cov_par + ind_par_[j] - 1 + ipar] += -1. * ((double)(y_aux_[cluster_i].transpose() * (*gradPsi) * y_aux_[cluster_i])) / sigma2_ / 2. +
 									((double)(((*gradPsi).cwiseProduct(psi_inv)).sum())) / 2.;
 							}
 						}

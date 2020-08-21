@@ -30,7 +30,7 @@ namespace GPBoost {
 	typedef Eigen::SparseMatrix<double, Eigen::RowMajor> sp_mat_rm_t; // row-major sparse matrix type of double
 	typedef Eigen::Triplet<double> Triplet_t;
 	typedef Eigen::MatrixXd den_mat_t;
-	typedef Eigen::VectorXd vec_t;//typedef Eigen::VectorXf vec_t;
+	typedef Eigen::VectorXd vec_t;
 	typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::NaturalOrdering<int>> chol_sp_mat_t; // sparse Cholesky factor. TODO Maybe use other ordering?
 	typedef Eigen::LLT<Eigen::MatrixXd, Eigen::Lower> chol_den_mat_t;
 

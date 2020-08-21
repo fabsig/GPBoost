@@ -201,7 +201,6 @@ gpb.GPModel <- R6::R6Class(
         gp_coords <- as.vector(matrix(private$gp_coords)) #convert to correct format for sending to C
         private$num_cov_pars <- private$num_cov_pars + 2L
         private$cov_function <- cov_function
-        cov_function <- gpb.c_str(cov_function)
         private$cov_fct_shape <- as.numeric(cov_fct_shape)
         private$num_neighbors <- as.integer(num_neighbors)
         private$vecchia_ordering <- vecchia_ordering
@@ -280,6 +279,7 @@ gpb.GPModel <- R6::R6Class(
       }
       
       vecchia_pred_type_c_str <- gpb.c_str(private$vecchia_pred_type)
+      cov_function_c_str <- gpb.c_str(private$cov_function)
 
       # Create handle
       handle <- 0.0
@@ -302,7 +302,7 @@ gpb.GPModel <- R6::R6Class(
                            private$dim_coords,
                            gp_rand_coef_data,
                            private$num_gp_rand_coef,
-                           cov_function,
+                           cov_function_c_str,
                            private$cov_fct_shape,
                            private$vecchia_approx,
                            private$num_neighbors,

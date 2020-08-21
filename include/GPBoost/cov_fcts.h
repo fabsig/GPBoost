@@ -38,7 +38,7 @@ namespace GPBoost {
 		/*!
 		* \brief Constructor
 		* \param cov_fct_type Type of covariance function. We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance where we follow Rassmusen and Williams (2006)
-	* \param shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
+		* \param shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
 		*/
 		CovFunction(string_t cov_fct_type, double shape = 0.) {
 			if (SUPPORTED_COV_TYPES_.find(cov_fct_type) == SUPPORTED_COV_TYPES_.end()) {
