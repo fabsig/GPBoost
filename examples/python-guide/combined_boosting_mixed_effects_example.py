@@ -7,8 +7,7 @@ import time
 import pandas as pd
 print("It is recommended that the examples are run in interactive mode")
 
-# --------------------Combine tree-boosting and grouped random effects model----------------
-# Simulate data
+# --------------------Simulate data----------------
 ntrain = 5000 # number of samples for training
 n = 2 * ntrain # combined number of training and test data
 m = 500  # number of categories / levels for grouping variable
@@ -39,6 +38,7 @@ y_test = y[ntrain:n]
 X_train = X.iloc[0:ntrain,]
 X_test = X.iloc[ntrain:n,]
 
+# --------------------Learning and prediction----------------
 # Define and train GPModel
 gp_model = gpb.GPModel(group_data=group_train)
 # create dataset for gpb.train function
@@ -88,6 +88,14 @@ import shap
 shap_values = shap.TreeExplainer(bst, feature_perturbation="tree_path_dependent").shap_values(X_test)
 shap.summary_plot(shap_values, X_test)
 shap.dependence_plot("variable_2", shap_values, X_test)
+"""
+Note: As of August 25, 2020, this is not yet fully supported by the shap Python package. 
+It should be available soon (see https://github.com/slundberg/shap/pull/1360 for the current status). 
+In the meantime, you have to copy-paste a few lines of code to your shap Python package. 
+Just go to the location where your python packages are and add these green marked lines 
+https://github.com/slundberg/shap/pull/1360/commits/9d6f3b44bc2e31b85714f26d5d48d445f594f0fe
+of code to the shap/tree_explainers/tree.py file.
+"""
 
 # --------------------Comparison to alternative approaches----------------
 results = pd.DataFrame(columns = ["RMSE","Time"],

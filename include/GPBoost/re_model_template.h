@@ -122,7 +122,7 @@ namespace GPBoost {
 			}
 			//Do some checks for GP components and set meta data (number of components etc.)
 			if (num_gp > 0) {
-				if (num_gp > 2) {
+				if (num_gp > 1) {
 					Log::Fatal("num_gp can only be either 0 or 1 in the current implementation");
 				}
 				num_gp_ = num_gp;
@@ -181,6 +181,8 @@ namespace GPBoost {
 			if (num_re_group_ > 0 && num_gp_total_ == 0) {
 				do_symbolic_decomposition_ = true;//Symbolic decompostion is only done if sparse matrices are used
 				use_woodbury_identity_ = true;//Faster to use Woodbury identity since the dimension of the random effects is typically much smaller than the number of data points
+				//Note: the use of the Woodburry identity is currently only implemented for grouped random effects (which is also the only use of it). 
+				//		If this should be applied to GPs in the future, adaptions need to be made e.g. in the calculations of the gradient (see y_tilde2_)
 			}
 			else {
 				do_symbolic_decomposition_ = false;
@@ -1584,7 +1586,7 @@ namespace GPBoost {
 		* \param H Right-hand side matrix H
 		* \param PsiInvSqrtH[out] Psi^(-0.5)H = solve(chol(Psi),H)
 		* \param cluster_i Cluster index for which Psi^(-0.5)H is calculated
-		* \param lower true if A is a lower triangular matrix
+		* \param lower true if chol_facts_[cluster_i] is a lower triangular matrix
 		*/
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
 		void CalcPsiInvSqrtH(sp_mat_t& H, T3& PsiInvSqrtH, gp_id_t cluster_i, bool lower = true) {
@@ -1597,7 +1599,7 @@ namespace GPBoost {
 		* \param H Right-hand side matrix H
 		* \param PsiInvSqrtH[out] Psi^(-0.5)H = solve(chol(Psi),H)
 		* \param cluster_i Cluster index for which Psi^(-0.5)H is calculated
-		* \param lower true if A is a lower triangular matrix
+		* \param lower true if chol_facts_[cluster_i] is a lower triangular matrix
 		*/
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
 		void CalcPsiInvSqrtH(sp_mat_t& H, T3& PsiInvSqrtH, gp_id_t cluster_i, bool lower = true) {
