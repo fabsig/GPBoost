@@ -18,16 +18,16 @@ extern "C" {
 namespace GPBoost {
 
 	/*!
-	* \brief Solve equation system with a dense lower triangular matrix as left-hand side (L'x=b)
-	* \param val Values of matrix L in column-major format
+	* \brief Solve equation system with a dense lower triangular matrix as left-hand side (Lx=b)
+	* \param val Values of lower triangular matrix L in column-major format
 	* \param ncol Number of columns
 	* \param[out] x Right-hand side vector (solution written on input)
 	*/
 	void L_solve(const double* val, const int ncol, double* x);
 
 	/*!
-	* \brief Solve equation system with the transpose of a dense lower triangular matrix as left-hand side (Lx=b)
-	* \param val Values of matrix L in column-major format
+	* \brief Solve equation system with the transpose of a dense lower triangular matrix as left-hand side (L'x=b)
+	* \param val Values of lower triangular matrix L in column-major format
 	* \param ncol Number of columns
 	* \param[out] x Right-hand side vector (solution written on input)
 	*/
@@ -35,7 +35,7 @@ namespace GPBoost {
 
 	/*!
 	* \brief Solve equation system with a sparse lower triangular matrix as left-hand side (Lx=b)
-	* \param val Values of sparse matrix L
+	* \param val Values of sparse lower triangular matrix L
 	* \param row_idx Row indices corresponding to the values ('InnerIndices' in Eigen)
 	* \param col_ptr val indexes where each column starts ('OuterStarts' in Eigen)
 	* \param ncol Number of columns
@@ -45,7 +45,7 @@ namespace GPBoost {
 
 	/*!
 	* \brief Solve equation system with the transpose of a sparse lower triangular matrix as left-hand side: (L'x=b)
-	* \param val Values of sparse matrix L
+	* \param val Values of sparse lower triangular matrix L
 	* \param row_idx Row indices corresponding to the values ('InnerIndices' in Eigen)
 	* \param col_ptr val indexes where each column starts ('OuterStarts' in Eigen)
 	* \param ncol Number of columns
@@ -70,7 +70,6 @@ namespace GPBoost {
 	* \param lower true if A is a lower triangular matrix
 	*/
 	void eigen_sp_Lower_sp_RHS_cs_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower = true);
-
 
 	/*!
 	* \brief Solve equation system with a sparse left-hand side and a sparse right-hand side (Ax=B)

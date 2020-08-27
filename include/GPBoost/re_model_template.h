@@ -31,7 +31,7 @@
 //std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 //std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
 //double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
-//Log::Info("Time for : %f", el_time);// Only for debugging
+//Log::Info("Time for : %g", el_time);// Only for debugging
 
 #ifndef M_PI
 #define M_PI      3.1415926535897932384626433832795029
@@ -305,7 +305,7 @@ namespace GPBoost {
 			//			}
 			//			else if (re_comp_group->is_rand_coef_) {
 			//				for (int i = 0; i < std::min(num_data_per_cluster_[cluster_i], 10); i++) { Log::Info("re_comps_[%d][%d].group_data_ref_[%d]: %s", cluster_i, j, i, (*re_comp_group->group_data_)[i]); }
-			//				for (int i = 0; i < std::min(num_data_per_cluster_[cluster_i], 10); i++) { Log::Info("re_comps_[%d][%d].rand_coef_data_[%d]: %f", cluster_i, j, i, re_comp_group->rand_coef_data_[i]); }
+			//				for (int i = 0; i < std::min(num_data_per_cluster_[cluster_i], 10); i++) { Log::Info("re_comps_[%d][%d].rand_coef_data_[%d]: %g", cluster_i, j, i, re_comp_group->rand_coef_data_[i]); }
 			//			}
 			//		}
 			//	}
@@ -420,7 +420,7 @@ namespace GPBoost {
 			vec_t cov_pars_lag1 = vec_t(num_cov_par_);
 			vec_t cov_pars_acc = vec_t(num_cov_par_);
 			Log::Debug("Initial covariance parameters");
-			for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
+			for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %g", i, cov_pars[i]); }
 			// Initialization of remaining variables
 			double neg_log_like = 1e99;
 			double neg_log_like_lag1 = neg_log_like;
@@ -433,6 +433,7 @@ namespace GPBoost {
 					neg_log_like_lag1 = neg_log_like;
 				}
 				// Factorize the covariance matrix
+				// Note: this is typically done here only once in the first iteration, afterwards this has already been done when calculating the likelihood in the previous iteratio
 				if (!CalcCovFactor_already_done) {
 					SetCovParsComps(cov_pars);
 					CalcCovFactor(vecchia_approx_, true, 1., false);
@@ -464,14 +465,6 @@ namespace GPBoost {
 					SetY(resid.data());
 				}// end update regression coefficients
 				// Update covariance parameters using gradient descent or Fisher scoring
-				if (!CalcCovFactor_already_done || has_covariates_) {
-					if (use_woodbury_identity_) {
-						CalcYtilde<T1>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
-					}
-					else {
-						CalcYAux();//y_aux = Psi^-1 * y
-					}
-				}
 				// Apply Nesterov momentum
 				if (use_nesterov_acc && it > 0) {
 					ApplyMomentumStep(it, cov_pars, cov_pars_lag1, cov_pars_acc, acc_rate_cov, nesterov_schedule_version, true, momentum_offset, true);
@@ -481,20 +474,30 @@ namespace GPBoost {
 				else {
 					cov_pars_lag1 = cov_pars;
 				}
+				// Calculate y_aux = Psi^-1 * y (if not use_woodbury_identity_) or y_tilde and y_tilde2 (if use_woodbury_identity_) for covariance parameter gradient calculation
+				// Note: this is typically done here only once in the first iteration (if convergence_criterion == "relative_change_in_log_likelihood"), afterwards this has already been done when calculating the likelihood in the previous iteration
+				if (!CalcCovFactor_already_done || has_covariates_) {
+					if (use_woodbury_identity_) {
+						CalcYtilde<T1>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
+					}
+					else {
+						CalcYAux();//y_aux = Psi^-1 * y
+					}
+				}
 				// Calculate gradient or natural gradient = FI^-1 * grad (for Fisher scoring)
 				vec_t nat_grad; // nat_grad = grad for gradient descent and nat_grad = FI^-1 * grad for Fisher scoring (="natural" gradient)
 				if (optimizer_cov == "gradient_descent") {//gradient descent
-					// First, profile out sigma (=use closed for expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
+					// First, profile out sigma (=use closed-form expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 					CalcYTPsiIInvY<T1>(cov_pars[0], true, 1, true, true);
 					cov_pars[0] /= num_data_;
 					sigma2_ = cov_pars[0];
-					GetCovParGrad(cov_pars, nat_grad, false, false);
+					CalcCovParGrad(cov_pars, nat_grad, false, false);
 				}
 				else if (optimizer_cov == "fisher_scoring") {//Fisher scoring
-					// We don't profile out sigma (=don't use closed for expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
+					// We don't profile out sigma (=don't use closed-form expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
 					vec_t grad;
 					den_mat_t FI;
-					GetCovParGrad(cov_pars, grad, true, true);
+					CalcCovParGrad(cov_pars, grad, true, true);
 					CalcFisherInformation(cov_pars, FI, true, true, true);
 					nat_grad = FI.llt().solve(grad);
 				}
@@ -539,7 +542,7 @@ namespace GPBoost {
 							Log::Debug("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased in this iteration.", it + 1);
 						}
 						else if (optimizer_cov == "gradient_descent") {
-							Log::Info("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased permanently. New learning rate = %f", it + 1, lr_cov);
+							Log::Info("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased permanently. New learning rate = %g", it + 1, lr_cov);
 						}
 					}
 					if (!decrease_found) {
@@ -598,10 +601,10 @@ namespace GPBoost {
 				// Output for debugging
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
 					Log::Debug("Covariance parameter optimization iteration number %d", it + 1);
-					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %f", i, cov_pars[i]); }
-					for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %f", i, beta[i]); }
+					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %g", i, cov_pars[i]); }
+					for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %g", i, beta[i]); }
 					if (convergence_criterion == "relative_change_in_log_likelihood" || optim_learning_rate_halving) {
-						Log::Debug("Negative log-likelihood: %f", neg_log_like);
+						Log::Debug("Negative log-likelihood: %g", neg_log_like);
 					}
 				}
 				// Check whether to terminate
@@ -651,6 +654,9 @@ namespace GPBoost {
 			CHECK(!(CalcYAux_already_done && !CalcCovFactor_already_done));// CalcYAux_already_done && !CalcCovFactor_already_done makes no sense
 			if (y_data != nullptr) {
 				SetY(y_data);
+			}
+			else {
+				CHECK(CalcYAux_already_done || CalcYtilde_already_done);
 			}
 			if (!CalcCovFactor_already_done) {
 				vec_t cov_pars_vec = Eigen::Map<vec_t>(cov_pars, num_cov_par_);
@@ -748,6 +754,7 @@ namespace GPBoost {
 		* \param y_obs Response variable for observed data
 		* \param num_data_pred Number of data points for which predictions are made
 		* \param[out] out_predict Conditional mean at prediciton points (="predicted value") followed by (if predict_cov_mat=true) the conditional covariance matrix at in column-major format
+		* \param calc_cov_factor If true, the covariance matrix of the observed data is factorized otherwise a previously done factorization is used (default=true)
 		* \param predict_cov_mat If true, the conditional covariance matrix is calculated (default=false)
 		* \param covariate_data_pred Covariate data (=independent variables, features) for prediction
 		* \param coef_pred Coefficients for linear covariates
@@ -761,7 +768,7 @@ namespace GPBoost {
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 		*/
 		void Predict(const double* cov_pars_pred, const double* y_obs, data_size_t num_data_pred,
-			double* out_predict, bool predict_cov_mat = false,
+			double* out_predict, bool calc_cov_factor = true, bool predict_cov_mat = false,
 			const double* covariate_data_pred = nullptr, const double* coef_pred = nullptr,
 			const gp_id_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
 			const double* re_group_rand_coef_data_pred = nullptr, double* gp_coords_data_pred = nullptr,
@@ -880,7 +887,7 @@ namespace GPBoost {
 				}
 			}
 			//Factorize covariance matrix and calculate Psi^{-1}y_obs (if required for prediction)
-			if (pred_for_observed_data) {//TODO: this acutally needs to be done only for the GP realizations for which predictions are made (currently it is done for all of them in unique_clusters_pred)
+			if (pred_for_observed_data) {//TODO (low prio): this acutally needs to be done only for the GP realizations for which predictions are made (currently it is done for all of them in unique_clusters_pred)
 				if (has_covariates_) {
 					vec_t resid;
 					if (y_obs != nullptr) {
@@ -898,9 +905,11 @@ namespace GPBoost {
 					}
 				}
 				SetCovParsComps(cov_pars);
-				if (!vecchia_approx_) {
-					CalcCovFactor(false, true, 1., false);//no need to do this for the Vecchia approximation, is done in the prediction steps
-					CalcYAux();
+				if (!vecchia_approx_) {// no need to call CalcCovFactor here for the Vecchia approximation, is done in the prediction steps
+					if (calc_cov_factor) {
+						CalcCovFactor(false, true, 1., false);
+					}
+					CalcYAux();//note: in some cases a call to CalcYAux() could be avoided (e.g. no covariates and not GPBoost algorithm)...
 				}
 			}//end if(pred_for_observed_data)
 
@@ -964,7 +973,7 @@ namespace GPBoost {
 						}//end vecchia_approx_
 						else {//not vecchia_approx_
 							psi.resize(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
-							psi.setIdentity();
+							psi.setIdentity();//nugget effect
 							CreateREComponents(num_data_pred, num_re_group_, data_indices_per_cluster_pred, cluster_i, re_group_levels_pred, num_data_per_cluster_pred,
 								num_re_group_rand_coef_, re_group_rand_coef_data_pred, ind_effect_group_rand_coef_, num_gp_, gp_coords_data_pred,
 								dim_gp_coords_, gp_rand_coef_data_pred, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, ind_intercept_gp_, true, re_comps_cluster_i);
@@ -1232,7 +1241,7 @@ namespace GPBoost {
 		data_size_t num_cov_par_;
 		/*! \brief Total number of random effect components (grouped REs plus other GPs) */
 		data_size_t num_comps_total_ = 0;
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: Symbolic Cholesky decomposition of Psi matrices */
+		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decomposition solver of covariance matrices Psi */
 		std::map<gp_id_t, T2> chol_facts_solve_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky factors of Psi matrices */ //TODO: above needed or can pattern be saved somewhere else?
 		std::map<gp_id_t, T1> chol_facts_;
@@ -2247,13 +2256,13 @@ namespace GPBoost {
 						CalcChol<T1>(SigmaIplusZtZ, cluster_i, do_symbolic_decomposition_);
 						//for (int i = 0; i < (int)SigmaIplusZtZ.rows(); ++i) {//For debugging only
 						//	for (int j = 0; j < (int)SigmaIplusZtZ.cols(); ++j) {
-						//		Log::Info("SigmaIplusZtZ(%d,%d) %f", i, j, SigmaIplusZtZ.coeffRef(i, j));
+						//		Log::Info("SigmaIplusZtZ(%d,%d) %g", i, j, SigmaIplusZtZ.coeffRef(i, j));
 						//	}
 						//}
 						//Log::Info("");
 						//for (int i = 0; i < (int)chol_facts_[cluster_i].rows(); ++i) {//For debugging only
 						//	for (int j = 0; j < (int)chol_facts_[cluster_i].cols(); ++j) {
-						//		Log::Info("chol_facts_[cluster_i](%d,%d) %f", i, j, chol_facts_[cluster_i].coeffRef(i, j));
+						//		Log::Info("chol_facts_[cluster_i](%d,%d) %g", i, j, chol_facts_[cluster_i].coeffRef(i, j));
 						//	}
 						//}
 
@@ -2261,7 +2270,7 @@ namespace GPBoost {
 					else {
 						T1 psi;
 						psi.resize(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
-						psi.setIdentity();
+						psi.setIdentity();//nugget effect
 						for (int j = 0; j < num_comps_total_; ++j) {
 							psi += (*(re_comps_[cluster_i][j]->GetZSigmaZt()));
 						}
@@ -2488,12 +2497,13 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate gradient for covariance parameters
+		*	This assumes that the covariance matrix has been factorized (by 'CalcCovFactor') and that y_aux or y_tilde/y_tilde2 (if use_woodbury_identity_) have been calculated (by 'CalcYAux' or 'CalcYtilde')
 		* \param cov_pars Covariance parameters
 		* \param[out] grad Gradient w.r.t. covariance parameters
 		* \param include_error_var If true, the gradient for the marginal variance parameter (=error, nugget effect) is also calculated, otherwise not (set this to true if the nugget effect is not calculated by using the closed-form solution)
 		* \param save_psi_inv If true, the inverse covariance matrix Psi^-1 is saved for reuse later (e.g. when calculating the Fisher information in Fisher scoring). This option is ignored if the Vecchia approximation is used.
 		*/
-		void GetCovParGrad(vec_t& cov_pars, vec_t& cov_grad, bool include_error_var = false, bool save_psi_inv = false) {
+		void CalcCovParGrad(vec_t& cov_pars, vec_t& cov_grad, bool include_error_var = false, bool save_psi_inv = false) {
 			if (include_error_var) {
 				cov_grad = vec_t::Zero(num_cov_par_);
 			}
@@ -2831,7 +2841,7 @@ namespace GPBoost {
 			FI.triangularView<Eigen::StrictlyLower>() = FI.triangularView<Eigen::StrictlyUpper>().transpose();
 			//for (int i = 0; i < std::min((int)FI.rows(),4); ++i) {//For debugging only
 			//    for (int j = i; j < std::min((int)FI.cols(),4); ++j) {
-			//	    Log::Info("FI(%d,%d) %f", i, j, FI(i, j));
+			//	    Log::Info("FI(%d,%d) %g", i, j, FI(i, j));
 			//    }
 			//}
 		}
@@ -2873,7 +2883,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		 * \brief Calculate predictions (conditional mean and covariance matrix) (for one cluster
+		 * \brief Calculate predictions (conditional mean and covariance matrix) for one cluster
 		 * \param cluster_i Cluster index for which prediction are made
 		 * \param num_data_pred Number of prediction locations
 		 * \param num_data_per_cluster_pred Keys: Labels of independent realizations of REs/GPs, values: number of prediction locations per independent realization

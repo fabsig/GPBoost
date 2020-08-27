@@ -101,7 +101,7 @@ namespace GPBoost {
 		/*! \brief Number of data points */
 		data_size_t num_data_;
 		/*! \brief Number of parameters */
-		data_size_t num_cov_par_;
+		int num_cov_par_;
 		/*! \brief Incidence matrix Z */
 		sp_mat_t Z_;
 		/*! \brief Covariate data for varying coefficients */

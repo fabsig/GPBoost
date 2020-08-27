@@ -24,7 +24,6 @@ for(i in 1:m) group2[(1:n_obs_gr)+n_obs_gr*(i-1)] <- 1:n_obs_gr
 Z2 <- model.matrix(rep(1,n)~factor(group2)-1)
 b2 <- c(-1,1)
 # Random slope / coefficient
-x <- cos((1:n-n/2)^2*5*pi/n) # covariate data for random slope
 x <- cos((1:n-n/2)^2*5.5*pi/n) # covariate data for random slope
 Z3 <- diag(x) %*% Z1
 b3 <- sin((1:m-3))^2/3

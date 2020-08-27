@@ -59,6 +59,7 @@ namespace GPBoost {
 				re_model_den_->TransformCovPars(init_cov_pars_orig, init_cov_pars_);
 			}
 			init_cov_pars_provided_ = true;
+			covariance_matrix_has_been_factorized_ = false;
 		}
 		else {
 			init_cov_pars_provided_ = false;
@@ -98,6 +99,7 @@ namespace GPBoost {
 				else {
 					re_model_den_->FindInitCovPar(y_data, cov_pars_.data());
 				}
+				covariance_matrix_has_been_factorized_ = false;
 			}
 			cov_pars_initialized_ = true;
 		}
@@ -147,6 +149,7 @@ namespace GPBoost {
 				calc_std_dev, convergence_criterion_);
 		}
 		has_covariates_ = false;
+		covariance_matrix_has_been_factorized_ = true;
 	}
 
 	void REModel::OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates, bool calc_std_dev) {
@@ -181,6 +184,7 @@ namespace GPBoost {
 				calc_std_dev, convergence_criterion_);
 		}
 		has_covariates_ = true;
+		covariance_matrix_has_been_factorized_ = true;
 	}
 
 	void REModel::EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll) {
@@ -188,16 +192,13 @@ namespace GPBoost {
 		vec_t cov_pars_trafo = vec_t(num_cov_pars_);
 		if (sparse_) {
 			re_model_sp_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
-		}
-		else {
-			re_model_den_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
-		}
-		if (sparse_) {
 			re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
 		}
 		else {
+			re_model_den_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
 			re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
 		}
+		covariance_matrix_has_been_factorized_ = true;
 	}
 
 	void REModel::CalcGetYAux(double* y, bool calc_cov_factor) {
@@ -205,7 +206,7 @@ namespace GPBoost {
 		if (sparse_) {
 			if (calc_cov_factor) {
 				re_model_sp_->SetCovParsComps(cov_pars_);
-				re_model_sp_->CalcCovFactor(false);
+				re_model_sp_->CalcCovFactor(false, true, 1., false);
 			}
 			re_model_sp_->SetY(y);
 			re_model_sp_->CalcYAux(cov_pars_[0]);
@@ -214,11 +215,14 @@ namespace GPBoost {
 		else {
 			if (calc_cov_factor) {
 				re_model_den_->SetCovParsComps(cov_pars_);
-				re_model_den_->CalcCovFactor(false);
+				re_model_den_->CalcCovFactor(false, true, 1., false);
 			}
 			re_model_den_->SetY(y);
 			re_model_den_->CalcYAux(cov_pars_[0]);
 			re_model_den_->GetYAux(y);
+		}
+		if (calc_cov_factor) {
+			covariance_matrix_has_been_factorized_ = true;
 		}
 	}
 
@@ -286,6 +290,7 @@ namespace GPBoost {
 		const gp_id_t* cluster_ids_data_pred, const char* re_group_data_pred, const double* re_group_rand_coef_data_pred,
 		double* gp_coords_data_pred, const double* gp_rand_coef_data_pred, const double* cov_pars_pred,
 		const double* covariate_data_pred, bool use_saved_data, const char* vecchia_pred_type, int num_neighbors_pred) const {
+		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
 		if (cov_pars_pred != nullptr) {
 			vec_t cov_pars_pred_orig = Eigen::Map<const vec_t>(cov_pars_pred, num_cov_pars_);
@@ -302,19 +307,22 @@ namespace GPBoost {
 				Log::Fatal("Covariance parameters have not been estimated or set");
 			}
 			cov_pars_pred_trans = cov_pars_;
+			if (covariance_matrix_has_been_factorized_) {
+				calc_cov_factor = false;
+			}
 		}
 		if (has_covariates_) {
 			CHECK(coef_initialized_ == true);
 		}
 		if (sparse_) {
-			re_model_sp_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred, out_predict, predict_cov_mat,
-				covariate_data_pred, coef_.data(),
+			re_model_sp_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred, out_predict,
+				calc_cov_factor, predict_cov_mat, covariate_data_pred, coef_.data(),
 				cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred, gp_coords_data_pred,
 				gp_rand_coef_data_pred, use_saved_data, vecchia_pred_type, num_neighbors_pred);
 		}
 		else {
-			re_model_den_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred, out_predict, predict_cov_mat,
-				covariate_data_pred, coef_.data(),
+			re_model_den_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred, out_predict,
+				calc_cov_factor, predict_cov_mat, covariate_data_pred, coef_.data(),
 				cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred, gp_coords_data_pred,
 				gp_rand_coef_data_pred, use_saved_data, vecchia_pred_type, num_neighbors_pred);
 		}

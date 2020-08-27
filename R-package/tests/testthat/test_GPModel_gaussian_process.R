@@ -462,7 +462,7 @@ test_that("Vecchia approximation for Gaussian process model with linear regressi
 })
 
 
-test_that("Gaussian process model with cluster_id's not constant ", {
+test_that("Vecchia approximation for Gaussian process model with cluster_id's not constant ", {
   
   y <- eps + xi
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
