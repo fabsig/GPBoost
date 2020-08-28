@@ -74,28 +74,23 @@ gpb.plot_importance(bst)
 
 # Partial dependence plots
 from pdpbox import pdp
-# Single variable plots
+# Single variable plots (takes a few seconds to compute)
 pdp_dist = pdp.pdp_isolate(model=bst, dataset=X_train, model_features=X_train.columns,
-                           feature='variable_2', num_grid_points=100)
+                           feature='variable_2', num_grid_points=50)
 pdp.pdp_plot(pdp_dist, 'variable_2', plot_lines=True)
 # Two variable interaction plot
 inter_rf = pdp.pdp_interact(model=bst, dataset=X_train, model_features=X_train.columns,
                              features=['variable_1','variable_2'])
-pdp.pdp_interact_plot(inter_rf, ['variable_1','variable_2'], x_quantile=True, plot_type='contour', plot_pdp=True)
+pdp.pdp_interact_plot(inter_rf, ['variable_1','variable_2'], x_quantile=True,
+                      plot_type='contour', plot_pdp=True)# ignore any error message
 
 # SHAP values and dependence plots
+# Note: you need shap version>=0.36.0
 import shap
-shap_values = shap.TreeExplainer(bst, feature_perturbation="tree_path_dependent").shap_values(X_test)
+shap_values = shap.TreeExplainer(bst).shap_values(X_test)
 shap.summary_plot(shap_values, X_test)
 shap.dependence_plot("variable_2", shap_values, X_test)
-"""
-Note: As of August 25, 2020, this is not yet fully supported by the shap Python package. 
-It should be available soon (see https://github.com/slundberg/shap/pull/1360 for the current status). 
-In the meantime, you have to copy-paste a few lines of code to your shap Python package. 
-Just go to the location where your python packages are and add these green marked lines 
-https://github.com/slundberg/shap/pull/1360/commits/9d6f3b44bc2e31b85714f26d5d48d445f594f0fe
-of code to the shap/tree_explainers/tree.py file.
-"""
+
 
 # --------------------Comparison to alternative approaches----------------
 results = pd.DataFrame(columns = ["RMSE","Time"],
