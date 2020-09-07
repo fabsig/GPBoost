@@ -53,19 +53,11 @@ X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # desing matrix / covariate data fo
 beta <- c(2,2) # regression coefficents
 # cluster_ids 
 cluster_ids <- c(rep(1,0.4*n),rep(2,0.6*n))
-# GP with multiple observations at the same locations
-coords_multiple <- matrix(sim_rand_unif(n=n*d/4, init_c=0.1), ncol=d)
-coords_multiple <- rbind(coords_multiple,coords_multiple,coords_multiple,coords_multiple)
-D_multiple <- as.matrix(dist(coords_multiple))
-Sigma_multiple <- sigma2_1*exp(-D_multiple/rho)+diag(1E-10,n)
-C_multiple <- t(chol(Sigma_multiple))
-b_multiple <- qnorm(sim_rand_unif(n=n, init_c=0.8))
 
 # Sum up random effects
 eps <- as.vector(L %*% b_1) + as.vector(Z1 %*% b_gr_1)
 eps_svc <- as.vector(L %*% b_1 + Z_SVC[,1] * L %*% b_2 + Z_SVC[,2] * L %*% b_3) + 
   Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3
-eps_multiple <- as.vector(C_multiple %*% b_multiple) + as.vector(Z1 %*% b_gr_1)
 
 
 test_that("Combined Gaussian process and grouped random effects model ", {
@@ -107,6 +99,11 @@ test_that("Combined Gaussian process and grouped random effects model ", {
                     -0.014950019, 0.001356784, -0.014950019, 1.046082243)
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+  # Predict variances
+  pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
+                  group_data_pred = group_test, predict_var = TRUE)
+  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+  expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
   
   # Prediction using given paraneters
   gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group)
