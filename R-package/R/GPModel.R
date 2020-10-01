@@ -1141,7 +1141,7 @@ gpb.GPModel <- R6::R6Class(
           }
           
           if (dim(group_data_pred)[2] != private$num_group_re) {
-            stop("predict.GPModel: Number of grouped random effects in ", sQuote("group_data_pred"), " is not correct")
+            stop("predict.GPModel: Number of grouped random effects in ", sQuote("group_data_pred"), " does not correspond to the number of random effects in the training data")
           }
           
           num_data_pred <- as.integer(dim(group_data_pred)[1])
