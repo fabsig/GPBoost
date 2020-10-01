@@ -20,6 +20,29 @@ sim_friedman3=function(n, n_irrelevant=5){
   return(list(X=X,f=f))
 }
 
+f1d <- function(x) 1.5*(1/(1+exp(-(x-0.5)*20))+0.75*x)
+sim_non_lin_f=function(n){
+  X <- matrix(sim_rand_unif(2*n,init_c=0.96534),ncol=2)
+  f <- f1d(X[,1])
+  return(list(X=X,f=f))
+}
+
+# Make plot ("manual test")
+sim_data <- sim_non_lin_f(n=ntrain)
+X_train <- sim_data$X
+eps_train <- eps[1:ntrain]-mean(eps[1:ntrain])
+y_train <- sim_data$f + eps_train + xi[1:ntrain]
+gp_model <- GPModel(group_data = group_data_train)
+bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+               nrounds = 100, learning_rate = 0.05, max_depth = 6,
+               min_data_in_leaf = 5, objective = "regression_l2", verbose = 0,
+               leaves_newton_update = TRUE)
+nplot <- 200
+X_test_plot <- cbind(seq(from=0,to=1,length.out=nplot),rep(0.5,nplot))
+pred <- predict(bst, data = X_test_plot, group_data_pred = cbind(rep(-9999,nplot),rep(-9999,nplot)))
+x <- seq(from=0,to=1,length.out=200)
+plot(x,f1d(x),type="l",lwd=3,col=2,main="Mean function and fitted function")
+lines(X_test_plot[,1],pred$fixed_effect,col=4,lwd=3)
 
 
 if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boosting part (LightGBM)

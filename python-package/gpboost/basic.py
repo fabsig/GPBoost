@@ -2508,7 +2508,7 @@ class Booster(object):
                                               data_has_header, is_reshape)
             if len(fixed_effect) != len(random_effect_pred['mu']):
                 warnings.warn("Number of data points in fixed effect (tree ensemble) and random effect "
-                              "(Gaussian process) are not equal")
+                              "are not equal")
             return {"fixed_effect": fixed_effect, "random_effect_mean": random_effect_pred['mu'],
                      "random_effect_cov": random_effect_pred['cov']}
         else:

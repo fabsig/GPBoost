@@ -511,7 +511,7 @@ Booster <- R6::R6Class(
         fixed_effect = predictor$predict(data, num_iteration, rawscore, predleaf, predcontrib, header, reshape)
         
         if (length(fixed_effect) != length(random_effect_pred$mu)){
-          warning("Number of data points in fixed effect (tree ensemble) and random effect (Gaussian process) are not equal")
+          warning("Number of data points in fixed effect (tree ensemble) and random effect are not equal")
         }
         
         return(list(fixed_effect = fixed_effect,
