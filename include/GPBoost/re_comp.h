@@ -478,7 +478,7 @@ namespace GPBoost {
 		* \brief Constructor for random coefficient Gaussian processes
 		* \param dist Pointer to distance matrix of corresponding base intercept GP
 		* \param base_effect_has_Z Indicate whether the corresponding base GP has an incidence matrix Z or not
-		* \param dist Pointer to incidence matrix Z of corresponding base intercept GP
+		* \param Z Pointer to incidence matrix Z of corresponding base intercept GP
 		* \param rand_coef_data Covariate data for random coefficient
 		* \param cov_fct Type of covariance function
 		* \param shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)

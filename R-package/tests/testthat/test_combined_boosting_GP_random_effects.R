@@ -16,7 +16,7 @@ sim_friedman3=function(n, n_irrelevant=5){
   X[,4] <- X[,4]*10+1
   f <- sqrt(10)*atan((X[,2]*X[,3]-1/(X[,2]*X[,4]))/X[,1])
   X <- cbind(rep(1,n),X)
-  if(n_irrelevant>0) X <- cbind(X,matrix(sim_rand_unif(5*n,init_c=0.6543),ncol=n_irrelevant))
+  if(n_irrelevant>0) X <- cbind(X,matrix(sim_rand_unif(n_irrelevant*n,init_c=0.6543),ncol=n_irrelevant))
   return(list(X=X,f=f))
 }
 
