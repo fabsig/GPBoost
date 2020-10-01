@@ -28,18 +28,23 @@ sim_non_lin_f=function(n){
 }
 
 # Make plot ("manual test")
-sim_data <- sim_non_lin_f(n=ntrain)
-X_train <- sim_data$X
-eps_train <- eps[1:ntrain]-mean(eps[1:ntrain])
-y_train <- sim_data$f + eps_train + xi[1:ntrain]
-gp_model <- GPModel(group_data = group_data_train)
-bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+n <- 1000
+m <- 100
+sim_data <- sim_non_lin_f(n=n)
+group <- rep(1,n) # grouping variable
+for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
+b1 <- qnorm(sim_rand_unif(n=m, init_c=0.943242))
+eps <- b1[group]
+eps <- eps - mean(eps)
+y <- sim_data$f + eps + 0.1^2*sim_rand_unif(n=n, init_c=0.32543)
+gp_model <- GPModel(group_data = group)
+bst <- gpboost(data = sim_data$X, label = y, gp_model = gp_model,
                nrounds = 100, learning_rate = 0.05, max_depth = 6,
                min_data_in_leaf = 5, objective = "regression_l2", verbose = 0,
                leaves_newton_update = TRUE)
 nplot <- 200
 X_test_plot <- cbind(seq(from=0,to=1,length.out=nplot),rep(0.5,nplot))
-pred <- predict(bst, data = X_test_plot, group_data_pred = cbind(rep(-9999,nplot),rep(-9999,nplot)))
+pred <- predict(bst, data = X_test_plot, group_data_pred = rep(-9999,nplot))
 x <- seq(from=0,to=1,length.out=200)
 plot(x,f1d(x),type="l",lwd=3,col=2,main="Mean function and fitted function")
 lines(X_test_plot[,1],pred$fixed_effect,col=4,lwd=3)
