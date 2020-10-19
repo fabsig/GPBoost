@@ -6,6 +6,12 @@ import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 print("It is recommended that the examples are run in interactive mode")
 
+"""
+This script contains various examples on 
+  (i) grouped (or clustered) random effects models
+  (ii) Gaussian process (GP) models
+  (iii) models that combine GP and grouped random effects
+"""
 
 # --------------------Grouped random effects model: single-level random effect----------------
 # Simulate data
@@ -98,6 +104,28 @@ y = eps2 + xi + X.dot(beta)  # add fixed effect to observed data
 # Define and fit model
 gp_model = gpb.GPModel(group_data=group_data, group_rand_coef_data=x, ind_effect_group_rand_coef=[1])
 gp_model.fit(y=y, X=X, std_dev=True)
+gp_model.summary()
+
+# --------------------Two nested random effects----------------
+n = 1000  # number of samples
+m1 = 50  # number of categories / levels for the first grouping variable
+m2 = 200  # number of categories / levels for the second nested grouping variable
+group1 = np.arange(n)  # grouping variables
+group2 = np.arange(n)
+for i in range(m1):
+    group1[int(i * n / m1):int((i + 1) * n / m1)] = i
+for i in range(m2):
+    group2[int(i * n / m2):int((i + 1) * n / m2)] = i
+np.random.seed(20)
+b1 = 1. * np.random.normal(size=m1)  # simulate random effects
+b2 = 1. * np.random.normal(size=m2)
+eps = b1[group1] + b2[group2]
+xi = 0.5 * np.random.normal(size=n)  # simulate error term
+y = eps + xi  # observed data
+# Define and fit model
+group_data = np.column_stack((group1, group2))
+gp_model = gpb.GPModel(group_data=group_data)
+gp_model.fit(y=y, std_dev=True)
 gp_model.summary()
 
 
