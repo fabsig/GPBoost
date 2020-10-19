@@ -110,15 +110,16 @@ gp_model.summary()
 n = 1000  # number of samples
 m1 = 50  # number of categories / levels for the first grouping variable
 m2 = 200  # number of categories / levels for the second nested grouping variable
-group1 = np.arange(n)  # grouping variables
-group2 = np.arange(n)
+group1 = np.arange(n)  # grouping variable for higher level random effects
 for i in range(m1):
     group1[int(i * n / m1):int((i + 1) * n / m1)] = i
+group2 = np.arange(n)  # grouping variable for nested lower level random effects
 for i in range(m2):
     group2[int(i * n / m2):int((i + 1) * n / m2)] = i
 np.random.seed(20)
-b1 = 1. * np.random.normal(size=m1)  # simulate random effects
-b2 = 1. * np.random.normal(size=m2)
+# simulate random effects
+b1 = 1. * np.random.normal(size=m1)  # higher level random effects
+b2 = 1. * np.random.normal(size=m2)  # nested lower level random effects
 eps = b1[group1] + b2[group2]
 xi = 0.5 * np.random.normal(size=n)  # simulate error term
 y = eps + xi  # observed data

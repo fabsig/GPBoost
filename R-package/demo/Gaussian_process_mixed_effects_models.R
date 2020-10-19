@@ -108,18 +108,19 @@ gp_model <- fitGPModel(group_data = cbind(group,group2),
 summary(gp_model)
 
 # --------------------Two nested random effects----------------
-n <- 1000  # number of samples
-m1 <- 50  # number of categories / levels for the first grouping variable
-m2 <- 200  # number of categories / levels for the second nested grouping variable
+n <- 1000 # number of samples
+m1 <- 50 # number of categories / levels for the first grouping variable
+m2 <- 200 # number of categories / levels for the second nested grouping variable
 group2 <- group1 <- rep(1,n)  # grouping variables
-for(i in 1:m1) group1[((i-1)*n/m1+1):(i*n/m1)] <- i
-for(i in 1:m2) group2[((i-1)*n/m2+1):(i*n/m2)] <- i
+for(i in 1:m1) group1[((i-1)*n/m1+1):(i*n/m1)] <- i # grouping variable for higher level random effects
+for(i in 1:m2) group2[((i-1)*n/m2+1):(i*n/m2)] <- i # grouping variable for nested lower level random effects
 set.seed(20)
-b1 <- 1. * rnorm(m1)  # simulate random effects
-b2 <- 1. * rnorm(m2)
+# simulate random effects
+b1 <- 1. * rnorm(m1) # higher level random effects
+b2 <- 1. * rnorm(m2) # nested lower level random effects
 eps <- b1[group1] + b2[group2]
-xi <- 0.5 * rnorm(n)  # simulate error term
-y <- eps + xi  # observed data
+xi <- 0.5 * rnorm(n) # simulate error term
+y <- eps + xi # observed data
 # Define and fit model
 group_data <- cbind(group1, group2)
 gp_model <- fitGPModel(group_data=group_data, y=y, std_dev=TRUE)
