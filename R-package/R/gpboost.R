@@ -142,7 +142,7 @@ gpboost <- function(data,
   }
   
   # Set validation as oneself
-  valids <- list()
+  if (length(valids)) valids <- list()
   if (verbose > 0) {
     valids$train = dtrain
   }

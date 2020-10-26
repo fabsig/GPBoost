@@ -97,7 +97,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     
     # Define random effects model
     gp_model <- GPModel(group_data = group_data_train)
-    # CV for finding number of boosting iterations
+    # CV for finding number of boosting iterations with use_gp_model_for_validation = FALSE
     dtrain <- gpb.Dataset(X_train, label = y_train)
     params <- list(learning_rate = 0.01,
                    max_depth = 6,
@@ -119,6 +119,20 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
                     verbose = 0)
     expect_equal(cvbst$best_iter, 62)
     expect_lt(abs(cvbst$best_score-1.020787), 1E-4)
+    # CV for finding number of boosting iterations with use_gp_model_for_validation = TRUE
+    cvbst <- gpb.cv(params = params,
+                    data = dtrain,
+                    gp_model = gp_model,
+                    nrounds = 100,
+                    nfold = 4,
+                    eval = "l2",
+                    early_stopping_rounds = 5,
+                    use_gp_model_for_validation = TRUE,
+                    fit_GP_cov_pars_OOS = FALSE,
+                    folds = folds,
+                    verbose = 1)
+    expect_equal(cvbst$best_iter, 62)
+    expect_lt(abs(cvbst$best_score-0.6402082), 1E-4)
     
     # Create random effects model and train GPBoost model
     gp_model <- GPModel(group_data = group_data_train)
