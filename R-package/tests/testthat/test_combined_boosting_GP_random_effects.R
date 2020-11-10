@@ -130,7 +130,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
                     use_gp_model_for_validation = TRUE,
                     fit_GP_cov_pars_OOS = FALSE,
                     folds = folds,
-                    verbose = 1)
+                    verbose = 0)
     expect_equal(cvbst$best_iter, 62)
     expect_lt(abs(cvbst$best_score-0.6402082), 1E-4)
     

@@ -594,7 +594,7 @@ namespace GPBoost {
 					}
 				}
 				else if (convergence_criterion == "relative_change_in_log_likelihood") {
-					if (std::abs(neg_log_like - neg_log_like_lag1) / neg_log_like_lag1 < delta_rel_conv) {
+					if (std::abs((neg_log_like - neg_log_like_lag1) / neg_log_like_lag1) < delta_rel_conv) {
 						terminate_optim = true;
 					}
 				}
