@@ -581,8 +581,8 @@ namespace GPBoost {
 				}
 				CheckNaNInf(cov_pars);
 				//Check convergence
-				bool likelihood_is_na = std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_);//if the likelihood is NA, we monitor the parameters instead of the likelihood
-				if (convergence_criterion == "relative_change_in_parameters") {
+				bool likelihood_is_na = std::isnan(neg_log_like) || std::isinf(neg_log_like);//if the likelihood is NA, we monitor the parameters instead of the likelihood
+				if (convergence_criterion == "relative_change_in_parameters" || likelihood_is_na) {
 					if (has_covariates_) {
 						if (((beta - beta_lag1).norm() / beta_lag1.norm() < delta_rel_conv) && ((cov_pars - cov_pars_lag1).norm() / cov_pars_lag1.norm() < delta_rel_conv)) {
 							terminate_optim = true;
