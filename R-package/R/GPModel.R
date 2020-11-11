@@ -461,7 +461,9 @@ gpb.GPModel <- R6::R6Class(
         
       }
       
-      message(paste0("GPModel: Number of iterations until convergence: ", self$get_num_optim_iter()))
+      if (private$params$trace) {
+        message(paste0("GPModel: Number of iterations until convergence: ", self$get_num_optim_iter()))
+      }
       
     },
     

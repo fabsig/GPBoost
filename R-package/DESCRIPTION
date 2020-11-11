@@ -1,8 +1,8 @@
 Package: gpboost
 Type: Package
 Title: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
-Version: 0.2.2
-Date: 2020-09-07
+Version: 0.2.3
+Date: 2020-11-11
 Author: Fabio Sigrist
 Maintainer: Fabio Sigrist <fabiosigrist@gmail.com>
 Description: An R package that allows for combining tree-boosting with Gaussian process and mixed effects models. It also allows for independently doing tree-boosting as well as inference and prediction for Gaussian process and mixed effects models. See <https://github.com/fabsig/GPBoost> for more information on the software and Sigrist (2020) <arXiv:2004.02653> for more information on the methodology.
