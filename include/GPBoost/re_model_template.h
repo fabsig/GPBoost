@@ -542,11 +542,11 @@ namespace GPBoost {
 							Log::Debug("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased in this iteration.", it + 1);
 						}
 						else if (optimizer_cov == "gradient_descent") {
-							Log::Info("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased permanently. New learning rate = %g", it + 1, lr_cov);
+							Log::Debug("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased permanently. New learning rate = %g", it + 1, lr_cov);
 						}
 					}
 					if (!decrease_found) {
-						Log::Warning("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
+						Log::Debug("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
 					}
 					if (halving_done && optimizer_cov == "fisher_scoring") {
 						// reset lr_cov to initial value for Fisher scoring for next iteration. I.e., step halving is done newly in every iterarion of Fisher scoring
@@ -575,7 +575,7 @@ namespace GPBoost {
 						CalcCovFactor_already_done = true;
 						EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_like, true, true, true);
 						if (neg_log_like > neg_log_like_lag1&& use_nesterov_acc) {
-							Log::Warning("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. There is no safeguard (halving of the learning rate) in place when applying Nesterov acceleration ", it + 1);
+							Log::Debug("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. There is no safeguard (halving of the learning rate) in place when applying Nesterov acceleration ", it + 1);
 						}
 					}
 				}
@@ -615,7 +615,7 @@ namespace GPBoost {
 				}
 			}
 			if (num_it == max_iter) {
-				Log::Warning("GPModel covariance parameter estimation: no convergence after the maximal number of iterations");
+				Log::Debug("GPModel covariance parameter estimation: no convergence after the maximal number of iterations");
 			}
 			for (int i = 0; i < num_cov_par_; ++i) {
 				optim_cov_pars[i] = cov_pars[i];
