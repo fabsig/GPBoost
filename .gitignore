@@ -14,3 +14,5 @@ R-package/README.html
 gpboost_r/
 gpboost*.tar.gz
 gpboost.Rcheck/
+
+.Rhistory
