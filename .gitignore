@@ -15,4 +15,4 @@ gpboost_r/
 gpboost*.tar.gz
 gpboost.Rcheck/
 
-.Rhistory
+**/.Rhistory
