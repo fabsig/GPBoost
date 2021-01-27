@@ -3323,8 +3323,8 @@ class GPModel(object):
                     If True, (asymptotic) standard deviations are calculated for the covariance parameters
         """
 
-        if ((self.num_cov_pars==0 and self.get_likelihood_name()=="gaussian") or
-            (self.num_cov_pars == 1 and self.get_likelihood_name() != "gaussian")):
+        if ((self.num_cov_pars == 1 and self.get_likelihood_name()=="gaussian") or
+            (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
         if not isinstance(y, np.ndarray):
             raise ValueError("y needs to be a numpy.ndarray")
@@ -3405,8 +3405,8 @@ class GPModel(object):
         -------
         result : the value of the negative log-likelihood
         """
-        if ((self.num_cov_pars==0 and self.get_likelihood_name()=="gaussian") or
-            (self.num_cov_pars == 1 and self.get_likelihood_name() != "gaussian")):
+        if ((self.num_cov_pars == 1 and self.get_likelihood_name()=="gaussian") or
+            (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
         if not isinstance(y, np.ndarray):
             raise ValueError("y needs to be a numpy.ndarray")
