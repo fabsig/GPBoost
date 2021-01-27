@@ -5,8 +5,8 @@
 \title{Main function for training with GPBoost}
 \usage{
 gpb.train(data, nrounds = 100, obj = NULL, gp_model = NULL,
-  train_gp_model_cov_pars = TRUE, params = list(), valids = list(),
-  early_stopping_rounds = NULL, use_gp_model_for_validation = FALSE,
+  use_gp_model_for_validation = TRUE, train_gp_model_cov_pars = TRUE,
+  params = list(), valids = list(), early_stopping_rounds = NULL,
   eval = NULL, verbose = 1, record = TRUE, eval_freq = 1,
   init_model = NULL, colnames = NULL, categorical_feature = NULL,
   callbacks = list(), reset_data = FALSE, ...)
@@ -22,11 +22,13 @@ supply \code{label} as argument.}
 \code{regression_l2}, \code{regression_l1}, \code{huber},
 \code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}. Currently only "regression_l2" supports Gaussian process boosting.}
 
-\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model. Can currently only be used for objective = "regression"}
+\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
+
+\item{use_gp_model_for_validation}{Boolean (default = TRUE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data}
 
 \item{train_gp_model_cov_pars}{Boolean (default = TRUE). If TRUE, the covariance parameters of the Gaussian process are estimated in every boosting iterations, 
-otherwise the GPModel parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 
-the 'init_cov_pars' parameter when creating the GPModel}
+otherwise the gp_model parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 
+the 'init_cov_pars' parameter when creating the gp_model}
 
 \item{params}{List of parameters (many of them tuning paramters), see Parameters.rst for more information. A few key parameters:
 \itemize{
@@ -42,12 +44,12 @@ the 'init_cov_pars' parameter when creating the GPModel}
     after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
     \item{train_gp_model_cov_pars}{ If TRUE, the covariance parameters of the Gaussian process 
     are stimated in every boosting iterations, 
-    otherwise the GPModel parameters are not estimated. In the latter case, you need to 
+    otherwise the gp_model parameters are not estimated. In the latter case, you need to 
     either esimate them beforehand or provide the values via 
-    the 'init_cov_pars' parameter when creating the GPModel (default = TRUE).}
+    the 'init_cov_pars' parameter when creating the gp_model (default = TRUE).}
     \item{use_gp_model_for_validation}{ If TRUE, the Gaussian process is also used 
     (in addition to the tree model) for calculating predictions on the validation data 
-    (default = FALSE)}
+    (default = TRUE)}
     \item{use_nesterov_acc}{ Set this to TRUE to do boosting with Nesterov acceleration. 
     Can currently only be used for tree_learner = "serial" (default option)}
     \item{nesterov_acc_rate}{ Acceleration rate for momentum step in case Nesterov accelerated 
@@ -68,9 +70,9 @@ If there's more than one, will check all of them except the training data
 Returns the model with (best_iter + early_stopping_rounds)
 If early stopping occurs, the model will have 'best_iter' field}
 
-\item{use_gp_model_for_validation}{Boolean (default = FALSE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data}
-
-\item{eval}{Evaluation function, can be (a list of) character or custom eval function}
+\item{eval}{Evaluation function, can be (a list of) \code{strings} (character) or a custom evaluation function.
+If this is defined by strings, this is equivalent to specifying the parameter \code{metric}.
+For a list of all possible metrics, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}
 
 \item{verbose}{Verbosity for output, if <= 0, also will disable the print of evaluation during training}
 
@@ -398,8 +400,7 @@ dtrain <- gpb.Dataset(X, label = y)
 params <- list(learning_rate = 0.05,
                max_depth = 6,
                min_data_in_leaf = 5,
-               objective = "regression_l2",
-               has_gp_model =TRUE)
+               objective = "regression_l2")
 # Stage 1: run cross-validation to (i) determine to optimal number of iterations
 #           and (ii) to estimate the GPModel on the out-of-sample data
 cvbst <- gpb.cv(params = params,

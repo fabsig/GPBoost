@@ -7,9 +7,9 @@
 \method{predict}{GPModel}(object, y = NULL, group_data_pred = NULL,
   group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
   gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL,
-  predict_cov_mat = FALSE, cov_pars = NULL, X_pred = NULL,
-  use_saved_data = FALSE, vecchia_pred_type = NULL,
-  num_neighbors_pred = -1, ...)
+  predict_cov_mat = FALSE, predict_var = FALSE, cov_pars = NULL,
+  X_pred = NULL, use_saved_data = FALSE, vecchia_pred_type = NULL,
+  num_neighbors_pred = -1, predict_response = FALSE, ...)
 }
 \arguments{
 \item{object}{a \code{GPModel}}
@@ -28,11 +28,13 @@
 
 \item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior / conditional) predictive covariance is calculated in addition to the (posterior / conditional) predictive mean}
 
+\item{predict_var}{A \code{boolean}. If TRUE, the (posterior / conditional) predictive variances are calculated}
+
 \item{cov_pars}{A \code{vector} containing covariance parameters (used if the \code{GPModel} has not been trained or if predictions should be made for other parameters than the estimated ones)}
 
 \item{X_pred}{A \code{matrix} with covariate data for the linear regression term (if there is one in the \code{GPModel})}
 
-\item{use_saved_data}{A \code{boolean}. If TRUE, predictions are done using priorly set data via the function '$set_prediction_data'  (this option is not used by users directly)}
+\item{use_saved_data}{A \code{boolean}. If TRUE, predictions are done using a priory set data via the function '$set_prediction_data'  (this option is not used by users directly)}
 
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions. 
 "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed points, 
@@ -45,10 +47,15 @@ for the latent process and observed data is ordered first and neighbors are sele
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 for making predictions}
 
+\item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) is predicted, otherwise the latent random effects (this is only relevant for non-Gaussian data)}
+
 \item{...}{(not used, ignore this, simply here that there is no CRAN warning)}
 }
 \value{
-Predictions made using a \code{GPModel}. It returns a list of length two. The first entry is the predicted mean and the second entry is the predicted covariance matrix (=NULL if 'predict_cov_mat=FALSE')
+Predictions made using a \code{GPModel}. It returns a list of length three. 
+The first entry ('mu') is the predicted mean, the second entry ('cov') is the predicted covariance matrix 
+(=NULL if 'predict_cov_mat=FALSE'), and the third entry ('var') are predicted variances 
+(=NULL if 'predict_var=FALSE')
 }
 \description{
 Make predictions for a \code{GPModel}
@@ -75,10 +82,10 @@ eps <- Z1 \%*\% b1
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi # observed data
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE)
+fit(gp_model, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(group_data = group, y = y, std_dev = TRUE)
+gp_model <- fitGPModel(group_data = group, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 
 # Make predictions
@@ -113,11 +120,11 @@ eps <- C \%*\% b_1
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE)
+fit(gp_model, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        y = y, std_dev = TRUE)
+                        y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 
 # Make predictions

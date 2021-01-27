@@ -38,12 +38,12 @@ If early stopping occurs, the model will have 'best_iter' field}
     after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
     \item{train_gp_model_cov_pars}{ If TRUE, the covariance parameters of the Gaussian process 
     are stimated in every boosting iterations, 
-    otherwise the GPModel parameters are not estimated. In the latter case, you need to 
+    otherwise the gp_model parameters are not estimated. In the latter case, you need to 
     either esimate them beforehand or provide the values via 
-    the 'init_cov_pars' parameter when creating the GPModel (default = TRUE).}
+    the 'init_cov_pars' parameter when creating the gp_model (default = TRUE).}
     \item{use_gp_model_for_validation}{ If TRUE, the Gaussian process is also used 
     (in addition to the tree model) for calculating predictions on the validation data 
-    (default = FALSE)}
+    (default = TRUE)}
     \item{use_nesterov_acc}{ Set this to TRUE to do boosting with Nesterov acceleration. 
     Can currently only be used for tree_learner = "serial" (default option)}
     \item{nesterov_acc_rate}{ Acceleration rate for momentum step in case Nesterov accelerated 
@@ -69,7 +69,13 @@ If early stopping occurs, the model will have 'best_iter' field}
 \code{regression_l2}, \code{regression_l1}, \code{huber},
 \code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}. Currently only "regression_l2" supports Gaussian process boosting.}
 
-\item{eval}{Evaluation function, can be (a list of) character or custom eval function}
+\item{eval}{Evaluation function, can be (a list of) \code{strings} (character) or a custom evaluation function.
+If this is defined by strings, this is equivalent to specifying the parameter \code{metric}.
+For a list of all possible metrics, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}
+
+\item{metric}{A list of \code{strings} for specifying the validation metric.
+This can equivalently also be specified in the parameter \code{eval}.
+For a list of all possible metrics, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}
 
 \item{record}{Boolean, TRUE will record iteration message to \code{booster$record_evals}}
 
@@ -82,13 +88,13 @@ type str represents feature names}
 \item{callbacks}{list of callback functions
 List of callback functions that are applied at each iteration.}
 
-\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model. Can currently only be used for objective = "regression"}
+\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
 
-\item{use_gp_model_for_validation}{Boolean (default = FALSE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data}
+\item{use_gp_model_for_validation}{Boolean (default = TRUE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data}
 
 \item{train_gp_model_cov_pars}{Boolean (default = TRUE). If TRUE, the covariance parameters of the Gaussian process are estimated in every boosting iterations, 
-otherwise the GPModel parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 
-the 'init_cov_pars' parameter when creating the GPModel}
+otherwise the gp_model parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 
+the 'init_cov_pars' parameter when creating the gp_model}
 }
 \description{
 Parameter docs shared by \code{gpb.train}, \code{gpb.cv}, and \code{gpboost}

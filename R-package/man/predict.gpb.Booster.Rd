@@ -13,9 +13,9 @@
 
 \item{data}{a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename}
 
-\item{num_iteration}{number of iteration want to predict with, NULL or <= 0 means use best iteration}
+\item{num_iteration}{Number of iteration want to predict with, NULL or <= 0 means use best iteration}
 
-\item{rawscore}{whether the prediction should be returned in the for of original untransformed
+\item{rawscore}{Indicates whether the prediction should be returned in the form of original untransformed
 sum of predictions from boosting iterations' results. E.g., setting \code{rawscore=TRUE} for
 logistic regression would result in predictions for log-odds instead of probabilities.}
 
@@ -29,7 +29,8 @@ logistic regression would result in predictions for log-odds instead of probabil
 prediction outputs per case.}
 
 \item{...}{Additional named arguments passed to the \code{predict()} method of
-the \code{gpb.Booster}. In particular, this includes prediction data for the GPModel (if there is one)}
+the \code{gpb.Booster}. In particular, this includes prediction data for the GPModel (if there is one)
+Set predict_var or predict_vcov_mat to TRUE, if you want to obtain predicted variances or covariances}
 }
 \value{
 For regression or binary classification, it returns a vector of length \code{nrows(data)}.

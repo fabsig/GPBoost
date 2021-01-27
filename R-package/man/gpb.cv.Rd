@@ -5,7 +5,7 @@
 \title{Main CV logic for GPBoost}
 \usage{
 gpb.cv(params = list(), data, nrounds = 100, nfold = 4, label = NULL,
-  obj = NULL, gp_model = NULL, use_gp_model_for_validation = FALSE,
+  obj = NULL, gp_model = NULL, use_gp_model_for_validation = TRUE,
   fit_GP_cov_pars_OOS = FALSE, train_gp_model_cov_pars = TRUE,
   weight = NULL, eval = NULL, verbose = 1, record = TRUE,
   eval_freq = 1L, showsd = FALSE, stratified = TRUE, folds = NULL,
@@ -28,12 +28,12 @@ gpb.cv(params = list(), data, nrounds = 100, nfold = 4, label = NULL,
     after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
     \item{train_gp_model_cov_pars}{ If TRUE, the covariance parameters of the Gaussian process 
     are stimated in every boosting iterations, 
-    otherwise the GPModel parameters are not estimated. In the latter case, you need to 
+    otherwise the gp_model parameters are not estimated. In the latter case, you need to 
     either esimate them beforehand or provide the values via 
-    the 'init_cov_pars' parameter when creating the GPModel (default = TRUE).}
+    the 'init_cov_pars' parameter when creating the gp_model (default = TRUE).}
     \item{use_gp_model_for_validation}{ If TRUE, the Gaussian process is also used 
     (in addition to the tree model) for calculating predictions on the validation data 
-    (default = FALSE)}
+    (default = TRUE)}
     \item{use_nesterov_acc}{ Set this to TRUE to do boosting with Nesterov acceleration. 
     Can currently only be used for tree_learner = "serial" (default option)}
     \item{nesterov_acc_rate}{ Acceleration rate for momentum step in case Nesterov accelerated 
@@ -57,21 +57,24 @@ gpb.cv(params = list(), data, nrounds = 100, nfold = 4, label = NULL,
 \code{regression_l2}, \code{regression_l1}, \code{huber},
 \code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}. Currently only "regression_l2" supports Gaussian process boosting.}
 
-\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model. Can currently only be used for objective = "regression"}
+\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
 
-\item{use_gp_model_for_validation}{Boolean (default = FALSE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data}
+\item{use_gp_model_for_validation}{Boolean (default = TRUE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data}
 
 \item{fit_GP_cov_pars_OOS}{Boolean (default = FALSE). If TRUE, the covariance parameters of the 
-GPModel model are estimated using the out-of-sample (OOS) predictions 
-on the validation data using the optimal number of iterations (after performing the CV)}
+gp_model model are estimated using the out-of-sample (OOS) predictions 
+on the validation data using the optimal number of iterations (after performing the CV). 
+This corresponds to the GPBoostOOS algorithm.}
 
 \item{train_gp_model_cov_pars}{Boolean (default = TRUE). If TRUE, the covariance parameters of the Gaussian process are estimated in every boosting iterations, 
-otherwise the GPModel parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 
-the 'init_cov_pars' parameter when creating the GPModel}
+otherwise the gp_model parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 
+the 'init_cov_pars' parameter when creating the gp_model}
 
 \item{weight}{Vector of weights for samples (default = NULL). This is currently not supported for Gaussian process boosting (i.e. it only affects the trees and the Gaussian process or random effects model ignores the weights)}
 
-\item{eval}{Evaluation function, can be (a list of) character or custom eval function}
+\item{eval}{Evaluation function, can be (a list of) \code{strings} (character) or a custom evaluation function.
+If this is defined by strings, this is equivalent to specifying the parameter \code{metric}.
+For a list of all possible metrics, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}
 
 \item{verbose}{Verbosity for output, if <= 0, also will disable the print of evaluation during training}
 

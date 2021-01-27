@@ -11,7 +11,7 @@ GPModel(group_data = NULL, group_rand_coef_data = NULL,
   vecchia_ordering = "none",
   vecchia_pred_type = "order_obs_first_cond_obs_only",
   num_neighbors_pred = num_neighbors, cluster_ids = NULL,
-  free_raw_data = FALSE)
+  free_raw_data = FALSE, likelihood = "gaussian")
 }
 \arguments{
 \item{group_data}{A \code{vector} or \code{matrix} with labels of group levels for grouped random effects}
@@ -30,7 +30,7 @@ The following covariance functions are available: "exponential", "gaussian", "ma
 We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance 
 where we follow Rassmusen and Williams (2006)}
 
-\item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of covariance function 
+\item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of a covariance function 
 (=smoothness parameter for Matern covariance, irrelevant for some covariance functions 
 such as the exponential or Gaussian)}
 
@@ -57,6 +57,9 @@ random effects / Gaussian processes (same values = same process realization)}
 
 \item{free_raw_data}{If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 is freed in R after initialization}
+
+\item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable
+Default = "gaussian"}
 }
 \value{
 A \code{GPModel} containing ontains a Gaussian process and / or mixed effects model with grouped random effects

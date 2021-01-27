@@ -11,12 +11,8 @@ fitGPModel(group_data = NULL, group_rand_coef_data = NULL,
   vecchia_ordering = "none",
   vecchia_pred_type = "order_obs_first_cond_obs_only",
   num_neighbors_pred = num_neighbors, cluster_ids = NULL,
-  free_raw_data = FALSE, y, X = NULL, std_dev = FALSE,
-  params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls",
-  maxit = 1000, delta_rel_conv = 1e-06, init_coef = NULL, init_cov_pars = NULL,
-  lr_coef = 0.01, lr_cov = -1, use_nesterov_acc = FALSE, acc_rate_coef = 0.1,
-  acc_rate_cov = 0.5, nesterov_schedule_version = 0L, momentum_offset = 2L,
-  trace = FALSE, convergence_criterion = "relative_change_in_log_likelihood"))
+  free_raw_data = FALSE, likelihood = "gaussian", y, X = NULL,
+  params = list())
 }
 \arguments{
 \item{group_data}{A \code{vector} or \code{matrix} with labels of group levels for grouped random effects}
@@ -35,7 +31,7 @@ The following covariance functions are available: "exponential", "gaussian", "ma
 We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance 
 where we follow Rassmusen and Williams (2006)}
 
-\item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of covariance function 
+\item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of a covariance function 
 (=smoothness parameter for Matern covariance, irrelevant for some covariance functions 
 such as the exponential or Gaussian)}
 
@@ -63,22 +59,24 @@ random effects / Gaussian processes (same values = same process realization)}
 \item{free_raw_data}{If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 is freed in R after initialization}
 
+\item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable
+Default = "gaussian"}
+
 \item{y}{A \code{vector} with response variable data}
 
 \item{X}{A \code{matrix} with covariate data for fixed effects ( = linear regression term)}
 
-\item{std_dev}{If TRUE (asymptotic) standard deviations are calculated for all parameters}
-
 \item{params}{A \code{list} with parameters for the model fitting / optimization
  \itemize{
     \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
-    Options: "gradient_descent" or "fisher_scoring". Default="fisher_scoring".}
+    Options: "gradient_descent" or "fisher_scoring". Default="fisher_scoring" for Gaussian data
+    and "gradient_descent" for other likelihoods.}
     \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
-    (for the GPBoost algorithm there are usually no). 
+    (for the GPBoost algorithm there are usually none). 
     Options: "gradient_descent" or "wls". Gradient descent steps are done simultaneously 
     with gradient descent steps for the covariance paramters. 
     "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
-    Default="wls".}
+    Default="wls" for Gaussian data and "gradient_descent" for other likelihoods.}
     \item{maxit}{ Maximal number of iterations for optimization algorithm. Default=1000.}
     \item{delta_rel_conv}{ Convergence criterion: stop optimization if relative change 
     in parameters is below this value. Default=1E-6.}
@@ -90,7 +88,8 @@ is freed in R after initialization}
     Default=0.01.}
     \item{lr_cov}{ Learning rate for covariance parameters. If <= 0, internal default values are used.
     Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"}
-    \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used. Default=FALSE.}
+    \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used.
+    This is used only for gradient descent. Default=TRUE}
     \item{acc_rate_coef}{ Acceleration rate for regression coefficients (if there are any) 
     for Nesterov acceleration. Default=0.1.}
     \item{acc_rate_cov}{ Acceleration rate for covariance parameters for Nesterov acceleration.
@@ -101,6 +100,7 @@ is freed in R after initialization}
     Useful for finding good learning rates. Default=FALSE.}
     \item{convergence_criterion}{ The convergence criterion used for terminating the optimization algorithm.
     Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters".}
+    \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}
 }}
 }
 \value{
@@ -132,10 +132,10 @@ eps <- Z1 \%*\% b1
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi # observed data
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE)
+fit(gp_model, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(group_data = group, y = y, std_dev = TRUE)
+gp_model <- fitGPModel(group_data = group, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 
 # Make predictions
@@ -151,9 +151,10 @@ pred$mu# Predicted mean
 pred$cov# Predicted covariance
 
 # Use other optimization technique: gradient descent instead of Fisher scoring
-gp_model <- fitGPModel(group_data = group, y = y, std_dev = TRUE,
+gp_model <- fitGPModel(group_data = group, y = y,
                        params = list(optimizer_cov = "gradient_descent",
-                                     lr_cov = 0.1, use_nesterov_acc = FALSE))
+                                     lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                     std_dev = TRUE))
 summary(gp_model)
 
 # Evaluate negative log-likelihood
@@ -172,11 +173,11 @@ y <- eps + xi + X\%*\%beta # add fixed effect to observed data
 # Create random effects model
 gp_model <- GPModel(group_data = group)
 # Fit model
-fit(gp_model, y = y, X = X, std_dev = TRUE)
+fit(gp_model, y = y, X = X, params = list(std_dev = TRUE))
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(group_data = group,
-                       y = y, X = X, std_dev = TRUE)
+                       y = y, X = X, params = list(std_dev = TRUE))
 summary(gp_model)
 
 
@@ -202,13 +203,13 @@ b3 <- sqrt(sigma2_3) * rnorm(m) # random slope for first random effect
 eps2 <- Z1\%*\%b1 + Z2\%*\%b2 + Z3\%*\%b3 # sum of all random effects
 y <- eps2 + xi # observed data
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE)
+fit(gp_model, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(group_data = cbind(group,group2),
                         group_rand_coef_data = x,
                         ind_effect_group_rand_coef = 1,
-                        y = y, std_dev = TRUE)
+                        y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 
 
@@ -232,11 +233,11 @@ xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
 
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE)
+fit(gp_model, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        y = y, std_dev = TRUE)
+                        y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 
 # Make predictions
@@ -252,10 +253,10 @@ print("Predicted (posterior/conditional) covariance matrix of GP")
 pred$cov
 
 # Use other optimization technique: Nesterov accelerated gradient descent instead of Fisher scoring
-gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                       y = y, std_dev = TRUE,
+gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y,
                        params = list(optimizer_cov = "gradient_descent",
-                                     lr_cov = 0.05, use_nesterov_acc = TRUE))
+                                     lr_cov = 0.05, use_nesterov_acc = TRUE,
+                                     std_dev = TRUE))
 summary(gp_model)
 
 # Evaluate negative log-likelihood
@@ -273,7 +274,7 @@ X <- cbind(rep(1,n),runif(n)) # desing matrix / covariate data for fixed effect
 beta <- c(3,3) # regression coefficents
 y <- eps + xi + X\%*\%beta # add fixed effect to observed data
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                       y = y, X=X, std_dev = TRUE)
+                       y = y, X=X, params = list(std_dev = TRUE))
 summary(gp_model)
 
 
@@ -319,12 +320,12 @@ xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
 
 # Fit model (takes a few seconds)
-fit(gp_model, y = y, std_dev = TRUE)
+fit(gp_model, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                         gp_rand_coef_data = X_SVC,
-                        y = y, std_dev = TRUE)
+                        y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 
 
@@ -351,12 +352,12 @@ xi <- sqrt(sigma2) * rnorm(2 * n) # simulate error term
 y <- eps + xi
 
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE)
+fit(gp_model, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                         cluster_ids = cluster_ids,
-                        y = y, std_dev = TRUE)
+                        y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 
 
@@ -389,12 +390,12 @@ xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- eps + xi
 
 # Fit model
-fit(gp_model, y = y, std_dev = TRUE)
+fit(gp_model, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(group_data = group,
                         gp_coords = coords, cov_function = "exponential",
-                        y = y, std_dev = TRUE)
+                        y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 }
 
