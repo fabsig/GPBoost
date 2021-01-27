@@ -369,7 +369,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
                     fit_GP_cov_pars_OOS = TRUE,
                     folds = folds,
                     verbose = 0)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4786203, 0.3436059))),1E-4)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4786203, 0.3436059))),1E-3)
     expect_equal(cvbst$best_iter, 30)
     expect_lt(abs(cvbst$best_score-0.243), 1E-4)
     
@@ -696,12 +696,17 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.5600951),1E-6)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.5600951),1E-3)
     expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.2989241),1E-6)
+    expect_lt(sum(abs(tail(pred$fixed_effect)-c(0.2741840, 0.2159258, -2.2611556,
+                                                0.7262528, -1.1725225, 0.4201358))),1E-6)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-0.7801564, -0.7557558, -0.8661279, rep(0,3)))),1E-6)
     # Predict response
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = FALSE)
-    expect_lt(abs(sqrt(mean((pred$response_mean - y_test)^2))-1.838055),1E-6)
+    expect_lt(abs(sqrt(mean((pred$response_mean - y_test)^2))-1.838055),1E-4)
+    expect_lt(sum(abs(tail(pred$response_mean)-c(0.6236602, 0.6022954, 0.0454444,
+                                                 3.2786463, 0.4909835, 2.4140687))),1E-6)
     expect_lt(sum(abs(tail(pred$response_var)-c(0.65088143, 0.62690803, 0.04559866,
                                                 19.56640952, 0.85624692, 11.24428895))),1E-6)
   })
@@ -772,6 +777,9 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
                     predict_var = TRUE, rawscore = TRUE)
     expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.4737707),1E-6)
     expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.347549),1E-6)
+    expect_lt(sum(abs(tail(pred$fixed_effect)-c( 0.8115548, 0.1776281, -1.5159576,
+                                                 0.4539956, -1.2554634, 0.3017937))),1E-6)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.309823, -1.003674, -1.420617, rep(0,3)))),1E-6)
     # Predict response
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = FALSE)
