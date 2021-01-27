@@ -16,9 +16,15 @@ This is the Python package implementation of the GPBoost library. See https://gi
 Examples
 --------
 
-- [GPBoost R and Python demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
-- More examples in the [Python guide folder](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide)
-
+- [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
+- [**Blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) and [corresponding code](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm_blog_post_example.py) on how to combine tree-boosting with mixed effects models
+- [**Detailed Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide):
+  * [GPBoost algorithm](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm.py) for combining tree-boosting with Gaussian process and random effects models
+  * [GPBoost algorithm for binary classification and other non-Gaussian data](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/classification_non_Gaussian_data.py) (Poisson regression, etc.)
+  * [Cross validation](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/cross_validation.py) for parameter tuning
+  * [Linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/linear_Gaussian_process_mixed_effects_models.py)
+  * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/generalized_linear_Gaussian_process_mixed_effects_models.py)
+  * [Standard boosting functionality (without Gaussian process or random  effects)](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/boosting.py)
 
 Installation
 ------------
@@ -106,4 +112,3 @@ python setup.py install
 Note: ``sudo`` (or administrator rights in **Windows**) may be needed to perform the command.
 
 If you get any errors during installation or due to any other reasons, you may want to build dynamic library from sources by any method you prefer and then just run ``python setup.py install --precompile``.
-

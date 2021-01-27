@@ -55,6 +55,9 @@ class Metric {
   * \param config Config for metric
   */
   LIGHTGBM_EXPORT static Metric* CreateMetric(const std::string& type, const Config& config);
+
+  /*! \brief True, if this metric is for the training data (used in latent_gaussian_laplace_metric) */
+  bool metric_for_train_data_ = false;
 };
 
 /*!

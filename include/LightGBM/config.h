@@ -1,11 +1,15 @@
 /*!
- * Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
- * Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
- * Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
- *
- * \note
- * desc and descl2 fields must be written in reStructuredText format
- */
+* This file is part of GPBoost a C++ library for combining
+*	boosting with Gaussian process and mixed effects models
+*
+* Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+*
+* Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+*
+* \note
+* desc and descl2 fields must be written in reStructuredText format
+*/
 #ifndef LIGHTGBM_CONFIG_H_
 #define LIGHTGBM_CONFIG_H_
 
@@ -210,21 +214,15 @@ struct Config {
   // desc = this seed has lower priority in comparison with other seeds, which means that it will be overridden, if you set other seeds explicitly
   int seed = 0;
 
-  // desc = set this to ``true`` to do Gaussian process boosting
-  // desc = can currently only be used for objective = "regression"
-  bool has_gp_model = false;
-
-  // desc = if ``true``, the covariance parameters of the Gaussian process / random effects model are trained (estimated) in every boosting iteration, otherwise not (default = true)
-  // desc = applies only to Gaussian process boosting (GPBoost algorithm)
+  // desc = if ``true``, the covariance parameters of the Gaussian process / random effects model are trained (estimated) in every boosting iteration of the GPBoost algorithm, otherwise not
   bool train_gp_model_cov_pars = true;
 
-  // desc = if ``true``, a Newton update step is done for the tree leaves after the gradient step
-  // desc = applies only to Gaussian process boosting (GPBoost algorithm)
-  bool leaves_newton_update = false;
+  // desc = set this to ``true`` to also use the Gaussian process / random effects model (in addition to the tree model) for calculating predictions on the validation data when using the GPBoost algorithm
+  bool use_gp_model_for_validation = true;
 
-  // desc = set this to ``true`` to also use the Gaussian process (in addition to the tree model) for calculating predictions on the validation data
-  // desc = applies only to Gaussian process boosting (GPBoost algorithm)
-  bool use_gp_model_for_validation = false;
+  // desc = if ``true``, a Newton update step is done for the tree leaves after the gradient step
+  // desc = applies only to the GPBoost algorithm for Gaussian data and cannot be used for non-Gaussian data
+  bool leaves_newton_update = false;
 
   // desc = set this to ``true`` to do boosting with Nesterov acceleration
   // desc = can currently only be used for tree_learner = "serial"

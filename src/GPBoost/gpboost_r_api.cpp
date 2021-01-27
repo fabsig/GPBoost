@@ -11,6 +11,8 @@
 #include <GPBoost/gpboost_r_api.h>
 #include <LightGBM/lightgbm_R.h>
 #include <string>
+#include <vector>
+#include <GPBoost/log.h>
 
 #ifdef GPB_R_BUILD
 #include <R_ext/Rdynload.h>
@@ -30,7 +32,18 @@
     return call_state;\
   }
 
-//using namespace GPBoost;
+using namespace GPBoost;
+
+LGBM_SE GPB_EncodeChar(LGBM_SE dest, const char* src, LGBM_SE buf_len, LGBM_SE actual_len, size_t str_len) {
+	if (str_len > INT32_MAX) {
+		Log::Fatal("Don't support large string in R-package");
+	}
+	R_INT_PTR(actual_len)[0] = static_cast<int>(str_len);
+	if (R_AS_INT(buf_len) < static_cast<int>(str_len)) { return dest; }
+	auto ptr = R_CHAR_PTR(dest);
+	std::memcpy(ptr, src, str_len);
+	return dest;
+}
 
 LGBM_SE GPB_CreateREModel_R(LGBM_SE ndata,
 	LGBM_SE cluster_ids_data,
@@ -51,6 +64,7 @@ LGBM_SE GPB_CreateREModel_R(LGBM_SE ndata,
 	LGBM_SE vecchia_ordering,
 	LGBM_SE vecchia_pred_type,
 	LGBM_SE num_neighbors_pred,
+	LGBM_SE likelihood,
 	LGBM_SE out,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
@@ -59,7 +73,7 @@ LGBM_SE GPB_CreateREModel_R(LGBM_SE ndata,
 		R_AS_INT(num_re_group), R_REAL_PTR(re_group_rand_coef_data), R_INT_PTR(ind_effect_group_rand_coef), R_AS_INT(num_re_group_rand_coef),
 		R_AS_INT(num_gp), R_REAL_PTR(gp_coords_data), R_AS_INT(dim_gp_coords), R_REAL_PTR(gp_rand_coef_data), R_AS_INT(num_gp_rand_coef),
 		R_CHAR_PTR(cov_fct), R_AS_DOUBLE(cov_fct_shape), R_AS_BOOL(vecchia_approx), R_AS_INT(num_neighbors), R_CHAR_PTR(vecchia_ordering), R_CHAR_PTR(vecchia_pred_type),
-		R_AS_INT(num_neighbors_pred), &handle));
+		R_AS_INT(num_neighbors_pred), R_CHAR_PTR(likelihood), &handle));
 	R_SET_PTR(out, handle);
 	R_API_END();
 }
@@ -86,13 +100,14 @@ LGBM_SE GPB_SetOptimConfig_R(LGBM_SE handle,
 	LGBM_SE optimizer,
 	LGBM_SE momentum_offset,
 	LGBM_SE convergence_criterion,
+	LGBM_SE calc_std_dev,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetOptimConfig(R_GET_PTR(handle), R_REAL_PTR(init_cov_pars),
 		R_AS_DOUBLE(lr), R_AS_DOUBLE(acc_rate_cov), R_AS_INT(max_iter),
 		R_AS_DOUBLE(delta_rel_conv), R_AS_BOOL(use_nesterov_acc),
 		R_AS_INT(nesterov_schedule_version), R_AS_BOOL(trace), R_CHAR_PTR(optimizer),
-		R_AS_INT(momentum_offset), R_CHAR_PTR(convergence_criterion)));
+		R_AS_INT(momentum_offset), R_CHAR_PTR(convergence_criterion), R_AS_BOOL(calc_std_dev)));
 	R_API_END();
 }
 
@@ -111,10 +126,11 @@ LGBM_SE GPB_SetOptimCoefConfig_R(LGBM_SE handle,
 
 LGBM_SE GPB_OptimCovPar_R(LGBM_SE handle,
 	LGBM_SE y_data,
-	LGBM_SE calc_std_dev,
+	LGBM_SE fixed_effects,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
-	CHECK_CALL(GPB_OptimCovPar(R_GET_PTR(handle), R_REAL_PTR(y_data), R_AS_BOOL(calc_std_dev)));
+	CHECK_CALL(GPB_OptimCovPar(R_GET_PTR(handle), R_REAL_PTR(y_data),
+		R_REAL_PTR(fixed_effects)));
 	R_API_END();
 }
 
@@ -122,11 +138,10 @@ LGBM_SE GPB_OptimLinRegrCoefCovPar_R(LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE covariate_data,
 	LGBM_SE num_covariates,
-	LGBM_SE calc_std_dev,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_OptimLinRegrCoefCovPar(R_GET_PTR(handle), R_REAL_PTR(y_data), R_REAL_PTR(covariate_data),
-		R_AS_INT(num_covariates), R_AS_BOOL(calc_std_dev)));
+		R_AS_INT(num_covariates)));
 	R_API_END();
 }
 
@@ -146,6 +161,14 @@ LGBM_SE GPB_GetCovPar_R(LGBM_SE handle,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetCovPar(R_GET_PTR(handle), R_REAL_PTR(optim_cov_pars), R_AS_BOOL(calc_std_dev)));
+	R_API_END();
+}
+
+LGBM_SE GPB_GetInitCovPar_R(LGBM_SE handle,
+	LGBM_SE init_cov_pars,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetInitCovPar(R_GET_PTR(handle), R_REAL_PTR(init_cov_pars)));
 	R_API_END();
 }
 
@@ -187,6 +210,8 @@ LGBM_SE GPB_PredictREModel_R(LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE num_data_pred,
 	LGBM_SE predict_cov_mat,
+	LGBM_SE predict_var,
+	LGBM_SE predict_response,
 	LGBM_SE cluster_ids_data_pred,
 	LGBM_SE re_group_data_pred,
 	LGBM_SE re_group_rand_coef_data_pred,
@@ -197,35 +222,89 @@ LGBM_SE GPB_PredictREModel_R(LGBM_SE handle,
 	LGBM_SE use_saved_data,
 	LGBM_SE vecchia_pred_type,
 	LGBM_SE num_neighbors_pred,
+	LGBM_SE fixed_effects,
+	LGBM_SE fixed_effects_pred,
 	LGBM_SE out_predict,
 	LGBM_SE call_state) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_PredictREModel(R_GET_PTR(handle), R_REAL_PTR(y_data),
 		R_AS_INT(num_data_pred), R_REAL_PTR(out_predict),
-		R_AS_BOOL(predict_cov_mat), R_INT_PTR(cluster_ids_data_pred),
+		R_AS_BOOL(predict_cov_mat), R_AS_BOOL(predict_var), R_AS_BOOL(predict_response), R_INT_PTR(cluster_ids_data_pred),
 		R_CHAR_PTR(re_group_data_pred), R_REAL_PTR(re_group_rand_coef_data_pred),
 		R_REAL_PTR(gp_coords_pred), R_REAL_PTR(gp_rand_coef_data_pred), R_REAL_PTR(cov_pars),
 		R_REAL_PTR(covariate_data_pred), R_AS_BOOL(use_saved_data),
-		R_CHAR_PTR(vecchia_pred_type), R_AS_INT(num_neighbors_pred)));
+		R_CHAR_PTR(vecchia_pred_type), R_AS_INT(num_neighbors_pred),
+		R_REAL_PTR(fixed_effects), R_REAL_PTR(fixed_effects_pred)));
 	R_API_END();
 }
 
+LGBM_SE GPB_GetLikelihoodName_R(LGBM_SE handle,
+	LGBM_SE buf_len,
+	LGBM_SE actual_len,
+	LGBM_SE ll_name,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	std::vector<char> name(128);
+	int num_char;
+	CHECK_CALL(GPB_GetLikelihoodName(R_GET_PTR(handle), name.data(), num_char));
+	GPB_EncodeChar(ll_name, name.data(), buf_len, actual_len, num_char);
+	R_API_END();
+}
+
+LGBM_SE GPB_GetOptimizerCovPars_R(LGBM_SE handle,
+	LGBM_SE buf_len,
+	LGBM_SE actual_len,
+	LGBM_SE opt_name,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	std::vector<char> name(128);
+	int num_char;
+	CHECK_CALL(GPB_GetOptimizerCovPars(R_GET_PTR(handle), name.data(), num_char));
+	GPB_EncodeChar(opt_name, name.data(), buf_len, actual_len, num_char);
+	R_API_END();
+}
+
+LGBM_SE GPB_GetOptimizerCoef_R(LGBM_SE handle,
+	LGBM_SE buf_len,
+	LGBM_SE actual_len,
+	LGBM_SE opt_name,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	std::vector<char> name(128);
+	int num_char;
+	CHECK_CALL(GPB_GetOptimizerCoef(R_GET_PTR(handle), name.data(), num_char));
+	GPB_EncodeChar(opt_name, name.data(), buf_len, actual_len, num_char);
+	R_API_END();
+}
+
+LGBM_SE GPB_SetLikelihood_R(LGBM_SE handle,
+	LGBM_SE likelihood,
+	LGBM_SE call_state) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_SetLikelihood(R_GET_PTR(handle), R_CHAR_PTR(likelihood)));
+	R_API_END();
+}
 
 #ifdef GPB_R_BUILD
 // .Call() calls
 static const R_CallMethodDef CallEntries[] = {
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 21},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 2},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 13},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 14},
   {"GPB_SetOptimCoefConfig_R"         , (DL_FUNC)&GPB_SetOptimCoefConfig_R         , 7},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 4},
-  {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 6},
+  {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 5},
   {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},
   {"GPB_GetCovPar_R"                  , (DL_FUNC)&GPB_GetCovPar_R                  , 4},
+  {"GPB_GetInitCovPar_R"              , (DL_FUNC)&GPB_GetInitCovPar_R              , 3},
   {"GPB_GetCoef_R"                    , (DL_FUNC)&GPB_GetCoef_R                    , 4},
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 3},
   {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 9},
-  {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 16},
+  {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 20},
+  {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 5},
+  {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC)&GPB_GetOptimizerCovPars_R        , 5},
+  {"GPB_GetOptimizerCoef_R"           , (DL_FUNC)&GPB_GetOptimizerCoef_R           , 5},
+  {"GPB_SetLikelihood_R"              , (DL_FUNC)&GPB_SetLikelihood_R              , 3},
   {"LGBM_GetLastError_R"              , (DL_FUNC)&LGBM_GetLastError_R              , 3},
   {"LGBM_DatasetCreateFromFile_R"     , (DL_FUNC)&LGBM_DatasetCreateFromFile_R     , 5},
   {"LGBM_DatasetCreateFromCSC_R"      , (DL_FUNC)&LGBM_DatasetCreateFromCSC_R      , 10},

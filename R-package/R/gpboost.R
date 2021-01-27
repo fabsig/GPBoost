@@ -126,7 +126,9 @@ gpboost <- function(data,
                     params = list(),
                     valids = list(),
                     early_stopping_rounds = NULL,
-                    use_gp_model_for_validation = FALSE,
+                    use_gp_model_for_validation = TRUE,
+                    eval = NULL,
+                    metric = NULL,
                     weight = NULL,
                     verbose = 1,
                     ...) {
@@ -142,15 +144,15 @@ gpboost <- function(data,
   }
   
   # Set validation as oneself
-  if (length(valids)) valids <- list()
+  if (length(valids) == 0) valids <- list()
   if (verbose > 0) {
     valids$train = dtrain
   }
   
   # Train a model using the regular way
   bst <- gpb.train(params = params, data = dtrain, nrounds = nrounds,
-                   obj = obj, valids = valids, verbose = verbose,
-                   early_stopping_rounds = early_stopping_rounds,
+                   obj = obj, valids = valids, eval = eval, metric = metric,
+                   verbose = verbose, early_stopping_rounds = early_stopping_rounds,
                    gp_model = gp_model, train_gp_model_cov_pars = train_gp_model_cov_pars,
                    use_gp_model_for_validation = use_gp_model_for_validation, ...)
   

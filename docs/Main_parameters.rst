@@ -4,8 +4,11 @@
 GPBoost: Summary of Most Important Parameters
 =============================================
 
-This page contains a summary of the most important parameters. **This includes tuning and other parameters for the tree-boosting
-part and modeling specifications and optimization parameters for the Gaussian process and random effects part**.
+This page contains a summary of the most important parameters. We distinguish between (i) tuning and other parameters for the tree-boosting
+part and (ii) modeling specifications and optimization parameters for the Gaussian process and random effects part. Currently, the GPBoost library
+supports the following likelihoods / objective functions for combining tree boosting with Gaussian process and random effects models:
+"gaussian", "bernoulli_probit" (="binary"), "bernoulli_logit", "poisson", "gamma". This distribution of the data can be specified through the
+``objective`` paramter for the tree oart or the ``likelihood`` parameter for the random effects model part.
 
 .. contents:: **Contents**
     :depth: 2
@@ -47,36 +50,41 @@ Below is a list of important tuning parameters for tree-boosting.
 
 -  ``train_gp_model_cov_pars`` :raw-html:`<a id="train_gp_model_cov_pars" title="Permalink to this parameter" href="#train_gp_model_cov_pars">&#x1F517;&#xFE0E;</a>`, default = ``true``, type = bool
 
-   -  if ``true``, the covariance parameters of the Gaussian process / random effects model are trained (estimated) in every boosting iteration, otherwise not (default = true)
+   -  if ``true``, the covariance parameters of the Gaussian process / random effects model are trained (estimated) in every boosting iteration of the GPBoost algorithm, otherwise not
 
-   -  applies only to Gaussian process boosting (GPBoost algorithm)
+-  ``use_gp_model_for_validation`` :raw-html:`<a id="use_gp_model_for_validation" title="Permalink to this parameter" href="#use_gp_model_for_validation">&#x1F517;&#xFE0E;</a>`, default = ``true``, type = bool
+
+   -  set this to ``true`` to also use the Gaussian process / random effects model (in addition to the tree model) for calculating predictions on the validation data when using the GPBoost algorithm
 
 -  ``leaves_newton_update`` :raw-html:`<a id="leaves_newton_update" title="Permalink to this parameter" href="#leaves_newton_update">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
 
    -  if ``true``, a Newton update step is done for the tree leaves after the gradient step
 
-   -  applies only to Gaussian process boosting (GPBoost algorithm)
+   -  applies only to the GPBoost algorithm for Gaussian data and cannot be used for non-Gaussian data
 
 
 Note that GPBoost uses the LightGBM tree growing algorithm which grows trees using a leaf-wise strategy. I.e. trees are grown by splitting leaf nodes that maximize
-the information gain until the maximal number of leaves ``num_leaves`` or the maximal depth of a tree `max_depth`` is
+the information gain until the maximal number of leaves ``num_leaves`` or the maximal depth of a tree ``max_depth`` is
 attained, even when this leads to unbalanced trees. This in contrast to a depth-wise growth strategy of other boosting
 implementations which builds more balanced trees. For shallow trees, small ``max_depth``, there is likely no difference between these two tree growing strategies.
+If you only want to tune the maximal depth of a tree ``max_depth`` parameter and not the ``num_leaves`` parameter, it is recommended that you set the ``num_leaves`` parameter to a large value such as 131072.
 
 Other regularization parameters
 -------------------------------
 -  ``lambda_l1``, ``lambda_l2`` and ``min_gain_to_split``
 
-Categorical features
---------------------
+..
+    Categorical features
+    --------------------
 
-The tree building algorithm of GPBoost (i.e. the LightGBM tree building algorithm) can use categorical features directly (without one-hot encoding). It is common to represent categorical features with one-hot encoding, but this approach is suboptimal for tree learners. Particularly for high-cardinality categorical features, a tree built on one-hot features tends to be unbalanced and needs to grow very deep to achieve good accuracy.
+    The tree building algorithm of GPBoost (i.e. the LightGBM tree building algorithm) can use categorical features directly (without one-hot encoding). It is common to represent categorical features with one-hot encoding, but this approach is suboptimal for tree learners. Particularly for high-cardinality categorical features, a tree built on one-hot features tends to be unbalanced and needs to grow very deep to achieve good accuracy.
 
-Instead of one-hot encoding, the optimal solution is to split on a categorical feature by partitioning its categories into 2 subsets. If the feature has ``k`` categories, there are ``2^(k-1) - 1`` possible partitions.
-But there is an efficient solution for regression trees `Fisher (1958) <http://www.csiss.org/SPACE/workshops/2004/SAC/files/fisher.pdf>`_. It needs about ``O(k * log(k))`` to find the optimal partition.
-The basic idea is to sort the categories according to the training objective at each split.
+    Instead of one-hot encoding, the optimal solution is to split on a categorical feature by partitioning its categories into 2 subsets. If the feature has ``k`` categories, there are ``2^(k-1) - 1`` possible partitions.
+    But there is an efficient solution for regression trees `Fisher (1958) <http://www.csiss.org/SPACE/workshops/2004/SAC/files/fisher.pdf>`_. It needs about ``O(k * log(k))`` to find the optimal partition.
+    The basic idea is to sort the categories according to the training objective at each split.
 
-For further details on using categorical features, please refer to the ``categorical_feature`` `parameter <./Parameters.rst#categorical_feature>`__.
+    For further details on using categorical features, please refer to the ``categorical_feature`` `parameter <./Parameters.rst#categorical_feature>`__.
+
 
 Histogram-based tree growing algorithm
 --------------------------------------
@@ -102,8 +110,14 @@ Below is a list of parameters for specifying ``GPModel`` objects for modeling Ga
 and for specifying how these models are trained. These parameters are documented in a generic manner in the form they are
 used in the R and Python package. The C API works slightly different.
 
-Modelling parameters
---------------------
+Model specification parameters
+------------------------------
+
+-  ``likelihood`` : string, (default="gaussian")
+
+   -  Likelihood function of the response variable = distribution of the label variable
+
+   -  Currently supported values: "gaussian", "bernoulli_probit" (="binary"), "bernoulli_logit", "poisson", "gamma"
 
 -  ``group_data`` : two dimensional array / matrix of doubles or strings, optional (default=None)
 
@@ -125,37 +139,37 @@ Modelling parameters
 
    -  Covariate data for Gaussian process random coefficients
 
--  ``cov_function`` : string, optional (default="exponential")
+-  ``cov_function`` : string, (default="exponential")
 
    -  Covariance function for the Gaussian process. The following covariance functions are available: "exponential", "gaussian", "matern", and "powered_exponential". We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance where we follow Rassmusen and Williams (2006)
 
--  ``cov_fct_shape`` : double, optional (default=0.)
+-  ``cov_fct_shape`` : double, (default=0.)
 
    -  Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
 
--  ``vecchia_approx`` : bool, optional (default=False)
+-  ``vecchia_approx`` : bool, (default=False)
 
    -  If true, the Vecchia approximation is used
 
--  ``num_neighbors`` : integer, optional (default=30)
+-  ``num_neighbors`` : integer, (default=30)
 
    -  Number of neighbors for the Vecchia approximation
 
--  ``vecchia_ordering`` : string, optional (default="none")
+-  ``vecchia_ordering`` : string, (default="none")
 
    -  Ordering used in the Vecchia approximation. "none" means the default ordering is used, "random" uses a random ordering
 
--  ``vecchia_pred_type`` : string, optional (default="order_obs_first_cond_obs_only")
+-  ``vecchia_pred_type`` : string, (default="order_obs_first_cond_obs_only")
 
    -  Type of Vecchia approximation used for making predictions.
 
    -  "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 
--  ``num_neighbors_pred`` : integer or Null, optional (default=Null)
+-  ``num_neighbors_pred`` : integer or Null, (default=Null)
 
    -  Number of neighbors for the Vecchia approximation for making predictions
 
--  ``cluster_ids`` : one dimensional numpy array (vector) with integer data or Null, optional (default=Null)
+-  ``cluster_ids`` : one dimensional numpy array (vector) with integer data or Null, (default=Null)
 
    -  IDs / labels indicating independent realizations of random effects / Gaussian processes (same values = same process realization)
 
@@ -163,18 +177,18 @@ Modelling parameters
 Optimization parameters
 -----------------------
 
-The following list shows options for the optimization of the variance and covariance parameters of ``GPModel`` objects
+The following list shows options for the optimization of the variance and covariance parameters of ``gp_model`` objects
 which contain Gaussian process and/or grouped random effects models. These parameters are passed to either the ``fit``
-function of a ``GPModel`` object in Python and R or to the ``set_optim_params`` and ``set_optim_coef_params`` functions when
-using the GPBoost algorithm.
+function of a ``gp_model`` object in Python and R or to the ``set_optim_params`` (and ``set_optim_coef_params``) function
+prior to running the GPBoost algorithm.
 
--  ``optimizer_cov`` : string, optional (default = "fisher_scoring")
+-  ``optimizer_cov`` : string, optional (default = "fisher_scoring" for Gaussian data and "gradient_descent" for other likelihoods)
 
    -  Optimizer used for estimating covariance parameters.
 
    -  Options: "gradient_descent" or "fisher_scoring"
 
--  ``optimizer_coef`` : string, optional (default = "wls")
+-  ``optimizer_coef`` : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
 
    -  Optimizer used for estimating linear regression coefficients, if there are any (for the GPBoost algorithm there are usually no).
 
@@ -204,9 +218,9 @@ using the GPBoost algorithm.
 
    -  Learning rate for covariance parameters
 
--  ``use_nesterov_acc`` : bool, optional (default = False)
+-  ``use_nesterov_acc`` : bool, optional (default = True)
 
-   -  If True Nesterov acceleration is used
+   -  If True Nesterov acceleration is used (only for gradient descent)
 
 -  ``acc_rate_coef`` : double, optional (default = 0.5)
 
@@ -224,12 +238,6 @@ using the GPBoost algorithm.
 
    -  If True, the value of the gradient is printed for some iterations. Useful for finding good learning rates.
 
+-  ``std_dev`` : bool, optional (default = False)
 
-
-**References**
-
-[1] Ranka, Sanjay, and V. Singh. "CLOUDS: A decision tree classifier for large datasets." Proceedings of the 4th Knowledge Discovery and Data Mining Conference. 1998.
-
-[2] Machado, F. P. "Communication and memory efficient parallel decision tree construction." (2003).
-
-[3] Li, Ping, Qiang Wu, and Christopher J. Burges. "Mcrank: Learning to rank using multiple classification and gradient boosting." Advances in Neural Information Processing Systems 20 (NIPS 2007).
+   -  If True, (asymptotic) standard deviations are calculated for the covariance parameters

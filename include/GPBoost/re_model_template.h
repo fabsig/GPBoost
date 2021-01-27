@@ -17,6 +17,7 @@
 #include <GPBoost/sparse_matrix_utils.h>
 #include <GPBoost/Vecchia_utils.h>
 #include <GPBoost/GP_utils.h>
+#include <GPBoost/likelihoods.h>
 //#include <Eigen/src/misc/lapack.h>
 
 #include <memory>
@@ -25,8 +26,8 @@
 #include <algorithm>    // std::shuffle
 #include <random>       // std::default_random_engine
 //#include <typeinfo> // Only needed for debugging
-//#include <chrono>  // only needed for debugging
-//#include <thread> // only needed for debugging
+#include <chrono>  // only needed for debugging
+#include <thread> // only needed for debugging
 //std::this_thread::sleep_for(std::chrono::milliseconds(200));// Only for debugging
 //std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 //std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
@@ -70,6 +71,7 @@ namespace GPBoost {
 		* \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
 		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions
+		* \param likelihood Likelihood function for the observed response variable. Default = "gaussian"
 		*/
 		REModelTemplate(data_size_t num_data, const gp_id_t* cluster_ids_data = nullptr, const char* re_group_data = nullptr,
 			data_size_t num_re_group = 0, const double* re_group_rand_coef_data = nullptr,
@@ -77,19 +79,32 @@ namespace GPBoost {
 			data_size_t num_gp = 0, const double* gp_coords_data = nullptr, int dim_gp_coords = 2,
 			const double* gp_rand_coef_data = nullptr, data_size_t num_gp_rand_coef = 0,
 			const char* cov_fct = nullptr, double cov_fct_shape = 0., bool vecchia_approx = false, int num_neighbors = 30,
-			const char* vecchia_ordering = nullptr, const char* vecchia_pred_type = nullptr, int num_neighbors_pred = 30) {
-
-			num_cov_par_ = 1;
+			const char* vecchia_ordering = nullptr, const char* vecchia_pred_type = nullptr, int num_neighbors_pred = 30,
+			const char* likelihood = nullptr) {
 			CHECK(num_data > 0);
 			num_data_ = num_data;
 			vecchia_approx_ = vecchia_approx;
 
+			//Set up likelihood
+			string_t likelihood_strg;
+			if (likelihood == nullptr) {
+				likelihood_strg = "gaussian";
+			}
+			else {
+				likelihood_strg = std::string(likelihood);
+			}
+			gauss_likelihood_ = likelihood_strg == "gaussian";
+			if (gauss_likelihood_) {
+				num_cov_par_ = 1;//error variance (nugget effect)
+			}
+			else {
+				num_cov_par_ = 0;
+			}
 			//Set up GP IDs
 			SetUpGPIds(num_data_, cluster_ids_data, num_data_per_cluster_, data_indices_per_cluster_, unique_clusters_, num_clusters_);
 			//Indices of parameters of individual components in joint parameter vector
-			ind_par_.push_back(num_cov_par_);// 1 is starting point of parameter for first component since the first parameter is the nugget effect variance
+			ind_par_.push_back(num_cov_par_);//First re_comp has either index 0 or 1 (if there is an nugget effect)
 			num_comps_total_ = 0;
-
 			//Do some checks for grouped RE components and set meta data (number of components etc.)
 			std::vector<std::vector<string_t>> re_group_levels;//Matrix with group levels for the grouped random effects (re_group_levels[j] contains the levels for RE number j)
 			if (num_re_group > 0) {
@@ -167,7 +182,6 @@ namespace GPBoost {
 				for (int j = 0; j < num_gp_total_; ++j) {
 					ind_par_.push_back(ind_par_.back() + 2);//end points of parameter indices of components
 				}
-
 				if (vecchia_approx) {
 					double num_mem_d = ((double)num_gp_total_) * ((double)num_data_) * ((double)num_neighbors_) * ((double)num_neighbors_);
 					int mem_size = (int)(num_mem_d * 8. / 1000000.);
@@ -175,9 +189,8 @@ namespace GPBoost {
 						Log::Warning("The current implementation of the Vecchia approximation is not optimized for memory usage. In your case (num. obs. = %d and num. neighbors = %d), at least approximately %d mb of memory is needed. If this is a problem, contact the developer of this package and ask to implement this feature.", num_data_, num_neighbors_, mem_size);
 					}
 				}
-
 			}
-
+			// Decide whether to use the Woodbury identity (i.e. do matrix inversion on the b scale and not the Zb scale)
 			if (num_re_group_ > 0 && num_gp_total_ == 0) {
 				do_symbolic_decomposition_ = true;//Symbolic decompostion is only done if sparse matrices are used
 				use_woodbury_identity_ = true;//Faster to use Woodbury identity since the dimension of the random effects is typically much smaller than the number of data points
@@ -188,7 +201,7 @@ namespace GPBoost {
 				do_symbolic_decomposition_ = false;
 				use_woodbury_identity_ = false;
 			}
-
+			only_one_random_effect_ = num_re_group_total_ == 1 && num_comps_total_ == 1;
 			//Create RE/GP component models
 			for (const auto& cluster_i : unique_clusters_) {
 				std::vector<std::shared_ptr<RECompBase<T1>>> re_comps_cluster_i;
@@ -199,13 +212,11 @@ namespace GPBoost {
 					std::vector<Triplet_t> entries_init_B_cluster_i;
 					std::vector<Triplet_t> entries_init_B_grad_cluster_i;
 					std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_per_cluster_[cluster_i]);
-
 					CreateREComponentsVecchia(num_data_, data_indices_per_cluster_, cluster_i, num_data_per_cluster_,
 						gp_coords_data, dim_gp_coords_, gp_rand_coef_data, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, re_comps_cluster_i,
 						nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
 						entries_init_B_cluster_i, entries_init_B_grad_cluster_i,
 						z_outer_z_obs_neighbors_cluster_i, vecchia_ordering_, num_neighbors_);
-
 					nearest_neighbors_.insert({ cluster_i, nearest_neighbors_cluster_i });
 					dist_obs_neighbors_.insert({ cluster_i, dist_obs_neighbors_cluster_i });
 					dist_between_neighbors_.insert({ cluster_i, dist_between_neighbors_cluster_i });
@@ -217,7 +228,6 @@ namespace GPBoost {
 					CreateREComponents(num_data_, num_re_group_, data_indices_per_cluster_, cluster_i, re_group_levels, num_data_per_cluster_,
 						num_re_group_rand_coef_, re_group_rand_coef_data, ind_effect_group_rand_coef_, num_gp_, gp_coords_data,
 						dim_gp_coords_, gp_rand_coef_data, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, ind_intercept_gp_, !use_woodbury_identity_, re_comps_cluster_i);
-
 					if (use_woodbury_identity_) {//Create matrices Z and ZtZ if Woodbury identity is used (used only if there are only grouped REs and no GPs)
 						CHECK(num_comps_total_ == num_re_group_total_);
 						std::vector<data_size_t> cum_num_rand_eff_cluster_i(num_comps_total_ + 1);
@@ -270,7 +280,21 @@ namespace GPBoost {
 			if (vecchia_approx_) {
 				Log::Info("Nearest neighbors for Vecchia approximation found");
 			}
-
+			//Initialize likelihoods
+			for (const auto& cluster_i : unique_clusters_) {
+				if (use_woodbury_identity_) {
+					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T2>>(new Likelihood<T2>(likelihood_strg,
+						num_data_per_cluster_[cluster_i], cum_num_rand_eff_[cluster_i][num_comps_total_]));
+				}
+				else {
+					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T2>>(new Likelihood<T2>(likelihood_strg,
+						num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]));
+				}
+				//note: this is usually not used for Gaussian data (only for the boosting part in the GPBoost algorithm calling 'GetLikelihood'
+				if (!gauss_likelihood_) {
+					likelihood_[cluster_i]->InitializeModeAvec();
+				}
+			}
 
 			////Following only prints stuff for debugging
 
@@ -311,8 +335,7 @@ namespace GPBoost {
 			//	}
 			//	ii++;
 			//}
-
-		}
+		}//end REModelTemplate
 
 		/*! \brief Destructor */
 		~REModelTemplate() {
@@ -323,6 +346,43 @@ namespace GPBoost {
 
 		/*! \brief Disable copy */
 		REModelTemplate(const REModelTemplate&) = delete;
+
+		/*!
+		* \brief Returns the type of likelihood
+		*/
+		string_t GetLikelihood() {
+			return(likelihood_[unique_clusters_[0]]->GetLikelihood());
+		}
+
+		/*!
+		* \brief Set / change the type of likelihood
+		* \param likelihood Likelihood name
+		*/
+		void SetLikelihood(const string_t& likelihood) {
+			for (const auto& cluster_i : unique_clusters_) {
+				likelihood_[cluster_i]->SetLikelihood(likelihood);
+			}
+			gauss_likelihood_ = likelihood == "gaussian";
+			num_cov_par_ = num_re_group_total_ + (2 * num_gp_total_);
+			ind_par_ = std::vector<data_size_t>();
+			if (gauss_likelihood_) {
+				num_cov_par_++;//nugget effect
+				ind_par_.push_back(1);
+			}
+			else {
+				for (const auto& cluster_i : unique_clusters_) {
+					likelihood_[cluster_i]->InitializeModeAvec();
+				}
+				ind_par_.push_back(0);
+			}
+			//Add indices of parameters of individual components in joint parameter vector
+			for (int j = 0; j < num_re_group_total_; ++j) {
+				ind_par_.push_back(ind_par_.back() + 1);//end points of parameter indices of components
+			}
+			for (int j = 0; j < num_gp_total_; ++j) {
+				ind_par_.push_back(ind_par_.back() + 2);//end points of parameter indices of components
+			}
+		}
 
 		/*!
 		* \brief Find linear regression coefficients and covariance parameters that minimize the negative log-ligelihood (=MLE) using (Nesterov accelerated) gradient descent
@@ -343,7 +403,7 @@ namespace GPBoost {
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
 		* \param max_iter Maximal number of iterations
 		* \param delta_rel_conv Convergence criterion: stop iteration if relative change in in parameters is below this value
-		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters. Default = true
+		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters. Default = true, only used for "gradient_descent"
 		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
 		* \param optimizer_cov Optimizer for covariance parameters. Options: "gradient_descent" or "fisher_scoring" (default)
 		* \param optimizer_coef Optimizer for coefficients. Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares, default)
@@ -351,31 +411,82 @@ namespace GPBoost {
 		* \param[out] std_dev_coef Standard deviations for the coefficients
 		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
+		* \param fixed_effects Fixed effects component of location parameter (only used for non-Gaussian data)
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates,
 			double* optim_cov_pars, double* optim_coef, int& num_it, double* init_cov_pars, double* init_coef = nullptr,
 			double lr_coef = 0.01, double lr_cov = -1., double acc_rate_coef = 0.1, double acc_rate_cov = 0.5, int momentum_offset = 2,
 			int max_iter = 1000, double delta_rel_conv = 1.0e-6, bool use_nesterov_acc = true, int nesterov_schedule_version = 0,
 			string_t optimizer_cov = "fisher_scoring", string_t optimizer_coef = "wls", double* std_dev_cov_par = nullptr,
-			double* std_dev_coef = nullptr, bool calc_std_dev = false, string_t convergence_criterion = "relative_change_in_log_likelihood") {
-			// If optim_learning_rate_halving==true, the learning rate is halved when the negative log - likelihood increases. TODO: enable some sort of safeguard also when Nesterov acceleation is used
-			bool optim_learning_rate_halving = !use_nesterov_acc;
+			double* std_dev_coef = nullptr, bool calc_std_dev = false, string_t convergence_criterion = "relative_change_in_log_likelihood",
+			const double* fixed_effects = nullptr) {
 			// Some checks
+			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
+				Log::Fatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov.c_str());
+			}
+			if (SUPPORTED_CONV_CRIT_.find(convergence_criterion) == SUPPORTED_CONV_CRIT_.end()) {
+				Log::Fatal("Convergence criterion '%s' is not supported.", convergence_criterion.c_str());
+			}
+			if (!gauss_likelihood_) {
+				if(optimizer_cov != "gradient_descent") {
+					Log::Fatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian data. Only 'gradient_descent' is supported.", optimizer_cov.c_str());
+				}
+				if (calc_std_dev) {
+					Log::Fatal("Calculation of standard deviations is not supported for non-Gaussian data.");
+				}
+			}
+			if (covariate_data != nullptr) {
+				if (SUPPORTED_OPTIM_COEF_.find(optimizer_coef) == SUPPORTED_OPTIM_COEF_.end()) {
+					Log::Fatal("Optimizer option '%s' is not supported for regression coefficients.", optimizer_coef.c_str());
+				}
+				if (!gauss_likelihood_ && optimizer_coef != "gradient_descent") {
+					Log::Fatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian data. Only 'gradient_descent' is supported.", optimizer_coef.c_str());
+				}
+			}
+			if (gauss_likelihood_ && fixed_effects != nullptr) {
+				Log::Fatal("Additional external fixed effects in 'fixed_effects' can currently only be used for non-Gaussian data");
+			}
+			// Initialization of variables
 			if (covariate_data == nullptr) {
 				has_covariates_ = false;
 			}
 			else {
 				has_covariates_ = true;
 			}
-			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
-				Log::Fatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov.c_str());
+			bool use_nesterov_acc_coef = use_nesterov_acc;
+			if (optimizer_cov != "gradient_descent") {
+				use_nesterov_acc = false;//Nesterov acceleration is only used for gradient descent, not for Fisher scoring
 			}
-			if (SUPPORTED_OPTIM_COEF_.find(optimizer_coef) == SUPPORTED_OPTIM_COEF_.end() && has_covariates_) {
-				Log::Fatal("Optimizer option '%s' is not supported for regression coefficients.", optimizer_coef.c_str());
+			if (optimizer_coef != "gradient_descent") {
+				use_nesterov_acc_coef = false;//Nesterov acceleration is only used for gradient descent, not for Fisher scoring
 			}
-			CHECK(SUPPORTED_CONF_CRIT_.find(convergence_criterion) != SUPPORTED_CONF_CRIT_.end());
-			// Definition and initialization of regression coefficients related variables
-			vec_t beta, beta_lag1, beta_acc, resid;
+			bool terminate_optim = false;
+			num_it = max_iter;
+			bool profile_out_marginal_variance = (optimizer_cov == "gradient_descent" && gauss_likelihood_);
+			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
+			const double* fixed_effects_ptr = fixed_effects;
+			// Initialization of covariance parameters related variables
+			if (lr_cov < 0.) {//a value below 0 indicates that the default values should be used
+				if (optimizer_cov == "fisher_scoring") {
+					lr_cov = 1.;
+				}
+				else if (optimizer_cov == "gradient_descent") {
+					lr_cov = 0.01;
+				}
+			}
+			vec_t cov_pars = Eigen::Map<const vec_t>(init_cov_pars, num_cov_par_);
+			vec_t cov_pars_lag1 = vec_t(num_cov_par_);//used only if convergence_criterion == "relative_change_in_parameters"
+			vec_t cov_pars_after_grad_aux;//auxiliary variable used only if use_nesterov_acc == true
+			vec_t cov_pars_after_grad_aux_lag1 = cov_pars;//auxiliary variable used only if use_nesterov_acc == true
+			// Set response variabla data (if needed)
+			if ((!has_covariates_ || !gauss_likelihood_) && y_data != nullptr) {
+				SetY(y_data);
+			}
+			if (!gauss_likelihood_) {
+				CHECK(y_has_been_set_);//response variable data needs to have been set before for non-Gaussian data
+			}
+			// Initialization of linear regression coefficients related variables
+			vec_t beta, beta_lag1, beta_after_grad_aux, beta_after_grad_aux_lag1, resid, fixed_effects_vec;
 			if (has_covariates_) {
 				num_coef_ = num_covariates;
 				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_coef_);
@@ -392,7 +503,6 @@ namespace GPBoost {
 				if (!has_intercept) {
 					Log::Warning("The covariate data contains no column of ones. This means that there is no intercept included.");
 				}
-				y_vec_ = Eigen::Map<const vec_t>(y_data, num_data_);
 				beta = vec_t(num_covariates);
 				if (init_coef == nullptr) {
 					beta.setZero();
@@ -400,202 +510,122 @@ namespace GPBoost {
 				else {
 					beta = Eigen::Map<const vec_t>(init_coef, num_covariates);
 				}
-				beta_lag1 = vec_t(num_covariates);
-				beta_acc = vec_t(num_covariates);
-			}
-			// Definition and initialization of covariance parameters related variables
-			if (lr_cov <= 0.) {
-				if (optimizer_cov == "fisher_scoring") {
-					lr_cov = 1.;
+				beta_after_grad_aux_lag1 = beta;
+				if (gauss_likelihood_) {
+					CHECK(y_data != nullptr);
+					// Copy of response data (used only for Gaussian data and if there are also linear covariates since then y_ is modified during the optimization algorithm and this contains the original data)
+					y_vec_ = Eigen::Map<const vec_t>(y_data, num_data_);
+					resid = y_vec_ - (X_ * beta);
+					SetY(resid.data());
 				}
-				else if (optimizer_cov == "gradient_descent") {
-					lr_cov = 0.01;
+				else {
+					fixed_effects_vec = X_ * beta;
+					if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_; ++i) {
+							fixed_effects_vec[i] += fixed_effects[i];
+						}
+					}
+					fixed_effects_ptr = fixed_effects_vec.data();
 				}
-			}
-			double lr_cov_init = lr_cov;
-			if (!has_covariates_) {
-				SetY(y_data);
-			}
-			vec_t cov_pars = Eigen::Map<const vec_t>(init_cov_pars, num_cov_par_);
-			vec_t cov_pars_lag1 = vec_t(num_cov_par_);
-			vec_t cov_pars_acc = vec_t(num_cov_par_);
+			}//end if has_covariates_
 			Log::Debug("Initial covariance parameters");
 			for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %g", i, cov_pars[i]); }
-			// Initialization of remaining variables
-			double neg_log_like = 1e99;
-			double neg_log_like_lag1 = neg_log_like;
-			bool terminate_optim = false;
-			bool CalcCovFactor_already_done = false;
-			num_it = max_iter;
+			if (has_covariates_) {
+				Log::Debug("Initial linear regression coefficients");
+				for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %g", i, beta[i]); }
+			}
+			// Initialize optimizer:
+			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian data)
+			// - calculate initial value of objective function
+			CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
+			// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
+			if (gauss_likelihood_) {
+				Log::Debug("Initial negative log-likelihood: %g", neg_log_likelihood_);
+			}
+			else {
+				Log::Debug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
+			}
 			// Start optimization
 			for (int it = 0; it < max_iter; ++it) {
-				if (convergence_criterion == "relative_change_in_log_likelihood" || optim_learning_rate_halving) {
-					neg_log_like_lag1 = neg_log_like;
-				}
-				// Factorize the covariance matrix
-				// Note: this is typically done here only once in the first iteration, afterwards this has already been done when calculating the likelihood in the previous iteratio
-				if (!CalcCovFactor_already_done) {
-					SetCovParsComps(cov_pars);
-					CalcCovFactor(vecchia_approx_, true, 1., false);
-				}
-				// Update linear regression coefficients using gradient descent or generalized least squares
+				neg_log_likelihood_lag1_ = neg_log_likelihood_;
+				cov_pars_lag1 = cov_pars;
+				// Update linear regression coefficients using gradient descent or generalized least squares (the latter option only for Gaussian data)
 				if (has_covariates_) {
-					// Apply momentum step to regression coefficients
-					if (use_nesterov_acc && optimizer_coef == "gradient_descent" && it > 0) {
-						ApplyMomentumStep(it, beta, beta_lag1, beta_acc, acc_rate_coef, nesterov_schedule_version, false, momentum_offset, false);
-						beta_lag1 = beta;
-						beta = beta_acc;
-					}
-					else {
-						beta_lag1 = beta;
-					}
+					beta_lag1 = beta;
 					if (optimizer_coef == "gradient_descent") {// one step of gradient descent
-						resid = y_vec_ - (X_ * beta);
-						SetY(resid.data());
-						CalcYAux();
-						UpdateCoefGradOneIter(lr_coef, cov_pars[0], X_, beta);
+						vec_t grad_beta;
+						// Calculate gradient for linear regression coefficients
+						CalcLinCoefGrad(cov_pars[0], beta, grad_beta, fixed_effects_ptr);
+						// Update linear regression coefficients, apply step size safeguard, and recalculate mode for Laplace approx. (only for non-Gaussian data)
+						UpdateLinCoef(beta, grad_beta, lr_coef, cov_pars, use_nesterov_acc_coef, it, beta_after_grad_aux, beta_after_grad_aux_lag1,
+							acc_rate_coef, nesterov_schedule_version, momentum_offset, fixed_effects, fixed_effects_vec);
+						fixed_effects_ptr = fixed_effects_vec.data();
 					}
-					else if (optimizer_coef == "wls") {// coordinate descent using generalized least squares
+					else if (optimizer_coef == "wls") {// coordinate descent using generalized least squares (only for Gaussian data)
+						CHECK(gauss_likelihood_);
 						SetY(y_vec_.data());
 						CalcYAux();
 						UpdateCoefGLS(X_, beta);
+						// Set resid for updating covariance parameters
+						resid = y_vec_ - (X_ * beta);
+						SetY(resid.data());
+						// Calculate y_aux = Psi^-1 * y (if not use_woodbury_identity_) or y_tilde and y_tilde2 (if use_woodbury_identity_) for covariance parameter update (only for Gaussian data)
+						if (use_woodbury_identity_) {
+							CalcYtilde<T1>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
+						}
+						else {
+							CalcYAux();//y_aux = Psi^-1 * y
+						}
+						EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_likelihood_after_lin_coef_update_, true, true, true);
 					}
-					// Set resid for updating covariance parameters
-					resid = y_vec_ - (X_ * beta);
-					SetY(resid.data());
 				}// end update regression coefficients
-				// Update covariance parameters using gradient descent or Fisher scoring
-				// Apply Nesterov momentum
-				if (use_nesterov_acc && it > 0) {
-					ApplyMomentumStep(it, cov_pars, cov_pars_lag1, cov_pars_acc, acc_rate_cov, nesterov_schedule_version, true, momentum_offset, true);
-					cov_pars_lag1 = cov_pars;
-					cov_pars = cov_pars_acc;
-				}
 				else {
-					cov_pars_lag1 = cov_pars;
+					neg_log_likelihood_after_lin_coef_update_ = neg_log_likelihood_lag1_;
 				}
-				// Calculate y_aux = Psi^-1 * y (if not use_woodbury_identity_) or y_tilde and y_tilde2 (if use_woodbury_identity_) for covariance parameter gradient calculation
-				// Note: this is typically done here only once in the first iteration (if convergence_criterion == "relative_change_in_log_likelihood"), afterwards this has already been done when calculating the likelihood in the previous iteration
-				if (!CalcCovFactor_already_done || has_covariates_) {
-					if (use_woodbury_identity_) {
-						CalcYtilde<T1>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
-					}
-					else {
-						CalcYAux();//y_aux = Psi^-1 * y
-					}
-				}
+				// Update covariance parameters using one step of gradient descent or Fisher scoring	
 				// Calculate gradient or natural gradient = FI^-1 * grad (for Fisher scoring)
 				vec_t nat_grad; // nat_grad = grad for gradient descent and nat_grad = FI^-1 * grad for Fisher scoring (="natural" gradient)
 				if (optimizer_cov == "gradient_descent") {//gradient descent
-					// First, profile out sigma (=use closed-form expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
-					CalcYTPsiIInvY<T1>(cov_pars[0], true, 1, true, true);
-					cov_pars[0] /= num_data_;
-					sigma2_ = cov_pars[0];
-					CalcCovParGrad(cov_pars, nat_grad, false, false);
+					if (gauss_likelihood_) {
+						// First, profile out sigma (=use closed-form expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
+						CalcYTPsiIInvY<T1>(cov_pars[0], true, 1, true, true);
+						cov_pars[0] /= num_data_;
+						sigma2_ = cov_pars[0];
+					}
+					CalcCovParGrad(cov_pars, nat_grad, false, false, fixed_effects_ptr);
 				}
 				else if (optimizer_cov == "fisher_scoring") {//Fisher scoring
 					// We don't profile out sigma (=don't use closed-form expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
 					vec_t grad;
 					den_mat_t FI;
-					CalcCovParGrad(cov_pars, grad, true, true);
+					CalcCovParGrad(cov_pars, grad, true, true, fixed_effects_ptr);
 					CalcFisherInformation(cov_pars, FI, true, true, true);
 					nat_grad = FI.llt().solve(grad);
 				}
-				// Safeguard agains too large steps by applying step halving to the learning rate
-				if (optim_learning_rate_halving) {
-					vec_t cov_pars_new(num_cov_par_);
-					if (optimizer_cov == "gradient_descent") {
-						cov_pars_new[0] = cov_pars[0];
-					}
-					bool decrease_found = false;
-					bool halving_done = false;
-					for (int ih = 0; ih < MAX_NUMBER_HALVING_STEPS_; ++ih) {
-						if (optimizer_cov == "gradient_descent") {
-							cov_pars_new.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - lr_cov * nat_grad.array()).exp().matrix();//make update on log-scale
-						}
-						else if (optimizer_cov == "fisher_scoring") {
-							cov_pars_new = (cov_pars.array().log() - lr_cov * nat_grad.array()).exp().matrix();//make update on log-scale
-						}
-						SetCovParsComps(cov_pars_new);
-						CalcCovFactor(vecchia_approx_, true, 1., false);//Create covariance matrix and factorize it (and also calculate derivatives if Vecchia approximation is used)
-						if (use_woodbury_identity_) {
-							CalcYtilde<T1>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
-						}
-						else {
-							CalcYAux();//y_aux = Psi^-1 * y
-						}
-						EvalNegLogLikelihood(nullptr, cov_pars_new.data(), neg_log_like, true, true, true);
-						if (neg_log_like <= neg_log_like_lag1) {
-							decrease_found = true;
-							break;
-						}
-						else {
-							halving_done = true;
-							lr_cov *= 0.5;
-							if (has_covariates_ && optimizer_coef == "gradient_descent") {
-								lr_coef *= 0.5;
-							}
-						}
-					}
-					if (halving_done) {
-						if (optimizer_cov == "fisher_scoring") {
-							Log::Debug("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased in this iteration.", it + 1);
-						}
-						else if (optimizer_cov == "gradient_descent") {
-							Log::Debug("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. The learning rate has been decreased permanently. New learning rate = %g", it + 1, lr_cov);
-						}
-					}
-					if (!decrease_found) {
-						Log::Debug("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
-					}
-					if (halving_done && optimizer_cov == "fisher_scoring") {
-						// reset lr_cov to initial value for Fisher scoring for next iteration. I.e., step halving is done newly in every iterarion of Fisher scoring
-						lr_cov = lr_cov_init;
-					}
-					cov_pars = cov_pars_new;
-					CalcCovFactor_already_done = true;
-				}// end optim_learning_rate_halving
-				else {// no safeguard agains too large steps 
-					if (optimizer_cov == "gradient_descent") {
-						cov_pars.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - lr_cov * nat_grad.array()).exp().matrix();//make update on log-scale
-					}
-					else if (optimizer_cov == "fisher_scoring") {
-						cov_pars = (cov_pars.array().log() - lr_cov * nat_grad.array()).exp().matrix();//make update on log-scale
-					}
-					// Calculate new negative log-likelihood
-					if (convergence_criterion == "relative_change_in_log_likelihood") {
-						SetCovParsComps(cov_pars);
-						CalcCovFactor(vecchia_approx_, true, 1., false);//Create covariance matrix and factorize it (and also calculate derivatives if Vecchia approximation is used)
-						if (use_woodbury_identity_) {
-							CalcYtilde<T1>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
-						}
-						else {
-							CalcYAux();//y_aux = Psi^-1 * y
-						}
-						CalcCovFactor_already_done = true;
-						EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_like, true, true, true);
-						if (neg_log_like > neg_log_like_lag1&& use_nesterov_acc) {
-							Log::Debug("GPModel covariance parameter estimation: No decrease in negative log-likelihood in iteration number %d. There is no safeguard (halving of the learning rate) in place when applying Nesterov acceleration ", it + 1);
-						}
-					}
+				// Update covariance parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
+				UpdateCovPars(cov_pars, nat_grad, lr_cov, profile_out_marginal_variance, use_nesterov_acc, it, optimizer_cov,
+					cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, acc_rate_cov, nesterov_schedule_version, momentum_offset, fixed_effects_ptr);
+				// Check for NA or Inf
+				if (std::isnan(cov_pars[0]) || std::isinf(cov_pars[0])) {
+					Log::Fatal("NaN or Inf occurred in covariance parameters. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
 				}
-				CheckNaNInf(cov_pars);
-				//Check convergence
-				bool likelihood_is_na = std::isnan(neg_log_like) || std::isinf(neg_log_like);//if the likelihood is NA, we monitor the parameters instead of the likelihood
+				// Check convergence
+				bool likelihood_is_na = std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_);//if the likelihood is NA, we monitor the parameters instead of the likelihood
 				if (convergence_criterion == "relative_change_in_parameters" || likelihood_is_na) {
 					if (has_covariates_) {
-						if (((beta - beta_lag1).norm() / beta_lag1.norm() < delta_rel_conv) && ((cov_pars - cov_pars_lag1).norm() / cov_pars_lag1.norm() < delta_rel_conv)) {
+						if (((beta - beta_lag1).norm() < delta_rel_conv * beta_lag1.norm()) && ((cov_pars - cov_pars_lag1).norm() < delta_rel_conv * cov_pars_lag1.norm())) {
 							terminate_optim = true;
 						}
 					}
 					else {
-						if ((cov_pars - cov_pars_lag1).norm() / cov_pars_lag1.norm() < delta_rel_conv) {
+						if ((cov_pars - cov_pars_lag1).norm() < delta_rel_conv * cov_pars_lag1.norm()) {
 							terminate_optim = true;
 						}
 					}
 				}
 				else if (convergence_criterion == "relative_change_in_log_likelihood") {
-					if (std::abs((neg_log_like - neg_log_like_lag1) / neg_log_like_lag1) < delta_rel_conv) {
+					if (std::abs(neg_log_likelihood_ - neg_log_likelihood_lag1_) < delta_rel_conv * std::abs(neg_log_likelihood_lag1_)){
 						terminate_optim = true;
 					}
 				}
@@ -604,8 +634,11 @@ namespace GPBoost {
 					Log::Debug("Covariance parameter optimization iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %g", i, cov_pars[i]); }
 					for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %g", i, beta[i]); }
-					if (convergence_criterion == "relative_change_in_log_likelihood" || optim_learning_rate_halving) {
-						Log::Debug("Negative log-likelihood: %g", neg_log_like);
+					if (gauss_likelihood_) {
+						Log::Debug("Negative log-likelihood: %g", neg_log_likelihood_);
+					}
+					else {
+						Log::Debug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
 					}
 				}
 				// Check whether to terminate
@@ -613,16 +646,16 @@ namespace GPBoost {
 					num_it = it + 1;
 					break;
 				}
-			}
+			}//end for loop for optimization
 			if (num_it == max_iter) {
-				Log::Debug("GPModel covariance parameter estimation: no convergence after the maximal number of iterations");
+				Log::Debug("GPModel: no convergence after the maximal number of iterations");
 			}
 			for (int i = 0; i < num_cov_par_; ++i) {
 				optim_cov_pars[i] = cov_pars[i];
 			}
 			if (calc_std_dev) {
 				vec_t std_dev_cov(num_cov_par_);
-				CalcStdDevCovPar(cov_pars, std_dev_cov);
+				CalcStdDevCovPar(cov_pars, std_dev_cov);//TODO: maybe another call to CalcCovFactor can be avoided in CalcStdDevCovPar (need to take care of cov_pars[0])
 				for (int i = 0; i < num_cov_par_; ++i) {
 					std_dev_cov_par[i] = std_dev_cov[i];
 				}
@@ -639,7 +672,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}
+		}//end OptimLinRegrCoefCovPar
 
 		/*!
 		* \brief Calculate the value of the negative log-likelihood
@@ -647,20 +680,17 @@ namespace GPBoost {
 		* \param cov_pars Values for covariance parameters of RE components
 		* \param[out] negll Negative log-likelihood
 		* \param CalcCovFactor_already_done If true, it is assumed that the covariance matrix has already been factorized
-		* \param CalcYAux_already_done If true, it is assumed that y_aux_=Psi^-1y_ has already been calculated (only relevant for not use_woodbury_identity_)
+		* \param CalcYAux_already_done If true, it is assumed that y_aux_=Psi^-1y_ has already been calculated (only relevant if not use_woodbury_identity_)
 		* \param CalcYtilde_already_done If true, it is assumed that y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z), has already been calculated (only relevant for use_woodbury_identity_)
 		*/
-		void EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll,
+		void EvalNegLogLikelihood(const double* y_data, const double* cov_pars, double& negll,
 			bool CalcCovFactor_already_done = false, bool CalcYAux_already_done = false, bool CalcYtilde_already_done = false) {
 			CHECK(!(CalcYAux_already_done && !CalcCovFactor_already_done));// CalcYAux_already_done && !CalcCovFactor_already_done makes no sense
 			if (y_data != nullptr) {
 				SetY(y_data);
 			}
-			else {
-				CHECK(CalcYAux_already_done || CalcYtilde_already_done);
-			}
 			if (!CalcCovFactor_already_done) {
-				vec_t cov_pars_vec = Eigen::Map<vec_t>(cov_pars, num_cov_par_);
+				const vec_t cov_pars_vec = Eigen::Map<const vec_t>(cov_pars, num_cov_par_);
 				SetCovParsComps(cov_pars_vec);
 				CalcCovFactor(false, true, 1., false);//Create covariance matrix and factorize it
 			}
@@ -687,7 +717,52 @@ namespace GPBoost {
 				}
 			}
 			negll = yTPsiInvy / 2. / cov_pars[0] + log_det / 2. + num_data_ / 2. * (std::log(cov_pars[0]) + std::log(2 * M_PI));
-		}
+		}//end EvalNegLogLikelihood
+
+		/*!
+		* \brief Calculate the value of the approximate negative marginal log-likelihood obtained when using the Laplace approximation
+		* \param y_data Response variable data
+		* \param cov_pars Values for covariance parameters of RE components
+		* \param[out] negll Approximate negative marginal log-likelihood
+		* \param fixed_effects Fixed effects component of location parameter
+		* \param InitializeModeCovMat If true, posterior mode is initialized to 0 and the covariance matrix is calculated. Otherwise, existing values are used
+		* \param CalcModePostRandEff_already_done If true, it is assumed that the posterior mode of the random effects has already been calculated
+		*/
+		void EvalLAApproxNegLogLikelihood(const double* y_data, const double* cov_pars, double& negll,
+			const double* fixed_effects = nullptr, bool InitializeModeCovMat = true, bool CalcModePostRandEff_already_done = false) {
+			if (y_data != nullptr) {
+				SetY(y_data);
+			}
+			else {
+				if (!CalcModePostRandEff_already_done) {
+					CHECK(y_has_been_set_);
+				}
+			}
+			if (InitializeModeCovMat) {
+				CHECK(cov_pars != nullptr);
+			}
+			if (CalcModePostRandEff_already_done) {
+				negll = neg_log_likelihood_;//Whenever the mode is calculated that likelihood is calculated as well. So we might as well just return the saved neg_log_likelihood_
+			}
+			else {//not CalcModePostRandEff_already_done
+				if (InitializeModeCovMat) {
+					//We reset the initial modes to 0. This is done to avoid that different calls to EvalLAApproxNegLogLikelihood lead to (very small) differences.
+					for (const auto& cluster_i : unique_clusters_) {
+						likelihood_[cluster_i]->InitializeModeAvec();//TODO: maybe ommit this step?
+					}
+					const vec_t cov_pars_vec = Eigen::Map<const vec_t>(cov_pars, num_cov_par_);
+					SetCovParsComps(cov_pars_vec);
+					if (vecchia_approx_) {
+						CalcCovFactor(true, true, 1., false);
+					}
+					else {
+						CalcSigmaComps();
+						CalcCovMatrixNonGauss();
+					}
+				}//end InitializeModeCovMat
+				negll = -CalcModePostRandEff(fixed_effects);
+			}//end not CalcModePostRandEff_already_done
+		}//end EvalLAApproxNegLogLikelihood
 
 		/*!
 		* \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
@@ -711,9 +786,6 @@ namespace GPBoost {
 			}
 			if (re_group_data_pred == nullptr) {
 				re_group_levels_pred_.clear();
-				if (num_re_group_ > 0) {
-					Log::Fatal("No group data is provided for making predictions");
-				}
 			}
 			else {
 				//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_re_group_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
@@ -744,19 +816,22 @@ namespace GPBoost {
 			else {
 				covariate_data_pred_ = std::vector<double>(covariate_data_pred, covariate_data_pred + num_data_pred * num_coef_);
 			}
-		}
+		}//end SetPredictionData
 
 		/*!
-		* \brief Make predictions: calculate conditional mean and covariance matrix
+		* \brief Make predictions: calculate conditional mean and variances or covariance matrix
 		*		 Note: You should pre-allocate memory for out_predict
-		*			   Its length is equal to num_data_pred if only the conditional mean is predicted (predict_cov_mat=false)
-		*			   or num_data_pred * (1 + num_data_pred) if both the conditional mean and covariance matrix are predicted (predict_cov_mat=true)
+		*			   Its length is equal to num_data_pred if only the conditional mean is predicted (predict_cov_mat==false && predict_var==false)
+		*			   or num_data_pred * (1 + num_data_pred) if the predictive covariance matrix is also calculated (predict_cov_mat==true)
+		*			   or num_data_pred * 2 if predictive variances are also calculated (predict_var==true)
 		* \param cov_pars_pred Covariance parameters of components
 		* \param y_obs Response variable for observed data
 		* \param num_data_pred Number of data points for which predictions are made
-		* \param[out] out_predict Conditional mean at prediciton points (="predicted value") followed by (if predict_cov_mat=true) the conditional covariance matrix at in column-major format
+		* \param[out] out_predict Predictive/conditional mean at prediciton points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
 		* \param calc_cov_factor If true, the covariance matrix of the observed data is factorized otherwise a previously done factorization is used (default=true)
-		* \param predict_cov_mat If true, the conditional covariance matrix is calculated (default=false)
+		* \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
+		* \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
+		* \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects (this is only relevant for non-Gaussian data) (default=false)
 		* \param covariate_data_pred Covariate data (=independent variables, features) for prediction
 		* \param coef_pred Coefficients for linear covariates
 		* \param cluster_ids_data_pred IDs / labels indicating independent realizations of Gaussian processes (same values = same process realization) for which predictions are to be made
@@ -767,15 +842,18 @@ namespace GPBoost {
 		* \param use_saved_data If true, saved data is used and some arguments are ignored
 		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
+		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
+		* \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
 		*/
 		void Predict(const double* cov_pars_pred, const double* y_obs, data_size_t num_data_pred,
-			double* out_predict, bool calc_cov_factor = true, bool predict_cov_mat = false,
+			double* out_predict, bool calc_cov_factor = true, bool predict_cov_mat = false, bool predict_var = false, bool predict_response = false,
 			const double* covariate_data_pred = nullptr, const double* coef_pred = nullptr,
 			const gp_id_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
 			const double* re_group_rand_coef_data_pred = nullptr, double* gp_coords_data_pred = nullptr,
 			const double* gp_rand_coef_data_pred = nullptr, bool use_saved_data = false,
-			const char* vecchia_pred_type = nullptr, int num_neighbors_pred = -1) {
-			//Should previously set data be used?
+			const char* vecchia_pred_type = nullptr, int num_neighbors_pred = -1,
+			const double* fixed_effects = nullptr, const double* fixed_effects_pred = nullptr) {
+			//First check whether previously set data should be used?
 			std::vector<std::vector<string_t>> re_group_levels_pred;//Matrix with group levels for the grouped random effects (re_group_levels_pred[j] contains the levels for RE number j)
 			if (use_saved_data) {
 				re_group_levels_pred = re_group_levels_pred_;
@@ -811,42 +889,52 @@ namespace GPBoost {
 				}
 			}
 			else {
-				if (num_re_group_ > 0) {
-					if (re_group_data_pred == nullptr) {
-						Log::Fatal("No group data is provided for making predictions");
-					}
-					else {
-						//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_re_group_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
-						re_group_levels_pred = std::vector<std::vector<string_t>>(num_re_group_, std::vector<string_t>(num_data_pred));
-						ConvertCharToStringGroupLevels(num_data_pred, num_re_group_, re_group_data_pred, re_group_levels_pred);
-					}
+				if (re_group_data_pred != nullptr) {
+					//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_re_group_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
+					re_group_levels_pred = std::vector<std::vector<string_t>>(num_re_group_, std::vector<string_t>(num_data_pred));
+					ConvertCharToStringGroupLevels(num_data_pred, num_re_group_, re_group_data_pred, re_group_levels_pred);
 				}
 			}
 			//Some checks
 			CHECK(num_data_pred > 0);
+			//Check whether required data is missing
+			if (re_group_rand_coef_data_pred == nullptr && num_re_group_rand_coef_ > 0) {
+				Log::Fatal("Missing covariate data for random coefficients for grouped random effects for making predictions");
+			}
+			if (gp_coords_data_pred == nullptr && num_gp_ > 0) {
+				Log::Fatal("Missing coordinate data for Gaussian process for making predictions");
+			}
+			if (gp_rand_coef_data_pred == nullptr && num_gp_rand_coef_ > 0) {
+				Log::Fatal("Missing covariate data for random coefficients for Gaussian process for making predictions");
+			}
+			if (cluster_ids_data_pred == nullptr && num_clusters_ > 1) {
+				Log::Fatal("Missing cluster_id data for making predictions");
+			}
+			if (!gauss_likelihood_ && predict_response && predict_cov_mat) {
+				Log::Fatal("Calculation of the predictive covariance matrix is not supported when predicting the response variable (label) for non-Gaussian data");
+			}
+			//if (!gauss_likelihood_ && predict_response && predict_var) {
+			//	Log::Fatal("Calculation of predictive variance is not supported when predicting the response variable (label) for non-Gaussian data");
+			//}
+			if (predict_cov_mat && predict_var) {
+				Log::Fatal("Calculation of both the predictive covariance matrix and variances is not supported. Choose one of these option (predict_cov_mat or predict_var)");
+			}
+			if (vecchia_approx_ && gauss_likelihood_ && predict_var) {
+				Log::Debug("Calculation of only predictive variances is currently not optimized for the Vecchia approximation. If you need only variances and this takes too much time or memory, contact the developer or open a GitHub issue.");
+			}
 			if (has_covariates_) {
 				CHECK(covariate_data_pred != nullptr);
 				CHECK(coef_pred != nullptr);
 			}
 			if (y_obs == nullptr) {
-				if (y_.empty()) {
+				if (!y_has_been_set_) {
 					Log::Fatal("Observed data is not provided and has not been set before");
 				}
-			}
-			//Check whether some data is missing
-			if (re_group_rand_coef_data_pred == nullptr && num_re_group_rand_coef_ > 0) {
-				Log::Fatal("No covariate data for grouped random coefficients is provided for making predictions");
-			}
-			if (gp_coords_data_pred == nullptr && num_gp_ > 0) {
-				Log::Warning("No coordinate data for the Gaussian process is provided for making predictions");
-			}
-			if (gp_rand_coef_data_pred == nullptr && num_gp_rand_coef_ > 0) {
-				Log::Warning("No covariate data for Gaussian process random coefficients is provided for making predictions");
 			}
 			if (num_data_pred > 10000 && predict_cov_mat) {
 				double num_mem_d = ((double)num_data_pred) * ((double)num_data_pred);
 				int mem_size = (int)(num_mem_d * 8. / 1000000.);
-				Log::Warning("The covariance matrix can be very large for large sample sizes which might lead to memory limitations. In your case (n = %d), the covariance needs at least approximately %d mb of memory. If you only need variances or covariances for linear combinations, contact the developer of this package and ask to implement this feature.", num_data_pred, mem_size);
+				Log::Warning("The covariance matrix can be very large for large sample sizes which might lead to memory limitations. In your case (n = %d), the covariance needs at least approximately %d mb of memory. If you only need variances or covariances for linear combinations, contact the developer of this package or open a GitHub issue and ask to implement this feature.", num_data_pred, mem_size);
 			}
 			if (vecchia_approx_) {
 				if (vecchia_pred_type != nullptr) {
@@ -860,16 +948,11 @@ namespace GPBoost {
 					num_neighbors_pred_ = num_neighbors_pred;
 				}
 			}
-			// Add linear regression term to mean
-			vec_t coef;
-			if (has_covariates_) {
+			vec_t coef, mu;//mu = linear regression predictor
+			if (has_covariates_) {//calculate linear regression term
 				coef = Eigen::Map<const vec_t>(coef_pred, num_coef_);
 				den_mat_t X_pred = Eigen::Map<const den_mat_t>(covariate_data_pred, num_data_pred, num_coef_);
-				vec_t mu = X_pred * coef;
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data_pred; ++i) {
-					out_predict[i] = mu[i];
-				}
+				mu = X_pred * coef;
 			}
 			vec_t cov_pars = Eigen::Map<const vec_t>(cov_pars_pred, num_cov_par_);
 			//Set up cluster IDs
@@ -887,72 +970,94 @@ namespace GPBoost {
 					break;
 				}
 			}
-			//Factorize covariance matrix and calculate Psi^{-1}y_obs (if required for prediction)
+			const double* fixed_effects_ptr = fixed_effects;
+			vec_t fixed_effects_vec;
+			//Factorize covariance matrix and calculate Psi^{-1}y_obs or calculate Laplace approximation (if required)
 			if (pred_for_observed_data) {//TODO (low prio): this acutally needs to be done only for the GP realizations for which predictions are made (currently it is done for all of them in unique_clusters_pred)
-				if (has_covariates_) {
-					vec_t resid;
-					if (y_obs != nullptr) {
-						vec_t y = Eigen::Map<const vec_t>(y_obs, num_data_);
-						resid = y - (X_ * coef);
-					}
+				if (gauss_likelihood_) {
+					if (has_covariates_) {
+						vec_t resid;
+						if (y_obs != nullptr) {
+							vec_t y = Eigen::Map<const vec_t>(y_obs, num_data_);
+							resid = y - (X_ * coef);
+						}
+						else {
+							resid = y_vec_ - (X_ * coef);
+						}
+						SetY(resid.data());
+					}//end if has_covariates_
 					else {
-						resid = y_vec_ - (X_ * coef);
+						if (y_obs != nullptr) {
+							SetY(y_obs);
+						}
 					}
-					SetY(resid.data());
-				}
-				else {
+				}//end if gauss_likelihood_
+				else {//if not gauss_likelihood_
+					fixed_effects_vec = X_ * coef;
+					if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_; ++i) {
+							fixed_effects_vec[i] += fixed_effects[i];
+						}
+					}
+					fixed_effects_ptr = fixed_effects_vec.data();
 					if (y_obs != nullptr) {
 						SetY(y_obs);
 					}
-				}
+				}//end if not gauss_likelihood_
 				SetCovParsComps(cov_pars);
-				if (!vecchia_approx_) {// no need to call CalcCovFactor here for the Vecchia approximation, is done in the prediction steps
+				if (!(vecchia_approx_ && gauss_likelihood_)) {// no need to call CalcCovFactor here for the Vecchia approximation for Gaussian data, this is done in the prediction steps
 					if (calc_cov_factor) {
-						CalcCovFactor(false, true, 1., false);
-					}
-					CalcYAux();//note: in some cases a call to CalcYAux() could be avoided (e.g. no covariates and not GPBoost algorithm)...
-				}
-			}//end if(pred_for_observed_data)
-
-			//Initialize covariance matrix
-			if (predict_cov_mat) {//TODO: avoid unnecessary initialization (only set to 0 for covariances accross different realizations of GPs)
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < (num_data_pred * num_data_pred); ++i) {
-					out_predict[i + num_data_pred] = 0.;
-				}
-			}
-
-			for (const auto& cluster_i : unique_clusters_pred) {
-				//Case 1: no data observed for this Gaussian process with ID 'cluster_i'. Thus use prior mean (0) and prior covariance matrix
-				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) == unique_clusters_.end()) {
-					if (!has_covariates_) {
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-							out_predict[data_indices_per_cluster_pred[cluster_i][i]] = 0.;
+						if (gauss_likelihood_) {
+							CalcCovFactor(false, true, 1., false);// Create covariance matrix and factorize it
 						}
+						else {//not gauss_likelihood_
+							//We reset the initial modes to 0. This is done to avoid that different calls to the prediction function lead to (very small) differences.
+							for (const auto& cluster_i : unique_clusters_) {
+								likelihood_[cluster_i]->InitializeModeAvec();//TODO: maybe ommit this step?
+							}
+							if (vecchia_approx_) {
+								CalcCovFactor(false, true, 1., false);
+							}
+							else {
+								CalcSigmaComps();
+								CalcCovMatrixNonGauss();
+							}
+							CalcModePostRandEff(fixed_effects_ptr);
+						}//end not gauss_likelihood_
+					}//end if calc_cov_factor
+					if (gauss_likelihood_) {
+						CalcYAux();//note: in some cases a call to CalcYAux() could be avoided (e.g. no covariates and not GPBoost algorithm)...
 					}
-					if (predict_cov_mat) {
-						T1 psi;
+				}//end not (vecchia_approx_ && gauss_likelihood_)
+			}//end if pred_for_observed_data (factorizatiion of covariance matrix)
+			// Loop over different clusters to calculate predictions
+			for (const auto& cluster_i : unique_clusters_pred) {
+				//Case 1: no data observed for this Gaussian process with ID 'cluster_i'
+				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) == unique_clusters_.end()) {
+					T1 psi;
+					//Calculate covariance matrix if needed
+					if (predict_cov_mat || predict_var || predict_response) {
 						std::vector<std::shared_ptr<RECompBase<T1>>> re_comps_cluster_i;
 						if (vecchia_approx_) {
+							//TODO: move this code out into another function for better readability
+							// Initialize RE components
 							std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<Triplet_t> entries_init_B_cluster_i;
 							std::vector<Triplet_t> entries_init_B_grad_cluster_i;
 							std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
-
 							CreateREComponentsVecchia(num_data_pred, data_indices_per_cluster_pred, cluster_i, num_data_per_cluster_pred,
 								gp_coords_data_pred, dim_gp_coords_, gp_rand_coef_data_pred, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, re_comps_cluster_i,
 								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
 								entries_init_B_cluster_i, entries_init_B_grad_cluster_i,
 								z_outer_z_obs_neighbors_cluster_i, "none", num_neighbors_pred_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
-
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_cluster_i[j]->SetCovPars(pars);
 							}
-
+							// Calculate a Cholesky factor
 							sp_mat_t B_cluster_i;
 							sp_mat_t D_inv_cluster_i;
 							std::vector<sp_mat_t> B_grad_cluster_i;//not used, but needs to be passed to function
@@ -962,22 +1067,25 @@ namespace GPBoost {
 								entries_init_B_cluster_i, entries_init_B_grad_cluster_i,
 								z_outer_z_obs_neighbors_cluster_i,
 								B_cluster_i, D_inv_cluster_i, B_grad_cluster_i, D_grad_cluster_i);
-
 							//Calculate Psi
 							sp_mat_t D_sqrt(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
 							D_sqrt.setIdentity();
 							D_sqrt.diagonal().array() = D_inv_cluster_i.diagonal().array().pow(-0.5);
-
 							sp_mat_t B_inv_D_sqrt;
 							eigen_sp_Lower_sp_RHS_cs_solve(B_cluster_i, D_sqrt, B_inv_D_sqrt, true);
 							psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
 						}//end vecchia_approx_
 						else {//not vecchia_approx_
-							psi.resize(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
-							psi.setIdentity();//nugget effect
 							CreateREComponents(num_data_pred, num_re_group_, data_indices_per_cluster_pred, cluster_i, re_group_levels_pred, num_data_per_cluster_pred,
 								num_re_group_rand_coef_, re_group_rand_coef_data_pred, ind_effect_group_rand_coef_, num_gp_, gp_coords_data_pred,
 								dim_gp_coords_, gp_rand_coef_data_pred, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, ind_intercept_gp_, true, re_comps_cluster_i);
+							psi.resize(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
+							if (gauss_likelihood_) {
+								psi.setIdentity();//nugget effect
+							}
+							else {
+								psi.setZero();
+							}
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_cluster_i[j]->SetCovPars(pars);
@@ -985,15 +1093,58 @@ namespace GPBoost {
 								psi += (*(re_comps_cluster_i[j]->GetZSigmaZt().get()));
 							}
 						}//end not vecchia_approx_
-						psi *= cov_pars[0];
-						//write on output
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
-							for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
-								out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred] = psi.coeff(j, i);
-							}
+						if (gauss_likelihood_) {
+							psi *= cov_pars[0];//back-transform
 						}
-					}//end predict_cov_mat
+					}//end calculation of covariance matrix
+					//write on output
+					vec_t mean_pred_id = vec_t::Zero(num_data_per_cluster_pred[cluster_i]);
+					if (fixed_effects_pred != nullptr) {//add externaly provided fixed effects
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+							mean_pred_id[i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i]];
+						}
+					}
+					if (has_covariates_) {//add linear regression predictor
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+							mean_pred_id[i] += mu[data_indices_per_cluster_pred[cluster_i][i]];
+						}
+					}
+					vec_t var_pred_id;
+					if (!gauss_likelihood_ && predict_response) {
+						var_pred_id = psi.diagonal();
+						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id, var_pred_id, predict_var);
+					}
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+						out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[i];
+					}
+					//Write covariance / variance on output
+					if (!predict_response || gauss_likelihood_) {//this is not done if predict_response==true for non-Gaussian data 
+						if (predict_cov_mat) {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
+								for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
+									out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred] = psi.coeff(j, i);
+								}
+							}
+						}//end predict_cov_mat
+						if (predict_var) {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+								out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred] = psi.coeff(i, i);
+							}
+						}//end predict_var
+					}//end !predict_response || gauss_likelihood_
+					else { // predict_response && !gauss_likelihood_
+						if (predict_var) {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+								out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred] = var_pred_id[i];
+							}
+						}//end predict_var
+					}//end write covariance / variance on output
 				}//end cluster_i with no observed data
 				else {//Case 2: there exists observed data for this cluster_i (= typically the case)
 					den_mat_t gp_coords_mat_pred;
@@ -1006,74 +1157,118 @@ namespace GPBoost {
 						}
 						gp_coords_mat_pred = Eigen::Map<den_mat_t>(gp_coords_pred.data(), num_data_per_cluster_pred[cluster_i], dim_gp_coords_);
 					}
-
+					// Initialize predictive mean and covariance
 					vec_t mean_pred_id(num_data_per_cluster_pred[cluster_i]);
 					T1 cov_mat_pred_id;
-					if (predict_cov_mat) {
-						cov_mat_pred_id = T1(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
-					}
-
-					if (vecchia_approx_) {//vecchia_approx_
+					vec_t var_pred_id;
+					// Calculate predictions
+					if (vecchia_approx_ && gauss_likelihood_) {//TODO: move this code to another function for better readability
 						std::shared_ptr<RECompGP<T1>> re_comp = std::dynamic_pointer_cast<RECompGP<T1>>(re_comps_[cluster_i][ind_intercept_gp_]);
 						int num_data_tot = num_data_per_cluster_[cluster_i] + num_data_per_cluster_pred[cluster_i];
 						double num_mem_d = ((double)num_neighbors_pred_) * ((double)num_neighbors_pred_) * (double)(num_data_tot)+(double)(num_neighbors_pred_) * (double)(num_data_tot);
 						int mem_size = (int)(num_mem_d * 8. / 1000000.);
 						if (mem_size > 4000) {
-							Log::Warning("The current implementation of the Vecchia approximation needs a lot of memory if the number of neighbors is large. In your case (nb. of neighbors = %d, nb. of observations = %d, nb. of predictions = %d), this needs at least approximately %d mb of memory. If this is a problem for you, contact the developer of this package and ask to change this.", num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
+							Log::Debug("The current implementation of the Vecchia approximation needs a lot of memory if the number of neighbors is large. In your case (nb. of neighbors = %d, nb. of observations = %d, nb. of predictions = %d), this needs at least approximately %d mb of memory. If this is a problem for you, contact the developer of this package or open a GitHub issue and ask to change this.", num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
 						}
+						//TODO: implement a more efficient version when only predictive variances are required and not full covariance matrices
+						bool predict_var_or_cov_mat = predict_var || predict_cov_mat;
 						if (vecchia_pred_type_ == "order_obs_first_cond_obs_only") {
 							CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 								re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-								predict_cov_mat, mean_pred_id, cov_mat_pred_id);
+								predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
 						}
 						else if (vecchia_pred_type_ == "order_obs_first_cond_all") {
 							CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 								re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-								predict_cov_mat, mean_pred_id, cov_mat_pred_id);
+								predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
 						}
 						else if (vecchia_pred_type_ == "order_pred_first") {
 							CalcPredVecchiaPredictedFirstOrder(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 								re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-								predict_cov_mat, mean_pred_id, cov_mat_pred_id);
+								predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
 						}
 						else if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
 							CalcPredVecchiaLatentObservedFirstOrder(true, cluster_i, num_data_per_cluster_pred,
-								re_comp->coords_, gp_coords_mat_pred, predict_cov_mat, mean_pred_id, cov_mat_pred_id);
+								re_comp->coords_, gp_coords_mat_pred, predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
 						}
 						else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 							CalcPredVecchiaLatentObservedFirstOrder(false, cluster_i, num_data_per_cluster_pred,
-								re_comp->coords_, gp_coords_mat_pred, predict_cov_mat, mean_pred_id, cov_mat_pred_id);
+								re_comp->coords_, gp_coords_mat_pred, predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
 						}
-					}//end vecchia_approx_
-					else {// not vecchia_approx_
+						if (predict_var) {
+							var_pred_id = cov_mat_pred_id.diagonal();
+							if (!predict_cov_mat) {
+								cov_mat_pred_id.resize(0, 0);
+							}
+						}
+					}//end (vecchia_approx_ && gauss_likelihood_)
+					else {// not vecchia_approx_ or not gauss_likelihood_
+						//NOTE: if vecchia_approx_==true and gauss_likelihood_==false, the cross-covariance matrix Sigma_{1,2} = cov(x_pred,x) is not approximated but the exact version is used
+						bool predict_var_or_response = predict_var || predict_response;
 						CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 							re_group_levels_pred, re_group_rand_coef_data_pred, gp_coords_mat_pred, gp_rand_coef_data_pred,
-							predict_cov_mat, mean_pred_id, cov_mat_pred_id);
+							predict_cov_mat, predict_var_or_response, mean_pred_id, cov_mat_pred_id, var_pred_id, fixed_effects_ptr);
 					}//end not vecchia_approx_
-
+					if (fixed_effects_pred != nullptr) {//add externaly provided fixed effects
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+							mean_pred_id[i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i]];
+						}
+					}
+					if (has_covariates_) {//add linear regression predictor
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+							mean_pred_id[i] += mu[data_indices_per_cluster_pred[cluster_i][i]];
+						}
+					}
+					if (!gauss_likelihood_ && predict_response) {
+						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id, var_pred_id, predict_var);
+					}
 					//write on output
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-						if (has_covariates_) {
-							out_predict[data_indices_per_cluster_pred[cluster_i][i]] += mean_pred_id[i];
-						}
-						else {
-							out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[i];
-						}
+						out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[i];
 					}
+					//Write covariance / variance on output
 					if (predict_cov_mat) {
-						cov_mat_pred_id *= cov_pars[0];
+						if (gauss_likelihood_) {
+							cov_mat_pred_id *= cov_pars[0];
+						}
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
 							for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
-								out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred] = cov_mat_pred_id.coeff(j, i);//cov_mat_pred_id_den(j, i);
+								out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred] = cov_mat_pred_id.coeff(j, i);
+							}
+						}
+					}//end predict_cov_mat
+					if (predict_var) {
+						if (gauss_likelihood_) {
+							var_pred_id *= cov_pars[0];
+						}
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+							out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred] = var_pred_id[i];
+						}
+					}//end predict_var
+					//end write covariance / variance on output
+				}//end cluster_i with data
+			}//end loop over cluster
+			//Set cross-covariances between different independent clusters to 0
+			if (predict_cov_mat && unique_clusters_pred.size() > 1 && (!predict_response || gauss_likelihood_)) {
+				for (const auto& cluster_i : unique_clusters_pred) {
+					for (const auto& cluster_j : unique_clusters_pred) {
+						if (cluster_i != cluster_j) {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
+								for (int j = 0; j < num_data_per_cluster_pred[cluster_j]; ++j) {//row index
+									out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_j][j] + num_data_pred] = 0.;
+								}
 							}
 						}
 					}
-
-				}//end cluster_i with data
-			}//end loop over cluster
-		}
+				}
+			}
+		}//end Predict
 
 		/*!
 		* \brief Find "reasonable" default values for the intial values of the covariance parameters (on transformed scale)
@@ -1083,18 +1278,24 @@ namespace GPBoost {
 		*/
 		void FindInitCovPar(const double* y_data, double* init_cov_pars) {
 			double mean = 0;
-			for (int i = 0; i < num_data_; ++i) {
-				mean += y_data[i];
-			}
-			mean /= num_data_;
 			double var = 0;
-			for (int i = 0; i < num_data_; ++i) {
-				var += (y_data[i] - mean) * (y_data[i] - mean);
+			int ind_par;
+			if (gauss_likelihood_) {
+				//determine initial value for nugget effect
+				for (int i = 0; i < num_data_; ++i) {//TODO: run in parallel
+					mean += y_data[i];
+				}
+				mean /= num_data_;
+				for (int i = 0; i < num_data_; ++i) {
+					var += (y_data[i] - mean) * (y_data[i] - mean);
+				}
+				var /= (num_data_ - 1);
+				init_cov_pars[0] = var;
+				ind_par = 1;
+			}//end Gaussian data
+			else {//non-Gaussian data
+				ind_par = 0;
 			}
-			var /= (num_data_ - 1);
-			init_cov_pars[0] = var;
-
-			int ind_par = 1;
 			if (vecchia_approx_) {//Neither distances nor coordinates are saved for random coefficient GPs in the Vecchia approximation -> cannot find initial parameters -> just copy the ones from the intercept GP
 				// find initial values for intercept process
 				int num_par_j = ind_par_[1] - ind_par_[0];
@@ -1124,7 +1325,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}
+		}//end FindInitCovPar
 
 		int num_cov_par() {
 			return(num_cov_par_);
@@ -1140,26 +1341,25 @@ namespace GPBoost {
 		*/
 		void NewtonUpdateLeafValues(const int* data_leaf_index,
 			const int num_leaves, double* leaf_values, double marg_variance = 1.) {
+			if (!gauss_likelihood_) {
+				Log::Fatal("Newton updates for leaf values is only supported for Gaussian data");
+			}
 			CHECK(y_aux_has_been_calculated_);//y_aux_ has already been calculated when calculating the gradient for finding the tree structure from 'GetGradients' in 'regression_objetive.hpp'
 			den_mat_t HTPsiInvH(num_leaves, num_leaves);
 			vec_t HTYAux(num_leaves);
 			HTPsiInvH.setZero();
 			HTYAux.setZero();
-
 			for (const auto& cluster_i : unique_clusters_) {
-
 				//Entries for matrix H_cluster_i = incidence matrix H that relates tree leaves to observations for cluster_i
 				std::vector<Triplet_t> entries_H_cluster_i(num_data_per_cluster_[cluster_i]);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
 					entries_H_cluster_i[i] = Triplet_t(i, data_leaf_index[data_indices_per_cluster_[cluster_i][i]], 1.);
 				}
-
 				den_mat_t HTPsiInvH_cluster_i;
 				if (vecchia_approx_) {
 					sp_mat_t H_cluster_i(num_data_per_cluster_[cluster_i], num_leaves);//row major format is needed for Vecchia approx.
 					H_cluster_i.setFromTriplets(entries_H_cluster_i.begin(), entries_H_cluster_i.end());
-
 					HTYAux -= H_cluster_i.transpose() * y_aux_[cluster_i];//minus sign since y_aux_ has been calculated on the gradient = F-y (and not y-F)
 					sp_mat_t BH = B_[cluster_i] * H_cluster_i;
 					HTPsiInvH_cluster_i = den_mat_t(BH.transpose() * D_inv_[cluster_i] * BH);
@@ -1167,7 +1367,6 @@ namespace GPBoost {
 				else {
 					sp_mat_t H_cluster_i(num_data_per_cluster_[cluster_i], num_leaves);
 					H_cluster_i.setFromTriplets(entries_H_cluster_i.begin(), entries_H_cluster_i.end());
-
 					HTYAux -= H_cluster_i.transpose() * y_aux_[cluster_i];//minus sign since y_aux_ has been calculated on the gradient = F-y (and not y-F)
 					if (use_woodbury_identity_) {
 						sp_mat_t ZtH_cluster_i = Zt_[cluster_i] * H_cluster_i;
@@ -1188,27 +1387,44 @@ namespace GPBoost {
 				}
 				HTPsiInvH += HTPsiInvH_cluster_i;
 			}
-
 			HTYAux *= marg_variance;
 			vec_t new_leaf_values = HTPsiInvH.llt().solve(HTYAux);
 			for (int i = 0; i < num_leaves; ++i) {
 				leaf_values[i] = new_leaf_values[i];
 			}
-		}
+		}//end NewtonUpdateLeafValues
 
 	private:
+
+		// RESPONSE DATA
 		/*! \brief Number of data points */
 		data_size_t num_data_;
-
-		// CLUSTERs of INDEPENDENT REALIZATIONS
-		/*! \brief Keys: Labels of independent realizations of REs/GPs, values: vectors with indices for data points */
-		std::map<gp_id_t, std::vector<int>> data_indices_per_cluster_;
-		/*! \brief Keys: Labels of independent realizations of REs/GPs, values: number of data points per independent realization */
-		std::map<gp_id_t, int> num_data_per_cluster_;
-		/*! \brief Number of independent realizations of the REs/GPs */
-		data_size_t num_clusters_;
-		/*! \brief Unique labels of independent realizations */
-		std::vector<gp_id_t> unique_clusters_;
+		/*! \brief If true, the response variables have a Gaussian likelihood, otherwise not */ 
+		data_size_t gauss_likelihood_ = true;
+		/*! \brief Likelihood objects */
+		std::map<gp_id_t, std::unique_ptr<Likelihood<T2>>> likelihood_;
+		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian data */
+		double neg_log_likelihood_;
+		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian data of previous iteration in optimization used for convergence checking */
+		double neg_log_likelihood_lag1_;
+		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian data after linear regression coefficients are update (this equals neg_log_likelihood_lag1_ if there are no regression coefficients). This is used for step-size checking for the covariance parameters */
+		double neg_log_likelihood_after_lin_coef_update_;
+		/*! \brief Key: labels of independent realizations of REs/GPs, value: data y */
+		std::map<gp_id_t, vec_t> y_;
+		/*! \brief Copy of response data (used only for Gaussian data and if there are also linear covariates since then y_ is modified during the optimization algorithm and this contains the original data) */
+		vec_t y_vec_;
+		/*! \brief Key: labels of independent realizations of REs/GPs, value: data y of integer type (used only for non-Gaussian likelihood) */ 
+		std::map<gp_id_t, vec_int_t> y_int_;
+		/*! \brief Key: labels of independent realizations of REs/GPs, value: Psi^-1*y_ (used for various computations) */
+		std::map<gp_id_t, vec_t> y_aux_;
+		/*! \brief Key: labels of independent realizations of REs/GPs, value: L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when use_woodbury_identity_==true) */
+		std::map<gp_id_t, vec_t> y_tilde_;
+		/*! \brief Key: labels of independent realizations of REs/GPs, value: Z * L ^ -T * L ^ -1 * Z ^ T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when use_woodbury_identity_==true) */
+		std::map<gp_id_t, vec_t> y_tilde2_;
+		/*! \brief Indicates whether y_aux_ has been calculated */
+		bool y_aux_has_been_calculated_ = false;
+		/*! \brief If true, the response variable data has been set (otherwise y_ is empty) */
+		bool y_has_been_set_ = false;
 
 		// GROUPED RANDOM EFFECTS
 		/*! \brief Number of grouped (intercept) random effects */
@@ -1219,6 +1435,8 @@ namespace GPBoost {
 		std::vector<int> ind_effect_group_rand_coef_;
 		/*! \brief Total number of grouped random effects (random intercepts plus random coefficients (slopes)) */
 		data_size_t num_re_group_total_ = 0;
+		/*! \brief True if there is only one grouped random effect component (used only for non-Gaussian data) */
+		bool only_one_random_effect_ = false;
 
 		// GAUSSIAN PROCESS
 		/*! \brief 1 if there is a Gaussian process 0 otherwise */
@@ -1235,18 +1453,21 @@ namespace GPBoost {
 		int dim_gp_coords_ = 2;//required to save since it is needed in the Predict() function when predictions are made for new independent realizations of GPs
 		/*! \brief Type of covariance(kernel) function for Gaussian processes */
 		string_t cov_fct_ = "exponential";//required to also save here since it is needed in the Predict() function when predictions are made for new independent realizations of GPs
-	/*! \brief Shape parameter of covariance function (=smoothness parameter for Matern covariance) */
+		/*! \brief Shape parameter of covariance function (=smoothness parameter for Matern covariance) */
 		double cov_fct_shape_ = 0.;
 
+		// RANDOM EFFECT / GP COMPONENTS
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components */
 		std::map<gp_id_t, std::vector<std::shared_ptr<RECompBase<T1>>>> re_comps_;
-		/*! \brief Indices of parameters of RE components in global parameter vector cov_pars. ind_par_[i] and ind_par_[i+1] - 1 are the indices of the first and last parameter of component number i (counting starts at 1) */
+		/*! \brief Indices of parameters of RE components in global parameter vector cov_pars. ind_par_[i] and ind_par_[i+1] -1 are the indices of the first and last parameter of component number i (counting starts at 1) */
 		std::vector<data_size_t> ind_par_;
 		/*! \brief Number of covariance parameters */
 		data_size_t num_cov_par_;
 		/*! \brief Total number of random effect components (grouped REs plus other GPs) */
 		data_size_t num_comps_total_ = 0;
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decomposition solver of covariance matrices Psi */
+
+		// COVARIANCE MATRIX AND CHOLESKY FACTORS OF IT
+		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decomposition solver of covariance matrices Psi (for Gaussian data) */
 		std::map<gp_id_t, T2> chol_facts_solve_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky factors of Psi matrices */ //TODO: above needed or can pattern be saved somewhere else?
 		std::map<gp_id_t, T1> chol_facts_;
@@ -1254,22 +1475,34 @@ namespace GPBoost {
 		std::map<gp_id_t, T1> Id_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Idendity matrices used for calculation of inverse covariance matrix */
 		std::map<gp_id_t, cs> Id_cs_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, value: data y */
-		std::map<gp_id_t, vec_t> y_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, value: Psi^-1*y_ (used for various computations) */
-		std::map<gp_id_t, vec_t> y_aux_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, value: L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when use_woodbury_identity_==true) */
-		std::map<gp_id_t, vec_t> y_tilde_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, value: Z * L ^ -T * L ^ -1 * Z ^ T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when use_woodbury_identity_==true) */
-		std::map<gp_id_t, vec_t> y_tilde2_;
-		/*! \brief Indicates whether y_aux_ has been calculated */
-		bool y_aux_has_been_calculated_ = false;
-		/*! \brief Collects inverse covariance matrices Psi^{-1} (usually not saved, but used e.g. in Fisher scoring without the Vecchia approximation) */
-		std::map<gp_id_t, T1> psi_inv_;
-		/*! \brief Copy of response data (used only in case there are also linear covariates since then y_ is modified during the algorithm) */
-		vec_t y_vec_;
 		/*! \brief If true, a symbolic decomposition is first done when calculating the Cholesky factor of the covariance matrix (only for sparse matrices) */
 		bool do_symbolic_decomposition_ = true;
+		/*! \brief Collects inverse covariance matrices Psi^{-1} (usually not saved, but used e.g. in Fisher scoring without the Vecchia approximation) */
+		std::map<gp_id_t, T1> psi_inv_;
+		/*! \brief Inverse covariance matrices Sigma^-1 of random effects. This is only used if use_woodbury_identity_==true (if there are only grouped REs) */
+		std::map<gp_id_t, sp_mat_t> SigmaI_;
+		/*! \brief Pointer to covariance matrix of the random effects (sum of all components). This is only used for non-Gaussian data and if use_woodbury_identity_==false. In the Gaussian case this needs not be saved */
+		std::map<gp_id_t, std::shared_ptr<T1>> ZSigmaZt_;
+
+		// COVARIATE DATA FOR LINEAR REGRESSION TERM
+		/*! \brief If true, the model linearly incluses covariates */
+		bool has_covariates_ = false;
+		/*! \brief Number of covariates */
+		int num_coef_;
+		/*! \brief Covariate data */
+		den_mat_t X_;
+
+		// OPTIMIZER PROPERTIES
+		/*! \brief List of supported optimizers for covariance parameters */
+		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring" };
+		/*! \brief List of supported optimizers for regression coefficients */
+		const std::set<string_t> SUPPORTED_OPTIM_COEF_{ "gradient_descent", "wls" };
+		/*! \brief List of supported convergence criteria used for terminating the optimization algorithm */
+		const std::set<string_t> SUPPORTED_CONV_CRIT_{ "relative_change_in_parameters", "relative_change_in_log_likelihood" };
+		/*! \brief Maximal number of steps for which step halving for the learning rate is done */
+		int MAX_NUMBER_HALVING_STEPS_ = 30;
+
+		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
 		/*! \brief If true, the Woodbury, Sherman and Morrison matrix inversion formula is used for calculating the inverse of the covariance matrix (only used if there are only grouped REs and no Gaussian processes) */
 		bool use_woodbury_identity_ = false;
 		/*! \brief Collects matrices Z^T (usually not saved, only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
@@ -1286,26 +1519,6 @@ namespace GPBoost {
 		std::map<gp_id_t, std::vector<sp_mat_t>> ZtZj_;
 		/*! \brief Collects matrices L^-1 * Z^T * Z_j for every random effect component (usually not saved, only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects and when Fisher scoring is done) */
 		std::map<gp_id_t, std::vector<T1>> LInvZtZj_;
-		/*! \brief Inverse covariance matrices Sigma^-1 of random effects. This is only used if use_woodbury_identity_==true (if there are only grouped REs). */
-		std::map<gp_id_t, sp_mat_t> SigmaI_;
-
-		// COVARIATE DATA for linear regression term
-		/*! \brief If true, the model linearly incluses covariates */
-		bool has_covariates_ = false;
-		/*! \brief Number of covariates */
-		int num_coef_;
-		/*! \brief Covariate data */
-		den_mat_t X_;
-
-		// OPTIMIZER PROPERTIES
-		/*! \brief List of supported optimizers for covariance parameters */
-		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring" };
-		/*! \brief List of supported optimizers for regression coefficients */
-		const std::set<string_t> SUPPORTED_OPTIM_COEF_{ "gradient_descent", "wls" };
-		/*! \brief List of supported convergence criteria used for terminating the optimization algorithm */
-		const std::set<string_t> SUPPORTED_CONF_CRIT_{ "relative_change_in_parameters", "relative_change_in_log_likelihood" };
-		/*! \brief Maximal number of steps for which step halving for the learning rate is done */
-		int MAX_NUMBER_HALVING_STEPS_ = 30;
 
 		// VECCHIA APPROXIMATION for GP
 		/*! \brief If true, the Veccia approximation is used for the Gaussian process */
@@ -1344,6 +1557,16 @@ namespace GPBoost {
 		std::map<gp_id_t, std::vector<Triplet_t>> entries_init_B_;
 		/*! \brief Triplets for intializing the matrices B_grad */
 		std::map<gp_id_t, std::vector<Triplet_t>> entries_init_B_grad_;
+
+		// CLUSTERs of INDEPENDENT REALIZATIONS
+		/*! \brief Keys: Labels of independent realizations of REs/GPs, values: vectors with indices for data points */
+		std::map<gp_id_t, std::vector<int>> data_indices_per_cluster_;
+		/*! \brief Keys: Labels of independent realizations of REs/GPs, values: number of data points per independent realization */
+		std::map<gp_id_t, int> num_data_per_cluster_;
+		/*! \brief Number of independent realizations of the REs/GPs */
+		data_size_t num_clusters_;
+		/*! \brief Unique labels of independent realizations */
+		std::vector<gp_id_t> unique_clusters_;
 
 		/*! \brief Variance of idiosyncratic error term (nugget effect) */
 		double sigma2_;
@@ -1417,20 +1640,76 @@ namespace GPBoost {
 		* \param y_data Response variable data
 		*/
 		void SetY(const double* y_data) {
-			if (num_clusters_ == 1 && vecchia_ordering_ == "none") {
-				y_[unique_clusters_[0]] = Eigen::Map<const vec_t>(y_data, num_data_);
-			}
-			else {
-				for (const auto& cluster_i : unique_clusters_) {
-					y_[cluster_i] = vec_t(num_data_per_cluster_[cluster_i]);//TODO: Is there a more efficient way that avoids copying?
-					for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-						y_[cluster_i][j] = y_data[data_indices_per_cluster_[cluster_i][j]];
+			if (gauss_likelihood_) {
+				if (num_clusters_ == 1 && (!vecchia_approx_ || vecchia_ordering_ == "none")) {
+					y_[unique_clusters_[0]] = Eigen::Map<const vec_t>(y_data, num_data_);//TODO: Is there a more efficient way that avoids copying?
+				}
+				else {
+					for (const auto& cluster_i : unique_clusters_) {
+						y_[cluster_i] = vec_t(num_data_per_cluster_[cluster_i]);//TODO: Is there a more efficient way that avoids copying?
+						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+							y_[cluster_i][j] = y_data[data_indices_per_cluster_[cluster_i][j]];
+						}
+					}
+				}
+				if (use_woodbury_identity_) {
+					CalcZtY();
+				}
+			}//end gauss_likelihood_
+			else {//not gauss_likelihood_
+				(*likelihood_[unique_clusters_[0]]).template CheckY<double>(y_data, num_data_);
+				if (likelihood_[unique_clusters_[0]]->label_type() == "int") {
+					for (const auto& cluster_i : unique_clusters_) {
+						y_int_[cluster_i] = vec_int_t(num_data_per_cluster_[cluster_i]);
+						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+							y_int_[cluster_i][j] = static_cast<int>(y_data[data_indices_per_cluster_[cluster_i][j]]);
+						}
+						(*likelihood_[cluster_i]).template CalculateNormalizingConstant<int>(y_int_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
+					}
+				}
+				else if (likelihood_[unique_clusters_[0]]->label_type() == "double") {
+					for (const auto& cluster_i : unique_clusters_) {
+						y_[cluster_i] = vec_t(num_data_per_cluster_[cluster_i]);
+						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+							y_[cluster_i][j] = y_data[data_indices_per_cluster_[cluster_i][j]];
+						}
+						(*likelihood_[cluster_i]).template CalculateNormalizingConstant<double>(y_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
+					}
+				}
+			}//end not gauss_likelihood_
+			y_has_been_set_ = true;
+		}
+
+		/*!
+		* \brief Set response variable data y_ if data is of type float (used for GPBoost algorithm since labels are float)
+		* \param y_data Response variable data
+		*/
+		void SetY(const float* y_data) {
+			if (gauss_likelihood_) {
+				Log::Fatal("SetY is not implemented for Gaussian data and lables of type float (since it is not needed)");
+			}//end gauss_likelihood_
+			else {//not gauss_likelihood_
+				(*likelihood_[unique_clusters_[0]]).template CheckY<float>(y_data, num_data_);
+				if (likelihood_[unique_clusters_[0]]->label_type() == "int") {
+					for (const auto& cluster_i : unique_clusters_) {
+						y_int_[cluster_i] = vec_int_t(num_data_per_cluster_[cluster_i]);
+						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+							y_int_[cluster_i][j] = static_cast<int>(y_data[data_indices_per_cluster_[cluster_i][j]]);
+						}
+						(*likelihood_[cluster_i]).template CalculateNormalizingConstant<int>(y_int_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
+					}
+				}
+				else if (likelihood_[unique_clusters_[0]]->label_type() == "double") {
+					for (const auto& cluster_i : unique_clusters_) {
+						y_[cluster_i] = vec_t(num_data_per_cluster_[cluster_i]);
+						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+							y_[cluster_i][j] = static_cast<double>(y_data[data_indices_per_cluster_[cluster_i][j]]);
+						}
+						(*likelihood_[cluster_i]).template CalculateNormalizingConstant<double>(y_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
 					}
 				}
 			}
-			if (use_woodbury_identity_) {
-				CalcZtY();
-			}
+			y_has_been_set_ = true;
 		}
 
 		/*!
@@ -1448,13 +1727,15 @@ namespace GPBoost {
 		*/
 		void GetYAux(double* y_aux) {
 			CHECK(y_aux_has_been_calculated_);
-			if (num_clusters_ == 1 && vecchia_ordering_ == "none") {
+			if (num_clusters_ == 1 && (!vecchia_approx_ || vecchia_ordering_ == "none")) {
+#pragma omp parallel for schedule(static)
 				for (int j = 0; j < num_data_; ++j) {
 					y_aux[j] = y_aux_[unique_clusters_[0]][j];
 				}
 			}
 			else {
 				for (const auto& cluster_i : unique_clusters_) {
+#pragma omp parallel for schedule(static)
 					for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 						y_aux[data_indices_per_cluster_[cluster_i][j]] = y_aux_[cluster_i][j];
 					}
@@ -1468,7 +1749,7 @@ namespace GPBoost {
 		*/
 		void GetYAux(vec_t& y_aux) {
 			CHECK(y_aux_has_been_calculated_);
-			if (num_clusters_ == 1 && vecchia_ordering_ == "none") {
+			if (num_clusters_ == 1 && (!vecchia_approx_ || vecchia_ordering_ == "none")) {
 				y_aux = y_aux_[unique_clusters_[0]];
 			}
 			else {
@@ -1476,6 +1757,73 @@ namespace GPBoost {
 					y_aux(data_indices_per_cluster_[cluster_i]) = y_aux_[cluster_i];
 				}
 			}
+		}
+
+		/*!
+		* \brief Calculate the gradient of the Laplace-approximated negative log-likelihood with respect to the fixed effects F (only used for non-Gaussian data)
+		* \param[out] grad_F Gradient of the Laplace-approximated negative log-likelihood with respect to the fixed effects F. This vector needs to be pre-allocated of length num_data_
+		* \param fixed_effects Fixed effects component of location parameter
+		*/
+		void CalcGradFLaplace(double* grad_F, const double* fixed_effects = nullptr) {
+			if (num_clusters_ == 1 && (!vecchia_approx_ || vecchia_ordering_ == "none")) {//only one cluster / independent realization
+				gp_id_t cluster_i = unique_clusters_[0];
+				vec_t grad_F_cluster_i(num_data_);
+				if (vecchia_approx_) {
+					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLAApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects,
+						num_data_, B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i],
+						false, true, nullptr, grad_F_cluster_i, false);
+				}//end vecchia_approx_
+				else {//not vecchia_approx_
+					if (use_woodbury_identity_) {
+						(*likelihood_[cluster_i]).template CalcGradNegMargLikelihoodLAApproxGroupedRE<T1>(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects,
+							num_data_, SigmaI_[cluster_i], Zt_[cluster_i], re_comps_[cluster_i], cum_num_rand_eff_[cluster_i], false, true,
+							nullptr, grad_F_cluster_i, false, only_one_random_effect_);
+					}
+					else {
+						(*likelihood_[cluster_i]).template CalcGradNegMargLikelihoodLAApproxStable<T1>(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects,
+							num_data_, ZSigmaZt_[cluster_i], re_comps_[cluster_i], false, true, nullptr, grad_F_cluster_i, false);
+					}
+				}//end not vecchia_approx_
+#pragma omp parallel for schedule(static)//write on output
+				for (int j = 0; j < num_data_; ++j) {
+					grad_F[j] = grad_F_cluster_i[j];
+				}
+			}//end only one cluster / independent realization
+			else {//more than one cluster and order of samples matters
+				const double* fixed_effects_cluster_i_ptr = nullptr;
+				vec_t fixed_effects_cluster_i;
+				for (const auto& cluster_i : unique_clusters_) {
+					vec_t grad_F_cluster_i(num_data_per_cluster_[cluster_i]);
+					if (fixed_effects != nullptr) {
+						fixed_effects_cluster_i = vec_t(num_data_per_cluster_[cluster_i]);//TODO: Is there a more efficient way that avoids copying?
+#pragma omp parallel for schedule(static)
+						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+							fixed_effects_cluster_i[j] = fixed_effects[data_indices_per_cluster_[cluster_i][j]];
+						}
+						fixed_effects_cluster_i_ptr = fixed_effects_cluster_i.data();
+					}
+					if (vecchia_approx_) {
+						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLAApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+							num_data_per_cluster_[cluster_i], B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i],
+							false, true, nullptr, grad_F_cluster_i, false);
+					}//end vecchia_approx_
+					else {//not vecchia_approx_
+						if (use_woodbury_identity_) {
+							(*likelihood_[cluster_i]).template CalcGradNegMargLikelihoodLAApproxGroupedRE<T1>(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+								num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], re_comps_[cluster_i], cum_num_rand_eff_[cluster_i], false, true,
+								nullptr, grad_F_cluster_i, false, only_one_random_effect_);
+						}
+						else {
+							(*likelihood_[cluster_i]).template CalcGradNegMargLikelihoodLAApproxStable<T1>(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+								num_data_per_cluster_[cluster_i], ZSigmaZt_[cluster_i], re_comps_[cluster_i], false, true, nullptr, grad_F_cluster_i, false);
+						}
+					}//end not vecchia_approx_
+#pragma omp parallel for schedule(static)//write on output
+					for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+						grad_F[data_indices_per_cluster_[cluster_i][j]] = grad_F_cluster_i[j];
+					}
+				}//end loop over cluster
+			}//end more than one cluster
 		}
 
 		/*!
@@ -1570,7 +1918,7 @@ namespace GPBoost {
 		*/
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
 		void CalcPsiInv(T3& psi_inv, gp_id_t cluster_i) {
-			if (use_woodbury_identity_) {//should currently not be called as use_woodbury_identity_ is only true for grouped REs only i.e. sparse matrices
+			if (use_woodbury_identity_) {//typically currently not called as use_woodbury_identity_ is only true for grouped REs only i.e. sparse matrices
 				T3 MInvSqrtZt;
 				if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 					MInvSqrtZt = chol_facts_[cluster_i].diagonal().array().inverse().matrix().asDiagonal() * Zt_[cluster_i];
@@ -1731,7 +2079,7 @@ namespace GPBoost {
 		* \param[out] XT_psi_inv_X X^TPsi^(-1)X
 		*/
 		void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
-			if (num_clusters_ == 1 && vecchia_ordering_ == "none") {//only one cluster / idependent GP realization
+			if (num_clusters_ == 1 && (!vecchia_approx_ || vecchia_ordering_ == "none")) {//only one cluster / idependent GP realization
 				if (vecchia_approx_) {
 					den_mat_t BX = B_[unique_clusters_[0]] * X;
 					XT_psi_inv_X = BX.transpose() * D_inv_[unique_clusters_[0]] * BX;
@@ -1752,8 +2100,8 @@ namespace GPBoost {
 						XT_psi_inv_X = X.transpose() * chol_facts_solve_[unique_clusters_[0]].solve(X);
 					}
 				}
-			}
-			else {//more than one cluster / idependent GP realization
+			}//end only one cluster / idependent GP realization
+			else {//more than one cluster and order of samples matters
 				XT_psi_inv_X = den_mat_t(X.cols(), X.cols());
 				XT_psi_inv_X.setZero();
 				den_mat_t BX;
@@ -1780,7 +2128,7 @@ namespace GPBoost {
 						}
 					}
 				}
-			}
+			}//end more than one cluster
 		}
 
 		/*!
@@ -1904,7 +2252,6 @@ namespace GPBoost {
 				}
 				den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords);
 				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T1>>(new RECompGP<T1>(gp_coords_mat, cov_fct, cov_fct_shape, true)));
-
 				//Random slopes
 				if (num_gp_rand_coef > 0) {
 					for (int j = 0; j < num_gp_rand_coef; ++j) {
@@ -2010,7 +2357,9 @@ namespace GPBoost {
 		*/
 		void SetCovParsComps(const vec_t& cov_pars) {
 			CHECK(cov_pars.size() == num_cov_par_);
-			sigma2_ = cov_pars[0];
+			if (gauss_likelihood_) {
+				sigma2_ = cov_pars[0];
+			}
 			for (const auto& cluster_i : unique_clusters_) {
 				for (int j = 0; j < num_comps_total_; ++j) {
 					const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
@@ -2027,11 +2376,18 @@ namespace GPBoost {
 		void TransformCovPars(const vec_t& cov_pars, vec_t& cov_pars_trans) {
 			CHECK(cov_pars.size() == num_cov_par_);
 			cov_pars_trans = vec_t(num_cov_par_);
-			cov_pars_trans[0] = cov_pars[0];
+			if (gauss_likelihood_) {
+				cov_pars_trans[0] = cov_pars[0];
+			}
 			for (int j = 0; j < num_comps_total_; ++j) {
 				const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 				vec_t pars_trans = pars;
-				re_comps_[unique_clusters_[0]][j]->TransformCovPars(cov_pars[0], pars, pars_trans);
+				if (gauss_likelihood_) {
+					re_comps_[unique_clusters_[0]][j]->TransformCovPars(cov_pars[0], pars, pars_trans);
+				}
+				else {
+					re_comps_[unique_clusters_[0]][j]->TransformCovPars(1., pars, pars_trans);
+				}
 				cov_pars_trans.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]) = pars_trans;
 			}
 		}
@@ -2044,11 +2400,18 @@ namespace GPBoost {
 		void TransformBackCovPars(const vec_t& cov_pars, vec_t& cov_pars_orig) {
 			CHECK(cov_pars.size() == num_cov_par_);
 			cov_pars_orig = vec_t(num_cov_par_);
-			cov_pars_orig[0] = cov_pars[0];
+			if (gauss_likelihood_) {
+				cov_pars_orig[0] = cov_pars[0];
+			}
 			for (int j = 0; j < num_comps_total_; ++j) {
 				const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 				vec_t pars_orig = pars;
-				re_comps_[unique_clusters_[0]][j]->TransformBackCovPars(cov_pars[0], pars, pars_orig);
+				if (gauss_likelihood_) {
+					re_comps_[unique_clusters_[0]][j]->TransformBackCovPars(cov_pars[0], pars, pars_orig);
+				}
+				else {
+					re_comps_[unique_clusters_[0]][j]->TransformBackCovPars(1, pars, pars_orig);
+				}
 				cov_pars_orig.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]) = pars_orig;
 			}
 		}
@@ -2082,6 +2445,326 @@ namespace GPBoost {
 			SigmaI = sp_mat_t(cum_num_rand_eff_[cluster_i][num_comps_total_], cum_num_rand_eff_[cluster_i][num_comps_total_]);
 			SigmaI.setFromTriplets(triplets.begin(), triplets.end());
 		}
+
+		/*!
+		* \brief Factorize the covariance matrix (Gaussian data) or
+		*	calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian data)
+		*	And calculate the negative log-likelihood (Gaussian data) or the negative approx. marginal log-likelihood (non-Gaussian data)
+		* \param cov_pars Covariance parameters
+		* \param fixed_effects Fixed effects component of location parameter
+		*/
+		void CalcCovFactorOrModeAndNegLL(vec_t& cov_pars, const double* fixed_effects = nullptr) {
+			SetCovParsComps(cov_pars);
+			if (gauss_likelihood_) {
+				CalcCovFactor(vecchia_approx_, true, 1., false);//Create covariance matrix and factorize it (and also calculate derivatives if Vecchia approximation is used)
+				if (use_woodbury_identity_) {
+					CalcYtilde<T1>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
+				}
+				else {
+					CalcYAux();//y_aux = Psi^-1 * y
+				}
+				EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_likelihood_, true, true, true);
+			}//end gauss_likelihood_
+			else {//not gauss_likelihood_
+				if (vecchia_approx_) {
+					CalcCovFactor(true, true, 1., false);
+				}
+				else {
+					CalcSigmaComps();
+					CalcCovMatrixNonGauss();
+				}
+				neg_log_likelihood_ = -CalcModePostRandEff(fixed_effects);//calculate mode and approximate marginal likelihood
+			}//end not gauss_likelihood_
+		}//end CalcCovFactorOrModeAndNegLL
+
+		/*!
+		* \brief Update covariance parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
+		* \param[out] cov_pars Covariance parameters
+		* \param nat_grad Gradient for gradient descent or = FI^-1 * gradient for Fisher scoring (="natural" gradient)
+		* \param[out] lr_cov Learning rate (can be written on in case it get decreased)
+		* \param profile_out_marginal_variance If true, the first parameter (marginal variance, nugget effect) is ignored
+		* \param use_nesterov_acc If true, Nesterov acceleration is used
+		* \param it Iteration number
+		* \param optimizer_cov Optimizer used
+		* \param[out] cov_pars_after_grad_aux Auxiliary variable used only if use_nesterov_acc == true (see the code below for a description)
+		* \param[out] cov_pars_after_grad_aux_lag1 Auxiliary variable used only if use_nesterov_acc == true (see the code below for a description)
+		* \param acc_rate_cov Nesterov acceleration speed
+		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
+		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
+		* \param fixed_effects Fixed effects component of location parameter
+		*/
+		void UpdateCovPars(vec_t& cov_pars, const vec_t& nat_grad, double& lr_cov, bool profile_out_marginal_variance,
+			bool use_nesterov_acc, int it, const string_t& optimizer_cov, vec_t& cov_pars_after_grad_aux, vec_t& cov_pars_after_grad_aux_lag1,
+			double acc_rate_cov, int nesterov_schedule_version, int momentum_offset, const double* fixed_effects = nullptr) {
+			bool optim_learning_rate_halving = true;
+			// If optim_learning_rate_halving==true, the learning rate is halved when the negative log-likelihood increases
+			vec_t cov_pars_new(num_cov_par_);
+			if (profile_out_marginal_variance) {
+				cov_pars_new[0] = cov_pars[0];
+			}
+			double lr = lr_cov;
+			bool decrease_found = false;
+			bool halving_done = false;
+			int max_number_halving_steps = optim_learning_rate_halving ? MAX_NUMBER_HALVING_STEPS_ : 1;
+			for (int ih = 0; ih < max_number_halving_steps; ++ih) {
+				if (profile_out_marginal_variance) {
+					cov_pars_new.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - lr * nat_grad.array()).exp().matrix();//make update on log-scale
+				}
+				else {
+					cov_pars_new = (cov_pars.array().log() - lr * nat_grad.array()).exp().matrix();//make update on log-scale
+				}
+				// Apply Nesterov acceleration
+				if (use_nesterov_acc) {
+					cov_pars_after_grad_aux = cov_pars_new;
+					ApplyMomentumStep(it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, cov_pars_new, acc_rate_cov,
+						nesterov_schedule_version, profile_out_marginal_variance, momentum_offset, true);
+					// Note: (i) cov_pars_after_grad_aux and cov_pars_after_grad_aux_lag1 correspond to the parameters obtained after calculating the gradient before applying acceleration
+					//		 (ii) cov_pars (below this) are the parameters obtained after applying acceleration (and cov_pars_lag1 is simply the value of the previous iteration)
+					// We first apply a gradient step and then an acceleration step (and not the other way aroung) since this is computationally more efficient 
+					//		(otherwise the covariance matrix needs to be factored twice: once for the gradient step (accelerated parameters) and once for calculating the
+					//		 log-likelihood (non-accelerated parameters after gradient update) when checking for convergence at the end of an iteration. 
+					//		However, performing the acceleration before or after the gradient update gives equivalent algorithms
+				}
+				CalcCovFactorOrModeAndNegLL(cov_pars_new, fixed_effects);
+				// Reset mode for Laplace approximation to 0 in case there was an NA so that NA's don't propagate to the next iteration
+				if (!gauss_likelihood_) {
+					if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
+						for (const auto& cluster_i : unique_clusters_) {
+							likelihood_[cluster_i]->InitializeModeAvec();
+						}
+					}
+				}
+				if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
+					decrease_found = true;
+					break;
+				}
+				else if (optim_learning_rate_halving) {
+					// Safeguard agains too large steps by halving the learning rate
+					halving_done = true;
+					lr *= 0.5;
+					acc_rate_cov *= 0.5;
+				}
+			}
+			if (halving_done) {
+				if (optimizer_cov == "fisher_scoring") {
+					Log::Debug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. The learning rate has been decreased in this iteration.", it + 1);
+				}
+				else if (optimizer_cov == "gradient_descent") {
+					lr_cov = lr; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring) 
+					Log::Debug("GPModel covariance parameter estimation: The learning rate has been decreased permanently since with the previous learning rate, there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_cov);
+				}
+			}
+			if (!decrease_found) {
+				if (optim_learning_rate_halving) {
+					Log::Debug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
+				}
+				else {
+					Log::Debug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. There is no safeguard against too large steps (step halving) in place when applying Nesterov acceleration ", it + 1);
+				}
+			}
+			if (use_nesterov_acc) {
+				cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
+			}
+			cov_pars = cov_pars_new;
+		}//end UpdateCovPars
+
+		/*!
+		* \brief Update linear regression coefficients and apply step size safeguard
+		* \param[out] beta Linear regression coefficients
+		* \param grad Gradient 
+		* \param[out] lr_coef Learning rate (can be written on in case it get decreased)
+		* \param use_nesterov_acc If true, Nesterov acceleration is used
+		* \param it Iteration number
+		* \param[out] beta_after_grad_aux Auxiliary variable used only if use_nesterov_acc == true (see the code below for a description)
+		* \param[out] beta_after_grad_aux_lag1 Auxiliary variable used only if use_nesterov_acc == true (see the code below for a description)
+		* \param acc_rate_coef Nesterov acceleration speed
+		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
+		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
+		* \param fixed_effects External fixed effects 
+		* \param[out] fixed_effects_vec Fixed effects component of location parameter as sum of linear predictor and potentiall additional external fixed effects 
+		*/
+		void UpdateLinCoef(vec_t& beta, const vec_t& grad, double& lr_coef, const vec_t& cov_pars,
+			bool use_nesterov_acc, int it, vec_t& beta_after_grad_aux, vec_t& beta_after_grad_aux_lag1,
+			double acc_rate_coef, int nesterov_schedule_version, int momentum_offset, const double* fixed_effects, vec_t& fixed_effects_vec) {
+			bool optim_learning_rate_halving = true;
+			// If optim_learning_rate_halving==true, the learning rate is halved when the negative log-likelihood increases
+			vec_t beta_new;
+			double lr = lr_coef;
+			vec_t resid;
+			bool decrease_found = false;
+			bool halving_done = false;
+			int max_number_halving_steps = optim_learning_rate_halving ? MAX_NUMBER_HALVING_STEPS_ : 1;
+			for (int ih = 0; ih < max_number_halving_steps; ++ih) {
+				beta_new = beta - lr * grad;
+				// Apply Nesterov acceleration
+				if (use_nesterov_acc) {
+					beta_after_grad_aux = beta_new;
+					ApplyMomentumStep(it, beta_after_grad_aux, beta_after_grad_aux_lag1, beta_new, acc_rate_coef,
+						nesterov_schedule_version, false, momentum_offset, false);
+					//Note: use same version of Nesterov acceleration as for covariance parameters (see 'UpdateCovPars')
+				}
+				if (gauss_likelihood_) {
+					// Set resid for updating covariance parameters
+					resid = y_vec_ - (X_ * beta_new);
+					SetY(resid.data());
+					// Calculate y_aux = Psi^-1 * y (if not use_woodbury_identity_) or y_tilde and y_tilde2 (if use_woodbury_identity_) for covariance parameter update (only for Gaussian data)
+					if (use_woodbury_identity_) {
+						CalcYtilde<T1>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
+					}
+					else {
+						CalcYAux();//y_aux = Psi^-1 * y
+					}
+					EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_likelihood_after_lin_coef_update_, true, true, true);
+				}//end if gauss_likelihood_
+				else {//non-Gaussian data
+					fixed_effects_vec = X_ * beta_new;
+					if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_; ++i) {
+							fixed_effects_vec[i] += fixed_effects[i];
+						}
+					}
+					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEff(fixed_effects_vec.data());//calculate mode and approximate marginal likelihood
+					// Reset mode for Laplace approximation to 0 in case there was an NA so that NA's don't propagate to the next iteration
+					if (std::isnan(neg_log_likelihood_after_lin_coef_update_) || std::isinf(neg_log_likelihood_after_lin_coef_update_)) {
+						for (const auto& cluster_i : unique_clusters_) {
+							likelihood_[cluster_i]->InitializeModeAvec();
+						}
+					}
+				}
+				if (neg_log_likelihood_after_lin_coef_update_ <= neg_log_likelihood_lag1_) {
+					decrease_found = true;
+					break;
+				}
+				else if (optim_learning_rate_halving) {
+					// Safeguard agains too large steps by halving the learning rate
+					halving_done = true;
+					lr *= 0.5;
+					acc_rate_coef *= 0.5;
+				}
+			}
+			if (halving_done) {
+				lr_coef = lr; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring) 
+				Log::Debug("GPModel linear regression coefficient estimation: The learning rate has been decreased permanently since with the previous learning rate, there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_coef);
+			}
+			if (!decrease_found) {
+				if (optim_learning_rate_halving) {
+					Log::Debug("GPModel linear regression coefficient estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
+				}
+				else {
+					Log::Debug("GPModel linear regression coefficient estimation: No decrease in the objective function in iteration number %d. There is no safeguard against too large steps (step halving) in place when applying Nesterov acceleration ", it + 1);
+				}
+			}
+			if (use_nesterov_acc) {
+				beta_after_grad_aux_lag1 = beta_after_grad_aux;
+			}
+			beta = beta_new;
+
+			//Log::Debug("neg_log_likelihood_after_lin_coef_update_: %g", neg_log_likelihood_after_lin_coef_update_);//DELETE
+			//for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %g", i, beta[i]); }//DELETE
+
+		}//end UpdateLinCoef
+
+		/*!
+		* \brief Calculate the covariance matrix ZSigmaZt of the random effects (sum of all components)
+		* \param[out] ZSigmaZt Covariance matrix ZSigmaZt
+		* \param cluster_i Cluster index for which the covariance matrix is calculated
+		*/
+		void CalcZSigmaZt(T1& ZSigmaZt, gp_id_t cluster_i) {
+			ZSigmaZt.resize(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
+			if (gauss_likelihood_) {
+				ZSigmaZt.setIdentity();
+			}
+			else {
+				ZSigmaZt.setZero();
+			}
+			for (int j = 0; j < num_comps_total_; ++j) {
+				ZSigmaZt += (*(re_comps_[cluster_i][j]->GetZSigmaZt()));
+			}
+		}//end CalcZSigmaZt
+
+		/*!
+		* \brief Calculate the covariance matrix ZSigmaZt if use_woodbury_identity_==false or the inverse covariance matrix Sigma^-1 if there are only grouped REs i.e. if use_woodbury_identity_==true.
+		*		This function is only used for non-Gaussian data as in the Gaussian case this needs not be saved
+		*/
+		void CalcCovMatrixNonGauss() {
+			if (use_woodbury_identity_) {
+				for (const auto& cluster_i : unique_clusters_) {
+					CalcSigmaIGroupedREsOnly(SigmaI_[cluster_i], cluster_i);
+				}
+			}
+			else {
+				for (const auto& cluster_i : unique_clusters_) {
+					if (num_comps_total_ == 1) {//no need to sum up different components
+						ZSigmaZt_[cluster_i] = re_comps_[cluster_i][0]->GetZSigmaZt();
+					}
+					else {
+						T1 ZSigmaZt;
+						CalcZSigmaZt(ZSigmaZt, cluster_i);
+						ZSigmaZt_[cluster_i] = std::make_shared<T1>(ZSigmaZt);
+					}
+				}
+			}
+		}//end CalcCovMatrixNonGauss
+
+		/*!
+		* \brief Calculate the mode of the posterior of the latent random effects for use in the Laplace approximation. This function is only used for non-Gaussian data
+		* \param fixed_effects Fixed effects component of location parameter
+		* \return Approximate marginal log-likelihood evaluated at the mode
+		*/
+		double CalcModePostRandEff(const double* fixed_effects = nullptr) {
+			double mll;
+			if (num_clusters_ == 1 && (!vecchia_approx_ || vecchia_ordering_ == "none")) {//only one cluster / independent realization
+				gp_id_t cluster_i = unique_clusters_[0];
+				if (vecchia_approx_) {
+					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects,
+						num_data_per_cluster_[cluster_i], B_[cluster_i], D_inv_[cluster_i], mll);
+				}
+				else {
+					if (use_woodbury_identity_) {
+						likelihood_[cluster_i]->FindModePostRandEffCalcMLLGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects,
+							num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], mll, only_one_random_effect_);
+					}
+					else {
+						(*likelihood_[cluster_i]).template FindModePostRandEffCalcMLLStable<T1>(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects,
+							num_data_per_cluster_[cluster_i], ZSigmaZt_[cluster_i], mll);
+					}
+				}
+			}//end only one cluster / independent realization
+			else {//more than one cluster and order of samples matters
+				//TODO: this is quite inefficient as the mapping of the fixed_effects to the different clusters is done repeatedly for the same data. Could be saved if performance is an issue for this use-case. 
+				double mll_cluster_i;
+				const double* fixed_effects_cluster_i_ptr = nullptr;
+				vec_t fixed_effects_cluster_i;
+				mll = 0.;
+				for (const auto& cluster_i : unique_clusters_) {
+					if (fixed_effects != nullptr) {
+						fixed_effects_cluster_i = vec_t(num_data_per_cluster_[cluster_i]);//TODO: Is there a more efficient way that avoids copying?
+#pragma omp parallel for schedule(static)
+						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+							fixed_effects_cluster_i[j] = fixed_effects[data_indices_per_cluster_[cluster_i][j]];
+						}
+						fixed_effects_cluster_i_ptr = fixed_effects_cluster_i.data();
+					}
+					if (vecchia_approx_) {
+						likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+							num_data_per_cluster_[cluster_i], B_[cluster_i], D_inv_[cluster_i], mll_cluster_i);
+					}
+					else {
+						if (use_woodbury_identity_) {
+							likelihood_[cluster_i]->FindModePostRandEffCalcMLLGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+								num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], mll_cluster_i, only_one_random_effect_);
+						}
+						else {
+							(*likelihood_[cluster_i]).template FindModePostRandEffCalcMLLStable<T1>(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+								num_data_per_cluster_[cluster_i], ZSigmaZt_[cluster_i], mll_cluster_i);
+						}
+					}
+					mll += mll_cluster_i;
+				}
+			}//end more than one cluster
+			return(mll);
+		}//CalcModePostRandEff
 
 		/*!
 		* \brief Calculate matrices A and D_inv as well as their derivatives for the Vecchia approximation for one cluster (independent realization of GP)
@@ -2119,6 +2802,9 @@ namespace GPBoost {
 			if (!transf_scale) {
 				D_inv_cluster_i.diagonal().array() *= nugget_var;//nugget effect is not 1 if not on transformed scale
 			}
+			if (!gauss_likelihood_) {
+				D_inv_cluster_i.diagonal().array() *= 0.;
+			}
 			if (calc_gradient) {
 				B_grad_cluster_i = std::vector<sp_mat_t>(num_par_gp);//derivative of B = derviateive of (-A)
 				D_grad_cluster_i = std::vector<sp_mat_t>(num_par_gp);//derivative of D
@@ -2133,13 +2819,11 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_data_cluster_i; ++i) {
 				int num_nn = (int)nearest_neighbors_cluster_i[i].size();
-
 				//calculate covariance matrices between observations and neighbors and among neighbors as well as their derivatives
 				den_mat_t cov_mat_obs_neighbors(1, num_nn);
 				den_mat_t cov_mat_between_neighbors(num_nn, num_nn);
 				std::vector<den_mat_t> cov_grad_mats_obs_neighbors(num_par_gp);//covariance matrix plus derivative wrt to every parameter
 				std::vector<den_mat_t> cov_grad_mats_between_neighbors(num_par_gp);
-
 				if (i > 0) {
 					for (int j = 0; j < num_gp_total_; ++j) {
 						int ind_first_par = j * num_par_comp;//index of first parameter (variance) of component j in gradient vectors
@@ -2174,7 +2858,6 @@ namespace GPBoost {
 						}
 					}//end loop over components j
 				}//end if(i>1)
-
 				//Calculate matrices B and D as well as their derivatives
 				//1. add first summand of matrix D (ZCZ^T_{ii}) and its derivatives
 				for (int j = 0; j < num_gp_total_; ++j) {
@@ -2203,15 +2886,19 @@ namespace GPBoost {
 				if (calc_gradient && calc_gradient_nugget) {
 					D_grad_cluster_i[num_par_gp - 1].coeffRef(i, i) = 1.;
 				}
-
 				//2. remaining terms
 				if (i > 0) {
-					if (transf_scale) {
-						cov_mat_between_neighbors.diagonal().array() += 1.;//add nugget effect
+					if (gauss_likelihood_) {
+						if (transf_scale) {
+							cov_mat_between_neighbors.diagonal().array() += 1.;//add nugget effect
+						}
+						else {
+							cov_mat_between_neighbors.diagonal().array() += nugget_var;
+						}
 					}
-					else {
-						cov_mat_between_neighbors.diagonal().array() += nugget_var;
-					}
+					//else {//Seems unnecessary
+					//	cov_mat_between_neighbors.diagonal().array() += 1e-10;//Avoid numerical problems when there is no nugget effect
+					//}
 					den_mat_t A_i(1, num_nn);
 					den_mat_t cov_mat_between_neighbors_inv;
 					den_mat_t A_i_grad_sigma2;
@@ -2229,7 +2916,6 @@ namespace GPBoost {
 					else {
 						A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors.transpose())).transpose();
 					}
-
 					for (int inn = 0; inn < num_nn; ++inn) {
 						B_cluster_i.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i(0, inn);
 					}
@@ -2264,13 +2950,12 @@ namespace GPBoost {
 					}//end calc_gradient
 				}//end if i > 0
 				D_inv_cluster_i.coeffRef(i, i) = 1. / D_inv_cluster_i.coeffRef(i, i);
-
 			}//end loop over data i
-
-		}
+		}//end CalcCovFactorVecchia
 
 		/*!
 		* \brief Create the covariance matrix Psi and factorize it (either calculate a Cholesky factor or the inverse covariance matrix)
+		*			Use only for Gaussian data
 		* \param calc_gradient If true, the gradient also be calculated (only for Vecchia approximation)
 		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale. Default = true (only for Vecchia approximation)
 		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if vecchia_approx_==true and transf_scale ==false to transform back, normally this is equal to one, since the variance paramter is modelled separately and factored out)
@@ -2301,15 +2986,11 @@ namespace GPBoost {
 							CalcChol<T1>(SigmaIplusZtZ, cluster_i, do_symbolic_decomposition_);
 						}
 					}//end use_woodbury_identity_
-					else {
+					else {//not use_woodbury_identity_
 						T1 psi;
-						psi.resize(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
-						psi.setIdentity();//nugget effect
-						for (int j = 0; j < num_comps_total_; ++j) {
-							psi += (*(re_comps_[cluster_i][j]->GetZSigmaZt()));
-						}
+						CalcZSigmaZt(psi, cluster_i);
 						CalcChol<T1>(psi, cluster_i, do_symbolic_decomposition_);
-					}
+					}//end not use_woodbury_identity_
 				}
 				do_symbolic_decomposition_ = false;//Symbolic decompostion done only once (if sparse matrices are used)
 			}
@@ -2558,93 +3239,139 @@ namespace GPBoost {
 		* \param[out] grad Gradient w.r.t. covariance parameters
 		* \param include_error_var If true, the gradient for the marginal variance parameter (=error, nugget effect) is also calculated, otherwise not (set this to true if the nugget effect is not calculated by using the closed-form solution)
 		* \param save_psi_inv If true, the inverse covariance matrix Psi^-1 is saved for reuse later (e.g. when calculating the Fisher information in Fisher scoring). This option is ignored if the Vecchia approximation is used.
+		* \param fixed_effects Fixed effects component of location parameter (used only for non-Gaussian data)
 		*/
-		void CalcCovParGrad(vec_t& cov_pars, vec_t& cov_grad, bool include_error_var = false, bool save_psi_inv = false) {
-			if (include_error_var) {
-				cov_grad = vec_t::Zero(num_cov_par_);
-			}
-			else {
-				cov_grad = vec_t::Zero(num_cov_par_ - 1);
-			}
-			int first_cov_par = include_error_var ? 1 : 0;
-			for (const auto& cluster_i : unique_clusters_) {
-				if (vecchia_approx_) {//Vechia approximation
-					vec_t u(num_data_per_cluster_[cluster_i]);
-					vec_t uk(num_data_per_cluster_[cluster_i]);
-					if (include_error_var) {
-						u = B_[cluster_i] * y_[cluster_i];
-						cov_grad[0] += -1. * ((double)(u.transpose() * D_inv_[cluster_i] * u)) / sigma2_ / 2. + num_data_per_cluster_[cluster_i] / 2.;
-						u = D_inv_[cluster_i] * u;
-					}
-					else {
-						u = D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];//TODO: this is already calculated in CalcYAux -> save it there and re-use here?
-					}
-					for (int j = 0; j < num_comps_total_; ++j) {
-						int num_par_comp = re_comps_[cluster_i][j]->num_cov_par_;
-						for (int ipar = 0; ipar < num_par_comp; ++ipar) {
-							uk = B_grad_[cluster_i][num_par_comp * j + ipar] * y_[cluster_i];
-							cov_grad[first_cov_par + ind_par_[j] - 1 + ipar] += ((uk.dot(u) - 0.5 * u.dot(D_grad_[cluster_i][num_par_comp * j + ipar] * u)) / sigma2_ +
-								0.5 * (D_inv_[cluster_i].diagonal()).dot(D_grad_[cluster_i][num_par_comp * j + ipar].diagonal()));
-						}
-					}
-				}//end vecchia_approx_
-				else {//not vecchia_approx_
-					if (use_woodbury_identity_) {
+		void CalcCovParGrad(vec_t& cov_pars, vec_t& cov_grad, bool include_error_var = false,
+			bool save_psi_inv = false, const double* fixed_effects = nullptr) {
+			if (gauss_likelihood_) {
+				if (include_error_var) {
+					cov_grad = vec_t::Zero(num_cov_par_);
+				}
+				else {
+					cov_grad = vec_t::Zero(num_cov_par_ - 1);
+				}
+				int first_cov_par = include_error_var ? 1 : 0;
+				for (const auto& cluster_i : unique_clusters_) {
+					if (vecchia_approx_) {//Vechia approximation
+						vec_t u(num_data_per_cluster_[cluster_i]);
+						vec_t uk(num_data_per_cluster_[cluster_i]);
 						if (include_error_var) {
-							double yTPsiInvy;
-							CalcYTPsiIInvY<T1>(yTPsiInvy, false, cluster_i, true, true);
-							cov_grad[0] += -1. * yTPsiInvy / sigma2_ / 2. + num_data_per_cluster_[cluster_i] / 2.;
+							u = B_[cluster_i] * y_[cluster_i];
+							cov_grad[0] += -1. * ((double)(u.transpose() * D_inv_[cluster_i] * u)) / sigma2_ / 2. + num_data_per_cluster_[cluster_i] / 2.;
+							u = D_inv_[cluster_i] * u;
 						}
-						std::vector<T1> LInvZtZj_cluster_i;
-						if (save_psi_inv) {
-							LInvZtZj_[cluster_i].clear();
-							LInvZtZj_cluster_i = std::vector<T1>(num_comps_total_);
+						else {
+							u = D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];//TODO: this is already calculated in CalcYAux -> save it there and re-use here?
 						}
 						for (int j = 0; j < num_comps_total_; ++j) {
-							sp_mat_t* Z_j = re_comps_[cluster_i][j]->GetZ();
-							vec_t y_tilde_j = (*Z_j).transpose() * y_[cluster_i];
-							vec_t y_tilde2_j = (*Z_j).transpose() * y_tilde2_[cluster_i];
-							double yTPsiIGradPsiPsiIy = y_tilde_j.transpose() * y_tilde_j - 2. * (double)(y_tilde_j.transpose() * y_tilde2_j) + y_tilde2_j.transpose() * y_tilde2_j;
-							yTPsiIGradPsiPsiIy *= cov_pars[j + 1];
-							T1 LInvZtZj;
-							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ == ZtZj_ and L_inv are diagonal  
-								LInvZtZj = ZtZ_[cluster_i];
-								LInvZtZj.diagonal().array() /= chol_facts_[cluster_i].diagonal().array();
+							int num_par_comp = re_comps_[cluster_i][j]->num_cov_par_;
+							for (int ipar = 0; ipar < num_par_comp; ++ipar) {
+								uk = B_grad_[cluster_i][num_par_comp * j + ipar] * y_[cluster_i];
+								cov_grad[first_cov_par + ind_par_[j] - 1 + ipar] += ((uk.dot(u) - 0.5 * u.dot(D_grad_[cluster_i][num_par_comp * j + ipar] * u)) / sigma2_ +
+									0.5 * (D_inv_[cluster_i].diagonal()).dot(D_grad_[cluster_i][num_par_comp * j + ipar].diagonal()));
 							}
-							else {
-								CalcPsiInvSqrtH(ZtZj_[cluster_i][j], LInvZtZj, cluster_i, true);
+						}
+					}//end vecchia_approx_
+					else {//not vecchia_approx_
+						if (use_woodbury_identity_) {
+							if (include_error_var) {
+								double yTPsiInvy;
+								CalcYTPsiIInvY<T1>(yTPsiInvy, false, cluster_i, true, true);
+								cov_grad[0] += -1. * yTPsiInvy / sigma2_ / 2. + num_data_per_cluster_[cluster_i] / 2.;
 							}
+							std::vector<T1> LInvZtZj_cluster_i;
+							if (save_psi_inv) {
+								LInvZtZj_[cluster_i].clear();
+								LInvZtZj_cluster_i = std::vector<T1>(num_comps_total_);
+							}
+							for (int j = 0; j < num_comps_total_; ++j) {
+								sp_mat_t* Z_j = re_comps_[cluster_i][j]->GetZ();
+								vec_t y_tilde_j = (*Z_j).transpose() * y_[cluster_i];
+								vec_t y_tilde2_j = (*Z_j).transpose() * y_tilde2_[cluster_i];
+								double yTPsiIGradPsiPsiIy = y_tilde_j.transpose() * y_tilde_j - 2. * (double)(y_tilde_j.transpose() * y_tilde2_j) + y_tilde2_j.transpose() * y_tilde2_j;
+								yTPsiIGradPsiPsiIy *= cov_pars[j + 1];
+								T1 LInvZtZj;
+								if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ == ZtZj_ and L_inv are diagonal  
+									LInvZtZj = ZtZ_[cluster_i];
+									LInvZtZj.diagonal().array() /= chol_facts_[cluster_i].diagonal().array();
+								}
+								else {
+									CalcPsiInvSqrtH(ZtZj_[cluster_i][j], LInvZtZj, cluster_i, true);
+								}
+								if (save_psi_inv) {//save for latter use when e.g. calculating the Fisher information
+									LInvZtZj_cluster_i[j] = LInvZtZj;
+								}
+								double trace_PsiInvGradPsi = Zj_square_sum_[cluster_i][j] - LInvZtZj.squaredNorm();
+								trace_PsiInvGradPsi *= cov_pars[j + 1];
+								cov_grad[first_cov_par + j] += -1. * yTPsiIGradPsiPsiIy / sigma2_ / 2. + trace_PsiInvGradPsi / 2.;
+							}
+							if (save_psi_inv) {
+								LInvZtZj_[cluster_i] = LInvZtZj_cluster_i;
+							}
+						}//end use_woodbury_identity_
+						else {//not use_woodbury_identity_
+							T1 psi_inv;
+							CalcPsiInv(psi_inv, cluster_i);
 							if (save_psi_inv) {//save for latter use when e.g. calculating the Fisher information
-								LInvZtZj_cluster_i[j] = LInvZtZj;
+								psi_inv_[cluster_i] = psi_inv;
 							}
-							double trace_PsiInvGradPsi = Zj_square_sum_[cluster_i][j] - LInvZtZj.squaredNorm();
-							trace_PsiInvGradPsi *= cov_pars[j + 1];
-							cov_grad[first_cov_par + j] += -1. * yTPsiIGradPsiPsiIy / sigma2_ / 2. + trace_PsiInvGradPsi / 2.;
-						}
-						if (save_psi_inv) {
-							LInvZtZj_[cluster_i] = LInvZtZj_cluster_i;
-						}
-					}//end use_woodbury_identity_
-					else {//not use_woodbury_identity_
-						T1 psi_inv;
-						CalcPsiInv(psi_inv, cluster_i);
-						if (save_psi_inv) {//save for latter use when e.g. calculating the Fisher information
-							psi_inv_[cluster_i] = psi_inv;
-						}
-						if (include_error_var) {
-							cov_grad[0] += -1. * ((double)(y_[cluster_i].transpose() * y_aux_[cluster_i])) / sigma2_ / 2. + num_data_per_cluster_[cluster_i] / 2.;
-						}
-						for (int j = 0; j < num_comps_total_; ++j) {
-							for (int ipar = 0; ipar < re_comps_[cluster_i][j]->num_cov_par_; ++ipar) {
-								std::shared_ptr<T1> gradPsi = re_comps_[cluster_i][j]->GetZSigmaZtGrad(ipar, true, 1.);
-								cov_grad[first_cov_par + ind_par_[j] - 1 + ipar] += -1. * ((double)(y_aux_[cluster_i].transpose() * (*gradPsi) * y_aux_[cluster_i])) / sigma2_ / 2. +
-									((double)(((*gradPsi).cwiseProduct(psi_inv)).sum())) / 2.;
+							if (include_error_var) {
+								cov_grad[0] += -1. * ((double)(y_[cluster_i].transpose() * y_aux_[cluster_i])) / sigma2_ / 2. + num_data_per_cluster_[cluster_i] / 2.;
 							}
+							for (int j = 0; j < num_comps_total_; ++j) {
+								for (int ipar = 0; ipar < re_comps_[cluster_i][j]->num_cov_par_; ++ipar) {
+									std::shared_ptr<T1> gradPsi = re_comps_[cluster_i][j]->GetZSigmaZtGrad(ipar, true, 1.);
+									cov_grad[first_cov_par + ind_par_[j] - 1 + ipar] += -1. * ((double)(y_aux_[cluster_i].transpose() * (*gradPsi) * y_aux_[cluster_i])) / sigma2_ / 2. +
+										((double)(((*gradPsi).cwiseProduct(psi_inv)).sum())) / 2.;
+								}
+							}
+						}//end not use_woodbury_identity_
+					}//end not vecchia_approx_
+				}// end loop over clusters
+			}//end gauss_likelihood_
+			else {//not gauss_likelihood_
+				if (include_error_var) {
+					Log::Fatal("There is no error variance (nugget effect) for non-Gaussian data");
+				}
+				cov_grad = vec_t::Zero(num_cov_par_);
+				vec_t cov_grad_cluster_i(num_cov_par_);
+				vec_t empty_unused_vec(0);//placeholder for fixed effects gradient
+				const double* fixed_effects_cluster_i_ptr = fixed_effects;
+				vec_t fixed_effects_cluster_i;
+				for (const auto& cluster_i : unique_clusters_) {
+					//map fixed effects to clusters (if needed)
+					if (num_clusters_ != 1 || (vecchia_approx_ && vecchia_ordering_ != "none")) {//more than one cluster and order matters
+						vec_t grad_F_cluster_i(num_data_per_cluster_[cluster_i]);
+						if (fixed_effects != nullptr) {
+							fixed_effects_cluster_i = vec_t(num_data_per_cluster_[cluster_i]);//TODO: Is there a more efficient way that avoids copying?
+#pragma omp parallel for schedule(static)
+							for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+								fixed_effects_cluster_i[j] = fixed_effects[data_indices_per_cluster_[cluster_i][j]];
+							}
+							fixed_effects_cluster_i_ptr = fixed_effects_cluster_i.data();
 						}
-					}//end not use_woodbury_identity_
-				}//end not vecchia_approx_
-			}// end loop over clusters
-		}
+					}
+					if (vecchia_approx_) {//Vechia approximation
+						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLAApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+							num_data_per_cluster_[cluster_i], B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i],
+							true, false, cov_grad_cluster_i.data(), empty_unused_vec, false);
+					}//end vecchia_approx_
+					else {//not vecchia_approx_
+						if (use_woodbury_identity_) {
+							(*likelihood_[cluster_i]).template CalcGradNegMargLikelihoodLAApproxGroupedRE<T1>(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+								num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], re_comps_[cluster_i], cum_num_rand_eff_[cluster_i], true, false,
+								cov_grad_cluster_i.data(), empty_unused_vec, false, only_one_random_effect_);
+						}//end use_woodbury_identity_
+						else {//not use_woodbury_identity_
+							(*likelihood_[cluster_i]).template CalcGradNegMargLikelihoodLAApproxStable<T1>(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+								num_data_per_cluster_[cluster_i], ZSigmaZt_[cluster_i], re_comps_[cluster_i], true, false,
+								cov_grad_cluster_i.data(), empty_unused_vec, false);
+						}//end not use_woodbury_identity_
+					}//end not vecchia_approx_
+					cov_grad += cov_grad_cluster_i;
+				}// end loop over clusters
+			}
+		} 
 
 		/*!
 		* \brief Apply a momentum step
@@ -2652,7 +3379,7 @@ namespace GPBoost {
 		* \param pars Parameters
 		* \param pars_lag1 Parameters from last iteration
 		* \param[out] pars_acc Accelerated parameters
-		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters. Default = true
+		* \param nesterov_acc_rate Nesterov acceleration speed
 		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
 		* \param exclude_first_log_scale If true, no momentum is applied to the first value and the momentum step is done on the log-scale for the other values. Default = true
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
@@ -2677,16 +3404,27 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Update linear fixed-effect coefficients doing one gradient descent step
-		* \param lr Learning rate
-		* \param marg_var Marginal variance parameters sigma^2
-		* \param X Covariate data for linear fixed-effect
-		* \param[out] beta Linear regression coefficients
+		* \brief Calculate gradient for linear fixed-effect coefficients
+		* \param marg_var Marginal variance parameters sigma^2 (only used for Gaussian data)
+		* \param beta Linear regression coefficients
+		* \param[out] grad_beta Gradient for linear regression coefficients
+		 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
 		*/
-		void UpdateCoefGradOneIter(double lr, double marg_var, den_mat_t& X, vec_t& beta) {
-			vec_t y_aux(num_data_);
-			GetYAux(y_aux);
-			beta += lr * (1. / marg_var) * (X.transpose()) * y_aux;
+		void CalcLinCoefGrad(double marg_var, const vec_t beta, vec_t& grad_beta, const double* fixed_effects = nullptr) {
+			if (gauss_likelihood_) {
+				const vec_t resid = y_vec_ - (X_ * beta);
+				SetY(resid.data());
+				CalcYAux();
+				vec_t y_aux(num_data_);
+				GetYAux(y_aux);
+				grad_beta = (-1. / marg_var) * (X_.transpose()) * y_aux;
+				//beta += lr * (1. / marg_var) * (X.transpose()) * y_aux;
+			}
+			else {
+				vec_t grad_F(num_data_);
+				CalcGradFLaplace(grad_F.data(), fixed_effects);
+				grad_beta = (X_.transpose()) * grad_F;
+			}
 		}
 
 		/*!
@@ -2700,16 +3438,6 @@ namespace GPBoost {
 			den_mat_t XT_psi_inv_X;
 			CalcXTPsiInvX(X, XT_psi_inv_X);
 			beta = XT_psi_inv_X.llt().solve(X.transpose() * y_aux);
-		}
-
-		/*!
-		* \brief Check whether NaN's are presend
-		* \param par Vector of parameters that should be checked
-		*/
-		void CheckNaNInf(vec_t& par) {
-			if (std::isnan(par[0]) || std::isinf(par[0])) {
-				Log::Fatal("NaN or Inf occurred. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
-			}
 		}
 
 		/*!
@@ -2956,22 +3684,43 @@ namespace GPBoost {
 		/*!
 		 * \brief Calculate predictions (conditional mean and covariance matrix) for one cluster
 		 * \param cluster_i Cluster index for which prediction are made
-		 * \param num_data_pred Number of prediction locations
+		 * \param num_data_pred Total number of prediction locations (over all clusters)
 		 * \param num_data_per_cluster_pred Keys: Labels of independent realizations of REs/GPs, values: number of prediction locations per independent realization
 		 * \param data_indices_per_cluster_pred Keys: labels of independent clusters, values: vectors with indices for data points that belong to the every cluster
 		 * \param re_group_levels_pred Group levels for the grouped random effects (re_group_levels_pred[j] contains the levels for RE number j)
 		 * \param re_group_rand_coef_data_pred Random coefficient data for grouped REs
 		 * \param gp_coords_mat_pred Coordinates for prediction locations
 		 * \param gp_rand_coef_data_pred Random coefficient data for GPs
-		 * \param predict_cov_mat If true, the covariance matrix is also calculated
-		 * \param[out] mean_pred_id Predicted mean
-		 * \param[out] cov_mat_pred_id Predicted covariance matrix
+		 * \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
+		 * \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
+		 * \param[out] mean_pred_id Predictive mean
+		 * \param[out] cov_mat_pred_id Predictive covariance matrix
+		 * \param[out] var_pred_id Predictive variances
+		 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
 		 */
 		void CalcPred(gp_id_t cluster_i, int num_data_pred,
 			std::map<gp_id_t, int>& num_data_per_cluster_pred, std::map<gp_id_t, std::vector<int>>& data_indices_per_cluster_pred,
 			const std::vector<std::vector<string_t>>& re_group_levels_pred, const double* re_group_rand_coef_data_pred,
 			const den_mat_t& gp_coords_mat_pred, const double* gp_rand_coef_data_pred,
-			bool predict_cov_mat, vec_t& mean_pred_id, T1& cov_mat_pred_id) {
+			bool predict_cov_mat, bool predict_var, vec_t& mean_pred_id, T1& cov_mat_pred_id, vec_t& var_pred_id,
+			const double* fixed_effects = nullptr) {
+			if (predict_var) {
+				if (gauss_likelihood_) {
+					var_pred_id = vec_t::Ones(num_data_per_cluster_pred[cluster_i]);//nugget effect
+				}
+				else {
+					var_pred_id = vec_t::Zero(num_data_per_cluster_pred[cluster_i]);
+				}
+			}
+			if (predict_cov_mat) {
+				cov_mat_pred_id = T1(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
+				if (gauss_likelihood_) {
+					cov_mat_pred_id.setIdentity();//nugget effect
+				}
+				else {
+					cov_mat_pred_id.setZero();
+				}
+			}
 			// Vector which contains covariance matrices needed for making predictions in the following order:
 			//		0. Ztilde*Sigma*Z^T, 1. Zstar*Sigmatilde^T*Z^T, 2. Ztilde*Sigma*Ztilde^T, 3. Ztilde*Sigmatilde*Zstar^T, 4. Zstar*Sigmastar*Zstar^T
 			std::vector<T1> pred_mats(5);
@@ -3012,6 +3761,9 @@ namespace GPBoost {
 						group_data.push_back(re_group_levels_pred[j][id]);
 					}
 					re_comp->AddPredCovMatrices(group_data, pred_mats, predict_cov_mat);
+					if (predict_var) {
+						re_comp->AddPredUncondVar(var_pred_id.data(), num_data_per_cluster_pred[cluster_i], nullptr);
+					}
 					cn += 1;
 				}
 				if (num_re_group_rand_coef_ > 0) {
@@ -3025,14 +3777,20 @@ namespace GPBoost {
 							group_data.push_back(re_group_levels_pred[ind_effect_group_rand_coef_[j] - 1][id]);//subtract 1 since counting starts at one for this index
 						}
 						re_comp->AddPredCovMatrices(group_data, pred_mats, predict_cov_mat, rand_coef_data.data());
+						if (predict_var) {
+							re_comp->AddPredUncondVar(var_pred_id.data(), num_data_per_cluster_pred[cluster_i], rand_coef_data.data());
+						}
 						cn += 1;
 					}
 				}
-			}
+			}//end grouped random effects
 			//Gaussian process
 			if (num_gp_ > 0) {
 				std::shared_ptr<RECompGP<T1>> re_comp_base = std::dynamic_pointer_cast<RECompGP<T1>>(re_comps_[cluster_i][cn]);
 				re_comp_base->AddPredCovMatrices(re_comp_base->coords_, gp_coords_mat_pred, pred_mats, predict_cov_mat);
+				if (predict_var) {
+					re_comp_base->AddPredUncondVar(var_pred_id.data(), num_data_per_cluster_pred[cluster_i], nullptr);
+				}
 				cn += 1;
 				if (num_gp_rand_coef_ > 0) {
 					std::shared_ptr<RECompGP<T1>> re_comp;
@@ -3044,6 +3802,9 @@ namespace GPBoost {
 							rand_coef_data.push_back(gp_rand_coef_data_pred[j * num_data_pred + id]);
 						}
 						re_comp->AddPredCovMatrices(re_comp_base->coords_, gp_coords_mat_pred, pred_mats, predict_cov_mat, rand_coef_data.data());
+						if (predict_var) {
+							re_comp->AddPredUncondVar(var_pred_id.data(), num_data_per_cluster_pred[cluster_i], rand_coef_data.data());
+						}
 						cn += 1;
 					}
 				}
@@ -3055,9 +3816,7 @@ namespace GPBoost {
 					M_aux += pred_mats[i];
 				}
 			}
-			mean_pred_id = M_aux * y_aux_[cluster_i];
 			if (predict_cov_mat) {
-				cov_mat_pred_id.setIdentity();
 				for (int i = 2; i < 5; ++i) {
 					if (active_mats[i]) {
 						cov_mat_pred_id += pred_mats[i];
@@ -3066,27 +3825,79 @@ namespace GPBoost {
 						}
 					}
 				}
-				if (use_woodbury_identity_) {
-					T1 ZtM_aux = T1(Zt_[cluster_i] * M_aux.transpose());
-					if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
-						ZtM_aux = chol_facts_[cluster_i].diagonal().array().inverse().matrix().asDiagonal() * ZtM_aux;
-						cov_mat_pred_id -= (M_aux * T1(M_aux.transpose()) - ZtM_aux.transpose() * ZtM_aux);
+			}
+			if (gauss_likelihood_) {
+				mean_pred_id = M_aux * y_aux_[cluster_i];
+				if (predict_cov_mat) {
+					if (use_woodbury_identity_) {
+						T1 ZtM_aux = T1(Zt_[cluster_i] * M_aux.transpose());
+						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
+							ZtM_aux = chol_facts_[cluster_i].diagonal().array().inverse().matrix().asDiagonal() * ZtM_aux;
+							cov_mat_pred_id -= (M_aux * T1(M_aux.transpose()) - ZtM_aux.transpose() * ZtM_aux);
+						}
+						else {
+							cov_mat_pred_id -= (M_aux * T1(M_aux.transpose()) - ZtM_aux.transpose() * chol_facts_solve_[cluster_i].solve(ZtM_aux));
+						}
 					}
 					else {
-						cov_mat_pred_id -= (M_aux * T1(M_aux.transpose()) - ZtM_aux.transpose() * chol_facts_solve_[cluster_i].solve(ZtM_aux));
+						cov_mat_pred_id -= (M_aux * (chol_facts_solve_[cluster_i].solve(T1(M_aux.transpose()))));
 					}
+				}//end predict_cov_mat
+				if (predict_var) {
+					T1 M_aux2;
+					if (use_woodbury_identity_) {
+						T1 ZtM_aux = T1(Zt_[cluster_i] * M_aux.transpose());
+						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
+							M_aux2 = chol_facts_[cluster_i].diagonal().array().inverse().matrix().asDiagonal() * ZtM_aux;
+						}
+						else {
+							CalcLInvH(chol_facts_[cluster_i], ZtM_aux, M_aux2, true);
+						}
+						M_aux2 = M_aux2.cwiseProduct(M_aux2);
+						M_aux = M_aux.cwiseProduct(M_aux);
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+							var_pred_id[i] -= M_aux.row(i).sum() - M_aux2.col(i).sum();
+						}
+					}//end use_woodbury_identity_
+					else {//not use_woodbury_identity_
+						T1 M_auxT = M_aux.transpose();
+						CalcLInvH(chol_facts_[cluster_i], M_auxT, M_aux2, true);
+						M_aux2 = M_aux2.cwiseProduct(M_aux2);
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+							var_pred_id[i] -= M_aux2.col(i).sum();
+						}
+					}//end not use_woodbury_identity_
+				}//end predict_var
+			}//end gauss_likelihood_
+			if (!gauss_likelihood_) {//not gauss_likelihood_
+				const double* fixed_effects_cluster_i_ptr = fixed_effects;//note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
+				if (vecchia_approx_) {
+					likelihood_[cluster_i]->PredictLAApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+						num_data_per_cluster_[cluster_i], B_[cluster_i], D_inv_[cluster_i], M_aux,
+						mean_pred_id, cov_mat_pred_id, var_pred_id, predict_cov_mat, predict_var, false);
 				}
 				else {
-					cov_mat_pred_id -= (M_aux * (chol_facts_solve_[cluster_i].solve(T1(M_aux.transpose()))));
+					if (use_woodbury_identity_) {
+						likelihood_[cluster_i]->PredictLAApproxGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+							num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], M_aux,
+							mean_pred_id, cov_mat_pred_id, var_pred_id, predict_cov_mat, predict_var, false, only_one_random_effect_);
+					}
+					else {
+						likelihood_[cluster_i]->PredictLAApproxStable(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
+							num_data_per_cluster_[cluster_i], ZSigmaZt_[cluster_i], M_aux,
+							mean_pred_id, cov_mat_pred_id, var_pred_id, predict_cov_mat, predict_var, false);
+					}
 				}
-			}
-		}
+			}//end not gauss_likelihood_
+		}//end CalcPred
 
 		/*!
 		* \brief Calculate predictions (conditional mean and covariance matrix) using the Vecchia approximation for the covariance matrix of the observable process when observed locations appear first in the ordering
 		* \param CondObsOnly If true, the nearest neighbors for the predictions are found only among the observed data
 		* \param cluster_i Cluster index for which prediction are made
-		* \param num_data_pred Number of prediction locations
+		* \param num_data_pred Total number of prediction locations (over all clusters)
 		* \param num_data_per_cluster_pred Keys: Labels of independent realizations of REs/GPs, values: number of prediction locations per independent realization
 		* \param data_indices_per_cluster_pred Keys: labels of independent clusters, values: vectors with indices for data points that belong to the every cluster
 		* \param gp_coords_mat_obs Coordinates for observed locations
@@ -3116,8 +3927,6 @@ namespace GPBoost {
 				find_nearest_neighbors_Veccia_fast(coords_all, num_data_cli + num_data_pred_cli, num_neighbors_pred_,
 					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, -1);
 			}
-
-
 			//Random coefficients
 			std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_pred_cli);
 			if (num_gp_rand_coef_ > 0) {
@@ -3143,7 +3952,6 @@ namespace GPBoost {
 					}
 				}
 			}
-
 			// Determine Triplet for initializing Bpo and Bp
 			std::vector<Triplet_t> entries_init_Bpo, entries_init_Bp;
 			for (int i = 0; i < num_data_pred_cli; ++i) {
@@ -3163,10 +3971,8 @@ namespace GPBoost {
 			Bp.setFromTriplets(entries_init_Bp.begin(), entries_init_Bp.end());
 			sp_mat_t Dp(num_data_pred_cli, num_data_pred_cli);
 			Dp.setIdentity();//Put 1 on the diagonal (for nugget effect)
-
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_data_pred_cli; ++i) {
-
 				int num_nn = (int)nearest_neighbors_cluster_i[i].size();
 				//define covariance and gradient matrices
 				den_mat_t cov_mat_obs_neighbors(1, num_nn);//dim = 1 x nn
@@ -3193,9 +3999,7 @@ namespace GPBoost {
 						cov_mat_between_neighbors += cov_mat_between_neighbors_j;
 					}
 				}//end loop over components j
-
 				//Calculate matrices A and D as well as their derivatives
-
 				//1. add first summand of matrix D (ZCZ^T_{ii})
 				for (int j = 0; j < num_gp_total_; ++j) {
 					double d_comp_j = re_comps_[cluster_i][ind_intercept_gp_ + j]->cov_pars_[0];
@@ -3204,7 +4008,6 @@ namespace GPBoost {
 					}
 					Dp.coeffRef(i, i) += d_comp_j;
 				}
-
 				//2. remaining terms
 				cov_mat_between_neighbors.diagonal().array() += 1.;//add nugget effect
 				den_mat_t A_i(1, num_nn);//dim = 1 x nn
@@ -3218,14 +4021,11 @@ namespace GPBoost {
 					}
 				}
 				Dp.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
-
 			}//end loop over data i
-
 			mean_pred_id = -Bpo * y_[cluster_i];
 			if (!CondObsOnly) {
 				sp_L_solve(Bp.valuePtr(), Bp.innerIndexPtr(), Bp.outerIndexPtr(), num_data_pred_cli, mean_pred_id.data());
 			}
-
 			if (predict_cov_mat) {
 				if (CondObsOnly) {
 					cov_mat_pred_id = Dp;
@@ -3238,12 +4038,12 @@ namespace GPBoost {
 					cov_mat_pred_id = T1(Bp_inv * Dp * Bp_inv.transpose());
 				}
 			}
-		}
+		}//end CalcPredVecchiaObservedFirstOrder
 
 		/*!
 		* \brief Calculate predictions (conditional mean and covariance matrix) using the Vecchia approximation for the covariance matrix of the observable proces when prediction locations appear first in the ordering
 		* \param cluster_i Cluster index for which prediction are made
-		* \param num_data_pred Number of prediction locations
+		* \param num_data_pred Total number of prediction locations (over all clusters)
 		* \param num_data_per_cluster_pred Keys: Labels of independent realizations of REs/GPs, values: number of prediction locations per independent realization
 		* \param data_indices_per_cluster_pred Keys: labels of independent clusters, values: vectors with indices for data points that belong to the every cluster
 		* \param gp_coords_mat_obs Coordinates for observed locations
@@ -3268,7 +4068,6 @@ namespace GPBoost {
 			std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_tot);
 			find_nearest_neighbors_Veccia_fast(coords_all, num_data_tot, num_neighbors_pred_,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1);
-
 			//Prepare data for random coefficients
 			std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_tot);
 			if (num_gp_rand_coef_ > 0) {
@@ -3299,7 +4098,6 @@ namespace GPBoost {
 					}
 				}
 			}
-
 			// Determine Triplet for initializing Bo, Bop, and Bp
 			std::vector<Triplet_t> entries_init_Bo, entries_init_Bop, entries_init_Bp;
 			for (int i = 0; i < num_data_pred_cli; ++i) {
@@ -3325,21 +4123,17 @@ namespace GPBoost {
 			Bo.setFromTriplets(entries_init_Bo.begin(), entries_init_Bo.end());//initialize matrices (in order that the code below can be run in parallel)
 			Bop.setFromTriplets(entries_init_Bop.begin(), entries_init_Bop.end());
 			Bp.setFromTriplets(entries_init_Bp.begin(), entries_init_Bp.end());
-
 			sp_mat_t Do_inv(num_data_cli, num_data_cli);
 			sp_mat_t Dp_inv(num_data_pred_cli, num_data_pred_cli);
 			Do_inv.setIdentity();//Put 1 on the diagonal (for nugget effect)
 			Dp_inv.setIdentity();
-
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_data_tot; ++i) {
-
 				int num_nn = (int)nearest_neighbors_cluster_i[i].size();
 				//define covariance and gradient matrices
 				den_mat_t cov_mat_obs_neighbors(1, num_nn);//dim = 1 x nn
 				den_mat_t cov_mat_between_neighbors(num_nn, num_nn);//dim = nn x nn
 				den_mat_t cov_grad_mats_obs_neighbors, cov_grad_mats_between_neighbors; //not used, just as mock argument for functions below
-
 				if (i > 0) {
 					for (int j = 0; j < num_gp_total_; ++j) {
 						if (j == 0) {
@@ -3363,9 +4157,7 @@ namespace GPBoost {
 						}
 					}//end loop over components j
 				}
-
 				//Calculate matrices A and D as well as their derivatives
-
 				//1. add first summand of matrix D (ZCZ^T_{ii})
 				for (int j = 0; j < num_gp_total_; ++j) {
 					double d_comp_j = re_comps_[cluster_i][ind_intercept_gp_ + j]->cov_pars_[0];
@@ -3379,7 +4171,6 @@ namespace GPBoost {
 						Do_inv.coeffRef(i - num_data_pred_cli, i - num_data_pred_cli) += d_comp_j;
 					}
 				}
-
 				//2. remaining terms
 				if (i > 0) {
 					cov_mat_between_neighbors.diagonal().array() += 1.;//add nugget effect
@@ -3398,29 +4189,23 @@ namespace GPBoost {
 							}
 						}
 					}
-
 					if (i < num_data_pred_cli) {
 						Dp_inv.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
 					}
 					else {
 						Do_inv.coeffRef(i - num_data_pred_cli, i - num_data_pred_cli) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
 					}
-
 				}
-
 				if (i < num_data_pred_cli) {
 					Dp_inv.coeffRef(i, i) = 1 / Dp_inv.coeffRef(i, i);
 				}
 				else {
 					Do_inv.coeffRef(i - num_data_pred_cli, i - num_data_pred_cli) = 1 / Do_inv.coeffRef(i - num_data_pred_cli, i - num_data_pred_cli);
 				}
-
 			}//end loop over data i
-
 			sp_mat_t cond_prec = Bp.transpose() * Dp_inv * Bp + Bop.transpose() * Do_inv * Bop;
 			chol_sp_mat_t CholFact;
 			CholFact.compute(cond_prec);
-
 			if (predict_cov_mat) {
 				sp_mat_t Identity(num_data_pred_cli, num_data_pred_cli);
 				Identity.setIdentity();
@@ -3429,12 +4214,11 @@ namespace GPBoost {
 				eigen_sp_Lower_sp_RHS_cs_solve(cond_prec_chol, Identity, cond_prec_chol_inv, true);
 				cov_mat_pred_id = T1(cond_prec_chol_inv.transpose() * cond_prec_chol_inv);
 				mean_pred_id = -cov_mat_pred_id * Bop.transpose() * Do_inv * Bo * y_[cluster_i];
-
 			}
 			else {
 				mean_pred_id = -CholFact.solve(Bop.transpose() * Do_inv * Bo * y_[cluster_i]);
 			}
-		}
+		}//end CalcPredVecchiaPredictedFirstOrder
 
 		/*!
 		 * \brief Calculate predictions (conditional mean and covariance matrix) using the Vecchia approximation for the latent process when observed locations appear first in the ordering
@@ -3460,13 +4244,11 @@ namespace GPBoost {
 			//Find nearest neighbors
 			den_mat_t coords_all(num_data_cli + num_data_pred_cli, dim_gp_coords_);
 			coords_all << gp_coords_mat_obs, gp_coords_mat_pred;
-
 			//Determine number of unique observartion locations
 			std::vector<int> uniques;//unique points
 			std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
 			DetermineUniqueDuplicateCoords(gp_coords_mat_obs, num_data_cli, uniques, unique_idx);
 			int num_coord_unique_obs = (int)uniques.size();
-
 			//Determine unique locations (observed and predicted)
 			DetermineUniqueDuplicateCoords(coords_all, num_data_tot, uniques, unique_idx);
 			int num_coord_unique = (int)uniques.size();
@@ -3477,7 +4259,6 @@ namespace GPBoost {
 			else {
 				coords_all_unique = coords_all(uniques, Eigen::all);
 			}
-
 			//Determine incidence matrices
 			sp_mat_t Z_o = sp_mat_t(num_data_cli, uniques.size());
 			sp_mat_t Z_p = sp_mat_t(num_data_pred_cli, uniques.size());
@@ -3489,7 +4270,6 @@ namespace GPBoost {
 					Z_p.insert(i - num_data_cli, unique_idx[i]) = 1.;
 				}
 			}
-
 			std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_coord_unique);
 			std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_coord_unique);
 			std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_coord_unique);
@@ -3501,7 +4281,6 @@ namespace GPBoost {
 				find_nearest_neighbors_Veccia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred_,
 					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1);
 			}
-
 			// Determine Triplet for initializing Bpo and Bp
 			std::vector<Triplet_t> entries_init_B;
 			for (int i = 0; i < num_coord_unique; ++i) {
@@ -3515,28 +4294,22 @@ namespace GPBoost {
 			sp_mat_t D(num_coord_unique, num_coord_unique);
 			D.setIdentity();
 			D.diagonal().array() = 0.;
-
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_coord_unique; ++i) {
-
 				int num_nn = (int)nearest_neighbors_cluster_i[i].size();
 				//define covariance and gradient matrices
 				den_mat_t cov_mat_obs_neighbors(1, num_nn);//dim = 1 x nn
 				den_mat_t cov_mat_between_neighbors(num_nn, num_nn);//dim = nn x nn
 				den_mat_t cov_grad_mats_obs_neighbors, cov_grad_mats_between_neighbors; //not used, just as mock argument for functions below
-
 				if (i > 0) {
 					re_comps_[cluster_i][ind_intercept_gp_]->CalcSigmaAndSigmaGrad(dist_obs_neighbors_cluster_i[i],
 						cov_mat_obs_neighbors, cov_grad_mats_obs_neighbors, cov_grad_mats_obs_neighbors, false);//write on matrices directly for first GP component
 					re_comps_[cluster_i][ind_intercept_gp_]->CalcSigmaAndSigmaGrad(dist_between_neighbors_cluster_i[i],
 						cov_mat_between_neighbors, cov_grad_mats_between_neighbors, cov_grad_mats_between_neighbors, false);
 				}
-
 				//Calculate matrices A and D as well as their derivatives
-
 				//1. add first summand of matrix D (ZCZ^T_{ii})
 				D.coeffRef(i, i) = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
-
 				//2. remaining terms
 				if (i > 0) {
 					den_mat_t A_i(1, num_nn);//dim = 1 x nn
@@ -3548,23 +4321,19 @@ namespace GPBoost {
 				}
 
 			}//end loop over data i
-
 			//Calculate D_inv and B_inv in order to calcualte Sigma and Sigma^-1
 			sp_mat_t D_inv(num_coord_unique, num_coord_unique);
 			D_inv.setIdentity();
 			D_inv.diagonal().array() = D.diagonal().array().pow(-1);
-
 			sp_mat_t Identity_all(num_coord_unique, num_coord_unique);
 			Identity_all.setIdentity();
 			sp_mat_t B_inv;
 			eigen_sp_Lower_sp_RHS_cs_solve(B, Identity_all, B_inv, true);
-
 			//Calculate inverse of covariance matrix for observed data using the Woodbury identity
 			sp_mat_t Z_o_T = Z_o.transpose();
 			sp_mat_t M_aux_Woodbury = B.transpose() * D_inv * B + Z_o_T * Z_o;
 			chol_sp_mat_t CholFac_M_aux_Woodbury;
 			CholFac_M_aux_Woodbury.compute(M_aux_Woodbury);
-
 			if (predict_cov_mat) {
 				//Using Eigen's solver
 				sp_mat_t M_aux_Woodbury2 = CholFac_M_aux_Woodbury.solve(Z_o_T);
@@ -3581,7 +4350,6 @@ namespace GPBoost {
 				sp_mat_t Identity_pred(num_data_pred_cli, num_data_pred_cli);
 				Identity_pred.setIdentity();
 				cov_mat_pred_id = T1(Z_p * B_inv * D * B_inv.transpose() * Z_p.transpose() + Identity_pred - M_aux * ZpSigmaZoT.transpose());
-
 			}
 			else {
 				vec_t resp_aux = Z_o_T * y_[cluster_i];
@@ -3589,8 +4357,7 @@ namespace GPBoost {
 				resp_aux = y_[cluster_i] - Z_o * resp_aux2;
 				mean_pred_id = Z_p * B_inv * D * B_inv.transpose() * Z_o_T * resp_aux;
 			}
-
-		}
+		}//end CalcPredVecchiaLatentObservedFirstOrder
 
 		friend class REModel;
 
@@ -3599,3 +4366,4 @@ namespace GPBoost {
 }  // namespace GPBoost
 
 #endif   // GPB_RE_MODEL_TEMPLATE_H_
+

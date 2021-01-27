@@ -97,6 +97,35 @@ namespace GPBoost {
 			den_mat_t& cov_grad_1, den_mat_t& cov_grad_2,
 			bool calc_gradient = false, bool transf_scale = true, double = 1.) = 0;
 
+		/*!
+		* \brief Returns number of covariance parameters
+		* \return Number of covariance parameters
+		*/
+		int NumCovPar() {
+			return(num_cov_par_);
+		}
+
+		/*!
+		* \brief Calculate and add unconditional predictive variances
+		* \param[out] pred_uncond_var Array of unconditional predictive variances to which the variance of this component is added
+		* \param num_data_pred Number of prediction points
+		* \param rand_coef_data_pred Covariate data for varying coefficients
+		*/
+		void AddPredUncondVar(double* pred_uncond_var, int num_data_pred, const double * const rand_coef_data_pred = nullptr) {
+			if (this->is_rand_coef_) {
+#pragma omp for schedule(static)
+				for (int i = 0; i < num_data_pred; ++i) {
+					pred_uncond_var[i] += this->cov_pars_[0] * rand_coef_data_pred[i] * rand_coef_data_pred[i];
+				}
+			}
+			else {
+#pragma omp for schedule(static)
+				for (int i = 0; i < num_data_pred; ++i) {
+					pred_uncond_var[i] += this->cov_pars_[0];
+				}
+			}
+		}
+
 	protected:
 		/*! \brief Number of data points */
 		data_size_t num_data_;
@@ -417,6 +446,9 @@ namespace GPBoost {
 
 		template<typename T1, typename T2>
 		friend class REModelTemplate;
+
+		template<typename T2>
+		friend class Likelihood;//for access of map_group_label_index_ and group_data_ in 'CalcGradNegMargLikelihoodLAApproxGroupedRE'
 	};
 
 	/*!
@@ -507,7 +539,8 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Constructor for random coefficient Gaussian process when multiple locations are not modelled using an incidence matrix (used for Vecchia approximation)
+		* \brief Constructor for random coefficient Gaussian process when multiple locations are not modelled using an incidence matrix.
+		*		This is used for the Vecchia approximation.
 		* \param rand_coef_data Covariate data for random coefficient
 		* \param cov_fct Type of covariance function
 		* \param shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
@@ -515,11 +548,16 @@ namespace GPBoost {
 		RECompGP(const std::vector<double>& rand_coef_data, string_t cov_fct = "exponential", double shape = 0.) {
 			this->rand_coef_data_ = rand_coef_data;
 			this->is_rand_coef_ = true;
+			this->num_data_ = (data_size_t)rand_coef_data.size();
 			has_Z_ = true;
 			this->num_cov_par_ = 2;
 			cov_function_ = std::unique_ptr<CovFunction<T>>(new CovFunction<T>(cov_fct, shape));
 			dist_saved_ = false;
 			coord_saved_ = false;
+			this->Z_ = sp_mat_t(this->num_data_, this->num_data_);
+			for (int i = 0; i < this->num_data_; ++i) {
+				this->Z_.insert(i, i) = this->rand_coef_data_[i];
+			}
 		}
 
 		/*! \brief Destructor */
@@ -804,7 +842,7 @@ namespace GPBoost {
 		bool sigma_defined_ = false;
 
 		template<typename T1, typename T2>
-		friend class REModelTemplate;//REModel
+		friend class REModelTemplate;
 	};
 
 }  // namespace GPBoost

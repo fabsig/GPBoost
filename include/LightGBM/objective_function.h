@@ -101,10 +101,14 @@ class ObjectiveFunction {
   /*!
    * \brief Initialization logic for Gaussian process boosting
    * \param re_model Gaussian process model
+   * \param train_gp_model_cov_pars
+   * \param use_gp_model_for_validation
+   * \param label Label data
    */
   void InitGPModel(REModel* re_model,
     bool train_gp_model_cov_pars = true,
-    bool use_gp_model_for_validation = false);
+    bool use_gp_model_for_validation = false,
+    const label_t* label = nullptr);
 
   /*!
   * \brief Returns true if the objective function has a GP model
@@ -112,12 +116,12 @@ class ObjectiveFunction {
   bool HasGPModel() const;
 
   /*!
-  * \brief Returns true if the GP model should be used for evaluation
+  * \brief Returns true if the random effect / GP model should be used for evaluation
   */
   bool UseGPModelForValidation() const;
 
   /*!
-  * \brief Returns true if the objective function has a GP model
+  * \brief Returns a pointer to the random effect / GP model
   */
   REModel* GetGPModel() const;
 

@@ -80,6 +80,99 @@ namespace GPBoost {
 	*/
 	void eigen_sp_Lower_sp_RHS_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower = true);
 
+	/*!
+	* \brief Caclulate L\H =(L^-1H) if sparse matrices are used. Used in 'CalcGradNegMargLikelihoodLAApprox' for non-Gaussian data
+	* \param L lower (or upper) triangular matrix (Cholesky factor)
+	* \param H Right-hand side matrix H
+	* \param LInvH[out] L\H =(L^-1H)
+	* \param lower true if L is a lower triangular matrix
+	*/
+	void CalcLInvH(sp_mat_t& L, sp_mat_t& H, sp_mat_t& LInvH, bool lower = true);
+
+	/*!
+	* \brief Caclulate L\H =(L^-1H) if sparse matrices are used. Used in 'CalcGradNegMargLikelihoodLAApprox' for non-Gaussian data
+	* \param L lower (or upper) triangular matrix (Cholesky factor)
+	* \param H Right-hand side matrix H
+	* \param LInvH[out] L\H =(L^-1H)
+	* \param lower true if L is a lower triangular matrix
+	*/
+	void CalcLInvH(sp_mat_t& L, den_mat_t& H, den_mat_t& LInvH, bool lower = true);
+
+	/*!
+	* \brief Caclulate L\H =(L^-1H) if dense matrices are used. Used in 'CalcGradNegMargLikelihoodLAApprox' for non-Gaussian data
+	* \param L lower (or upper) triangular matrix (Cholesky factor)
+	* \param H Right-hand side matrix H
+	* \param LInvH[out] L\H =(L^-1H)
+	* \param lower true if L is a lower triangular matrix
+	*/
+	void CalcLInvH(den_mat_t& L, den_mat_t& H, den_mat_t& LInvH, bool lower = true);
+
+	/*!
+	* \brief Caclulate L\H =(L^-1H) if dense matrices are used but H is sparse. Used in 'CalcGradNegMargLikelihoodLAApprox' for non-Gaussian data
+	* \param L lower (or upper) triangular matrix (Cholesky factor)
+	* \param H Right-hand side matrix H
+	* \param LInvH[out] L\H =(L^-1H)
+	* \param lower true if L is a lower triangular matrix
+	*/
+	void CalcLInvH(den_mat_t& L, sp_mat_t& H, den_mat_t& LInvH, bool lower = true);
+
+//	/*!
+//	* \brief Caclulate L\H =(L^-1H) if sparse matrices are used. Used in 'CalcGradNegMargLikelihoodLAApprox' for non-Gaussian data
+//	* \param L lower (or upper) triangular matrix (Cholesky factor)
+//	* \param H Right-hand side matrix H
+//	* \param LInvH[out] L\H =(L^-1H)
+//	* \param lower true if L is a lower triangular matrix
+//	*/
+//	//template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
+//	void CalcLInvH(sp_mat_t& L, sp_mat_t& H, sp_mat_t& LInvH, bool lower = true) {
+//		eigen_sp_Lower_sp_RHS_solve(L, H, LInvH, lower);
+//		//TODO: use eigen_sp_Lower_sp_RHS_cs_solve -> faster? (currently this crashes due to Eigen bug, see the definition of sp_Lower_sp_RHS_cs_solve for more details)
+//	}
+//
+//	/*!
+//	* \brief Caclulate L\H =(L^-1H) if dense matrices are used. Used in 'CalcGradNegMargLikelihoodLAApprox' for non-Gaussian data
+//	* \param L lower (or upper) triangular matrix (Cholesky factor)
+//	* \param H Right-hand side matrix H
+//	* \param LInvH[out] L\H =(L^-1H)
+//	* \param lower true if L is a lower triangular matrix
+//	*/
+//	//template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
+//	void CalcLInvH(den_mat_t& L, den_mat_t& H, den_mat_t& LInvH, bool lower = true) {
+//		LInvH = H;
+//		int ncols = (int)L.cols();
+//#pragma omp parallel for schedule(static)
+//		for (int j = 0; j < (int)H.cols(); ++j) {
+//			if (lower) {
+//				L_solve(L.data(), ncols, LInvH.data() + j * ncols);
+//			}
+//			else {
+//				L_t_solve(L.data(), ncols, LInvH.data() + j * ncols);
+//			}
+//		}
+//	}
+//
+//	/*!
+//	* \brief Caclulate L\H =(L^-1H) if dense matrices are used but H is sparse. Used in 'CalcGradNegMargLikelihoodLAApprox' for non-Gaussian data
+//	* \param L lower (or upper) triangular matrix (Cholesky factor)
+//	* \param H Right-hand side matrix H
+//	* \param LInvH[out] L\H =(L^-1H)
+//	* \param lower true if L is a lower triangular matrix
+//	*/
+//	//template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
+//	void CalcLInvH(den_mat_t& L, sp_mat_t& H, den_mat_t& LInvH, bool lower = true) {
+//		LInvH = den_mat_t(H);
+//		int ncols = (int)L.cols();
+//#pragma omp parallel for schedule(static)
+//		for (int j = 0; j < (int)H.cols(); ++j) {
+//			if (lower) {
+//				L_solve(L.data(), ncols, LInvH.data() + j * ncols);
+//			}
+//			else {
+//				L_t_solve(L.data(), ncols, LInvH.data() + j * ncols);
+//			}
+//		}
+//	}
+
 }  // namespace GPBoost
 
 #endif   // GPB_SPARSE_MAT_H_

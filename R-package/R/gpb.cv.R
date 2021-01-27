@@ -30,8 +30,9 @@ CVBooster <- R6::R6Class(
 #'        (each element must be a vector of test fold's indices). When folds are supplied,
 #'        the \code{nfold} and \code{stratified} parameters are ignored.
 #' @param fit_GP_cov_pars_OOS Boolean (default = FALSE). If TRUE, the covariance parameters of the 
-#'            GPModel model are estimated using the out-of-sample (OOS) predictions 
-#'            on the validation data using the optimal number of iterations (after performing the CV)
+#'            gp_model model are estimated using the out-of-sample (OOS) predictions 
+#'            on the validation data using the optimal number of iterations (after performing the CV). 
+#'            This corresponds to the GPBoostOOS algorithm.
 #' @param ... Other parameters, see Parameters.rst for more information.
 #'
 #' @return a trained model \code{gpb.CVBooster}.
@@ -163,7 +164,7 @@ gpb.cv <- function(params = list(),
                    label = NULL,
                    obj = NULL,
                    gp_model = NULL,
-                   use_gp_model_for_validation = FALSE,
+                   use_gp_model_for_validation = TRUE,
                    fit_GP_cov_pars_OOS = FALSE,
                    train_gp_model_cov_pars = TRUE,
                    weight = NULL,
@@ -193,9 +194,6 @@ gpb.cv <- function(params = list(),
   
   params$use_gp_model_for_validation <- use_gp_model_for_validation
   params$train_gp_model_cov_pars <- train_gp_model_cov_pars
-  if (!is.null(gp_model)) {
-    params["has_gp_model"] <- TRUE
-  }
   
   if (nrounds <= 0) {
     stop("nrounds should be greater than zero")
@@ -210,6 +208,10 @@ gpb.cv <- function(params = list(),
   # Check for loss (function or not)
   if (is.function(eval)) {
     feval <- eval
+    if (use_gp_model_for_validation) {
+      # Note: if this option should be added, it can be done similarly as in gpb.cv using booster$add_valid(..., valid_set_gp = valid_set_gp, ...)
+      stop("use_gp_model_for_validation=TRUE is currently not supported for custom validation functions. If you need this feature, contact the developer of this package or open a GitHub issue.")
+    }
   }
   
   # Check for parameters
@@ -383,7 +385,7 @@ gpb.cv <- function(params = list(),
           cluster_ids_pred <- cluster_ids[folds[[k]]]
           cluster_ids <- cluster_ids[-folds[[k]]]
         }
-
+        
         vecchia_approx <- gp_model$.__enclos_env__$private$vecchia_approx
         num_neighbors <- gp_model$.__enclos_env__$private$num_neighbors
         vecchia_ordering <- gp_model$.__enclos_env__$private$vecchia_ordering
@@ -392,44 +394,52 @@ gpb.cv <- function(params = list(),
         cov_function <- gp_model$get_cov_function()
         cov_fct_shape <- gp_model$get_cov_fct_shape()
         ind_effect_group_rand_coef <- gp_model$get_ind_effect_group_rand_coef()
-
-        gp_model_train <- gpb.GPModel$new(group_data=group_data,
-                                      group_rand_coef_data=group_rand_coef_data,
-                                      ind_effect_group_rand_coef=ind_effect_group_rand_coef,
-                                      gp_coords=gp_coords,
-                                      gp_rand_coef_data=gp_rand_coef_data,
-                                      cov_function=cov_function,
-                                      cov_fct_shape=cov_fct_shape,
-                                      vecchia_approx=vecchia_approx,
-                                      num_neighbors=num_neighbors,
-                                      vecchia_ordering=vecchia_ordering,
-                                      vecchia_pred_type=vecchia_pred_type,
-                                      num_neighbors_pred=num_neighbors_pred,
-                                      cluster_ids=cluster_ids,
-                                      free_raw_data=TRUE)
-        gp_model_train$set_optim_params(params = gp_model$get_optim_params())
         
+        gp_model_train <- gpb.GPModel$new(group_data=group_data,
+                                          group_rand_coef_data=group_rand_coef_data,
+                                          ind_effect_group_rand_coef=ind_effect_group_rand_coef,
+                                          gp_coords=gp_coords,
+                                          gp_rand_coef_data=gp_rand_coef_data,
+                                          cov_function=cov_function,
+                                          cov_fct_shape=cov_fct_shape,
+                                          vecchia_approx=vecchia_approx,
+                                          num_neighbors=num_neighbors,
+                                          vecchia_ordering=vecchia_ordering,
+                                          vecchia_pred_type=vecchia_pred_type,
+                                          num_neighbors_pred=num_neighbors_pred,
+                                          cluster_ids=cluster_ids,
+                                          likelihood=gp_model$get_likelihood_name(),
+                                          free_raw_data=TRUE)
         valid_set_gp <- NULL
         if (use_gp_model_for_validation) {
-          gp_model_train$set_prediction_data(group_data_pred = group_data_pred, group_rand_coef_data_pred = group_rand_coef_data_pred,
-                                             gp_coords_pred = gp_coords_pred, gp_rand_coef_data_pred = gp_rand_coef_data_pred,
+          gp_model_train$set_prediction_data(group_data_pred = group_data_pred,
+                                             group_rand_coef_data_pred = group_rand_coef_data_pred,
+                                             gp_coords_pred = gp_coords_pred,
+                                             gp_rand_coef_data_pred = gp_rand_coef_data_pred,
                                              cluster_ids_pred = cluster_ids_pred)
           if (!is.null(feval)) {
             # Note: Validation using the GP model is only done in R if there are custom evaluation functions in feval, 
             #        otherwise it is directly done in C++. See the function Eval() in regression_metric.hpp
-            valid_set_gp <- list(group_data_pred = group_data_pred, group_rand_coef_data_pred = group_rand_coef_data_pred,
-                                 gp_coords_pred = gp_coords_pred, gp_rand_coef_data_pred = gp_rand_coef_data_pred,
+            valid_set_gp <- list(group_data_pred = group_data_pred,
+                                 group_rand_coef_data_pred = group_rand_coef_data_pred,
+                                 gp_coords_pred = gp_coords_pred,
+                                 gp_rand_coef_data_pred = gp_rand_coef_data_pred,
                                  cluster_ids_pred = cluster_ids_pred)
           }
           
         }
-        
         booster <- Booster$new(params, dtrain, gp_model = gp_model_train)
+        gp_model$set_likelihood(gp_model_train$get_likelihood_name())##potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
+        gp_model_train$set_optim_params(params = gp_model$get_optim_params())
+        
+        
       } else {
         booster <- Booster$new(params, dtrain)
       }
       
-      booster$add_valid(dtest, "valid", valid_set_gp = valid_set_gp, use_gp_model_for_validation = use_gp_model_for_validation)
+      booster$add_valid(dtest, "valid", valid_set_gp = valid_set_gp,
+                        use_gp_model_for_validation = use_gp_model_for_validation)
+      # Note: use_gp_model_for_validation is set to indicate that valid_set_gp should be used
       list(booster = booster)
     })
   } else {
@@ -512,13 +522,17 @@ gpb.cv <- function(params = list(),
       fd <- cv_booster$boosters[[k]]
       ##Predict on OOS data
       predictor <- Predictor$new(fd$booster$.__enclos_env__$private$handle)
-      # print(fd$booster$.__enclos_env__$private$valid_sets)
       pred_fixed_effect_OOS[folds[[k]]] = predictor$predict(data$.__enclos_env__$private$raw_data[folds[[k]],],
-                                                  cv_booster$best_iter, FALSE, FALSE, FALSE, FALSE, FALSE)
+                                                            cv_booster$best_iter, TRUE, FALSE, FALSE, FALSE, FALSE)
     }
+    
     message("Fitting GPModel on out-of-sample data...")
-    gp_model$fit(y = data$.__enclos_env__$private$info$label - pred_fixed_effect_OOS)
-    summary(gp_model)
+    if(gp_model$get_likelihood_name() == "gaussian"){
+      gp_model$fit(y = data$.__enclos_env__$private$info$label - pred_fixed_effect_OOS)
+    }
+    else{
+      gp_model$fit(y = data$.__enclos_env__$private$info$label, fixed_effects = pred_fixed_effect_OOS)
+    }
     
   }
   
@@ -534,7 +548,7 @@ gpb.cv <- function(params = list(),
       fd$booster$best_score <- booster_old$best_score
       fd$booster$record_evals <- booster_old$record_evals
     })
-
+    
   }
   
   # Return booster

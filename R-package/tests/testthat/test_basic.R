@@ -33,7 +33,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported
     
     bst <- gpboost(data = as.matrix(iris[, -5]), label = lb,
                    num_leaves = 4, learning_rate = 0.1, nrounds = 20, min_data=20, min_hess=20,
-                   objective = "multiclass", metric="multi_error", num_class=3, verbose=1)
+                   objective = "multiclass", metric="multi_error", num_class=3)
     
     expect_false(is.null(bst$record_evals))
     record_results <- gpb.get.eval.result(bst, "train", "multi_error")

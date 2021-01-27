@@ -60,7 +60,7 @@ The model is trained using the **GPBoost algorithm, where training means learnin
 
 #### Software issues
 - Add possibility to save gp_model to file
-- Add [Python tests](https://github.com/fabsig/GPBoost/tree/master/tests) for gp_model (see corresponding [R tests](https://github.com/fabsig/GPBoost/tree/master/R-package/tests))
+- Add [Python tests](https://github.com/fabsig/GPBoost/tree/master/tests) (see corresponding [R tests](https://github.com/fabsig/GPBoost/tree/master/R-package/tests))
 - Setting up Travis CI for GPBoost 
 
 #### Computational issues
@@ -69,7 +69,6 @@ The model is trained using the **GPBoost algorithm, where training means learnin
 #### Methodological issues
 - Add a spatio-temporal Gaussian process model (e.g. a separable one)
 - Add possibility to predict latent Gaussian processes and random effects (e.g. random coefficients)
-- Add some form of safeguard agains too large steps when applying Nesterov acceleration for covariance parameter estimation
 
 ## References
 

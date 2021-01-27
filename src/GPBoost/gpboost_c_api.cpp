@@ -10,6 +10,7 @@
 */
 #include <GPBoost/re_model.h>
 #include <GPBoost/gpboost_c_api.h>
+#include <string>
 
 namespace GPBoost {
 
@@ -52,13 +53,14 @@ int GPB_CreateREModel(int num_data,
 	const char* vecchia_ordering,
 	const char* vecchia_pred_type,
 	int num_neighbors_pred,
+	const char* likelihood,
 	REModelHandle* out) {
 	API_BEGIN();
 	std::unique_ptr<REModel> ret;
 	ret.reset(new REModel(num_data, cluster_ids_data, re_group_data, num_re_group,
 		re_group_rand_coef_data, ind_effect_group_rand_coef, num_re_group_rand_coef,
 		num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape,
-		vecchia_approx, num_neighbors, vecchia_ordering, vecchia_pred_type, num_neighbors_pred));
+		vecchia_approx, num_neighbors, vecchia_ordering, vecchia_pred_type, num_neighbors_pred, likelihood));
 	*out = ret.release();
 	API_END();
 }
@@ -80,11 +82,13 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	bool trace,
 	const char* optimizer,
 	int momentum_offset,
-	const char* convergence_criterion) {
+	const char* convergence_criterion,
+	bool calc_std_dev) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetOptimConfig(init_cov_pars, lr, acc_rate_cov, max_iter, delta_rel_conv,
-		use_nesterov_acc, nesterov_schedule_version, trace, optimizer, momentum_offset, convergence_criterion);
+		use_nesterov_acc, nesterov_schedule_version, trace, optimizer, momentum_offset,
+		convergence_criterion, calc_std_dev);
 	API_END();
 }
 
@@ -102,21 +106,20 @@ int GPB_SetOptimCoefConfig(REModelHandle handle,
 
 int GPB_OptimCovPar(REModelHandle handle,
 	const double* y_data,
-	bool calc_std_dev) {
+	const double* fixed_effects) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->OptimCovPar(y_data, calc_std_dev);
+	ref_remodel->OptimCovPar(y_data, fixed_effects);
 	API_END();
 }
 
 int GPB_OptimLinRegrCoefCovPar(REModelHandle handle,
 	const double* y_data,
 	const double* covariate_data,
-	int num_covariates,
-	bool calc_std_dev) {
+	int num_covariates) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->OptimLinRegrCoefCovPar(y_data, covariate_data, num_covariates, calc_std_dev);
+	ref_remodel->OptimLinRegrCoefCovPar(y_data, covariate_data, num_covariates);
 	API_END();
 }
 
@@ -126,7 +129,7 @@ int GPB_EvalNegLogLikelihood(REModelHandle handle,
 	double* negll) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->EvalNegLogLikelihood(y_data, cov_pars, negll[0]);
+	ref_remodel->EvalNegLogLikelihood(y_data, cov_pars, negll[0], nullptr, true, false);
 	API_END();
 }
 
@@ -136,6 +139,14 @@ int GPB_GetCovPar(REModelHandle handle,
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->GetCovPar(optim_cov_pars, calc_std_dev);
+	API_END();
+}
+
+int GPB_GetInitCovPar(REModelHandle handle,
+	double* init_cov_pars) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->GetInitCovPar(init_cov_pars);
 	API_END();
 }
 
@@ -177,6 +188,8 @@ int GPB_PredictREModel(REModelHandle handle,
 	int num_data_pred,
 	double* out_predict,
 	bool predict_cov_mat,
+	bool predict_var,
+	bool predict_response,
 	const int* cluster_ids_data_pred,
 	const char* re_group_data_pred,
 	const double* re_group_rand_coef_data_pred,
@@ -186,12 +199,56 @@ int GPB_PredictREModel(REModelHandle handle,
 	const double* covariate_data_pred,
 	bool use_saved_data,
 	const char* vecchia_pred_type,
-	int num_neighbors_pred) {
+	int num_neighbors_pred,
+	const double* fixed_effects,
+	const double* fixed_effects_pred) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->Predict(y_data, num_data_pred, out_predict, predict_cov_mat,
+	ref_remodel->Predict(y_data, num_data_pred, out_predict, predict_cov_mat, predict_var, predict_response,
 		cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred,
 		gp_coords_pred, gp_rand_coef_data_pred, cov_pars, covariate_data_pred,
-		use_saved_data, vecchia_pred_type, num_neighbors_pred);
+		use_saved_data, vecchia_pred_type, num_neighbors_pred, fixed_effects, fixed_effects_pred);
+	API_END();
+}
+
+int GPB_GetLikelihoodName(REModelHandle handle,
+	char* out_str,
+	int& num_char) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	std::string name = ref_remodel->GetLikelihood();
+	num_char = (int)name.size() + 1;
+	std::memcpy(out_str, name.c_str(), name.size() + 1);
+	API_END();
+}
+
+int GPB_GetOptimizerCovPars(REModelHandle handle,
+	char* out_str,
+	int& num_char) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	std::string name = ref_remodel->GetOptimizerCovPars();
+	num_char = (int)name.size() + 1;
+	std::memcpy(out_str, name.c_str(), name.size() + 1);
+	API_END();
+}
+
+int GPB_GetOptimizerCoef(REModelHandle handle,
+	char* out_str,
+	int& num_char) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	std::string name = ref_remodel->GetOptimizerCoef();
+	num_char = (int)name.size() + 1;
+	std::memcpy(out_str, name.c_str(), name.size() + 1);
+	API_END();
+}
+
+int GPB_SetLikelihood(REModelHandle handle,
+	const char* likelihood) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	std::string likelihood_s = std::string(likelihood);
+	ref_remodel->SetLikelihood(likelihood_s);
 	API_END();
 }

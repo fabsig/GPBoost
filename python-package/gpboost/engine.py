@@ -17,12 +17,12 @@ from .compat import (SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKF
 
 
 def train(params, train_set, num_boost_round=100,
-          gp_model=None, train_gp_model_cov_pars=True,
+          gp_model=None, use_gp_model_for_validation=True,
+          train_gp_model_cov_pars=True,
           valid_sets=None, valid_names=None,
           fobj=None, feval=None, init_model=None,
           feature_name='auto', categorical_feature='auto',
           early_stopping_rounds=None, evals_result=None,
-          use_gp_model_for_validation=False,
           verbose_eval=True, learning_rates=None,
           keep_training_booster=True, callbacks=None):
     """Perform the training with given parameters.
@@ -36,11 +36,14 @@ def train(params, train_set, num_boost_round=100,
     num_boost_round : int, optional (default=100)
         Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
-        GPModel object for Gaussian process boosting. Can currently only be used for objective = "regression"
+        GPModel object for Gaussian process boosting
+    use_gp_model_for_validation : bool, optional (default=True)
+        If True, the Gaussian process is also used (in addition to the tree model) for calculating predictions on
+        the validation data
     train_gp_model_cov_pars : bool, optional (default=True)
         If True, the covariance parameters of the Gaussian process are estimated in every boosting iterations,
-        otherwise the GPModel parameters are not estimated. In the latter case, you need to either esimate them
-        beforehand or provide the values via the 'init_cov_pars' parameter when creating the GPModel
+        otherwise the gp_model parameters are not estimated. In the latter case, you need to either esimate them
+        beforehand or provide the values via the 'init_cov_pars' parameter when creating the gp_model
     valid_sets : list of Datasets or None, optional (default=None)
         List of data to be evaluated on during training.
     valid_names : list of strings or None, optional (default=None)
@@ -117,9 +120,6 @@ def train(params, train_set, num_boost_round=100,
         returns {'train': {'logloss': ['0.48253', '0.35953', ...]},
         'eval': {'logloss': ['0.480385', '0.357756', ...]}}.
 
-    use_gp_model_for_validation : bool, optional (default=False)
-        If True, the Gaussian process is also used (in addition to the tree model) for calculating predictions on
-        the validation data
     verbose_eval : bool or int, optional (default=True)
         Requires at least one validation data.
         If True, the eval metric on the valid set is printed at each boosting stage.
@@ -154,7 +154,6 @@ def train(params, train_set, num_boost_round=100,
         if not isinstance(gp_model, GPModel):
             raise TypeError('gp_model should be GPModel instance, met {}'
                             .format(type(gp_model).__name__))
-        params['has_gp_model'] = True
     if fobj is not None:
         for obj_alias in _ConfigAliases.get("objective"):
             params.pop(obj_alias, None)
@@ -173,19 +172,6 @@ def train(params, train_set, num_boost_round=100,
 
     params['use_gp_model_for_validation'] = use_gp_model_for_validation
     params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
-
-    if use_gp_model_for_validation:
-        if gp_model is None:
-            raise ValueError("gp_model missing but is should be used for validation")
-        if not gp_model.prediction_data_is_set:
-            raise ValueError("Prediction data for gp_model has not been set. Call gp_model.set_prediction_data() first")
-        if not isinstance(valid_sets, Dataset):
-            if len(valid_sets) > 1:
-                raise ValueError("Can use only one validation set when use_gp_model_for_validation = True")
-        if feval is not None:
-            raise ValueError("Using the Gaussian process for making predictions for the validation data is currently "
-                             "not supported for custom validation functions. If you need this feature, contact the "
-                             "developer of this package.")
 
     if num_boost_round <= 0:
         raise ValueError("num_boost_round should be greater than zero.")
@@ -228,6 +214,23 @@ def train(params, train_set, num_boost_round=100,
                 name_valid_sets.append(valid_names[i])
             else:
                 name_valid_sets.append('valid_' + str(i))
+
+    if gp_model is not None:
+        if use_gp_model_for_validation and feval is not None:
+            raise ValueError("use_gp_model_for_validation=True is currently "
+                             "not supported for custom validation functions. If you need this feature, contact the "
+                             "developer of this package or open a GitHub issue.")
+        if use_gp_model_for_validation and len(reduced_valid_sets) > 1:
+            raise ValueError("Can use only one validation set when use_gp_model_for_validation = True")
+        if not is_valid_contain_train and use_gp_model_for_validation and len(reduced_valid_sets) > 0 and not gp_model.prediction_data_is_set:
+            raise ValueError("Prediction data for gp_model has not been set. Call gp_model.set_prediction_data() first")
+        # Set the default metric to the (approximate marginal) negative log-likelihood if only the training loss should be calculated
+        if is_valid_contain_train and len(reduced_valid_sets) == 0 and params.get('metric') is None:
+            if gp_model.get_likelihood_name() == "gaussian":
+                params['metric'] = "neg_log_likelihood"
+            else:
+                params['metric'] = "approx_neg_marginal_log_likelihood"
+
     # process callbacks
     if callbacks is None:
         callbacks = set()
@@ -329,7 +332,7 @@ class _CVBooster(object):
         return handler_function
 
 
-def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_model_for_validation=False,
+def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_model_for_validation=True,
                   fpreproc=None, stratified=False, shuffle=True, eval_train_metric=False):
     """Make a n-fold list of Booster from random indices."""
     full_data = full_data.construct()
@@ -414,30 +417,34 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             vecchia_pred_type = gp_model.vecchia_pred_type
             num_neighbors_pred = gp_model.num_neighbors_pred
             cov_function = gp_model.cov_function
+            cov_fct_shape = gp_model.cov_fct_shape
             ind_effect_group_rand_coef = gp_model.ind_effect_group_rand_coef
             gp_model_train = GPModel(group_data=group_data,
-                                         group_rand_coef_data=group_rand_coef_data,
-                                         ind_effect_group_rand_coef=ind_effect_group_rand_coef,
-                                         gp_coords=gp_coords,
-                                         gp_rand_coef_data=gp_rand_coef_data,
-                                         cov_function=cov_function,
-                                         vecchia_approx=vecchia_approx,
-                                         num_neighbors=num_neighbors,
-                                         vecchia_ordering=vecchia_ordering,
-                                         vecchia_pred_type=vecchia_pred_type,
-                                         num_neighbors_pred=num_neighbors_pred,
-                                         cluster_ids=cluster_ids,
-                                         free_raw_data=True)
-            gp_model_train.set_optim_params(params=gp_model.params)
+                                     group_rand_coef_data=group_rand_coef_data,
+                                     ind_effect_group_rand_coef=ind_effect_group_rand_coef,
+                                     gp_coords=gp_coords,
+                                     gp_rand_coef_data=gp_rand_coef_data,
+                                     cov_function=cov_function,
+                                     cov_fct_shape=cov_fct_shape,
+                                     vecchia_approx=vecchia_approx,
+                                     num_neighbors=num_neighbors,
+                                     vecchia_ordering=vecchia_ordering,
+                                     vecchia_pred_type=vecchia_pred_type,
+                                     num_neighbors_pred=num_neighbors_pred,
+                                     cluster_ids=cluster_ids,
+                                     likelihood=gp_model.get_likelihood_name(),
+                                     free_raw_data=True)
             if use_gp_model_for_validation:
                 gp_model_train.set_prediction_data(group_data_pred=group_data_pred,
                                                    group_rand_coef_data_pred=group_rand_coef_data_pred,
                                                    gp_coords_pred=gp_coords_pred,
                                                    gp_rand_coef_data_pred=gp_rand_coef_data_pred,
                                                    cluster_ids_pred=cluster_ids_pred)
-        else:
-            gp_model_train = None
-        cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
+            cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
+            gp_model.set_likelihood(gp_model_train.get_likelihood_name()) # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
+            gp_model_train.set_optim_params(params=gp_model.get_optim_params())
+        else: # no gp_model
+            cvbooster = Booster(params=tparam, train_set=train_set)
         if eval_train_metric:
             cvbooster.add_valid(train_set, 'train')
         cvbooster.add_valid(valid_set, 'valid')
@@ -462,8 +469,9 @@ def _agg_cv_result(raw_results, eval_train_metric=False):
 
 
 def cv(params, train_set, num_boost_round=100,
-       gp_model=None, train_gp_model_cov_pars=True,
-       use_gp_model_for_validation=False,
+       gp_model=None, use_gp_model_for_validation=True,
+       fit_GP_cov_pars_OOS=False,
+       train_gp_model_cov_pars=True,
        folds=None, nfold=5, stratified=False, shuffle=True,
        metrics=None, fobj=None, feval=None, init_model=None,
        feature_name='auto', categorical_feature='auto',
@@ -481,14 +489,18 @@ def cv(params, train_set, num_boost_round=100,
     num_boost_round : int, optional (default=100)
         Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
-        GPModel object for Gaussian process boosting. Can currently only be used for objective = "regression"
-    train_gp_model_cov_pars : bool, optional (default=True)
-        If True, the covariance parameters of the Gaussian process are estimated in every boosting iterations,
-        otherwise the GPModel parameters are not estimated. In the latter case, you need to either esimate them
-        beforehand or provide the values via the 'init_cov_pars' parameter when creating the GPModel
-    use_gp_model_for_validation : bool, optional (default=False)
+        GPModel object for Gaussian process boosting
+    use_gp_model_for_validation : bool, optional (default=True)
         If True, the Gaussian process is also used (in addition to the tree model) for calculating predictions on
         the validation data
+    fit_GP_cov_pars_OOS : bool, optional (default=False)
+        If TRUE, the covariance parameters of the gp_model model are estimated using the out-of-sample (OOS) predictions
+        on the validation data using the optimal number of iterations (after performing the CV).
+        This corresponds to the GPBoostOOS algorithm.
+    train_gp_model_cov_pars : bool, optional (default=True)
+        If True, the covariance parameters of the Gaussian process are estimated in every boosting iterations,
+        otherwise the gp_model parameters are not estimated. In the latter case, you need to either esimate them
+        beforehand or provide the values via the 'init_cov_pars' parameter when creating the gp_model
     folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
         If generator or iterator, it should yield the train and test indices for each fold.
         If object, it should be one of the scikit-learn splitter classes
@@ -592,9 +604,11 @@ def cv(params, train_set, num_boost_round=100,
         'metric2-mean': [values], 'metric2-stdv': [values],
         ...}.
     """
+    if fit_GP_cov_pars_OOS:
+        raise ValueError("The GPBoostOOS algorithm (fit_GP_cov_pars_OOS=True) is currently not supported in Python. "
+                         "If you need this feature, contact the developer of this package or open a GitHub issue.")
     if not isinstance(train_set, Dataset):
         raise TypeError("Training only accepts Dataset object")
-
     params = copy.deepcopy(params)
     if fobj is not None:
         for obj_alias in _ConfigAliases.get("objective"):
@@ -615,15 +629,13 @@ def cv(params, train_set, num_boost_round=100,
     params['use_gp_model_for_validation'] = use_gp_model_for_validation
     params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
 
-    if use_gp_model_for_validation:
-        if gp_model is None:
-            raise ValueError("gp_model missing but is should be used for validation")
+    if use_gp_model_for_validation and gp_model is not None:
         if feval is not None:
-            raise ValueError("Using the Gaussian process for making predictions for the validation data is currently "
+            raise ValueError("use_gp_model_for_validation=True is currently "
                              "not supported for custom validation functions. If you need this feature, contact the "
-                             "developer of this package.")
-    if gp_model is None and stratified:
-        raise ValueError("stratified=True is not supported when a GPModel is provided")
+                             "developer of this package or open a GitHub issue.")
+    if gp_model is not None and stratified:
+        raise ValueError("stratified=True is not supported when a gp_model is provided")
 
     if num_boost_round <= 0:
         raise ValueError("num_boost_round should be greater than zero.")

@@ -12,12 +12,14 @@ Examples
 --------
 
 * [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
+* [**Detailed R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo):
+  * [GPBoost algorithm](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/GPBoost_algorithm.R) for combining tree-boosting with Gaussian process and random effects models
+  * [GPBoost algorithm for binary classification and other non-Gaussian data](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/classification_non_Gaussian_data.R) (Poisson regression, etc.)
+  * [Cross validation](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/cross_validation.R) for parameter tuning
+  * [Linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/linear_Gaussian_process_mixed_effects_models.R)
+  * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/generalized_linear_Gaussian_process_mixed_effects_models.R)
+  * [Standard boosting functionality (without Gaussian process or random  effects)](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/boosting.R)
 
-* [**More examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo):
-  * [Gaussian process and other mixed effects model examples (without boosting)](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/Gaussian_process_mixed_effects_models.R)
-  * [Boosting functionality (without Gaussian process / random effects)](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/boosting.R)
-  * [Combining tree-boosting with Gaussian process and random effects models](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/combined_boosting_GP_random_effects.R)
-  * [Cross Validation](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/cross_validation.R)
 
 Installation
 ------------

@@ -18,7 +18,7 @@ namespace GPBoost {
 		const double* re_group_rand_coef_data, const int32_t* ind_effect_group_rand_coef, data_size_t num_re_group_rand_coef,
 		data_size_t num_gp, const double* gp_coords_data, int dim_gp_coords, const double* gp_rand_coef_data, data_size_t num_gp_rand_coef,
 		const char* cov_fct, double cov_fct_shape, bool vecchia_approx, int num_neighbors, const char* vecchia_ordering,
-		const char* vecchia_pred_type, int num_neighbors_pred) {
+		const char* vecchia_pred_type, int num_neighbors_pred, const char* likelihood) {
 		if ((num_gp + num_gp_rand_coef) == 0) {
 			sparse_ = true;
 			re_model_sp_ = std::unique_ptr<REModelTemplate<sp_mat_t, chol_sp_mat_t>>(new REModelTemplate<sp_mat_t, chol_sp_mat_t>(
@@ -26,8 +26,8 @@ namespace GPBoost {
 				re_group_rand_coef_data, ind_effect_group_rand_coef, num_re_group_rand_coef,
 				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef,
 				cov_fct, cov_fct_shape, vecchia_approx, num_neighbors, vecchia_ordering,
-				vecchia_pred_type, num_neighbors_pred));
-			num_cov_pars_ = re_model_sp_->num_cov_par_;
+				vecchia_pred_type, num_neighbors_pred, likelihood));
+			num_cov_pars_ = re_model_sp_->num_cov_par_;	
 		}
 		else {
 			sparse_ = false;
@@ -36,8 +36,12 @@ namespace GPBoost {
 				re_group_rand_coef_data, ind_effect_group_rand_coef, num_re_group_rand_coef,
 				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef,
 				cov_fct, cov_fct_shape, vecchia_approx, num_neighbors, vecchia_ordering,
-				vecchia_pred_type, num_neighbors_pred));
+				vecchia_pred_type, num_neighbors_pred, likelihood));
 			num_cov_pars_ = re_model_den_->num_cov_par_;
+		}
+		if (!GaussLikelihood()) {
+			optimizer_cov_pars_ = "gradient_descent";
+			optimizer_coef_ = "gradient_descent";
 		}
 	}
 
@@ -45,10 +49,51 @@ namespace GPBoost {
 	REModel::~REModel() {
 	}
 
+	bool REModel::GaussLikelihood() const {
+		if (sparse_) {
+			return(re_model_sp_->gauss_likelihood_);
+		}
+		else {
+			return(re_model_den_->gauss_likelihood_);
+		}
+	}
+
+	string_t REModel::GetLikelihood() const {
+		if (sparse_) {
+			return(re_model_sp_->GetLikelihood());
+		}
+		else {
+			return(re_model_den_->GetLikelihood());
+		}
+	}
+
+	void REModel::SetLikelihood(const string_t& likelihood) {
+		if (sparse_) {
+			re_model_sp_->SetLikelihood(likelihood);
+			num_cov_pars_ = re_model_sp_->num_cov_par_;
+		}
+		else {
+			re_model_den_->SetLikelihood(likelihood);
+			num_cov_pars_ = re_model_den_->num_cov_par_;
+		}
+		if (!GaussLikelihood() && !optim_cov_pars_have_been_set_) {
+			optimizer_cov_pars_ = "gradient_descent";
+		}
+	}
+
+	string_t REModel::GetOptimizerCovPars() const {
+		return(optimizer_cov_pars_);
+	}
+
+	string_t REModel::GetOptimizerCoef() const {
+		return(optimizer_coef_);
+	}
+
 	void REModel::SetOptimConfig(double* init_cov_pars, double lr,
 		double acc_rate_cov, int max_iter, double delta_rel_conv,
 		bool use_nesterov_acc, int nesterov_schedule_version, bool trace,
-		const char* optimizer, int momentum_offset, const char* convergence_criterion) {
+		const char* optimizer, int momentum_offset, const char* convergence_criterion,
+		bool calc_std_dev) {
 		if (init_cov_pars != nullptr) {
 			vec_t init_cov_pars_orig = Eigen::Map<const vec_t>(init_cov_pars, num_cov_pars_);
 			init_cov_pars_ = vec_t(num_cov_pars_);
@@ -61,10 +106,10 @@ namespace GPBoost {
 			init_cov_pars_provided_ = true;
 			covariance_matrix_has_been_factorized_ = false;
 		}
-		else {
-			init_cov_pars_provided_ = false;
-		}
-		cov_pars_initialized_ = false;
+		//else {//CONTINUE HERE: can we outcomment this or is it needed somewhere?
+		//	init_cov_pars_provided_ = false;
+		//}
+		//cov_pars_initialized_ = false;
 		lr_cov_ = lr;
 		acc_rate_cov_ = acc_rate_cov;
 		max_iter_ = max_iter;
@@ -84,9 +129,11 @@ namespace GPBoost {
 		else {
 			Log::ResetLogLevel(LogLevel::Info);
 		}
+		calc_std_dev_ = calc_std_dev;
+		optim_cov_pars_have_been_set_ = true;
 	}
 
-	void REModel::CheckCovParsInitialized(const double* y_data) {
+	void REModel::InitializeCovParsIfNotDefined(const double* y_data) {
 		if (!cov_pars_initialized_) {
 			if (init_cov_pars_provided_) {
 				cov_pars_ = init_cov_pars_;
@@ -100,6 +147,7 @@ namespace GPBoost {
 					re_model_den_->FindInitCovPar(y_data, cov_pars_.data());
 				}
 				covariance_matrix_has_been_factorized_ = false;
+				init_cov_pars_ = cov_pars_;
 			}
 			cov_pars_initialized_ = true;
 		}
@@ -126,10 +174,14 @@ namespace GPBoost {
 		}
 	}
 
-	void REModel::OptimCovPar(const double* y_data, bool calc_std_dev) {
-		CheckCovParsInitialized(y_data);
+	void REModel::OptimCovPar(const double* y_data, const double* fixed_effects) {
+		if (y_data != nullptr) {
+			InitializeCovParsIfNotDefined(y_data);
+			// Note: y_data can be null_ptr for non-Gaussian data. For non-Gaussian data, the function 'InitializeCovParsIfNotDefined' is called in 'SetY'
+		}
+		CHECK(cov_pars_initialized_);
 		double* std_dev_cov_par;
-		if (calc_std_dev) {
+		if (calc_std_dev_) {
 			std_dev_cov_pars_ = vec_t(num_cov_pars_);
 			std_dev_cov_par = std_dev_cov_pars_.data();
 		}
@@ -140,20 +192,20 @@ namespace GPBoost {
 			re_model_sp_->OptimLinRegrCoefCovPar(y_data, nullptr, 0,
 				cov_pars_.data(), nullptr, num_it_, cov_pars_.data(), nullptr, 1, lr_cov_, 1, acc_rate_cov_, momentum_offset_,
 				max_iter_, delta_rel_conv_, use_nesterov_acc_, nesterov_schedule_version_, optimizer_cov_pars_, "none", std_dev_cov_par, nullptr,
-				calc_std_dev, convergence_criterion_);
+				calc_std_dev_, convergence_criterion_, fixed_effects);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(y_data, nullptr, 0,
 				cov_pars_.data(), nullptr, num_it_, cov_pars_.data(), nullptr, 1, lr_cov_, 1, acc_rate_cov_, momentum_offset_,
 				max_iter_, delta_rel_conv_, use_nesterov_acc_, nesterov_schedule_version_, optimizer_cov_pars_, "none", std_dev_cov_par, nullptr,
-				calc_std_dev, convergence_criterion_);
+				calc_std_dev_, convergence_criterion_, fixed_effects);
 		}
 		has_covariates_ = false;
 		covariance_matrix_has_been_factorized_ = true;
 	}
 
-	void REModel::OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates, bool calc_std_dev) {
-		CheckCovParsInitialized(y_data);
+	void REModel::OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates) {
+		InitializeCovParsIfNotDefined(y_data);
 		if (!coef_initialized_) {
 			coef_ = vec_t(num_covariates);
 			coef_.setZero();
@@ -161,7 +213,7 @@ namespace GPBoost {
 		}
 		double* std_dev_cov_par;
 		double* std_dev_coef;
-		if (calc_std_dev) {
+		if (calc_std_dev_) {
 			std_dev_cov_pars_ = vec_t(num_cov_pars_);
 			std_dev_cov_par = std_dev_cov_pars_.data();
 			std_dev_coef_ = vec_t(num_covariates);
@@ -175,58 +227,135 @@ namespace GPBoost {
 			re_model_sp_->OptimLinRegrCoefCovPar(y_data, covariate_data, num_covariates,
 				cov_pars_.data(), coef_.data(), num_it_, cov_pars_.data(), coef_.data(), lr_coef_, lr_cov_, acc_rate_coef_, acc_rate_cov_, momentum_offset_,
 				max_iter_, delta_rel_conv_, use_nesterov_acc_, nesterov_schedule_version_, optimizer_cov_pars_, optimizer_coef_, std_dev_cov_par, std_dev_coef,
-				calc_std_dev, convergence_criterion_);
+				calc_std_dev_, convergence_criterion_);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(y_data, covariate_data, num_covariates,
 				cov_pars_.data(), coef_.data(), num_it_, cov_pars_.data(), coef_.data(), lr_coef_, lr_cov_, acc_rate_coef_, acc_rate_cov_, momentum_offset_,
 				max_iter_, delta_rel_conv_, use_nesterov_acc_, nesterov_schedule_version_, optimizer_cov_pars_, optimizer_coef_, std_dev_cov_par, std_dev_coef,
-				calc_std_dev, convergence_criterion_);
+				calc_std_dev_, convergence_criterion_);
 		}
 		has_covariates_ = true;
 		covariance_matrix_has_been_factorized_ = true;
 	}
 
-	void REModel::EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll) {
-		vec_t cov_pars_orig = Eigen::Map<const vec_t>(cov_pars, num_cov_pars_);
-		vec_t cov_pars_trafo = vec_t(num_cov_pars_);
-		if (sparse_) {
-			re_model_sp_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
-			re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
+	void REModel::EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll,
+		const double* fixed_effects, bool InitializeModeCovMat, bool CalcModePostRandEff_already_done) {
+		vec_t cov_pars_trafo;
+		if (cov_pars == nullptr) {
+			if (y_data != nullptr) {
+				InitializeCovParsIfNotDefined(y_data);
+				// Note: y_data can be null_ptr for non-Gaussian data. For non-Gaussian data, the function 'InitializeCovParsIfNotDefined' is called in 'SetY'
+			}
+			CHECK(cov_pars_initialized_);
+			cov_pars_trafo = cov_pars_;
 		}
 		else {
-			re_model_den_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
-			re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
+			vec_t cov_pars_orig = Eigen::Map<const vec_t>(cov_pars, num_cov_pars_);
+			cov_pars_trafo = vec_t(num_cov_pars_);
+			if (sparse_) {
+				re_model_sp_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
+			}
+			else {
+				re_model_den_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
+			}
+		}
+
+		if (sparse_) {
+			if (re_model_sp_->gauss_likelihood_) {
+				re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
+			}
+			else {
+				re_model_sp_->EvalLAApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+			}
+		}
+		else {	
+			if (re_model_den_->gauss_likelihood_) {
+				re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
+			}
+			else {
+				re_model_den_->EvalLAApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+			}
 		}
 		covariance_matrix_has_been_factorized_ = true;
 	}
 
-	void REModel::CalcGetYAux(double* y, bool calc_cov_factor) {
-		CheckCovParsInitialized(y);
+	void REModel::CalcGradient(double* y, const double* fixed_effects, bool calc_cov_factor) {
+		if (y != nullptr) {
+			InitializeCovParsIfNotDefined(y);
+		}
+		CHECK(cov_pars_initialized_);
 		if (sparse_) {
+			//1. Factorize covariance matrix
 			if (calc_cov_factor) {
 				re_model_sp_->SetCovParsComps(cov_pars_);
-				re_model_sp_->CalcCovFactor(false, true, 1., false);
+				if (re_model_sp_->gauss_likelihood_) {//Gaussian data
+					re_model_sp_->CalcCovFactor(false, true, 1., false);
+				}
+				else {//not gauss_likelihood_
+					if (re_model_sp_->vecchia_approx_) {
+						re_model_sp_->CalcCovFactor(false, true, 1., false);
+					}
+					else {
+						re_model_sp_->CalcSigmaComps();
+						re_model_sp_->CalcCovMatrixNonGauss();
+					}
+					re_model_sp_->CalcModePostRandEff(fixed_effects);
+				}//end gauss_likelihood_
+			}//end calc_cov_factor
+			//2. Calculate gradient
+			if (re_model_sp_->gauss_likelihood_) {//Gaussian data
+				re_model_sp_->SetY(y);
+				re_model_sp_->CalcYAux(cov_pars_[0]);
+				re_model_sp_->GetYAux(y);
 			}
-			re_model_sp_->SetY(y);
-			re_model_sp_->CalcYAux(cov_pars_[0]);
-			re_model_sp_->GetYAux(y);
-		}
-		else {
+			else {//not gauss_likelihood_
+				re_model_sp_->CalcGradFLaplace(y, fixed_effects);
+			}
+		}//end sparse_
+		else {//not sparse_
+			//1. Factorize covariance matrix
 			if (calc_cov_factor) {
 				re_model_den_->SetCovParsComps(cov_pars_);
-				re_model_den_->CalcCovFactor(false, true, 1., false);
+				if (re_model_den_->gauss_likelihood_) {//Gaussian data
+					re_model_den_->CalcCovFactor(false, true, 1., false);
+				}
+				else {//not gauss_likelihood_
+					if (re_model_den_->vecchia_approx_) {
+						re_model_den_->CalcCovFactor(false, true, 1., false);
+					}
+					else {
+						re_model_den_->CalcSigmaComps();
+						re_model_den_->CalcCovMatrixNonGauss();
+					}
+					re_model_den_->CalcModePostRandEff(fixed_effects);
+				}//end gauss_likelihood_
+			}//end calc_cov_factor
+			//2. Calculate gradient
+			if (re_model_den_->gauss_likelihood_) {//Gaussian data
+				re_model_den_->SetY(y);
+				re_model_den_->CalcYAux(cov_pars_[0]);
+				re_model_den_->GetYAux(y);
+			}//end gauss_likelihood_
+			else {//not gauss_likelihood_
+				re_model_den_->CalcGradFLaplace(y, fixed_effects);
 			}
-			re_model_den_->SetY(y);
-			re_model_den_->CalcYAux(cov_pars_[0]);
-			re_model_den_->GetYAux(y);
-		}
+		}//end not sparse_
 		if (calc_cov_factor) {
 			covariance_matrix_has_been_factorized_ = true;
 		}
 	}
 
 	void REModel::SetY(const double* y) const {
+		if (sparse_) {
+			re_model_sp_->SetY(y);
+		}
+		else {
+			re_model_den_->SetY(y);
+		}
+	}
+
+	void REModel::SetY(const float* y) const {
 		if (sparse_) {
 			re_model_sp_->SetY(y);
 		}
@@ -253,6 +382,26 @@ namespace GPBoost {
 		if (calc_std_dev) {
 			for (int j = 0; j < num_cov_pars_; ++j) {
 				cov_par[j + num_cov_pars_] = std_dev_cov_pars_[j];
+			}
+		}
+	}
+
+	void REModel::GetInitCovPar(double* init_cov_par) const {
+		vec_t init_cov_pars_orig(num_cov_pars_);
+		if (init_cov_pars_provided_ || cov_pars_initialized_) {
+			if (sparse_) {
+				re_model_sp_->TransformBackCovPars(init_cov_pars_, init_cov_pars_orig);
+			}
+			else {
+				re_model_den_->TransformBackCovPars(init_cov_pars_, init_cov_pars_orig);
+			}
+			for (int j = 0; j < num_cov_pars_; ++j) {
+				init_cov_par[j] = init_cov_pars_orig[j];
+			}
+		}
+		else {
+			for (int j = 0; j < num_cov_pars_; ++j) {
+				init_cov_par[j] = -1.;
 			}
 		}
 	}
@@ -286,10 +435,11 @@ namespace GPBoost {
 	}
 
 	void REModel::Predict(const double* y_obs, data_size_t num_data_pred,
-		double* out_predict, bool predict_cov_mat,
+		double* out_predict, bool predict_cov_mat, bool predict_var, bool predict_response,
 		const gp_id_t* cluster_ids_data_pred, const char* re_group_data_pred, const double* re_group_rand_coef_data_pred,
 		double* gp_coords_data_pred, const double* gp_rand_coef_data_pred, const double* cov_pars_pred,
-		const double* covariate_data_pred, bool use_saved_data, const char* vecchia_pred_type, int num_neighbors_pred) const {
+		const double* covariate_data_pred, bool use_saved_data, const char* vecchia_pred_type, int num_neighbors_pred,
+		const double* fixed_effects, const double* fixed_effects_pred) const {
 		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
 		if (cov_pars_pred != nullptr) {
@@ -301,30 +451,30 @@ namespace GPBoost {
 			else {
 				re_model_den_->TransformCovPars(cov_pars_pred_orig, cov_pars_pred_trans);
 			}
-		}
-		else {
+		}//end if cov_pars_pred != nullptr
+		else {// use saved cov_pars
 			if (!cov_pars_initialized_) {
-				Log::Fatal("Covariance parameters have not been estimated or set");
+				Log::Fatal("Covariance parameters have not been estimated or are not given.");
 			}
 			cov_pars_pred_trans = cov_pars_;
 			if (covariance_matrix_has_been_factorized_) {
 				calc_cov_factor = false;
 			}
-		}
+		}// end use saved cov_pars
 		if (has_covariates_) {
 			CHECK(coef_initialized_ == true);
 		}
 		if (sparse_) {
 			re_model_sp_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred, out_predict,
-				calc_cov_factor, predict_cov_mat, covariate_data_pred, coef_.data(),
+				calc_cov_factor, predict_cov_mat, predict_var, predict_response, covariate_data_pred, coef_.data(),
 				cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred, gp_coords_data_pred,
-				gp_rand_coef_data_pred, use_saved_data, vecchia_pred_type, num_neighbors_pred);
+				gp_rand_coef_data_pred, use_saved_data, vecchia_pred_type, num_neighbors_pred, fixed_effects, fixed_effects_pred);
 		}
 		else {
 			re_model_den_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred, out_predict,
-				calc_cov_factor, predict_cov_mat, covariate_data_pred, coef_.data(),
+				calc_cov_factor, predict_cov_mat, predict_var, predict_response, covariate_data_pred, coef_.data(),
 				cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred, gp_coords_data_pred,
-				gp_rand_coef_data_pred, use_saved_data, vecchia_pred_type, num_neighbors_pred);
+				gp_rand_coef_data_pred, use_saved_data, vecchia_pred_type, num_neighbors_pred, fixed_effects, fixed_effects_pred);
 		}
 	}
 

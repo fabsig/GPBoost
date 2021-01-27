@@ -1,6 +1,6 @@
 require(gpboost)
 
-#--------------------Cross validation for tree-boosting without GP or random effects----------------
+#--------------------Cross-validation for tree-boosting without GP or random effects----------------
 # Non-linear function for simulation
 f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
 x <- seq(from=0,to=1,length.out=200)

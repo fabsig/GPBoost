@@ -95,7 +95,8 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
 
 void ObjectiveFunction::InitGPModel(REModel* re_model,
   bool train_gp_model_cov_pars,
-  bool use_gp_model_for_validation) {
+  bool use_gp_model_for_validation,
+  const label_t* label) {
   CHECK(re_model != nullptr);
   re_model_ = re_model;
   if (train_gp_model_cov_pars) {
@@ -104,6 +105,10 @@ void ObjectiveFunction::InitGPModel(REModel* re_model,
   has_gp_model_ = true;
   train_gp_model_cov_pars_ = train_gp_model_cov_pars;
   use_gp_model_for_validation_ = use_gp_model_for_validation;
+  if (!(re_model_->GaussLikelihood())) {
+      re_model->SetY(label);
+      re_model->InitializeCovParsIfNotDefined(nullptr);
+  }
 }
 
 bool ObjectiveFunction::HasGPModel() const {

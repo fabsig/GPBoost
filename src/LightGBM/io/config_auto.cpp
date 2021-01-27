@@ -182,10 +182,9 @@ std::unordered_set<std::string> Config::parameter_set({
   "num_threads",
   "device_type",
   "seed",
-  "has_gp_model",
   "train_gp_model_cov_pars",
-  "leaves_newton_update",
   "use_gp_model_for_validation",
+  "leaves_newton_update",
   "use_nesterov_acc",
   "nesterov_acc_rate",
   "momentum_offset",
@@ -315,13 +314,11 @@ void Config::GetMembersFromString(const std::unordered_map<std::string, std::str
 
   GetInt(params, "num_threads", &num_threads);
 
-  GetBool(params, "has_gp_model", &has_gp_model);
-
   GetBool(params, "train_gp_model_cov_pars", &train_gp_model_cov_pars);
 
-  GetBool(params, "leaves_newton_update", &leaves_newton_update);
-
   GetBool(params, "use_gp_model_for_validation", &use_gp_model_for_validation);
+
+  GetBool(params, "leaves_newton_update", &leaves_newton_update);
 
   GetBool(params, "use_nesterov_acc", &use_nesterov_acc);
 
@@ -614,10 +611,9 @@ std::string Config::SaveMembersToString() const {
   str_buf << "[learning_rate: " << learning_rate << "]\n";
   str_buf << "[num_leaves: " << num_leaves << "]\n";
   str_buf << "[num_threads: " << num_threads << "]\n";
-  str_buf << "[has_gp_model: " << has_gp_model << "]\n";
   str_buf << "[train_gp_model_cov_pars: " << train_gp_model_cov_pars << "]\n";
-  str_buf << "[leaves_newton_update: " << leaves_newton_update << "]\n";
   str_buf << "[use_gp_model_for_validation: " << use_gp_model_for_validation << "]\n";
+  str_buf << "[leaves_newton_update: " << leaves_newton_update << "]\n";
   str_buf << "[use_nesterov_acc: " << use_nesterov_acc << "]\n";
   str_buf << "[nesterov_acc_rate: " << nesterov_acc_rate << "]\n";
   str_buf << "[momentum_offset: " << momentum_offset << "]\n";

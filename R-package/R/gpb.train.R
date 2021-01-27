@@ -305,8 +305,7 @@
 #' params <- list(learning_rate = 0.05,
 #'                max_depth = 6,
 #'                min_data_in_leaf = 5,
-#'                objective = "regression_l2",
-#'                has_gp_model =TRUE)
+#'                objective = "regression_l2")
 #' # Stage 1: run cross-validation to (i) determine to optimal number of iterations
 #' #           and (ii) to estimate the GPModel on the out-of-sample data
 #' cvbst <- gpb.cv(params = params,
@@ -398,11 +397,11 @@ gpb.train <- function(data,
                       nrounds = 100,
                       obj = NULL,
                       gp_model = NULL,
+                      use_gp_model_for_validation = TRUE,
                       train_gp_model_cov_pars = TRUE,
                       params = list(),
                       valids = list(),
                       early_stopping_rounds = NULL,
-                      use_gp_model_for_validation = FALSE,
                       eval = NULL,
                       verbose = 1,
                       record = TRUE,
@@ -413,7 +412,7 @@ gpb.train <- function(data,
                       callbacks = list(),
                       reset_data = FALSE,
                       ...) {
-
+  
   # Setup temporary variables
   additional_params <- list(...)
   params <- append(params, additional_params)
@@ -423,60 +422,36 @@ gpb.train <- function(data,
   fobj <- NULL
   feval <- NULL
   
-  params$use_gp_model_for_validation <- use_gp_model_for_validation
   params$train_gp_model_cov_pars <- train_gp_model_cov_pars
-  if (!is.null(gp_model)) {
-    params["has_gp_model"] <- TRUE
-  }
   
-  if (use_gp_model_for_validation) {
-    
-    if (is.null(gp_model)) {
-      stop("gp_model missing but is should be used for validation")
-    }
-    
-    if (is.null(gp_model$.__enclos_env__$private$num_data_pred)) {
-      stop("Prediction data for gp_model has not been set. Call gp_model$set_prediction_data() first")
-    }
-    
-    if (length(valids)>1) {
-      stop("Can use only one validation set when use_gp_model_for_validation = TRUE")
-    }
-    
-  }
-
   if (nrounds <= 0) {
     stop("nrounds should be greater than zero")
   }
-
+  
   # Check for objective (function or not)
   if (is.function(params$objective)) {
     fobj <- params$objective
     params$objective <- "NONE"
   }
-
+  
   # Check for loss (function or not)
   if (is.function(eval)) {
     feval <- eval
-    if (use_gp_model_for_validation) {
-      # Note: if this option should be added, it can be done similarly as in gpb.cv using booster$add_valid(..., valid_set_gp = valid_set_gp, ...)
-      warning("Using the Gaussian process for making predictions for the validation data is currently not supported for custom validation functions. If you need this feature, contact the developer of this package.")
-    }
   }
-
+  
   # Check for parameters
   gpb.check.params(params)
-
+  
   # Init predictor to empty
   predictor <- NULL
-
+  
   # Check for boosting from a trained model
   if (is.character(init_model)) {
     predictor <- Predictor$new(init_model)
   } else if (gpb.is.Booster(init_model)) {
     predictor <- init_model$to_predictor()
   }
-
+  
   # Set the iteration to start from / end to (and check for boosting from a trained model, again)
   begin_iteration <- 1
   if (!is.null(predictor)) {
@@ -489,89 +464,114 @@ gpb.train <- function(data,
   } else {
     end_iteration <- begin_iteration + nrounds - 1
   }
-
-
+  
+  
   # Check for training dataset type correctness
   if (!gpb.is.Dataset(data)) {
     stop("gpb.train: data only accepts gpb.Dataset object")
   }
-
+  
   # Check for validation dataset type correctness
   if (length(valids) > 0) {
-
+    
     # One or more validation dataset
-
+    
     # Check for list as input and type correctness by object
     if (!is.list(valids) || !all(vapply(valids, gpb.is.Dataset, logical(1)))) {
       stop("gpb.train: valids must be a list of gpb.Dataset elements")
     }
-
+    
     # Attempt to get names
     evnames <- names(valids)
-
+    
     # Check for names existance
     if (is.null(evnames) || !all(nzchar(evnames))) {
       stop("gpb.train: each element of the valids must have a name tag")
     }
   }
-
+  
   # Update parameters with parsed parameters
   data$update_params(params)
-
+  
   # Create the predictor set
   data$.__enclos_env__$private$set_predictor(predictor)
-
+  
   # Write column names
   if (!is.null(colnames)) {
     data$set_colnames(colnames)
   }
-
+  
   # Write categorical features
   if (!is.null(categorical_feature)) {
     data$set_categorical_feature(categorical_feature)
   }
-
+  
   # Construct datasets, if needed
   data$construct()
-  vaild_contain_train <- FALSE
+  valid_contain_train <- FALSE
   train_data_name <- "train"
   reduced_valid_sets <- list()
-
+  
   # Parse validation datasets
   if (length(valids) > 0) {
-
+    
     # Loop through all validation datasets using name
     for (key in names(valids)) {
-
+      
       # Use names to get validation datasets
       valid_data <- valids[[key]]
-
+      
       # Check for duplicate train/validation dataset
       if (identical(data, valid_data)) {
-        vaild_contain_train <- TRUE
+        valid_contain_train <- TRUE
         train_data_name <- key
         next
       }
-
+      
       # Update parameters, data
       valid_data$update_params(params)
       valid_data$set_reference(data)
       reduced_valid_sets[[key]] <- valid_data
-
+      
     }
-
+    
   }
-
+  
+  if (!is.null(gp_model)) {
+    if (is.function(eval) & use_gp_model_for_validation) {
+      # Note: if this option should be added, it can be done similarly as in gpb.cv using booster$add_valid(..., valid_set_gp = valid_set_gp, ...)
+      stop("use_gp_model_for_validation=TRUE is currently not supported for custom validation functions.
+           If you need this feature, contact the developer of this package or open a GitHub issue.")
+    }
+    if (length(reduced_valid_sets) > 1 & use_gp_model_for_validation) {
+      stop("Can use only one validation set when use_gp_model_for_validation = TRUE")
+    }
+    if (!valid_contain_train & use_gp_model_for_validation & length(reduced_valid_sets)>0 && is.null(gp_model$.__enclos_env__$private$num_data_pred)) {
+      stop("Prediction data for gp_model has not been set. Call gp_model$set_prediction_data() first")
+    }
+    # Set the default metric to the (approximate marginal) negative log-likelihood if only the training loss should be calculated
+    if (valid_contain_train & length(reduced_valid_sets) == 0 & length(params$metric)==0) {
+      if (gp_model$get_likelihood_name() != "gaussian") {
+        params$metric <- append(params$metric, "approx_neg_marginal_log_likelihood")
+      }
+      else {
+        params$metric <- append(params$metric, "neg_log_likelihood")
+      }
+    }
+  }
+  
+  params$use_gp_model_for_validation <- use_gp_model_for_validation
+  
   # Add printing log callback
   if (verbose > 0 && eval_freq > 0) {
     callbacks <- add.cb(callbacks, cb.print.evaluation(eval_freq))
   }
-
+  
   # Add evaluation log callback
   if (record && length(valids) > 0) {
     callbacks <- add.cb(callbacks, cb.record.evaluation())
   }
-
+  
   # Check for early stopping passed as parameter when adding early stopping callback
   early_stop <- c("early_stopping_round", "early_stopping_rounds", "early_stopping", "n_iter_no_change")
   if (any(names(params) %in% early_stop)) {
@@ -585,66 +585,66 @@ gpb.train <- function(data,
       }
     }
   }
-
+  
   # "Categorize" callbacks
   cb <- categorize.callbacks(callbacks)
-
+  
   # Construct booster with datasets
   booster <- Booster$new(params = params, train_set = data, gp_model = gp_model)
-  if (vaild_contain_train) { booster$set_train_data_name(train_data_name) }
+  if (valid_contain_train) { booster$set_train_data_name(train_data_name) }
   for (key in names(reduced_valid_sets)) {
-    booster$add_valid(reduced_valid_sets[[key]], key)
+    booster$add_valid(reduced_valid_sets[[key]], key, use_gp_model_for_validation=use_gp_model_for_validation)
   }
-
+  
   # Callback env
   env <- CB_ENV$new()
   env$model <- booster
   env$begin_iteration <- begin_iteration
   env$end_iteration <- end_iteration
-
+  
   # Start training model using number of iterations to start and end with
   for (i in seq.int(from = begin_iteration, to = end_iteration)) {
-
+    
     # Overwrite iteration in environment
     env$iteration <- i
     env$eval_list <- list()
-
+    
     # Loop through "pre_iter" element
     for (f in cb$pre_iter) {
       f(env)
     }
-
+    
     # Update one boosting iteration
     booster$update(fobj = fobj)
-
+    
     # Prepare collection of evaluation results
     eval_list <- list()
-
+    
     # Collection: Has validation dataset?
     if (length(valids) > 0) {
-
+      
       # Validation has training dataset?
-      if (vaild_contain_train) {
+      if (valid_contain_train) {
         eval_list <- append(eval_list, booster$eval_train(feval = feval))
       }
-
+      
       # Has no validation dataset
       eval_list <- append(eval_list, booster$eval_valid(feval = feval))
     }
-
+    
     # Write evaluation result in environment
     env$eval_list <- eval_list
-
+    
     # Loop through env
     for (f in cb$post_iter) {
       f(env)
     }
-
+    
     # Check for early stopping and break if needed
     if (env$met_early_stop) break
-
+    
   }
-
+  
   # When early stopping is not activated, we compute the best iteration / score ourselves by selecting the first metric and the first dataset
   if (record && length(valids) > 0 && is.na(env$best_score)) {
     if (env$eval_list[[1]]$higher_better[1] == TRUE) {
@@ -655,24 +655,24 @@ gpb.train <- function(data,
       booster$best_score <- booster$record_evals[[2]][[1]][[1]][[booster$best_iter]]
     }
   }
-
+  
   # Check for booster model conversion to predictor model
   if (reset_data) {
-
+    
     # Store temporarily model data elsewhere
     booster_old <- list(best_iter = booster$best_iter,
                         best_score = booster$best_score,
                         record_evals = booster$record_evals)
-
+    
     # Reload model
     booster <- gpb.load(model_str = booster$save_model_to_string())
     booster$best_iter <- booster_old$best_iter
     booster$best_score <- booster_old$best_score
     booster$record_evals <- booster_old$record_evals
-
+    
   }
-
+  
   # Return booster
   return(booster)
-
+  
 }

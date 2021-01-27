@@ -175,29 +175,19 @@ Core Parameters
 
    -  this seed has lower priority in comparison with other seeds, which means that it will be overridden, if you set other seeds explicitly
 
--  ``has_gp_model`` :raw-html:`<a id="has_gp_model" title="Permalink to this parameter" href="#has_gp_model">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
-
-   -  set this to ``true`` to do Gaussian process boosting
-
-   -  can currently only be used for objective = "regression"
-
 -  ``train_gp_model_cov_pars`` :raw-html:`<a id="train_gp_model_cov_pars" title="Permalink to this parameter" href="#train_gp_model_cov_pars">&#x1F517;&#xFE0E;</a>`, default = ``true``, type = bool
 
-   -  if ``true``, the covariance parameters of the Gaussian process / random effects model are trained (estimated) in every boosting iteration, otherwise not (default = true)
+   -  if ``true``, the covariance parameters of the Gaussian process / random effects model are trained (estimated) in every boosting iteration of the GPBoost algorithm, otherwise not
 
-   -  applies only to Gaussian process boosting (GPBoost algorithm)
+-  ``use_gp_model_for_validation`` :raw-html:`<a id="use_gp_model_for_validation" title="Permalink to this parameter" href="#use_gp_model_for_validation">&#x1F517;&#xFE0E;</a>`, default = ``true``, type = bool
+
+   -  set this to ``true`` to also use the Gaussian process / random effects model (in addition to the tree model) for calculating predictions on the validation data when using the GPBoost algorithm
 
 -  ``leaves_newton_update`` :raw-html:`<a id="leaves_newton_update" title="Permalink to this parameter" href="#leaves_newton_update">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
 
    -  if ``true``, a Newton update step is done for the tree leaves after the gradient step
 
-   -  applies only to Gaussian process boosting (GPBoost algorithm)
-
--  ``use_gp_model_for_validation`` :raw-html:`<a id="use_gp_model_for_validation" title="Permalink to this parameter" href="#use_gp_model_for_validation">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
-
-   -  set this to ``true`` to also use the Gaussian process (in addition to the tree model) for calculating predictions on the validation data
-
-   -  applies only to Gaussian process boosting (GPBoost algorithm)
+   -  applies only to the GPBoost algorithm for Gaussian data and cannot be used for non-Gaussian data
 
 -  ``use_nesterov_acc`` :raw-html:`<a id="use_nesterov_acc" title="Permalink to this parameter" href="#use_nesterov_acc">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
 

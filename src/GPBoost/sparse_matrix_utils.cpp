@@ -296,4 +296,63 @@ namespace GPBoost {
 			A_inv_B = U_inv_dens.sparseView();
 		}
 	}
+
+	void CalcLInvH(sp_mat_t& L, sp_mat_t& H, sp_mat_t& LInvH, bool lower) {
+		eigen_sp_Lower_sp_RHS_solve(L, H, LInvH, lower);
+		//TODO: use eigen_sp_Lower_sp_RHS_cs_solve -> faster? (currently this crashes due to Eigen bug, see the definition of sp_Lower_sp_RHS_cs_solve for more details)
+	}
+
+	void CalcLInvH(sp_mat_t& L, den_mat_t& H, den_mat_t& LInvH, bool lower) {
+		L.makeCompressed();
+		const double* val = L.valuePtr();
+		const int* row_idx = L.innerIndexPtr();
+		const int* col_ptr = L.outerIndexPtr();
+		LInvH = den_mat_t((int)L.cols(), (int)H.cols());
+
+		if (lower) {
+#pragma omp parallel for schedule(static)
+			for (int j = 0; j < H.cols(); ++j) {
+				vec_t col_j = H.col(j);
+				sp_L_solve(val, row_idx, col_ptr, (int)L.cols(), col_j.data());
+				LInvH.col(j) = col_j;
+			}
+		}
+		else {
+#pragma omp parallel for schedule(static)
+			for (int j = 0; j < H.cols(); ++j) {
+				vec_t col_j = H.col(j);
+				sp_L_t_solve(val, row_idx, col_ptr, (int)L.cols(), col_j.data());
+				LInvH.col(j) = col_j;
+			}
+		}
+	}
+
+	void CalcLInvH(den_mat_t& L, den_mat_t& H, den_mat_t& LInvH, bool lower) {
+		LInvH = H;
+		int ncols = (int)L.cols();
+#pragma omp parallel for schedule(static)
+		for (int j = 0; j < (int)H.cols(); ++j) {
+			if (lower) {
+				L_solve(L.data(), ncols, LInvH.data() + j * ncols);
+			}
+			else {
+				L_t_solve(L.data(), ncols, LInvH.data() + j * ncols);
+			}
+		}
+	}
+
+	void CalcLInvH(den_mat_t& L, sp_mat_t& H, den_mat_t& LInvH, bool lower) {
+		LInvH = den_mat_t(H);
+		int ncols = (int)L.cols();
+#pragma omp parallel for schedule(static)
+		for (int j = 0; j < (int)H.cols(); ++j) {
+			if (lower) {
+				L_solve(L.data(), ncols, LInvH.data() + j * ncols);
+			}
+			else {
+				L_t_solve(L.data(), ncols, LInvH.data() + j * ncols);
+			}
+		}
+	}
+
 }  // namespace GPBoost

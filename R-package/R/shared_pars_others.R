@@ -1,6 +1,8 @@
 #' @name GPModel_shared_params
 #' @title Shared parameter docs
 #' @description Parameter docs shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}
+#' @param likelihood A \code{string} specifying the likelihood function (distribution) of the response variable
+#' Default = "gaussian"
 #' @param group_data A \code{vector} or \code{matrix} with labels of group levels for grouped random effects
 #' @param group_rand_coef_data A \code{vector} or \code{matrix} with covariate data for grouped random coefficients
 #' @param ind_effect_group_rand_coef A \code{vector} with indices that relate every random coefficients 
@@ -11,7 +13,7 @@
 #' The following covariance functions are available: "exponential", "gaussian", "matern", and "powered_exponential". 
 #' We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance 
 #' where we follow Rassmusen and Williams (2006)
-#' @param cov_fct_shape A \code{numeric} specifying the shape parameter of covariance function 
+#' @param cov_fct_shape A \code{numeric} specifying the shape parameter of a covariance function 
 #' (=smoothness parameter for Matern covariance, irrelevant for some covariance functions 
 #' such as the exponential or Gaussian)
 #' @param vecchia_approx A \code{boolean}. If true, the Vecchia approximation is used 
@@ -33,17 +35,17 @@
 #' is freed in R after initialization
 #' @param y A \code{vector} with response variable data
 #' @param X A \code{matrix} with covariate data for fixed effects ( = linear regression term)
-#' @param std_dev If TRUE (asymptotic) standard deviations are calculated for all parameters
 #' @param params A \code{list} with parameters for the model fitting / optimization
 #'             \itemize{
 #'                \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
-#'                Options: "gradient_descent" or "fisher_scoring". Default="fisher_scoring".}
+#'                Options: "gradient_descent" or "fisher_scoring". Default="fisher_scoring" for Gaussian data
+#'                and "gradient_descent" for other likelihoods.}
 #'                \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
-#'                (for the GPBoost algorithm there are usually no). 
+#'                (for the GPBoost algorithm there are usually none). 
 #'                Options: "gradient_descent" or "wls". Gradient descent steps are done simultaneously 
 #'                with gradient descent steps for the covariance paramters. 
 #'                "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
-#'                Default="wls".}
+#'                Default="wls" for Gaussian data and "gradient_descent" for other likelihoods.}
 #'                \item{maxit}{ Maximal number of iterations for optimization algorithm. Default=1000.}
 #'                \item{delta_rel_conv}{ Convergence criterion: stop optimization if relative change 
 #'                in parameters is below this value. Default=1E-6.}
@@ -55,7 +57,8 @@
 #'                Default=0.01.}
 #'                \item{lr_cov}{ Learning rate for covariance parameters. If <= 0, internal default values are used.
 #'                Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"}
-#'                \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used. Default=FALSE.}
+#'                \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used.
+#'                This is used only for gradient descent. Default=TRUE}
 #'                \item{acc_rate_coef}{ Acceleration rate for regression coefficients (if there are any) 
 #'                for Nesterov acceleration. Default=0.1.}
 #'                \item{acc_rate_cov}{ Acceleration rate for covariance parameters for Nesterov acceleration.
@@ -66,6 +69,7 @@
 #'                Useful for finding good learning rates. Default=FALSE.}
 #'                \item{convergence_criterion}{ The convergence criterion used for terminating the optimization algorithm.
 #'                Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters".}
+#'                \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}
 #'            }
 NULL
 
@@ -101,12 +105,12 @@ NULL
 #'                after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
 #'                \item{train_gp_model_cov_pars}{ If TRUE, the covariance parameters of the Gaussian process 
 #'                are stimated in every boosting iterations, 
-#'                otherwise the GPModel parameters are not estimated. In the latter case, you need to 
+#'                otherwise the gp_model parameters are not estimated. In the latter case, you need to 
 #'                either esimate them beforehand or provide the values via 
-#'                the 'init_cov_pars' parameter when creating the GPModel (default = TRUE).}
+#'                the 'init_cov_pars' parameter when creating the gp_model (default = TRUE).}
 #'                \item{use_gp_model_for_validation}{ If TRUE, the Gaussian process is also used 
 #'                (in addition to the tree model) for calculating predictions on the validation data 
-#'                (default = FALSE)}
+#'                (default = TRUE)}
 #'                \item{use_nesterov_acc}{ Set this to TRUE to do boosting with Nesterov acceleration. 
 #'                Can currently only be used for tree_learner = "serial" (default option)}
 #'                \item{nesterov_acc_rate}{ Acceleration rate for momentum step in case Nesterov accelerated 
@@ -125,7 +129,12 @@ NULL
 #' @param obj Objective function, can be character or custom objective function (default = "regression_l2"). Examples include
 #'        \code{regression_l2}, \code{regression_l1}, \code{huber},
 #'        \code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}. Currently only "regression_l2" supports Gaussian process boosting.
-#' @param eval Evaluation function, can be (a list of) character or custom eval function
+#' @param eval Evaluation function, can be (a list of) \code{strings} (character) or a custom evaluation function.
+#'        If this is defined by strings, this is equivalent to specifying the parameter \code{metric}.
+#'        For a list of all possible metrics, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
+#' @param metric A list of \code{strings} for specifying the validation metric.
+#'        This can equivalently also be specified in the parameter \code{eval}.
+#'        For a list of all possible metrics, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 #' @param record Boolean, TRUE will record iteration message to \code{booster$record_evals}
 #' @param colnames Feature (covariate) names, if not null, will use this to overwrite the names in dataset
 #' @param categorical_feature List of str or int
@@ -133,11 +142,11 @@ NULL
 #'        type str represents feature names
 #' @param callbacks list of callback functions
 #'        List of callback functions that are applied at each iteration.
-#' @param gp_model A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model. Can currently only be used for objective = "regression"
-#' @param use_gp_model_for_validation Boolean (default = FALSE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data
+#' @param gp_model A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model
+#' @param use_gp_model_for_validation Boolean (default = TRUE). If TRUE, the Gaussian process is also used (in addition to the tree model) for calculating predictions on the validation data
 #' @param train_gp_model_cov_pars Boolean (default = TRUE). If TRUE, the covariance parameters of the Gaussian process are estimated in every boosting iterations, 
-#'                otherwise the GPModel parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 
-#'                the 'init_cov_pars' parameter when creating the GPModel
+#'                otherwise the gp_model parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 
+#'                the 'init_cov_pars' parameter when creating the gp_model
 NULL
 
 #' Training part from Mushroom Data Set
