@@ -3029,7 +3029,7 @@ class GPModel(object):
         self.params = {"maxit": 1000,
                        "delta_rel_conv": 1e-6,
                        "init_coef": None,
-                       "lr_coef": 0.01,
+                       "lr_coef": 0.1,
                        "lr_cov": -1.,
                        "use_nesterov_acc": True,
                        "acc_rate_coef": 0.1,
@@ -3301,7 +3301,7 @@ class GPModel(object):
                     Initial values for the regression coefficients (if there are any, can be None)
                 init_cov_pars : numpy array, optional (default = None)
                     Initial values for covariance parameters of Gaussian process and random effects (can be None)
-                lr_coef : double, optional (default = 0.01)
+                lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
                 lr_cov : double, optional (default = -1.)
                     If <= 0, internal default values are used.
@@ -3533,7 +3533,7 @@ class GPModel(object):
                     for the regression coefficients using weighted least squares
                 init_coef : numpy array, optional (default = None)
                     Initial values for the regression coefficients (can be None)
-                lr_coef : double, optional (default = 0.01)
+                lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
                 acc_rate_coef : double, optional (default = 0.5)
                     Acceleration rate for covariance parameters for Nesterov acceleration

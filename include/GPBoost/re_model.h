@@ -107,7 +107,7 @@ namespace GPBoost {
 		*/
 		void SetOptimConfig(double* init_cov_pars = nullptr, double lr = -1.,
 			double acc_rate_cov = 0.5, int max_iter = 1000, double delta_rel_conv = 1.0e-6,
-			bool use_nesterov_acc = false, int nesterov_schedule_version = 0, bool trace = true,
+			bool use_nesterov_acc = true, int nesterov_schedule_version = 0, bool trace = true,
 			const char* optimizer = nullptr, int momentum_offset = 2, const char* convergence_criterion = nullptr,
 			bool calc_std_dev = false);
 
@@ -125,7 +125,7 @@ namespace GPBoost {
 		* \param optimizer Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares)
 		*/
 		void SetOptimCoefConfig(int num_covariates = 0, double* init_coef = nullptr,
-			double lr_coef = 0.001, double acc_rate_coef = 0.5, const char* optimizer = nullptr);
+			double lr_coef = 0.1, double acc_rate_coef = 0.5, const char* optimizer = nullptr);
 
 		/*!
 		* \brief Find parameters that minimize the negative log-ligelihood (=MLE) using (Nesterov accelerated) gradient descent
@@ -295,7 +295,7 @@ namespace GPBoost {
 		bool has_covariates_ = false;
 		bool coef_initialized_ = false;
 		vec_t std_dev_coef_;
-		double lr_coef_ = 0.001;
+		double lr_coef_ = 0.1;
 		double acc_rate_coef_ = 0.5;
 		string_t optimizer_coef_ = "wls";//"gradient_descent" or "wls" (The default = "wls" is changed to "gradient_descent" for non-Gaussian data upon initialization)
 		string_t convergence_criterion_ = "relative_change_in_log_likelihood";//"relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
