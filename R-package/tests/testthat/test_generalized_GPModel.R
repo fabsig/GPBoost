@@ -560,7 +560,7 @@ test_that("Binary classification Gaussian process model with Vecchia approximati
 
 test_that("Binary classification with linear predictor and grouped random effects model ", {
 
-  probs <- pnorm(Z1 %*% b_gr_1 + X%*%beta )
+  probs <- pnorm(Z1 %*% b_gr_1 + X%*%beta)
   y <- as.numeric(sim_rand_unif(n=n, init_c=0.542) < probs)
   
   # Estimation using gradient descent
@@ -616,6 +616,32 @@ test_that("Binary classification with linear predictor and grouped random effect
   expected_mu <- c(0.2226949, 0.4667648, 0.5784791, 0.8817843)
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
 })
+
+
+test_that("Binary classification with linear predictor and Gaussian process model ", {
+  
+  probs <- pnorm(L %*% b_1 + X%*%beta)
+  y <- as.numeric(sim_rand_unif(n=n, init_c=0.419) < probs)
+  # Estimation
+  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                         y = y, X=X, params = list(optimizer_cov = "gradient_descent",
+                                                   optimizer_coef = "gradient_descent",
+                                                   use_nesterov_acc = TRUE, lr_cov=0.2, lr_coef = 0.5))
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.676679e+02, 3.445905e-03))),1E-4)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(3.789801,12.332712))),1E-5)
+  expect_equal(gp_model$get_num_optim_iter(), 358)
+  
+  # Prediction
+  coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+  X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
+  pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                  predict_var = TRUE, predict_response = FALSE)
+  expected_mu <- c(-2.376555, 6.256343, 16.122502)
+  expected_var <- c(167.6679, 167.6679, 167.6679)
+  expect_lt(sum(abs(pred$mu-expected_mu)),1E-4)
+  expect_lt(sum(abs(as.vector(pred$var)-expected_var)),1E-3)
+})
+
 
 test_that("Binary classification with Gaussian process model and logit link function", {
   

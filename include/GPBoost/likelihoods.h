@@ -696,7 +696,7 @@ namespace GPBoost {
 				rhs = second_deriv_neg_ll_.asDiagonal() * mode_ + first_deriv_ll_;//right hand side for updating mode
 				SigmaI_plus_W = SigmaI;
 				SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
-				//Log::Info("Number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//DELETE
+				//Log::Info("Number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging, can be deleted
 				chol_facts_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_W);//This is usually the bottleneck
 				mode_ = chol_facts_SigmaI_plus_ZtWZ_.solve(rhs);
 				// Calculate new objective function
@@ -838,8 +838,10 @@ namespace GPBoost {
 				T1 ZSigmaZtI_plus_W_inv = (*ZSigmaZt) - (T1)(C.transpose() * C);// = (ZSigmaZt^-1 + W) ^ -1
 				// calculate gradient of approx. marginal likeligood wrt the mode
 				vec_t d_mll_d_mode = (-0.5 * ZSigmaZtI_plus_W_inv.diagonal().array() * third_deriv.array()).matrix();//Note: d_mll_d_mode = d_detmll_d_F
-				T1 ZSigmaZtI_plus_W_inv_W = ZSigmaZtI_plus_W_inv * second_deriv_neg_ll_.asDiagonal();
-				fixed_effect_grad = -first_deriv_ll_ + d_mll_d_mode - d_mll_d_mode.transpose() * ZSigmaZtI_plus_W_inv_W;
+				//T1 ZSigmaZtI_plus_W_inv_W = ZSigmaZtI_plus_W_inv * second_deriv_neg_ll_.asDiagonal();//DELETE
+				//fixed_effect_grad = -first_deriv_ll_ + d_mll_d_mode - d_mll_d_mode.transpose() * ZSigmaZtI_plus_W_inv_W;//DELETE
+				vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = d_mll_d_mode.transpose() * ZSigmaZtI_plus_W_inv * second_deriv_neg_ll_.asDiagonal();
+				fixed_effect_grad = -first_deriv_ll_ + d_mll_d_mode - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
 			}//end calc_F_grad
 		}//end CalcGradNegMargLikelihoodLAApproxStable
 
@@ -1014,8 +1016,9 @@ namespace GPBoost {
 					sp_mat_t zi_zit = Zt.col(i) * Z.row(i);//=Z.row(i) * (Z.row(i)).transpose()
 					d_detmll_d_F[i] = -0.5 * third_deriv[i] * (SigmaI_plus_ZtWZ_inv.cwiseProduct(zi_zit)).sum();
 				}
-				sp_mat_t SigmaI_plus_ZtWZ_inv_Zt_W = SigmaI_plus_ZtWZ_inv * Zt * second_deriv_neg_ll_.asDiagonal();
-				fixed_effect_grad = -first_deriv_ll_ + d_detmll_d_F - d_mll_d_mode.transpose() * SigmaI_plus_ZtWZ_inv_Zt_W;
+				//sp_mat_t SigmaI_plus_ZtWZ_inv_Zt_W = SigmaI_plus_ZtWZ_inv * Zt * second_deriv_neg_ll_.asDiagonal();//DELETE
+				vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = d_mll_d_mode.transpose() * SigmaI_plus_ZtWZ_inv * Zt * second_deriv_neg_ll_.asDiagonal();
+				fixed_effect_grad = -first_deriv_ll_ + d_detmll_d_F - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
 			}//end calc_F_grad
 		}//end CalcGradNegMargLikelihoodLAApproxGroupedRE
 

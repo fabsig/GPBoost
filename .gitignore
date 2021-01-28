@@ -7,6 +7,7 @@ python-package/build/
 python-package/build_cpp/
 python-package/compile/
 python-package/gpboost.egg-info/
+python-package/compile/dist/
 
 gpboost_r/
 gpboost*.tar.gz

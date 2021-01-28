@@ -2659,10 +2659,6 @@ namespace GPBoost {
 				beta_after_grad_aux_lag1 = beta_after_grad_aux;
 			}
 			beta = beta_new;
-
-			//Log::Debug("neg_log_likelihood_after_lin_coef_update_: %g", neg_log_likelihood_after_lin_coef_update_);//DELETE
-			//for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %g", i, beta[i]); }//DELETE
-
 		}//end UpdateLinCoef
 
 		/*!

@@ -3812,6 +3812,8 @@ class GPModel(object):
                     ctypes.POINTER(ctypes.c_int))
             # Set data for linear fixed-effects
             if X_pred is not None:
+                if not self.has_covariates:
+                    raise ValueError("Covariate data provided in 'X_pred' but model has no linear predictor")
                 if not isinstance(X_pred, np.ndarray):
                     raise ValueError("X_pred needs to be a numpy.ndarray")
                 if len(X_pred.shape) > 2:
@@ -3994,6 +3996,8 @@ class GPModel(object):
                 ctypes.POINTER(ctypes.c_int))
         # Set data for linear fixed-effects
         if X_pred is not None:
+            if not self.has_covariates:
+                raise ValueError("Covariate data provided in 'X_pred' but model has no linear predictor")
             if not isinstance(X_pred, np.ndarray):
                 raise ValueError("X_pred needs to be a numpy.ndarray")
             if len(X_pred.shape) > 2:
