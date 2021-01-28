@@ -1557,7 +1557,7 @@ gpb.GPModel <- R6::R6Class(
                   lr_coef = 0.1,
                   lr_cov = -1.,
                   use_nesterov_acc = TRUE,
-                  acc_rate_coef = 0.1,
+                  acc_rate_coef = 0.5,
                   acc_rate_cov = 0.5,
                   nesterov_schedule_version = 0L,
                   momentum_offset = 2L,

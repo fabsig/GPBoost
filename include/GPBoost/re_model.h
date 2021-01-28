@@ -93,7 +93,7 @@ namespace GPBoost {
 		/*!
 		* \brief Set configuration parameters for the optimizer
 		* \param init_cov_pars Initial values for covariance parameters of RE components
-		* \param lr Learning rate. If <= 0, default values are used. Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
+		* \param lr Learning rate. If lr<= 0, default values are used. Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param max_iter Maximal number of iterations
 		* \param delta_rel_conv Convergence criterion: stop iteration if relative change in parameters is below this value
@@ -295,11 +295,11 @@ namespace GPBoost {
 		bool has_covariates_ = false;
 		bool coef_initialized_ = false;
 		vec_t std_dev_coef_;
-		double lr_coef_ = 0.1;
+		double lr_coef_ = 0.5;
 		double acc_rate_coef_ = 0.5;
 		string_t optimizer_coef_ = "wls";//"gradient_descent" or "wls" (The default = "wls" is changed to "gradient_descent" for non-Gaussian data upon initialization)
 		string_t convergence_criterion_ = "relative_change_in_log_likelihood";//"relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
-		bool optim_cov_pars_have_been_set_ = false;//true if the function 'SetOptimConfig' has been called
+		bool cov_pars_optimizer_hase_been_set_ = false;//true if the function 'SetOptimConfig' has been called and optimizer_cov_pars_ has been set
 		bool calc_std_dev_ = false;
 	};
 

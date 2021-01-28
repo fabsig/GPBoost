@@ -76,7 +76,7 @@ namespace GPBoost {
 			re_model_den_->SetLikelihood(likelihood);
 			num_cov_pars_ = re_model_den_->num_cov_par_;
 		}
-		if (!GaussLikelihood() && !optim_cov_pars_have_been_set_) {
+		if (!GaussLikelihood() && !cov_pars_optimizer_hase_been_set_) {
 			optimizer_cov_pars_ = "gradient_descent";
 		}
 	}
@@ -118,6 +118,7 @@ namespace GPBoost {
 		nesterov_schedule_version_ = nesterov_schedule_version;
 		if (optimizer != nullptr) {
 			optimizer_cov_pars_ = std::string(optimizer);
+			cov_pars_optimizer_hase_been_set_ = true;
 		}
 		if (convergence_criterion != nullptr) {
 			convergence_criterion_ = std::string(convergence_criterion);
@@ -130,7 +131,6 @@ namespace GPBoost {
 			Log::ResetLogLevel(LogLevel::Info);
 		}
 		calc_std_dev_ = calc_std_dev;
-		optim_cov_pars_have_been_set_ = true;
 	}
 
 	void REModel::InitializeCovParsIfNotDefined(const double* y_data) {

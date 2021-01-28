@@ -3032,7 +3032,7 @@ class GPModel(object):
                        "lr_coef": 0.1,
                        "lr_cov": -1.,
                        "use_nesterov_acc": True,
-                       "acc_rate_coef": 0.1,
+                       "acc_rate_coef": 0.5,
                        "acc_rate_cov": 0.5,
                        "nesterov_schedule_version": 0,
                        "momentum_offset": 2,
@@ -3305,7 +3305,7 @@ class GPModel(object):
                     Learning rate for fixed effect regression coefficients
                 lr_cov : double, optional (default = -1.)
                     If <= 0, internal default values are used.
-                    Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
+                    Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
                 use_nesterov_acc : bool, optional (default = True)
                     If True, Nesterov acceleration is used for gradient descent
                 acc_rate_coef : double, optional (default = 0.5)

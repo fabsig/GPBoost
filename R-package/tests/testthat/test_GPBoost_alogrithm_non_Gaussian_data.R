@@ -173,6 +173,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     
     # Find number of iterations using validation data with use_gp_model_for_validation=FALSE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.01))
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                      learning_rate=0.1, objective = "binary", verbose = 0,
                      use_gp_model_for_validation=FALSE, eval = "binary_error",
@@ -183,6 +184,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     
     # Find number of iterations using validation data with use_gp_model_for_validation=TRUE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.01))
     gp_model$set_prediction_data(group_data_pred = group_data_test)
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                      learning_rate=0.1, objective = "binary", verbose = 0,
@@ -199,6 +201,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     
     # Other metrics / losses
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.01))
     gp_model$set_prediction_data(group_data_pred = group_data_test)
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                      learning_rate=0.5, objective = "binary", verbose = 0,
@@ -222,6 +225,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     
     # CV for finding number of boosting iterations when use_gp_model_for_validation = FALSE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.01))
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model=gp_model,
@@ -237,6 +241,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     expect_lt(abs(cvbst$best_score-0.353), 1E-4)
     # same thing but "wrong" likelihood given in gp_model
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=list(lr_cov=0.01))
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model=gp_model,
@@ -252,7 +257,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     expect_lt(abs(cvbst$best_score-0.353), 1E-4)
     # CV for finding number of boosting iterations when use_gp_model_for_validation = TRUE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE))
+    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE, lr_cov=0.01))
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -269,7 +274,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     
     # Create random effects model and train GPBoost model
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE))
+    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE, lr_cov=0.01))
     bst <- gpboost(data = X_train,
                    label = y_train,
                    gp_model = gp_model,
@@ -307,7 +312,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     probs_1 <- pnorm(f[1:ntrain] + b1[group_1])
     y_1 <- as.numeric(sim_rand_unif(n=ntrain, init_c=0.574) < probs_1)
     gp_model <- GPModel(group_data = group_1, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE))
+    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE, lr_cov=0.01))
     bst <- gpboost(data = X_train,
                    label = y_1,
                    gp_model = gp_model,
@@ -357,7 +362,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1, 1))),1E-6)
     # GPBoostOOS algorithm: fit parameters on out-of-sample data
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE))
+    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE, lr_cov=0.01))
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -381,6 +386,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
       return(list(name="bin_cust_error",value=error,higher_better=FALSE))
     }
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.01))
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                      learning_rate=0.1, objective = "binary", verbose = 0,
                      use_gp_model_for_validation=FALSE,
@@ -389,6 +395,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     expect_lt(abs(bst$best_score - 0.356),1E-6)
     # CV
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.01))
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model=gp_model,
@@ -441,7 +448,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     # Train model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(maxit=10))
+    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01))
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 2,
@@ -465,7 +472,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     valids <- list(test = dtest)
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(maxit=10))
+    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01))
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 10,
@@ -483,7 +490,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     # Also use GPModel for calculating validation error
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(maxit=20, use_nesterov_acc=FALSE))
+    gp_model$set_optim_params(params=list(maxit=20, use_nesterov_acc=FALSE, lr_cov=0.01))
     gp_model$set_prediction_data(gp_coords_pred = coords_test)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
@@ -606,7 +613,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     # Train model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_logit")
-    gp_model$set_optim_params(params=list(maxit=10))
+    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01))
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 2,
@@ -683,6 +690,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     
     # Train model
     gp_model <- GPModel(group_data = group_data_train, likelihood = "poisson")
+    gp_model$set_optim_params(params=list(lr_cov=0.01))
     bst <- gpboost(data = dtrain,
                    gp_model = gp_model,
                    nrounds = 30,
@@ -762,6 +770,7 @@ if(R.Version()$arch != "i386"){##32-bit version is not supported by the tree-boo
     
     # Train model
     gp_model <- GPModel(group_data = group_data_train, likelihood = "gamma")
+    gp_model$set_optim_params(params=list(lr_cov=0.01))
     bst <- gpboost(data = dtrain,
                    gp_model = gp_model,
                    nrounds = 30,

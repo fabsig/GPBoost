@@ -34,11 +34,11 @@
     \item{lr_coef}{ Learning rate for fixed effect regression coefficients if gradient descent is used.
     Default=0.1.}
     \item{lr_cov}{ Learning rate for covariance parameters. If <= 0, internal default values are used.
-    Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"}
+    Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"}
     \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used.
     This is used only for gradient descent. Default=TRUE}
     \item{acc_rate_coef}{ Acceleration rate for regression coefficients (if there are any) 
-    for Nesterov acceleration. Default=0.1.}
+    for Nesterov acceleration. Default=0.5.}
     \item{acc_rate_cov}{ Acceleration rate for covariance parameters for Nesterov acceleration.
     Default=0.5.}
     \item{momentum_offset}{ Number of iterations for which no mometum is applied in the beginning.

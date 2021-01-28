@@ -397,7 +397,7 @@ namespace GPBoost {
 		* \param init_cov_pars Initial values for covariance parameters of RE components
 		* \param init_coef Initial values for the regression coefficients
 		* \param lr_coef Learning rate for fixed-effect linear coefficients
-		* \param lr_cov Learning rate for covariance parameters. If <= 0, default values are used. Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
+		* \param lr_cov Learning rate for covariance parameters. If lr<= 0, default values are used. Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
 		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
@@ -415,7 +415,7 @@ namespace GPBoost {
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates,
 			double* optim_cov_pars, double* optim_coef, int& num_it, double* init_cov_pars, double* init_coef = nullptr,
-			double lr_coef = 0.1, double lr_cov = -1., double acc_rate_coef = 0.1, double acc_rate_cov = 0.5, int momentum_offset = 2,
+			double lr_coef = 0.1, double lr_cov = -1., double acc_rate_coef = 0.5, double acc_rate_cov = 0.5, int momentum_offset = 2,
 			int max_iter = 1000, double delta_rel_conv = 1.0e-6, bool use_nesterov_acc = true, int nesterov_schedule_version = 0,
 			string_t optimizer_cov = "fisher_scoring", string_t optimizer_coef = "wls", double* std_dev_cov_par = nullptr,
 			double* std_dev_coef = nullptr, bool calc_std_dev = false, string_t convergence_criterion = "relative_change_in_log_likelihood",
@@ -471,7 +471,7 @@ namespace GPBoost {
 					lr_cov = 1.;
 				}
 				else if (optimizer_cov == "gradient_descent") {
-					lr_cov = 0.01;
+					lr_cov = 0.1;
 				}
 			}
 			vec_t cov_pars = Eigen::Map<const vec_t>(init_cov_pars, num_cov_par_);
