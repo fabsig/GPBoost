@@ -6,7 +6,7 @@
 GPBoost Python Package
 =======================
 
-[<img src="https://img.shields.io/github/license/fabsig/gpboost.svg">](https://github.com/fabsig/GPBoost/blob/master/LICENSE)
+[![license](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](https://github.com/fabsig/GPBoost/blob/master/LICENSE)
 [<img src="https://img.shields.io/pypi/pyversions/gpboost.svg?logo=python&logoColor=white">](https://pypi.org/project/gpboost)
 [<img src="https://img.shields.io/pypi/v/gpboost.svg?logo=pypi&logoColor=white">](https://pypi.org/project/gpboost)
 [<img src="https://pepy.tech/badge/gpboost">](https://pepy.tech/project/gpboost)
