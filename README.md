@@ -6,7 +6,7 @@
 GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 ===============================================================================
      
-# Table of Contents
+### Table of Contents
 1. [Get Started](#get-started)
 2. [Modeling Background](#modeling-background)
 3. [News](#news)
