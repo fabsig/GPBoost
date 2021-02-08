@@ -10,34 +10,23 @@ print("It is recommended that the examples are run in interactive mode")
 print('Simulating data...')
 
 # Simulate data
-def f1d(x):
-    """Non-linear function for simulation"""
-    return (1.7 * (1 / (1 + np.exp(-(x - 0.5) * 20)) + 0.75 * x))
-
-x = np.linspace(0, 1, 200, endpoint=True)
-plt.figure("Mean function")
-plt.plot(x, f1d(x), linewidth=2, color="r")
-plt.title("Mean function")
-plt.show()
-n = 1000  # number of samples
+n = 5000  # number of samples
+m = 500  # number of groups
 np.random.seed(1)
-X = np.random.rand(n, 2)
-F = f1d(X[:, 0])
-# Simulate grouped random effects
-m = 25  # number of categories / levels for grouping variable
+# simulate grouped random effects
 group = np.arange(n)  # grouping variable
 for i in range(m):
     group[int(i * n / m):int((i + 1) * n / m)] = i
-# incidence matrix relating grouped random effects to samples
-Z1 = np.zeros((n, m))
-for i in range(m):
-    Z1[np.where(group == i), i] = 1
-sigma2_1 = 1 ** 2  # random effect variance
-sigma2 = 0.1 ** 2  # error variance
-b1 = np.sqrt(sigma2_1) * np.random.normal(size=m)  # simulate random effects
-eps = Z1.dot(b1)
-xi = np.sqrt(sigma2) * np.random.normal(size=n)  # simulate error term
-y = F + eps + xi  # observed data
+b1 = np.random.normal(size=m)  # simulate random effects
+eps = b1[group]
+# simulate fixed effects
+def f1d(x):
+    """Non-linear function for simulation"""
+    return (1.7 * (1 / (1 + np.exp(-(x - 0.5) * 20)) + 0.75 * x))
+X = np.random.rand(n, 2)
+f = f1d(X[:, 0])
+xi = np.sqrt(0.01) * np.random.normal(size=n)  # simulate error term
+y = f + eps + xi  # observed data
 
 # define GPModel
 gp_model = gpb.GPModel(group_data=group)
@@ -60,7 +49,7 @@ print('Training GPBoost model...')
 bst = gpb.train(params=params,
                 train_set=data_train,
                 gp_model=gp_model,
-                num_boost_round=16)
+                num_boost_round=15)
 print("Estimated random effects model")
 gp_model.summary()
 
@@ -80,6 +69,7 @@ plt.show()
 # Fixed effect
 plt.figure("Comparison of true and fitted fixed effect")
 plt.scatter(Xtest[:, 0], pred['fixed_effect'], linewidth=2, color="b", label="fit")
+x = np.linspace(0, 1, 200, endpoint=True)
 plt.plot(x, f1d(x), linewidth=2, color="r", label="true")
 plt.title("Comparison of true and fitted fixed effect")
 plt.legend()

@@ -2,77 +2,89 @@
 # pylint: disable = invalid-name, C0111
 import numpy as np
 import gpboost as gpb
+import random
 
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import GridSearchCV
 
 print('Simulating data...')
-# Simulate and create your dataset
-
-def f1d(x):
-    """Non-linear function for simulation"""
-    return(1.7*(1/(1+np.exp(-(x-0.5)*20))+0.75*x))
-def sim_data(n):
-    """Function that simulates data. Two covariates of which only one has an effect"""
-    X = np.random.rand(n,2)
-    # mean function plus noise
-    y = f1d(X[:,0]) + np.random.normal(scale=0.1, size=n)
-    return([X,y])
 
 # Simulate data
-n = 1000
-data = sim_data(2 * n)
-Xtrain = data[0][0:n,:]
-ytrain = data[1][0:n]
-Xtest = data[0][n:(2*n),:]
-ytest = data[1][n:(2*n)]
-
+n = 5000  # number of samples
+m = 500  # number of groups
+# Simulate grouped random effects
+np.random.seed(1)
+# simulate grouped random effects
+group = np.arange(n)  # grouping variable
+for i in range(m):
+    group[int(i * n / m):int((i + 1) * n / m)] = i
+b1 = np.random.normal(size=m)  # simulate random effects
+eps = b1[group]
+# simulate fixed effects
+def f1d(x):
+    """Non-linear function for simulation"""
+    return (1.7 * (1 / (1 + np.exp(-(x - 0.5) * 20)) + 0.75 * x))
+X = np.random.rand(n, 2)
+f = f1d(X[:, 0])
+xi = np.sqrt(0.01) * np.random.normal(size=n)  # simulate error term
+y = f + eps + xi  # observed data
 
 print('Starting training...')
+# define GPModel
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 # train
 bst = gpb.GPBoostRegressor(max_depth=6,
-                        learning_rate=0.1,
-                        n_estimators=100)
-bst.fit(Xtrain, ytrain,
-        eval_set=[(Xtest, ytest)],
-        eval_metric='l1',
-        early_stopping_rounds=5)
+                           learning_rate=0.05,
+                           min_data_in_leaf=5,
+                           n_estimators=15)
+bst.fit(X, y, gp_model=gp_model)
+print("Estimated random effects model")
+gp_model.summary()
 
 print('Starting predicting...')
 # predict
-y_pred = bst.predict(Xtest, num_iteration=bst.best_iteration_)
-# eval
-print('The rmse of prediction is:', mean_squared_error(ytest, y_pred) ** 0.5)
+group_test = np.arange(m)
+Xtest = np.zeros((m, 2))
+Xtest[:, 0] = np.linspace(0, 1, m)
+pred = bst.predict(X=Xtest, group_data_pred=group_test)
+# Compare true and predicted random effects
+plt.figure("Comparison of true and predicted random effects")
+plt.scatter(b1, pred['random_effect_mean'])
+plt.title("Comparison of true and predicted random effects")
+plt.xlabel("truth")
+plt.ylabel("predicted")
+plt.show()
+# Fixed effect
+plt.figure("Comparison of true and fitted fixed effect")
+plt.scatter(Xtest[:, 0], pred['fixed_effect'], linewidth=2, color="b", label="fit")
+x = np.linspace(0, 1, 200, endpoint=True)
+plt.plot(x, f1d(x), linewidth=2, color="r", label="true")
+plt.title("Comparison of true and fitted fixed effect")
+plt.legend()
+plt.show()
 
 # feature importances
 print('Feature importances:', list(bst.feature_importances_))
 
-
-# self-defined eval metric
-# f(y_true: array, y_pred: array) -> name: string, eval_result: float, is_higher_better: bool
-# l4 loss
-def l4_loss(y_true, y_pred):
-    return 'l4_loss', np.mean((y_pred - y_true) ** 4), False
-
-print('Starting training with custom eval function...')
+# Using validation set
+print('Using validation set...')
+# split into training an test data
+train_ind = random.sample(range(n), int(n / 2))
+test_ind = [x for x in range(n) if (x not in train_ind)]
+X_train = X[train_ind, :]
+y_train = y[train_ind]
+group_train = group[train_ind]
+X_test = X[test_ind, :]
+y_test = y[test_ind]
+group_test = group[test_ind]
 # train
-bst.fit(Xtrain, ytrain,
-        eval_set=[(Xtest, ytest)],
-        eval_metric=l4_loss,
+gp_model = gpb.GPModel(group_data=group_train, likelihood="gaussian")
+gp_model.set_prediction_data(group_data_pred=group_test)
+bst = gpb.GPBoostRegressor(max_depth=6,
+                           learning_rate=0.05,
+                           min_data_in_leaf=5,
+                           n_estimators=100)
+bst.fit(X_train, y_train, gp_model=gp_model,
+        eval_set=[(X_test, y_test)],
+        eval_metric='l1',
         early_stopping_rounds=5)
-
-
-# other scikit-learn modules
-bstcv = gpb.GPBoostRegressor()
-
-# max_depth
-param_grid = {
-    'learning_rate': [0.01, 0.1, 1],
-    'n_estimators': [20, 50],
-    'max_depth': [1, 5, 10]
-}
-
-bst = GridSearchCV(bstcv, param_grid, cv=3)
-bst.fit(Xtrain, ytrain)
-
-print('Best parameters found by grid search are:', bst.best_params_)

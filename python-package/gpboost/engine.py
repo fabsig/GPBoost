@@ -12,8 +12,7 @@ from .compat import SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFo
 
 
 def train(params, train_set, num_boost_round=100,
-          gp_model=None, use_gp_model_for_validation=True,
-          train_gp_model_cov_pars=True,
+          gp_model=None, use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
           valid_sets=None, valid_names=None,
           fobj=None, feval=None, init_model=None,
           feature_name='auto', categorical_feature='auto',
@@ -170,9 +169,6 @@ def train(params, train_set, num_boost_round=100,
     params["early_stopping_round"] = early_stopping_rounds
     first_metric_only = params.get('first_metric_only', False)
 
-    params['use_gp_model_for_validation'] = use_gp_model_for_validation
-    params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
-
     if num_boost_round <= 0:
         raise ValueError("num_boost_round should be greater than zero.")
     if isinstance(init_model, str):
@@ -216,7 +212,10 @@ def train(params, train_set, num_boost_round=100,
                 name_valid_sets.append('valid_' + str(i))
 
     if gp_model is not None:
-        if use_gp_model_for_validation and feval is not None:
+        # some checks
+        if use_gp_model_for_validation and not not valid_sets and not not feval:
+            print(feval)
+            print("DELETE THIS, only for debugging")
             raise ValueError("use_gp_model_for_validation=True is currently "
                              "not supported for custom validation functions. If you need this feature, contact the "
                              "developer of this package or open a GitHub issue.")
@@ -224,6 +223,9 @@ def train(params, train_set, num_boost_round=100,
             raise ValueError("Can use only one validation set when use_gp_model_for_validation = True")
         if not is_valid_contain_train and use_gp_model_for_validation and len(reduced_valid_sets) > 0 and not gp_model.prediction_data_is_set:
             raise ValueError("Prediction data for gp_model has not been set. Call gp_model.set_prediction_data() first")
+        # update gp_model related parameters
+        params['use_gp_model_for_validation'] = use_gp_model_for_validation
+        params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
         # Set the default metric to the (approximate marginal) negative log-likelihood if only the training loss should be calculated
         if is_valid_contain_train and len(reduced_valid_sets) == 0 and params.get('metric') is None:
             if gp_model.get_likelihood_name() == "gaussian":
@@ -653,16 +655,17 @@ def cv(params, train_set, num_boost_round=100,
     params["early_stopping_round"] = early_stopping_rounds
     first_metric_only = params.get('first_metric_only', False)
 
-    params['use_gp_model_for_validation'] = use_gp_model_for_validation
-    params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
-
-    if use_gp_model_for_validation and gp_model is not None:
-        if feval is not None:
+    if gp_model is not None:
+        # some checks
+        if use_gp_model_for_validation and not not feval:
             raise ValueError("use_gp_model_for_validation=True is currently "
                              "not supported for custom validation functions. If you need this feature, contact the "
                              "developer of this package or open a GitHub issue.")
-    if gp_model is not None and stratified:
-        raise ValueError("stratified=True is not supported when a gp_model is provided")
+        if stratified:
+            raise ValueError("stratified=True is not supported when a gp_model is provided")
+        # update gp_model related parameters
+        params['use_gp_model_for_validation'] = use_gp_model_for_validation
+        params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
 
     if num_boost_round <= 0:
         raise ValueError("num_boost_round should be greater than zero.")

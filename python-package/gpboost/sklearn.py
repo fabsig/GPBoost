@@ -375,6 +375,7 @@ class GPBoostModel(_GPBoostModelBase):
         return self
 
     def fit(self, X, y,
+            gp_model=None, use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
             sample_weight=None, init_score=None, group=None,
             eval_set=None, eval_names=None, eval_sample_weight=None,
             eval_class_weight=None, eval_init_score=None, eval_group=None,
@@ -389,6 +390,16 @@ class GPBoostModel(_GPBoostModelBase):
             Input feature matrix.
         y : array-like of shape = [n_samples]
             The target values (class labels in classification, real numbers in regression).
+        gp_model : GPModel or None, optional (default=None)
+            GPModel object for the GPBoost algorithm
+        use_gp_model_for_validation : bool, optional (default=True)
+            If True, the gp_model (Gaussian process and/or random effects) is also used (in addition to the tree model)
+            for calculating predictions on the validation data
+        train_gp_model_cov_pars : bool, optional (default=True)
+            If True, the covariance parameters of the gp_model (Gaussian process and/or random effects) are estimated
+            in every boosting iterations, otherwise the gp_model parameters are not estimated. In the latter case, you
+            need to either estimate them beforehand or provide the values via the 'init_cov_pars' parameter when creating
+            the gp_model
         sample_weight : array-like of shape = [n_samples] or None, optional (default=None)
             Weights of training data.
         init_score : array-like of shape = [n_samples] or None, optional (default=None)
@@ -625,8 +636,10 @@ class GPBoostModel(_GPBoostModelBase):
         if isinstance(init_model, GPBoostModel):
             init_model = init_model.booster_
 
-        self._Booster = train(params, train_set,
-                              self.n_estimators, valid_sets=valid_sets, valid_names=eval_names,
+        self._Booster = train(params=params, train_set=train_set, num_boost_round=self.n_estimators,
+                              gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
+                              train_gp_model_cov_pars=train_gp_model_cov_pars,
+                              valid_sets=valid_sets, valid_names=eval_names,
                               early_stopping_rounds=early_stopping_rounds,
                               evals_result=evals_result, fobj=self._fobj, feval=eval_metrics_callable,
                               verbose_eval=verbose, feature_name=feature_name,
@@ -643,12 +656,17 @@ class GPBoostModel(_GPBoostModelBase):
         self.fitted_ = True
 
         # free dataset
-        self._Booster.free_dataset()
+        if gp_model is None:
+            self._Booster.free_dataset()
         del train_set, valid_sets
         return self
 
     def predict(self, X, raw_score=False, start_iteration=0, num_iteration=None,
-                pred_leaf=False, pred_contrib=False, **kwargs):
+                pred_leaf=False, pred_contrib=False,
+                group_data_pred=None, group_rand_coef_data_pred=None,
+                gp_coords_pred=None, gp_rand_coef_data_pred=None,
+                cluster_ids_pred=None, vecchia_pred_type=None,
+                num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False, **kwargs):
         """Return the predicted value for each sample.
 
         Parameters
@@ -678,6 +696,34 @@ class GPBoostModel(_GPBoostModelBase):
                 Note that unlike the shap package, with ``pred_contrib`` we return a matrix with an extra
                 column, where the last column is the expected value.
 
+        group_data_pred : numpy array with numeric or string data or None, optional (default=None)
+            Labels of group levels for grouped random effects. Used only if the Booster has a GPModel
+        group_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
+            Covariate data for grouped random coefficients. Used only if the Booster has a GPModel
+        gp_coords_pred : numpy array with numeric data or None, optional (default=None)
+            Coordinates (features) for Gaussian process. Used only if the Booster has a GPModel
+        gp_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
+            Covariate data for Gaussian process random coefficients. Used only if the Booster has a GPModel
+        vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
+            Type of Vecchia approximation used for making predictions. Used only if the Booster has a GPModel.
+            "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
+            points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected
+            among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for
+            making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent
+            process and observed data is ordered first and neighbors are only observed points,
+            "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is
+            ordered first and neighbors are selected among all points
+        num_neighbors_pred : integer or None, optional (default=None)
+            Number of neighbors for the Vecchia approximation for making predictions. Used only if the Booster has a GPModel
+        cluster_ids_pred : one dimensional numpy array (vector) with integer data or None, optional (default=None)
+            IDs / labels indicating independent realizations of random effects / Gaussian processes
+            (same values = same process realization). Used only if the Booster has a GPModel
+        predict_cov_mat : bool, optional (default=False)
+            If True, the (posterior / conditional) predictive covariance is calculated in addition to the
+            (posterior / conditional) predictive mean. Used only if the Booster has a GPModel
+        predict_var : bool, optional (default=False)
+            If True, (posterior / conditional) predictive variances are calculated in addition to the
+            (posterior / conditional) predictive mean. Used only if the Booster has a GPModel
         **kwargs
             Other parameters for the prediction.
 
@@ -701,7 +747,12 @@ class GPBoostModel(_GPBoostModelBase):
                              "input n_features is %s "
                              % (self._n_features, n_features))
         return self._Booster.predict(X, raw_score=raw_score, start_iteration=start_iteration, num_iteration=num_iteration,
-                                     pred_leaf=pred_leaf, pred_contrib=pred_contrib, **kwargs)
+                                     pred_leaf=pred_leaf, pred_contrib=pred_contrib,
+                                     group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
+                                     gp_coords_pred=gp_coords_pred, gp_rand_coef_data_pred=gp_rand_coef_data_pred,
+                                     cluster_ids_pred=cluster_ids_pred, vecchia_pred_type=vecchia_pred_type,
+                                     num_neighbors_pred=num_neighbors_pred, predict_cov_mat=predict_cov_mat,
+                                     predict_var=predict_var, **kwargs)
 
     @property
     def n_features_(self):
@@ -777,13 +828,17 @@ class GPBoostRegressor(GPBoostModel, _GPBoostRegressorBase):
     """GPBoost regressor."""
 
     def fit(self, X, y,
+            gp_model = None, use_gp_model_for_validation = True, train_gp_model_cov_pars = True,
             sample_weight=None, init_score=None,
             eval_set=None, eval_names=None, eval_sample_weight=None,
             eval_init_score=None, eval_metric=None, early_stopping_rounds=None,
             verbose=True, feature_name='auto', categorical_feature='auto',
             callbacks=None, init_model=None):
         """Docstring is inherited from the GPBoostModel."""
-        super().fit(X, y, sample_weight=sample_weight, init_score=init_score,
+        super().fit(X, y,
+                    gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
+                    train_gp_model_cov_pars=train_gp_model_cov_pars,
+                    sample_weight=sample_weight, init_score=init_score,
                     eval_set=eval_set, eval_names=eval_names, eval_sample_weight=eval_sample_weight,
                     eval_init_score=eval_init_score, eval_metric=eval_metric,
                     early_stopping_rounds=early_stopping_rounds, verbose=verbose, feature_name=feature_name,
@@ -803,6 +858,7 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
     """GPBoost classifier."""
 
     def fit(self, X, y,
+            gp_model=None, use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
             sample_weight=None, init_score=None,
             eval_set=None, eval_names=None, eval_sample_weight=None,
             eval_class_weight=None, eval_init_score=None, eval_metric=None,
@@ -855,7 +911,10 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
                 else:
                     valid_sets[i] = (valid_x, self._le.transform(valid_y))
 
-        super().fit(X, _y, sample_weight=sample_weight, init_score=init_score, eval_set=valid_sets,
+        super().fit(X, _y,
+                    gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
+                    train_gp_model_cov_pars=train_gp_model_cov_pars,
+                    sample_weight=sample_weight, init_score=init_score, eval_set=valid_sets,
                     eval_names=eval_names, eval_sample_weight=eval_sample_weight,
                     eval_class_weight=eval_class_weight, eval_init_score=eval_init_score,
                     eval_metric=eval_metric, early_stopping_rounds=early_stopping_rounds,
@@ -870,7 +929,11 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
                    + _base_doc[_base_doc.find('eval_metric :'):])
 
     def predict(self, X, raw_score=False, start_iteration=0, num_iteration=None,
-                pred_leaf=False, pred_contrib=False, **kwargs):
+                pred_leaf=False, pred_contrib=False,
+                group_data_pred=None, group_rand_coef_data_pred=None,
+                gp_coords_pred=None, gp_rand_coef_data_pred=None,
+                cluster_ids_pred=None, vecchia_pred_type=None,
+                num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False, **kwargs):
         """Docstring is inherited from the GPBoostModel."""
         result = self.predict_proba(X, raw_score, start_iteration, num_iteration,
                                     pred_leaf, pred_contrib, **kwargs)
@@ -883,7 +946,11 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
     predict.__doc__ = GPBoostModel.predict.__doc__
 
     def predict_proba(self, X, raw_score=False, start_iteration=0, num_iteration=None,
-                      pred_leaf=False, pred_contrib=False, **kwargs):
+                      pred_leaf=False, pred_contrib=False,
+                      group_data_pred=None, group_rand_coef_data_pred=None,
+                      gp_coords_pred=None, gp_rand_coef_data_pred=None,
+                      cluster_ids_pred=None, vecchia_pred_type=None,
+                      num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False, **kwargs):
         """Return the predicted probability for each class for each sample.
 
         Parameters
@@ -913,6 +980,34 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
                 Note that unlike the shap package, with ``pred_contrib`` we return a matrix with an extra
                 column, where the last column is the expected value.
 
+        group_data_pred : numpy array with numeric or string data or None, optional (default=None)
+            Labels of group levels for grouped random effects. Used only if the Booster has a GPModel
+        group_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
+            Covariate data for grouped random coefficients. Used only if the Booster has a GPModel
+        gp_coords_pred : numpy array with numeric data or None, optional (default=None)
+            Coordinates (features) for Gaussian process. Used only if the Booster has a GPModel
+        gp_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
+            Covariate data for Gaussian process random coefficients. Used only if the Booster has a GPModel
+        vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
+            Type of Vecchia approximation used for making predictions. Used only if the Booster has a GPModel.
+            "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
+            points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected
+            among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for
+            making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent
+            process and observed data is ordered first and neighbors are only observed points,
+            "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is
+            ordered first and neighbors are selected among all points
+        num_neighbors_pred : integer or None, optional (default=None)
+            Number of neighbors for the Vecchia approximation for making predictions. Used only if the Booster has a GPModel
+        cluster_ids_pred : one dimensional numpy array (vector) with integer data or None, optional (default=None)
+            IDs / labels indicating independent realizations of random effects / Gaussian processes
+            (same values = same process realization). Used only if the Booster has a GPModel
+        predict_cov_mat : bool, optional (default=False)
+            If True, the (posterior / conditional) predictive covariance is calculated in addition to the
+            (posterior / conditional) predictive mean. Used only if the Booster has a GPModel
+        predict_var : bool, optional (default=False)
+            If True, (posterior / conditional) predictive variances are calculated in addition to the
+            (posterior / conditional) predictive mean. Used only if the Booster has a GPModel
         **kwargs
             Other parameters for the prediction.
 
@@ -925,7 +1020,12 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
         X_SHAP_values : array-like of shape = [n_samples, (n_features + 1) * n_classes] or list with n_classes length of such objects
             If ``pred_contrib=True``, the feature contributions for each sample.
         """
-        result = super().predict(X, raw_score, start_iteration, num_iteration, pred_leaf, pred_contrib, **kwargs)
+        result = super().predict(X, raw_score, start_iteration, num_iteration, pred_leaf, pred_contrib,
+                                 group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
+                                 gp_coords_pred=gp_coords_pred, gp_rand_coef_data_pred=gp_rand_coef_data_pred,
+                                 cluster_ids_pred=cluster_ids_pred, vecchia_pred_type=vecchia_pred_type,
+                                 num_neighbors_pred=num_neighbors_pred, predict_cov_mat=predict_cov_mat,
+                                 predict_var=predict_var, **kwargs)
         if callable(self._objective) and not (raw_score or pred_leaf or pred_contrib):
             _log_warning("Cannot compute class probabilities or labels "
                          "due to the usage of customized objective function.\n"

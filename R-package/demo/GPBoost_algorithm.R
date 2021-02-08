@@ -2,27 +2,21 @@ library(gpboost)
 
 #--------------------Combine tree-boosting and grouped random effects model----------------
 # Simulate data
-# Function for non-linear mean. Two covariates of which only one has an effect
-f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
-x <- seq(from=0,to=1,length.out=200)
-plot(x,f1d(x),type="l",lwd=2,col="red",main="Mean function")
-set.seed(1)
-n <- 1000 # number of samples
-X <- matrix(runif(2*n),ncol=2)
-y <- f1d(X[,1]) # mean
-# Add grouped random effects
-m <- 25 # number of categories / levels for grouping variable
+n <- 5000 # number of samples
+m <- 500  # number of groups
+# Simulate grouped random effects
 group <- rep(1,n) # grouping variable
 for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-sigma2_1 <- 1^2 # random effect variance
-sigma2 <- 0.1^2 # error variance
-# incidence matrix relating grouped random effects to samples
-Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
-b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-eps <- Z1 %*% b1
-xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-y <- y + eps + xi # add random effects and error to data
-
+b1 <- rnorm(m)
+eps <- b1[group]
+# Simulate fixed effects
+# Function for non-linear mean. Two covariates of which only one has an effect
+f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
+X <- matrix(runif(2*n),ncol=2)
+f <- f1d(X[,1]) # mean
+# Observed data
+xi <- sqrt(0.01) * rnorm(n) # simulate error term
+y <- f + eps + xi 
 
 #--------------------Training using gpboost----------------
 # Create random effects model
@@ -37,7 +31,7 @@ gp_model <- GPModel(group_data = group)
 bst <- gpboost(data = X,
                label = y,
                gp_model = gp_model,
-               nrounds = 16,
+               nrounds = 15,
                learning_rate = 0.05,
                max_depth = 6,
                min_data_in_leaf = 5,
@@ -50,7 +44,7 @@ print("Training with gpb.train")
 dtrain <- gpb.Dataset(data = X, label = y)
 bst <- gpb.train(data = dtrain,
                  gp_model = gp_model,
-                 nrounds = 16,
+                 nrounds = 15,
                  learning_rate = 0.05,
                  max_depth = 6,
                  min_data_in_leaf = 5,
@@ -63,8 +57,8 @@ summary(gp_model)
 
 #--------------------Prediction using gpboost--------------
 group_test <- 1:m
-x <- seq(from=0,to=1,length.out=m)
-Xtest <- cbind(x,rep(0,length(x)))
+x_test <- seq(from=0,to=1,length.out=m)
+Xtest <- cbind(x_test,rep(0,length(x_test)))
 pred <- predict(bst, data = Xtest, group_data_pred = group_test)
 
 # Compare fit to truth: random effects
@@ -74,9 +68,10 @@ plot(b1, pred_random_effect, xlab="truth", ylab="predicted",
 abline(a=0,b=1)
 # Compare fit to truth: fixed effect (mean function)
 pred_mean <- pred$fixed_effect
+x <- seq(from=0,to=1,length.out=200)
 plot(x,f1d(x),type="l",ylim = c(-0.25,3.25), col = "red", lwd = 2,
      main = "Comparison of true and fitted value")
-points(x,pred_mean, col = "blue", lwd = 2)
+points(x_test,pred_mean, col = "blue", lwd = 2)
 legend("bottomright", legend = c("truth", "fitted"),
        lwd=2, col = c("red", "blue"), bty = "n")
 

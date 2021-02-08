@@ -44,6 +44,7 @@ for i in range(m):
 b1 = np.random.normal(size=m)  # simulate random effects
 eps = b1[group]
 eps = eps - np.mean(eps)
+# simulate fixed effects
 X = np.random.rand(n, 2)
 f = f1d(X[:, 0])
 # simulate response variable

@@ -329,7 +329,7 @@ test_that("Combine tree-boosting and grouped random effects model ", {
                   verbose = 0,
                   eval = l4_loss, metric = "l4")
   expect_equal(cvbst$best_iter, 59)
-  expect_lt(abs(cvbst$best_score - 2.95402),1E-4)
+  expect_lt(abs(cvbst$best_score - 2.95402),1E-2)
 })
 
 
