@@ -22,8 +22,7 @@ constructed dataset
 Construct validation data according to training data
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -31,5 +30,4 @@ data(agaricus.test, package = "gpboost")
 test <- agaricus.test
 dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
 }
-
 }

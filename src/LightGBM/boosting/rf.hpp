@@ -9,9 +9,7 @@
 #include <LightGBM/metric.h>
 
 #include <string>
-#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <cstdio>
-#endif
 #include <fstream>
 #include <memory>
 #include <utility>
@@ -22,7 +20,7 @@
 
 namespace LightGBM {
 /*!
-* \brief Rondom Forest implementation
+* \brief Random Forest implementation
 */
 class RF : public GBDT {
  public:
@@ -43,9 +41,9 @@ class RF : public GBDT {
         MultiplyScore(cur_tree_id, 1.0f / num_init_iteration_);
       }
     } else {
-      CHECK(train_data->metadata().init_score() == nullptr);
+      CHECK_EQ(train_data->metadata().init_score(), nullptr);
     }
-    CHECK(num_tree_per_iteration_ == num_class_);
+    CHECK_EQ(num_tree_per_iteration_, num_class_);
     // not shrinkage rate for the RF
     shrinkage_rate_ = 1.0f;
     // only boosting one time
@@ -72,7 +70,7 @@ class RF : public GBDT {
         train_score_updater_->MultiplyScore(1.0f / (iter_ + num_init_iteration_), cur_tree_id);
       }
     }
-    CHECK(num_tree_per_iteration_ == num_class_);
+    CHECK_EQ(num_tree_per_iteration_, num_class_);
     // only boosting one time
     Boosting();
     if (is_use_subset_ && bag_data_cnt_ < num_data_) {
@@ -93,9 +91,9 @@ class RF : public GBDT {
     std::vector<double> tmp_scores(total_size, 0.0f);
     #pragma omp parallel for schedule(static)
     for (int j = 0; j < num_tree_per_iteration_; ++j) {
-      size_t bias = static_cast<size_t>(j)* num_data_;
+      size_t offset = static_cast<size_t>(j)* num_data_;
       for (data_size_t i = 0; i < num_data_; ++i) {
-        tmp_scores[bias + i] = init_scores_[j];
+        tmp_scores[offset + i] = init_scores_[j];
       }
     }
     objective_function_->
@@ -105,17 +103,17 @@ class RF : public GBDT {
   bool TrainOneIter(const score_t* gradients, const score_t* hessians) override {
     // bagging logic
     Bagging(iter_);
-    CHECK(gradients == nullptr);
-    CHECK(hessians == nullptr);
+    CHECK_EQ(gradients, nullptr);
+    CHECK_EQ(hessians, nullptr);
 
     gradients = gradients_.data();
     hessians = hessians_.data();
     for (int cur_tree_id = 0; cur_tree_id < num_tree_per_iteration_; ++cur_tree_id) {
-      std::unique_ptr<Tree> new_tree(new Tree(2));
-      size_t bias = static_cast<size_t>(cur_tree_id)* num_data_;
+      std::unique_ptr<Tree> new_tree(new Tree(2, false, false));
+      size_t offset = static_cast<size_t>(cur_tree_id)* num_data_;
       if (class_need_train_[cur_tree_id]) {
-        auto grad = gradients + bias;
-        auto hess = hessians + bias;
+        auto grad = gradients + offset;
+        auto hess = hessians + offset;
 
         // need to copy gradients for bagging subset.
         if (is_use_subset_ && bag_data_cnt_ < num_data_) {
@@ -127,8 +125,7 @@ class RF : public GBDT {
           hess = tmp_hess_.data();
         }
 
-        new_tree.reset(tree_learner_->Train(grad, hess, is_constant_hessian_,
-          forced_splits_json_));
+        new_tree.reset(tree_learner_->Train(grad, hess, false));
       }
 
       if (new_tree->num_leaves() > 1) {

@@ -18,60 +18,20 @@ Summary of a (fitted) \code{GPModel}
 Summary for a \code{GPModel}
 }
 \examples{
-## SEE ALSO THE HELP OF 'fitGPModel' FOR MORE EXAMPLES
+# See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
+
+\donttest{
 library(gpboost)
+data(GPBoost_data, package = "gpboost")
 
-\dontrun{
 #--------------------Grouped random effects model: single-level random effect----------------
-n <- 100 # number of samples
-m <- 25 # number of categories / levels for grouping variable
-group <- rep(1,n) # grouping variable
-for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-# Create random effects model
-gp_model <- GPModel(group_data = group)
-
-# Simulate data
-sigma2_1 <- 1^2 # random effect variance
-sigma2 <- 0.5^2 # error variance
-# incidence matrix relating grouped random effects to samples
-Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
-set.seed(1)
-b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-eps <- Z1 \%*\% b1
-xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-y <- eps + xi # observed data
-# Fit model
-fit(gp_model, y = y, params = list(std_dev = TRUE))
+gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
+                       params = list(std_dev = TRUE))
 summary(gp_model)
-# Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(group_data = group, y = y, params = list(std_dev = TRUE))
-summary(gp_model)
-
 
 #--------------------Gaussian process model----------------
-n <- 200 # number of samples
-set.seed(1)
-coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-# Create Gaussian process model
-gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-
-# Simulate data
-sigma2_1 <- 1^2 # marginal variance of GP
-rho <- 0.1 # range parameter
-sigma2 <- 0.5^2 # error variance
-D <- as.matrix(dist(coords))
-Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-C = t(chol(Sigma))
-b_1=rnorm(n) # simulate random effect
-eps <- C \%*\% b_1
-xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-y <- eps + xi
-# Fit model
-fit(gp_model, y = y, params = list(std_dev = TRUE))
-summary(gp_model)
-# Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        y = y, params = list(std_dev = TRUE))
+                       likelihood="gaussian", y = y, params = list(std_dev = TRUE))
 summary(gp_model)
 }
 

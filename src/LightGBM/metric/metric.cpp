@@ -1,7 +1,8 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See LICENSE file in the project root for license information.
- */
+* Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+* Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+*/
 #include <LightGBM/metric.h>
 
 #include "binary_metric.hpp"
@@ -35,6 +36,10 @@ Metric* Metric::CreateMetric(const std::string& type, const Config& config) {
     return new BinaryErrorMetric(config);
   } else if (type == std::string("auc")) {
     return new AUCMetric(config);
+  } else if (type == std::string("average_precision")) {
+    return new AveragePrecisionMetric(config);
+  } else if (type == std::string("auc_mu")) {
+    return new AucMuMetric(config);
   } else if (type == std::string("ndcg")) {
     return new NDCGMetric(config);
   } else if (type == std::string("map")) {

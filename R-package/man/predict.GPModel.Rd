@@ -61,82 +61,35 @@ The first entry ('mu') is the predicted mean, the second entry ('cov') is the pr
 Make predictions for a \code{GPModel}
 }
 \examples{
+# See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
+
+\donttest{
 library(gpboost)
+data(GPBoost_data, package = "gpboost")
 
 #--------------------Grouped random effects model: single-level random effect----------------
-n <- 100 # number of samples
-m <- 25 # number of categories / levels for grouping variable
-group <- rep(1,n) # grouping variable
-for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-# Create random effects model
-gp_model <- GPModel(group_data = group)
-
-# Simulate data
-sigma2_1 <- 1^2 # random effect variance
-sigma2 <- 0.5^2 # error variance
-# incidence matrix relating grouped random effects to samples
-Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
-set.seed(1)
-b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-eps <- Z1 \%*\% b1
-xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-y <- eps + xi # observed data
-# Fit model
-fit(gp_model, y = y, params = list(std_dev = TRUE))
+gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
+                       params = list(std_dev = TRUE))
 summary(gp_model)
-# Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(group_data = group, y = y, params = list(std_dev = TRUE))
-summary(gp_model)
-
 # Make predictions
-group_test <- 1:m
-pred <- predict(gp_model, group_data_pred = group_test)
-# Compare true and predicted random effects
-plot(b1, pred$mu, xlab="truth", ylab="predicted",
-     main="Comparison of true and predicted random effects")
-abline(a=0,b=1)
+pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+pred$mu # Predicted mean
+pred$var # Predicted variances
 # Also predict covariance matrix
-pred <- predict(gp_model, group_data_pred = c(1,1,2,2,-1,-1), predict_cov_mat = TRUE)
-pred$mu# Predicted mean
-pred$cov# Predicted covariance
-
+pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat = TRUE)
+pred$mu # Predicted mean
+pred$cov # Predicted covariance
 
 #--------------------Gaussian process model----------------
-n <- 200 # number of samples
-set.seed(1)
-coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-# Create Gaussian process model
-gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-
-# Simulate data
-sigma2_1 <- 1^2 # marginal variance of GP
-rho <- 0.1 # range parameter
-sigma2 <- 0.5^2 # error variance
-D <- as.matrix(dist(coords))
-Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-C = t(chol(Sigma))
-b_1=rnorm(n) # simulate random effect
-eps <- C \%*\% b_1
-xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-y <- eps + xi
-# Fit model
-fit(gp_model, y = y, params = list(std_dev = TRUE))
-summary(gp_model)
-# Alternatively, define and fit model directly using fitGPModel
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        y = y, params = list(std_dev = TRUE))
+                       likelihood="gaussian", y = y, params = list(std_dev = TRUE))
 summary(gp_model)
-
 # Make predictions
-set.seed(1)
-ntest <- 5
-# prediction locations (=features) for Gaussian process
-coords_test <- cbind(runif(ntest),runif(ntest))/10
-pred <- predict(gp_model, gp_coords_pred = coords_test,
-                predict_cov_mat = TRUE)
-print("Predicted (posterior/conditional) mean of GP")
+pred <- predict(gp_model, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
+# Predicted (posterior/conditional) mean of GP
 pred$mu
-print("Predicted (posterior/conditional) covariance matrix of GP")
+# Predicted (posterior/conditional) covariance matrix of GP
 pred$cov
+}
 
 }

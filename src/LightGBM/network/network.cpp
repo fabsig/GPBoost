@@ -6,9 +6,7 @@
 
 #include <LightGBM/utils/common.h>
 
-#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <cstdlib>
-#endif
 #include <cstring>
 
 #include "linkers.h"

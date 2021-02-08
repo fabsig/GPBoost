@@ -81,8 +81,11 @@ PredictionEarlyStopInstance CreatePredictionEarlyStopInstance(const std::string&
   } else if (type == "binary") {
     return CreateBinary(config);
   } else {
-    throw std::runtime_error("Unknown early stopping type: " + type);
+    Log::Fatal("Unknown early stopping type: %s", type.c_str());
   }
+
+  // Fix for compiler warnings about reaching end of control
+  return CreateNone(config);
 }
 
 }  // namespace LightGBM

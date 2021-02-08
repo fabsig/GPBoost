@@ -4,7 +4,8 @@
 \alias{fit.GPModel}
 \title{Fits a \code{GPModel}}
 \usage{
-\method{fit}{GPModel}(gp_model, y, X = NULL, params = list())
+\method{fit}{GPModel}(gp_model, y, X = NULL, params = list(),
+  fixed_effects = NULL)
 }
 \arguments{
 \item{gp_model}{a \code{GPModel}}
@@ -49,6 +50,8 @@
     Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters".}
     \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}
 }}
+
+\item{fixed_effects}{A \code{vector} of optional external fixed effects which are held fixed during training.}
 }
 \value{
 A fitted \code{GPModel}
@@ -57,116 +60,36 @@ A fitted \code{GPModel}
 Estimates the parameters of a \code{GPModel} using maximum likelihood estimation
 }
 \examples{
-## SEE ALSO THE HELP OF 'fitGPModel' FOR MORE EXAMPLES
+# See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
+
+\donttest{
 library(gpboost)
+data(GPBoost_data, package = "gpboost")
 
-\dontrun{
 #--------------------Grouped random effects model: single-level random effect----------------
-n <- 100 # number of samples
-m <- 25 # number of categories / levels for grouping variable
-group <- rep(1,n) # grouping variable
-for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-# Create random effects model
-gp_model <- GPModel(group_data = group)
-
-# Simulate data
-sigma2_1 <- 1^2 # random effect variance
-sigma2 <- 0.5^2 # error variance
- # incidence matrix relating grouped random effects to samples
-Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
-set.seed(1)
-b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-eps <- Z1 \%*\% b1
-xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-y <- eps + xi # observed data
-# Fit model
-fit(gp_model, y = y, params=list(std_dev = TRUE))
-summary(gp_model)
-# Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(group_data = group, y = y, params=list(std_dev = TRUE))
-summary(gp_model)
-
-# Make predictions
-group_test <- 1:m
-pred <- predict(gp_model, group_data_pred = group_test)
-# Compare true and predicted random effects
-plot(b1, pred$mu, xlab="truth", ylab="predicted",
-     main="Comparison of true and predicted random effects")
-abline(a=0,b=1)
-# Also predict covariance matrix
-pred <- predict(gp_model, group_data_pred = c(1,1,2,2,-1,-1), predict_cov_mat = TRUE)
-pred$mu# Predicted mean
-pred$cov# Predicted covariance
-
-# Use other optimization technique: gradient descent instead of Fisher scoring
-gp_model <- fitGPModel(group_data = group, y = y,
-                       params = list(optimizer_cov = "gradient_descent",
-                                     lr_cov = 0.1, use_nesterov_acc = FALSE,
-                                     std_dev = TRUE))
-summary(gp_model)
-
-# Evaluate negative log-likelihood
-gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
-# Do optimization using optim and e.g. Nelder-Mead
-gp_model <- GPModel(group_data = group)
-optim(par=c(1,1), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
- 
- 
-#--------------------Gaussian process model----------------
-n <- 200 # number of samples
-set.seed(1)
-coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-# Create Gaussian process model
-gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-## Other covariance functions:
-# gp_model <- GPModel(gp_coords = coords, cov_function = "gaussian")
-# gp_model <- GPModel(gp_coords = coords,
-#                     cov_function = "matern", cov_fct_shape=1.5)
-# gp_model <- GPModel(gp_coords = coords,
-#                     cov_function = "powered_exponential", cov_fct_shape=1.1)
-# Simulate data
-sigma2_1 <- 1^2 # marginal variance of GP
-rho <- 0.1 # range parameter
-sigma2 <- 0.5^2 # error variance
-D <- as.matrix(dist(coords))
-Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-C = t(chol(Sigma))
-b_1=rnorm(n) # simulate random effect
-eps <- C \%*\% b_1
-xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-y <- eps + xi
-# Fit model
+gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 fit(gp_model, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
-# Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        y = y, params = list(std_dev = TRUE))
-summary(gp_model)
-
 # Make predictions
-set.seed(1)
-ntest <- 5
-# prediction locations (=features) for Gaussian process
-coords_test <- cbind(runif(ntest),runif(ntest))/10
-pred <- predict(gp_model, gp_coords_pred = coords_test,
-                predict_cov_mat = TRUE)
-print("Predicted (posterior/conditional) mean of GP")
-pred$mu
-print("Predicted (posterior/conditional) covariance matrix of GP")
-pred$cov
-
-# Use other optimization technique: Nesterov accelerated gradient descent instead of Fisher scoring
-gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y,
-                       params = list(optimizer_cov = "gradient_descent",
-                                     lr_cov = 0.05, use_nesterov_acc = TRUE,
-                                     std_dev = TRUE))
+pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+pred$mu # Predicted mean
+pred$var # Predicted variances
+# Also predict covariance matrix
+pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat = TRUE)
+pred$mu # Predicted mean
+pred$cov # Predicted covariance
+ 
+#--------------------Gaussian process model----------------
+gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                    likelihood="gaussian")
+fit(gp_model, y = y, params = list(std_dev = TRUE))
 summary(gp_model)
-
-# Evaluate negative log-likelihood
-gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1,rho),y=y)
-# Do optimization using optim and e.g. Nelder-Mead
-gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-optim(par=c(1,1,0.2), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
+# Make predictions
+pred <- predict(gp_model, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
+# Predicted (posterior/conditional) mean of GP
+pred$mu
+# Predicted (posterior/conditional) covariance matrix of GP
+pred$cov
 }
 
 }

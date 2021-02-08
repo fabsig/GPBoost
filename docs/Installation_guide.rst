@@ -59,8 +59,6 @@ The ``.exe`` and ``.dll`` files will be in the ``GPBoost/`` folder.
 
 **Note**: You may need to run the ``cmake -G "MinGW Makefiles" ..`` one more time if you encounter the ``sh.exe was found in your PATH`` error.
 
-It is recommended to use **Visual Studio** for its better multithreading efficiency in **Windows** for many-core systems
-
 Linux
 ~~~~~
 
@@ -72,8 +70,10 @@ On Linux GPBoost can be built using **CMake** and **gcc** or **Clang**.
 
    .. code::
 
-     git clone --recursive https://github.com/fabsig/GPBoost ; cd GPBoost
-     mkdir build ; cd build
+     git clone --recursive https://github.com/fabsig/GPBoost
+     cd GPBoost
+     mkdir build
+     cd build
      cmake ..
      make -j4
 
@@ -89,7 +89,7 @@ Apple Clang
 
 Only **Apple Clang** version 8.1 or higher is supported.
 
-1. Install `CMake`_ (3.12 or higher):
+1. Install `CMake`_ (3.16 or higher):
 
    .. code::
 
@@ -105,22 +105,12 @@ Only **Apple Clang** version 8.1 or higher is supported.
 
    .. code::
 
-     git clone --recursive https://github.com/fabsig/GPBoost ; cd GPBoost
-     mkdir build ; cd build
-
-     # For Mojave (10.14)
-     cmake \
-       -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp -I$(brew --prefix libomp)/include" \
-       -DOpenMP_C_LIB_NAMES="omp" \
-       -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp -I$(brew --prefix libomp)/include" \
-       -DOpenMP_CXX_LIB_NAMES="omp" \
-       -DOpenMP_omp_LIBRARY=$(brew --prefix libomp)/lib/libomp.dylib \
-       ..
-
-     # For High Sierra or earlier (<= 10.13)
-     cmake ..
-
-     make -j4
+     git clone --recursive https://github.com/fabsig/GPBoost
+     cd GPBoost
+     mkdir build
+	 cd build
+	 cmake ..
+	 make -j4
 
 gcc
 ^^^
@@ -141,9 +131,11 @@ gcc
 
    .. code::
 
-     git clone --recursive https://github.com/fabsig/GPBoost ; cd GPBoost
+     git clone --recursive https://github.com/fabsig/GPBoost
+     cd GPBoost
      export CXX=g++-7 CC=gcc-7  # replace "7" with version of gcc installed on your machine
-     mkdir build ; cd build
+     mkdir build
+     cd build
      cmake ..
      make -j4
 

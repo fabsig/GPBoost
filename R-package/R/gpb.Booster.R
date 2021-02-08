@@ -4,21 +4,24 @@ Booster <- R6::R6Class(
   cloneable = FALSE,
   public = list(
     
-    best_iter = -1,
-    best_score = NA,
+    best_iter = -1L,
+    best_score = NA_real_,
+    params = list(),
     record_evals = list(),
     
     # Finalize will free up the handles
     finalize = function() {
       
       # Check the need for freeing handle
-      if (!gpb.is.null.handle(private$handle)) {
+      if (!gpb.is.null.handle(x = private$handle)) {
         
         # Freeing up handle
-        gpb.call("LGBM_BoosterFree_R", ret = NULL, private$handle)
+        gpb.call(fun_name = "LGBM_BoosterFree_R", ret = NULL, private$handle)
         private$handle <- NULL
         
       }
+      
+      return(invisible(NULL))
       
     },
     
@@ -30,33 +33,38 @@ Booster <- R6::R6Class(
                           gp_model = NULL,
                           ...) {
       
-      R_ARCH <- Sys.getenv("R_ARCH")
-      if(R_ARCH == "/i386"){
-        warning("It is not recommended to run the tree-boosting functionality of GPBoost in its 32-bit version. Use the 64-bit version instead.")
-      }
-      
       # Create parameters and handle
       params <- append(params, list(...))
-      params_str <- gpb.params2str(params)
-      handle <- 0.0
+      handle <- gpb.null.handle()
       
-      ## Note: this was previously in a try() statement
+      
+      if (!is.null(gp_model)) { # has gp_model
+        # Check if gp_model is gpb.Dataset or not
+        if (!gpb.check.r6.class(gp_model, "GPModel")) {
+          stop("gpb.Booster: Can only use GPModel as gp_model")
+        }
+        
+        if (is.null(train_set)) {
+          stop("gpb.Booster: You need to provide a training dataset ('train_set') for the GPBoost 
+               algorithm. Boosting from a a file or a string is currently not supported.")
+        }
+        
+      }
+      
+      # Create a handle for the dataset
+      ## Note: this was previously in a try({}) statement
       
       # Check if training dataset is not null
       if (!is.null(train_set)) {
-        
         # Check if training dataset is gpb.Dataset or not
-        if (!gpb.check.r6.class(train_set, "gpb.Dataset")) {
+        if (!gpb.check.r6.class(object = train_set, name = "gpb.Dataset")) {
           stop("gpb.Booster: Can only use gpb.Dataset as training data")
         }
+        train_set_handle <- train_set$.__enclos_env__$private$get_handle()
+        params <- modifyList(params, train_set$get_params())
+        params_str <- gpb.params2str(params = params)
         
-        # Check if gp_model is not null
-        if (!is.null(gp_model)) {
-          
-          # Check if gp_model is gpb.Dataset or not
-          if (!gpb.check.r6.class(gp_model, "GPModel")) {
-            stop("gpb.Booster: Can only use GPModel as gp_model")
-          }
+        if (!is.null(gp_model)) { # has gp_model
           
           train_set$construct()
           
@@ -69,35 +77,36 @@ Booster <- R6::R6Class(
           # Store booster handle
           handle <- gpb.call("LGBM_GPBoosterCreate_R", 
                              ret = handle, 
-                             train_set$.__enclos_env__$private$get_handle(), 
+                             train_set_handle, 
                              params_str,
                              gp_model$.__enclos_env__$private$get_handle())
           
-        } else {
-          
+        } else { # No gp_model
           # Store booster handle
-          handle <- gpb.call("LGBM_BoosterCreate_R", 
-                             ret = handle, 
-                             train_set$.__enclos_env__$private$get_handle(), 
-                             params_str)
-          
+          handle <- gpb.call(
+            fun_name = "LGBM_BoosterCreate_R"
+            , ret = handle
+            , train_set_handle
+            , params_str
+          )
         }
-        
-        
         
         # Create private booster information
         private$train_set <- train_set
-        private$num_dataset <- 1
+        private$train_set_version <- train_set$.__enclos_env__$private$version
+        private$num_dataset <- 1L
         private$init_predictor <- train_set$.__enclos_env__$private$predictor
         
         # Check if predictor is existing
         if (!is.null(private$init_predictor)) {
           
           # Merge booster
-          gpb.call("LGBM_BoosterMerge_R",
-                   ret = NULL,
-                   handle,
-                   private$init_predictor$.__enclos_env__$private$handle)
+          gpb.call(
+            fun_name = "LGBM_BoosterMerge_R"
+            , ret = NULL
+            , handle
+            , private$init_predictor$.__enclos_env__$private$handle
+          )
           
         }
         
@@ -112,9 +121,11 @@ Booster <- R6::R6Class(
         }
         
         # Create booster from model
-        handle <- gpb.call("LGBM_BoosterCreateFromModelfile_R",
-                           ret = handle,
-                           gpb.c_str(modelfile))
+        handle <- gpb.call(
+          fun_name = "LGBM_BoosterCreateFromModelfile_R"
+          , ret = handle
+          , gpb.c_str(x = modelfile)
+        )
         
       } else if (!is.null(model_str)) {
         
@@ -124,19 +135,24 @@ Booster <- R6::R6Class(
         }
         
         # Create booster from model
-        handle <- gpb.call("LGBM_BoosterLoadModelFromString_R",
-                           ret = handle,
-                           gpb.c_str(model_str))
+        handle <- gpb.call(
+          fun_name = "LGBM_BoosterLoadModelFromString_R"
+          , ret = handle
+          , gpb.c_str(x = model_str)
+        )
         
       } else {
         
         # Booster non existent
-        stop("gpb.Booster: Need at least either training dataset, model file, or model_str to create booster instance")
+        stop(
+          "gpb.Booster: Need at least either training dataset, "
+          , "model file, or model_str to create booster instance"
+        )
         
       }
       
       # Check whether the handle was created properly if it was not stopped earlier by a stop call
-      if (gpb.is.null.handle(handle)) {
+      if (isTRUE(gpb.is.null.handle(x = handle))) {
         
         stop("gpb.Booster: cannot create Booster handle")
         
@@ -146,11 +162,17 @@ Booster <- R6::R6Class(
         class(handle) <- "gpb.Booster.handle"
         private$handle <- handle
         private$num_class <- 1L
-        private$num_class <- gpb.call("LGBM_BoosterGetNumClasses_R",
-                                      ret = private$num_class,
-                                      private$handle)
+        private$num_class <- gpb.call(
+          fun_name = "LGBM_BoosterGetNumClasses_R"
+          , ret = private$num_class
+          , private$handle
+        )
         
       }
+      
+      self$params <- params
+      
+      return(invisible(NULL))
       
     },
     
@@ -167,13 +189,16 @@ Booster <- R6::R6Class(
     add_valid = function(data, name, valid_set_gp = NULL, use_gp_model_for_validation = TRUE) {
       
       # Check if data is gpb.Dataset
-      if (!gpb.check.r6.class(data, "gpb.Dataset")) {
+      if (!gpb.check.r6.class(object = data, name = "gpb.Dataset")) {
         stop("gpb.Booster.add_valid: Can only use gpb.Dataset as validation data")
       }
       
       # Check if predictors are identical
       if (!identical(data$.__enclos_env__$private$predictor, private$init_predictor)) {
-        stop("gpb.Booster.add_valid: Failed to add validation data; you should use the same predictor for these data")
+        stop(
+          "gpb.Booster.add_valid: Failed to add validation data; "
+          , "you should use the same predictor for these data"
+        )
       }
       
       # Check if names are character
@@ -182,15 +207,17 @@ Booster <- R6::R6Class(
       }
       
       # Add validation data to booster
-      gpb.call("LGBM_BoosterAddValidData_R",
-               ret = NULL,
-               private$handle,
-               data$.__enclos_env__$private$get_handle())
+      gpb.call(
+        fun_name = "LGBM_BoosterAddValidData_R"
+        , ret = NULL
+        , private$handle
+        , data$.__enclos_env__$private$get_handle()
+      )
       
       # Store private information
       private$valid_sets <- c(private$valid_sets, data)
       private$name_valid_sets <- c(private$name_valid_sets, name)
-      private$num_dataset <- private$num_dataset + 1
+      private$num_dataset <- private$num_dataset + 1L
       private$is_predicted_cur_iter <- c(private$is_predicted_cur_iter, FALSE)
       
       # Note: Validation using the GP model is only done in R if there are custom evaluation functions in feval, 
@@ -210,13 +237,10 @@ Booster <- R6::R6Class(
           
         }
         
-      }
-      
-      else{
+      } else {
         private$use_gp_model_for_validation <- FALSE
       }
       
-      # Return self
       return(invisible(self))
       
     },
@@ -224,17 +248,21 @@ Booster <- R6::R6Class(
     # Reset parameters of booster
     reset_parameter = function(params, ...) {
       
-      # Append parameters
-      params <- append(params, list(...))
-      params_str <- gpb.params2str(params)
+      if (methods::is(self$params, "list")) {
+        params <- modifyList(self$params, params)
+      }
       
-      # Reset parameters
-      gpb.call("LGBM_BoosterResetParameter_R",
-               ret = NULL,
-               private$handle,
-               params_str)
+      params <- modifyList(params, list(...))
+      params_str <- gpb.params2str(params = params)
       
-      # Return self
+      gpb.call(
+        fun_name = "LGBM_BoosterResetParameter_R"
+        , ret = NULL
+        , private$handle
+        , params_str
+      )
+      self$params <- params
+      
       return(invisible(self))
       
     },
@@ -242,11 +270,17 @@ Booster <- R6::R6Class(
     # Perform boosting update iteration
     update = function(train_set = NULL, fobj = NULL) {
       
+      if (is.null(train_set)) {
+        if (private$train_set$.__enclos_env__$private$version != private$train_set_version) {
+          train_set <- private$train_set
+        }
+      }
+      
       # Check if training set is not null
       if (!is.null(train_set)) {
         
         # Check if training set is gpb.Dataset
-        if (!gpb.check.r6.class(train_set, "gpb.Dataset")) {
+        if (!gpb.check.r6.class(object = train_set, name = "gpb.Dataset")) {
           stop("gpb.Booster.update: Only can use gpb.Dataset as training data")
         }
         
@@ -256,13 +290,16 @@ Booster <- R6::R6Class(
         }
         
         # Reset training data on booster
-        gpb.call("LGBM_BoosterResetTrainingData_R",
-                 ret = NULL,
-                 private$handle,
-                 train_set$.__enclos_env__$private$get_handle())
+        gpb.call(
+          fun_name = "LGBM_BoosterResetTrainingData_R"
+          , ret = NULL
+          , private$handle
+          , train_set$.__enclos_env__$private$get_handle()
+        )
         
         # Store private train set
-        private$train_set = train_set
+        private$train_set <- train_set
+        private$train_set_version <- train_set$.__enclos_env__$private$version
         
       }
       
@@ -272,7 +309,11 @@ Booster <- R6::R6Class(
           stop("gpb.Booster.update: cannot update due to null objective function")
         }
         # Boost iteration from known objective
-        ret <- gpb.call("LGBM_BoosterUpdateOneIter_R", ret = NULL, private$handle)
+        ret <- gpb.call(
+          fun_name = "LGBM_BoosterUpdateOneIter_R"
+          , ret = NULL
+          , private$handle
+        )
         
       } else {
         
@@ -282,24 +323,26 @@ Booster <- R6::R6Class(
         }
         if (!private$set_objective_to_none) {
           self$reset_parameter(params = list(objective = "none"))
-          private$set_objective_to_none = TRUE
+          private$set_objective_to_none <- TRUE
         }
         # Perform objective calculation
-        gpair <- fobj(private$inner_predict(1), private$train_set)
+        gpair <- fobj(private$inner_predict(1L), private$train_set)
         
         # Check for gradient and hessian as list
-        if(is.null(gpair$grad) || is.null(gpair$hess)){
+        if (is.null(gpair$grad) || is.null(gpair$hess)) {
           stop("gpb.Booster.update: custom objective should
             return a list with attributes (hess, grad)")
         }
         
         # Return custom boosting gradient/hessian
-        ret <- gpb.call("LGBM_BoosterUpdateOneIterCustom_R",
-                        ret = NULL,
-                        private$handle,
-                        gpair$grad,
-                        gpair$hess,
-                        length(gpair$grad))
+        ret <- gpb.call(
+          fun_name = "LGBM_BoosterUpdateOneIterCustom_R"
+          , ret = NULL
+          , private$handle
+          , gpair$grad
+          , gpair$hess
+          , length(gpair$grad)
+        )
         
       }
       
@@ -316,16 +359,17 @@ Booster <- R6::R6Class(
     rollback_one_iter = function() {
       
       # Return one iteration behind
-      gpb.call("LGBM_BoosterRollbackOneIter_R",
-               ret = NULL,
-               private$handle)
+      gpb.call(
+        fun_name = "LGBM_BoosterRollbackOneIter_R"
+        , ret = NULL
+        , private$handle
+      )
       
       # Loop through each iteration
       for (i in seq_along(private$is_predicted_cur_iter)) {
         private$is_predicted_cur_iter[[i]] <- FALSE
       }
       
-      # Return self
       return(invisible(self))
       
     },
@@ -334,9 +378,41 @@ Booster <- R6::R6Class(
     current_iter = function() {
       
       cur_iter <- 0L
-      gpb.call("LGBM_BoosterGetCurrentIteration_R",
-               ret = cur_iter,
-               private$handle)
+      return(
+        gpb.call(
+          fun_name = "LGBM_BoosterGetCurrentIteration_R"
+          , ret = cur_iter
+          , private$handle
+        )
+      )
+      
+    },
+    
+    # Get upper bound
+    upper_bound = function() {
+      
+      upper_bound <- 0.0
+      return(
+        gpb.call(
+          fun_name = "LGBM_BoosterGetUpperBoundValue_R"
+          , ret = upper_bound
+          , private$handle
+        )
+      )
+      
+    },
+    
+    # Get lower bound
+    lower_bound = function() {
+      
+      lower_bound <- 0.0
+      return(
+        gpb.call(
+          fun_name = "LGBM_BoosterGetLowerBoundValue_R"
+          , ret = lower_bound
+          , private$handle
+        )
+      )
       
     },
     
@@ -344,18 +420,18 @@ Booster <- R6::R6Class(
     eval = function(data, name, feval = NULL) {
       
       # Check if dataset is gpb.Dataset
-      if (!gpb.check.r6.class(data, "gpb.Dataset")) {
+      if (!gpb.check.r6.class(object = data, name = "gpb.Dataset")) {
         stop("gpb.Booster.eval: Can only use gpb.Dataset to eval")
       }
       
       # Check for identical data
-      data_idx <- 0
+      data_idx <- 0L
       if (identical(data, private$train_set)) {
-        data_idx <- 1
+        data_idx <- 1L
       } else {
         
         # Check for validation data
-        if (length(private$valid_sets) > 0) {
+        if (length(private$valid_sets) > 0L) {
           
           # Loop through each validation set
           for (i in seq_along(private$valid_sets)) {
@@ -364,7 +440,7 @@ Booster <- R6::R6Class(
             if (identical(data, private$valid_sets[[i]])) {
               
               # Found identical data, skip
-              data_idx <- i + 1
+              data_idx <- i + 1L
               break
               
             }
@@ -376,7 +452,7 @@ Booster <- R6::R6Class(
       }
       
       # Check if evaluation was not done
-      if (data_idx == 0) {
+      if (data_idx == 0L) {
         
         # Add validation data by name
         self$add_valid(data, name)
@@ -385,38 +461,46 @@ Booster <- R6::R6Class(
       }
       
       # Evaluate data
-      private$inner_eval(name, data_idx, feval)
+      return(
+        private$inner_eval(
+          data_name = name
+          , data_idx = data_idx
+          , feval = feval
+        )
+      )
       
     },
     
     # Evaluation training data
     eval_train = function(feval = NULL) {
-      private$inner_eval(private$name_train_set, 1, feval)
+      return(private$inner_eval(private$name_train_set, 1L, feval))
     },
     
     # Evaluation validation data
     eval_valid = function(feval = NULL) {
       
       # Create ret list
-      ret = list()
+      ret <- list()
       
       # Check if validation is empty
-      if (length(private$valid_sets) <= 0) {
+      if (length(private$valid_sets) <= 0L) {
         return(ret)
       }
       
       # Loop through each validation set
       for (i in seq_along(private$valid_sets)) {
-        ret <- append(ret, private$inner_eval(private$name_valid_sets[[i]], i + 1, feval))
+        ret <- append(
+          x = ret
+          , values = private$inner_eval(private$name_valid_sets[[i]], i + 1L, feval)
+        )
       }
       
-      # Return ret
       return(ret)
       
     },
     
     # Save model
-    save_model = function(filename, num_iteration = NULL) {
+    save_model = function(filename, num_iteration = NULL, feature_importance_type = 0L) {
       
       # Check if number of iteration is non existent
       if (is.null(num_iteration)) {
@@ -424,18 +508,20 @@ Booster <- R6::R6Class(
       }
       
       # Save booster model
-      gpb.call("LGBM_BoosterSaveModel_R",
-               ret = NULL,
-               private$handle,
-               as.integer(num_iteration),
-               gpb.c_str(filename))
+      gpb.call(
+        fun_name = "LGBM_BoosterSaveModel_R"
+        , ret = NULL
+        , private$handle
+        , as.integer(num_iteration)
+        , as.integer(feature_importance_type)
+        , gpb.c_str(x = filename)
+      )
       
-      # Return self
       return(invisible(self))
     },
     
     # Save model to string
-    save_model_to_string = function(num_iteration = NULL) {
+    save_model_to_string = function(num_iteration = NULL, feature_importance_type = 0L) {
       
       # Check if number of iteration is non existent
       if (is.null(num_iteration)) {
@@ -443,29 +529,39 @@ Booster <- R6::R6Class(
       }
       
       # Return model string
-      return(gpb.call.return.str("LGBM_BoosterSaveModelToString_R",
-                                 private$handle,
-                                 as.integer(num_iteration)))
+      return(
+        gpb.call.return.str(
+          fun_name = "LGBM_BoosterSaveModelToString_R"
+          , private$handle
+          , as.integer(num_iteration)
+          , as.integer(feature_importance_type)
+        )
+      )
       
     },
     
     # Dump model in memory
-    dump_model = function(num_iteration = NULL) {
+    dump_model = function(num_iteration = NULL, feature_importance_type = 0L) {
       
       # Check if number of iteration is non existent
       if (is.null(num_iteration)) {
         num_iteration <- self$best_iter
       }
       
-      # Return dumped model
-      gpb.call.return.str("LGBM_BoosterDumpModel_R",
-                          private$handle,
-                          as.integer(num_iteration))
+      return(
+        gpb.call.return.str(
+          fun_name = "LGBM_BoosterDumpModel_R"
+          , private$handle
+          , as.integer(num_iteration)
+          , as.integer(feature_importance_type)
+        )
+      )
       
     },
     
     # Predict on new data
     predict = function(data,
+                       start_iteration = NULL,
                        num_iteration = NULL,
                        rawscore = FALSE,
                        predleaf = FALSE,
@@ -480,11 +576,15 @@ Booster <- R6::R6Class(
                        vecchia_pred_type = NULL,
                        num_neighbors_pred = -1,
                        predict_cov_mat = FALSE,
-                       predict_var = FALSE,...) {
+                       predict_var = FALSE, ...) {
       
-      # Check if number of iteration is  non existent
+      # Check if number of iteration is non existent
       if (is.null(num_iteration)) {
         num_iteration <- self$best_iter
+      }
+      # Check if start iteration is non existent
+      if (is.null(start_iteration)) {
+        start_iteration <- 0L
       }
       
       # Predict on new data
@@ -505,8 +605,14 @@ Booster <- R6::R6Class(
                 Set ", sQuote("free_raw_data = FALSE"), " when you construct gpb.Dataset")
           }
           
-          fixed_effect_train = predictor$predict(private$train_set$.__enclos_env__$private$raw_data,
-                                                 num_iteration, FALSE, FALSE, FALSE, FALSE, FALSE)
+          fixed_effect_train = predictor$predict( data = private$train_set$.__enclos_env__$private$raw_data
+                                                  , start_iteration = start_iteration
+                                                  , num_iteration = num_iteration
+                                                  , rawscore = TRUE
+                                                  , predleaf = FALSE
+                                                  , predcontrib = FALSE
+                                                  , header = FALSE
+                                                  , reshape = FALSE )
           residual = private$train_set$.__enclos_env__$private$info$label-fixed_effect_train
           # Note: we need to provide the response variable y as this was not saved
           #   in the gp_model ("in C++") for Gaussian data but was overwritten during training
@@ -522,7 +628,14 @@ Booster <- R6::R6Class(
                                                         X_pred = NULL,
                                                         vecchia_pred_type = vecchia_pred_type,
                                                         num_neighbors_pred = num_neighbors_pred)
-          fixed_effect = predictor$predict(data, num_iteration, rawscore, predleaf, predcontrib, header, reshape)
+          fixed_effect = predictor$predict( data = data
+                                            , start_iteration = start_iteration
+                                            , num_iteration = num_iteration
+                                            , rawscore = TRUE
+                                            , predleaf = FALSE
+                                            , predcontrib = FALSE
+                                            , header = FALSE
+                                            , reshape = FALSE )
           
           if (length(fixed_effect) != length(random_effect_pred$mu)){
             warning("Number of data points in fixed effect (tree ensemble) and random effect are not equal")
@@ -538,7 +651,14 @@ Booster <- R6::R6Class(
         }##end Gaussian data
         else{## non-Gaussian data
           
-          fixed_effect = predictor$predict(data, num_iteration, TRUE, predleaf, predcontrib, header, reshape)
+          fixed_effect = predictor$predict( data = data
+                                            , start_iteration = start_iteration
+                                            , num_iteration = num_iteration
+                                            , rawscore = TRUE
+                                            , predleaf = FALSE
+                                            , predcontrib = FALSE
+                                            , header = FALSE
+                                            , reshape = FALSE )
           
           if (rawscore) {
             
@@ -598,17 +718,27 @@ Booster <- R6::R6Class(
                     random_effect_cov = pred_var_cov,
                     response_mean = response_mean,
                     response_var = response_var))
+  
       }##end GPBoost prediction
       else {##prediction without random effects
-        predictor$predict(data, num_iteration, rawscore, predleaf, predcontrib, header, reshape)
+        return(
+          predictor$predict(
+            data = data
+            , start_iteration = start_iteration
+            , num_iteration = num_iteration
+            , rawscore = rawscore
+            , predleaf = predleaf
+            , predcontrib = predcontrib
+            , header = header
+            , reshape = reshape
+          )
+        )
       }
-      
-      
     },
     
     # Transform into predictor
     to_predictor = function() {
-      Predictor$new(private$handle)
+      return(Predictor$new(private$handle))
     },
     
     # Used for save
@@ -620,27 +750,30 @@ Booster <- R6::R6Class(
       # Overwrite model in object
       self$raw <- self$save_model_to_string(NULL)
       
+      return(invisible(NULL))
+      
     }
     
   ),
   private = list(
     handle = NULL,
     train_set = NULL,
+    name_train_set = "training",
     gp_model = NULL,
     has_gp_model = FALSE,
-    name_train_set = "training",
-    valid_sets = list(),
     valid_sets_gp = list(),
     use_gp_model_for_validation = TRUE,
+    valid_sets = list(),
     name_valid_sets = list(),
     predict_buffer = list(),
     is_predicted_cur_iter = list(),
-    num_class = 1,
-    num_dataset = 0,
+    num_class = 1L,
+    num_dataset = 0L,
     init_predictor = NULL,
     eval_names = NULL,
     higher_better_inner_eval = NULL,
     set_objective_to_none = FALSE,
+    train_set_version = 0L,
     # Predict data
     inner_predict = function(idx) {
       
@@ -648,8 +781,8 @@ Booster <- R6::R6Class(
       data_name <- private$name_train_set
       
       # Check for id bigger than 1
-      if (idx > 1) {
-        data_name <- private$name_valid_sets[[idx - 1]]
+      if (idx > 1L) {
+        data_name <- private$name_valid_sets[[idx - 1L]]
       }
       
       # Check for unknown dataset (over the maximum provided range)
@@ -662,10 +795,12 @@ Booster <- R6::R6Class(
         
         # Store predictions
         npred <- 0L
-        npred <- gpb.call("LGBM_BoosterGetNumPredict_R",
-                          ret = npred,
-                          private$handle,
-                          as.integer(idx - 1))
+        npred <- gpb.call(
+          fun_name = "LGBM_BoosterGetNumPredict_R"
+          , ret = npred
+          , private$handle
+          , as.integer(idx - 1L)
+        )
         private$predict_buffer[[data_name]] <- numeric(npred)
         
       }
@@ -674,14 +809,15 @@ Booster <- R6::R6Class(
       if (!private$is_predicted_cur_iter[[idx]]) {
         
         # Use buffer
-        private$predict_buffer[[data_name]] <- gpb.call("LGBM_BoosterGetPredict_R",
-                                                        ret = private$predict_buffer[[data_name]],
-                                                        private$handle,
-                                                        as.integer(idx - 1))
+        private$predict_buffer[[data_name]] <- gpb.call(
+          fun_name = "LGBM_BoosterGetPredict_R"
+          , ret = private$predict_buffer[[data_name]]
+          , private$handle
+          , as.integer(idx - 1L)
+        )
         private$is_predicted_cur_iter[[idx]] <- TRUE
       }
       
-      # Return prediction buffer
       return(private$predict_buffer[[data_name]])
     },
     
@@ -692,22 +828,27 @@ Booster <- R6::R6Class(
       if (is.null(private$eval_names)) {
         
         # Get evaluation names
-        names <- gpb.call.return.str("LGBM_BoosterGetEvalNames_R",
-                                     private$handle)
+        names <- gpb.call.return.str(
+          fun_name = "LGBM_BoosterGetEvalNames_R"
+          , private$handle
+        )
         
         # Check names' length
-        if (nchar(names) > 0) {
+        if (nchar(names) > 0L) {
           
           # Parse and store privately names
-          names <- strsplit(names, "\t")[[1]]
+          names <- strsplit(names, "\t")[[1L]]
           private$eval_names <- names
-          private$higher_better_inner_eval <- grepl("^ndcg|^map|^auc$", names)
+          
+          # some metrics don't map cleanly to metric names, for example "ndcg@1" is just the
+          # ndcg metric evaluated at the first "query result" in learning-to-rank
+          metric_names <- gsub("@.*", "", names)
+          private$higher_better_inner_eval <- .METRICS_HIGHER_BETTER()[metric_names]
           
         }
         
       }
       
-      # Return evaluation names
       return(private$eval_names)
       
     },
@@ -727,14 +868,16 @@ Booster <- R6::R6Class(
       ret <- list()
       
       # Check evaluation names existence
-      if (length(private$eval_names) > 0) {
+      if (length(private$eval_names) > 0L) {
         
         # Create evaluation values
         tmp_vals <- numeric(length(private$eval_names))
-        tmp_vals <- gpb.call("LGBM_BoosterGetEval_R",
-                             ret = tmp_vals,
-                             private$handle,
-                             as.integer(data_idx - 1))
+        tmp_vals <- gpb.call(
+          fun_name = "LGBM_BoosterGetEval_R"
+          , ret = tmp_vals
+          , private$handle
+          , as.integer(data_idx - 1L)
+        )
         
         # Loop through all evaluation names
         for (i in seq_along(private$eval_names)) {
@@ -763,13 +906,12 @@ Booster <- R6::R6Class(
         data <- private$train_set
         
         # Check if data to assess is existing differently
-        if (data_idx > 1) {
-          data <- private$valid_sets[[data_idx - 1]]
+        if (data_idx > 1L) {
+          data <- private$valid_sets[[data_idx - 1L]]
         }
         
         # Perform function evaluation
         predval <- private$inner_predict(data_idx)
-        
         # Note: the following is only done in R if there are custom evaluation functions in feval, 
         #        otherwise it is directly done in C++. See the function Eval() in regression_metric.hpp
         if (private$has_gp_model & private$use_gp_model_for_validation & data_idx > 1) {
@@ -800,7 +942,7 @@ Booster <- R6::R6Class(
         res <- feval(predval, data)
         
         # Check for name correctness
-        if(is.null(res$name) || is.null(res$value) ||  is.null(res$higher_better)) {
+        if (is.null(res$name) || is.null(res$value) ||  is.null(res$higher_better)) {
           stop("gpb.Booster.eval: custom eval function should return a
             list with attribute (name, value, higher_better)");
         }
@@ -810,7 +952,6 @@ Booster <- R6::R6Class(
         ret <- append(ret, list(res))
       }
       
-      # Return ret
       return(ret)
       
     }
@@ -818,115 +959,85 @@ Booster <- R6::R6Class(
   )
 )
 
-
-#' Predict method for GPBoost model
-#'
-#' Predicted values based on class \code{gpb.Booster}
-#'
+#' @name predict.gpb.Booster
+#' @title Predict method for GPBoost model
+#' @description Predicted values based on class \code{gpb.Booster}
 #' @param object Object of class \code{gpb.Booster}
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
-#' @param num_iteration Number of iteration want to predict with, NULL or <= 0 means use best iteration
-#' @param rawscore Indicates whether the prediction should be returned in the form of original untransformed
-#'        sum of predictions from boosting iterations' results. E.g., setting \code{rawscore=TRUE} for
-#'        logistic regression would result in predictions for log-odds instead of probabilities.
+#' @param start_iteration int or None, optional (default=None)
+#'                        Start index of the iteration to predict.
+#'                        If None or <= 0, starts from the first iteration.
+#' @param num_iteration int or None, optional (default=None)
+#'                      Limit number of iterations in the prediction.
+#'                      If None, if the best iteration exists and start_iteration is None or <= 0, the
+#'                      best iteration is used; otherwise, all iterations from start_iteration are used.
+#'                      If <= 0, all iterations from start_iteration are used (no limits).
+#' @param rawscore whether the prediction should be returned in the for of original untransformed
+#'                 sum of predictions from boosting iterations' results. E.g., setting \code{rawscore=TRUE}
+#'                 for logistic regression would result in predictions for log-odds instead of probabilities.
 #' @param predleaf whether predict leaf index instead.
 #' @param predcontrib return per-feature contributions for each record.
 #' @param header only used for prediction for text file. True if text file has header
 #' @param reshape whether to reshape the vector of predictions to a matrix form when there are several
-#'        prediction outputs per case.
+#'                prediction outputs per case.
 #' @param ... Additional named arguments passed to the \code{predict()} method of
-#'            the \code{gpb.Booster}. In particular, this includes prediction data for the GPModel (if there is one)
-#'            Set predict_var or predict_vcov_mat to TRUE, if you want to obtain predicted variances or covariances
-#' @return
-#' For regression or binary classification, it returns a vector of length \code{nrows(data)}.
-#' For multiclass classification, either a \code{num_class * nrows(data)} vector or
-#' a \code{(nrows(data), num_class)} dimension matrix is returned, depending on
-#' the \code{reshape} value.
+#'            the \code{gpb.Booster} object passed to \code{object}. 
+#'            In particular, this includes prediction data for the GPModel (if there is one)
+#'            Set predict_var or predict_cov_mat to TRUE, if you want to obtain predicted variances or covariances
+#' @return For regression or binary classification, it returns a vector of length \code{nrows(data)}.
+#'         For multiclass classification, either a \code{num_class * nrows(data)} vector or
+#'         a \code{(nrows(data), num_class)} dimension matrix is returned, depending on
+#'         the \code{reshape} value.
 #'
-#' When \code{predleaf = TRUE}, the output is a matrix object with the
-#' number of columns corresponding to the number of trees.
+#'         When \code{predleaf = TRUE}, the output is a matrix object with the
+#'         number of columns corresponding to the number of trees.
 #'
 #' @examples
-#' ## SEE ALSO THE HELP OF 'gpb.train' FOR MORE EXAMPLES
-#' \dontrun{
-#' library(gpboost)
+#' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' #--------------------Example without a Gaussian process or random effects model--------------
-#' # Non-linear function for simulation
-#' f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
-#' x <- seq(from=0,to=1,length.out=200)
-#' plot(x,f1d(x),type="l",lwd=2,col="red",main="Mean function")
-#' # Function that simulates data. Two covariates of which only one has an effect
-#' sim_data <- function(n){
-#'   X=matrix(runif(2*n),ncol=2)
-#'   # mean function plus noise
-#'   y=f1d(X[,1])+rnorm(n,sd=0.1)
-#'   return(list(X=X,y=y))
-#' }
-#' # Simulate data
-#' n <- 1000
-#' set.seed(1)
-#' data <- sim_data(2 * n)
-#' dtrain <- gpb.Dataset(data = data$X[1:n,], label = data$y[1:n])
-#' Xtest <- data$X[1:n + n,]
-#' ytest <- data$y[1:n + n]
+#' \donttest{
+#' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
+#' 
+#' #--------------------Combine tree-boosting and grouped random effects model----------------
+#' # Create random effects model
+#' gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
+#' # The default optimizer for covariance parameters for Gaussian data is Fisher scoring.
+#' # For non-Gaussian data, gradient descent is used.
+#' # Optimizer properties can be changed as follows:
+#' # re_params <- list(optimizer_cov = "gradient_descent", use_nesterov_acc = TRUE)
+#' # gp_model$set_optim_params(params=re_params)
+#' # Use trace = TRUE to monitor convergence:
+#' # re_params <- list(trace = TRUE)
+#' # gp_model$set_optim_params(params=re_params)
 #' 
 #' # Train model
-#' print("Train boosting model")
-#' bst <- gpb.train(data = dtrain,
-#'                  nrounds = 40,
-#'                  learning_rate = 0.1,
-#'                  max_depth = 6,
-#'                  min_data_in_leaf = 5,
-#'                  objective = "regression_l2",
-#'                  verbose = 0)
-#'
-#' # Make predictions and compare fit to truth
-#' x <- seq(from=0,to=1,length.out=200)
-#' Xtest_plot <- cbind(x,rep(0,length(x)))
-#' pred_plot <- predict(bst, data = Xtest_plot)
-#' plot(x,f1d(x),type="l",ylim = c(-0.25,3.25), col = "red", lwd = 2,
-#'      main = "Comparison of true and fitted value")
-#' lines(x,pred_plot, col = "blue", lwd = 2)
-#' legend("bottomright", legend = c("truth", "fitted"),
-#'        lwd=2, col = c("red", "blue"), bty = "n")
-#'        
-#' # Prediction accuracy       
-#' pred <- predict(bst, data = Xtest)
-#' err <- mean((ytest-pred)^2)
-#' print(paste("test-RMSE =", err))
+#' bst <- gpboost(data = X,
+#'                label = y,
+#'                gp_model = gp_model,
+#'                nrounds = 16,
+#'                learning_rate = 0.05,
+#'                max_depth = 6,
+#'                min_data_in_leaf = 5,
+#'                objective = "regression_l2",
+#'                verbose = 0)
+#' # Estimated random effects model
+#' summary(gp_model)
 #' 
+#' # Make predictions
+#' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
+#'                 predict_var= TRUE)
+#' pred$random_effect_mean # Predicted mean
+#' pred$random_effect_cov # Predicted variances
+#' pred$fixed_effect # Predicted fixed effect from tree ensemble
+#' # Sum them up to otbain a single prediction
+#' pred$random_effect_mean + pred$fixed_effect
 #' 
 #' #--------------------Combine tree-boosting and Gaussian process model----------------
-#' # Simulate data
-#' # Function for non-linear mean. Two covariates of which only one has an effect
-#' f1d=function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
-#' set.seed(2)
-#' n <- 200 # number of samples
-#' X=matrix(runif(2*n),ncol=2)
-#' y <- f1d(X[,1]) # mean
-#' # Add Gaussian process
-#' sigma2_1 <- 1^2 # marginal variance of GP
-#' rho <- 0.1 # range parameter
-#' sigma2 <- 0.1^2 # error variance
-#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-#' D <- as.matrix(dist(coords))
-#' Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-#' C = t(chol(Sigma))
-#' b_1=rnorm(n) # simulate random effect
-#' eps <- C %*% b_1
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- y + eps + xi # add random effects and error to data
 #' # Create Gaussian process model
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-#' # Default optimizer for covariance parameters is Fisher scoring.
-#' # This can be changed as follows:
-#' # re_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
-#' #                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
-#' # gp_model$set_optim_params(params=re_params)
-#'
+#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+#'                     likelihood = "gaussian")
 #' # Train model
-#' print("Train boosting with Gaussian process model")
 #' bst <- gpboost(data = X,
 #'                label = y,
 #'                gp_model = gp_model,
@@ -936,29 +1047,21 @@ Booster <- R6::R6Class(
 #'                min_data_in_leaf = 5,
 #'                objective = "regression_l2",
 #'                verbose = 0)
-#' print("Estimated random effects model")
+#' # Estimated random effects model
 #' summary(gp_model)
-#'
 #' # Make predictions
-#' set.seed(1)
-#' ntest <- 5
-#' Xtest=matrix(runif(2*ntest),ncol=2)
-#' # prediction locations (=features) for Gaussian process
-#' coords_test <- cbind(runif(ntest),runif(ntest))/10
-#' pred <- predict(bst, data = Xtest, gp_coords_pred = coords_test,
+#' pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
 #'                 predict_cov_mat =TRUE)
-#' print("Predicted (posterior) mean of GP")
-#' pred$random_effect_mean
-#' print("Predicted (posterior) covariance matrix of GP")
-#' pred$random_effect_cov
-#' print("Predicted fixed effect from tree ensemble")
-#' pred$fixed_effect
+#' pred$random_effect_mean # Predicted (posterior) mean of GP
+#' pred$random_effect_cov # Predicted (posterior) covariance matrix of GP
+#' pred$fixed_effect # Predicted fixed effect from tree ensemble
+#' # Sum them up to otbain a single prediction
+#' pred$random_effect_mean + pred$fixed_effect
 #' }
-#'
-#' @rdname predict.gpb.Booster
 #' @export
 predict.gpb.Booster <- function(object,
                                 data,
+                                start_iteration = NULL,
                                 num_iteration = NULL,
                                 rawscore = FALSE,
                                 predleaf = FALSE,
@@ -967,35 +1070,37 @@ predict.gpb.Booster <- function(object,
                                 reshape = FALSE,
                                 ...) {
   
-  # Check booster existence
-  if (!gpb.is.Booster(object)) {
+  if (!gpb.is.Booster(x = object)) {
     stop("predict.gpb.Booster: object should be an ", sQuote("gpb.Booster"))
   }
   
   # Return booster predictions
-  object$predict(data,
-                 num_iteration,
-                 rawscore,
-                 predleaf,
-                 predcontrib,
-                 header,
-                 reshape, ...)
+  return(
+    object$predict(
+      data = data
+      , start_iteration = start_iteration
+      , num_iteration = num_iteration
+      , rawscore = rawscore
+      , predleaf =  predleaf
+      , predcontrib =  predcontrib
+      , header = header
+      , reshape = reshape
+      , ...
+    )
+  )
 }
 
-#' Load model
-#'
-#' Load model from saved model file or string
-#' Load takes in either a file path or model string
-#' If both are provided, Load will default to loading from file
-#'
+#' @name gpb.load
+#' @title Load GPBoost model
+#' @description  Load GPBoost takes in either a file path or model string.
+#'               If both are provided, Load will default to loading from file
 #' @param filename path of model file
 #' @param model_str a str containing the model
 #'
 #' @return gpb.Booster
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -1004,49 +1109,50 @@ predict.gpb.Booster <- function(object,
 #' dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
 #' params <- list(objective = "regression", metric = "l2")
 #' valids <- list(test = dtest)
-#' model <- gpb.train(params = params,
-#'                    data = dtrain,
-#'                    nrounds = 10,
-#'                    valids = valids,
-#'                    min_data = 1,
-#'                    learning_rate = 1,
-#'                    early_stopping_rounds = 5)
-#' gpb.save(model, "model.txt")
-#' load_booster <- gpb.load(filename = "model.txt")
+#' model <- gpb.train(
+#'   params = params
+#'   , data = dtrain
+#'   , nrounds = 5L
+#'   , valids = valids
+#'   , min_data = 1L
+#'   , learning_rate = 1.0
+#'   , early_stopping_rounds = 3L
+#' )
+#' model_file <- tempfile(fileext = ".txt")
+#' gpb.save(model, model_file)
+#' load_booster <- gpb.load(filename = model_file)
 #' model_string <- model$save_model_to_string(NULL) # saves best iteration
 #' load_booster_from_str <- gpb.load(model_str = model_string)
 #' }
-#'
-#' @rdname gpb.load
 #' @export
-gpb.load <- function(filename = NULL, model_str = NULL){
+gpb.load <- function(filename = NULL, model_str = NULL) {
   
-  if (is.null(filename) && is.null(model_str)) {
-    stop("gpb.load: either filename or model_str must be given")
+  filename_provided <- !is.null(filename)
+  model_str_provided <- !is.null(model_str)
+  
+  if (filename_provided) {
+    if (!is.character(filename)) {
+      stop("gpb.load: filename should be character")
+    }
+    if (!file.exists(filename)) {
+      stop(sprintf("gpb.load: file '%s' passed to filename does not exist", filename))
+    }
+    return(invisible(Booster$new(modelfile = filename)))
   }
   
-  # Load from filename
-  if (!is.null(filename) && !is.character(filename)) {
-    stop("gpb.load: filename should be character")
+  if (model_str_provided) {
+    if (!is.character(model_str)) {
+      stop("gpb.load: model_str should be character")
+    }
+    return(invisible(Booster$new(model_str = model_str)))
   }
   
-  # Return new booster
-  if (!is.null(filename) && !file.exists(filename)) stop("gpb.load: file does not exist for supplied filename")
-  if (!is.null(filename)) return(invisible(Booster$new(modelfile = filename)))
-  
-  # Load from model_str
-  if (!is.null(model_str) && !is.character(model_str)) {
-    stop("gpb.load: model_str should be character")
-  }
-  # Return new booster
-  if (!is.null(model_str)) return(invisible(Booster$new(model_str = model_str)))
-  
+  stop("gpb.load: either filename or model_str must be given")
 }
 
-#' Save model
-#'
-#' Save model
-#'
+#' @name gpb.save
+#' @title Save GPBoost model
+#' @description Save GPBoost model
 #' @param booster Object of class \code{gpb.Booster}
 #' @param filename saved filename
 #' @param num_iteration number of iteration want to predict with, NULL or <= 0 means use best iteration
@@ -1054,7 +1160,7 @@ gpb.load <- function(filename = NULL, model_str = NULL){
 #' @return gpb.Booster
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -1064,46 +1170,48 @@ gpb.load <- function(filename = NULL, model_str = NULL){
 #' dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
 #' params <- list(objective = "regression", metric = "l2")
 #' valids <- list(test = dtest)
-#' model <- gpb.train(params = params,
-#'                    data = dtrain,
-#'                    nrounds = 10,
-#'                    valids = valids,
-#'                    min_data = 1,
-#'                    learning_rate = 1,
-#'                    early_stopping_rounds = 5)
-#' gpb.save(model, "model.txt")
+#' model <- gpb.train(
+#'   params = params
+#'   , data = dtrain
+#'   , nrounds = 10L
+#'   , valids = valids
+#'   , min_data = 1L
+#'   , learning_rate = 1.0
+#'   , early_stopping_rounds = 5L
+#' )
+#' gpb.save(model, tempfile(fileext = ".txt"))
 #' }
-#'
-#' @rdname gpb.save
 #' @export
-gpb.save <- function(booster, filename, num_iteration = NULL){
+gpb.save <- function(booster, filename, num_iteration = NULL) {
   
-  # Check if booster is booster
-  if (!gpb.is.Booster(booster)) {
+  if (!gpb.is.Booster(x = booster)) {
     stop("gpb.save: booster should be an ", sQuote("gpb.Booster"))
   }
   
-  # Check if file name is character
-  if (!is.character(filename)) {
-    stop("gpb.save: filename should be a character")
+  if (!(is.character(filename) && length(filename) == 1L)) {
+    stop("gpb.save: filename should be a string")
   }
   
   # Store booster
-  invisible(booster$save_model(filename, num_iteration))
+  return(
+    invisible(booster$save_model(
+      filename = filename
+      , num_iteration = num_iteration
+    ))
+  )
   
 }
 
-#' Dump model to json
-#'
-#' Dump model to json
-#'
+#' @name gpb.dump
+#' @title Dump GPBoost model to json
+#' @description Dump GPBoost model to json
 #' @param booster Object of class \code{gpb.Booster}
 #' @param num_iteration number of iteration want to predict with, NULL or <= 0 means use best iteration
 #'
 #' @return json format of model
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' library(gpboost)
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -1113,44 +1221,45 @@ gpb.save <- function(booster, filename, num_iteration = NULL){
 #' dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
 #' params <- list(objective = "regression", metric = "l2")
 #' valids <- list(test = dtest)
-#' model <- gpb.train(params = params,
-#'                    data = dtrain,
-#'                    nrounds = 10,
-#'                    valids = valids,
-#'                    min_data = 1,
-#'                    learning_rate = 1,
-#'                    early_stopping_rounds = 5)
+#' model <- gpb.train(
+#'   params = params
+#'   , data = dtrain
+#'   , nrounds = 10L
+#'   , valids = valids
+#'   , min_data = 1L
+#'   , learning_rate = 1.0
+#'   , early_stopping_rounds = 5L
+#' )
 #' json_model <- gpb.dump(model)
 #' }
-#' 
-#' @rdname gpb.dump
 #' @export
-gpb.dump <- function(booster, num_iteration = NULL){
+gpb.dump <- function(booster, num_iteration = NULL) {
   
-  # Check if booster is booster
-  if (!gpb.is.Booster(booster)) {
-    stop("gpb.dump: booster should be an ", sQuote("gpb.Booster"))
+  if (!gpb.is.Booster(x = booster)) {
+    stop("gpb.save: booster should be an ", sQuote("gpb.Booster"))
   }
   
   # Return booster at requested iteration
-  booster$dump_model(num_iteration)
+  return(booster$dump_model(num_iteration =  num_iteration))
   
 }
 
-#' Get record evaluation result from booster
-#'
-#' Get record evaluation result from booster
+#' @name gpb.get.eval.result
+#' @title Get record evaluation result from booster
+#' @description Given a \code{gpb.Booster}, return evaluation results for a
+#'              particular metric on a particular dataset.
 #' @param booster Object of class \code{gpb.Booster}
-#' @param data_name name of dataset
-#' @param eval_name name of evaluation
-#' @param iters iterations, NULL will return all
+#' @param data_name Name of the dataset to return evaluation results for.
+#' @param eval_name Name of the evaluation metric to return results for.
+#' @param iters An integer vector of iterations you want to get evaluation results for. If NULL
+#'              (the default), evaluation results for all iterations will be returned.
 #' @param is_err TRUE will return evaluation error instead
 #'
-#' @return vector of evaluation result
+#' @return numeric vector of evaluation result
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
+#' # train a regression model
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -1159,21 +1268,29 @@ gpb.dump <- function(booster, num_iteration = NULL){
 #' dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
 #' params <- list(objective = "regression", metric = "l2")
 #' valids <- list(test = dtest)
-#' model <- gpb.train(params = params,
-#'                    data = dtrain,
-#'                    nrounds = 10,
-#'                    valids = valids,
-#'                    min_data = 1,
-#'                    learning_rate = 1,
-#'                    early_stopping_rounds = 5)
+#' model <- gpb.train(
+#'   params = params
+#'   , data = dtrain
+#'   , nrounds = 5L
+#'   , valids = valids
+#'   , min_data = 1L
+#'   , learning_rate = 1.0
+#' )
+#'
+#' # Examine valid data_name values
+#' print(setdiff(names(model$record_evals), "start_iter"))
+#'
+#' # Examine valid eval_name values for dataset "test"
+#' print(names(model$record_evals[["test"]]))
+#'
+#' # Get L2 values for "test" dataset
 #' gpb.get.eval.result(model, "test", "l2")
 #' }
-#' @rdname gpb.get.eval.result
 #' @export
 gpb.get.eval.result <- function(booster, data_name, eval_name, iters = NULL, is_err = FALSE) {
   
   # Check if booster is booster
-  if (!gpb.is.Booster(booster)) {
+  if (!gpb.is.Booster(x = booster)) {
     stop("gpb.get.eval.result: Can only use ", sQuote("gpb.Booster"), " to get eval result")
   }
   
@@ -1182,22 +1299,38 @@ gpb.get.eval.result <- function(booster, data_name, eval_name, iters = NULL, is_
     stop("gpb.get.eval.result: data_name and eval_name should be characters")
   }
   
-  # Check if recorded evaluation is existing
-  if (is.null(booster$record_evals[[data_name]])) {
-    stop("gpb.get.eval.result: wrong data name")
+  # NOTE: "start_iter" exists in booster$record_evals but is not a valid data_name
+  data_names <- setdiff(names(booster$record_evals), "start_iter")
+  if (!(data_name %in% data_names)) {
+    stop(paste0(
+      "gpb.get.eval.result: data_name "
+      , shQuote(data_name)
+      , " not found. Only the following datasets exist in record evals: ["
+      , paste(data_names, collapse = ", ")
+      , "]"
+    ))
   }
   
   # Check if evaluation result is existing
-  if (is.null(booster$record_evals[[data_name]][[eval_name]])) {
+  eval_names <- names(booster$record_evals[[data_name]])
+  if (!(eval_name %in% eval_names)) {
+    stop(paste0(
+      "gpb.get.eval.result: eval_name "
+      , shQuote(eval_name)
+      , " not found. Only the following eval_names exist for dataset "
+      , shQuote(data_name)
+      , ": ["
+      , paste(eval_names, collapse = ", ")
+      , "]"
+    ))
     stop("gpb.get.eval.result: wrong eval name")
   }
   
-  # Create result
-  result <- booster$record_evals[[data_name]][[eval_name]]$eval
+  result <- booster$record_evals[[data_name]][[eval_name]][[.EVAL_KEY()]]
   
   # Check if error is requested
   if (is_err) {
-    result <- booster$record_evals[[data_name]][[eval_name]]$eval_err
+    result <- booster$record_evals[[data_name]][[eval_name]][[.EVAL_ERR_KEY()]]
   }
   
   # Check if iteration is non existant
@@ -1207,9 +1340,9 @@ gpb.get.eval.result <- function(booster, data_name, eval_name, iters = NULL, is_
   
   # Parse iteration and booster delta
   iters <- as.integer(iters)
-  delta <- booster$record_evals$start_iter - 1
+  delta <- booster$record_evals$start_iter - 1.0
   iters <- iters - delta
   
   # Return requested result
-  as.numeric(result[iters])
+  return(as.numeric(result[iters]))
 }

@@ -1,28 +1,28 @@
 # coding: utf-8
 """Scikit-learn wrapper interface for GPBoost."""
-from __future__ import absolute_import
+import copy
 
-import warnings
+from inspect import signature
 
 import numpy as np
 
-from .basic import Dataset, GPBoostError, _ConfigAliases
-from .compat import (SKLEARN_INSTALLED, SKLEARN_VERSION, _GPBoostClassifierBase,
+from .basic import Dataset, GPBoostError, _ConfigAliases, _choose_param_value, _log_warning
+from .compat import (SKLEARN_INSTALLED, _GPBoostClassifierBase,
                      GPBoostNotFittedError, _GPBoostLabelEncoder, _GPBoostModelBase,
-                     _GPBoostRegressorBase, _GPBoostCheckXY, _GPBoostCheckArray, _GPBoostCheckConsistentLength,
+                     _GPBoostRegressorBase, _GPBoostCheckXY, _GPBoostCheckArray, _GPBoostCheckSampleWeight,
                      _GPBoostAssertAllFinite, _GPBoostCheckClassificationTargets, _GPBoostComputeSampleWeight,
-                     argc_, range_, zip_, string_type, DataFrame, DataTable)
+                     pd_DataFrame, dt_DataTable)
 from .engine import train
 
 
-class _ObjectiveFunctionWrapper(object):
+class _ObjectiveFunctionWrapper:
     """Proxy class for objective function."""
 
     def __init__(self, func):
         """Construct a proxy class.
 
         This class transforms objective function to match objective function with signature ``new_func(preds, dataset)``
-        as expected by ``GPBoost.engine.train``.
+        as expected by ``gpboost.engine.train``.
 
         Parameters
         ----------
@@ -35,7 +35,11 @@ class _ObjectiveFunctionWrapper(object):
                 y_pred : array-like of shape = [n_samples] or shape = [n_samples * n_classes] (for multi-class task)
                     The predicted values.
                 group : array-like
-                    Group/query data, used for ranking task.
+                    Group/query data.
+                    Only used in the learning-to-rank task.
+                    sum(group) = n_samples.
+                    For example, if you have a 100-document dataset with ``group = [10, 20, 40, 10, 10, 10]``, that means that you have 6 groups,
+                    where the first 10 records are in the first group, records 11-30 are in the second group, records 31-70 are in the third group, etc.
                 grad : array-like of shape = [n_samples] or shape = [n_samples * n_classes] (for multi-class task)
                     The value of the first order derivative (gradient) for each sample point.
                 hess : array-like of shape = [n_samples] or shape = [n_samples * n_classes] (for multi-class task)
@@ -43,6 +47,7 @@ class _ObjectiveFunctionWrapper(object):
 
         .. note::
 
+            For binary task, the y_pred is margin.
             For multi-class task, the y_pred is group by class_id first, then group by row_id.
             If you want to get i-th row y_pred in j-th class, the access way is y_pred[j * num_data + i]
             and you should group grad and hess in this way as well.
@@ -67,7 +72,7 @@ class _ObjectiveFunctionWrapper(object):
             The value of the second order derivative (Hessian) for each sample point.
         """
         labels = dataset.get_label()
-        argc = argc_(self.func)
+        argc = len(signature(self.func).parameters)
         if argc == 2:
             grad, hess = self.func(labels, preds)
         elif argc == 3:
@@ -86,22 +91,22 @@ class _ObjectiveFunctionWrapper(object):
                 num_class = len(grad) // num_data
                 if num_class * num_data != len(grad):
                     raise ValueError("Length of grad and hess should equal to num_class * num_data")
-                for k in range_(num_class):
-                    for i in range_(num_data):
+                for k in range(num_class):
+                    for i in range(num_data):
                         idx = k * num_data + i
                         grad[idx] *= weight[i]
                         hess[idx] *= weight[i]
         return grad, hess
 
 
-class _EvalFunctionWrapper(object):
+class _EvalFunctionWrapper:
     """Proxy class for evaluation function."""
 
     def __init__(self, func):
         """Construct a proxy class.
 
         This class transforms evaluation function to match evaluation function with signature ``new_func(preds, dataset)``
-        as expected by ``GPBoost.engine.train``.
+        as expected by ``gpboost.engine.train``.
 
         Parameters
         ----------
@@ -120,7 +125,11 @@ class _EvalFunctionWrapper(object):
                 weight : array-like of shape = [n_samples]
                     The weight of samples.
                 group : array-like
-                    Group/query data, used for ranking task.
+                    Group/query data.
+                    Only used in the learning-to-rank task.
+                    sum(group) = n_samples.
+                    For example, if you have a 100-document dataset with ``group = [10, 20, 40, 10, 10, 10]``, that means that you have 6 groups,
+                    where the first 10 records are in the first group, records 11-30 are in the second group, records 31-70 are in the third group, etc.
                 eval_name : string
                     The name of evaluation function (without whitespaces).
                 eval_result : float
@@ -130,6 +139,7 @@ class _EvalFunctionWrapper(object):
 
         .. note::
 
+            For binary task, the y_pred is probability of positive class (or margin in case of custom ``objective``).
             For multi-class task, the y_pred is group by class_id first, then group by row_id.
             If you want to get i-th row y_pred in j-th class, the access way is y_pred[j * num_data + i].
         """
@@ -155,7 +165,7 @@ class _EvalFunctionWrapper(object):
             Is eval result higher better, e.g. AUC is ``is_higher_better``.
         """
         labels = dataset.get_label()
-        argc = argc_(self.func)
+        argc = len(signature(self.func).parameters)
         if argc == 2:
             return self.func(labels, preds)
         elif argc == 3:
@@ -230,9 +240,11 @@ class GPBoostModel(_GPBoostModelBase):
             L1 regularization term on weights.
         reg_lambda : float, optional (default=0.)
             L2 regularization term on weights.
-        random_state : int or None, optional (default=None)
+        random_state : int, RandomState object or None, optional (default=None)
             Random number seed.
-            If None, default seeds in C++ code will be used.
+            If int, this number is used to seed the C++ code.
+            If RandomState object (numpy), a random integer is picked based on its state to seed the C++ code.
+            If None, default seeds in C++ code are used.
         n_jobs : int, optional (default=-1)
             Number of parallel threads.
         silent : bool, optional (default=True)
@@ -243,34 +255,10 @@ class GPBoostModel(_GPBoostModelBase):
             If 'gain', result contains total gains of splits which use the feature.
         **kwargs
             Other parameters for the model.
-            Check http://GPBoost.readthedocs.io/en/latest/Parameters.html for more parameters.
 
             .. warning::
 
                 \*\*kwargs is not supported in sklearn, it may cause unexpected issues.
-
-        Attributes
-        ----------
-        n_features_ : int
-            The number of features of fitted model.
-        classes_ : array of shape = [n_classes]
-            The class label array (only for classification problem).
-        n_classes_ : int
-            The number of classes (only for classification problem).
-        best_score_ : dict or None
-            The best score of fitted model.
-        best_iteration_ : int or None
-            The best iteration of fitted model if ``early_stopping_rounds`` has been specified.
-        objective_ : string or callable
-            The concrete objective used while fitting this model.
-        booster_ : Booster
-            The underlying Booster of this model.
-        evals_result_ : dict or None
-            The evaluation results if ``early_stopping_rounds`` has been specified.
-        feature_importances_ : array of shape = [n_features]
-            The feature importances (the higher, the more important the feature).
-        feature_name_ : array of shape = [n_features]
-            The names of features.
 
         Note
         ----
@@ -284,24 +272,23 @@ class GPBoostModel(_GPBoostModelBase):
             y_pred : array-like of shape = [n_samples] or shape = [n_samples * n_classes] (for multi-class task)
                 The predicted values.
             group : array-like
-                Group/query data, used for ranking task.
+                Group/query data.
+                Only used in the learning-to-rank task.
+                sum(group) = n_samples.
+                For example, if you have a 100-document dataset with ``group = [10, 20, 40, 10, 10, 10]``, that means that you have 6 groups,
+                where the first 10 records are in the first group, records 11-30 are in the second group, records 31-70 are in the third group, etc.
             grad : array-like of shape = [n_samples] or shape = [n_samples * n_classes] (for multi-class task)
                 The value of the first order derivative (gradient) for each sample point.
             hess : array-like of shape = [n_samples] or shape = [n_samples * n_classes] (for multi-class task)
                 The value of the second order derivative (Hessian) for each sample point.
 
+        For binary task, the y_pred is margin.
         For multi-class task, the y_pred is group by class_id first, then group by row_id.
         If you want to get i-th row y_pred in j-th class, the access way is y_pred[j * num_data + i]
         and you should group grad and hess in this way as well.
         """
-
-        warnings.warn("The scikit-learn API does currently not support the use of a gp_model")
-
         if not SKLEARN_INSTALLED:
-            raise GPBoostError('Scikit-learn is required for this module')
-        elif SKLEARN_VERSION > '0.21.3':
-            raise RuntimeError("The last supported version of scikit-learn is 0.21.3.\n"
-                               "Found version: {0}.".format(SKLEARN_VERSION))
+            raise GPBoostError('scikit-learn is required for gpboost.sklearn')
 
         self.boosting_type = boosting_type
         self.objective = objective
@@ -332,13 +319,22 @@ class GPBoostModel(_GPBoostModelBase):
         self._class_weight = None
         self._class_map = None
         self._n_features = None
+        self._n_features_in = None
         self._classes = None
         self._n_classes = None
         self.set_params(**kwargs)
 
     def _more_tags(self):
-        return {'allow_nan': True,
-                'X_types': ['2darray', 'sparse', '1dlabels']}
+        return {
+            'allow_nan': True,
+            'X_types': ['2darray', 'sparse', '1dlabels'],
+            '_xfail_checks': {
+                'check_no_attributes_set_in_init':
+                'scikit-learn incorrectly asserts that private attributes '
+                'cannot be set in __init__: '
+                '(see https://github.com/microsoft/LightGBM/issues/2628)'
+            }
+        }
 
     def get_params(self, deep=True):
         """Get parameters for this estimator.
@@ -354,7 +350,7 @@ class GPBoostModel(_GPBoostModelBase):
         params : dict
             Parameter names mapped to their values.
         """
-        params = super(GPBoostModel, self).get_params(deep=deep)
+        params = super().get_params(deep=deep)
         params.update(self._other_params)
         return params
 
@@ -398,7 +394,11 @@ class GPBoostModel(_GPBoostModelBase):
         init_score : array-like of shape = [n_samples] or None, optional (default=None)
             Init score of training data.
         group : array-like or None, optional (default=None)
-            Group data of training data.
+            Group/query data.
+            Only used in the learning-to-rank task.
+            sum(group) = n_samples.
+            For example, if you have a 100-document dataset with ``group = [10, 20, 40, 10, 10, 10]``, that means that you have 6 groups,
+            where the first 10 records are in the first group, records 11-30 are in the second group, records 31-70 are in the third group, etc.
         eval_set : list or None, optional (default=None)
             A list of (X, y) tuple pairs to use as validation sets.
         eval_names : list of strings or None, optional (default=None)
@@ -411,9 +411,10 @@ class GPBoostModel(_GPBoostModelBase):
             Init score of eval data.
         eval_group : list of arrays or None, optional (default=None)
             Group data of eval data.
-        eval_metric : string, list of strings, callable or None, optional (default=None)
+        eval_metric : string, callable, list or None, optional (default=None)
             If string, it should be a built-in evaluation metric to use.
             If callable, it should be a custom evaluation metric, see note below for more details.
+            If list, it can be a list of built-in metrics, a list of custom evaluation metrics, or a mix of both.
             In either case, the ``metric`` from the model parameters will be evaluated and used as well.
             Default: 'l2' for GPBoostRegressor, 'logloss' for GPBoostClassifier, 'ndcg' for GPBoostRanker.
         early_stopping_rounds : int or None, optional (default=None)
@@ -473,7 +474,11 @@ class GPBoostModel(_GPBoostModelBase):
             weight : array-like of shape = [n_samples]
                 The weight of samples.
             group : array-like
-                Group/query data, used for ranking task.
+                Group/query data.
+                Only used in the learning-to-rank task.
+                sum(group) = n_samples.
+                For example, if you have a 100-document dataset with ``group = [10, 20, 40, 10, 10, 10]``, that means that you have 6 groups,
+                where the first 10 records are in the first group, records 11-30 are in the second group, records 31-70 are in the third group, etc.
             eval_name : string
                 The name of evaluation function (without whitespaces).
             eval_result : float
@@ -481,6 +486,7 @@ class GPBoostModel(_GPBoostModelBase):
             is_higher_better : bool
                 Is eval result higher better, e.g. AUC is ``is_higher_better``.
 
+        For binary task, the y_pred is probability of positive class (or margin in case of custom ``objective``).
         For multi-class task, the y_pred is group by class_id first, then group by row_id.
         If you want to get i-th row y_pred in j-th class, the access way is y_pred[j * num_data + i].
         """
@@ -506,6 +512,8 @@ class GPBoostModel(_GPBoostModelBase):
         params.pop('importance_type', None)
         params.pop('n_estimators', None)
         params.pop('class_weight', None)
+        if isinstance(params['random_state'], np.random.RandomState):
+            params['random_state'] = params['random_state'].randint(np.iinfo(np.int32).max)
         for alias in _ConfigAliases.get('objective'):
             params.pop(alias, None)
         if self._n_classes is not None and self._n_classes > 2:
@@ -520,33 +528,39 @@ class GPBoostModel(_GPBoostModelBase):
         if self._fobj:
             params['objective'] = 'None'  # objective = nullptr for unknown objective
 
-        if callable(eval_metric):
-            feval = _EvalFunctionWrapper(eval_metric)
-        else:
-            feval = None
-            # register default metric for consistency with callable eval_metric case
-            original_metric = self._objective if isinstance(self._objective, string_type) else None
-            if original_metric is None:
-                # try to deduce from class instance
-                if isinstance(self, GPBoostRegressor):
-                    original_metric = "l2"
-                elif isinstance(self, GPBoostClassifier):
-                    original_metric = "multi_logloss" if self._n_classes > 2 else "binary_logloss"
-                elif isinstance(self, GPBoostRanker):
-                    original_metric = "ndcg"
-            # overwrite default metric by explicitly set metric
-            for metric_alias in _ConfigAliases.get("metric"):
-                if metric_alias in params:
-                    original_metric = params.pop(metric_alias)
-            # concatenate metric from params (or default if not provided in params) and eval_metric
-            original_metric = [original_metric] if isinstance(original_metric, (string_type, type(None))) else original_metric
-            eval_metric = [eval_metric] if isinstance(eval_metric, (string_type, type(None))) else eval_metric
-            params['metric'] = [e for e in eval_metric if e not in original_metric] + original_metric
-            params['metric'] = [metric for metric in params['metric'] if metric is not None]
+        # Do not modify original args in fit function
+        # Refer to https://github.com/microsoft/LightGBM/pull/2619
+        eval_metric_list = copy.deepcopy(eval_metric)
+        if not isinstance(eval_metric_list, list):
+            eval_metric_list = [eval_metric_list]
 
-        if not isinstance(X, (DataFrame, DataTable)):
+        # Separate built-in from callable evaluation metrics
+        eval_metrics_callable = [_EvalFunctionWrapper(f) for f in eval_metric_list if callable(f)]
+        eval_metrics_builtin = [m for m in eval_metric_list if isinstance(m, str)]
+
+        # register default metric for consistency with callable eval_metric case
+        original_metric = self._objective if isinstance(self._objective, str) else None
+        if original_metric is None:
+            # try to deduce from class instance
+            if isinstance(self, GPBoostRegressor):
+                original_metric = "l2"
+            elif isinstance(self, GPBoostClassifier):
+                original_metric = "multi_logloss" if self._n_classes > 2 else "binary_logloss"
+            elif isinstance(self, GPBoostRanker):
+                original_metric = "ndcg"
+
+        # overwrite default metric by explicitly set metric
+        params = _choose_param_value("metric", params, original_metric)
+
+        # concatenate metric from params (or default if not provided in params) and eval_metric
+        params['metric'] = [params['metric']] if isinstance(params['metric'], (str, type(None))) else params['metric']
+        params['metric'] = [e for e in eval_metrics_builtin if e not in params['metric']] + params['metric']
+        params['metric'] = [metric for metric in params['metric'] if metric is not None]
+
+        if not isinstance(X, (pd_DataFrame, dt_DataTable)):
             _X, _y = _GPBoostCheckXY(X, y, accept_sparse=True, force_all_finite=False, ensure_min_samples=2)
-            _GPBoostCheckConsistentLength(_X, _y, sample_weight)
+            if sample_weight is not None:
+                sample_weight = _GPBoostCheckSampleWeight(sample_weight, _X)
         else:
             _X, _y = X, y
 
@@ -560,6 +574,8 @@ class GPBoostModel(_GPBoostModelBase):
                 sample_weight = np.multiply(sample_weight, class_sample_weight)
 
         self._n_features = _X.shape[1]
+        # copy for consistency
+        self._n_features_in = self._n_features
 
         def _construct_dataset(X, y, sample_weight, init_score, group, params,
                                categorical_feature='auto'):
@@ -612,24 +628,26 @@ class GPBoostModel(_GPBoostModelBase):
         self._Booster = train(params, train_set,
                               self.n_estimators, valid_sets=valid_sets, valid_names=eval_names,
                               early_stopping_rounds=early_stopping_rounds,
-                              evals_result=evals_result, fobj=self._fobj, feval=feval,
+                              evals_result=evals_result, fobj=self._fobj, feval=eval_metrics_callable,
                               verbose_eval=verbose, feature_name=feature_name,
                               callbacks=callbacks, init_model=init_model)
 
         if evals_result:
             self._evals_result = evals_result
 
-        if early_stopping_rounds is not None:
+        if early_stopping_rounds is not None and early_stopping_rounds > 0:
             self._best_iteration = self._Booster.best_iteration
 
         self._best_score = self._Booster.best_score
+
+        self.fitted_ = True
 
         # free dataset
         self._Booster.free_dataset()
         del train_set, valid_sets
         return self
 
-    def predict(self, X, raw_score=False, num_iteration=None,
+    def predict(self, X, raw_score=False, start_iteration=0, num_iteration=None,
                 pred_leaf=False, pred_contrib=False, **kwargs):
         """Return the predicted value for each sample.
 
@@ -639,10 +657,14 @@ class GPBoostModel(_GPBoostModelBase):
             Input features matrix.
         raw_score : bool, optional (default=False)
             Whether to predict raw scores.
+        start_iteration : int, optional (default=0)
+            Start index of the iteration to predict.
+            If <= 0, starts from the first iteration.
         num_iteration : int or None, optional (default=None)
-            Limit number of iterations in the prediction.
-            If None, if the best iteration exists, it is used; otherwise, all trees are used.
-            If <= 0, all trees are used (no limits).
+            Total number of iterations used in the prediction.
+            If None, if the best iteration exists and start_iteration <= 0, the best iteration is used;
+            otherwise, all iterations from ``start_iteration`` are used (no limits).
+            If <= 0, all iterations from ``start_iteration`` are used (no limits).
         pred_leaf : bool, optional (default=False)
             Whether to predict leaf index.
         pred_contrib : bool, optional (default=False)
@@ -665,12 +687,12 @@ class GPBoostModel(_GPBoostModelBase):
             The predicted values.
         X_leaves : array-like of shape = [n_samples, n_trees] or shape = [n_samples, n_trees * n_classes]
             If ``pred_leaf=True``, the predicted leaf of every tree for each sample.
-        X_SHAP_values : array-like of shape = [n_samples, n_features + 1] or shape = [n_samples, (n_features + 1) * n_classes]
+        X_SHAP_values : array-like of shape = [n_samples, n_features + 1] or shape = [n_samples, (n_features + 1) * n_classes] or list with n_classes length of such objects
             If ``pred_contrib=True``, the feature contributions for each sample.
         """
         if self._n_features is None:
             raise GPBoostNotFittedError("Estimator not fitted, call `fit` before exploiting the model.")
-        if not isinstance(X, (DataFrame, DataTable)):
+        if not isinstance(X, (pd_DataFrame, dt_DataTable)):
             X = _GPBoostCheckArray(X, accept_sparse=True, force_all_finite=False)
         n_features = X.shape[1]
         if self._n_features != n_features:
@@ -678,54 +700,61 @@ class GPBoostModel(_GPBoostModelBase):
                              "match the input. Model n_features_ is %s and "
                              "input n_features is %s "
                              % (self._n_features, n_features))
-        return self._Booster.predict(X, raw_score=raw_score, num_iteration=num_iteration,
+        return self._Booster.predict(X, raw_score=raw_score, start_iteration=start_iteration, num_iteration=num_iteration,
                                      pred_leaf=pred_leaf, pred_contrib=pred_contrib, **kwargs)
 
     @property
     def n_features_(self):
-        """Get the number of features of fitted model."""
+        """:obj:`int`: The number of features of fitted model."""
         if self._n_features is None:
             raise GPBoostNotFittedError('No n_features found. Need to call fit beforehand.')
         return self._n_features
 
     @property
+    def n_features_in_(self):
+        """:obj:`int`: The number of features of fitted model."""
+        if self._n_features_in is None:
+            raise GPBoostNotFittedError('No n_features_in found. Need to call fit beforehand.')
+        return self._n_features_in
+
+    @property
     def best_score_(self):
-        """Get the best score of fitted model."""
+        """:obj:`dict` or :obj:`None`: The best score of fitted model."""
         if self._n_features is None:
             raise GPBoostNotFittedError('No best_score found. Need to call fit beforehand.')
         return self._best_score
 
     @property
     def best_iteration_(self):
-        """Get the best iteration of fitted model."""
+        """:obj:`int` or :obj:`None`: The best iteration of fitted model if ``early_stopping_rounds`` has been specified."""
         if self._n_features is None:
             raise GPBoostNotFittedError('No best_iteration found. Need to call fit with early_stopping_rounds beforehand.')
         return self._best_iteration
 
     @property
     def objective_(self):
-        """Get the concrete objective used while fitting this model."""
+        """:obj:`string` or :obj:`callable`: The concrete objective used while fitting this model."""
         if self._n_features is None:
             raise GPBoostNotFittedError('No objective found. Need to call fit beforehand.')
         return self._objective
 
     @property
     def booster_(self):
-        """Get the underlying GPBoost Booster of this model."""
+        """Booster: The underlying Booster of this model."""
         if self._Booster is None:
             raise GPBoostNotFittedError('No booster found. Need to call fit beforehand.')
         return self._Booster
 
     @property
     def evals_result_(self):
-        """Get the evaluation results."""
+        """:obj:`dict` or :obj:`None`: The evaluation results if ``early_stopping_rounds`` has been specified."""
         if self._n_features is None:
             raise GPBoostNotFittedError('No results found. Need to call fit with eval_set beforehand.')
         return self._evals_result
 
     @property
     def feature_importances_(self):
-        """Get feature importances.
+        """:obj:`array` of shape = [n_features]: The feature importances (the higher, the more important).
 
         .. note::
 
@@ -738,7 +767,7 @@ class GPBoostModel(_GPBoostModelBase):
 
     @property
     def feature_name_(self):
-        """Get feature name."""
+        """:obj:`array` of shape = [n_features]: The names of features."""
         if self._n_features is None:
             raise GPBoostNotFittedError('No feature_name found. Need to call fit beforehand.')
         return self._Booster.feature_name()
@@ -754,21 +783,20 @@ class GPBoostRegressor(GPBoostModel, _GPBoostRegressorBase):
             verbose=True, feature_name='auto', categorical_feature='auto',
             callbacks=None, init_model=None):
         """Docstring is inherited from the GPBoostModel."""
-        super(GPBoostRegressor, self).fit(X, y, sample_weight=sample_weight,
-                                       init_score=init_score, eval_set=eval_set,
-                                       eval_names=eval_names,
-                                       eval_sample_weight=eval_sample_weight,
-                                       eval_init_score=eval_init_score,
-                                       eval_metric=eval_metric,
-                                       early_stopping_rounds=early_stopping_rounds,
-                                       verbose=verbose, feature_name=feature_name,
-                                       categorical_feature=categorical_feature,
-                                       callbacks=callbacks, init_model=init_model)
+        super().fit(X, y, sample_weight=sample_weight, init_score=init_score,
+                    eval_set=eval_set, eval_names=eval_names, eval_sample_weight=eval_sample_weight,
+                    eval_init_score=eval_init_score, eval_metric=eval_metric,
+                    early_stopping_rounds=early_stopping_rounds, verbose=verbose, feature_name=feature_name,
+                    categorical_feature=categorical_feature, callbacks=callbacks, init_model=init_model)
         return self
 
     _base_doc = GPBoostModel.fit.__doc__
-    fit.__doc__ = (_base_doc[:_base_doc.find('eval_class_weight :')]
-                   + _base_doc[_base_doc.find('eval_init_score :'):])
+    _base_doc = (_base_doc[:_base_doc.find('group :')]
+                 + _base_doc[_base_doc.find('eval_set :'):])
+    _base_doc = (_base_doc[:_base_doc.find('eval_class_weight :')]
+                 + _base_doc[_base_doc.find('eval_init_score :'):])
+    fit.__doc__ = (_base_doc[:_base_doc.find('eval_group :')]
+                   + _base_doc[_base_doc.find('eval_metric :'):])
 
 
 class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
@@ -786,26 +814,34 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
         _GPBoostCheckClassificationTargets(y)
         self._le = _GPBoostLabelEncoder().fit(y)
         _y = self._le.transform(y)
-        self._class_map = dict(zip_(self._le.classes_, self._le.transform(self._le.classes_)))
+        self._class_map = dict(zip(self._le.classes_, self._le.transform(self._le.classes_)))
         if isinstance(self.class_weight, dict):
             self._class_weight = {self._class_map[k]: v for k, v in self.class_weight.items()}
 
         self._classes = self._le.classes_
         self._n_classes = len(self._classes)
+
         if self._n_classes > 2:
-            # Switch to using a multiclass objective in the underlying LGBM instance
+            # Switch to using a multiclass objective in the underlying GPBoost instance
             ova_aliases = {"multiclassova", "multiclass_ova", "ova", "ovr"}
             if self._objective not in ova_aliases and not callable(self._objective):
                 self._objective = "multiclass"
-            if eval_metric in {'logloss', 'binary_logloss'}:
-                eval_metric = "multi_logloss"
-            elif eval_metric in {'error', 'binary_error'}:
-                eval_metric = "multi_error"
-        else:
-            if eval_metric in {'logloss', 'multi_logloss'}:
-                eval_metric = 'binary_logloss'
-            elif eval_metric in {'error', 'multi_error'}:
-                eval_metric = 'binary_error'
+
+        if not callable(eval_metric):
+            if isinstance(eval_metric, (str, type(None))):
+                eval_metric = [eval_metric]
+            if self._n_classes > 2:
+                for index, metric in enumerate(eval_metric):
+                    if metric in {'logloss', 'binary_logloss'}:
+                        eval_metric[index] = "multi_logloss"
+                    elif metric in {'error', 'binary_error'}:
+                        eval_metric[index] = "multi_error"
+            else:
+                for index, metric in enumerate(eval_metric):
+                    if metric in {'logloss', 'multi_logloss'}:
+                        eval_metric[index] = 'binary_logloss'
+                    elif metric in {'error', 'multi_error'}:
+                        eval_metric[index] = 'binary_error'
 
         # do not modify args, as it causes errors in model selection tools
         valid_sets = None
@@ -819,25 +855,24 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
                 else:
                     valid_sets[i] = (valid_x, self._le.transform(valid_y))
 
-        super(GPBoostClassifier, self).fit(X, _y, sample_weight=sample_weight,
-                                        init_score=init_score, eval_set=valid_sets,
-                                        eval_names=eval_names,
-                                        eval_sample_weight=eval_sample_weight,
-                                        eval_class_weight=eval_class_weight,
-                                        eval_init_score=eval_init_score,
-                                        eval_metric=eval_metric,
-                                        early_stopping_rounds=early_stopping_rounds,
-                                        verbose=verbose, feature_name=feature_name,
-                                        categorical_feature=categorical_feature,
-                                        callbacks=callbacks, init_model=init_model)
+        super().fit(X, _y, sample_weight=sample_weight, init_score=init_score, eval_set=valid_sets,
+                    eval_names=eval_names, eval_sample_weight=eval_sample_weight,
+                    eval_class_weight=eval_class_weight, eval_init_score=eval_init_score,
+                    eval_metric=eval_metric, early_stopping_rounds=early_stopping_rounds,
+                    verbose=verbose, feature_name=feature_name, categorical_feature=categorical_feature,
+                    callbacks=callbacks, init_model=init_model)
         return self
 
-    fit.__doc__ = GPBoostModel.fit.__doc__
+    _base_doc = GPBoostModel.fit.__doc__
+    _base_doc = (_base_doc[:_base_doc.find('group :')]
+                 + _base_doc[_base_doc.find('eval_set :'):])
+    fit.__doc__ = (_base_doc[:_base_doc.find('eval_group :')]
+                   + _base_doc[_base_doc.find('eval_metric :'):])
 
-    def predict(self, X, raw_score=False, num_iteration=None,
+    def predict(self, X, raw_score=False, start_iteration=0, num_iteration=None,
                 pred_leaf=False, pred_contrib=False, **kwargs):
         """Docstring is inherited from the GPBoostModel."""
-        result = self.predict_proba(X, raw_score, num_iteration,
+        result = self.predict_proba(X, raw_score, start_iteration, num_iteration,
                                     pred_leaf, pred_contrib, **kwargs)
         if callable(self._objective) or raw_score or pred_leaf or pred_contrib:
             return result
@@ -847,7 +882,7 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
 
     predict.__doc__ = GPBoostModel.predict.__doc__
 
-    def predict_proba(self, X, raw_score=False, num_iteration=None,
+    def predict_proba(self, X, raw_score=False, start_iteration=0, num_iteration=None,
                       pred_leaf=False, pred_contrib=False, **kwargs):
         """Return the predicted probability for each class for each sample.
 
@@ -857,10 +892,14 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
             Input features matrix.
         raw_score : bool, optional (default=False)
             Whether to predict raw scores.
+        start_iteration : int, optional (default=0)
+            Start index of the iteration to predict.
+            If <= 0, starts from the first iteration.
         num_iteration : int or None, optional (default=None)
-            Limit number of iterations in the prediction.
-            If None, if the best iteration exists, it is used; otherwise, all trees are used.
-            If <= 0, all trees are used (no limits).
+            Total number of iterations used in the prediction.
+            If None, if the best iteration exists and start_iteration <= 0, the best iteration is used;
+            otherwise, all iterations from ``start_iteration`` are used (no limits).
+            If <= 0, all iterations from ``start_iteration`` are used (no limits).
         pred_leaf : bool, optional (default=False)
             Whether to predict leaf index.
         pred_contrib : bool, optional (default=False)
@@ -883,15 +922,14 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
             The predicted probability for each class for each sample.
         X_leaves : array-like of shape = [n_samples, n_trees * n_classes]
             If ``pred_leaf=True``, the predicted leaf of every tree for each sample.
-        X_SHAP_values : array-like of shape = [n_samples, (n_features + 1) * n_classes]
+        X_SHAP_values : array-like of shape = [n_samples, (n_features + 1) * n_classes] or list with n_classes length of such objects
             If ``pred_contrib=True``, the feature contributions for each sample.
         """
-        result = super(GPBoostClassifier, self).predict(X, raw_score, num_iteration,
-                                                     pred_leaf, pred_contrib, **kwargs)
+        result = super().predict(X, raw_score, start_iteration, num_iteration, pred_leaf, pred_contrib, **kwargs)
         if callable(self._objective) and not (raw_score or pred_leaf or pred_contrib):
-            warnings.warn("Cannot compute class probabilities or labels "
-                          "due to the usage of customized objective function.\n"
-                          "Returning raw scores instead.")
+            _log_warning("Cannot compute class probabilities or labels "
+                         "due to the usage of customized objective function.\n"
+                         "Returning raw scores instead.")
             return result
         elif self._n_classes > 2 or raw_score or pred_leaf or pred_contrib:
             return result
@@ -900,14 +938,14 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
 
     @property
     def classes_(self):
-        """Get the class label array."""
+        """:obj:`array` of shape = [n_classes]: The class label array."""
         if self._classes is None:
             raise GPBoostNotFittedError('No classes found. Need to call fit beforehand.')
         return self._classes
 
     @property
     def n_classes_(self):
-        """Get the number of classes."""
+        """:obj:`int`: The number of classes."""
         if self._n_classes is None:
             raise GPBoostNotFittedError('No classes found. Need to call fit beforehand.')
         return self._n_classes
@@ -920,7 +958,7 @@ class GPBoostRanker(GPBoostModel):
             sample_weight=None, init_score=None, group=None,
             eval_set=None, eval_names=None, eval_sample_weight=None,
             eval_init_score=None, eval_group=None, eval_metric=None,
-            eval_at=[1, 2, 3, 4, 5], early_stopping_rounds=None, verbose=True,
+            eval_at=(1, 2, 3, 4, 5), early_stopping_rounds=None, verbose=True,
             feature_name='auto', categorical_feature='auto',
             callbacks=None, init_model=None):
         """Docstring is inherited from the GPBoostModel."""
@@ -934,23 +972,18 @@ class GPBoostRanker(GPBoostModel):
             elif len(eval_group) != len(eval_set):
                 raise ValueError("Length of eval_group should be equal to eval_set")
             elif (isinstance(eval_group, dict)
-                  and any(i not in eval_group or eval_group[i] is None for i in range_(len(eval_group)))
+                  and any(i not in eval_group or eval_group[i] is None for i in range(len(eval_group)))
                   or isinstance(eval_group, list)
                   and any(group is None for group in eval_group)):
                 raise ValueError("Should set group for all eval datasets for ranking task; "
                                  "if you use dict, the index should start from 0")
 
         self._eval_at = eval_at
-        super(GPBoostRanker, self).fit(X, y, sample_weight=sample_weight,
-                                    init_score=init_score, group=group,
-                                    eval_set=eval_set, eval_names=eval_names,
-                                    eval_sample_weight=eval_sample_weight,
-                                    eval_init_score=eval_init_score, eval_group=eval_group,
-                                    eval_metric=eval_metric,
-                                    early_stopping_rounds=early_stopping_rounds,
-                                    verbose=verbose, feature_name=feature_name,
-                                    categorical_feature=categorical_feature,
-                                    callbacks=callbacks, init_model=init_model)
+        super().fit(X, y, sample_weight=sample_weight, init_score=init_score, group=group,
+                    eval_set=eval_set, eval_names=eval_names, eval_sample_weight=eval_sample_weight,
+                    eval_init_score=eval_init_score, eval_group=eval_group, eval_metric=eval_metric,
+                    early_stopping_rounds=early_stopping_rounds, verbose=verbose, feature_name=feature_name,
+                    categorical_feature=categorical_feature, callbacks=callbacks, init_model=init_model)
         return self
 
     _base_doc = GPBoostModel.fit.__doc__
@@ -959,6 +992,6 @@ class GPBoostRanker(GPBoostModel):
     _base_doc = fit.__doc__
     _before_early_stop, _early_stop, _after_early_stop = _base_doc.partition('early_stopping_rounds :')
     fit.__doc__ = (_before_early_stop
-                   + 'eval_at : list of int, optional (default=[1, 2, 3, 4, 5])\n'
+                   + 'eval_at : iterable of int, optional (default=(1, 2, 3, 4, 5))\n'
                    + ' ' * 12 + 'The evaluation positions of the specified metric.\n'
                    + ' ' * 8 + _early_stop + _after_early_stop)

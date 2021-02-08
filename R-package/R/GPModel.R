@@ -1,3 +1,81 @@
+#' @name GPModel_shared_params
+#' @title Shared parameter docs
+#' @description Parameter docs shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}
+#' @param likelihood A \code{string} specifying the likelihood function (distribution) of the response variable
+#' Default = "gaussian"
+#' @param group_data A \code{vector} or \code{matrix} with labels of group levels for grouped random effects
+#' @param group_rand_coef_data A \code{vector} or \code{matrix} with covariate data for grouped random coefficients
+#' @param ind_effect_group_rand_coef A \code{vector} with indices that relate every random coefficients 
+#' to a "base" intercept grouped random effect. Counting starts at 1.
+#' @param gp_coords A \code{matrix} with coordinates (features) for Gaussian process
+#' @param gp_rand_coef_data A \code{vector} or \code{matrix} with covariate data for Gaussian process random coefficients
+#' @param cov_function A \code{string} specifying the covariance function for the Gaussian process. 
+#' The following covariance functions are available: "exponential", "gaussian", "matern", and "powered_exponential". 
+#' We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance 
+#' where we follow Rassmusen and Williams (2006)
+#' @param cov_fct_shape A \code{numeric} specifying the shape parameter of a covariance function 
+#' (=smoothness parameter for Matern covariance, irrelevant for some covariance functions 
+#' such as the exponential or Gaussian)
+#' @param vecchia_approx A \code{boolean}. If true, the Vecchia approximation is used 
+#' @param num_neighbors An \code{integer} specifying the number of neighbors for the Vecchia approximation
+#' @param vecchia_ordering A \code{string} specifying the ordering used in the Vecchia approximation. 
+#' "none" means the default ordering is used, "random" uses a random ordering
+#' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions. 
+#' "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed points, 
+#' "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected among all points 
+#' (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, 
+#' "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent process and observed data is 
+#' ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all" = Vecchia approximation 
+#' for the latent process and observed data is ordered first and neighbors are selected among all points
+#' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for the Vecchia approximation 
+#' for making predictions
+#' @param cluster_ids A \code{vector} with IDs / labels indicating independent realizations of 
+#' random effects / Gaussian processes (same values = same process realization)
+#' @param free_raw_data If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
+#' is freed in R after initialization
+#' @param y A \code{vector} with response variable data
+#' @param X A \code{matrix} with covariate data for fixed effects ( = linear regression term)
+#' @param params A \code{list} with parameters for the model fitting / optimization
+#'             \itemize{
+#'                \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
+#'                Options: "gradient_descent" or "fisher_scoring". Default="fisher_scoring" for Gaussian data
+#'                and "gradient_descent" for other likelihoods.}
+#'                \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
+#'                (for the GPBoost algorithm there are usually none). 
+#'                Options: "gradient_descent" or "wls". Gradient descent steps are done simultaneously 
+#'                with gradient descent steps for the covariance paramters. 
+#'                "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
+#'                Default="wls" for Gaussian data and "gradient_descent" for other likelihoods.}
+#'                \item{maxit}{ Maximal number of iterations for optimization algorithm. Default=1000.}
+#'                \item{delta_rel_conv}{ Convergence criterion: stop optimization if relative change 
+#'                in parameters is below this value. Default=1E-6.}
+#'                \item{init_coef}{ Initial values for the regression coefficients (if there are any, can be NULL).
+#'                Default=NULL.}
+#'                \item{init_cov_pars}{ Initial values for covariance parameters of Gaussian process and 
+#'                random effects (can be NULL). Default=NULL.}
+#'                \item{lr_coef}{ Learning rate for fixed effect regression coefficients if gradient descent is used.
+#'                Default=0.1.}
+#'                \item{lr_cov}{ Learning rate for covariance parameters. If <= 0, internal default values are used.
+#'                Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"}
+#'                \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used.
+#'                This is used only for gradient descent. Default=TRUE}
+#'                \item{acc_rate_coef}{ Acceleration rate for regression coefficients (if there are any) 
+#'                for Nesterov acceleration. Default=0.5.}
+#'                \item{acc_rate_cov}{ Acceleration rate for covariance parameters for Nesterov acceleration.
+#'                Default=0.5.}
+#'                \item{momentum_offset}{ Number of iterations for which no mometum is applied in the beginning.
+#'                Default=2.}
+#'                \item{trace}{ If TRUE, the value of the gradient is printed for some iterations.
+#'                Useful for finding good learning rates. Default=FALSE.}
+#'                \item{convergence_criterion}{ The convergence criterion used for terminating the optimization algorithm.
+#'                Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters".}
+#'                \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}
+#'            }
+#' @param fixed_effects A \code{vector} of optional external fixed effects which are held fixed during training. 
+
+NULL
+
+
 #' @importFrom R6 R6Class
 gpb.GPModel <- R6::R6Class(
   classname = "GPModel",
@@ -1616,36 +1694,22 @@ gpb.GPModel <- R6::R6Class(
 #' @return A \code{GPModel} containing ontains a Gaussian process and / or mixed effects model with grouped random effects
 #'
 #' @examples
-#' ## SEE THE HELP OF 'fitGPModel' FOR MORE EXAMPLES
+#' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
+#' 
 #' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
-#' n <- 100 # number of samples
-#' m <- 25 # number of categories / levels for grouping variable
-#' group <- rep(1,n) # grouping variable
-#' for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-#' # Create random effects model
-#' gp_model <- GPModel(group_data = group)
-#'
+#' gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 #' 
 #' #--------------------Gaussian process model----------------
-#' n <- 200 # number of samples
-#' set.seed(1)
-#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-#' # Create Gaussian process model
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
+#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+#'                     likelihood="gaussian")
 #'
-#' 
 #' #--------------------Combine Gaussian process with grouped random effects----------------
-#' n <- 200 # number of samples
-#' m <- 25 # number of categories / levels for grouping variable
-#' group <- rep(1,n) # grouping variable
-#' for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-#' set.seed(1)
-#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-#' # Create Gaussian process model
-#' gp_model <- GPModel(group_data = group,
-#'                     gp_coords = coords, cov_function = "exponential")
+#' gp_model <- GPModel(group_data = group_data,
+#'                     gp_coords = coords, cov_function = "exponential",
+#'                     likelihood="gaussian")
 #'
 #' @export
 GPModel <- function(group_data = NULL,
@@ -1703,116 +1767,36 @@ fit <- function(gp_model, y, X, params, fixed_effects = NULL) UseMethod("fit")
 #' @return A fitted \code{GPModel}
 #'
 #' @examples
-#' ## SEE ALSO THE HELP OF 'fitGPModel' FOR MORE EXAMPLES
+#' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
+#' 
+#' \donttest{
 #' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
 #' 
-#' \dontrun{
 #' #--------------------Grouped random effects model: single-level random effect----------------
-#' n <- 100 # number of samples
-#' m <- 25 # number of categories / levels for grouping variable
-#' group <- rep(1,n) # grouping variable
-#' for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-#' # Create random effects model
-#' gp_model <- GPModel(group_data = group)
-#'
-#' # Simulate data
-#' sigma2_1 <- 1^2 # random effect variance
-#' sigma2 <- 0.5^2 # error variance
-#'  # incidence matrix relating grouped random effects to samples
-#' Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
-#' set.seed(1)
-#' b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-#' eps <- Z1 %*% b1
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- eps + xi # observed data
-#' # Fit model
-#' fit(gp_model, y = y, params=list(std_dev = TRUE))
-#' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
-#' gp_model <- fitGPModel(group_data = group, y = y, params=list(std_dev = TRUE))
-#' summary(gp_model)
-#' 
-#' # Make predictions
-#' group_test <- 1:m
-#' pred <- predict(gp_model, group_data_pred = group_test)
-#' # Compare true and predicted random effects
-#' plot(b1, pred$mu, xlab="truth", ylab="predicted",
-#'      main="Comparison of true and predicted random effects")
-#' abline(a=0,b=1)
-#' # Also predict covariance matrix
-#' pred <- predict(gp_model, group_data_pred = c(1,1,2,2,-1,-1), predict_cov_mat = TRUE)
-#' pred$mu# Predicted mean
-#' pred$cov# Predicted covariance
-#'
-#' # Use other optimization technique: gradient descent instead of Fisher scoring
-#' gp_model <- fitGPModel(group_data = group, y = y,
-#'                        params = list(optimizer_cov = "gradient_descent",
-#'                                      lr_cov = 0.1, use_nesterov_acc = FALSE,
-#'                                      std_dev = TRUE))
-#' summary(gp_model)
-#'
-#' # Evaluate negative log-likelihood
-#' gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
-#' # Do optimization using optim and e.g. Nelder-Mead
-#' gp_model <- GPModel(group_data = group)
-#' optim(par=c(1,1), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
-#'  
-#'  
-#' #--------------------Gaussian process model----------------
-#' n <- 200 # number of samples
-#' set.seed(1)
-#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-#' # Create Gaussian process model
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-#' ## Other covariance functions:
-#' # gp_model <- GPModel(gp_coords = coords, cov_function = "gaussian")
-#' # gp_model <- GPModel(gp_coords = coords,
-#' #                     cov_function = "matern", cov_fct_shape=1.5)
-#' # gp_model <- GPModel(gp_coords = coords,
-#' #                     cov_function = "powered_exponential", cov_fct_shape=1.1)
-#' # Simulate data
-#' sigma2_1 <- 1^2 # marginal variance of GP
-#' rho <- 0.1 # range parameter
-#' sigma2 <- 0.5^2 # error variance
-#' D <- as.matrix(dist(coords))
-#' Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-#' C = t(chol(Sigma))
-#' b_1=rnorm(n) # simulate random effect
-#' eps <- C %*% b_1
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- eps + xi
-#' # Fit model
+#' gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 #' fit(gp_model, y = y, params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
-#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                         y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' 
 #' # Make predictions
-#' set.seed(1)
-#' ntest <- 5
-#' # prediction locations (=features) for Gaussian process
-#' coords_test <- cbind(runif(ntest),runif(ntest))/10
-#' pred <- predict(gp_model, gp_coords_pred = coords_test,
-#'                 predict_cov_mat = TRUE)
-#' print("Predicted (posterior/conditional) mean of GP")
-#' pred$mu
-#' print("Predicted (posterior/conditional) covariance matrix of GP")
-#' pred$cov
-#' 
-#' # Use other optimization technique: Nesterov accelerated gradient descent instead of Fisher scoring
-#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y,
-#'                        params = list(optimizer_cov = "gradient_descent",
-#'                                      lr_cov = 0.05, use_nesterov_acc = TRUE,
-#'                                      std_dev = TRUE))
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' pred$mu # Predicted mean
+#' pred$var # Predicted variances
+#' # Also predict covariance matrix
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat = TRUE)
+#' pred$mu # Predicted mean
+#' pred$cov # Predicted covariance
+#'  
+#' #--------------------Gaussian process model----------------
+#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+#'                     likelihood="gaussian")
+#' fit(gp_model, y = y, params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' 
-#' # Evaluate negative log-likelihood
-#' gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1,rho),y=y)
-#' # Do optimization using optim and e.g. Nelder-Mead
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-#' optim(par=c(1,1,0.2), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
+#' # Make predictions
+#' pred <- predict(gp_model, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
+#' # Predicted (posterior/conditional) mean of GP
+#' pred$mu
+#' # Predicted (posterior/conditional) covariance matrix of GP
+#' pred$cov
 #' }
 #' 
 #' @method fit GPModel 
@@ -1821,12 +1805,14 @@ fit <- function(gp_model, y, X, params, fixed_effects = NULL) UseMethod("fit")
 fit.GPModel <- function(gp_model,
                         y,
                         X = NULL,
-                        params = list()) {
+                        params = list(),
+                        fixed_effects = NULL) {
   
   # Fit model
   invisible(gp_model$fit(y = y,
                          X = X,
-                         params = params))
+                         params = params,
+                         fixed_effects = fixed_effects))
   
 }
 
@@ -1839,292 +1825,83 @@ fit.GPModel <- function(gp_model,
 #' @return A fitted \code{GPModel}
 #'
 #' @examples
+#' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
+#' 
+#' \donttest{
 #' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
 #' 
-#' \dontrun{
 #' #--------------------Grouped random effects model: single-level random effect----------------
-#' n <- 100 # number of samples
-#' m <- 25 # number of categories / levels for grouping variable
-#' group <- rep(1,n) # grouping variable
-#' for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-#' # Create random effects model
-#' gp_model <- GPModel(group_data = group)
-#' 
-#' # Simulate data
-#' sigma2_1 <- 1^2 # random effect variance
-#' sigma2 <- 0.5^2 # error variance
-#' # incidence matrix relating grouped random effects to samples
-#' Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
-#' set.seed(1)
-#' b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-#' eps <- Z1 %*% b1
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- eps + xi # observed data
-#' # Fit model
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
+#'                        params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
-#' gp_model <- fitGPModel(group_data = group, y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' 
 #' # Make predictions
-#' group_test <- 1:m
-#' pred <- predict(gp_model, group_data_pred = group_test)
-#' # Compare true and predicted random effects
-#' plot(b1, pred$mu, xlab="truth", ylab="predicted",
-#'      main="Comparison of true and predicted random effects")
-#' abline(a=0,b=1)
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' pred$mu # Predicted mean
+#' pred$var # Predicted variances
 #' # Also predict covariance matrix
-#' pred <- predict(gp_model, group_data_pred = c(1,1,2,2,-1,-1), predict_cov_mat = TRUE)
-#' pred$mu# Predicted mean
-#' pred$cov# Predicted covariance
-#' 
-#' # Use other optimization technique: gradient descent instead of Fisher scoring
-#' gp_model <- fitGPModel(group_data = group, y = y,
-#'                        params = list(optimizer_cov = "gradient_descent",
-#'                                      lr_cov = 0.1, use_nesterov_acc = FALSE,
-#'                                      std_dev = TRUE))
-#' summary(gp_model)
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat = TRUE)
+#' pred$mu # Predicted mean
+#' pred$cov # Predicted covariance
 #'
-#' # Evaluate negative log-likelihood
-#' gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
-#' # Do optimization using optim and e.g. Nelder-Mead
-#' gp_model <- GPModel(group_data = group)
-#' optim(par=c(1,1), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
-#' 
-#' 
+#'
 #' #--------------------Mixed effects model: random effects and linear fixed effects----------------
-#' # NOTE: run the above example first to create the random effects part
-#' set.seed(1)
-#' X <- cbind(rep(1,n),runif(n)) # desing matrix / covariate data for fixed effect
-#' beta <- c(3,3) # regression coefficents
-#' y <- eps + xi + X%*%beta # add fixed effect to observed data
-#' # Create random effects model
-#' gp_model <- GPModel(group_data = group)
-#' # Fit model
-#' fit(gp_model, y = y, X = X, params = list(std_dev = TRUE))
+#' X1 <- cbind(rep(1,length(y)),X) # Add intercept column
+#' gp_model <- fitGPModel(group_data = group_data[,1], likelihood="gaussian",
+#'                        y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
-#' gp_model <- fitGPModel(group_data = group,
-#'                        y = y, X = X, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' 
-#' 
+#'
+#'
 #' #--------------------Two crossed random effects and a random slope----------------
-#' # NOTE: run the above example first to create the first random effect
-#' set.seed(1)
-#' x <- runif(n) # covariate data for random slope
-#' n_obs_gr <- n/m # number of sampels per group
-#' group2 <- rep(1,n) # grouping variable for second random effect
-#' for(i in 1:m) group2[(1:n_obs_gr)+n_obs_gr*(i-1)] <- 1:n_obs_gr
-#' # Create random effects model
-#' gp_model <- GPModel(group_data = cbind(group,group2),
-#'                     group_rand_coef_data = x,
-#'                     ind_effect_group_rand_coef = 1)# the random slope is for the first random effect
-#' 
-#' # Simulate data
-#' sigma2_2 <- 0.5^2 # variance of second random effect
-#' sigma2_3 <- 0.75^2 # variance of random slope for first random effect
-#' Z2 <- model.matrix(rep(1,n)~factor(group2)-1) # incidence matrix for second random effect
-#' Z3 <- diag(x) %*% Z1 # incidence matrix for random slope for first random effect
-#' b2 <- sqrt(sigma2_2) * rnorm(n_obs_gr) # second random effect
-#' b3 <- sqrt(sigma2_3) * rnorm(m) # random slope for first random effect
-#' eps2 <- Z1%*%b1 + Z2%*%b2 + Z3%*%b3 # sum of all random effects
-#' y <- eps2 + xi # observed data
-#' # Fit model
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
+#' gp_model <- fitGPModel(group_data = group_data, likelihood="gaussian",
+#'                        group_rand_coef_data = X[,2],
+#'                        ind_effect_group_rand_coef = 1,
+#'                        y = y, params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
-#' gp_model <- fitGPModel(group_data = cbind(group,group2),
-#'                         group_rand_coef_data = x,
-#'                         ind_effect_group_rand_coef = 1,
-#'                         y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' 
-#' 
+#'
+#'
 #' #--------------------Gaussian process model----------------
-#' n <- 200 # number of samples
-#' set.seed(1)
-#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-#' # Create Gaussian process model
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-#' 
-#' # Simulate data
-#' sigma2_1 <- 1^2 # marginal variance of GP
-#' rho <- 0.1 # range parameter
-#' sigma2 <- 0.5^2 # error variance
-#' D <- as.matrix(dist(coords))
-#' Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-#' C = t(chol(Sigma))
-#' b_1=rnorm(n) # simulate random effect
-#' eps <- C %*% b_1
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- eps + xi
-#' 
-#' # Fit model
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                         y = y, params = list(std_dev = TRUE))
+#'                        likelihood="gaussian", y = y, params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' 
 #' # Make predictions
-#' set.seed(1)
-#' ntest <- 5
-#' # prediction locations (=features) for Gaussian process
-#' coords_test <- cbind(runif(ntest),runif(ntest))/10
-#' pred <- predict(gp_model, gp_coords_pred = coords_test,
-#'                 predict_cov_mat = TRUE)
-#' print("Predicted (posterior/conditional) mean of GP")
+#' pred <- predict(gp_model, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
+#' # Predicted (posterior/conditional) mean of GP
 #' pred$mu
-#' print("Predicted (posterior/conditional) covariance matrix of GP")
+#' # Predicted (posterior/conditional) covariance matrix of GP
 #' pred$cov
-#' 
-#' # Use other optimization technique: Nesterov accelerated gradient descent instead of Fisher scoring
-#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y,
-#'                        params = list(optimizer_cov = "gradient_descent",
-#'                                      lr_cov = 0.05, use_nesterov_acc = TRUE,
-#'                                      std_dev = TRUE))
-#' summary(gp_model)
-#' 
-#' # Evaluate negative log-likelihood
-#' gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1,rho),y=y)
-#' # Do optimization using optim and e.g. Nelder-Mead
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-#' optim(par=c(1,1,0.2), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
-#' 
-#' 
+#'
+#'
 #' #--------------------Gaussian process model with linear mean function----------------
-#' # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
-#' # NOTE: run the above example first to create the random effects part
-#' set.seed(1)
-#' X <- cbind(rep(1,n),runif(n)) # desing matrix / covariate data for fixed effect
-#' beta <- c(3,3) # regression coefficents
-#' y <- eps + xi + X%*%beta # add fixed effect to observed data
+#' X1 <- cbind(rep(1,length(y)),X) # Add intercept column
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                        y = y, X=X, params = list(std_dev = TRUE))
+#'                        likelihood="gaussian", y = y, X=X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' 
-#' 
+#'
+#'
 #' #--------------------Gaussian process model with Vecchia approximation----------------
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-#'                     vecchia_approx = TRUE, num_neighbors = 30)
-#' # Fit model
-#' fit(gp_model, y = y)
-#' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                         vecchia_approx = TRUE, num_neighbors = 30,
-#'                         y = y)
+#'                        vecchia_approx = TRUE, num_neighbors = 30,
+#'                        likelihood="gaussian", y = y)
 #' summary(gp_model)
-#' 
-#' 
+#'
+#'
 #' #--------------------Gaussian process model with random coefficents----------------
-#' n <- 500 # number of samples
-#' set.seed(1)
-#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-#' set.seed(1)
-#' X_SVC=cbind(runif(n),runif(n)) # covariate data for random coeffient
 #' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-#'                     gp_rand_coef_data = X_SVC)
-#' ## Other covariance functions:
-#' # gp_model <- GPModel(gp_coords = coords, cov_function = "gaussian")
-#' # gp_model <- GPModel(gp_coords = coords,
-#' #                     cov_function = "matern", cov_fct_shape=1.5)
-#' # gp_model <- GPModel(gp_coords = coords,
-#' #                     cov_function = "powered_exponential", cov_fct_shape=1.1)
-#' # Simulate data
-#' sigma2_1 <- 1^2 # marginal variance of GP (for simplicity, all GPs have the same parameters)
-#' rho <- 0.1 # range parameter
-#' sigma2 <- 0.5^2 # error variance
-#' D <- as.matrix(dist(coords))
-#' Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-#' C = t(chol(Sigma))
-#' b_1=rnorm(n) # simulate random effect
-#' b_2=rnorm(n)
-#' b_3=rnorm(n)
-#' eps <- C %*% b_1 + X_SVC[,1] * C %*% b_2 + X_SVC[,2] * C %*% b_3
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- eps + xi
-#' 
-#' # Fit model (takes a few seconds)
+#'                     gp_rand_coef_data = X[,2], likelihood = "gaussian")
 #' fit(gp_model, y = y, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' # Alternatively, define and fit model directly using fitGPModel
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                         gp_rand_coef_data = X_SVC,
-#'                         y = y, params = list(std_dev = TRUE))
+#'                        gp_rand_coef_data = X[,2], y=y,
+#'                        likelihood = "gaussian", params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' 
-#' 
-#' #--------------------GP model with two independent observations of the GP----------------
-#' n <- 200 # number of samples
-#' set.seed(1)
-#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-#' coords <- rbind(coords,coords) # locations for second observation of GP (same locations)
-#' # indices that indicate the GP sample to which an observations belong
-#' cluster_ids <- c(rep(1,n),rep(2,n)) 
-#' # Create Gaussian process model
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-#'                     cluster_ids = cluster_ids)
-#' # Simulate data
-#' sigma2_1 <- 1^2 # marginal variance of GP
-#' rho <- 0.1 # range parameter
-#' sigma2 <- 0.5^2 # error variance
-#' D <- as.matrix(dist(coords[1:n,]))
-#' Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-#' C = t(chol(Sigma))
-#' b_1=rnorm(2 * n) # simulate random effect
-#' eps <- c(C %*% b_1[1:n], C %*% b_1[1:n + n])
-#' xi <- sqrt(sigma2) * rnorm(2 * n) # simulate error term
-#' y <- eps + xi
 #'
-#' # Fit model
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
-#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                         cluster_ids = cluster_ids,
-#'                         y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' 
-#' 
+#'
 #' #--------------------Combine Gaussian process with grouped random effects----------------
-#' n <- 200 # number of samples
-#' m <- 25 # number of categories / levels for grouping variable
-#' group <- rep(1,n) # grouping variable
-#' for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-#' set.seed(1)
-#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-#' # Create Gaussian process model
-#' gp_model <- GPModel(group_data = group,
-#'                     gp_coords = coords, cov_function = "exponential")
-#' 
-#' # Simulate data
-#' sigma2_1 <- 1^2 # random effect variance
-#' sigma2_2 <- 1^2 # marginal variance of GP
-#' rho <- 0.1 # range parameter
-#' sigma2 <- 0.5^2 # error variance
-#' # incidence matrix relating grouped random effects to samples
-#' Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1) 
-#' set.seed(1)
-#' b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-#' D <- as.matrix(dist(coords))
-#' Sigma = sigma2_2*exp(-D/rho)+diag(1E-20,n)
-#' C = t(chol(Sigma))
-#' b_2=rnorm(n) # simulate random effect
-#' eps <- Z1 %*% b1 + C %*% b_2
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- eps + xi
-#'
-#' # Fit model
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
-#' gp_model <- fitGPModel(group_data = group,
-#'                         gp_coords = coords, cov_function = "exponential",
-#'                         y = y, params = list(std_dev = TRUE))
+#' gp_model <- fitGPModel(group_data = group_data,
+#'                        gp_coords = coords, cov_function = "exponential",
+#'                        likelihood = "gaussian", y = y, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' }
 #' 
@@ -2182,60 +1959,20 @@ fitGPModel <- function(group_data = NULL,
 #' @return Summary of a (fitted) \code{GPModel}
 #'
 #' @examples
-#' ## SEE ALSO THE HELP OF 'fitGPModel' FOR MORE EXAMPLES
-#' library(gpboost)
+#' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' \dontrun{
+#' \donttest{
+#' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
+#' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
-#' n <- 100 # number of samples
-#' m <- 25 # number of categories / levels for grouping variable
-#' group <- rep(1,n) # grouping variable
-#' for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-#' # Create random effects model
-#' gp_model <- GPModel(group_data = group)
-#'
-#' # Simulate data
-#' sigma2_1 <- 1^2 # random effect variance
-#' sigma2 <- 0.5^2 # error variance
-#' # incidence matrix relating grouped random effects to samples
-#' Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
-#' set.seed(1)
-#' b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-#' eps <- Z1 %*% b1
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- eps + xi # observed data
-#' # Fit model
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
+#'                        params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
-#' gp_model <- fitGPModel(group_data = group, y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#'
 #' 
 #' #--------------------Gaussian process model----------------
-#' n <- 200 # number of samples
-#' set.seed(1)
-#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-#' # Create Gaussian process model
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-#'
-#' # Simulate data
-#' sigma2_1 <- 1^2 # marginal variance of GP
-#' rho <- 0.1 # range parameter
-#' sigma2 <- 0.5^2 # error variance
-#' D <- as.matrix(dist(coords))
-#' Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-#' C = t(chol(Sigma))
-#' b_1=rnorm(n) # simulate random effect
-#' eps <- C %*% b_1
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- eps + xi
-#' # Fit model
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                         y = y, params = list(std_dev = TRUE))
+#'                        likelihood="gaussian", y = y, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' }
 #' 
@@ -2284,83 +2021,36 @@ summary.GPModel <- function(object, ...){
 #' (=NULL if 'predict_var=FALSE')
 #'
 #' @examples
+#' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
+#' 
+#' \donttest{
 #' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
-#' n <- 100 # number of samples
-#' m <- 25 # number of categories / levels for grouping variable
-#' group <- rep(1,n) # grouping variable
-#' for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-#' # Create random effects model
-#' gp_model <- GPModel(group_data = group)
-#' 
-#' # Simulate data
-#' sigma2_1 <- 1^2 # random effect variance
-#' sigma2 <- 0.5^2 # error variance
-#' # incidence matrix relating grouped random effects to samples
-#' Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
-#' set.seed(1)
-#' b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-#' eps <- Z1 %*% b1
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- eps + xi # observed data
-#' # Fit model
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
+#'                        params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
-#' gp_model <- fitGPModel(group_data = group, y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' 
 #' # Make predictions
-#' group_test <- 1:m
-#' pred <- predict(gp_model, group_data_pred = group_test)
-#' # Compare true and predicted random effects
-#' plot(b1, pred$mu, xlab="truth", ylab="predicted",
-#'      main="Comparison of true and predicted random effects")
-#' abline(a=0,b=1)
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' pred$mu # Predicted mean
+#' pred$var # Predicted variances
 #' # Also predict covariance matrix
-#' pred <- predict(gp_model, group_data_pred = c(1,1,2,2,-1,-1), predict_cov_mat = TRUE)
-#' pred$mu# Predicted mean
-#' pred$cov# Predicted covariance
-#' 
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat = TRUE)
+#' pred$mu # Predicted mean
+#' pred$cov # Predicted covariance
 #' 
 #' #--------------------Gaussian process model----------------
-#' n <- 200 # number of samples
-#' set.seed(1)
-#' coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-#' # Create Gaussian process model
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-#'
-#' # Simulate data
-#' sigma2_1 <- 1^2 # marginal variance of GP
-#' rho <- 0.1 # range parameter
-#' sigma2 <- 0.5^2 # error variance
-#' D <- as.matrix(dist(coords))
-#' Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-#' C = t(chol(Sigma))
-#' b_1=rnorm(n) # simulate random effect
-#' eps <- C %*% b_1
-#' xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-#' y <- eps + xi
-#' # Fit model
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                         y = y, params = list(std_dev = TRUE))
+#'                        likelihood="gaussian", y = y, params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' 
 #' # Make predictions
-#' set.seed(1)
-#' ntest <- 5
-#' # prediction locations (=features) for Gaussian process
-#' coords_test <- cbind(runif(ntest),runif(ntest))/10
-#' pred <- predict(gp_model, gp_coords_pred = coords_test,
-#'                 predict_cov_mat = TRUE)
-#' print("Predicted (posterior/conditional) mean of GP")
+#' pred <- predict(gp_model, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
+#' # Predicted (posterior/conditional) mean of GP
 #' pred$mu
-#' print("Predicted (posterior/conditional) covariance matrix of GP")
+#' # Predicted (posterior/conditional) covariance matrix of GP
 #' pred$cov
+#' }
 #' 
 #' @rdname predict.GPModel
 #' @export

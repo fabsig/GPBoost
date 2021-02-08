@@ -1,0 +1,6 @@
+[submodule "benchmark/dependencies/abseil-cpp"]
+	path = benchmarks/dependencies/abseil-cpp
+	url = https://github.com/abseil/abseil-cpp.git
+[submodule "benchmark/dependencies/double-conversion"]
+	path = benchmarks/dependencies/double-conversion
+	url = https://github.com/google/double-conversion.git

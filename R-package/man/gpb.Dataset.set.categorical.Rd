@@ -9,23 +9,25 @@ gpb.Dataset.set.categorical(dataset, categorical_feature)
 \arguments{
 \item{dataset}{object of class \code{gpb.Dataset}}
 
-\item{categorical_feature}{categorical features}
+\item{categorical_feature}{categorical features. This can either be a character vector of feature
+names or an integer vector with the indices of the features (e.g.
+\code{c(1L, 10L)} to say "the first and tenth columns").}
 }
 \value{
-passed dataset
+the dataset you passed in
 }
 \description{
-Set categorical feature of \code{gpb.Dataset}
+Set the categorical features of an \code{gpb.Dataset} object. Use this function
+             to tell GPBoost which features should be treated as categorical.
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
-gpb.Dataset.save(dtrain, "gpb.Dataset.data")
-dtrain <- gpb.Dataset("gpb.Dataset.data")
-gpb.Dataset.set.categorical(dtrain, 1:2)
+data_file <- tempfile(fileext = ".data")
+gpb.Dataset.save(dtrain, data_file)
+dtrain <- gpb.Dataset(data_file)
+gpb.Dataset.set.categorical(dtrain, 1L:2L)
 }
-
 }

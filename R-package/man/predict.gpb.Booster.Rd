@@ -4,20 +4,28 @@
 \alias{predict.gpb.Booster}
 \title{Predict method for GPBoost model}
 \usage{
-\method{predict}{gpb.Booster}(object, data, num_iteration = NULL,
-  rawscore = FALSE, predleaf = FALSE, predcontrib = FALSE,
-  header = FALSE, reshape = FALSE, ...)
+\method{predict}{gpb.Booster}(object, data, start_iteration = NULL,
+  num_iteration = NULL, rawscore = FALSE, predleaf = FALSE,
+  predcontrib = FALSE, header = FALSE, reshape = FALSE, ...)
 }
 \arguments{
 \item{object}{Object of class \code{gpb.Booster}}
 
 \item{data}{a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename}
 
-\item{num_iteration}{Number of iteration want to predict with, NULL or <= 0 means use best iteration}
+\item{start_iteration}{int or None, optional (default=None)
+Start index of the iteration to predict.
+If None or <= 0, starts from the first iteration.}
 
-\item{rawscore}{Indicates whether the prediction should be returned in the form of original untransformed
-sum of predictions from boosting iterations' results. E.g., setting \code{rawscore=TRUE} for
-logistic regression would result in predictions for log-odds instead of probabilities.}
+\item{num_iteration}{int or None, optional (default=None)
+Limit number of iterations in the prediction.
+If None, if the best iteration exists and start_iteration is None or <= 0, the
+best iteration is used; otherwise, all iterations from start_iteration are used.
+If <= 0, all iterations from start_iteration are used (no limits).}
+
+\item{rawscore}{whether the prediction should be returned in the for of original untransformed
+sum of predictions from boosting iterations' results. E.g., setting \code{rawscore=TRUE}
+for logistic regression would result in predictions for log-odds instead of probabilities.}
 
 \item{predleaf}{whether predict leaf index instead.}
 
@@ -29,102 +37,68 @@ logistic regression would result in predictions for log-odds instead of probabil
 prediction outputs per case.}
 
 \item{...}{Additional named arguments passed to the \code{predict()} method of
-the \code{gpb.Booster}. In particular, this includes prediction data for the GPModel (if there is one)
-Set predict_var or predict_vcov_mat to TRUE, if you want to obtain predicted variances or covariances}
+the \code{gpb.Booster} object passed to \code{object}. 
+In particular, this includes prediction data for the GPModel (if there is one)
+Set predict_var or predict_cov_mat to TRUE, if you want to obtain predicted variances or covariances}
 }
 \value{
 For regression or binary classification, it returns a vector of length \code{nrows(data)}.
-For multiclass classification, either a \code{num_class * nrows(data)} vector or
-a \code{(nrows(data), num_class)} dimension matrix is returned, depending on
-the \code{reshape} value.
+        For multiclass classification, either a \code{num_class * nrows(data)} vector or
+        a \code{(nrows(data), num_class)} dimension matrix is returned, depending on
+        the \code{reshape} value.
 
-When \code{predleaf = TRUE}, the output is a matrix object with the
-number of columns corresponding to the number of trees.
+        When \code{predleaf = TRUE}, the output is a matrix object with the
+        number of columns corresponding to the number of trees.
 }
 \description{
 Predicted values based on class \code{gpb.Booster}
 }
 \examples{
-## SEE ALSO THE HELP OF 'gpb.train' FOR MORE EXAMPLES
-\dontrun{
+# See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
+
+\donttest{
 library(gpboost)
+data(GPBoost_data, package = "gpboost")
 
-#--------------------Example without a Gaussian process or random effects model--------------
-# Non-linear function for simulation
-f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
-x <- seq(from=0,to=1,length.out=200)
-plot(x,f1d(x),type="l",lwd=2,col="red",main="Mean function")
-# Function that simulates data. Two covariates of which only one has an effect
-sim_data <- function(n){
-  X=matrix(runif(2*n),ncol=2)
-  # mean function plus noise
-  y=f1d(X[,1])+rnorm(n,sd=0.1)
-  return(list(X=X,y=y))
-}
-# Simulate data
-n <- 1000
-set.seed(1)
-data <- sim_data(2 * n)
-dtrain <- gpb.Dataset(data = data$X[1:n,], label = data$y[1:n])
-Xtest <- data$X[1:n + n,]
-ytest <- data$y[1:n + n]
-
-# Train model
-print("Train boosting model")
-bst <- gpb.train(data = dtrain,
-                 nrounds = 40,
-                 learning_rate = 0.1,
-                 max_depth = 6,
-                 min_data_in_leaf = 5,
-                 objective = "regression_l2",
-                 verbose = 0)
-
-# Make predictions and compare fit to truth
-x <- seq(from=0,to=1,length.out=200)
-Xtest_plot <- cbind(x,rep(0,length(x)))
-pred_plot <- predict(bst, data = Xtest_plot)
-plot(x,f1d(x),type="l",ylim = c(-0.25,3.25), col = "red", lwd = 2,
-     main = "Comparison of true and fitted value")
-lines(x,pred_plot, col = "blue", lwd = 2)
-legend("bottomright", legend = c("truth", "fitted"),
-       lwd=2, col = c("red", "blue"), bty = "n")
-       
-# Prediction accuracy       
-pred <- predict(bst, data = Xtest)
-err <- mean((ytest-pred)^2)
-print(paste("test-RMSE =", err))
-
-
-#--------------------Combine tree-boosting and Gaussian process model----------------
-# Simulate data
-# Function for non-linear mean. Two covariates of which only one has an effect
-f1d=function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
-set.seed(2)
-n <- 200 # number of samples
-X=matrix(runif(2*n),ncol=2)
-y <- f1d(X[,1]) # mean
-# Add Gaussian process
-sigma2_1 <- 1^2 # marginal variance of GP
-rho <- 0.1 # range parameter
-sigma2 <- 0.1^2 # error variance
-coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-D <- as.matrix(dist(coords))
-Sigma = sigma2_1*exp(-D/rho)+diag(1E-20,n)
-C = t(chol(Sigma))
-b_1=rnorm(n) # simulate random effect
-eps <- C \%*\% b_1
-xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-y <- y + eps + xi # add random effects and error to data
-# Create Gaussian process model
-gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-# Default optimizer for covariance parameters is Fisher scoring.
-# This can be changed as follows:
-# re_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
-#                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
+#--------------------Combine tree-boosting and grouped random effects model----------------
+# Create random effects model
+gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
+# The default optimizer for covariance parameters for Gaussian data is Fisher scoring.
+# For non-Gaussian data, gradient descent is used.
+# Optimizer properties can be changed as follows:
+# re_params <- list(optimizer_cov = "gradient_descent", use_nesterov_acc = TRUE)
+# gp_model$set_optim_params(params=re_params)
+# Use trace = TRUE to monitor convergence:
+# re_params <- list(trace = TRUE)
 # gp_model$set_optim_params(params=re_params)
 
 # Train model
-print("Train boosting with Gaussian process model")
+bst <- gpboost(data = X,
+               label = y,
+               gp_model = gp_model,
+               nrounds = 16,
+               learning_rate = 0.05,
+               max_depth = 6,
+               min_data_in_leaf = 5,
+               objective = "regression_l2",
+               verbose = 0)
+# Estimated random effects model
+summary(gp_model)
+
+# Make predictions
+pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
+                predict_var= TRUE)
+pred$random_effect_mean # Predicted mean
+pred$random_effect_cov # Predicted variances
+pred$fixed_effect # Predicted fixed effect from tree ensemble
+# Sum them up to otbain a single prediction
+pred$random_effect_mean + pred$fixed_effect
+
+#--------------------Combine tree-boosting and Gaussian process model----------------
+# Create Gaussian process model
+gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                    likelihood = "gaussian")
+# Train model
 bst <- gpboost(data = X,
                label = y,
                gp_model = gp_model,
@@ -134,23 +108,15 @@ bst <- gpboost(data = X,
                min_data_in_leaf = 5,
                objective = "regression_l2",
                verbose = 0)
-print("Estimated random effects model")
+# Estimated random effects model
 summary(gp_model)
-
 # Make predictions
-set.seed(1)
-ntest <- 5
-Xtest=matrix(runif(2*ntest),ncol=2)
-# prediction locations (=features) for Gaussian process
-coords_test <- cbind(runif(ntest),runif(ntest))/10
-pred <- predict(bst, data = Xtest, gp_coords_pred = coords_test,
+pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                 predict_cov_mat =TRUE)
-print("Predicted (posterior) mean of GP")
-pred$random_effect_mean
-print("Predicted (posterior) covariance matrix of GP")
-pred$random_effect_cov
-print("Predicted fixed effect from tree ensemble")
-pred$fixed_effect
+pred$random_effect_mean # Predicted (posterior) mean of GP
+pred$random_effect_cov # Predicted (posterior) covariance matrix of GP
+pred$fixed_effect # Predicted fixed effect from tree ensemble
+# Sum them up to otbain a single prediction
+pred$random_effect_mean + pred$fixed_effect
 }
-
 }

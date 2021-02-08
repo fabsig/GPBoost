@@ -2,7 +2,7 @@
 % Please edit documentation in R/gpb.Booster.R
 \name{gpb.save}
 \alias{gpb.save}
-\title{Save model}
+\title{Save GPBoost model}
 \usage{
 gpb.save(booster, filename, num_iteration = NULL)
 }
@@ -17,10 +17,10 @@ gpb.save(booster, filename, num_iteration = NULL)
 gpb.Booster
 }
 \description{
-Save model
+Save GPBoost model
 }
 \examples{
-\dontrun{
+\donttest{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -30,14 +30,15 @@ test <- agaricus.test
 dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
 params <- list(objective = "regression", metric = "l2")
 valids <- list(test = dtest)
-model <- gpb.train(params = params,
-                   data = dtrain,
-                   nrounds = 10,
-                   valids = valids,
-                   min_data = 1,
-                   learning_rate = 1,
-                   early_stopping_rounds = 5)
-gpb.save(model, "model.txt")
+model <- gpb.train(
+  params = params
+  , data = dtrain
+  , nrounds = 10L
+  , valids = valids
+  , min_data = 1L
+  , learning_rate = 1.0
+  , early_stopping_rounds = 5L
+)
+gpb.save(model, tempfile(fileext = ".txt"))
 }
-
 }

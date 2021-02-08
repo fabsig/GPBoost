@@ -12,9 +12,8 @@
 #include <memory>
 #include <vector>
 
-#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
+#include "cuda_tree_learner.h"
 #include "gpu_tree_learner.h"
-#endif
 #include "serial_tree_learner.h"
 
 namespace LightGBM {
@@ -33,7 +32,7 @@ class FeatureParallelTreeLearner: public TREELEARNER_T {
 
  protected:
   void BeforeTrain() override;
-  void FindBestSplitsFromHistograms(const std::vector<int8_t>& is_feature_used, bool use_subtract) override;
+  void FindBestSplitsFromHistograms(const std::vector<int8_t>& is_feature_used, bool use_subtract, const Tree* tree) override;
 
  private:
   /*! \brief rank of local machine */
@@ -61,8 +60,8 @@ class DataParallelTreeLearner: public TREELEARNER_T {
 
  protected:
   void BeforeTrain() override;
-  void FindBestSplits() override;
-  void FindBestSplitsFromHistograms(const std::vector<int8_t>& is_feature_used, bool use_subtract) override;
+  void FindBestSplits(const Tree* tree) override;
+  void FindBestSplitsFromHistograms(const std::vector<int8_t>& is_feature_used, bool use_subtract, const Tree* tree) override;
   void Split(Tree* tree, int best_Leaf, int* left_leaf, int* right_leaf) override;
 
   inline data_size_t GetGlobalDataCountInLeaf(int leaf_idx) const override {
@@ -116,8 +115,8 @@ class VotingParallelTreeLearner: public TREELEARNER_T {
  protected:
   void BeforeTrain() override;
   bool BeforeFindBestSplit(const Tree* tree, int left_leaf, int right_leaf) override;
-  void FindBestSplits() override;
-  void FindBestSplitsFromHistograms(const std::vector<int8_t>& is_feature_used, bool use_subtract) override;
+  void FindBestSplits(const Tree* tree) override;
+  void FindBestSplitsFromHistograms(const std::vector<int8_t>& is_feature_used, bool use_subtract, const Tree* tree) override;
   void Split(Tree* tree, int best_Leaf, int* left_leaf, int* right_leaf) override;
 
   inline data_size_t GetGlobalDataCountInLeaf(int leaf_idx) const override {
@@ -183,8 +182,8 @@ class VotingParallelTreeLearner: public TREELEARNER_T {
   /*! \brief Store global histogram for larger leaf  */
   std::unique_ptr<FeatureHistogram[]> larger_leaf_histogram_array_global_;
 
-  std::vector<HistogramBinEntry> smaller_leaf_histogram_data_;
-  std::vector<HistogramBinEntry> larger_leaf_histogram_data_;
+  std::vector<hist_t> smaller_leaf_histogram_data_;
+  std::vector<hist_t> larger_leaf_histogram_data_;
   std::vector<FeatureMetainfo> feature_metas_;
 };
 

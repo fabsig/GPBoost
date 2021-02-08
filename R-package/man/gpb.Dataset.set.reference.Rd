@@ -12,14 +12,13 @@ gpb.Dataset.set.reference(dataset, reference)
 \item{reference}{object of class \code{gpb.Dataset}}
 }
 \value{
-passed dataset
+the dataset you passed in
 }
 \description{
 If you want to use validation data, you should set reference to training data
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
 data(agaricus.train, package ="gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -28,5 +27,4 @@ test <- agaricus.test
 dtest <- gpb.Dataset(test$data, test = train$label)
 gpb.Dataset.set.reference(dtest, dtrain)
 }
-
 }

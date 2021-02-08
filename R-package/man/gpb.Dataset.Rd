@@ -29,17 +29,16 @@ constructed dataset
 }
 \description{
 Construct \code{gpb.Dataset} object from dense matrix, sparse matrix
-or local file (that was created previously by saving an \code{gpb.Dataset}).
+             or local file (that was created previously by saving an \code{gpb.Dataset}).
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
-gpb.Dataset.save(dtrain, "gpb.Dataset.data")
-dtrain <- gpb.Dataset("gpb.Dataset.data")
+data_file <- tempfile(fileext = ".data")
+gpb.Dataset.save(dtrain, data_file)
+dtrain <- gpb.Dataset(data_file)
 gpb.Dataset.construct(dtrain)
 }
-
 }

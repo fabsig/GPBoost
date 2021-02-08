@@ -8,7 +8,7 @@ This page contains a summary of the most important parameters. We distinguish be
 part and (ii) modeling specifications and optimization parameters for the Gaussian process and random effects part. Currently, the GPBoost library
 supports the following likelihoods / objective functions for combining tree boosting with Gaussian process and random effects models:
 "gaussian", "bernoulli_probit" (="binary"), "bernoulli_logit", "poisson", "gamma". This distribution of the data can be specified through the
-``objective`` paramter for the tree oart or the ``likelihood`` parameter for the random effects model part.
+``objective`` paramter for the tree part or the ``likelihood`` parameter for the random effects model part.
 
 .. contents:: **Contents**
     :depth: 2

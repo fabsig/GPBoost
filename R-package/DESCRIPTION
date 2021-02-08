@@ -1,8 +1,8 @@
 Package: gpboost
 Type: Package
 Title: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
-Version: 0.3.0
-Date: 2020-11-20
+Version: ~~VERSION~~
+Date: ~~DATE~~
 Author: Fabio Sigrist
 Maintainer: Fabio Sigrist <fabiosigrist@gmail.com>
 Description: An R package that allows for combining tree-boosting with Gaussian process and mixed effects models. It also allows for independently doing tree-boosting as well as inference and prediction for Gaussian process and mixed effects models. See <https://github.com/fabsig/GPBoost> for more information on the software and Sigrist (2020) <arXiv:2004.02653> for more information on the methodology.
@@ -10,18 +10,21 @@ Encoding: UTF-8
 License: Apache License (== 2.0) | file LICENSE
 URL: https://github.com/fabsig/GPBoost
 BugReports: https://github.com/fabsig/GPBoost/issues
+NeedsCompilation: yes
+Biarch: true
 Suggests:
-    ggplot2 (>= 1.0.1),
-    knitr,
-    rmarkdown,
+    processx,
     testthat
 Depends:
-    R (>= 3.4),
+    R (>= 3.5),
     R6 (>= 2.0)
 Imports:
     data.table (>= 1.9.6),
     graphics,
     jsonlite (>= 1.0),
     Matrix (>= 1.1-0),
-    methods
+    methods,
+    utils
+SystemRequirements:
+    C++11
 RoxygenNote: 6.0.1

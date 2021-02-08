@@ -9,9 +9,7 @@
 #include <LightGBM/utils/log.h>
 
 #include <algorithm>
-#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <cstdio>
-#endif
 #include <functional>
 #include <memory>
 #include <thread>
@@ -53,7 +51,7 @@ class PipelineReader {
     while (read_cnt > 0) {
       // start read thread
       std::thread read_worker = std::thread(
-        [&] {
+        [=, &last_read_cnt, &reader, &buffer_read] {
         last_read_cnt = reader->Read(buffer_read.data(), buffer_size);
       });
       // start process

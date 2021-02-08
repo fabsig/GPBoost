@@ -3,15 +3,22 @@
      align = "right"
      width="40%" />
 
-GPBoost R Package
-==================
-     
+# GPBoost R Package
+
+[![License](https://img.shields.io/badge/Licence-Apache%202.0-green.svg)](https://github.com/fabsig/GPBoost/blob/master/LICENSE)
+[![CRAN Version](https://www.r-pkg.org/badges/version/gpboost)](https://cran.r-project.org/package=gpboost)
+[![Downloads](https://cranlogs.r-pkg.org/badges/grand-total/gpboost)](https://cran.r-project.org/package=gpboost)
+
 This is the R package implementation of the GPBoost library. See https://github.com/fabsig/GPBoost for more information on the modeling background and the software implementation.
 
-Examples
---------
+### Table of Contents
+* [Examples](#examples)
+* [Installation](#installation)
+* [Installation from source](#installation-from-source)
+* [Testing](#testing)
 
-* [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
+## Examples
+
 * [**Detailed R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo):
   * [GPBoost algorithm](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/GPBoost_algorithm.R) for combining tree-boosting with Gaussian process and random effects models
   * [GPBoost algorithm for binary classification and other non-Gaussian data](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/classification_non_Gaussian_data.R) (Poisson regression, etc.)
@@ -19,21 +26,39 @@ Examples
   * [Linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/linear_Gaussian_process_mixed_effects_models.R)
   * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/generalized_linear_Gaussian_process_mixed_effects_models.R)
   * [Standard boosting functionality (without Gaussian process or random  effects)](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/boosting.R)
+* [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
 
+The following is also a short example.
 
-Installation
-------------
+```r
+# Combine tree-boosting and grouped random effects model
+library(gpboost)
+data(GPBoost_data, package = "gpboost")
+gp_model <- GPModel(group_data = group_data)
+bst <- gpboost(data = X, label = y, gp_model = gp_model,
+               nrounds = 10, objective = "regression_l2")
+summary(gp_model)
+pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
+pred$random_effect_mean + pred$fixed_effect
+```
 
-The GPBoost package is (hopefully) soon on CRAN. In the meantime, you can follow these instructions for installation. 
+## Installation
 
-In short, the **main steps** for installation are the following ones:
+The `gpboost` package is [available on CRAN](https://cran.r-project.org/package=gpboost) and can be installed as follows:
+
+```r
+install.packages("gpboost", repos = "https://cran.r-project.org")
+```
+
+## Installation from source
+
+It is much easier to install the package from CRAN. However, the package can also be build from source as described in the following. In short, the **main steps** for installation are the following ones:
 
 * Install [**git**](https://git-scm.com/downloads)
 * Install [**CMake**](https://cmake.org/)
 * Install [**Rtools**](https://cran.r-project.org/bin/windows/Rtools/) (**for Windows only**). Choose the option 'add rtools to system PATH'.
 * Make sure that you have an appropriate **C++ compiler** (see below for more details). E.g. for Windows, simply download the free [Visual Studio Community Edition](https://visualstudio.microsoft.com/downloads/) and do not forget to select 'Desktop development with C++' when installing it
-* **Install the GPBoost package** from the command line using
-  * Opening a command line interface: type 'cmd' in the Search or Run line or type 'powershell' in the File Explorer in the address bar
+* **Install the GPBoost package** from the command line using:
 ```sh
 git clone --recursive https://github.com/fabsig/GPBoost
 cd GPBoost
@@ -44,15 +69,29 @@ Below is a more complete installation guide.
 
 ### Preparation
 
-You need to install [git](https://git-scm.com/downloads) and [CMake](https://cmake.org/) first.
-
-Note: 32-bit R/Rtools is not supported.
+You need to install [git](https://git-scm.com/downloads) and [CMake](https://cmake.org/) first. Note that 32-bit R/Rtools is not supported for custom installation.
 
 #### Windows Preparation
 
-Installing [Rtools](https://cran.r-project.org/bin/windows/Rtools/) is mandatory, and only support the 64-bit version. It requires to add to PATH the Rtools MinGW64 folder, if it was not done automatically during installation.
+NOTE: Windows users may need to run with administrator rights (either R or the command prompt, depending on the way you are installing this package).
 
-The default compiler is Visual Studio (or [VS Build Tools](https://visualstudio.microsoft.com/downloads/)) in Windows, with an automatic fallback to Rtools or any [MinGW64](https://sourceforge.net/projects/mingw-w64/files/Toolchains%20targetting%20Win64/Personal%20Builds/mingw-builds/) (x86_64-posix-seh) available (this means if you have only Rtools and CMake, it will compile fine). To force the usage of Rtools / MinGW, you can set `use_mingw` to `TRUE` in `R-package/src/install.libs.R`. It is recommended to use *Visual Studio* for its better multi-threading efficiency in Windows.
+Installing a 64-bit version of [Rtools](https://cran.r-project.org/bin/windows/Rtools/) is mandatory.
+
+After installing `Rtools` and `CMake`, be sure the following paths are added to the environment variable `PATH`. These may have been automatically added when installing other software.
+
+* `Rtools`
+    - If you have `Rtools` 3.x, example:
+        - `C:\Rtools\mingw_64\bin`
+    - If you have `Rtools` 4.x, example (NOTE: two paths are required):
+        - `C:\rtools40\mingw64\bin`
+        - `C:\rtools40\usr\bin`
+* `CMake`
+    - example: `C:\Program Files\CMake\bin`
+* `R`
+    - example: `C:\Program Files\R\R-3.6.1\bin`
+
+
+The default compiler is Visual Studio (or [VS Build Tools](https://visualstudio.microsoft.com/downloads/)) in Windows, with an automatic fallback to MingGW64 (i.e. it is enough to only have Rtools and CMake). To force the usage of MinGW64, you can add the `--use-mingw` (for R 3.x) or `--use-msys2` (for R 4.x) flags (see below).
 
 #### Mac OS Preparation
 
@@ -65,7 +104,7 @@ export CXX=/usr/local/bin/g++-8 CC=/usr/local/bin/gcc-8
 
 ### Install
 
-Build and install R-package with the following commands:
+Build and install the R package with the following commands:
 
 ```sh
 git clone --recursive https://github.com/fabsig/GPBoost
@@ -73,29 +112,16 @@ cd GPBoost
 Rscript build_r.R
 ```
 
-The `build_r.R` script builds the package in a temporary directory called `gpboost_r`. It will destroy and recreate that directory each time you run the script.
 
-Note: for the build with Visual Studio/VS Build Tools in Windows, you should use the Windows CMD or Powershell.
+The `build_r.R` script builds the package in a temporary directory called `gpboost_r`. It will destroy and recreate that directory each time you run the script. That script supports the following command-line options:
 
-Windows users may need to run with administrator rights (either R or the command prompt, depending on the way you are installing this package). Linux users might require the appropriate user write permissions for packages.
+- `--skip-install`: Build the package tarball, but do not install it.
+- `--use-gpu`: Build a GPU-enabled version of the library.
+- `--use-mingw`: Force the use of MinGW toolchain, regardless of R version.
+- `--use-msys2`: Force the use of MSYS2 toolchain, regardless of R version.
 
-When your package installation is done, you can check quickly if the GPBoost R-package is working by running the following:
+Note: for the build with Visual Studio/VS Build Tools in Windows, you should use the Windows CMD or PowerShell.
 
-```r
-#--------------------Zero-mean single-level grouped random effects model (without a fixed effect)----------------
-library(gpboost)
-n <- 100 # number of samples
-m <- 25 # number of categories / levels for grouping variable
-group <- rep(1,n) # grouping variable
-for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-# Simulate data
-sigma2_1 <- 1^2 # random effect variance
-sigma2 <- 0.5^2 # error variance
-Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1) # incidence matrix relating grouped random effects to samples
-set.seed(1)
-b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-y <- Z1 %*% b1 + sqrt(sigma2) * rnorm(n) # observed data
-# Fit model directly using fit.GPModel
-gp_model <- fit.GPModel(group_data = group, y = y, std_dev = TRUE)
-summary(gp_model)
-```
+## Testing
+
+There is currently no integration service set up that automatically runs unit tests. However, any contribution needs to pass all unit tests in the `R-package/tests/testthat` directory. These tests can be run using the [run_tests_coverage_R_package.R](https://github.com/fabsig/GPBoost/blob/master/helpers/run_tests_coverage_R_package.R) file.

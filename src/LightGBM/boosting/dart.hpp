@@ -9,9 +9,7 @@
 
 #include <string>
 #include <algorithm>
-#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <cstdio>
-#endif
 #include <fstream>
 #include <vector>
 

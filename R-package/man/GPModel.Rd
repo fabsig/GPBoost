@@ -68,35 +68,21 @@ A \code{GPModel} containing ontains a Gaussian process and / or mixed effects mo
 Create a \code{GPModel} which contains a Gaussian process and / or mixed effects model with grouped random effects
 }
 \examples{
-## SEE THE HELP OF 'fitGPModel' FOR MORE EXAMPLES
+# See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
+
 library(gpboost)
+data(GPBoost_data, package = "gpboost")
 
 #--------------------Grouped random effects model: single-level random effect----------------
-n <- 100 # number of samples
-m <- 25 # number of categories / levels for grouping variable
-group <- rep(1,n) # grouping variable
-for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-# Create random effects model
-gp_model <- GPModel(group_data = group)
-
+gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 
 #--------------------Gaussian process model----------------
-n <- 200 # number of samples
-set.seed(1)
-coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-# Create Gaussian process model
-gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-
+gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                    likelihood="gaussian")
 
 #--------------------Combine Gaussian process with grouped random effects----------------
-n <- 200 # number of samples
-m <- 25 # number of categories / levels for grouping variable
-group <- rep(1,n) # grouping variable
-for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-set.seed(1)
-coords <- cbind(runif(n),runif(n)) # locations (=features) for Gaussian process
-# Create Gaussian process model
-gp_model <- GPModel(group_data = group,
-                    gp_coords = coords, cov_function = "exponential")
+gp_model <- GPModel(group_data = group_data,
+                    gp_coords = coords, cov_function = "exponential",
+                    likelihood="gaussian")
 
 }

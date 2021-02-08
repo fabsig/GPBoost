@@ -1,96 +1,40 @@
-if(USE_GPU OR APPLE)
-  cmake_minimum_required(VERSION 3.2)
-else()
-  cmake_minimum_required(VERSION 2.8)
-endif()
-
-##Only relevant for R-package: Add correrct version (32- or 64-bit) of mingw to path 
-set(ENV{PATH} "${MINGW_PATH};$ENV{PATH}")
-
-PROJECT(gpboost)
-
 OPTION(USE_MPI "Enable MPI-based parallel learning" OFF)
 OPTION(USE_OPENMP "Enable OpenMP" ON)
 OPTION(USE_GPU "Enable GPU-accelerated training" OFF)
 OPTION(USE_SWIG "Enable SWIG to generate Java API" OFF)
 OPTION(USE_HDFS "Enable HDFS support (EXPERIMENTAL)" OFF)
-OPTION(USE_R35 "Set to ON if your R version is not earlier than 3.5" OFF)
-OPTION(CMAKE_BUILD_TYPE "Do optimization and no debugging for Eigen" Release)
+OPTION(USE_TIMETAG "Set to ON to output time costs" OFF)
+OPTION(USE_CUDA "Enable CUDA-accelerated training (EXPERIMENTAL)" OFF)
 OPTION(USE_DEBUG "Set to ON for Debug mode" OFF)
-OPTION(BUILD_FOR_R "Set to ON if building lib_gpboost for use with the R packages" OFF)
-OPTION(BUILD_FOR_R_REGISTER "Set to ON if building lib_gpboost for use with the R package and registering native routines" OFF)
-OPTION(BUILD_32BIT_R "Set to ON if building 32-bit lib_gpboost for use with the R packages" OFF)
-
-if(BUILD_FOR_R_REGISTER)
-	if(WIN32)
-		set(CMAKE_FIND_LIBRARY_PREFIXES "")
-		set(CMAKE_FIND_LIBRARY_SUFFIXES ".lib;.dll")
-	elseif(VCPKG_CMAKE_SYSTEM_NAME STREQUAL "Linux")
-		set(CMAKE_FIND_LIBRARY_PREFIXES "lib")
-		set(CMAKE_FIND_LIBRARY_SUFFIXES ".so;.a")
-	elseif(VCPKG_CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-		set(CMAKE_FIND_LIBRARY_PREFIXES "lib")
-		set(CMAKE_FIND_LIBRARY_SUFFIXES ".dylib;.so;.a")
-	endif()
-	if(BUILD_32BIT_R)
-		set(R_LIB_ARCH "i386")
-	else()
-		set(R_LIB_ARCH "x64")
-	endif()
-
-
-	# The following lines until endif(BUILD_FOR_R_REGISTER) are Copyright (c) 1993-2015 Ken Martin, Will Schroeder, Bill Lorensen
-	# source: https://gitlab.kitware.com/vtk/vtk/blob/650db03dff801f73ef8e04649912ffdf104ac671/CMake/FindR.cmake^
-	set(TEMP_CMAKE_FIND_APPBUNDLE ${CMAKE_FIND_APPBUNDLE})
-	set(CMAKE_FIND_APPBUNDLE "NEVER")
-	find_program(R_COMMAND R DOC "R executable.")
-	set(CMAKE_FIND_APPBUNDLE ${TEMP_CMAKE_FIND_APPBUNDLE})
-
-	if(R_COMMAND)
-	  execute_process(WORKING_DIRECTORY .
-					  COMMAND ${R_COMMAND} RHOME
-					  OUTPUT_VARIABLE R_ROOT_DIR
-					  OUTPUT_STRIP_TRAILING_WHITESPACE)
-	  # the following command does nothing currently, but will be used when deprecated code is removed
-	  set(R_HOME ${R_ROOT_DIR} CACHE PATH "R home directory obtained from R RHOME")
-	
-
-	  find_path(R_INCLUDE_DIR R.h
-				HINTS ${R_ROOT_DIR} ${R_ROOT_DIR}/bin/${R_LIB_ARCH}
-				PATHS /usr/local/lib /usr/local/lib64 /usr/share
-				PATH_SUFFIXES include R/include
-				DOC "Path to file R.h")
-		
-	  find_library(R_LIBRARY_BASE R
-				HINTS ${R_ROOT_DIR}/lib ${R_ROOT_DIR}/bin/${R_LIB_ARCH}
-				DOC "R library (example libR.a, libR.dylib, etc.).")
-
-	  find_library(R_LIBRARY_BLAS NAMES Rblas blas
-				HINTS ${R_ROOT_DIR}/lib ${R_ROOT_DIR}/bin/${R_LIB_ARCH}
-				DOC "Rblas library (example libRblas.a, libRblas.dylib, etc.).")
-
-	  find_library(R_LIBRARY_LAPACK NAMES Rlapack lapack
-				HINTS ${R_ROOT_DIR}/lib ${R_ROOT_DIR}/bin/${R_LIB_ARCH}
-				DOC "Rlapack library (example libRlapack.a, libRlapack.dylib, etc.).")
-
-	  find_library(R_LIBRARY_READLINE readline
-				DOC "(Optional) system readline library. Only required if the R libraries were built with readline support.")
-
-	else()
-	  message(SEND_ERROR "FindR.cmake requires the following variables to be set: R_COMMAND")
-	endif()
-
-	# Note: R_LIBRARY_BASE is added to R_LIBRARIES twice; this may be due to circular linking dependencies; needs further investigation
-	set(R_LIBRARIES ${R_LIBRARY_BASE} ${R_LIBRARY_BLAS} ${R_LIBRARY_LAPACK} ${R_LIBRARY_BASE})
-	if(R_LIBRARY_READLINE)
-	  set(R_LIBRARIES ${R_LIBRARIES} ${R_LIBRARY_READLINE})
-	endif()
-
-endif(BUILD_FOR_R_REGISTER)
+OPTION(BUILD_STATIC_LIB "Build static library" OFF)
+OPTION(__BUILD_FOR_R "Set to ON if building lib_gpboost for use with the R package" OFF)
+OPTION(__INTEGRATE_OPENCL "Set to ON if building LightGBM with the OpenCL ICD Loader and its dependencies included" OFF)
 
 if(APPLE)
-    OPTION(APPLE_OUTPUT_DYLIB "Output dylib shared library" OFF)
+  OPTION(APPLE_OUTPUT_DYLIB "Output dylib shared library" OFF)
 endif(APPLE)
+
+if(__INTEGRATE_OPENCL)
+  cmake_minimum_required(VERSION 3.11)
+elseif(USE_GPU OR APPLE)
+  cmake_minimum_required(VERSION 3.2)
+elseif(USE_CUDA)
+  cmake_minimum_required(VERSION 3.16)
+else()
+  cmake_minimum_required(VERSION 3.0)
+endif()
+
+if(USE_CUDA)
+  PROJECT(gpboost LANGUAGES C CXX CUDA)
+else()
+  PROJECT(gpboost LANGUAGES C CXX)
+endif()
+
+if(__INTEGRATE_OPENCL)
+  set(__INTEGRATE_OPENCL ON CACHE BOOL "" FORCE)
+  set(USE_GPU OFF CACHE BOOL "" FORCE)
+  message(STATUS "Building library with integrated OpenCL components")
+endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.8.2")
@@ -104,7 +48,7 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
   if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "8.1.0")
     message(FATAL_ERROR "Insufficient AppleClang version")
   endif()
-  cmake_minimum_required(VERSION 3.12)
+  cmake_minimum_required(VERSION 3.16)
 elseif(MSVC)
   if(MSVC_VERSION LESS 1900)
     message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} doesn't support required C++11 features. Please use a newer MSVC.")
@@ -139,17 +83,28 @@ if(USE_SWIG)
   endif()
 endif(USE_SWIG)
 
-if(USE_R35)
-    ADD_DEFINITIONS(-DR_VER_ABOVE_35)
-endif(USE_R35)
+SET(CSparse_HEADER_DIR "${PROJECT_SOURCE_DIR}/external_libs/CSparse/Include")
+include_directories(${CSparse_HEADER_DIR})
 
-if(BUILD_FOR_R_REGISTER)
-    ADD_DEFINITIONS(-DGPB_R_BUILD)
-	ADD_DEFINITIONS(-DNDEBUG)	
-	if(MINGW)
-		ADD_DEFINITIONS(-DAVOID_NOT_CRAN_COMPLIANT_CALLS)
-	endif()
-endif(BUILD_FOR_R_REGISTER)
+SET(EIGEN_DIR "${PROJECT_SOURCE_DIR}/external_libs/eigen")
+include_directories(${EIGEN_DIR})
+
+# See https://gitlab.com/libeigen/eigen/-/blob/master/COPYING.README
+ADD_DEFINITIONS(-DEIGEN_MPL2_ONLY)
+
+if(__BUILD_FOR_R)
+    list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
+    find_package(LibR REQUIRED)
+    message(STATUS "LIBR_EXECUTABLE: ${LIBR_EXECUTABLE}")
+    message(STATUS "LIBR_INCLUDE_DIRS: ${LIBR_INCLUDE_DIRS}")
+    message(STATUS "LIBR_CORE_LIBRARY: ${LIBR_CORE_LIBRARY}")
+    include_directories(${LIBR_INCLUDE_DIRS})
+    ADD_DEFINITIONS(-DLGB_R_BUILD)
+endif(__BUILD_FOR_R)
+
+if(USE_TIMETAG)
+    ADD_DEFINITIONS(-DTIMETAG)
+endif(USE_TIMETAG)
 
 if(USE_DEBUG)
     ADD_DEFINITIONS(-DDEBUG)
@@ -164,27 +119,17 @@ else()
     ADD_DEFINITIONS(-DUSE_SOCKET)
 endif(USE_MPI)
 
+if(USE_CUDA)
+    SET(USE_OPENMP ON CACHE BOOL "CUDA requires OpenMP" FORCE)
+endif(USE_CUDA)
+
 if(USE_OPENMP)
-    find_package(OpenMP)
-	if(OPENMP_FOUND)
-	  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-	else()
-	  message(STATUS "OpenMP not found")
-	  if(BUILD_FOR_R_REGISTER AND WIN32)
-		message(STATUS "Setting OpenMP flag manually using -fopenmp. This should work for MinGW on Windows")
-		SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-	  endif()
-	endif()
-else()
-    # Ignore unknown #pragma warning
-    if((CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-      OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unknown-pragmas")
-    endif()
+    find_package(OpenMP REQUIRED)
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 endif(USE_OPENMP)
 
 if(USE_GPU)
-    SET(BOOST_COMPUTE_HEADER_DIR ${PROJECT_SOURCE_DIR}/compute/include)
+    SET(BOOST_COMPUTE_HEADER_DIR ${PROJECT_SOURCE_DIR}/external_libs/compute/include)
     include_directories(${BOOST_COMPUTE_HEADER_DIR})
     find_package(OpenCL REQUIRED)
     include_directories(${OpenCL_INCLUDE_DIRS})
@@ -201,6 +146,76 @@ if(USE_GPU)
     ADD_DEFINITIONS(-DUSE_GPU)
 endif(USE_GPU)
 
+if(__INTEGRATE_OPENCL)
+    if(WIN32)
+        include(CMakeIntegratedOpenCL.cmake)
+        ADD_DEFINITIONS(-DUSE_GPU)
+    else()
+        message(FATAL_ERROR "Integrated OpenCL build is available only for Windows")
+    endif(WIN32)
+endif(__INTEGRATE_OPENCL)
+
+if(USE_CUDA)
+    find_package(CUDA REQUIRED)
+    include_directories(${CUDA_INCLUDE_DIRS})
+    LIST(APPEND CMAKE_CUDA_FLAGS -Xcompiler=${OpenMP_CXX_FLAGS} -Xcompiler=-fPIC -Xcompiler=-Wall)
+    CUDA_SELECT_NVCC_ARCH_FLAGS(CUDA_ARCH_FLAGS 6.0 6.1 6.2 7.0 7.5+PTX)
+
+    LIST(APPEND CMAKE_CUDA_FLAGS ${CUDA_ARCH_FLAGS})
+    if(USE_DEBUG)
+      SET(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -g")
+    else()
+      SET(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 -lineinfo")
+    endif()
+    string(REPLACE ";" " " CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS}")
+    message(STATUS "CMAKE_CUDA_FLAGS: ${CMAKE_CUDA_FLAGS}")
+
+    ADD_DEFINITIONS(-DUSE_CUDA)
+    if (NOT DEFINED CMAKE_CUDA_STANDARD)
+      set(CMAKE_CUDA_STANDARD 11)
+      set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    endif()
+
+    set(BASE_DEFINES
+     -DPOWER_FEATURE_WORKGROUPS=12
+     -DUSE_CONSTANT_BUF=0
+    )
+    set(ALLFEATS_DEFINES
+     ${BASE_DEFINES}
+     -DENABLE_ALL_FEATURES
+    )
+    set(FULLDATA_DEFINES
+     ${ALLFEATS_DEFINES}
+     -DIGNORE_INDICES
+    )
+
+    message(STATUS "ALLFEATS_DEFINES: ${ALLFEATS_DEFINES}")
+    message(STATUS "FULLDATA_DEFINES: ${FULLDATA_DEFINES}")
+
+    function(add_histogram hsize hname hadd hconst hdir)
+      add_library(histo${hsize}${hname} OBJECT src/LightGBM/treelearner/kernels/histogram${hsize}.cu)
+      set_target_properties(histo${hsize}${hname} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+      if(hadd)
+        list(APPEND histograms histo${hsize}${hname})
+        set(histograms ${histograms} PARENT_SCOPE)
+      endif()
+      target_compile_definitions(
+        histo${hsize}${hname} PRIVATE
+        -DCONST_HESSIAN=${hconst}
+        ${hdir}
+      )
+    endfunction()
+
+    foreach (hsize _16_64_256)
+      add_histogram("${hsize}" "_sp_const" "True" "1" "${BASE_DEFINES}")
+      add_histogram("${hsize}" "_sp" "True" "0" "${BASE_DEFINES}")
+      add_histogram("${hsize}" "-allfeats_sp_const" "False" "1" "${ALLFEATS_DEFINES}")
+      add_histogram("${hsize}" "-allfeats_sp" "False" "0" "${ALLFEATS_DEFINES}")
+      add_histogram("${hsize}" "-fulldata_sp_const" "True" "1" "${FULLDATA_DEFINES}")
+      add_histogram("${hsize}" "-fulldata_sp" "True" "0" "${FULLDATA_DEFINES}")
+    endforeach()
+endif(USE_CUDA)
+
 if(USE_HDFS)
     find_package(JNI REQUIRED)
     find_path(HDFS_INCLUDE_DIR hdfs.h REQUIRED)
@@ -210,12 +225,39 @@ if(USE_HDFS)
     SET(HDFS_CXX_LIBRARIES ${HDFS_LIB} ${JAVA_JVM_LIBRARY})
 endif(USE_HDFS)
 
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+#include <xmmintrin.h>
+int main() {
+  int a = 0;
+  _mm_prefetch(&a, _MM_HINT_NTA);
+  return 0;
+}
+" MM_PREFETCH)
+
+if(${MM_PREFETCH})
+  message(STATUS "Using _mm_prefetch")
+  ADD_DEFINITIONS(-DMM_PREFETCH)
+endif()
+
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+#include <mm_malloc.h>
+int main() {
+  char *a = (char*)_mm_malloc(8, 16);
+  _mm_free(a);
+  return 0;
+}
+" MM_MALLOC)
+
+if(${MM_MALLOC})
+  message(STATUS "Using _mm_malloc")
+  ADD_DEFINITIONS(-DMM_MALLOC)
+endif()
+
 if(UNIX OR MINGW OR CYGWIN)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -Wextra -Wall -Wno-unknown-pragmas -Wno-return-type -Wno-ignored-attributes")
-	if(MINGW)
-		SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-cast-function-type -Wno-error=cast-function-type")
-	endif()
-	if(USE_DEBUG)
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -Wextra -Wall -Wno-ignored-attributes -Wno-unknown-pragmas -Wno-return-type")
+    if(USE_DEBUG)
         SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0")
     else()
         SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
@@ -223,17 +265,13 @@ if(UNIX OR MINGW OR CYGWIN)
     if(USE_SWIG)
         SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-strict-aliasing")
     endif()
+    if(NOT USE_OPENMP)
+        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unknown-pragmas -Wno-unused-private-field")
+    endif()
 endif()
 
 if(WIN32 AND MINGW)
-    # SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++") # Where is this needed? Delete it?
-	# if(BUILD_32BIT_R) # uncomment this if you want information from the linker
-		# SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--verbose")
-	# endif()
-endif()
-
-if(BUILD_32BIT_R)# TODO: is this required or can it be deleted?
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m32")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
 endif()
 
 if(MSVC)
@@ -247,27 +285,24 @@ if(MSVC)
         CMAKE_CXX_FLAGS_RELEASE
         CMAKE_CXX_FLAGS_RELWITHDEBINFO
     )
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /O2 /Ob2 /Oi /Ot /Oy /GL /MP")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /MP")
+    if(USE_DEBUG)
+        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Od")
+    else()
+        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2 /Ob2 /Oi /Ot /Oy")
+    endif()
 else()
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC") #otherwise CRAN CHECK gives a note
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops")
+    if(NOT USE_DEBUG)
+      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -funroll-loops")
+    endif()
 endif(MSVC)
 
-SET(gpboost_HEADER_DIR ${PROJECT_SOURCE_DIR}/include)
-include_directories(${gpboost_HEADER_DIR})
-
-SET(Eigen_HEADER_DIR ${PROJECT_SOURCE_DIR})
-include_directories(${Eigen_HEADER_DIR})
-
-SET(CSparse_HEADER_DIR ${PROJECT_SOURCE_DIR}/CSparse/Include)
-include_directories(${CSparse_HEADER_DIR})
+SET(LightGBM_HEADER_DIR ${PROJECT_SOURCE_DIR}/include)
 
 SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR})
 SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR})
 
-if(BUILD_FOR_R_REGISTER)
-	include_directories(${R_INCLUDE_DIR})#for R.h
-endif(BUILD_FOR_R_REGISTER)
+include_directories(${LightGBM_HEADER_DIR})
 
 if(APPLE)
   if(APPLE_OUTPUT_DYLIB)
@@ -282,7 +317,6 @@ if(USE_MPI)
 endif(USE_MPI)
 
 file(GLOB SOURCES
-    src/LightGBM/application/*.cpp
     src/LightGBM/boosting/*.cpp
     src/LightGBM/io/*.cpp
     src/LightGBM/metric/*.cpp
@@ -290,22 +324,29 @@ file(GLOB SOURCES
     src/LightGBM/network/*.cpp
     src/LightGBM/treelearner/*.cpp
     src/GPBoost/*.cpp
-    CSparse/Source/*.c
+    external_libs/CSparse/Source/*.c
+if(USE_CUDA)
+    src/LightGBM/treelearner/*.cu
+endif(USE_CUDA)
 )
 
-add_executable(gpboost src/LightGBM/main.cpp ${SOURCES})
+add_executable(gpboost src/LightGBM/main.cpp src/LightGBM/application/application.cpp ${SOURCES})
 list(APPEND SOURCES "src/LightGBM/c_api.cpp")
 
 # Only build the R part of the library if building for
 # use with the R package
-if(BUILD_FOR_R OR BUILD_FOR_R_REGISTER)
-  list(APPEND SOURCES "src/LightGBM/lightgbm_R.cpp")
-endif()
+if(__BUILD_FOR_R)
+  list(APPEND SOURCES "src/gpboost_R.cpp")
+endif(__BUILD_FOR_R)
 
-add_library(_gpboost SHARED ${SOURCES})
+if (BUILD_STATIC_LIB)
+  add_library(_gpboost STATIC ${SOURCES})
+else()
+  add_library(_gpboost SHARED ${SOURCES})
+endif(BUILD_STATIC_LIB)
 
 if(MSVC)
-    set_target_properties(_gpboost PROPERTIES OUTPUT_NAME "lib_gpboost")
+  set_target_properties(_gpboost PROPERTIES OUTPUT_NAME "lib_gpboost")
 endif(MSVC)
 
 if(USE_SWIG)
@@ -362,26 +403,57 @@ if(USE_GPU)
   TARGET_LINK_LIBRARIES(_gpboost ${OpenCL_LIBRARY} ${Boost_LIBRARIES})
 endif(USE_GPU)
 
+if(__INTEGRATE_OPENCL)
+  # targets OpenCL and Boost are added in CMakeIntegratedOpenCL.cmake
+  add_dependencies(gpboost OpenCL Boost)
+  add_dependencies(_gpboost OpenCL Boost)
+  # variables INTEGRATED_OPENCL_* are set in CMakeIntegratedOpenCL.cmake
+  target_include_directories(gpboost PRIVATE ${INTEGRATED_OPENCL_INCLUDES})
+  target_include_directories(_gpboost PRIVATE ${INTEGRATED_OPENCL_INCLUDES})
+  target_compile_definitions(gpboost PRIVATE ${INTEGRATED_OPENCL_DEFINITIONS})
+  target_compile_definitions(_gpboost PRIVATE ${INTEGRATED_OPENCL_DEFINITIONS})
+  target_link_libraries(gpboost PRIVATE ${INTEGRATED_OPENCL_LIBRARIES})
+  target_link_libraries(_gpboost PRIVATE ${INTEGRATED_OPENCL_LIBRARIES})
+endif()
+
+if(USE_CUDA)
+  set_target_properties(gpboost PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+  TARGET_LINK_LIBRARIES(
+    gpboost
+    ${histograms}
+  )
+  set_target_properties(_gpboost PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+  TARGET_LINK_LIBRARIES(
+    _gpboost
+    ${histograms}
+  )
+endif(USE_CUDA)
+
 if(USE_HDFS)
   TARGET_LINK_LIBRARIES(gpboost ${HDFS_CXX_LIBRARIES})
   TARGET_LINK_LIBRARIES(_gpboost ${HDFS_CXX_LIBRARIES})
 endif(USE_HDFS)
 
-if(WIN32 AND (MINGW OR CYGWIN))
-    TARGET_LINK_LIBRARIES(gpboost Ws2_32)
-    TARGET_LINK_LIBRARIES(_gpboost Ws2_32)
-    TARGET_LINK_LIBRARIES(gpboost IPHLPAPI)
-    TARGET_LINK_LIBRARIES(_gpboost IPHLPAPI)
-endif()
+if(WIN32)
+    if(MINGW OR CYGWIN)
+      TARGET_LINK_LIBRARIES(gpboost Ws2_32)
+      TARGET_LINK_LIBRARIES(_gpboost Ws2_32)
+      TARGET_LINK_LIBRARIES(gpboost IPHLPAPI)
+      TARGET_LINK_LIBRARIES(_gpboost IPHLPAPI)
+    endif(MINGW OR CYGWIN)
+endif(WIN32)
 
-if(BUILD_FOR_R_REGISTER)
-    TARGET_LINK_LIBRARIES(gpboost ${R_LIBRARIES})
-    TARGET_LINK_LIBRARIES(_gpboost ${R_LIBRARIES})
-endif(BUILD_FOR_R_REGISTER)
+if(__BUILD_FOR_R)
+  if(MSVC)
+    TARGET_LINK_LIBRARIES(_gpboost ${LIBR_MSVC_CORE_LIBRARY})
+  else()
+    TARGET_LINK_LIBRARIES(_gpboost ${LIBR_CORE_LIBRARY})
+  endif(MSVC)
+endif(__BUILD_FOR_R)
 
 install(TARGETS gpboost _gpboost
         RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
         LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
         ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
-install(DIRECTORY ${gpboost_HEADER_DIR}/gpboost DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
+install(DIRECTORY ${LightGBM_HEADER_DIR}/LightGBM DESTINATION ${CMAKE_INSTALL_PREFIX}/include)

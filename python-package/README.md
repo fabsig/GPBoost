@@ -3,21 +3,17 @@
      align = "right"
      width="40%" />
 
-GPBoost Python Package
-=======================
+# GPBoost Python Package
 
-[![license](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](https://github.com/fabsig/GPBoost/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/Licence-Apache%202.0-green.svg)](https://github.com/fabsig/GPBoost/blob/master/LICENSE)
 [<img src="https://img.shields.io/pypi/pyversions/gpboost.svg?logo=python&logoColor=white">](https://pypi.org/project/gpboost)
 [<img src="https://img.shields.io/pypi/v/gpboost.svg?logo=pypi&logoColor=white">](https://pypi.org/project/gpboost)
 [<img src="https://pepy.tech/badge/gpboost">](https://pepy.tech/project/gpboost)
 
 This is the Python package implementation of the GPBoost library. See https://github.com/fabsig/GPBoost for more information on the modeling background and the software implementation.
 
-Examples
---------
+## Examples
 
-- [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
-- [**Blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) and [corresponding code](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm_blog_post_example.py) on how to combine tree-boosting with mixed effects models
 - [**Detailed Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide):
   * [GPBoost algorithm](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm.py) for combining tree-boosting with Gaussian process and random effects models
   * [GPBoost algorithm for binary classification and other non-Gaussian data](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/classification_non_Gaussian_data.py) (Poisson regression, etc.)
@@ -25,9 +21,10 @@ Examples
   * [Linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/linear_Gaussian_process_mixed_effects_models.py)
   * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/generalized_linear_Gaussian_process_mixed_effects_models.py)
   * [Standard boosting functionality (without Gaussian process or random  effects)](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/boosting.py)
+- [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
+- [**Blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) and [corresponding code](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm_blog_post_example.py) on how to combine tree-boosting with mixed effects models
 
-Installation
-------------
+## Installation
 
 ### Before you install
 
@@ -61,7 +58,7 @@ pip install gpboost-XXX.whl
 
 - For **macOS** users:
 
-  - The library file in distribution wheels is built by the **Apple Clang** (Xcode_8.3.3 for versions 2.2.1 - 2.3.1, and Xcode_9.4.1 from version 2.3.2) compiler. You need to install the **OpenMP** library. You can install the **OpenMP** library by the following command: ``brew install libomp``.
+  - The library file in distribution wheels is built by the **Apple Clang** (Xcode version 12.3 from version 0.3.0) compiler. You need to install the **OpenMP** library. You can install the **OpenMP** library by the following command: ``brew install libomp``.
 
 #### Build from source
 
@@ -79,7 +76,7 @@ pip install --no-binary :all: gpboost
 
   - In case you prefer **gcc**, you need to install it (details for installation can be found in the [Installation Guide](https://github.com/microsoft/LightGBM/blob/master/docs/Installation-Guide.rst#gcc)) and specify compilers by running ``export CXX=g++-7 CC=gcc-7`` (replace "7" with version of **gcc** installed on your machine) first.
 
-- For **Windows** users, **Visual Studio** (or [VS Build Tools](https://visualstudio.microsoft.com/downloads/)) is needed.
+- For **Windows** users, **Visual Studio** (or [VS Build Tools](https://visualstudio.microsoft.com/downloads/)) is needed. 
 
 ##### Build with MinGW-w64 on Windows
 
@@ -89,7 +86,6 @@ pip install gpboost --install-option=--mingw
 
 [CMake](https://cmake.org/) and [MinGW-w64](https://mingw-w64.org/) should be installed first.
 
-It is recommended to use **Visual Studio** for its better multithreading efficiency in **Windows** for many-core systems
 
 ##### Build 32-bit version with 32-bit Python
 
@@ -101,6 +97,9 @@ By default, installation in environment with 32-bit Python is prohibited. Howeve
 
 
 ### Install from GitHub
+
+All requirements from the [build from source section](#build-from-source) apply for this installation option as well.
+
 
 ```sh
 git clone --recursive https://github.com/fabsig/GPBoost.git

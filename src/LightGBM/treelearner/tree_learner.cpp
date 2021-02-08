@@ -4,18 +4,23 @@
  */
 #include <LightGBM/tree_learner.h>
 
-#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
+#include "cuda_tree_learner.h"
 #include "gpu_tree_learner.h"
-#endif
+#include "linear_tree_learner.h"
 #include "parallel_tree_learner.h"
 #include "serial_tree_learner.h"
 
 namespace LightGBM {
 
-TreeLearner* TreeLearner::CreateTreeLearner(const std::string& learner_type, const std::string& device_type, const Config* config) {
+TreeLearner* TreeLearner::CreateTreeLearner(const std::string& learner_type, const std::string& device_type,
+                                            const Config* config) {
   if (device_type == std::string("cpu")) {
     if (learner_type == std::string("serial")) {
-      return new SerialTreeLearner(config);
+      if (config->linear_tree) {
+        return new LinearTreeLearner(config);
+      } else {
+        return new SerialTreeLearner(config);
+      }
     } else if (learner_type == std::string("feature")) {
       return new FeatureParallelTreeLearner<SerialTreeLearner>(config);
     } else if (learner_type == std::string("data")) {
@@ -24,7 +29,6 @@ TreeLearner* TreeLearner::CreateTreeLearner(const std::string& learner_type, con
       return new VotingParallelTreeLearner<SerialTreeLearner>(config);
     }
   } else if (device_type == std::string("gpu")) {
-#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
     if (learner_type == std::string("serial")) {
       return new GPUTreeLearner(config);
     } else if (learner_type == std::string("feature")) {
@@ -34,9 +38,16 @@ TreeLearner* TreeLearner::CreateTreeLearner(const std::string& learner_type, con
     } else if (learner_type == std::string("voting")) {
       return new VotingParallelTreeLearner<GPUTreeLearner>(config);
     }
-#else
-      Log::Fatal("GPU tree learner is currently not supported in the R package");
-#endif
+  } else if (device_type == std::string("cuda")) {
+    if (learner_type == std::string("serial")) {
+      return new CUDATreeLearner(config);
+    } else if (learner_type == std::string("feature")) {
+      return new FeatureParallelTreeLearner<CUDATreeLearner>(config);
+    } else if (learner_type == std::string("data")) {
+      return new DataParallelTreeLearner<CUDATreeLearner>(config);
+    } else if (learner_type == std::string("voting")) {
+      return new VotingParallelTreeLearner<CUDATreeLearner>(config);
+    }
   }
   return nullptr;
 }

@@ -1,0 +1,46 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Make output
+/benchmark
+/unit
+/build
+
+# QtCreator generic project
+/fast_double_parser.cflags
+/fast_double_parser.config
+/fast_double_parser.creator
+/fast_double_parser.creator.user
+/fast_double_parser.cxxflags
+/fast_double_parser.files
+/fast_double_parser.includes

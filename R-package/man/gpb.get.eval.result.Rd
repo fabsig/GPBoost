@@ -10,23 +10,25 @@ gpb.get.eval.result(booster, data_name, eval_name, iters = NULL,
 \arguments{
 \item{booster}{Object of class \code{gpb.Booster}}
 
-\item{data_name}{name of dataset}
+\item{data_name}{Name of the dataset to return evaluation results for.}
 
-\item{eval_name}{name of evaluation}
+\item{eval_name}{Name of the evaluation metric to return results for.}
 
-\item{iters}{iterations, NULL will return all}
+\item{iters}{An integer vector of iterations you want to get evaluation results for. If NULL
+(the default), evaluation results for all iterations will be returned.}
 
 \item{is_err}{TRUE will return evaluation error instead}
 }
 \value{
-vector of evaluation result
+numeric vector of evaluation result
 }
 \description{
-Get record evaluation result from booster
+Given a \code{gpb.Booster}, return evaluation results for a
+             particular metric on a particular dataset.
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
+# train a regression model
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -35,13 +37,22 @@ test <- agaricus.test
 dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
 params <- list(objective = "regression", metric = "l2")
 valids <- list(test = dtest)
-model <- gpb.train(params = params,
-                   data = dtrain,
-                   nrounds = 10,
-                   valids = valids,
-                   min_data = 1,
-                   learning_rate = 1,
-                   early_stopping_rounds = 5)
+model <- gpb.train(
+  params = params
+  , data = dtrain
+  , nrounds = 5L
+  , valids = valids
+  , min_data = 1L
+  , learning_rate = 1.0
+)
+
+# Examine valid data_name values
+print(setdiff(names(model$record_evals), "start_iter"))
+
+# Examine valid eval_name values for dataset "test"
+print(names(model$record_evals[["test"]]))
+
+# Get L2 values for "test" dataset
 gpb.get.eval.result(model, "test", "l2")
 }
 }

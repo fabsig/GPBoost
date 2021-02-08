@@ -22,8 +22,7 @@ Note: since \code{nrow} and \code{ncol} internally use \code{dim}, they can also
 be directly used with an \code{gpb.Dataset} object.
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -32,5 +31,4 @@ stopifnot(nrow(dtrain) == nrow(train$data))
 stopifnot(ncol(dtrain) == ncol(train$data))
 stopifnot(all(dim(dtrain) == dim(train$data)))
 }
-
 }

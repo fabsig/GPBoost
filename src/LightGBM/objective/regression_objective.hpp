@@ -1,20 +1,16 @@
 /*!
-* This file is part of GPBoost a C++ library for combining
-*	boosting with Gaussian process and mixed effects models
-*
 * Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
 * Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
-*
 * Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 */
 #ifndef LIGHTGBM_OBJECTIVE_REGRESSION_OBJECTIVE_HPP_
 #define LIGHTGBM_OBJECTIVE_REGRESSION_OBJECTIVE_HPP_
 
+#include <GPBoost/re_model.h>
+
 #include <LightGBM/meta.h>
 #include <LightGBM/objective_function.h>
 #include <LightGBM/utils/array_args.h>
-
-#include <GPBoost/re_model.h>
 
 #include <string>
 #include <algorithm>
@@ -25,80 +21,94 @@
 #define M_SQRT1_2      0.707106781186547524401
 #endif
 
-#include <chrono>  // only needed for debugging
-#include <thread> // only needed for debugging
-
 using GPBoost::REModel;
 
 namespace LightGBM {
 
-#define PercentileFun(T, data_reader, cnt_data, alpha) {\
-  if (cnt_data <= 1) { return  data_reader(0); }\
-  std::vector<T> ref_data(cnt_data);\
-  for (data_size_t i = 0; i < cnt_data; ++i) {\
-    ref_data[i] = data_reader(i);\
+#define PercentileFun(T, data_reader, cnt_data, alpha)                    \
+  {                                                                       \
+    if (cnt_data <= 1) {                                                  \
+      return data_reader(0);                                              \
+    }                                                                     \
+    std::vector<T> ref_data(cnt_data);                                    \
+    for (data_size_t i = 0; i < cnt_data; ++i) {                          \
+      ref_data[i] = data_reader(i);                                       \
+    }                                                                     \
+    const double float_pos = (1.0f - alpha) * cnt_data;                   \
+    const data_size_t pos = static_cast<data_size_t>(float_pos);          \
+    if (pos < 1) {                                                        \
+      return ref_data[ArrayArgs<T>::ArgMax(ref_data)];                    \
+    } else if (pos >= cnt_data) {                                         \
+      return ref_data[ArrayArgs<T>::ArgMin(ref_data)];                    \
+    } else {                                                              \
+      const double bias = float_pos - pos;                                \
+      if (pos > cnt_data / 2) {                                           \
+        ArrayArgs<T>::ArgMaxAtK(&ref_data, 0, cnt_data, pos - 1);         \
+        T v1 = ref_data[pos - 1];                                         \
+        T v2 = ref_data[pos + ArrayArgs<T>::ArgMax(ref_data.data() + pos, \
+                                                   cnt_data - pos)];      \
+        return static_cast<T>(v1 - (v1 - v2) * bias);                     \
+      } else {                                                            \
+        ArrayArgs<T>::ArgMaxAtK(&ref_data, 0, cnt_data, pos);             \
+        T v2 = ref_data[pos];                                             \
+        T v1 = ref_data[ArrayArgs<T>::ArgMin(ref_data.data(), pos)];      \
+        return static_cast<T>(v1 - (v1 - v2) * bias);                     \
+      }                                                                   \
+    }                                                                     \
   }\
-  const double float_pos = (1.0f - alpha) * cnt_data;\
-  const data_size_t pos = static_cast<data_size_t>(float_pos);\
-  if (pos < 1) {\
-    return ref_data[ArrayArgs<T>::ArgMax(ref_data)];\
-  } else if (pos >= cnt_data) {\
-    return ref_data[ArrayArgs<T>::ArgMin(ref_data)];\
-  } else {\
-    const double bias = float_pos - pos;\
-    if (pos > cnt_data / 2) {\
-      ArrayArgs<T>::ArgMaxAtK(&ref_data, 0, cnt_data, pos - 1);\
-      T v1 = ref_data[pos - 1];\
-      T v2 = ref_data[pos + ArrayArgs<T>::ArgMax(ref_data.data() + pos, cnt_data - pos)];\
-      return static_cast<T>(v1 - (v1 - v2) * bias);\
-    } else {\
-      ArrayArgs<T>::ArgMaxAtK(&ref_data, 0, cnt_data, pos);\
-      T v2 = ref_data[pos];\
-      T v1 = ref_data[ArrayArgs<T>::ArgMin(ref_data.data(), pos)];\
-      return static_cast<T>(v1 - (v1 - v2) * bias);\
-    }\
-  }\
-}\
 
-#define WeightedPercentileFun(T, data_reader, weight_reader, cnt_data, alpha) {\
-  if (cnt_data <= 1) { return  data_reader(0); }\
-  std::vector<data_size_t> sorted_idx(cnt_data);\
-  for (data_size_t i = 0; i < cnt_data; ++i) {\
-    sorted_idx[i] = i;\
+#define WeightedPercentileFun(T, data_reader, weight_reader, cnt_data, alpha) \
+  {                                                                           \
+    if (cnt_data <= 1) {                                                      \
+      return data_reader(0);                                                  \
+    }                                                                         \
+    std::vector<data_size_t> sorted_idx(cnt_data);                            \
+    for (data_size_t i = 0; i < cnt_data; ++i) {                              \
+      sorted_idx[i] = i;                                                      \
+    }                                                                         \
+    std::stable_sort(sorted_idx.begin(), sorted_idx.end(),                    \
+                     [&](data_size_t a, data_size_t b) {                      \
+                       return data_reader(a) < data_reader(b);                \
+                     });                                                      \
+    std::vector<double> weighted_cdf(cnt_data);                               \
+    weighted_cdf[0] = weight_reader(sorted_idx[0]);                           \
+    for (data_size_t i = 1; i < cnt_data; ++i) {                              \
+      weighted_cdf[i] = weighted_cdf[i - 1] + weight_reader(sorted_idx[i]);   \
+    }                                                                         \
+    double threshold = weighted_cdf[cnt_data - 1] * alpha;                    \
+    size_t pos = std::upper_bound(weighted_cdf.begin(), weighted_cdf.end(),   \
+                                  threshold) -                                \
+                 weighted_cdf.begin();                                        \
+    pos = std::min(pos, static_cast<size_t>(cnt_data - 1));                   \
+    if (pos == 0 || pos == static_cast<size_t>(cnt_data - 1)) {               \
+      return data_reader(sorted_idx[pos]);                                    \
+    }                                                                         \
+    CHECK_GE(threshold, weighted_cdf[pos - 1]);                               \
+    CHECK_LT(threshold, weighted_cdf[pos]);                                   \
+    T v1 = data_reader(sorted_idx[pos - 1]);                                  \
+    T v2 = data_reader(sorted_idx[pos]);                                      \
+    if (weighted_cdf[pos + 1] - weighted_cdf[pos] >= 1.0f) {                  \
+      return static_cast<T>((threshold - weighted_cdf[pos]) /                 \
+                                (weighted_cdf[pos + 1] - weighted_cdf[pos]) * \
+                                (v2 - v1) +                                   \
+                            v1);                                              \
+    } else {                                                                  \
+      return static_cast<T>(v2);                                              \
+    }                                                                         \
   }\
-  std::stable_sort(sorted_idx.begin(), sorted_idx.end(), [=](data_size_t a, data_size_t b) {return data_reader(a) < data_reader(b); });\
-  std::vector<double> weighted_cdf(cnt_data);\
-  weighted_cdf[0] = weight_reader(sorted_idx[0]);\
-  for (data_size_t i = 1; i < cnt_data; ++i) {\
-    weighted_cdf[i] = weighted_cdf[i - 1] + weight_reader(sorted_idx[i]);\
-  }\
-  double threshold = weighted_cdf[cnt_data - 1] * alpha;\
-  size_t pos = std::upper_bound(weighted_cdf.begin(), weighted_cdf.end(), threshold) - weighted_cdf.begin();\
-  pos = std::min(pos, static_cast<size_t>(cnt_data -1));\
-  if (pos == 0 || pos ==  static_cast<size_t>(cnt_data - 1)) {\
-    return data_reader(sorted_idx[pos]);\
-  }\
-  CHECK(threshold >= weighted_cdf[pos - 1]);\
-  CHECK(threshold < weighted_cdf[pos]);\
-  T v1 = data_reader(sorted_idx[pos - 1]);\
-  T v2 = data_reader(sorted_idx[pos]);\
-  if (weighted_cdf[pos + 1] - weighted_cdf[pos] >= 1.0f) {\
-    return static_cast<T>((threshold - weighted_cdf[pos]) / (weighted_cdf[pos + 1] - weighted_cdf[pos]) * (v2 - v1) + v1); \
-  } else {\
-    return static_cast<T>(v2);\
-  }\
-}\
 
 	/*!
 	* \brief Objective function for regression
 	*/
 	class RegressionL2loss : public ObjectiveFunction {
 	public:
-		explicit RegressionL2loss(const Config& config) {
+		explicit RegressionL2loss(const Config& config)
+			: deterministic_(config.deterministic) {
 			sqrt_ = config.reg_sqrt;
 		}
 
-		explicit RegressionL2loss(const std::vector<std::string>& strs) {
+		explicit RegressionL2loss(const std::vector<std::string>& strs)
+			: deterministic_(false) {
 			sqrt_ = false;
 			for (auto str : strs) {
 				if (str == std::string("sqrt")) {
@@ -180,11 +190,23 @@ namespace LightGBM {
 
 		void ConvertOutput(const double* input, double* output) const override {
 			if (has_gp_model_) {
-				if (re_model_->GetLikelihood() == std::string("gaussian")) {
+				// Note: this is needed for calculation/evaluation of metrics
+				// This is done directly here and not via the re_model_ and its likelihood to avoid overhead
+				if (likelihood_type_ == std::string("gaussian")) {
 					output[0] = input[0];
 				}
-				else if (re_model_->GetLikelihood() == std::string("bernoulli_probit")) {
+				else if (likelihood_type_ == std::string("bernoulli_probit")) {
 					output[0] = normalCDF(input[0]);
+				}
+				else if (likelihood_type_ == std::string("bernoulli_logit")) {
+					output[0] = 1. / (1. + std::exp(-input[0]));
+				}
+				else if (likelihood_type_ == std::string("poisson") ||
+					likelihood_type_ == std::string("gamma")) {
+					output[0] = std::exp(input[0]);
+				}
+				else {
+					Log::Fatal("ConvertOutput: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				}
 			}
 			else {
@@ -220,7 +242,7 @@ namespace LightGBM {
 			double sumw = 0.0f;
 			double initscore = 0.0f;
 			if (weights_ != nullptr) {
-#pragma omp parallel for schedule(static) reduction(+:suml, sumw)
+#pragma omp parallel for schedule(static) reduction(+:suml, sumw) if (!deterministic_)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					suml += label_[i] * weights_[i];
 					sumw += weights_[i];
@@ -229,16 +251,24 @@ namespace LightGBM {
 			}
 			else {
 				if (has_gp_model_) {
-					if (re_model_->GetLikelihood() == std::string("gaussian")) {
+					if (likelihood_type_ == std::string("gaussian") ||
+						likelihood_type_ == std::string("poisson") ||
+						likelihood_type_ == std::string("gamma")) {
 						sumw = static_cast<double>(num_data_);
 #pragma omp parallel for schedule(static) reduction(+:suml)
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							suml += label_[i];
 						}
 						initscore = suml / sumw;
-						Log::Info("[GPBoost with gaussian likelihood]: initscore=%f", initscore);
+						if (likelihood_type_ == std::string("poisson") ||
+							likelihood_type_ == std::string("gamma")) {
+							initscore = Common::SafeLog(initscore);
+						}
+						Log::Info("[GPBoost with %f likelihood]: initscore=%f", 
+							likelihood_type_.c_str(), initscore);
 					}
-					else if (re_model_->GetLikelihood() == std::string("bernoulli_probit")) {
+					else if (likelihood_type_ == std::string("bernoulli_probit") ||
+						likelihood_type_ == std::string("bernoulli_logit")) {
 						sumw = static_cast<double>(num_data_);
 #pragma omp parallel for schedule(static) reduction(+:suml)
 						for (data_size_t i = 0; i < num_data_; ++i) {
@@ -247,14 +277,23 @@ namespace LightGBM {
 						double pavg = suml / sumw;
 						pavg = std::min(pavg, 1.0 - kEpsilon);
 						pavg = std::max<double>(pavg, kEpsilon);
-						//initscore = std::log(pavg / (1.0f - pavg));//TODO: better use inverse normal cdf here?
-						initscore = normalCDFInverse(pavg);
-						Log::Info("[GPBoost with bernoulli_probit likelihood]: pavg=%f -> initscore=%f", pavg, initscore);
+						if (likelihood_type_ == std::string("bernoulli_probit")) {
+							initscore = normalCDFInverse(pavg);
+						}
+						else {
+							initscore = std::log(pavg / (1.0f - pavg));
+						}
+						Log::Info("[GPBoost with %s likelihood]: pavg=%f -> initscore=%f",
+							likelihood_type_.c_str(), pavg, initscore);
 					}
-				}
+					else {
+						Log::Fatal("BoostFromScore (for intial score calculation) not implemented for likelihood / objective = %s",
+							likelihood_type_.c_str());
+					}
+				}//end has_gp_model_
 				else {
 					sumw = static_cast<double>(num_data_);
-#pragma omp parallel for schedule(static) reduction(+:suml)
+#pragma omp parallel for schedule(static) reduction(+:suml) if (!deterministic_)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						suml += label_[i];
 					}
@@ -302,6 +341,7 @@ namespace LightGBM {
 		/*! \brief Pointer of weights */
 		const label_t* weights_;
 		std::vector<label_t> trans_label_;
+		const bool deterministic_;
 		/*! \brief Indicates whether the covariance matrix should also be factorized when calling re_model_->CalcGradient(). Only relevant if has_gp_model_ = true and train_gp_model_cov_pars_ = true */
 		mutable bool calc_cov_factor_ = true;
 		std::function<bool(label_t)> is_pos_ = [](label_t label) { return label > 0; };
@@ -453,10 +493,6 @@ namespace LightGBM {
 
 		const char* GetName() const override {
 			return "huber";
-		}
-
-		bool IsConstantHessian() const override {
-			return false;
 		}
 
 	private:
@@ -714,7 +750,9 @@ namespace LightGBM {
 			RegressionL2loss::Init(metadata, num_data);
 			for (data_size_t i = 0; i < num_data_; ++i) {
 				if (std::fabs(label_[i]) < 1) {
-					Log::Warning("Met 'abs(label) < 1', will convert them to '1' in MAPE objective and metric");
+					Log::Warning(
+						"Some label values are < 1 in absolute value. MAPE is unstable with such values, "
+						"so LightGBM rounds them to 1.0 when calculating MAPE.");
 					break;
 				}
 			}

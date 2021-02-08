@@ -1,19 +1,14 @@
 # coding: utf-8
-# pylint: disable = invalid-name, W0105
 """Library with training routines of GPBoost."""
-from __future__ import absolute_import
-
 import collections
 import copy
-import warnings
 from operator import attrgetter
 
 import numpy as np
 
 from . import callback
-from .basic import Booster, Dataset, GPBoostError, _ConfigAliases, _InnerPredictor, GPModel
-from .compat import (SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFold,
-                     string_type, integer_types, range_, zip_)
+from .basic import Booster, Dataset, GPBoostError, _ConfigAliases, _InnerPredictor, _log_warning, GPModel
+from .compat import SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFold
 
 
 def train(params, train_set, num_boost_round=100,
@@ -24,26 +19,27 @@ def train(params, train_set, num_boost_round=100,
           feature_name='auto', categorical_feature='auto',
           early_stopping_rounds=None, evals_result=None,
           verbose_eval=True, learning_rates=None,
-          keep_training_booster=True, callbacks=None):
+          keep_training_booster=False, callbacks=None):
     """Perform the training with given parameters.
 
     Parameters
     ----------
     params : dict
-        Parameters for training, see Parameters.rst for more information.
+        Parameters for training.
     train_set : Dataset
         Data to be trained on.
     num_boost_round : int, optional (default=100)
         Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
-        GPModel object for Gaussian process boosting
+        GPModel object for the GPBoost algorithm
     use_gp_model_for_validation : bool, optional (default=True)
-        If True, the Gaussian process is also used (in addition to the tree model) for calculating predictions on
-        the validation data
+        If True, the gp_model (Gaussian process and/or random effects) is also used (in addition to the tree model)
+        for calculating predictions on the validation data
     train_gp_model_cov_pars : bool, optional (default=True)
-        If True, the covariance parameters of the Gaussian process are estimated in every boosting iterations,
-        otherwise the gp_model parameters are not estimated. In the latter case, you need to either esimate them
-        beforehand or provide the values via the 'init_cov_pars' parameter when creating the gp_model
+        If True, the covariance parameters of the gp_model (Gaussian process and/or random effects) are estimated
+        in every boosting iterations, otherwise the gp_model parameters are not estimated. In the latter case, you
+        need to either estimate them beforehand or provide the values via the 'init_cov_pars' parameter when creating
+        the gp_model
     valid_sets : list of Datasets or None, optional (default=None)
         List of data to be evaluated on during training.
     valid_names : list of strings or None, optional (default=None)
@@ -62,13 +58,14 @@ def train(params, train_set, num_boost_round=100,
             hess : list or numpy 1-D array
                 The value of the second order derivative (Hessian) for each sample point.
 
+        For binary task, the preds is margin.
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is score[j * num_data + i]
         and you should group grad and hess in this way as well.
 
-    feval : callable or None, optional (default=None)
+    feval : callable, list of callable functions or None, optional (default=None)
         Customized evaluation function.
-        Should accept two parameters: preds, train_data,
+        Each evaluation function should accept two parameters: preds, train_data,
         and return (eval_name, eval_result, is_higher_better) or list of such tuples.
 
             preds : list or numpy 1-D array
@@ -82,6 +79,7 @@ def train(params, train_set, num_boost_round=100,
             is_higher_better : bool
                 Is eval result higher better, e.g. AUC is ``is_higher_better``.
 
+        For binary task, the preds is probability of positive class (or margin in case of specified ``fobj``).
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is preds[j * num_data + i].
         To ignore the default metric corresponding to the used objective,
@@ -135,9 +133,11 @@ def train(params, train_set, num_boost_round=100,
         List of learning rates for each boosting round
         or a customized function that calculates ``learning_rate``
         in terms of current number of round (e.g. yields learning rate decay).
-    keep_training_booster : bool, optional (default=True)
+    keep_training_booster : bool, optional (default=False)
         Whether the returned Booster will be used to keep training.
         If False, the returned value will be converted into _InnerPredictor before returning.
+        When your model is very large and cause the memory error,
+        you can try to set this param to ``True`` to avoid the model conversion performed during the internal call of ``model_to_string``.
         You can still use _InnerPredictor as ``init_model`` for future continue training.
     callbacks : list of callables or None, optional (default=None)
         List of callback functions that are applied at each iteration.
@@ -161,21 +161,21 @@ def train(params, train_set, num_boost_round=100,
     for alias in _ConfigAliases.get("num_iterations"):
         if alias in params:
             num_boost_round = params.pop(alias)
-            warnings.warn("Found `{}` in params. Will use it instead of argument".format(alias))
-            break
+            _log_warning("Found `{}` in params. Will use it instead of argument".format(alias))
+    params["num_iterations"] = num_boost_round
     for alias in _ConfigAliases.get("early_stopping_round"):
         if alias in params:
             early_stopping_rounds = params.pop(alias)
-            warnings.warn("Found `{}` in params. Will use it instead of argument".format(alias))
-            break
-    first_metric_only = params.pop('first_metric_only', False)
+            _log_warning("Found `{}` in params. Will use it instead of argument".format(alias))
+    params["early_stopping_round"] = early_stopping_rounds
+    first_metric_only = params.get('first_metric_only', False)
 
     params['use_gp_model_for_validation'] = use_gp_model_for_validation
     params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
 
     if num_boost_round <= 0:
         raise ValueError("num_boost_round should be greater than zero.")
-    if isinstance(init_model, string_type):
+    if isinstance(init_model, str):
         predictor = _InnerPredictor(model_file=init_model, pred_parameter=params)
     elif isinstance(init_model, Booster):
         predictor = init_model._to_predictor(dict(init_model.params, **params))
@@ -198,7 +198,7 @@ def train(params, train_set, num_boost_round=100,
     if valid_sets is not None:
         if isinstance(valid_sets, Dataset):
             valid_sets = [valid_sets]
-        if isinstance(valid_names, string_type):
+        if isinstance(valid_names, str):
             valid_names = [valid_names]
         for i, valid_data in enumerate(valid_sets):
             # reduce cost for prediction training data
@@ -242,10 +242,10 @@ def train(params, train_set, num_boost_round=100,
     # Most of legacy advanced options becomes callbacks
     if verbose_eval is True:
         callbacks.add(callback.print_evaluation())
-    elif isinstance(verbose_eval, integer_types):
+    elif isinstance(verbose_eval, int):
         callbacks.add(callback.print_evaluation(verbose_eval))
 
-    if early_stopping_rounds is not None:
+    if early_stopping_rounds is not None and early_stopping_rounds > 0:
         callbacks.add(callback.early_stopping(early_stopping_rounds, first_metric_only, verbose=bool(verbose_eval)))
 
     if learning_rates is not None:
@@ -264,7 +264,7 @@ def train(params, train_set, num_boost_round=100,
         booster = Booster(params=params, train_set=train_set, gp_model=gp_model)
         if is_valid_contain_train:
             booster.set_train_data_name(train_data_name)
-        for valid_set, name_valid_set in zip_(reduced_valid_sets, name_valid_sets):
+        for valid_set, name_valid_set in zip(reduced_valid_sets, name_valid_sets):
             booster.add_valid(valid_set, name_valid_set)
     finally:
         train_set._reverse_update_params()
@@ -273,7 +273,7 @@ def train(params, train_set, num_boost_round=100,
     booster.best_iteration = 0
 
     # start training
-    for i in range_(init_iteration, init_iteration + num_boost_round):
+    for i in range(init_iteration, init_iteration + num_boost_round):
         for cb in callbacks_before_iter:
             cb(callback.CallbackEnv(model=booster,
                                     params=params,
@@ -302,27 +302,45 @@ def train(params, train_set, num_boost_round=100,
             booster.best_iteration = earlyStopException.best_iteration + 1
             evaluation_result_list = earlyStopException.best_score
             break
+
     booster.best_score = collections.defaultdict(collections.OrderedDict)
     for dataset_name, eval_name, score, _ in evaluation_result_list:
         booster.best_score[dataset_name][eval_name] = score
     if not keep_training_booster:
-        booster.model_from_string(booster.model_to_string(), False).free_dataset()
+        booster.model_from_string(booster.model_to_string(), False)
+
     return booster
 
 
-class _CVBooster(object):
-    """Auxiliary data struct to hold all boosters of CV."""
+class CVBooster:
+    """CVBooster in GPBoost.
+
+    Auxiliary data structure to hold and redirect all boosters of ``cv`` function.
+    This class has the same methods as Booster class.
+    All method calls are actually performed for underlying Boosters and then all returned results are returned in a list.
+
+    Attributes
+    ----------
+    boosters : list of Booster
+        The list of underlying fitted models.
+    best_iteration : int
+        The best iteration of fitted model.
+    """
 
     def __init__(self):
+        """Initialize the CVBooster.
+
+        Generally, no need to instantiate manually.
+        """
         self.boosters = []
         self.best_iteration = -1
 
-    def append(self, booster):
-        """Add a booster to _CVBooster."""
+    def _append(self, booster):
+        """Add a booster to CVBooster."""
         self.boosters.append(booster)
 
     def __getattr__(self, name):
-        """Redirect methods call of _CVBooster."""
+        """Redirect methods call of CVBooster."""
         def handler_function(*args, **kwargs):
             """Call methods with each booster, and concatenate their results."""
             ret = []
@@ -345,22 +363,24 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             group_info = full_data.get_group()
             if group_info is not None:
                 group_info = np.array(group_info, dtype=np.int32, copy=False)
-                flatted_group = np.repeat(range_(len(group_info)), repeats=group_info)
+                flatted_group = np.repeat(range(len(group_info)), repeats=group_info)
             else:
                 flatted_group = np.zeros(num_data, dtype=np.int32)
             folds = folds.split(X=np.zeros(num_data), y=full_data.get_label(), groups=flatted_group)
     else:
-        if any(params.get(obj_alias, "") == "lambdarank" for obj_alias in _ConfigAliases.get("objective")):
+        if any(params.get(obj_alias, "") in {"lambdarank", "rank_xendcg", "xendcg",
+                                             "xe_ndcg", "xe_ndcg_mart", "xendcg_mart"}
+               for obj_alias in _ConfigAliases.get("objective")):
             if not SKLEARN_INSTALLED:
-                raise GPBoostError('Scikit-learn is required for lambdarank cv.')
-            # lambdarank task, split according to groups
+                raise GPBoostError('scikit-learn is required for ranking cv')
+            # ranking task, split according to groups
             group_info = np.array(full_data.get_group(), dtype=np.int32, copy=False)
-            flatted_group = np.repeat(range_(len(group_info)), repeats=group_info)
+            flatted_group = np.repeat(range(len(group_info)), repeats=group_info)
             group_kfold = _GPBoostGroupKFold(n_splits=nfold)
             folds = group_kfold.split(X=np.zeros(num_data), groups=flatted_group)
         elif stratified:
             if not SKLEARN_INSTALLED:
-                raise GPBoostError('Scikit-learn is required for stratified cv.')
+                raise GPBoostError('scikit-learn is required for stratified cv')
             skf = _GPBoostStratifiedKFold(n_splits=nfold, shuffle=shuffle, random_state=seed)
             folds = skf.split(X=np.zeros(num_data), y=full_data.get_label())
         else:
@@ -369,11 +389,11 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             else:
                 randidx = np.arange(num_data)
             kstep = int(num_data / nfold)
-            test_id = [randidx[i: i + kstep] for i in range_(0, num_data, kstep)]
-            train_id = [np.concatenate([test_id[i] for i in range_(nfold) if k != i]) for k in range_(nfold)]
-            folds = zip_(train_id, test_id)
+            test_id = [randidx[i: i + kstep] for i in range(0, num_data, kstep)]
+            train_id = [np.concatenate([test_id[i] for i in range(nfold) if k != i]) for k in range(nfold)]
+            folds = zip(train_id, test_id)
 
-    ret = _CVBooster()
+    ret = CVBooster()
     for train_idx, test_idx in folds:
         train_set = full_data.subset(sorted(train_idx))
         valid_set = full_data.subset(sorted(test_idx))
@@ -444,11 +464,11 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             gp_model.set_likelihood(gp_model_train.get_likelihood_name()) # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
             gp_model_train.set_optim_params(params=gp_model.get_optim_params())
         else: # no gp_model
-            cvbooster = Booster(params=tparam, train_set=train_set)
+            cvbooster = Booster(tparam, train_set)
         if eval_train_metric:
             cvbooster.add_valid(train_set, 'train')
         cvbooster.add_valid(valid_set, 'valid')
-        ret.append(cvbooster)
+        ret._append(cvbooster)
     return ret
 
 
@@ -470,14 +490,14 @@ def _agg_cv_result(raw_results, eval_train_metric=False):
 
 def cv(params, train_set, num_boost_round=100,
        gp_model=None, use_gp_model_for_validation=True,
-       fit_GP_cov_pars_OOS=False,
-       train_gp_model_cov_pars=True,
+       fit_GP_cov_pars_OOS=False, train_gp_model_cov_pars=True,
        folds=None, nfold=5, stratified=False, shuffle=True,
        metrics=None, fobj=None, feval=None, init_model=None,
        feature_name='auto', categorical_feature='auto',
        early_stopping_rounds=None, fpreproc=None,
-       verbose_eval=True, show_stdv=False, seed=0,
-       callbacks=None, eval_train_metric=False):
+       verbose_eval=None, show_stdv=False, seed=0,
+       callbacks=None, eval_train_metric=False,
+       return_cvbooster=False):
     """Perform the cross-validation with given paramaters.
 
     Parameters
@@ -489,18 +509,19 @@ def cv(params, train_set, num_boost_round=100,
     num_boost_round : int, optional (default=100)
         Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
-        GPModel object for Gaussian process boosting
+        GPModel object for the GPBoost algorithm
     use_gp_model_for_validation : bool, optional (default=True)
-        If True, the Gaussian process is also used (in addition to the tree model) for calculating predictions on
-        the validation data
+        If True, the gp_model (Gaussian process and/or random effects) is also used (in addition to the tree model)
+        for calculating predictions on the validation data
     fit_GP_cov_pars_OOS : bool, optional (default=False)
         If TRUE, the covariance parameters of the gp_model model are estimated using the out-of-sample (OOS) predictions
         on the validation data using the optimal number of iterations (after performing the CV).
         This corresponds to the GPBoostOOS algorithm.
     train_gp_model_cov_pars : bool, optional (default=True)
-        If True, the covariance parameters of the Gaussian process are estimated in every boosting iterations,
-        otherwise the gp_model parameters are not estimated. In the latter case, you need to either esimate them
-        beforehand or provide the values via the 'init_cov_pars' parameter when creating the gp_model
+        If True, the covariance parameters of the gp_model (Gaussian process and/or random effects) are estimated
+        in every boosting iterations, otherwise the gp_model parameters are not estimated. In the latter case, you
+        need to either estimate them beforehand or provide the values via the 'init_cov_pars' parameter when creating
+        the gp_model
     folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
         If generator or iterator, it should yield the train and test indices for each fold.
         If object, it should be one of the scikit-learn splitter classes
@@ -530,13 +551,14 @@ def cv(params, train_set, num_boost_round=100,
             hess : list or numpy 1-D array
                 The value of the second order derivative (Hessian) for each sample point.
 
+        For binary task, the preds is margin.
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is score[j * num_data + i]
         and you should group grad and hess in this way as well.
 
-    feval : callable or None, optional (default=None)
+    feval : callable, list of callable functions or None, optional (default=None)
         Customized evaluation function.
-        Should accept two parameters: preds, train_data,
+        Each evaluation function should accept two parameters: preds, train_data,
         and return (eval_name, eval_result, is_higher_better) or list of such tuples.
 
             preds : list or numpy 1-D array
@@ -550,6 +572,7 @@ def cv(params, train_set, num_boost_round=100,
             is_higher_better : bool
                 Is eval result higher better, e.g. AUC is ``is_higher_better``.
 
+        For binary task, the preds is probability of positive class (or margin in case of specified ``fobj``).
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is preds[j * num_data + i].
         To ignore the default metric corresponding to the used objective,
@@ -583,7 +606,7 @@ def cv(params, train_set, num_boost_round=100,
         If None, progress will be displayed when np.ndarray is returned.
         If True, progress will be displayed at every boosting stage.
         If int, progress will be displayed at every given ``verbose_eval`` boosting stage.
-    show_stdv : bool, optional (default=True)
+    show_stdv : bool, optional (default=False)
         Whether to display the standard deviation in progress.
         Results are not affected by this parameter, and always contain std.
     seed : int, optional (default=0)
@@ -594,6 +617,8 @@ def cv(params, train_set, num_boost_round=100,
     eval_train_metric : bool, optional (default=False)
         Whether to display the train metric in progress.
         The score of the metric is calculated again after each training step, so there is some impact on performance.
+    return_cvbooster : bool, optional (default=False)
+        Whether to return Booster models trained on each fold through ``CVBooster``.
 
     Returns
     -------
@@ -603,12 +628,14 @@ def cv(params, train_set, num_boost_round=100,
         {'metric1-mean': [values], 'metric1-stdv': [values],
         'metric2-mean': [values], 'metric2-stdv': [values],
         ...}.
+        If ``return_cvbooster=True``, also returns trained boosters via ``cvbooster`` key.
     """
     if fit_GP_cov_pars_OOS:
         raise ValueError("The GPBoostOOS algorithm (fit_GP_cov_pars_OOS=True) is currently not supported in Python. "
                          "If you need this feature, contact the developer of this package or open a GitHub issue.")
     if not isinstance(train_set, Dataset):
         raise TypeError("Training only accepts Dataset object")
+
     params = copy.deepcopy(params)
     if fobj is not None:
         for obj_alias in _ConfigAliases.get("objective"):
@@ -616,15 +643,15 @@ def cv(params, train_set, num_boost_round=100,
         params['objective'] = 'none'
     for alias in _ConfigAliases.get("num_iterations"):
         if alias in params:
-            warnings.warn("Found `{}` in params. Will use it instead of argument".format(alias))
+            _log_warning("Found `{}` in params. Will use it instead of argument".format(alias))
             num_boost_round = params.pop(alias)
-            break
+    params["num_iterations"] = num_boost_round
     for alias in _ConfigAliases.get("early_stopping_round"):
         if alias in params:
-            warnings.warn("Found `{}` in params. Will use it instead of argument".format(alias))
+            _log_warning("Found `{}` in params. Will use it instead of argument".format(alias))
             early_stopping_rounds = params.pop(alias)
-            break
-    first_metric_only = params.pop('first_metric_only', False)
+    params["early_stopping_round"] = early_stopping_rounds
+    first_metric_only = params.get('first_metric_only', False)
 
     params['use_gp_model_for_validation'] = use_gp_model_for_validation
     params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
@@ -639,21 +666,22 @@ def cv(params, train_set, num_boost_round=100,
 
     if num_boost_round <= 0:
         raise ValueError("num_boost_round should be greater than zero.")
-    if isinstance(init_model, string_type):
+    if isinstance(init_model, str):
         predictor = _InnerPredictor(model_file=init_model, pred_parameter=params)
     elif isinstance(init_model, Booster):
         predictor = init_model._to_predictor(dict(init_model.params, **params))
     else:
         predictor = None
-    train_set._update_params(params) \
-             ._set_predictor(predictor) \
-             .set_feature_name(feature_name) \
-             .set_categorical_feature(categorical_feature)
 
     if metrics is not None:
         for metric_alias in _ConfigAliases.get("metric"):
             params.pop(metric_alias, None)
         params['metric'] = metrics
+
+    train_set._update_params(params) \
+             ._set_predictor(predictor) \
+             .set_feature_name(feature_name) \
+             .set_categorical_feature(categorical_feature)
 
     results = collections.defaultdict(list)
     cvfolds = _make_n_folds(train_set, folds=folds, nfold=nfold,
@@ -669,11 +697,11 @@ def cv(params, train_set, num_boost_round=100,
         for i, cb in enumerate(callbacks):
             cb.__dict__.setdefault('order', i - len(callbacks))
         callbacks = set(callbacks)
-    if early_stopping_rounds is not None:
+    if early_stopping_rounds is not None and early_stopping_rounds > 0:
         callbacks.add(callback.early_stopping(early_stopping_rounds, first_metric_only, verbose=False))
     if verbose_eval is True:
         callbacks.add(callback.print_evaluation(show_stdv=show_stdv))
-    elif isinstance(verbose_eval, integer_types):
+    elif isinstance(verbose_eval, int):
         callbacks.add(callback.print_evaluation(verbose_eval, show_stdv=show_stdv))
 
     callbacks_before_iter = {cb for cb in callbacks if getattr(cb, 'before_iteration', False)}
@@ -681,7 +709,7 @@ def cv(params, train_set, num_boost_round=100,
     callbacks_before_iter = sorted(callbacks_before_iter, key=attrgetter('order'))
     callbacks_after_iter = sorted(callbacks_after_iter, key=attrgetter('order'))
 
-    for i in range_(num_boost_round):
+    for i in range(num_boost_round):
         for cb in callbacks_before_iter:
             cb(callback.CallbackEnv(model=cvfolds,
                                     params=params,
@@ -707,5 +735,8 @@ def cv(params, train_set, num_boost_round=100,
             for k in results:
                 results[k] = results[k][:cvfolds.best_iteration]
             break
+
+    if return_cvbooster:
+        results['cvbooster'] = cvfolds
 
     return dict(results)

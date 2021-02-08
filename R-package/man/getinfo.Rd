@@ -18,23 +18,28 @@ getinfo(dataset, ...)
 }
 \value{
 info data
+
+info data
 }
 \description{
-Get information of an \code{gpb.Dataset} object
+Get one attribute of a \code{gpb.Dataset}
 }
 \details{
 The \code{name} field can be one of the following:
 
 \itemize{
-    \item \code{label}: label / response variable;
+    \item \code{label}: label gpboost learn from ;
     \item \code{weight}: to do a weight rescale ;
-    \item \code{group}: group size ;
-    \item \code{init_score}: initial score is the base prediction.
+    \item{\code{group}: used for learning-to-rank tasks. An integer vector describing how to
+        group rows together as ordered results from the same set of candidate results to be ranked.
+        For example, if you have a 100-document dataset with \code{group = c(10, 20, 40, 10, 10, 10)},
+        that means that you have 6 groups, where the first 10 records are in the first group,
+        records 11-30 are in the second group, etc.}
+    \item \code{init_score}: initial score is the base prediction gpboost will boost from.
 }
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -46,5 +51,4 @@ gpboost::setinfo(dtrain, "label", 1 - labels)
 labels2 <- gpboost::getinfo(dtrain, "label")
 stopifnot(all(labels2 == 1 - labels))
 }
-
 }

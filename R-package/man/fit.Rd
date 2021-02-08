@@ -49,6 +49,8 @@ fit(gp_model, y, X, params, fixed_effects = NULL)
     Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters".}
     \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}
 }}
+
+\item{fixed_effects}{A \code{vector} of optional external fixed effects which are held fixed during training.}
 }
 \description{
 Generic 'fit' method

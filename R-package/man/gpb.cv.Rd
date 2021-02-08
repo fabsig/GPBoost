@@ -4,58 +4,62 @@
 \alias{gpb.cv}
 \title{Main CV logic for GPBoost}
 \usage{
-gpb.cv(params = list(), data, nrounds = 100, nfold = 4, label = NULL,
-  obj = NULL, gp_model = NULL, use_gp_model_for_validation = TRUE,
-  fit_GP_cov_pars_OOS = FALSE, train_gp_model_cov_pars = TRUE,
-  weight = NULL, eval = NULL, verbose = 1, record = TRUE,
-  eval_freq = 1L, showsd = FALSE, stratified = TRUE, folds = NULL,
-  init_model = NULL, colnames = NULL, categorical_feature = NULL,
-  early_stopping_rounds = NULL, callbacks = list(), reset_data = FALSE,
-  ...)
+gpb.cv(params = list(), data, nrounds = 10L, nfold = 4L, label = NULL,
+  weight = NULL, obj = NULL, gp_model = NULL,
+  use_gp_model_for_validation = TRUE, fit_GP_cov_pars_OOS = FALSE,
+  train_gp_model_cov_pars = TRUE, eval = NULL, verbose = 1L,
+  record = TRUE, eval_freq = 1L, showsd = FALSE, stratified = TRUE,
+  folds = NULL, init_model = NULL, colnames = NULL,
+  categorical_feature = NULL, early_stopping_rounds = NULL,
+  callbacks = list(), reset_data = FALSE, ...)
 }
 \arguments{
 \item{params}{List of parameters (many of them tuning paramters), see Parameters.rst for more information. A few key parameters:
 \itemize{
-    \item{learning_rate}{ The learning rate, also called shrinkage or damping parameter 
+    \item{\code{learning_rate}}{ The learning rate, also called shrinkage or damping parameter 
     (default = 0.1). An important tuning parameter for boosting. Lower values usually 
     lead to higher predictive accuracy but more boosting iterations are needed }
-    \item{num_leaves}{ Number of leaves in a tree. Tuning parameter for 
-    tree-boosting (default = 127)}
-    \item{min_data_in_leaf}{ Minimal number of samples per leaf. Tuning parameter for 
+    \item{\code{num_leaves}}{ Number of leaves in a tree. Tuning parameter for 
+    tree-boosting (default = 31)}
+    \item{\code{min_data_in_leaf}}{ Minimal number of samples per leaf. Tuning parameter for 
     tree-boosting (default = 20)}
-    \item{max_depth}{ Maximal depth of a tree. Tuning parameter for tree-boosting (default = no limit)}
-    \item{leaves_newton_update}{ Set this to TRUE to do a Newton update step for the tree leaves 
+    \item{\code{max_depth}}{ Maximal depth of a tree. Tuning parameter for tree-boosting (default = no limit)}
+    \item{\code{leaves_newton_update}}{ Set this to TRUE to do a Newton update step for the tree leaves 
     after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
-    \item{train_gp_model_cov_pars}{ If TRUE, the covariance parameters of the Gaussian process 
+    \item{\code{train_gp_model_cov_pars}}{ If TRUE, the covariance parameters of the Gaussian process 
     are stimated in every boosting iterations, 
     otherwise the gp_model parameters are not estimated. In the latter case, you need to 
     either esimate them beforehand or provide the values via 
     the 'init_cov_pars' parameter when creating the gp_model (default = TRUE).}
-    \item{use_gp_model_for_validation}{ If TRUE, the Gaussian process is also used 
+    \item{\code{use_gp_model_for_validation}}{ If TRUE, the Gaussian process is also used 
     (in addition to the tree model) for calculating predictions on the validation data 
     (default = TRUE)}
-    \item{use_nesterov_acc}{ Set this to TRUE to do boosting with Nesterov acceleration. 
+    \item{\code{use_nesterov_acc}}{ Set this to TRUE to do boosting with Nesterov acceleration (default = FALSE). 
     Can currently only be used for tree_learner = "serial" (default option)}
-    \item{nesterov_acc_rate}{ Acceleration rate for momentum step in case Nesterov accelerated 
+    \item{\code{nesterov_acc_rate}}{ Acceleration rate for momentum step in case Nesterov accelerated 
     boosting is used (default = 0.5)}
-    \item{boosting}{ Boosting type. \code{"gbdt"} or \code{"dart"}. Only "gpdt" allows for 
-    doing Gaussian process boosting}
+    \item{\code{oosting}}{ Boosting type. \code{"gbdt"}, \code{"rf"}, \code{"dart"} or \code{"goss"}.
+    Only \code{"gbdt"} allows for doing Gaussian process boosting.}
     \item{num_threads}{ Number of threads. For the best speed, set this to
                        the number of real CPU cores, not the number of threads (most
                        CPU using hyper-threading to generate 2 threads per CPU core).}
 }}
 
-\item{data}{A matrix with covariate (feature) data or a \code{gpb.Dataset} object containing covariate data for training}
+\item{data}{a \code{gpb.Dataset} object, used for training. Some functions, such as \code{\link{gpb.cv}},
+may allow you to pass other types of data like \code{matrix} and then separately supply
+\code{label} as a keyword argument.}
 
-\item{nrounds}{Number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting}
+\item{nrounds}{nNumber of boosting iterations (= number of trees). This is the most important tuning parameter for boosting. Default = 100}
 
-\item{nfold}{The original dataset is randomly partitioned into \code{nfold} equal size subsamples.}
+\item{nfold}{the original dataset is randomly partitioned into \code{nfold} equal size subsamples.}
 
-\item{label}{Vector of response variables / labels, used if \code{data} is not an \code{\link{gpb.Dataset}}}
+\item{label}{Vector of labels, used if \code{data} is not an \code{\link{gpb.Dataset}}}
 
-\item{obj}{Objective function, can be character or custom objective function (default = "regression_l2"). Examples include
-\code{regression_l2}, \code{regression_l1}, \code{huber},
-\code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}. Currently only "regression_l2" supports Gaussian process boosting.}
+\item{weight}{vector of response values. If not NULL, will set to dataset}
+
+\item{obj}{objective function, can be character or custom objective function. Examples include
+\code{regression}, \code{regression_l1}, \code{huber},
+\code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}}
 
 \item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
 
@@ -70,17 +74,45 @@ This corresponds to the GPBoostOOS algorithm.}
 otherwise the gp_model parameters are not estimated. In the latter case, you need to either esimate them beforehand or provide the values via 
 the 'init_cov_pars' parameter when creating the gp_model}
 
-\item{weight}{Vector of weights for samples (default = NULL). This is currently not supported for Gaussian process boosting (i.e. it only affects the trees and the Gaussian process or random effects model ignores the weights)}
+\item{eval}{evaluation function(s). This can be a character vector, function, or list with a mixture of
+            strings and functions.
 
-\item{eval}{Evaluation function, can be (a list of) \code{strings} (character) or a custom evaluation function.
-If this is defined by strings, this is equivalent to specifying the parameter \code{metric}.
-For a list of all possible metrics, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}
+            \itemize{
+                \item{\bold{a. character vector}:
+                    If you provide a character vector to this argument, it should contain strings with valid
+                    evaluation metrics.
+                    See \href{https://lightgbm.readthedocs.io/en/latest/Parameters.html#metric}{
+                    The "metric" section of the documentation}
+                    for a list of valid metrics.
+                }
+                \item{\bold{b. function}:
+                     You can provide a custom evaluation function. This
+                     should accept the keyword arguments \code{preds} and \code{dtrain} and should return a named
+                     list with three elements:
+                     \itemize{
+                         \item{\code{name}: A string with the name of the metric, used for printing
+                             and storing results.
+                         }
+                         \item{\code{value}: A single number indicating the value of the metric for the
+                             given predictions and true values
+                         }
+                         \item{
+                             \code{higher_better}: A boolean indicating whether higher values indicate a better fit.
+                             For example, this would be \code{FALSE} for metrics like MAE or RMSE.
+                         }
+                     }
+                }
+                \item{\bold{c. list}:
+                    If a list is given, it should only contain character vectors and functions.
+                    These should follow the requirements from the descriptions above.
+                }
+            }}
 
-\item{verbose}{Verbosity for output, if <= 0, also will disable the print of evaluation during training}
+\item{verbose}{verbosity for output, if <= 0, also will disable the print of evaluation during training}
 
 \item{record}{Boolean, TRUE will record iteration message to \code{booster$record_evals}}
 
-\item{eval_freq}{Evaluation output frequency, only effect when verbose > 0}
+\item{eval_freq}{evaluation output frequency, only effect when verbose > 0}
 
 \item{showsd}{\code{boolean}, whether to show standard deviation of cross validation}
 
@@ -91,27 +123,25 @@ by the values of outcome labels.}
 (each element must be a vector of test fold's indices). When folds are supplied,
 the \code{nfold} and \code{stratified} parameters are ignored.}
 
-\item{init_model}{Path of model file of \code{gpb.Booster} object, will continue training from this model}
+\item{init_model}{path of model file of \code{gpb.Booster} object, will continue training from this model}
 
-\item{colnames}{Feature (covariate) names, if not null, will use this to overwrite the names in dataset}
+\item{colnames}{feature names, if not null, will use this to overwrite the names in dataset}
 
-\item{categorical_feature}{List of str or int
-type int represents index,
-type str represents feature names}
+\item{categorical_feature}{categorical features. This can either be a character vector of feature
+names or an integer vector with the indices of the features (e.g.
+\code{c(1L, 10L)} to say "the first and tenth columns").}
 
-\item{early_stopping_rounds}{int
-Activates early stopping.
-Requires at least one validation data and one metric
-If there's more than one, will check all of them except the training data
-Returns the model with (best_iter + early_stopping_rounds)
-If early stopping occurs, the model will have 'best_iter' field}
+\item{early_stopping_rounds}{int. Activates early stopping. Requires at least one validation data
+and one metric. If there's more than one, will check all of them
+except the training data. Returns the model with (best_iter + early_stopping_rounds).
+If early stopping occurs, the model will have 'best_iter' field.}
 
-\item{callbacks}{list of callback functions
-List of callback functions that are applied at each iteration.}
+\item{callbacks}{List of callback functions that are applied at each iteration.}
 
-\item{reset_data}{Boolean, setting it to TRUE (not the default value) will transform the booster model into a predictor model which frees up memory and the original datasets}
+\item{reset_data}{Boolean, setting it to TRUE (not the default value) will transform the booster model
+into a predictor model which frees up memory and the original datasets}
 
-\item{...}{Other parameters, see Parameters.rst for more information.}
+\item{...}{other parameters, see Parameters.rst for more information.}
 }
 \value{
 a trained model \code{gpb.CVBooster}.
@@ -119,123 +149,47 @@ a trained model \code{gpb.CVBooster}.
 \description{
 Cross validation logic used by GPBoost
 }
+\section{Early Stopping}{
+
+
+         "early stopping" refers to stopping the training process if the model's performance on a given
+         validation set does not improve for several consecutive iterations.
+
+         If multiple arguments are given to \code{eval}, their order will be preserved. If you enable
+         early stopping by setting \code{early_stopping_rounds} in \code{params}, by default all
+         metrics will be considered for early stopping.
+
+         If you want to only consider the first metric for early stopping, pass
+         \code{first_metric_only = TRUE} in \code{params}. Note that if you also specify \code{metric}
+         in \code{params}, that metric will be considered the "first" one. If you omit \code{metric},
+         a default metric will be used based on your choice for the parameter \code{obj} (keyword argument)
+         or \code{objective} (passed into \code{params}).
+}
+
 \examples{
-\dontrun{
-require(gpboost)
+# See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
-#--------------------Cross validation for tree-boosting without GP or random effects----------------
-# Non-linear function for simulation
-f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
-x <- seq(from=0,to=1,length.out=200)
-plot(x,f1d(x),type="l",lwd=2,col="red",main="Mean function")
-# Function that simulates data. Two covariates of which only one has an effect
-sim_data <- function(n){
-  X=matrix(runif(2*n),ncol=2)
-  # mean function plus noise
-  y=f1d(X[,1])+rnorm(n,sd=0.1)
-  return(list(X=X,y=y))
-}
-# Simulate data
-n <- 1000
-set.seed(1)
-data <- sim_data(2 * n)
-dtrain <- gpb.Dataset(data$X[1:n,], label = data$y[1:n])
-nrounds <- 100
-params <- list(learning_rate = 0.1,
-               max_depth = 6,
-               min_data_in_leaf = 5,
-               objective = "regression_l2")
-
-print("Running cross validation with mean squared error")
-bst <- gpb.cv(params = params,
-              data = dtrain,
-              nrounds = nrounds,
-              nfold = 10,
-              eval = "l2",
-              early_stopping_rounds = 5)
-print(paste0("Optimal number of iterations: ", bst$best_iter))
-
-print("Running cross validation with mean absolute error")
-bst <- gpb.cv(params = params,
-              data = dtrain,
-              nrounds = nrounds,
-              nfold = 10,
-              eval = "l1",
-              early_stopping_rounds = 5)
-print(paste0("Optimal number of iterations: ", bst$best_iter))
-
-
-#--------------------Custom loss function----------------
-# Cross validation can also be done with a cutomized loss function
-# Define custom loss (quantile loss)
-quantile_loss <- function(preds, dtrain) {
-  alpha <- 0.95
-  labels <- getinfo(dtrain, "label")
-  y_diff <- as.numeric(labels-preds)
-  dummy <- ifelse(y_diff<0,1,0)
-  quantloss <- mean((alpha-dummy)*y_diff)
-  return(list(name = "quant_loss", value = quantloss, higher_better = FALSE))
-}
-
-print("Running cross validation, with cutomsized loss function (quantile loss)")
-bst <- gpb.cv(params = params,
-              data = dtrain,
-              nrounds = nrounds,
-              nfold = 10,
-              eval = quantile_loss,
-              early_stopping_rounds = 5)
-print(paste0("Optimal number of iterations: ", bst$best_iter))
-
-
-#--------------------Combine tree-boosting and grouped random effects model----------------
-# Simulate data
-f1d <- function(x) 1.7*(1/(1+exp(-(x-0.5)*20))+0.75*x)
-set.seed(1)
-n <- 1000 # number of samples
-X <- matrix(runif(2*n),ncol=2)
-y <- f1d(X[,1]) # mean
-# Add grouped random effects
-m <- 25 # number of categories / levels for grouping variable
-group <- rep(1,n) # grouping variable
-for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-sigma2_1 <- 1^2 # random effect variance
-sigma2 <- 0.1^2 # error variance
-# incidence matrix relating grouped random effects to samples
-Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
-b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-eps <- Z1 \%*\% b1
-xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-y <- y + eps + xi # add random effects and error to data
+\donttest{
+library(gpboost)
+data(GPBoost_data, package = "gpboost")
 
 # Create random effects model and dataset
-gp_model <- GPModel(group_data = group)
+gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 dtrain <- gpb.Dataset(X, label = y)
 params <- list(learning_rate = 0.05,
                max_depth = 6,
                min_data_in_leaf = 5,
                objective = "regression_l2")
-
-print("Running cross validation for GPBoost model")
-bst <- gpb.cv(params = params,
-              data = dtrain,
-              gp_model = gp_model,
-              nrounds = 100,
-              nfold = 10,
-              eval = "l2",
-              early_stopping_rounds = 5)
-print(paste0("Optimal number of iterations: ", bst$best_iter))
-
-# Include random effect predictions for validation (observe the lower test error)
-gp_model <- GPModel(group_data = group)
-print("Running cross validation for GPBoost model and use_gp_model_for_validation = TRUE")
-bst <- gpb.cv(params = params,
-              data = dtrain,
-              gp_model = gp_model,
-              use_gp_model_for_validation = TRUE,
-              nrounds = 100,
-              nfold = 10,
-              eval = "l2",
-              early_stopping_rounds = 5)
-print(paste0("Optimal number of iterations: ", bst$best_iter))
+# Run CV
+cvbst <- gpb.cv(params = params,
+                data = dtrain,
+                gp_model = gp_model,
+                nrounds = 100,
+                nfold = 4,
+                eval = "l2",
+                early_stopping_rounds = 5,
+                use_gp_model_for_validation = TRUE)
+print(paste0("Optimal number of iterations: ", cvbst$best_iter,
+             ", best test error: ", cvbst$best_score))
 }
 }

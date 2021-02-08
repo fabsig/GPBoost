@@ -17,8 +17,8 @@
 //#define lapack_complex_float std::complex<float>
 //#define lapack_complex_double std::complex<double>
 
-#include <eigen/Sparse>
-#include <eigen/Dense>
+#include <Eigen/Sparse>
+#include <Eigen/Dense>
 //#ifdef _MSC_VER
 #pragma warning( disable : 4127) // Suppress unnecessary warning (conditional expression is constant)
 //#endif

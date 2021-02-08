@@ -5,7 +5,7 @@
 # gpboost_path = # Put path of GPBoost folder here
 # os.chdir(gpboost_path)
 
-IN_FILES = ['include/GPBoost/gpboost_r_api.h', 'include/LightGBM/lightgbm_R.h']
+IN_FILES = ['R-package/src/gpboost_R.h']
 
 functions = {}
 
@@ -27,8 +27,6 @@ for IN_FILE in IN_FILES:
     ]
 
     prefix = 'LIGHTGBM_C_EXPORT LGBM_SE '
-    if IN_FILE == 'include/GPBoost/gpboost_r_api.h':
-        prefix = 'GPBOOST_C_EXPORT LGBM_SE '
     current_function = None
     for line in txt:
         if line.startswith(prefix):

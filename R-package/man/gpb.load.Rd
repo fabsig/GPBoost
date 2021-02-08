@@ -2,7 +2,7 @@
 % Please edit documentation in R/gpb.Booster.R
 \name{gpb.load}
 \alias{gpb.load}
-\title{Load model}
+\title{Load GPBoost model}
 \usage{
 gpb.load(filename = NULL, model_str = NULL)
 }
@@ -15,13 +15,11 @@ gpb.load(filename = NULL, model_str = NULL)
 gpb.Booster
 }
 \description{
-Load model from saved model file or string
-Load takes in either a file path or model string
-If both are provided, Load will default to loading from file
+Load GPBoost takes in either a file path or model string.
+              If both are provided, Load will default to loading from file
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -30,17 +28,19 @@ test <- agaricus.test
 dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
 params <- list(objective = "regression", metric = "l2")
 valids <- list(test = dtest)
-model <- gpb.train(params = params,
-                   data = dtrain,
-                   nrounds = 10,
-                   valids = valids,
-                   min_data = 1,
-                   learning_rate = 1,
-                   early_stopping_rounds = 5)
-gpb.save(model, "model.txt")
-load_booster <- gpb.load(filename = "model.txt")
+model <- gpb.train(
+  params = params
+  , data = dtrain
+  , nrounds = 5L
+  , valids = valids
+  , min_data = 1L
+  , learning_rate = 1.0
+  , early_stopping_rounds = 3L
+)
+model_file <- tempfile(fileext = ".txt")
+gpb.save(model, model_file)
+load_booster <- gpb.load(filename = model_file)
 model_string <- model$save_model_to_string(NULL) # saves best iteration
 load_booster_from_str <- gpb.load(model_str = model_string)
 }
-
 }

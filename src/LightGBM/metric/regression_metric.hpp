@@ -1,18 +1,14 @@
 /*!
-* This file is part of GPBoost a C++ library for combining
-*	boosting with Gaussian process and mixed effects models
-*
 * Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
 * Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
-*
 * Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 */
 #ifndef LIGHTGBM_METRIC_REGRESSION_METRIC_HPP_
 #define LIGHTGBM_METRIC_REGRESSION_METRIC_HPP_
 
+#include <GPBoost/re_model.h>
 #include <LightGBM/metric.h>
 #include <LightGBM/utils/log.h>
-#include <GPBoost/re_model.h>
 
 #include <string>
 #include <algorithm>
@@ -314,7 +310,7 @@ namespace LightGBM {
 		}
 
 		inline static void CheckLabel(label_t label) {
-			CHECK(label > 0);
+			CHECK_GT(label, 0);
 		}
 	};
 
@@ -336,7 +332,7 @@ namespace LightGBM {
 			return sum_loss * 2;
 		}
 		inline static void CheckLabel(label_t label) {
-			CHECK(label > 0);
+			CHECK_GT(label, 0);
 		}
 	};
 

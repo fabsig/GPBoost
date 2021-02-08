@@ -1,10 +1,6 @@
 /*!
-* This file is part of GPBoost a C++ library for combining
-*	boosting with Gaussian process and mixed effects models
-*
- * Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
- * Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
-*
+* Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
 * Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 */
 #include <LightGBM/objective_function.h>
@@ -34,6 +30,8 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return new BinaryLogloss(config);
   } else if (type == std::string("lambdarank")) {
     return new LambdarankNDCG(config);
+  } else if (type == std::string("rank_xendcg")) {
+    return new RankXENDCG(config);
   } else if (type == std::string("multiclass")) {
     return new MulticlassSoftmax(config);
   } else if (type == std::string("multiclassova")) {
@@ -52,6 +50,7 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return nullptr;
   }
   Log::Fatal("Unknown objective type name: %s", type.c_str());
+  return nullptr;
 }
 
 ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string& str) {
@@ -73,6 +72,8 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return new BinaryLogloss(strs);
   } else if (type == std::string("lambdarank")) {
     return new LambdarankNDCG(strs);
+  } else if (type == std::string("rank_xendcg")) {
+    return new RankXENDCG(strs);
   } else if (type == std::string("multiclass")) {
     return new MulticlassSoftmax(strs);
   } else if (type == std::string("multiclassova")) {
@@ -91,43 +92,45 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return nullptr;
   }
   Log::Fatal("Unknown objective type name: %s", type.c_str());
+  return nullptr;
 }
 
 void ObjectiveFunction::InitGPModel(REModel* re_model,
-  bool train_gp_model_cov_pars,
-  bool use_gp_model_for_validation,
-  const label_t* label) {
-  CHECK(re_model != nullptr);
-  re_model_ = re_model;
-  if (train_gp_model_cov_pars) {
-    re_model_->ResetCovPars();
-  }
-  has_gp_model_ = true;
-  train_gp_model_cov_pars_ = train_gp_model_cov_pars;
-  use_gp_model_for_validation_ = use_gp_model_for_validation;
-  if (!(re_model_->GaussLikelihood())) {
-      re_model->SetY(label);
-      re_model->InitializeCovParsIfNotDefined(nullptr);
-  }
+    bool train_gp_model_cov_pars,
+    bool use_gp_model_for_validation,
+    const label_t* label) {
+    CHECK(re_model != nullptr);
+    re_model_ = re_model;
+    if (train_gp_model_cov_pars) {
+        re_model_->ResetCovPars();
+    }
+    has_gp_model_ = true;
+    train_gp_model_cov_pars_ = train_gp_model_cov_pars;
+    use_gp_model_for_validation_ = use_gp_model_for_validation;
+    if (!(re_model_->GaussLikelihood())) {
+        re_model->SetY(label);
+        re_model->InitializeCovParsIfNotDefined(nullptr);
+        likelihood_type_ = re_model_->GetLikelihood();
+    }
 }
 
 bool ObjectiveFunction::HasGPModel() const {
-  return(has_gp_model_);
+    return(has_gp_model_);
 }
 
 bool ObjectiveFunction::UseGPModelForValidation() const {
-  return(use_gp_model_for_validation_);
+    return(use_gp_model_for_validation_);
 }
 
 REModel* ObjectiveFunction::GetGPModel() const {
-  return(re_model_);
+    return(re_model_);
 }
 
 void ObjectiveFunction::NewtonUpdateLeafValues(const int* data_leaf_index,
-  const int num_leaves, double* leaf_values) const {//used only for "regression" loss
-  if (has_gp_model_) {
-    re_model_->NewtonUpdateLeafValues(data_leaf_index, num_leaves, leaf_values);
-  }
+    const int num_leaves, double* leaf_values) const {//used only for "regression" loss
+    if (has_gp_model_) {
+        re_model_->NewtonUpdateLeafValues(data_leaf_index, num_leaves, leaf_values);
+    }
 }
 
 }  // namespace LightGBM

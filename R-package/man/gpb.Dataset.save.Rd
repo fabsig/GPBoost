@@ -12,18 +12,17 @@ gpb.Dataset.save(dataset, fname)
 \item{fname}{object filename of output file}
 }
 \value{
-passed dataset
+the dataset you passed in
 }
 \description{
-Save \code{gpb.Dataset} to a binary file
+Please note that \code{init_score} is not saved in binary file.
+             If you need it, please set it again after loading Dataset.
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
-gpb.Dataset.save(dtrain, "data.bin")
+gpb.Dataset.save(dtrain, tempfile(fileext = ".bin"))
 }
-
 }

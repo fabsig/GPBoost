@@ -2,7 +2,7 @@
 % Please edit documentation in R/gpb.Booster.R
 \name{gpb.dump}
 \alias{gpb.dump}
-\title{Dump model to json}
+\title{Dump GPBoost model to json}
 \usage{
 gpb.dump(booster, num_iteration = NULL)
 }
@@ -15,10 +15,10 @@ gpb.dump(booster, num_iteration = NULL)
 json format of model
 }
 \description{
-Dump model to json
+Dump GPBoost model to json
 }
 \examples{
-\dontrun{
+\donttest{
 library(gpboost)
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -28,14 +28,15 @@ test <- agaricus.test
 dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
 params <- list(objective = "regression", metric = "l2")
 valids <- list(test = dtest)
-model <- gpb.train(params = params,
-                   data = dtrain,
-                   nrounds = 10,
-                   valids = valids,
-                   min_data = 1,
-                   learning_rate = 1,
-                   early_stopping_rounds = 5)
+model <- gpb.train(
+  params = params
+  , data = dtrain
+  , nrounds = 10L
+  , valids = valids
+  , min_data = 1L
+  , learning_rate = 1.0
+  , early_stopping_rounds = 5L
+)
 json_model <- gpb.dump(model)
 }
-
 }

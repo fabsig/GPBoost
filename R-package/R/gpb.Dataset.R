@@ -10,13 +10,15 @@ Dataset <- R6::R6Class(
     finalize = function() {
 
       # Check the need for freeing handle
-      if (!gpb.is.null.handle(private$handle)) {
+      if (!gpb.is.null.handle(x = private$handle)) {
 
         # Freeing up handle
-        gpb.call("LGBM_DatasetFree_R", ret = NULL, private$handle)
+        gpb.call(fun_name = "LGBM_DatasetFree_R", ret = NULL, private$handle)
         private$handle <- NULL
 
       }
+
+      return(invisible(NULL))
 
     },
 
@@ -31,6 +33,14 @@ Dataset <- R6::R6Class(
                           used_indices = NULL,
                           info = list(),
                           ...) {
+
+      # validate inputs early to avoid unnecessary computation
+      if (!(is.null(reference) || gpb.check.r6.class(object = reference, name = "gpb.Dataset"))) {
+          stop("gpb.Dataset: If provided, reference must be a ", sQuote("gpb.Dataset"))
+      }
+      if (!(is.null(predictor) || gpb.check.r6.class(object = predictor, name = "gpb.Predictor"))) {
+          stop("gpb.Dataset: If provided, predictor must be a ", sQuote("gpb.Predictor"))
+      }
 
       # Check for additional parameters
       additional_params <- list(...)
@@ -56,20 +66,6 @@ Dataset <- R6::R6Class(
 
       }
 
-      # Check for dataset reference
-      if (!is.null(reference)) {
-        if (!gpb.check.r6.class(reference, "gpb.Dataset")) {
-          stop("gpb.Dataset: Can only use ", sQuote("gpb.Dataset"), " as reference")
-        }
-      }
-
-      # Check for predictor reference
-      if (!is.null(predictor)) {
-        if (!gpb.check.r6.class(predictor, "Predictor")) {
-          stop("gpb.Dataset: Only can use ", sQuote("Predictor"), " as predictor")
-        }
-      }
-
       # Check for matrix format
       if (is.matrix(data)) {
         # Check whether matrix is the correct type first ("double")
@@ -87,10 +83,11 @@ Dataset <- R6::R6Class(
       private$categorical_feature <- categorical_feature
       private$predictor <- predictor
       private$free_raw_data <- free_raw_data
-      if (!is.null(used_indices)) {
-        private$used_indices <- sort(used_indices, decreasing = FALSE)
-      }
+      private$used_indices <- sort(used_indices, decreasing = FALSE)
       private$info <- info
+      private$version <- 0L
+
+      return(invisible(NULL))
 
     },
 
@@ -99,18 +96,19 @@ Dataset <- R6::R6Class(
                             ...) {
 
       # Create new dataset
-      ret <- Dataset$new(data,
-                         private$params,
-                         self,
-                         private$colnames,
-                         private$categorical_feature,
-                         private$predictor,
-                         private$free_raw_data,
-                         NULL,
-                         info,
-                         ...)
+      ret <- Dataset$new(
+        data = data
+        , params = private$params
+        , reference = self
+        , colnames = private$colnames
+        , categorical_feature = private$categorical_feature
+        , predictor = private$predictor
+        , free_raw_data = private$free_raw_data
+        , used_indices = NULL
+        , info = info
+        , ...
+      )
 
-      # Return ret
       return(invisible(ret))
 
     },
@@ -119,7 +117,7 @@ Dataset <- R6::R6Class(
     construct = function() {
 
       # Check for handle null
-      if (!gpb.is.null.handle(private$handle)) {
+      if (!gpb.is.null.handle(x = private$handle)) {
         return(invisible(self))
       }
 
@@ -140,22 +138,31 @@ Dataset <- R6::R6Class(
         # Check for character name
         if (is.character(private$categorical_feature)) {
 
-            cate_indices <- as.list(match(private$categorical_feature, private$colnames) - 1)
+            cate_indices <- as.list(match(private$categorical_feature, private$colnames) - 1L)
 
             # Provided indices, but some indices are not existing?
-            if (sum(is.na(cate_indices)) > 0) {
-              stop("gpb.self.get.handle: supplied an unknown feature in categorical_feature: ", sQuote(private$categorical_feature[is.na(cate_indices)]))
+            if (sum(is.na(cate_indices)) > 0L) {
+              stop(
+                "gpb.self.get.handle: supplied an unknown feature in categorical_feature: "
+                , sQuote(private$categorical_feature[is.na(cate_indices)])
+              )
             }
 
           } else {
 
             # Check if more categorical features were output over the feature space
             if (max(private$categorical_feature) > length(private$colnames)) {
-              stop("gpb.self.get.handle: supplied a too large value in categorical_feature: ", max(private$categorical_feature), " but only ", length(private$colnames), " features")
+              stop(
+                "gpb.self.get.handle: supplied a too large value in categorical_feature: "
+                , max(private$categorical_feature)
+                , " but only "
+                , length(private$colnames)
+                , " features"
+              )
             }
 
             # Store indices as [0, n-1] indexed instead of [1, n] indexed
-            cate_indices <- as.list(private$categorical_feature - 1)
+            cate_indices <- as.list(private$categorical_feature - 1L)
 
           }
 
@@ -167,20 +174,22 @@ Dataset <- R6::R6Class(
       # Check has header or not
       has_header <- FALSE
       if (!is.null(private$params$has_header) || !is.null(private$params$header)) {
-        if (tolower(as.character(private$params$has_header)) == "true" || tolower(as.character(private$params$header)) == "true") {
+        params_has_header <- tolower(as.character(private$params$has_header)) == "true"
+        params_header <- tolower(as.character(private$params$header)) == "true"
+        if (params_has_header || params_header) {
           has_header <- TRUE
         }
       }
 
       # Generate parameter str
-      params_str <- gpb.params2str(private$params)
+      params_str <- gpb.params2str(params = private$params)
 
       # Get handle of reference dataset
       ref_handle <- NULL
       if (!is.null(private$reference)) {
         ref_handle <- private$reference$.__enclos_env__$private$get_handle()
       }
-      handle <- NA_real_
+      handle <- gpb.null.handle()
 
       # Not subsetting
       if (is.null(private$used_indices)) {
@@ -188,43 +197,52 @@ Dataset <- R6::R6Class(
         # Are we using a data file?
         if (is.character(private$raw_data)) {
 
-          handle <- gpb.call("LGBM_DatasetCreateFromFile_R",
-                             ret = handle,
-                             gpb.c_str(private$raw_data),
-                             params_str,
-                             ref_handle)
+          handle <- gpb.call(
+            fun_name = "LGBM_DatasetCreateFromFile_R"
+            , ret = handle
+            , gpb.c_str(x = private$raw_data)
+            , params_str
+            , ref_handle
+          )
 
         } else if (is.matrix(private$raw_data)) {
 
           # Are we using a matrix?
-          handle <- gpb.call("LGBM_DatasetCreateFromMat_R",
-                             ret = handle,
-                             private$raw_data,
-                             nrow(private$raw_data),
-                             ncol(private$raw_data),
-                             params_str,
-                             ref_handle)
+          handle <- gpb.call(
+            fun_name = "LGBM_DatasetCreateFromMat_R"
+            , ret = handle
+            , private$raw_data
+            , nrow(private$raw_data)
+            , ncol(private$raw_data)
+            , params_str
+            , ref_handle
+          )
 
         } else if (methods::is(private$raw_data, "dgCMatrix")) {
-          if (length(private$raw_data@p) > 2147483647) {
+          if (length(private$raw_data@p) > 2147483647L) {
             stop("Cannot support large CSC matrix")
           }
           # Are we using a dgCMatrix (sparsed matrix column compressed)
-          handle <- gpb.call("LGBM_DatasetCreateFromCSC_R",
-                             ret = handle,
-                             private$raw_data@p,
-                             private$raw_data@i,
-                             private$raw_data@x,
-                             length(private$raw_data@p),
-                             length(private$raw_data@x),
-                             nrow(private$raw_data),
-                             params_str,
-                             ref_handle)
+          handle <- gpb.call(
+            fun_name = "LGBM_DatasetCreateFromCSC_R"
+            , ret = handle
+            , private$raw_data@p
+            , private$raw_data@i
+            , private$raw_data@x
+            , length(private$raw_data@p)
+            , length(private$raw_data@x)
+            , nrow(private$raw_data)
+            , params_str
+            , ref_handle
+          )
 
         } else {
 
           # Unknown data type
-          stop("gpb.Dataset.construct: does not support constructing from ", sQuote(class(private$raw_data)))
+          stop(
+            "gpb.Dataset.construct: does not support constructing from "
+            , sQuote(class(private$raw_data))
+          )
 
         }
 
@@ -236,15 +254,17 @@ Dataset <- R6::R6Class(
         }
 
         # Construct subset
-        handle <- gpb.call("LGBM_DatasetGetSubset_R",
-                           ret = handle,
-                           ref_handle,
-                           c(private$used_indices), # Adding c() fixes issue in R v3.5
-                           length(private$used_indices),
-                           params_str)
+        handle <- gpb.call(
+          fun_name = "LGBM_DatasetGetSubset_R"
+          , ret = handle
+          , ref_handle
+          , c(private$used_indices) # Adding c() fixes issue in R v3.5
+          , length(private$used_indices)
+          , params_str
+        )
 
       }
-      if (gpb.is.null.handle(handle)) {
+      if (gpb.is.null.handle(x = handle)) {
         stop("gpb.Dataset.construct: cannot create Dataset handle")
       }
       # Setup class and private type
@@ -253,14 +273,18 @@ Dataset <- R6::R6Class(
 
       # Set feature names
       if (!is.null(private$colnames)) {
-        self$set_colnames(private$colnames)
+        self$set_colnames(colnames = private$colnames)
       }
 
       # Load init score if requested
       if (!is.null(private$predictor) && is.null(private$used_indices)) {
 
         # Setup initial scores
-        init_score <- private$predictor$predict(private$raw_data, rawscore = TRUE, reshape = TRUE)
+        init_score <- private$predictor$predict(
+          data = private$raw_data
+          , rawscore = TRUE
+          , reshape = TRUE
+        )
 
         # Not needed to transpose, for is col_marjor
         init_score <- as.vector(init_score)
@@ -274,24 +298,23 @@ Dataset <- R6::R6Class(
       }
 
       # Get private information
-      if (length(private$info) > 0) {
+      if (length(private$info) > 0L) {
 
         # Set infos
         for (i in seq_along(private$info)) {
 
           p <- private$info[i]
-          self$setinfo(names(p), p[[1]])
+          self$setinfo(name = names(p), info = p[[1L]])
 
         }
 
       }
 
       # Get label information existence
-      if (is.null(self$getinfo("label"))) {
+      if (is.null(self$getinfo(name = "label"))) {
         stop("gpb.Dataset.construct: label should be set")
       }
 
-      # Return self
       return(invisible(self))
 
     },
@@ -300,25 +323,40 @@ Dataset <- R6::R6Class(
     dim = function() {
 
       # Check for handle
-      if (!gpb.is.null.handle(private$handle)) {
+      if (!gpb.is.null.handle(x = private$handle)) {
 
         num_row <- 0L
         num_col <- 0L
 
         # Get numeric data and numeric features
-        c(gpb.call("LGBM_DatasetGetNumData_R", ret = num_row, private$handle),
-          gpb.call("LGBM_DatasetGetNumFeature_R", ret = num_col, private$handle))
+        return(
+          c(
+            gpb.call(
+              fun_name = "LGBM_DatasetGetNumData_R"
+              , ret = num_row
+              , private$handle
+            ),
+            gpb.call(
+              fun_name = "LGBM_DatasetGetNumFeature_R"
+              , ret = num_col
+              , private$handle
+            )
+          )
+        )
 
       } else if (is.matrix(private$raw_data) || methods::is(private$raw_data, "dgCMatrix")) {
 
         # Check if dgCMatrix (sparse matrix column compressed)
         # NOTE: requires Matrix package
-        dim(private$raw_data)
+        return(dim(private$raw_data))
 
       } else {
 
         # Trying to work with unknown dimensions is not possible
-        stop("dim: cannot get dimensions before dataset has been constructed, please call gpb.Dataset.construct explicitly")
+        stop(
+          "dim: cannot get dimensions before dataset has been constructed, "
+          , "please call gpb.Dataset.construct explicitly"
+        )
 
       }
 
@@ -328,22 +366,28 @@ Dataset <- R6::R6Class(
     get_colnames = function() {
 
       # Check for handle
-      if (!gpb.is.null.handle(private$handle)) {
+      if (!gpb.is.null.handle(x = private$handle)) {
 
         # Get feature names and write them
-        cnames <- gpb.call.return.str("LGBM_DatasetGetFeatureNames_R", private$handle)
-        private$colnames <- as.character(base::strsplit(cnames, "\t")[[1]])
-        private$colnames
+        cnames <- gpb.call.return.str(
+            fun_name = "LGBM_DatasetGetFeatureNames_R"
+            , private$handle
+        )
+        private$colnames <- as.character(base::strsplit(cnames, "\t")[[1L]])
+        return(private$colnames)
 
       } else if (is.matrix(private$raw_data) || methods::is(private$raw_data, "dgCMatrix")) {
 
         # Check if dgCMatrix (sparse matrix column compressed)
-        colnames(private$raw_data)
+        return(colnames(private$raw_data))
 
       } else {
 
         # Trying to work with unknown dimensions is not possible
-        stop("dim: cannot get dimensions before dataset has been constructed, please call gpb.Dataset.construct explicitly")
+        stop(
+          "dim: cannot get dimensions before dataset has been constructed, please call "
+          , "gpb.Dataset.construct explicitly"
+        )
 
       }
 
@@ -359,24 +403,25 @@ Dataset <- R6::R6Class(
 
       # Check empty column names
       colnames <- as.character(colnames)
-      if (length(colnames) == 0) {
+      if (length(colnames) == 0L) {
         return(invisible(self))
       }
 
       # Write column names
       private$colnames <- colnames
-      if (!gpb.is.null.handle(private$handle)) {
+      if (!gpb.is.null.handle(x = private$handle)) {
 
         # Merge names with tab separation
         merged_name <- paste0(as.list(private$colnames), collapse = "\t")
-        gpb.call("LGBM_DatasetSetFeatureNames_R",
-                 ret = NULL,
-                 private$handle,
-                 gpb.c_str(merged_name))
+        gpb.call(
+          fun_name = "LGBM_DatasetSetFeatureNames_R"
+          , ret = NULL
+          , private$handle
+          , gpb.c_str(x = merged_name)
+        )
 
       }
 
-      # Return self
       return(invisible(self))
 
     },
@@ -388,26 +433,28 @@ Dataset <- R6::R6Class(
       INFONAMES <- c("label", "weight", "init_score", "group")
 
       # Check if attribute key is in the known attribute list
-      if (!is.character(name) || length(name) != 1 || !name %in% INFONAMES) {
+      if (!is.character(name) || length(name) != 1L || !name %in% INFONAMES) {
         stop("getinfo: name must one of the following: ", paste0(sQuote(INFONAMES), collapse = ", "))
       }
 
       # Check for info name and handle
       if (is.null(private$info[[name]])) {
 
-        if (gpb.is.null.handle(private$handle)){
+        if (gpb.is.null.handle(x = private$handle)) {
           stop("Cannot perform getinfo before constructing Dataset.")
         }
 
         # Get field size of info
         info_len <- 0L
-        info_len <- gpb.call("LGBM_DatasetGetFieldSize_R",
-                             ret = info_len,
-                             private$handle,
-                             gpb.c_str(name))
+        info_len <- gpb.call(
+          fun_name = "LGBM_DatasetGetFieldSize_R"
+          , ret = info_len
+          , private$handle
+          , gpb.c_str(x = name)
+        )
 
         # Check if info is not empty
-        if (info_len > 0) {
+        if (info_len > 0L) {
 
           # Get back fields
           ret <- NULL
@@ -417,17 +464,19 @@ Dataset <- R6::R6Class(
             numeric(info_len) # Numeric
           }
 
-          ret <- gpb.call("LGBM_DatasetGetField_R",
-                          ret = ret,
-                          private$handle,
-                          gpb.c_str(name))
+          ret <- gpb.call(
+            fun_name = "LGBM_DatasetGetField_R"
+            , ret = ret
+            , private$handle
+            , gpb.c_str(x = name)
+          )
 
           private$info[[name]] <- ret
 
         }
       }
 
-      private$info[[name]]
+      return(private$info[[name]])
 
     },
 
@@ -438,7 +487,7 @@ Dataset <- R6::R6Class(
       INFONAMES <- c("label", "weight", "init_score", "group")
 
       # Check if attribute key is in the known attribute list
-      if (!is.character(name) || length(name) != 1 || !name %in% INFONAMES) {
+      if (!is.character(name) || length(name) != 1L || !name %in% INFONAMES) {
         stop("setinfo: name must one of the following: ", paste0(sQuote(INFONAMES), collapse = ", "))
       }
 
@@ -452,22 +501,25 @@ Dataset <- R6::R6Class(
       # Store information privately
       private$info[[name]] <- info
 
-      if (!gpb.is.null.handle(private$handle) && !is.null(info)) {
+      if (!gpb.is.null.handle(x = private$handle) && !is.null(info)) {
 
-        if (length(info) > 0) {
+        if (length(info) > 0L) {
 
-          gpb.call("LGBM_DatasetSetField_R",
-                   ret = NULL,
-                   private$handle,
-                   gpb.c_str(name),
-                   info,
-                   length(info))
+          gpb.call(
+            fun_name = "LGBM_DatasetSetField_R"
+            , ret = NULL
+            , private$handle
+            , gpb.c_str(x = name)
+            , info
+            , length(info)
+          )
+
+          private$version <- private$version + 1L
 
         }
 
       }
 
-      # Return self
       return(invisible(self))
 
     },
@@ -476,30 +528,65 @@ Dataset <- R6::R6Class(
     slice = function(idxset, ...) {
 
       # Perform slicing
-      Dataset$new(NULL,
-                  private$params,
-                  self,
-                  private$colnames,
-                  private$categorical_feature,
-                  private$predictor,
-                  private$free_raw_data,
-                  sort(idxset, decreasing = FALSE),
-                  NULL,
-                  ...)
+      return(
+        Dataset$new(
+          data = NULL
+          , params = private$params
+          , reference = self
+          , colnames = private$colnames
+          , categorical_feature = private$categorical_feature
+          , predictor = private$predictor
+          , free_raw_data = private$free_raw_data
+          , used_indices = sort(idxset, decreasing = FALSE)
+          , info = NULL
+          , ...
+        )
+      )
 
     },
 
     # Update parameters
     update_params = function(params) {
-
-      # Parameter updating
-      if (!gpb.is.null.handle(private$handle)) {
-        gpb.call("LGBM_DatasetUpdateParam_R", ret = NULL, private$handle, gpb.params2str(params))
+      if (length(params) == 0L) {
         return(invisible(self))
       }
-      private$params <- modifyList(private$params, params)
+      if (gpb.is.null.handle(x = private$handle)) {
+        private$params <- modifyList(private$params, params)
+      } else {
+        call_state <- 0L
+        call_state <- .Call(
+          "LGBM_DatasetUpdateParamChecking_R"
+          , gpb.params2str(params = private$params)
+          , gpb.params2str(params = params)
+          , call_state
+          , PACKAGE = "lib_gpboost"
+        )
+        call_state <- as.integer(call_state)
+        if (call_state != 0L) {
+
+          # raise error if raw data is freed
+          if (is.null(private$raw_data)) {
+            gpb.last_error()
+          }
+
+          # Overwrite paramms
+          private$params <- modifyList(private$params, params)
+          self$finalize()
+        }
+      }
       return(invisible(self))
 
+    },
+
+    get_params = function() {
+      dataset_params <- unname(unlist(.DATASET_PARAMETERS()))
+      ret <- list()
+      for (param_key in names(private$params)) {
+        if (param_key %in% dataset_params) {
+          ret[[param_key]] <- private$params[[param_key]]
+        }
+      }
+      return(ret)
     },
 
     # Set categorical feature parameter
@@ -529,9 +616,9 @@ Dataset <- R6::R6Class(
     set_reference = function(reference) {
 
       # Set known references
-      self$set_categorical_feature(reference$.__enclos_env__$private$categorical_feature)
-      self$set_colnames(reference$get_colnames())
-      private$set_predictor(reference$.__enclos_env__$private$predictor)
+      self$set_categorical_feature(categorical_feature = reference$.__enclos_env__$private$categorical_feature)
+      self$set_colnames(colnames = reference$get_colnames())
+      private$set_predictor(predictor = reference$.__enclos_env__$private$predictor)
 
       # Check for identical references
       if (identical(private$reference, reference)) {
@@ -550,7 +637,7 @@ Dataset <- R6::R6Class(
       if (!is.null(reference)) {
 
         # Reference is unknown
-        if (!gpb.check.r6.class(reference, "gpb.Dataset")) {
+        if (!gpb.check.r6.class(object = reference, name = "gpb.Dataset")) {
           stop("set_reference: Can only use gpb.Dataset as a reference")
         }
 
@@ -570,10 +657,12 @@ Dataset <- R6::R6Class(
 
       # Store binary data
       self$construct()
-      gpb.call("LGBM_DatasetSaveBinary_R",
-               ret = NULL,
-               private$handle,
-               gpb.c_str(fname))
+      gpb.call(
+        fun_name = "LGBM_DatasetSaveBinary_R"
+        , ret = NULL
+        , private$handle
+        , gpb.c_str(x = fname)
+      )
       return(invisible(self))
     }
 
@@ -586,25 +675,25 @@ Dataset <- R6::R6Class(
     colnames = NULL,
     categorical_feature = NULL,
     predictor = NULL,
-    free_raw_data = TRUE,
+    free_raw_data = FALSE,
     used_indices = NULL,
     info = NULL,
+    version = 0L,
 
     # Get handle
     get_handle = function() {
 
       # Get handle and construct if needed
-      if (gpb.is.null.handle(private$handle)) {
+      if (gpb.is.null.handle(x = private$handle)) {
         self$construct()
       }
-      private$handle
+      return(private$handle)
 
     },
 
     # Set predictor
     set_predictor = function(predictor) {
 
-      # Return self is identical predictor
       if (identical(private$predictor, predictor)) {
         return(invisible(self))
       }
@@ -619,8 +708,8 @@ Dataset <- R6::R6Class(
       if (!is.null(predictor)) {
 
         # Predictor is unknown
-        if (!gpb.check.r6.class(predictor, "Predictor")) {
-          stop("set_predictor: Can only use 'Predictor' as predictor")
+        if (!gpb.check.r6.class(object = predictor, name = "gpb.Predictor")) {
+          stop("set_predictor: Can only use gpb.Predictor as predictor")
         }
 
       }
@@ -637,11 +726,9 @@ Dataset <- R6::R6Class(
   )
 )
 
-#' Construct \code{gpb.Dataset} object
-#'
-#' Construct \code{gpb.Dataset} object from dense matrix, sparse matrix
-#' or local file (that was created previously by saving an \code{gpb.Dataset}).
-#'
+#' @title Construct \code{gpb.Dataset} object
+#' @description Construct \code{gpb.Dataset} object from dense matrix, sparse matrix
+#'              or local file (that was created previously by saving an \code{gpb.Dataset}).
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
 #' @param params a list of parameters
 #' @param reference reference dataset
@@ -654,16 +741,15 @@ Dataset <- R6::R6Class(
 #' @return constructed dataset
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
-#' gpb.Dataset.save(dtrain, "gpb.Dataset.data")
-#' dtrain <- gpb.Dataset("gpb.Dataset.data")
+#' data_file <- tempfile(fileext = ".data")
+#' gpb.Dataset.save(dtrain, data_file)
+#' dtrain <- gpb.Dataset(data_file)
 #' gpb.Dataset.construct(dtrain)
 #' }
-#'
 #' @export
 gpb.Dataset <- function(data,
                         params = list(),
@@ -675,23 +761,26 @@ gpb.Dataset <- function(data,
                         ...) {
 
   # Create new dataset
-  invisible(Dataset$new(data,
-              params,
-              reference,
-              colnames,
-              categorical_feature,
-              NULL,
-              free_raw_data,
-              NULL,
-              info,
-              ...))
+  return(
+    invisible(Dataset$new(
+      data = data
+      , params = params
+      , reference = reference
+      , colnames = colnames
+      , categorical_feature = categorical_feature
+      , predictor = NULL
+      , free_raw_data = free_raw_data
+      , used_indices = NULL
+      , info = info
+      , ...
+    ))
+  )
 
 }
 
-#' Construct validation data
-#'
-#' Construct validation data according to training data
-#'
+#' @name gpb.Dataset.create.valid
+#' @title Construct validation data
+#' @description Construct validation data according to training data
 #' @param dataset \code{gpb.Dataset} object, training data
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
 #' @param info a list of information of the \code{gpb.Dataset} object
@@ -700,8 +789,7 @@ gpb.Dataset <- function(data,
 #' @return constructed dataset
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -709,49 +797,47 @@ gpb.Dataset <- function(data,
 #' test <- agaricus.test
 #' dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
 #' }
-#'
 #' @export
 gpb.Dataset.create.valid <- function(dataset, data, info = list(), ...) {
 
   # Check if dataset is not a dataset
-  if (!gpb.is.Dataset(dataset)) {
+  if (!gpb.is.Dataset(x = dataset)) {
     stop("gpb.Dataset.create.valid: input data should be an gpb.Dataset object")
   }
 
   # Create validation dataset
-  invisible(dataset$create_valid(data, info, ...))
+  return(invisible(dataset$create_valid(data = data, info = info, ...)))
 
 }
 
-#' Construct Dataset explicitly
-#'
+#' @name gpb.Dataset.construct
+#' @title Construct Dataset explicitly
+#' @description Construct Dataset explicitly
 #' @param dataset Object of class \code{gpb.Dataset}
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
 #' gpb.Dataset.construct(dtrain)
 #' }
-#'
+#' @return constructed dataset
 #' @export
 gpb.Dataset.construct <- function(dataset) {
 
   # Check if dataset is not a dataset
-  if (!gpb.is.Dataset(dataset)) {
+  if (!gpb.is.Dataset(x = dataset)) {
     stop("gpb.Dataset.construct: input data should be an gpb.Dataset object")
   }
 
   # Construct the dataset
-  invisible(dataset$construct())
+  return(invisible(dataset$construct()))
 
 }
 
-#' Dimensions of an \code{gpb.Dataset}
-#'
-#' Returns a vector of numbers of rows and of columns in an \code{gpb.Dataset}.
+#' @title Dimensions of an \code{gpb.Dataset}
+#' @description Returns a vector of numbers of rows and of columns in an \code{gpb.Dataset}.
 #' @param x Object of class \code{gpb.Dataset}
 #' @param ... other parameters
 #'
@@ -762,8 +848,7 @@ gpb.Dataset.construct <- function(dataset) {
 #' be directly used with an \code{gpb.Dataset} object.
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -772,67 +857,63 @@ gpb.Dataset.construct <- function(dataset) {
 #' stopifnot(ncol(dtrain) == ncol(train$data))
 #' stopifnot(all(dim(dtrain) == dim(train$data)))
 #' }
-#'
 #' @rdname dim
 #' @export
 dim.gpb.Dataset <- function(x, ...) {
 
   # Check if dataset is not a dataset
-  if (!gpb.is.Dataset(x)) {
+  if (!gpb.is.Dataset(x = x)) {
     stop("dim.gpb.Dataset: input data should be an gpb.Dataset object")
   }
 
-  # Return dimensions
-  x$dim()
+  return(x$dim())
 
 }
 
-#' Handling of column names of \code{gpb.Dataset}
-#'
-#' Only column names are supported for \code{gpb.Dataset}, thus setting of
-#' row names would have no effect and returned row names would be NULL.
-#'
+#' @title Handling of column names of \code{gpb.Dataset}
+#' @description Only column names are supported for \code{gpb.Dataset}, thus setting of
+#'              row names would have no effect and returned row names would be NULL.
 #' @param x object of class \code{gpb.Dataset}
 #' @param value a list of two elements: the first one is ignored
-#'        and the second one is column names
+#'              and the second one is column names
 #'
 #' @details
 #' Generic \code{dimnames} methods are used by \code{colnames}.
 #' Since row names are irrelevant, it is recommended to use \code{colnames} directly.
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
 #' gpb.Dataset.construct(dtrain)
 #' dimnames(dtrain)
 #' colnames(dtrain)
-#' colnames(dtrain) <- make.names(1:ncol(train$data))
+#' colnames(dtrain) <- make.names(seq_len(ncol(train$data)))
 #' print(dtrain, verbose = TRUE)
 #' }
-#'
 #' @rdname dimnames.gpb.Dataset
+#' @return A list with the dimension names of the dataset
 #' @export
 dimnames.gpb.Dataset <- function(x) {
 
   # Check if dataset is not a dataset
-  if (!gpb.is.Dataset(x)) {
+  if (!gpb.is.Dataset(x = x)) {
     stop("dimnames.gpb.Dataset: input data should be an gpb.Dataset object")
   }
 
   # Return dimension names
-  list(NULL, x$get_colnames())
+  return(list(NULL, x$get_colnames()))
 
 }
 
 #' @rdname dimnames.gpb.Dataset
+#' @return A list with the dimension names of the dataset
 #' @export
 `dimnames<-.gpb.Dataset` <- function(x, value) {
 
   # Check if invalid element list
-  if (!is.list(value) || length(value) != 2L) {
+  if (!identical(class(value), "list") || length(value) != 2L) {
     stop("invalid ", sQuote("value"), " given: must be a list of two elements")
   }
 
@@ -841,48 +922,48 @@ dimnames.gpb.Dataset <- function(x) {
     stop("gpb.Dataset does not have rownames")
   }
 
-  # Check for second value missing
-  if (is.null(value[[2]])) {
+  if (is.null(value[[2L]])) {
 
-    # No column names
-    x$set_colnames(NULL)
+    x$set_colnames(colnames = NULL)
     return(x)
 
   }
 
   # Check for unmatching column size
-  if (ncol(x) != length(value[[2]])) {
-    stop("can't assign ", sQuote(length(value[[2]])), " colnames to an gpb.Dataset with ", sQuote(ncol(x)), " columns")
+  if (ncol(x) != length(value[[2L]])) {
+    stop(
+      "can't assign "
+      , sQuote(length(value[[2L]]))
+      , " colnames to an gpb.Dataset with "
+      , sQuote(ncol(x))
+      , " columns"
+    )
   }
 
   # Set column names properly, and return
-  x$set_colnames(value[[2]])
-  x
+  x$set_colnames(colnames = value[[2L]])
+  return(x)
 
 }
 
-#' Slice a dataset
-#'
-#' Get a new \code{gpb.Dataset} containing the specified rows of
-#' original \code{gpb.Dataset} object
-#'
+#' @title Slice a dataset
+#' @description Get a new \code{gpb.Dataset} containing the specified rows of
+#'              original \code{gpb.Dataset} object
 #' @param dataset Object of class \code{gpb.Dataset}
 #' @param idxset an integer vector of indices of rows needed
 #' @param ... other parameters (currently not used)
 #' @return constructed sub dataset
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
 #'
-#' dsub <- gpboost::slice(dtrain, 1:42)
+#' dsub <- gpboost::slice(dtrain, seq_len(42L))
 #' gpb.Dataset.construct(dsub)
 #' labels <- gpboost::getinfo(dsub, "label")
 #' }
-#'
 #' @export
 slice <- function(dataset, ...) {
   UseMethod("slice")
@@ -893,17 +974,18 @@ slice <- function(dataset, ...) {
 slice.gpb.Dataset <- function(dataset, idxset, ...) {
 
   # Check if dataset is not a dataset
-  if (!gpb.is.Dataset(dataset)) {
+  if (!gpb.is.Dataset(x = dataset)) {
     stop("slice.gpb.Dataset: input dataset should be an gpb.Dataset object")
   }
 
   # Return sliced set
-  invisible(dataset$slice(idxset, ...))
+  return(invisible(dataset$slice(idxset = idxset, ...)))
 
 }
 
-#' Get information of an \code{gpb.Dataset} object
-#'
+#' @name getinfo
+#' @title Get information of an \code{gpb.Dataset} object
+#' @description Get one attribute of a \code{gpb.Dataset}
 #' @param dataset Object of class \code{gpb.Dataset}
 #' @param name the name of the information field to get (see details)
 #' @param ... other parameters
@@ -913,15 +995,18 @@ slice.gpb.Dataset <- function(dataset, idxset, ...) {
 #' The \code{name} field can be one of the following:
 #'
 #' \itemize{
-#'     \item \code{label}: label / response variable;
+#'     \item \code{label}: label gpboost learn from ;
 #'     \item \code{weight}: to do a weight rescale ;
-#'     \item \code{group}: group size ;
-#'     \item \code{init_score}: initial score is the base prediction.
+#'     \item{\code{group}: used for learning-to-rank tasks. An integer vector describing how to
+#'         group rows together as ordered results from the same set of candidate results to be ranked.
+#'         For example, if you have a 100-document dataset with \code{group = c(10, 20, 40, 10, 10, 10)},
+#'         that means that you have 6 groups, where the first 10 records are in the first group,
+#'         records 11-30 are in the second group, etc.}
+#'     \item \code{init_score}: initial score is the base prediction gpboost will boost from.
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -933,47 +1018,50 @@ slice.gpb.Dataset <- function(dataset, idxset, ...) {
 #' labels2 <- gpboost::getinfo(dtrain, "label")
 #' stopifnot(all(labels2 == 1 - labels))
 #' }
-#'
 #' @export
 getinfo <- function(dataset, ...) {
   UseMethod("getinfo")
 }
 
 #' @rdname getinfo
+#' @return info data
 #' @export
 getinfo.gpb.Dataset <- function(dataset, name, ...) {
 
   # Check if dataset is not a dataset
-  if (!gpb.is.Dataset(dataset)) {
+  if (!gpb.is.Dataset(x = dataset)) {
     stop("getinfo.gpb.Dataset: input dataset should be an gpb.Dataset object")
   }
 
-  # Return information
-  dataset$getinfo(name)
+  return(dataset$getinfo(name = name))
 
 }
 
-#' Set information of an \code{gpb.Dataset} object
-#'
+#' @name setinfo
+#' @title Set information of an \code{gpb.Dataset} object
+#' @description Set one attribute of a \code{gpb.Dataset}
 #' @param dataset Object of class \code{gpb.Dataset}
 #' @param name the name of the field to get
 #' @param info the specific field of information to set
 #' @param ... other parameters
-#' @return passed object
+#' @return the dataset you passed in
 #'
 #' @details
 #' The \code{name} field can be one of the following:
 #'
 #' \itemize{
-#'     \item \code{label}: label / response variable;
-#'     \item \code{weight}: to do a weight rescale ;
-#'     \item \code{init_score}: initial score is the base prediction :
-#'     \item \code{group}.
+#'     \item{\code{label}: vector of labels to use as the target variable}
+#'     \item{\code{weight}: to do a weight rescale}
+#'     \item{\code{init_score}: initial score is the base prediction gpboost will boost from}
+#'     \item{\code{group}: used for learning-to-rank tasks. An integer vector describing how to
+#'         group rows together as ordered results from the same set of candidate results to be ranked.
+#'         For example, if you have a 100-document dataset with \code{group = c(10, 20, 40, 10, 10, 10)},
+#'         that means that you have 6 groups, where the first 10 records are in the first group,
+#'         records 11-30 are in the second group, etc.}
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -985,69 +1073,67 @@ getinfo.gpb.Dataset <- function(dataset, name, ...) {
 #' labels2 <- gpboost::getinfo(dtrain, "label")
 #' stopifnot(all.equal(labels2, 1 - labels))
 #' }
-#'
 #' @export
 setinfo <- function(dataset, ...) {
   UseMethod("setinfo")
 }
 
 #' @rdname setinfo
+#' @return the dataset you passed in
 #' @export
 setinfo.gpb.Dataset <- function(dataset, name, info, ...) {
 
-  # Check if dataset is not a dataset
-  if (!gpb.is.Dataset(dataset)) {
+  if (!gpb.is.Dataset(x = dataset)) {
     stop("setinfo.gpb.Dataset: input dataset should be an gpb.Dataset object")
   }
 
   # Set information
-  invisible(dataset$setinfo(name, info))
+  return(invisible(dataset$setinfo(name = name, info = info)))
 }
 
-#' Set categorical feature of \code{gpb.Dataset}
-#'
+#' @name gpb.Dataset.set.categorical
+#' @title Set categorical feature of \code{gpb.Dataset}
+#' @description Set the categorical features of an \code{gpb.Dataset} object. Use this function
+#'              to tell GPBoost which features should be treated as categorical.
 #' @param dataset object of class \code{gpb.Dataset}
-#' @param categorical_feature categorical features
-#'
-#' @return passed dataset
+#' @param categorical_feature categorical features. This can either be a character vector of feature
+#'                            names or an integer vector with the indices of the features (e.g.
+#'                            \code{c(1L, 10L)} to say "the first and tenth columns").
+#' @return the dataset you passed in
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
-#' gpb.Dataset.save(dtrain, "gpb.Dataset.data")
-#' dtrain <- gpb.Dataset("gpb.Dataset.data")
-#' gpb.Dataset.set.categorical(dtrain, 1:2)
+#' data_file <- tempfile(fileext = ".data")
+#' gpb.Dataset.save(dtrain, data_file)
+#' dtrain <- gpb.Dataset(data_file)
+#' gpb.Dataset.set.categorical(dtrain, 1L:2L)
 #' }
-#'
 #' @rdname gpb.Dataset.set.categorical
 #' @export
 gpb.Dataset.set.categorical <- function(dataset, categorical_feature) {
 
-  # Check if dataset is not a dataset
-  if (!gpb.is.Dataset(dataset)) {
+  if (!gpb.is.Dataset(x = dataset)) {
     stop("gpb.Dataset.set.categorical: input dataset should be an gpb.Dataset object")
   }
 
   # Set categoricals
-  invisible(dataset$set_categorical_feature(categorical_feature))
+  return(invisible(dataset$set_categorical_feature(categorical_feature = categorical_feature)))
 
 }
 
-#' Set reference of \code{gpb.Dataset}
-#'
-#' If you want to use validation data, you should set reference to training data
-#'
+#' @name gpb.Dataset.set.reference
+#' @title Set reference of \code{gpb.Dataset}
+#' @description If you want to use validation data, you should set reference to training data
 #' @param dataset object of class \code{gpb.Dataset}
 #' @param reference object of class \code{gpb.Dataset}
 #'
-#' @return passed dataset
+#' @return the dataset you passed in
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package ="gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -1056,42 +1142,40 @@ gpb.Dataset.set.categorical <- function(dataset, categorical_feature) {
 #' dtest <- gpb.Dataset(test$data, test = train$label)
 #' gpb.Dataset.set.reference(dtest, dtrain)
 #' }
-#'
 #' @rdname gpb.Dataset.set.reference
 #' @export
 gpb.Dataset.set.reference <- function(dataset, reference) {
 
   # Check if dataset is not a dataset
-  if (!gpb.is.Dataset(dataset)) {
+  if (!gpb.is.Dataset(x = dataset)) {
     stop("gpb.Dataset.set.reference: input dataset should be an gpb.Dataset object")
   }
 
   # Set reference
-  invisible(dataset$set_reference(reference))
+  return(invisible(dataset$set_reference(reference = reference)))
 }
 
-#' Save \code{gpb.Dataset} to a binary file
-#'
+#' @name gpb.Dataset.save
+#' @title Save \code{gpb.Dataset} to a binary file
+#' @description Please note that \code{init_score} is not saved in binary file.
+#'              If you need it, please set it again after loading Dataset.
 #' @param dataset object of class \code{gpb.Dataset}
 #' @param fname object filename of output file
 #'
-#' @return passed dataset
+#' @return the dataset you passed in
 #'
 #' @examples
-#' \dontrun{
-#' library(gpboost)
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
-#' gpb.Dataset.save(dtrain, "data.bin")
+#' gpb.Dataset.save(dtrain, tempfile(fileext = ".bin"))
 #' }
-#' 
-#' @rdname gpb.Dataset.save
 #' @export
 gpb.Dataset.save <- function(dataset, fname) {
 
   # Check if dataset is not a dataset
-  if (!gpb.is.Dataset(dataset)) {
+  if (!gpb.is.Dataset(x = dataset)) {
     stop("gpb.Dataset.set: input dataset should be an gpb.Dataset object")
   }
 
@@ -1101,5 +1185,5 @@ gpb.Dataset.save <- function(dataset, fname) {
   }
 
   # Store binary
-  invisible(dataset$save_binary(fname))
+  return(invisible(dataset$save_binary(fname = fname)))
 }

@@ -9,16 +9,17 @@ gpb.Dataset.construct(dataset)
 \arguments{
 \item{dataset}{Object of class \code{gpb.Dataset}}
 }
+\value{
+constructed dataset
+}
 \description{
 Construct Dataset explicitly
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
 gpb.Dataset.construct(dtrain)
 }
-
 }

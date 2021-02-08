@@ -10,9 +10,7 @@
 
 #include <string>
 #include <cerrno>
-#ifndef AVOID_NOT_CRAN_COMPLIANT_CALLS
 #include <cstdlib>
-#endif
 #include <unordered_set>
 
 #if defined(_WIN32)
@@ -29,7 +27,6 @@
 
 #include <arpa/inet.h>
 #include <fcntl.h>
-#include <ifaddrs.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -37,6 +34,13 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+// ifaddrs.h is not available on Solaris 10
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+  #include "ifaddrs_patch.h"
+#else
+  #include <ifaddrs.h>
+#endif
 
 #endif  // defined(_WIN32)
 
@@ -220,6 +224,7 @@ class TcpSocket {
         continue;
       }
       if (ifa->ifa_addr->sa_family == AF_INET) {
+        // NOLINTNEXTLINE
         tmpAddrPtr = &((struct sockaddr_in *)ifa->ifa_addr)->sin_addr;
         char addressBuffer[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, tmpAddrPtr, addressBuffer, INET_ADDRSTRLEN);

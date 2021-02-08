@@ -21,18 +21,16 @@ constructed sub dataset
 }
 \description{
 Get a new \code{gpb.Dataset} containing the specified rows of
-original \code{gpb.Dataset} object
+             original \code{gpb.Dataset} object
 }
 \examples{
-\dontrun{
-library(gpboost)
+\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
 
-dsub <- gpboost::slice(dtrain, 1:42)
+dsub <- gpboost::slice(dtrain, seq_len(42L))
 gpb.Dataset.construct(dsub)
 labels <- gpboost::getinfo(dsub, "label")
 }
-
 }

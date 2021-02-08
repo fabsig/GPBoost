@@ -1,0 +1,21 @@
+name: rhub
+
+'on':
+  - push
+  - pull_request
+jobs:
+  ubuntu-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: start docker
+        run: |
+          docker run -w /src -dit --name rhub -v $PWD:/src rhub/rocker-gcc-san
+          echo 'docker exec rhub "$@";' > ./rhub.sh
+          chmod +x ./rhub.sh
+      - name: build
+        run: |
+          ./rhub.sh c++ tests/unit.cpp -I include
+      - name: test
+        run: |
+          ./rhub.sh ./a.out

@@ -160,7 +160,7 @@ namespace GPBoost {
 		* \param num_data Number of data points
 		*/
 		template <typename T>//T can be double or int
-		void CalculateNormalizingConstant(const T * y_data, const data_size_t num_data) {
+		void CalculateNormalizingConstant(const T* y_data, const data_size_t num_data) {
 			if (likelihood_type_ == "poisson") {
 				double log_normalizing_constant = 0.;
 #pragma omp parallel for schedule(static) reduction(+:log_normalizing_constant)
@@ -176,13 +176,13 @@ namespace GPBoost {
 				log_normalizing_constant_ = log_normalizing_constant;
 			}
 			else if (likelihood_type_ == "gamma") {
-//				//Currently not used since aux_pars_[0]==1 and thus log_normalizing_constant_==0
-//				double log_normalizing_constant = 0.;
-//#pragma omp parallel for schedule(static) reduction(+:log_normalizing_constant)
-//				for (data_size_t i = 0; i < num_data; ++i) {
-//					log_normalizing_constant += -(aux_pars_[0] - 1.) * std::log(y_data[i]) - aux_pars_[0] * std::log(aux_pars_[0]) + std::tgamma(aux_pars_[0]);
-//				}
-//				log_normalizing_constant_ = log_normalizing_constant;
+				//				//Currently not used since aux_pars_[0]==1 and thus log_normalizing_constant_==0
+				//				double log_normalizing_constant = 0.;
+				//#pragma omp parallel for schedule(static) reduction(+:log_normalizing_constant)
+				//				for (data_size_t i = 0; i < num_data; ++i) {
+				//					log_normalizing_constant += -(aux_pars_[0] - 1.) * std::log(y_data[i]) - aux_pars_[0] * std::log(aux_pars_[0]) + std::tgamma(aux_pars_[0]);
+				//				}
+				//				log_normalizing_constant_ = log_normalizing_constant;
 				log_normalizing_constant_ = 0. * y_data[0];//y_data[0] is just a trick to avoid compiler warnings complaning about unreferenced parameters...
 			}
 			normalizing_constant_has_been_calculated_ = true;
@@ -379,9 +379,15 @@ namespace GPBoost {
 		* \brief Calculate the mean of the likelihood conditional on the (predicted) latent variable
 		*			Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
 		*/
-		inline double CondMeanLikelihood(double value) const {
-			if (likelihood_type_ == "bernoulli_logit") {
-				return 1 / (1 + std::exp(-value));
+		inline double CondMeanLikelihood(const double value) const {
+			if (likelihood_type_ == "gaussian") {
+				return value;
+			}
+			else if (likelihood_type_ == "bernoulli_probit") {
+				return normalCDF(value);
+			}
+			else if (likelihood_type_ == "bernoulli_logit") {
+				return 1. / (1. + std::exp(-value));
 			}
 			else if (likelihood_type_ == "poisson") {
 				return std::exp(value);
@@ -391,6 +397,7 @@ namespace GPBoost {
 			}
 			else {
 				Log::Fatal("CondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				return 0.;
 			}
 		}
 
@@ -398,9 +405,9 @@ namespace GPBoost {
 		* \brief Calculate the first derivative of the logarithm of the mean of the likelihood conditional on the (predicted) latent variable
 		*			Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
 		*/
-		inline double FirstDerivLogCondMeanLikelihood(double value) const {
+		inline double FirstDerivLogCondMeanLikelihood(const double value) const {
 			if (likelihood_type_ == "bernoulli_logit") {
-				return 1. / (1 + std::exp(value));
+				return 1. / (1. + std::exp(value));
 			}
 			else if (likelihood_type_ == "poisson") {
 				return 1.;
@@ -410,6 +417,7 @@ namespace GPBoost {
 			}
 			else {
 				Log::Fatal("FirstDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				return 0.;
 			}
 		}
 
@@ -417,7 +425,7 @@ namespace GPBoost {
 		* \brief Calculate the second derivative of the logarithm of the mean of the likelihood conditional on the (predicted) latent variable
 		*			Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
 		*/
-		inline double SecondDerivLogCondMeanLikelihood(double value) const {
+		inline double SecondDerivLogCondMeanLikelihood(const double value) const {
 			if (likelihood_type_ == "bernoulli_logit") {
 				double exp_x = std::exp(value);
 				return -exp_x / ((1. + exp_x) * (1. + exp_x));
@@ -430,6 +438,7 @@ namespace GPBoost {
 			}
 			else {
 				Log::Fatal("SecondDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				return 0.;
 			}
 		}
 
@@ -1319,7 +1328,7 @@ namespace GPBoost {
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
 					double pm = RespMeanAdaptiveGHQuadrature(pred_mean[i], pred_var[i]);
 					if (predict_var) {
-						double psm = RespMeanAdaptiveGHQuadrature(2*pred_mean[i], 4*pred_var[i]);
+						double psm = RespMeanAdaptiveGHQuadrature(2 * pred_mean[i], 4 * pred_var[i]);
 						pred_var[i] = psm - pm * pm + pm;
 					}
 					pred_mean[i] = pm;
@@ -1543,7 +1552,7 @@ namespace GPBoost {
 										0.52252568933135454964,
 										0.56940269194964050397,
 										0.64909798155426670071,
-										0.83424747101276179534};
+										0.83424747101276179534 };
 	};
 
 }  // namespace GPBoost

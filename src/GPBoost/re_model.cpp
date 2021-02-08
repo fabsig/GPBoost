@@ -27,7 +27,7 @@ namespace GPBoost {
 				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef,
 				cov_fct, cov_fct_shape, vecchia_approx, num_neighbors, vecchia_ordering,
 				vecchia_pred_type, num_neighbors_pred, likelihood));
-			num_cov_pars_ = re_model_sp_->num_cov_par_;	
+			num_cov_pars_ = re_model_sp_->num_cov_par_;
 		}
 		else {
 			sparse_ = false;
@@ -269,7 +269,7 @@ namespace GPBoost {
 				re_model_sp_->EvalLAApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
 			}
 		}
-		else {	
+		else {
 			if (re_model_den_->gauss_likelihood_) {
 				re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
 			}

@@ -1,0 +1,129 @@
+kind: pipeline
+name: gcc9
+platform: { os: linux, arch: amd64 }
+steps:
+- name: Build and Test
+  image: gcc:9
+  environment:
+    CC: gcc
+    CXX: g++
+  commands:
+    - apt-get update -qq
+    - apt-get install -y cmake 
+    - mkdir build
+    - cd build
+    - cmake  ..
+    - cmake --build . 
+    - ctest .  --output-on-failure
+---
+kind: pipeline
+name: clang6
+platform: { os: linux, arch: amd64 }
+steps:
+- name: Build and Test
+  image: conanio/clang60
+  user: root
+  environment:
+    CC: clang-6.0
+    CXX: clang++-6.0
+  commands:
+    - apt-get update -qq
+    - apt-get install -y cmake 
+    - mkdir build
+    - cd build
+    - cmake  ..
+    - cmake --build . 
+    - ctest .  --output-on-failure
+---
+kind: pipeline
+name: sanitize-gcc9
+platform: { os: linux, arch: amd64 }
+steps:
+- name: Build and Test
+  image: gcc:9
+  environment:
+    CC: gcc
+    CXX: g++
+  commands:
+    - apt-get update -qq
+    - apt-get install -y cmake 
+    - mkdir build
+    - cd build
+    - cmake  .. -DFAST_DOUBLE_PARSER_SANITIZE=ON
+    - cmake --build . 
+    - ASAN_OPTIONS="detect_leaks=0" ctest .  --output-on-failure
+---
+kind: pipeline
+name: sanitize-clang9
+platform: { os: linux, arch: amd64 }
+steps:
+- name: Build and Test
+  image: conanio/clang9
+  user: root
+  environment:
+    CC: clang-9
+    CXX: clang++-9
+  commands:
+    - apt-get update -qq
+    - apt-get install -y cmake 
+    - mkdir build
+    - cd build
+    - cmake  ..  -DFAST_DOUBLE_PARSER_SANITIZE=ON
+    - cmake --build . 
+    - ASAN_OPTIONS="detect_leaks=0" ctest .  --output-on-failure
+---
+kind: pipeline
+name: arm64-gcc8
+platform: { os: linux, arch: arm64 }
+steps:
+- name: Build and Test
+  image: gcc:8
+  environment:
+    CC: gcc
+    CXX: g++
+  commands:
+    - apt-get update -qq
+    - apt-get install -y cmake 
+    - mkdir build
+    - cd build
+    - cmake  ..
+    - cmake --build . 
+    - ctest .  --output-on-failure
+---
+kind: pipeline
+name: arm64-sanitize-gcc8
+platform: { os: linux, arch: arm64 }
+steps:
+- name: Build and Test
+  image: gcc:8
+  environment:
+    CC: gcc
+    CXX: g++
+  commands:
+    - apt-get update -qq
+    - apt-get install -y cmake libstdc++6
+    - mkdir build
+    - cd build
+    - cmake  ..  -DFAST_DOUBLE_PARSER_SANITIZE=ON
+    - cmake --build . 
+    - ASAN_OPTIONS="detect_leaks=0" ctest . --output-on-failure
+---
+kind: pipeline
+name: libcpp-clang9
+platform: { os: linux, arch: amd64 }
+steps:
+- name: Build and Test
+  image: conanio/clang9
+  user: root
+  environment:
+    CC: clang-9
+    CXX: clang++-9
+    CXXFLAGS: -stdlib=libc++
+  commands:
+    - apt-get update -qq
+    - apt-get install -y cmake 
+    - mkdir build
+    - cd build
+    - cmake  ..
+    - cmake --build . 
+    - ctest . --output-on-failure

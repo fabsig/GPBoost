@@ -19,15 +19,15 @@ class DatasetLoader {
 
   LIGHTGBM_EXPORT ~DatasetLoader();
 
-  LIGHTGBM_EXPORT Dataset* LoadFromFile(const char* filename, const char* initscore_file, int rank, int num_machines);
+  LIGHTGBM_EXPORT Dataset* LoadFromFile(const char* filename, int rank, int num_machines);
 
-  LIGHTGBM_EXPORT Dataset* LoadFromFile(const char* filename, const char* initscore_file) {
-    return LoadFromFile(filename, initscore_file, 0, 1);
+  LIGHTGBM_EXPORT Dataset* LoadFromFile(const char* filename) {
+    return LoadFromFile(filename, 0, 1);
   }
 
-  LIGHTGBM_EXPORT Dataset* LoadFromFileAlignWithOtherDataset(const char* filename, const char* initscore_file, const Dataset* train_data);
+  LIGHTGBM_EXPORT Dataset* LoadFromFileAlignWithOtherDataset(const char* filename, const Dataset* train_data);
 
-  LIGHTGBM_EXPORT Dataset* CostructFromSampleData(double** sample_values,
+  LIGHTGBM_EXPORT Dataset* ConstructFromSampleData(double** sample_values,
     int** sample_indices, int num_col, const int* num_per_col,
     size_t total_sample_size, data_size_t num_data);
 
@@ -44,7 +44,7 @@ class DatasetLoader {
 
   void SetHeader(const char* filename);
 
-  void CheckDataset(const Dataset* dataset);
+  void CheckDataset(const Dataset* dataset, bool is_load_from_binary);
 
   std::vector<std::string> LoadTextDataToMemory(const char* filename, const Metadata& metadata, int rank, int num_machines, int* num_global_data, std::vector<data_size_t>* used_data_indices);
 
@@ -82,6 +82,8 @@ class DatasetLoader {
   std::vector<std::string> feature_names_;
   /*! \brief Mapper from real feature index to used index*/
   std::unordered_set<int> categorical_features_;
+  /*! \brief Whether to store raw feature values */
+  bool store_raw_;
 };
 
 }  // namespace LightGBM
