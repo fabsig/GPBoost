@@ -7,7 +7,7 @@ Here are examples on how to use the gpboost Python package. You should install t
 pip install scikit-learn matplotlib -U
 ```
 
-Ideally, you **run the examples in interactive mode in e.g. Spyder or PyCharm**. Alternatively, you can run the examples from the command line in this folder, for example:
+It is recommended that you **run the examples in interactive mode in e.g. Spyder or PyCharm**. Alternatively, you can run the examples from the command line in this folder, for example:
 
 ```
 python boosting_example.py
@@ -15,8 +15,9 @@ python boosting_example.py
 
 Examples include:
 
-* [Gaussian process and other mixed effects model examples (without boosting)](https://github.com/fabsig/GPBoost/blob/master/examples/python-guide/Gaussian_process_mixed_effects_models_example.py)
-* [Boosting functionality (without Gaussian process / random effects)](https://github.com/fabsig/GPBoost/blob/master/examples/python-guide/boosting_example.py)
-* [Combining tree-boosting with mixed effects models](https://github.com/fabsig/GPBoost/blob/master/examples/python-guide/combined_boosting_mixed_effects_example.py)
-* [GPBoost algorithm with Gaussian process and grouped random effects models](https://github.com/fabsig/GPBoost/blob/master/examples/python-guide/combined_GPBoost_example.py)
-* [Cross Validation](https://github.com/fabsig/GPBoost/blob/master/examples/python-guide/cross_validation_example.py)
+  * [GPBoost algorithm](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm.py) for combining tree-boosting with Gaussian process and random effects models
+  * [GPBoost algorithm for binary classification and other non-Gaussian data](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/classification_non_Gaussian_data.py) (Poisson regression, etc.)
+  * [Cross validation](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/cross_validation.py) for parameter tuning
+  * [Linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/linear_Gaussian_process_mixed_effects_models.py)
+  * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/generalized_linear_Gaussian_process_mixed_effects_models.py)
+  * [Standard boosting functionality (without Gaussian process or random  effects)](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/boosting.py)
