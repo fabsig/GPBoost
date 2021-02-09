@@ -86,9 +86,13 @@ namespace LightGBM {
 						if (re_model->GaussLikelihood()) {//Gaussian data
 							std::vector<double> minus_gp_pred(num_data_);
 							re_model->Predict(nullptr, num_data_, minus_gp_pred.data(),
-								false, false, false, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, true,
-								nullptr, -1, nullptr, nullptr);
-							//note that the re_model already has the updated response data score - label = F_t - y 
+								false, false, false, 
+								nullptr, nullptr, nullptr,
+								nullptr, nullptr,
+								nullptr, nullptr,
+								true, nullptr, -1,
+								nullptr, nullptr);
+							// Note that the re_model already has the updated response data score - label = F_t - y 
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
 							for (data_size_t i = 0; i < num_data_; ++i) {
@@ -96,11 +100,19 @@ namespace LightGBM {
 								sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], pred, config_);
 							}
 						}//end Gaussian data
-						else {//non-Gaussian data (rarely used...)
+						else {//non-Gaussian data
 							std::vector<double> gp_pred(num_data_);
 							re_model->Predict(nullptr, num_data_, gp_pred.data(),
-								false, false, true, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, true,
-								nullptr, -1, nullptr, score);
+								false, false, true,
+								nullptr, nullptr, nullptr,
+								nullptr, nullptr,
+								nullptr, nullptr,
+								true, nullptr, -1,
+								nullptr, score);
+							// Note that the re_model already has the updated training score (= F_t)
+							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter().
+							//	We this dont provide this here (see the above nullptr). This also implies
+							//	that the Laplace approximation (in particualr the mode) is note calculated again
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
 							for (data_size_t i = 0; i < num_data_; ++i) {
 								sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], gp_pred[i], config_);

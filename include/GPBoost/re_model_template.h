@@ -853,7 +853,7 @@ namespace GPBoost {
 			const double* gp_rand_coef_data_pred = nullptr, bool use_saved_data = false,
 			const char* vecchia_pred_type = nullptr, int num_neighbors_pred = -1,
 			const double* fixed_effects = nullptr, const double* fixed_effects_pred = nullptr) {
-			//First check whether previously set data should be used?
+			//First check whether previously set data should be used and load it if required
 			std::vector<std::vector<string_t>> re_group_levels_pred;//Matrix with group levels for the grouped random effects (re_group_levels_pred[j] contains the levels for RE number j)
 			if (use_saved_data) {
 				re_group_levels_pred = re_group_levels_pred_;
@@ -913,9 +913,6 @@ namespace GPBoost {
 			if (!gauss_likelihood_ && predict_response && predict_cov_mat) {
 				Log::Fatal("Calculation of the predictive covariance matrix is not supported when predicting the response variable (label) for non-Gaussian data");
 			}
-			//if (!gauss_likelihood_ && predict_response && predict_var) {
-			//	Log::Fatal("Calculation of predictive variance is not supported when predicting the response variable (label) for non-Gaussian data");
-			//}
 			if (predict_cov_mat && predict_var) {
 				Log::Fatal("Calculation of both the predictive covariance matrix and variances is not supported. Choose one of these option (predict_cov_mat or predict_var)");
 			}
@@ -948,6 +945,8 @@ namespace GPBoost {
 					num_neighbors_pred_ = num_neighbors_pred;
 				}
 			}
+
+			// Initialize linear predictor related terms and covariance parameters
 			vec_t coef, mu;//mu = linear regression predictor
 			if (has_covariates_) {//calculate linear regression term
 				coef = Eigen::Map<const vec_t>(coef_pred, num_coef_);
@@ -955,6 +954,7 @@ namespace GPBoost {
 				mu = X_pred * coef;
 			}
 			vec_t cov_pars = Eigen::Map<const vec_t>(cov_pars_pred, num_cov_par_);
+
 			//Set up cluster IDs
 			std::map<gp_id_t, int> num_data_per_cluster_pred;
 			std::map<gp_id_t, std::vector<int>> data_indices_per_cluster_pred;
@@ -962,6 +962,7 @@ namespace GPBoost {
 			data_size_t num_clusters_pred;
 			SetUpGPIds(num_data_pred, cluster_ids_data_pred, num_data_per_cluster_pred,
 				data_indices_per_cluster_pred, unique_clusters_pred, num_clusters_pred);
+
 			//Check whether predictions are made for existing clusters or if only for new independet clusters predictions are made
 			bool pred_for_observed_data = false;
 			for (const auto& cluster_i : unique_clusters_pred) {
@@ -970,9 +971,9 @@ namespace GPBoost {
 					break;
 				}
 			}
+			//Factorize covariance matrix and calculate Psi^{-1}y_obs or calculate Laplace approximation (if required)
 			const double* fixed_effects_ptr = fixed_effects;
 			vec_t fixed_effects_vec;
-			//Factorize covariance matrix and calculate Psi^{-1}y_obs or calculate Laplace approximation (if required)
 			if (pred_for_observed_data) {//TODO (low prio): this acutally needs to be done only for the GP realizations for which predictions are made (currently it is done for all of them in unique_clusters_pred)
 				if (gauss_likelihood_) {
 					if (has_covariates_) {
@@ -986,21 +987,23 @@ namespace GPBoost {
 						}
 						SetY(resid.data());
 					}//end if has_covariates_
-					else {
+					else {//no covariates
 						if (y_obs != nullptr) {
 							SetY(y_obs);
 						}
-					}
+					}//end no covariates
 				}//end if gauss_likelihood_
 				else {//if not gauss_likelihood_
-					fixed_effects_vec = X_ * coef;
-					if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
+					if (has_covariates_) {
+						fixed_effects_vec = X_ * coef;
+						if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
 #pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data_; ++i) {
-							fixed_effects_vec[i] += fixed_effects[i];
+							for (int i = 0; i < num_data_; ++i) {
+								fixed_effects_vec[i] += fixed_effects[i];
+							}
 						}
+						fixed_effects_ptr = fixed_effects_vec.data();
 					}
-					fixed_effects_ptr = fixed_effects_vec.data();
 					if (y_obs != nullptr) {
 						SetY(y_obs);
 					}
@@ -1031,8 +1034,10 @@ namespace GPBoost {
 					}
 				}//end not (vecchia_approx_ && gauss_likelihood_)
 			}//end if pred_for_observed_data (factorizatiion of covariance matrix)
+
 			// Loop over different clusters to calculate predictions
 			for (const auto& cluster_i : unique_clusters_pred) {
+
 				//Case 1: no data observed for this Gaussian process with ID 'cluster_i'
 				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) == unique_clusters_.end()) {
 					T1 psi;
@@ -1145,8 +1150,10 @@ namespace GPBoost {
 							}
 						}//end predict_var
 					}//end write covariance / variance on output
+
 				}//end cluster_i with no observed data
 				else {//Case 2: there exists observed data for this cluster_i (= typically the case)
+
 					den_mat_t gp_coords_mat_pred;
 					if (num_gp_ > 0) {
 						std::vector<double> gp_coords_pred;
@@ -1162,6 +1169,8 @@ namespace GPBoost {
 					T1 cov_mat_pred_id;
 					vec_t var_pred_id;
 					// Calculate predictions
+					
+					//Special case: Vecchia aproximation for Gaussian data
 					if (vecchia_approx_ && gauss_likelihood_) {//TODO: move this code to another function for better readability
 						std::shared_ptr<RECompGP<T1>> re_comp = std::dynamic_pointer_cast<RECompGP<T1>>(re_comps_[cluster_i][ind_intercept_gp_]);
 						int num_data_tot = num_data_per_cluster_[cluster_i] + num_data_per_cluster_pred[cluster_i];
@@ -1201,8 +1210,11 @@ namespace GPBoost {
 								cov_mat_pred_id.resize(0, 0);
 							}
 						}
+
 					}//end (vecchia_approx_ && gauss_likelihood_)
 					else {// not vecchia_approx_ or not gauss_likelihood_
+
+						//Genereal case: not Vecchia approximation for Gaussian data
 						//NOTE: if vecchia_approx_==true and gauss_likelihood_==false, the cross-covariance matrix Sigma_{1,2} = cov(x_pred,x) is not approximated but the exact version is used
 						bool predict_var_or_response = predict_var || predict_response;
 						CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
@@ -3717,6 +3729,7 @@ namespace GPBoost {
 					cov_mat_pred_id.setZero();
 				}
 			}
+
 			// Vector which contains covariance matrices needed for making predictions in the following order:
 			//		0. Ztilde*Sigma*Z^T, 1. Zstar*Sigmatilde^T*Z^T, 2. Ztilde*Sigma*Ztilde^T, 3. Ztilde*Sigmatilde*Zstar^T, 4. Zstar*Sigmastar*Zstar^T
 			std::vector<T1> pred_mats(5);
@@ -3731,6 +3744,7 @@ namespace GPBoost {
 				active_mats[1] = true;
 				active_mats[4] = true;
 			}
+
 			//Initialize covariance matrices
 			for (int i = 0; i < 2; ++i) {
 				if (active_mats[i]) {
@@ -3746,6 +3760,7 @@ namespace GPBoost {
 					}
 				}
 			}
+
 			//Calculate covariance matrices
 			int cn = 0;//component number
 			//Grouped random effects
@@ -3822,7 +3837,9 @@ namespace GPBoost {
 					}
 				}
 			}
-			if (gauss_likelihood_) {
+
+			//Calculate predictive means and covariances
+			if (gauss_likelihood_) {//Gaussian data
 				mean_pred_id = M_aux * y_aux_[cluster_i];
 				if (predict_cov_mat) {
 					if (use_woodbury_identity_) {
@@ -3866,9 +3883,13 @@ namespace GPBoost {
 						}
 					}//end not use_woodbury_identity_
 				}//end predict_var
+
 			}//end gauss_likelihood_
 			if (!gauss_likelihood_) {//not gauss_likelihood_
-				const double* fixed_effects_cluster_i_ptr = fixed_effects;//note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
+
+				const double* fixed_effects_cluster_i_ptr = fixed_effects;
+				// Note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
+				// The mode has been calculated already before in the Predict() function above
 				if (vecchia_approx_) {
 					likelihood_[cluster_i]->PredictLAApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
 						num_data_per_cluster_[cluster_i], B_[cluster_i], D_inv_[cluster_i], M_aux,

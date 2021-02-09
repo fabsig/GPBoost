@@ -79,26 +79,63 @@ namespace LightGBM {
 			}
 			else {
 				if (weights_ == nullptr) {
-					std::vector<double> re_prop_pred;
 					// Add predictions from re_model (if needed)
 					if (objective->HasGPModel() && objective->UseGPModelForValidation()) {
 						if (metric_for_train_data_) {
 							Log::Fatal("Cannot use the option 'use_gp_model_for_validation = true' for calculating the training data loss");
 						}
 						const REModel* re_model = objective->GetGPModel();
-						re_prop_pred = std::vector<double>(num_data_);
-						re_model->Predict(nullptr, num_data_, re_prop_pred.data(),
-							false, false, true, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, true,
-							nullptr, -1, nullptr, score);
-						//note that the re_model already has the updated training score (= F_t)
-						//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
+
+						if (re_model->GaussLikelihood()) {//Gaussian data (this is rarely used)
+							std::vector<double> minus_gp_pred(num_data_);
+							re_model->Predict(nullptr, num_data_, minus_gp_pred.data(),
+								false, false, false,
+								nullptr, nullptr, nullptr,
+								nullptr, nullptr,
+								nullptr, nullptr,
+								true, nullptr, -1,
+								nullptr, nullptr);
+							// Note that the re_model already has the updated response data score - label = F_t - y 
+							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							// add loss
-							sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], re_prop_pred[i]);
-						}
-					}
-					else {
+							for (data_size_t i = 0; i < num_data_; ++i) {
+								double pred = score[i] - minus_gp_pred[i];//minus since the re_model uses score - label (= F - y) instead of y - F to make predictions
+								sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], pred);
+							}
+						}//end Gaussian data
+						else {//non-Gaussian data
+							std::vector<double> gp_pred(num_data_);
+							re_model->Predict(nullptr, num_data_, gp_pred.data(),
+								false, false, true,
+								nullptr, nullptr, nullptr,
+								nullptr, nullptr,
+								nullptr, nullptr,
+								true, nullptr, -1,
+								nullptr, score);
+							// Note that the re_model already has the updated training score (= F_t)
+							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
+							//	We this dont provide this here (see the above nullptr). This also implies
+							//	that the Laplace approximation (in particualr the mode) is note calculated again
+#pragma omp parallel for schedule(static) reduction(+:sum_loss)
+							for (data_size_t i = 0; i < num_data_; ++i) {
+								sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], gp_pred[i]);
+							}
+						}//end non-Gaussian data
+
+//						std::vector<double> re_prop_pred(num_data_);
+//						re_model->Predict(nullptr, num_data_, re_prop_pred.data(),
+//							false, false, true, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, true,
+//							nullptr, -1, nullptr, score);
+//						//note that the re_model already has the updated training score (= F_t)
+//						//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
+//#pragma omp parallel for schedule(static) reduction(+:sum_loss)
+//						for (data_size_t i = 0; i < num_data_; ++i) {
+//							// add loss
+//							sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], re_prop_pred[i]);
+//						}
+
+					}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
+					else {//re_model inexistent or not used for calculating validation loss
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							double prob = 0;
@@ -106,7 +143,7 @@ namespace LightGBM {
 							// add loss
 							sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], prob);
 						}
-					}
+					} // end re_model inexistent or not used for calculating validation loss
 				}
 				else {
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)

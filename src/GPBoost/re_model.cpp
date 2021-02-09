@@ -434,11 +434,12 @@ namespace GPBoost {
 		}
 	}
 
-	void REModel::Predict(const double* y_obs, data_size_t num_data_pred,
-		double* out_predict, bool predict_cov_mat, bool predict_var, bool predict_response,
+	void REModel::Predict(const double* y_obs, data_size_t num_data_pred, double* out_predict,
+		bool predict_cov_mat, bool predict_var, bool predict_response,
 		const gp_id_t* cluster_ids_data_pred, const char* re_group_data_pred, const double* re_group_rand_coef_data_pred,
-		double* gp_coords_data_pred, const double* gp_rand_coef_data_pred, const double* cov_pars_pred,
-		const double* covariate_data_pred, bool use_saved_data, const char* vecchia_pred_type, int num_neighbors_pred,
+		double* gp_coords_data_pred, const double* gp_rand_coef_data_pred, 
+		const double* cov_pars_pred, const double* covariate_data_pred, 
+		bool use_saved_data, const char* vecchia_pred_type, int num_neighbors_pred,
 		const double* fixed_effects, const double* fixed_effects_pred) const {
 		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
@@ -457,24 +458,34 @@ namespace GPBoost {
 				Log::Fatal("Covariance parameters have not been estimated or are not given.");
 			}
 			cov_pars_pred_trans = cov_pars_;
-			if (covariance_matrix_has_been_factorized_) {
-				calc_cov_factor = false;
+			// Note: For non-Gaussian data: don't calculate the Laplace approximation if fixed_effects==nullptr 
+			//	since it is assume that the same fixed_effects and thus Laplace approx is used as during training
+			if (GaussLikelihood() || fixed_effects == nullptr) {
+				calc_cov_factor = !covariance_matrix_has_been_factorized_;
 			}
 		}// end use saved cov_pars
 		if (has_covariates_) {
 			CHECK(coef_initialized_ == true);
 		}
 		if (sparse_) {
-			re_model_sp_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred, out_predict,
-				calc_cov_factor, predict_cov_mat, predict_var, predict_response, covariate_data_pred, coef_.data(),
-				cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred, gp_coords_data_pred,
-				gp_rand_coef_data_pred, use_saved_data, vecchia_pred_type, num_neighbors_pred, fixed_effects, fixed_effects_pred);
+			re_model_sp_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred,
+				out_predict, calc_cov_factor, predict_cov_mat, predict_var, predict_response,
+				covariate_data_pred, coef_.data(),
+				cluster_ids_data_pred, re_group_data_pred,
+				re_group_rand_coef_data_pred, gp_coords_data_pred,
+				gp_rand_coef_data_pred, use_saved_data,
+				vecchia_pred_type, num_neighbors_pred,
+				fixed_effects, fixed_effects_pred);
 		}
 		else {
-			re_model_den_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred, out_predict,
-				calc_cov_factor, predict_cov_mat, predict_var, predict_response, covariate_data_pred, coef_.data(),
-				cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred, gp_coords_data_pred,
-				gp_rand_coef_data_pred, use_saved_data, vecchia_pred_type, num_neighbors_pred, fixed_effects, fixed_effects_pred);
+			re_model_den_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred,
+				out_predict, calc_cov_factor, predict_cov_mat, predict_var, predict_response,
+				covariate_data_pred, coef_.data(),
+				cluster_ids_data_pred, re_group_data_pred,
+				re_group_rand_coef_data_pred, gp_coords_data_pred,
+				gp_rand_coef_data_pred, use_saved_data,
+				vecchia_pred_type, num_neighbors_pred,
+				fixed_effects, fixed_effects_pred);
 		}
 	}
 

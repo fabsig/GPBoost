@@ -3194,12 +3194,14 @@ class Booster:
             pred_var_cov = None
             response_mean = None
             response_var = None
+
+            if self.train_set.data is None:
+                raise GPBoostError("cannot make predictions for Gaussian process. "
+                                   "Set free_raw_data = False when you construct the Dataset")
+            fixed_effect_train = predictor.predict(self.train_set.data, num_iteration,
+                                                   False, False, False, False, False)
+
             if self.gp_model.get_likelihood_name() == "gaussian":  # Gaussian data
-                if self.train_set.data is None:
-                    raise GPBoostError("cannot make predictions for Gaussian process. "
-                                       "Set free_raw_data = False when you construct the Dataset")
-                fixed_effect_train = predictor.predict(self.train_set.data, num_iteration,
-                                                       False, False, False, False, False)
                 residual = self.train_set.label - fixed_effect_train
                 # Note: we need to provide the response variable y as this was not saved
                 #   in the gp_model ("in C++") for Gaussian data but was overwritten during training
@@ -3240,7 +3242,8 @@ class Booster:
                                                                num_neighbors_pred=num_neighbors_pred,
                                                                predict_cov_mat=predict_cov_mat,
                                                                predict_var=predict_var,
-                                                               predict_response=False)
+                                                               predict_response=False,
+                                                               fixed_effects=fixed_effect_train)
                     if len(fixed_effect) != len(random_effect_pred['mu']):
                         warnings.warn("Number of data points in fixed effect (tree ensemble) and random effect "
                                       "are not equal")
@@ -3260,6 +3263,7 @@ class Booster:
                                                       predict_cov_mat=predict_cov_mat,
                                                       predict_var=predict_var,
                                                       predict_response=True,
+                                                      fixed_effects=fixed_effect_train,
                                                       fixed_effects_pred=fixed_effect)
                     response_mean = pred_resp['mu']
                     response_var = pred_resp['var']

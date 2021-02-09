@@ -49,7 +49,7 @@ beta <- c(0.1,2) # regression coefficents
 cluster_ids <- c(rep(1,0.4*n),rep(2,0.6*n))
 
 
-print("Ignore [GPBoost] [Fatal]")
+# print("Ignore [GPBoost] [Fatal]")
 test_that("Binary classification with Gaussian process model ", {
 
   probs <- pnorm(L %*% b_1)

@@ -597,22 +597,21 @@ Booster <- R6::R6Class(
         response_mean <- NA
         response_var <- NA
         
-        if(private$gp_model$get_likelihood_name() == "gaussian"){
-          
-          # Check for empty data
-          if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
-            stop("predict: cannot make predictions for Gaussian process.
+        if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
+          stop("predict: cannot make predictions for Gaussian process.
                 Set ", sQuote("free_raw_data = FALSE"), " when you construct gpb.Dataset")
-          }
-          
-          fixed_effect_train = predictor$predict( data = private$train_set$.__enclos_env__$private$raw_data
-                                                  , start_iteration = start_iteration
-                                                  , num_iteration = num_iteration
-                                                  , rawscore = TRUE
-                                                  , predleaf = FALSE
-                                                  , predcontrib = FALSE
-                                                  , header = FALSE
-                                                  , reshape = FALSE )
+        }
+        fixed_effect_train = predictor$predict( data = private$train_set$.__enclos_env__$private$raw_data
+                                                , start_iteration = start_iteration
+                                                , num_iteration = num_iteration
+                                                , rawscore = TRUE
+                                                , predleaf = FALSE
+                                                , predcontrib = FALSE
+                                                , header = FALSE
+                                                , reshape = FALSE )
+        
+        if(private$gp_model$get_likelihood_name() == "gaussian"){
+
           residual = private$train_set$.__enclos_env__$private$info$label-fixed_effect_train
           # Note: we need to provide the response variable y as this was not saved
           #   in the gp_model ("in C++") for Gaussian data but was overwritten during training
@@ -661,7 +660,7 @@ Booster <- R6::R6Class(
                                             , reshape = FALSE )
           
           if (rawscore) {
-            
+
             # Note: we don't need to provide the response variable y as this is saved
             #   in the gp_model ("in C++") for non-Gaussian data
             random_effect_pred = private$gp_model$predict(group_data_pred = group_data_pred,
@@ -675,7 +674,8 @@ Booster <- R6::R6Class(
                                                           X_pred = NULL,
                                                           vecchia_pred_type = vecchia_pred_type,
                                                           num_neighbors_pred = num_neighbors_pred,
-                                                          predict_response = FALSE)
+                                                          predict_response = FALSE,
+                                                          fixed_effects = fixed_effect_train)
             
             if (length(fixed_effect) != length(random_effect_pred$mu)){
               warning("Number of data points in fixed effect (tree ensemble) and random effect are not equal")
@@ -703,6 +703,7 @@ Booster <- R6::R6Class(
                                                   vecchia_pred_type = vecchia_pred_type,
                                                   num_neighbors_pred = num_neighbors_pred,
                                                   predict_response = TRUE,
+                                                  fixed_effects = fixed_effect_train,
                                                   fixed_effects_pred = fixed_effect)
             
             response_mean <-  pred_resp$mu

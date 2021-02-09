@@ -779,8 +779,8 @@ test_that("Combine tree-boosting and random effects for gamma regression", {
   # Prediction
   pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                   predict_var = TRUE, rawscore = TRUE)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.8447757),1E-6)
-  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.9389919),1E-6)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.8447757),1E-5)
+  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.9389919),1E-4)
   expect_lt(sum(abs(tail(pred$fixed_effect)-c(1.6898380, 0.9208370, -1.1452591,
                                               1.3257071, -0.5361580, 0.9184303))),1E-6)
   expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-2.030927, -1.763782, -2.138062, rep(0,3)))),1E-5)

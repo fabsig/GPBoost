@@ -636,3 +636,73 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
   expect_equal(bst$best_iter, 19)
   expect_lt(abs(bst$best_score - 0.05520368),1E-4)
 })
+
+
+test_that("Loading a GPBoost model from a text file works", {
+  ntrain <- ntest <- 1000
+  n <- ntrain + ntest
+  # Simulate fixed effects
+  sim_data <- sim_friedman3(n=n, n_irrelevant=5)
+  f <- sim_data$f
+  X <- sim_data$X
+  # Simulate grouped random effects
+  m <- 40 # number of categories / levels for grouping variable
+  # first random effect
+  group <- rep(1,ntrain) # grouping variable
+  for(i in 1:m) group[((i-1)*ntrain/m+1):(i*ntrain/m)] <- i
+  group <- c(group, group)
+  n_new <- 3# number of new random effects in test data
+  group[(length(group)-n_new+1):length(group)] <- rep(max(group)+1,n_new)
+  b1 <- qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.542))
+  eps <- b1[group]
+  group_data <- group
+  # Error term
+  xi <- sqrt(0.01) * qnorm(sim_rand_unif(n=n, init_c=0.756))
+  # Observed data
+  y <- f + eps + xi
+  # Split in training and test data
+  y_train <- y[1:ntrain]
+  X_train <- X[1:ntrain,]
+  group_data_train <- group_data[1:ntrain]
+  y_test <- y[1:ntest+ntrain]
+  X_test <- X[1:ntest+ntrain,]
+  f_test <- f[1:ntest+ntrain]
+  group_data_test <- group_data[1:ntest+ntrain]
+  # dtrain <- gpb.Dataset(data = X_train, label = y_train)
+  # dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+  # valids <- list(test = dtest)
+  params <- list(learning_rate = 0.01,
+                 max_depth = 6,
+                 min_data_in_leaf = 5,
+                 objective = "regression_l2",
+                 feature_pre_filter = FALSE)
+  # Train model and make predictions
+  gp_model <- GPModel(group_data = group_data_train)
+  bst <- gpboost(data = X_train,
+                 label = y_train,
+                 gp_model = gp_model,
+                 nrounds = 62,
+                 learning_rate = 0.01,
+                 max_depth = 6,
+                 min_data_in_leaf = 5,
+                 objective = "regression_l2",
+                 verbose = 0)
+  pred <- predict(bst, data = X_test, group_data_pred = group_data_test, predict_var = TRUE)
+  # Save to file
+  model_file <- tempfile(fileext = ".model")
+  gpb.save(bst, model_file)
+  
+  # finalize the booster and the gp_model and destroy it so you know we aren't cheating
+  bst$finalize()
+  expect_null(bst$.__enclos_env__$private$handle)
+  rm(bst)
+  gp_model$finalize()
+  rm(gp_model)
+  
+  bst2 <- gpb.load(filename = model_file)
+  pred2 <- predict(bst2, data = X_test, group_data_pred = group_data_test, predict_var = TRUE)
+  pred2 <- predict(bst2, data = X_test)
+  # expect_identical(pred$fixed_effect, pred2$fixed_effect)
+  # expect_identical(pred$random_effect_mean, pred2$random_effect_mean)
+  # expect_identical(pred$random_effect_cov, pred2$random_effect_cov)
+})
