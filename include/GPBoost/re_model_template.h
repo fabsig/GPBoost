@@ -412,14 +412,21 @@ namespace GPBoost {
 		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
 		* \param fixed_effects Fixed effects component of location parameter (only used for non-Gaussian data)
+		* \param learn_covariance_parameters If true, covariance parameters are estimated (default = true)
 		*/
-		void OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates,
-			double* optim_cov_pars, double* optim_coef, int& num_it, double* init_cov_pars, double* init_coef = nullptr,
+		void OptimLinRegrCoefCovPar(const double* y_data,
+			const double* covariate_data, int num_covariates,
+			double* optim_cov_pars, double* optim_coef,
+			int& num_it,
+			double* init_cov_pars, double* init_coef = nullptr,
 			double lr_coef = 0.1, double lr_cov = -1., double acc_rate_coef = 0.5, double acc_rate_cov = 0.5, int momentum_offset = 2,
-			int max_iter = 1000, double delta_rel_conv = 1.0e-6, bool use_nesterov_acc = true, int nesterov_schedule_version = 0,
-			string_t optimizer_cov = "fisher_scoring", string_t optimizer_coef = "wls", double* std_dev_cov_par = nullptr,
-			double* std_dev_coef = nullptr, bool calc_std_dev = false, string_t convergence_criterion = "relative_change_in_log_likelihood",
-			const double* fixed_effects = nullptr) {
+			int max_iter = 1000, double delta_rel_conv = 1.0e-6,
+			bool use_nesterov_acc = true, int nesterov_schedule_version = 0,
+			string_t optimizer_cov = "fisher_scoring", string_t optimizer_coef = "wls",
+			double* std_dev_cov_par = nullptr, double* std_dev_coef = nullptr, bool calc_std_dev = false,
+			string_t convergence_criterion = "relative_change_in_log_likelihood",
+			const double* fixed_effects = nullptr,
+			bool learn_covariance_parameters = true) {
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
 				Log::Fatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov.c_str());
@@ -550,6 +557,7 @@ namespace GPBoost {
 			for (int it = 0; it < max_iter; ++it) {
 				neg_log_likelihood_lag1_ = neg_log_likelihood_;
 				cov_pars_lag1 = cov_pars;
+
 				// Update linear regression coefficients using gradient descent or generalized least squares (the latter option only for Gaussian data)
 				if (has_covariates_) {
 					beta_lag1 = beta;
@@ -583,33 +591,37 @@ namespace GPBoost {
 				else {
 					neg_log_likelihood_after_lin_coef_update_ = neg_log_likelihood_lag1_;
 				}
-				// Update covariance parameters using one step of gradient descent or Fisher scoring	
-				// Calculate gradient or natural gradient = FI^-1 * grad (for Fisher scoring)
-				vec_t nat_grad; // nat_grad = grad for gradient descent and nat_grad = FI^-1 * grad for Fisher scoring (="natural" gradient)
-				if (optimizer_cov == "gradient_descent") {//gradient descent
-					if (gauss_likelihood_) {
-						// First, profile out sigma (=use closed-form expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
-						CalcYTPsiIInvY<T1>(cov_pars[0], true, 1, true, true);
-						cov_pars[0] /= num_data_;
-						sigma2_ = cov_pars[0];
+
+				// Update covariance parameters using one step of gradient descent or Fisher scoring
+				if (learn_covariance_parameters) {
+					// Calculate gradient or natural gradient = FI^-1 * grad (for Fisher scoring)
+					vec_t nat_grad; // nat_grad = grad for gradient descent and nat_grad = FI^-1 * grad for Fisher scoring (="natural" gradient)
+					if (optimizer_cov == "gradient_descent") {//gradient descent
+						if (gauss_likelihood_) {
+							// First, profile out sigma (=use closed-form expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
+							CalcYTPsiIInvY<T1>(cov_pars[0], true, 1, true, true);
+							cov_pars[0] /= num_data_;
+							sigma2_ = cov_pars[0];
+						}
+						CalcCovParGrad(cov_pars, nat_grad, false, false, fixed_effects_ptr);
 					}
-					CalcCovParGrad(cov_pars, nat_grad, false, false, fixed_effects_ptr);
+					else if (optimizer_cov == "fisher_scoring") {//Fisher scoring
+						// We don't profile out sigma (=don't use closed-form expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
+						vec_t grad;
+						den_mat_t FI;
+						CalcCovParGrad(cov_pars, grad, true, true, fixed_effects_ptr);
+						CalcFisherInformation(cov_pars, FI, true, true, true);
+						nat_grad = FI.llt().solve(grad);
+					}
+					// Update covariance parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
+					UpdateCovPars(cov_pars, nat_grad, lr_cov, profile_out_marginal_variance, use_nesterov_acc, it, optimizer_cov,
+						cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, acc_rate_cov, nesterov_schedule_version, momentum_offset, fixed_effects_ptr);
+					// Check for NA or Inf
+					if (std::isnan(cov_pars[0]) || std::isinf(cov_pars[0])) {
+						Log::Fatal("NaN or Inf occurred in covariance parameters. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
+					}
 				}
-				else if (optimizer_cov == "fisher_scoring") {//Fisher scoring
-					// We don't profile out sigma (=don't use closed-form expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
-					vec_t grad;
-					den_mat_t FI;
-					CalcCovParGrad(cov_pars, grad, true, true, fixed_effects_ptr);
-					CalcFisherInformation(cov_pars, FI, true, true, true);
-					nat_grad = FI.llt().solve(grad);
-				}
-				// Update covariance parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
-				UpdateCovPars(cov_pars, nat_grad, lr_cov, profile_out_marginal_variance, use_nesterov_acc, it, optimizer_cov,
-					cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, acc_rate_cov, nesterov_schedule_version, momentum_offset, fixed_effects_ptr);
-				// Check for NA or Inf
-				if (std::isnan(cov_pars[0]) || std::isinf(cov_pars[0])) {
-					Log::Fatal("NaN or Inf occurred in covariance parameters. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
-				}
+
 				// Check convergence
 				bool likelihood_is_na = std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_);//if the likelihood is NA, we monitor the parameters instead of the likelihood
 				if (convergence_criterion == "relative_change_in_parameters" || likelihood_is_na) {
@@ -2508,8 +2520,6 @@ namespace GPBoost {
 		void UpdateCovPars(vec_t& cov_pars, const vec_t& nat_grad, double& lr_cov, bool profile_out_marginal_variance,
 			bool use_nesterov_acc, int it, const string_t& optimizer_cov, vec_t& cov_pars_after_grad_aux, vec_t& cov_pars_after_grad_aux_lag1,
 			double acc_rate_cov, int nesterov_schedule_version, int momentum_offset, const double* fixed_effects = nullptr) {
-			bool optim_learning_rate_halving = true;
-			// If optim_learning_rate_halving==true, the learning rate is halved when the negative log-likelihood increases
 			vec_t cov_pars_new(num_cov_par_);
 			if (profile_out_marginal_variance) {
 				cov_pars_new[0] = cov_pars[0];
@@ -2517,8 +2527,7 @@ namespace GPBoost {
 			double lr = lr_cov;
 			bool decrease_found = false;
 			bool halving_done = false;
-			int max_number_halving_steps = optim_learning_rate_halving ? MAX_NUMBER_HALVING_STEPS_ : 1;
-			for (int ih = 0; ih < max_number_halving_steps; ++ih) {
+			for (int ih = 0; ih < MAX_NUMBER_HALVING_STEPS_; ++ih) {
 				if (profile_out_marginal_variance) {
 					cov_pars_new.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - lr * nat_grad.array()).exp().matrix();//make update on log-scale
 				}
@@ -2538,23 +2547,32 @@ namespace GPBoost {
 					//		However, performing the acceleration before or after the gradient update gives equivalent algorithms
 				}
 				CalcCovFactorOrModeAndNegLL(cov_pars_new, fixed_effects);
-				// Reset mode for Laplace approximation to 0 in case there was an NA so that NA's don't propagate to the next iteration
-				if (!gauss_likelihood_) {
-					if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
-						for (const auto& cluster_i : unique_clusters_) {
-							likelihood_[cluster_i]->InitializeModeAvec();
-						}
-					}
-				}
+
+				//DELETE THIS (not needed anymore since mode is reset below)
+				//// Reset mode for Laplace approximation to 0 in case there was an NA so that NA's don't propagate to the next iteration
+				//if (!gauss_likelihood_) {
+				//	if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
+				//		for (const auto& cluster_i : unique_clusters_) {
+				//			likelihood_[cluster_i]->InitializeModeAvec();
+				//		}
+				//	}
+				//}
+
+				// Safeguard agains too large steps by halving the learning rate when the objective increases
 				if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
 					decrease_found = true;
 					break;
 				}
-				else if (optim_learning_rate_halving) {
-					// Safeguard agains too large steps by halving the learning rate
+				else {
 					halving_done = true;
 					lr *= 0.5;
 					acc_rate_cov *= 0.5;
+					if (!gauss_likelihood_) {
+						// Reset mode to previous value since also parameters are discarded
+						for (const auto& cluster_i : unique_clusters_) {
+							likelihood_[cluster_i]->ResetModeToPreviousValue();
+						}
+					}
 				}
 			}
 			if (halving_done) {
@@ -2567,12 +2585,7 @@ namespace GPBoost {
 				}
 			}
 			if (!decrease_found) {
-				if (optim_learning_rate_halving) {
-					Log::Debug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
-				}
-				else {
-					Log::Debug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. There is no safeguard against too large steps (step halving) in place when applying Nesterov acceleration ", it + 1);
-				}
+				Log::Debug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
 			}
 			if (use_nesterov_acc) {
 				cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
@@ -2598,15 +2611,12 @@ namespace GPBoost {
 		void UpdateLinCoef(vec_t& beta, const vec_t& grad, double& lr_coef, const vec_t& cov_pars,
 			bool use_nesterov_acc, int it, vec_t& beta_after_grad_aux, vec_t& beta_after_grad_aux_lag1,
 			double acc_rate_coef, int nesterov_schedule_version, int momentum_offset, const double* fixed_effects, vec_t& fixed_effects_vec) {
-			bool optim_learning_rate_halving = true;
-			// If optim_learning_rate_halving==true, the learning rate is halved when the negative log-likelihood increases
 			vec_t beta_new;
 			double lr = lr_coef;
 			vec_t resid;
 			bool decrease_found = false;
 			bool halving_done = false;
-			int max_number_halving_steps = optim_learning_rate_halving ? MAX_NUMBER_HALVING_STEPS_ : 1;
-			for (int ih = 0; ih < max_number_halving_steps; ++ih) {
+			for (int ih = 0; ih < MAX_NUMBER_HALVING_STEPS_; ++ih) {
 				beta_new = beta - lr * grad;
 				// Apply Nesterov acceleration
 				if (use_nesterov_acc) {
@@ -2637,22 +2647,32 @@ namespace GPBoost {
 						}
 					}
 					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEff(fixed_effects_vec.data());//calculate mode and approximate marginal likelihood
-					// Reset mode for Laplace approximation to 0 in case there was an NA so that NA's don't propagate to the next iteration
-					if (std::isnan(neg_log_likelihood_after_lin_coef_update_) || std::isinf(neg_log_likelihood_after_lin_coef_update_)) {
-						for (const auto& cluster_i : unique_clusters_) {
-							likelihood_[cluster_i]->InitializeModeAvec();
-						}
-					}
+
+					//DELETE THIS (not needed anymore since mode is reset below)
+					//// Reset mode for Laplace approximation to 0 in case there was an NA so that NA's don't propagate to the next iteration
+					//if (std::isnan(neg_log_likelihood_after_lin_coef_update_) || std::isinf(neg_log_likelihood_after_lin_coef_update_)) {
+					//	for (const auto& cluster_i : unique_clusters_) {
+					//		likelihood_[cluster_i]->InitializeModeAvec();
+					//	}
+					//}
+
 				}
+				// Safeguard agains too large steps by halving the learning rate when the objective increases
 				if (neg_log_likelihood_after_lin_coef_update_ <= neg_log_likelihood_lag1_) {
 					decrease_found = true;
 					break;
 				}
-				else if (optim_learning_rate_halving) {
+				else {
 					// Safeguard agains too large steps by halving the learning rate
 					halving_done = true;
 					lr *= 0.5;
 					acc_rate_coef *= 0.5;
+					if (!gauss_likelihood_) {
+						// Reset mode to previous value since also parameters are discarded
+						for (const auto& cluster_i : unique_clusters_) {
+							likelihood_[cluster_i]->ResetModeToPreviousValue();
+						}
+					}
 				}
 			}
 			if (halving_done) {
@@ -2660,12 +2680,7 @@ namespace GPBoost {
 				Log::Debug("GPModel linear regression coefficient estimation: The learning rate has been decreased permanently since with the previous learning rate, there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_coef);
 			}
 			if (!decrease_found) {
-				if (optim_learning_rate_halving) {
-					Log::Debug("GPModel linear regression coefficient estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
-				}
-				else {
-					Log::Debug("GPModel linear regression coefficient estimation: No decrease in the objective function in iteration number %d. There is no safeguard against too large steps (step halving) in place when applying Nesterov acceleration ", it + 1);
-				}
+				Log::Debug("GPModel linear regression coefficient estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
 			}
 			if (use_nesterov_acc) {
 				beta_after_grad_aux_lag1 = beta_after_grad_aux;

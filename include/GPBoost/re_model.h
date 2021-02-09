@@ -146,6 +146,12 @@ namespace GPBoost {
 		void OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates);
 
 		/*!
+		* \brief Find constant initial value of ensenmble for boosting (used only for non-Gaussian data). 
+		* \param[out] init_score Initial value for boosting ensemble (=initial score in LightGBM)
+		*/
+		void FindInitialValueBoosting(double* init_score);
+
+		/*!
 		* \brief Calculate the value of the negative log-likelihood
 		* \param y_data Response variable data
 		* \param cov_pars Values for covariance parameters of RE components

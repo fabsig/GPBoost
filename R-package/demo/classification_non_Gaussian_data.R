@@ -60,12 +60,11 @@ hist(y,breaks=50)# visualize response variable
 # Training
 # Define random effects model
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
-bst <- gpboost(data = X, label = y, verbose = 0, 
+bst <- gpboost(data = X, label = y, verbose = 0,
                gp_model = gp_model,
                monotone_constraints = c(1,0),
                nrounds = nrounds, 
-               params = params, 
-               train_gp_model_cov_pars = TRUE)
+               params = params)
 summary(gp_model) # Trained random effects model
 
 # Make predictions

@@ -72,14 +72,25 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Initialize mode vectors and auxiliary vector a_vec_ (used in Laplace approximation for non-Gaussian data)
+		* \brief Initialize mode vector_ (used in Laplace approximation for non-Gaussian data)
 		*/
 		void InitializeModeAvec() {
 			mode_ = vec_t(num_re_);
 			mode_.setZero();
+			mode_previous_value_ = vec_t(num_re_);
+			mode_previous_value_.setZero();
 			mode_initialized_ = true;
 			first_deriv_ll_ = vec_t(num_data_);
 			second_deriv_neg_ll_ = vec_t(num_data_);
+		}
+
+		/*!
+		* \brief Reset mode to previous value. This is used if too large step-sizes are done which result in increases in the objective function.
+		"			The values (covariance parameters and linear coefficients) are then discarded and consequently the mode should also be reset to the previous value)
+		*/
+		void ResetModeToPreviousValue() {
+			CHECK(mode_initialized_);
+			mode_ = mode_previous_value_;
 		}
 
 		/*! \brief Destructor */
@@ -462,6 +473,9 @@ namespace GPBoost {
 			if (!mode_initialized_) {
 				InitializeModeAvec();
 			}
+			else {
+				mode_previous_value_ = mode_;
+			}
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			vec_t location_par;
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
@@ -524,6 +538,9 @@ namespace GPBoost {
 					approx_marginal_ll = approx_marginal_ll_new;
 				}
 			}
+			if (it == MAXIT_MODE_NEWTON_) {
+				Log::Debug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
+			}
 			if (no_fixed_effects) {
 				CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				CalcSecondDerivNegLogLik(y_data, y_data_int, mode_.data(), num_data);
@@ -537,6 +554,7 @@ namespace GPBoost {
 			chol_facts_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.compute(Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
 			approx_marginal_ll -= ((den_mat_t)chol_facts_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.matrixL()).diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
+
 			////Only for debugging -> delete this
 			//Log::Info("Number of iterations: %d", it);
 			//Log::Info("approx_marginal_ll: %g", approx_marginal_ll);
@@ -570,6 +588,9 @@ namespace GPBoost {
 			// Initialize variables
 			if (!mode_initialized_) {
 				InitializeModeAvec();
+			}
+			else {
+				mode_previous_value_ = mode_;
 			}
 			sp_mat_t Z = Zt.transpose();
 			vec_t location_par = Z * mode_;//location parameter = mode of random effects + fixed effects
@@ -621,6 +642,9 @@ namespace GPBoost {
 					approx_marginal_ll = approx_marginal_ll_new;
 				}
 			}//end mode finding algorithm
+			if (it == MAXIT_MODE_NEWTON_) {
+				Log::Debug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
+			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 			if (only_one_random_effect) {
@@ -634,19 +658,20 @@ namespace GPBoost {
 				approx_marginal_ll += -((den_mat_t)chol_facts_SigmaI_plus_ZtWZ_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
 			}
 			mode_has_been_calculated_ = true;
+
 			////Only for debugging -> delete this
-			//double approx_marginal_ll_1 = -0.5 * (mode_.dot(SigmaI * mode_)); 
-			//double approx_marginal_ll_2 = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-			//double approx_marginal_ll_3 = 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() - 0.5 * SigmaI.diagonal().array().log().sum();
 			//Log::Info("");
 			//Log::Info("Number of iterations: %d", it);
-			//Log::Info("approx_marginal_ll_1: %g", approx_marginal_ll_1);
-			//Log::Info("approx_marginal_ll_2: %g", approx_marginal_ll_2);
-			//Log::Info("approx_marginal_ll_3: %g", approx_marginal_ll_3);
 			//Log::Info("Mode");
 			//for (int i = 0; i < 10; ++i) {
 			//	Log::Info("mode_[%d]: %g", i, mode_[i]);
 			//}
+			//double approx_marginal_ll_1 = -0.5 * (mode_.dot(SigmaI * mode_)); 
+			//double approx_marginal_ll_2 = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+			//double approx_marginal_ll_3 = 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() - 0.5 * SigmaI.diagonal().array().log().sum();
+			//Log::Info("approx_marginal_ll_1: %g", approx_marginal_ll_1);
+			//Log::Info("approx_marginal_ll_2: %g", approx_marginal_ll_2);
+			//Log::Info("approx_marginal_ll_3: %g", approx_marginal_ll_3);
 			//std::this_thread::sleep_for(std::chrono::milliseconds(200));
 		}//end FindModePostRandEffCalcMLLGroupedRE
 
@@ -669,6 +694,9 @@ namespace GPBoost {
 			// Initialize variables
 			if (!mode_initialized_) {
 				InitializeModeAvec();
+			}
+			else {
+				mode_previous_value_ = mode_;
 			}
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			sp_mat_t SigmaI = B.transpose() * D_inv * B;
@@ -728,6 +756,9 @@ namespace GPBoost {
 				else {
 					approx_marginal_ll = approx_marginal_ll_new;
 				}
+			}
+			if (it == MAXIT_MODE_NEWTON_) {
+				Log::Debug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
 			}
 			if (no_fixed_effects) {
 				CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
@@ -1409,6 +1440,8 @@ namespace GPBoost {
 		data_size_t num_re_;
 		/*! \brief Posterior mode used for Laplace approximation */
 		vec_t mode_;
+		/*! \brief Posterior mode used for Laplace approximation: saving a previously found value allows for reseting the mode when having a too large step size. */
+		vec_t mode_previous_value_;
 		/*! \brief Auxiliary variable a=ZSigmaZt^-1 mode_b used for Laplace approximation */
 		vec_t a_vec_;
 		/*! \brief First derivatives of the log-likelihood */
@@ -1437,7 +1470,7 @@ namespace GPBoost {
 		/*! \brief Tolerance level when comparing two doubles for equality */
 		double EPSILON_ = 1e-6;
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
-		int MAXIT_MODE_NEWTON_ = 100;
+		int MAXIT_MODE_NEWTON_ = 1000;
 		/*! \brief Used for cheking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
 		double DELTA_REL_CONV_ = 1e-6;
 		/*! \brief Additional parameters for likelihoods. For gamma, auxiliary_pars_[0] = shape parameter  */

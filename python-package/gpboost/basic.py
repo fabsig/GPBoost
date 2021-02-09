@@ -3199,7 +3199,7 @@ class Booster:
                 raise GPBoostError("cannot make predictions for Gaussian process. "
                                    "Set free_raw_data = False when you construct the Dataset")
             fixed_effect_train = predictor.predict(self.train_set.data, num_iteration,
-                                                   False, False, False, False, False)
+                                                   True, False, False, False, False)
 
             if self.gp_model.get_likelihood_name() == "gaussian":  # Gaussian data
                 residual = self.train_set.label - fixed_effect_train
@@ -3215,9 +3215,10 @@ class Booster:
                                                            num_neighbors_pred=num_neighbors_pred,
                                                            predict_cov_mat=predict_cov_mat,
                                                            predict_var=predict_var)
-                fixed_effect = predictor.predict(data, num_iteration,
-                                                 raw_score, pred_leaf, pred_contrib,
-                                                 data_has_header, is_reshape)
+                fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
+                                                 num_iteration=num_iteration, raw_score=raw_score, pred_leaf=pred_leaf,
+                                                 pred_contrib=pred_contrib, data_has_header=data_has_header,
+                                                 is_reshape=is_reshape)
                 if len(fixed_effect) != len(random_effect_pred['mu']):
                     warnings.warn("Number of data points in fixed effect (tree ensemble) and random effect "
                                   "are not equal")
@@ -3227,9 +3228,10 @@ class Booster:
                     pred_var_cov = random_effect_pred['var']
                 random_effect_mean = random_effect_pred['mu']
             else:  # non-Gaussian data
-                fixed_effect = predictor.predict(data, num_iteration,
-                                                 True, pred_leaf, pred_contrib,
-                                                 data_has_header, is_reshape)
+                fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
+                                                 num_iteration=num_iteration, raw_score=True, pred_leaf=pred_leaf,
+                                                 pred_contrib=pred_contrib, data_has_header=data_has_header,
+                                                 is_reshape=is_reshape)
                 if raw_score:
                     # Note: we don't need to provide the response variable y as this is saved
                     #   in the gp_model ("in C++") for non-Gaussian data
@@ -3274,9 +3276,9 @@ class Booster:
                     "response_mean": response_mean,
                     "response_var": response_var}
         else:  # no gp_model
-            return predictor.predict(data, start_iteration, num_iteration,
-                                     raw_score, pred_leaf, pred_contrib,
-                                     data_has_header, is_reshape)
+            return predictor.predict(data=data, start_iteration=start_iteration, num_iteration=num_iteration,
+                                     raw_score=raw_score, pred_leaf=pred_leaf, pred_contrib=pred_contrib,
+                                     data_has_header=data_has_header, is_reshape=is_reshape)
 
     def refit(self, data, label, decay_rate=0.9, **kwargs):
         """Refit the existing Booster by new data.

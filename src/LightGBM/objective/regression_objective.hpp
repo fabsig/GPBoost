@@ -251,47 +251,88 @@ namespace LightGBM {
 			}
 			else {
 				if (has_gp_model_) {
-					if (likelihood_type_ == std::string("gaussian") ||
-						likelihood_type_ == std::string("poisson") ||
-						likelihood_type_ == std::string("gamma")) {
+					if (likelihood_type_ == std::string("gaussian")) {
 						sumw = static_cast<double>(num_data_);
 #pragma omp parallel for schedule(static) reduction(+:suml)
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							suml += label_[i];
 						}
 						initscore = suml / sumw;
-						if (likelihood_type_ == std::string("poisson") ||
-							likelihood_type_ == std::string("gamma")) {
-							initscore = Common::SafeLog(initscore);
-						}
-						Log::Info("[GPBoost with %f likelihood]: initscore=%f", 
-							likelihood_type_.c_str(), initscore);
-					}
-					else if (likelihood_type_ == std::string("bernoulli_probit") ||
-						likelihood_type_ == std::string("bernoulli_logit")) {
-						sumw = static_cast<double>(num_data_);
-#pragma omp parallel for schedule(static) reduction(+:suml)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							suml += is_pos_(label_[i]);
-						}
-						double pavg = suml / sumw;
-						pavg = std::min(pavg, 1.0 - kEpsilon);
-						pavg = std::max<double>(pavg, kEpsilon);
-						if (likelihood_type_ == std::string("bernoulli_probit")) {
-							initscore = normalCDFInverse(pavg);
-						}
-						else {
-							initscore = std::log(pavg / (1.0f - pavg));
-						}
-						Log::Info("[GPBoost with %s likelihood]: pavg=%f -> initscore=%f",
-							likelihood_type_.c_str(), pavg, initscore);
 					}
 					else {
-						Log::Fatal("BoostFromScore (for intial score calculation) not implemented for likelihood / objective = %s",
-							likelihood_type_.c_str());
+						re_model_->FindInitialValueBoosting(&initscore);
 					}
+					Log::Info("[GPBoost with %s likelihood]: initscore=%f",
+						likelihood_type_.c_str(), initscore);
+
+					//DELTE code below
+//// Old (incorrect) version 1 (set scores to 0)
+//					if (re_model_->GetLikelihood() == std::string("gaussian")) {
+//						sumw = static_cast<double>(num_data_);
+//#pragma omp parallel for schedule(static) reduction(+:suml)
+//						for (data_size_t i = 0; i < num_data_; ++i) {
+//							suml += label_[i];
+//						}
+//						initscore = suml / sumw;
+//						Log::Info("[GPBoost with gaussian likelihood]: initscore=%f", initscore);
+//					}
+//					else if (re_model_->GetLikelihood() == std::string("bernoulli_probit")) {
+//						sumw = static_cast<double>(num_data_);
+//#pragma omp parallel for schedule(static) reduction(+:suml)
+//						for (data_size_t i = 0; i < num_data_; ++i) {
+//							suml += is_pos_(label_[i]);
+//						}
+//						double pavg = suml / sumw;
+//						pavg = std::min(pavg, 1.0 - kEpsilon);
+//						pavg = std::max<double>(pavg, kEpsilon);
+//						//initscore = std::log(pavg / (1.0f - pavg));//TODO: better use inverse normal cdf here?
+//						initscore = normalCDFInverse(pavg);
+//						Log::Info("[GPBoost with bernoulli_probit likelihood]: pavg=%f -> initscore=%f", pavg, initscore);
+//					}
+
+//// Old (incorrect) version 2
+//					if (likelihood_type_ == std::string("gaussian") ||
+//						likelihood_type_ == std::string("poisson") ||
+//						likelihood_type_ == std::string("gamma")) {
+//						sumw = static_cast<double>(num_data_);
+//#pragma omp parallel for schedule(static) reduction(+:suml)
+//						for (data_size_t i = 0; i < num_data_; ++i) {
+//							suml += label_[i];
+//						}
+//						initscore = suml / sumw;
+//						if (likelihood_type_ == std::string("poisson") ||
+//							likelihood_type_ == std::string("gamma")) {
+//							initscore = Common::SafeLog(initscore);
+//						}
+//						Log::Info("[GPBoost with %s likelihood]: initscore=%f",
+//							likelihood_type_.c_str(), initscore);
+//					}
+//					else if (likelihood_type_ == std::string("bernoulli_probit") ||
+//						likelihood_type_ == std::string("bernoulli_logit")) {
+//						sumw = static_cast<double>(num_data_);
+//#pragma omp parallel for schedule(static) reduction(+:suml)
+//						for (data_size_t i = 0; i < num_data_; ++i) {
+//							suml += is_pos_(label_[i]);
+//						}
+//						double pavg = suml / sumw;
+//						pavg = std::min(pavg, 1.0 - kEpsilon);
+//						pavg = std::max<double>(pavg, kEpsilon);
+//						if (likelihood_type_ == std::string("bernoulli_probit")) {
+//							initscore = normalCDFInverse(pavg);
+//						}
+//						else {
+//							initscore = std::log(pavg / (1.0f - pavg));
+//						}
+//						Log::Info("[GPBoost with %s likelihood]: pavg=%f -> initscore=%f",
+//							likelihood_type_.c_str(), pavg, initscore);
+//					}
+//					else {
+//						Log::Fatal("BoostFromScore (for intial score calculation) not implemented for likelihood / objective = %s",
+//							likelihood_type_.c_str());
+//					}
+
 				}//end has_gp_model_
-				else {
+				else {//no gp_model
 					sumw = static_cast<double>(num_data_);
 #pragma omp parallel for schedule(static) reduction(+:suml) if (!deterministic_)
 					for (data_size_t i = 0; i < num_data_; ++i) {

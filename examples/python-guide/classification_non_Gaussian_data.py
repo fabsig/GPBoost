@@ -86,11 +86,13 @@ pred_resp = bst.predict(data=X_test_plot, group_data_pred=group_data_pred, raw_s
 # Predict latent variable including variance
 pred = bst.predict(data=X_test_plot, group_data_pred=group_data_pred,
                    predict_var=True, raw_score=True)
+
 # Visualize predictions
 fig1, ax1 = plt.subplots()
 ax1.plot(X_test_plot[:, 0], f1d(X_test_plot[:, 0]), linewidth=2, label="True F")
 ax1.plot(X_test_plot[:, 0], pred['fixed_effect'], linewidth=2, label="Pred F")
-ax1.scatter(X[:, 0], y, linewidth=2, color="black", alpha=0.02)
+if likelihood in ("bernoulli_probit", "bernoulli_logit"):
+    ax1.scatter(X[:, 0], y, linewidth=2, color="black", alpha=0.02)
 ax1.set_title("Data, true and predicted latent function F")
 ax1.legend()
 
