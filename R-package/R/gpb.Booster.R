@@ -610,19 +610,6 @@ Booster <- R6::R6Class(
                                                 , header = FALSE
                                                 , reshape = FALSE )
         
-        
-        ## DELETE THIS
-        print(fixed_effect_train[1:10])
-        fixed_effect_train = predictor$predict( data = private$train_set
-                                                , start_iteration = start_iteration
-                                                , num_iteration = num_iteration
-                                                , rawscore = TRUE
-                                                , predleaf = FALSE
-                                                , predcontrib = FALSE
-                                                , header = FALSE
-                                                , reshape = FALSE )
-        print(fixed_effect_train[1:10])
-        
         if(private$gp_model$get_likelihood_name() == "gaussian"){
 
           residual = private$train_set$.__enclos_env__$private$info$label-fixed_effect_train
