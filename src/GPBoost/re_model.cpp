@@ -293,6 +293,7 @@ namespace GPBoost {
 				optimizer_cov_pars_, optimizer_coef_,
 				nullptr, nullptr, false,
 				convergence_criterion_,
+				nullptr,
 				false);
 		}
 		else {
@@ -307,6 +308,7 @@ namespace GPBoost {
 				optimizer_cov_pars_, optimizer_coef_,
 				nullptr, nullptr, false,
 				convergence_criterion_,
+				nullptr,
 				false);
 		}
 	}

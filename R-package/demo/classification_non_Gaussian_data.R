@@ -6,7 +6,7 @@ library(gpboost)
 
 ## Choose likelihood: either "bernoulli_probit" (=default for binary data), "bernoulli_logit",
 ##                       "poisson", or "gamma"
-likelihood <- "gamma"
+likelihood <- "bernoulli_probit"
 
 # Non-linear prior mean function for simulation in examples below
 f1d <- function(x) 1/(1+exp(-(x-0.5)*20)) - 0.5
