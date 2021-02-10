@@ -567,7 +567,7 @@ test_that("Combine tree-boosting and Gaussian process model with Vecchia approxi
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
   pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, rawscore = TRUE)
   expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-1.376468),1E-2)
-  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-1.295551),1E-5)
+  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-1.295551),1E-3)
 })
 
 

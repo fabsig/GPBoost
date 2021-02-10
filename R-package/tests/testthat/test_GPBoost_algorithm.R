@@ -133,7 +133,7 @@ test_that("Combine tree-boosting and grouped random effects model ", {
                   folds = folds,
                   verbose = 0)
   expect_equal(cvbst$best_iter, 58)
-  expect_lt(abs(cvbst$best_score-1.021776), 1E-4)
+  expect_lt(abs(cvbst$best_score-1.021776), 1E-3)
   # CV for finding number of boosting iterations with use_gp_model_for_validation = TRUE
   cvbst <- gpb.cv(params = params,
                   data = dtrain,
@@ -147,7 +147,7 @@ test_that("Combine tree-boosting and grouped random effects model ", {
                   folds = folds,
                   verbose = 0)
   expect_equal(cvbst$best_iter, 61)
-  expect_lt(abs(cvbst$best_score-0.6430104), 1E-4)
+  expect_lt(abs(cvbst$best_score-0.6430104), 1E-3)
   
   # Create random effects model and train GPBoost model
   gp_model <- GPModel(group_data = group_data_train)
@@ -162,7 +162,7 @@ test_that("Combine tree-boosting and grouped random effects model ", {
                  verbose = 0,
                  leaves_newton_update = FALSE)
   cov_pars <- c(0.005087137, 0.590527753, 0.390570179)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-3)
   
   # Prediction
   pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
@@ -170,11 +170,11 @@ test_that("Combine tree-boosting and grouped random effects model ", {
   expect_lt(sqrt(mean((pred$fixed_effect - y_test)^2)),1.0241)
   expect_lt(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2)),0.235)
   expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.3918770, -0.1655551, -1.2513672,
-                                                    rep(0,n_new)))),1E-6)
+                                                    rep(0,n_new)))),1E-3)
   expect_lt(sum(abs(head(pred$random_effect_mean)-c(-.5559122, 0.5031307, 0.5676980,
-                                                    -0.9293673, -0.5188209, -0.2505326))),1E-6)
+                                                    -0.9293673, -0.5188209, -0.2505326))),1E-3)
   expect_lt(sum(abs(head(pred$fixed_effect)-c(4.894403, 3.957849, 3.281690,
-                                              4.162436, 5.101025, 4.889397))),1E-5)
+                                              4.162436, 5.101025, 4.889397))),1E-3)
   
   ## Prediction when having only one grouped random effect
   group_1 <- rep(1,ntrain) # grouping variable
@@ -193,8 +193,8 @@ test_that("Combine tree-boosting and grouped random effects model ", {
                  leaves_newton_update = FALSE)
   pred <- predict(bst, data = X_test[1:length(unique(b1)),], group_data_pred = 1:length(unique(b1)))
   # plot(pred$random_effect_mean,b1)
-  expect_lt(abs(sqrt(sum((pred$random_effect_mean - b1)^2))-0.643814),1E-6)
-  expect_lt(abs(cor(pred$random_effect_mean,b1)-0.9914091),1E-6)
+  expect_lt(abs(sqrt(sum((pred$random_effect_mean - b1)^2))-0.643814),1E-3)
+  expect_lt(abs(cor(pred$random_effect_mean,b1)-0.9914091),1E-3)
   
   # GPBoostOOS algorithm: fit parameters on out-of-sample data
   gp_model <- GPModel(group_data = group_data_train)
@@ -277,7 +277,7 @@ test_that("Combine tree-boosting and grouped random effects model ", {
                    early_stopping_rounds = 5,
                    use_gp_model_for_validation = FALSE)
   expect_equal(bst$best_iter, 57)
-  expect_lt(abs(bst$best_score - 1.0326),1E-5)
+  expect_lt(abs(bst$best_score - 1.0326),1E-3)
   # Include random effect predictions for validation 
   gp_model <- GPModel(group_data = group_data_train)
   gp_model$set_prediction_data(group_data_pred = group_data_test)
@@ -293,7 +293,7 @@ test_that("Combine tree-boosting and grouped random effects model ", {
                    early_stopping_rounds = 5,
                    use_gp_model_for_validation = TRUE)
   expect_equal(bst$best_iter, 59)
-  expect_lt(abs(bst$best_score - 0.04753591),1E-5)
+  expect_lt(abs(bst$best_score - 0.04753591),1E-3)
   
   # Use of validation data and cross-validation with custom metric
   l4_loss <- function(preds, dtrain) {
@@ -314,7 +314,7 @@ test_that("Combine tree-boosting and grouped random effects model ", {
                    use_gp_model_for_validation = FALSE,
                    eval = l4_loss, metric = "l4")
   expect_equal(bst$best_iter, 57)
-  expect_lt(abs(bst$best_score - 3.058637),1E-6)
+  expect_lt(abs(bst$best_score - 3.058637),1E-3)
   # CV
   gp_model <- GPModel(group_data = group_data_train)
   cvbst <- gpb.cv(params = params,
@@ -382,12 +382,12 @@ test_that("Combine tree-boosting and Gaussian process model ", {
                    objective = "regression_l2",
                    verbose = 0)
   cov_pars_est <- c(0.1358229, 0.9099908, 0.1115316)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-6)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
   # Prediction
   pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.5229658),1E-6)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.170505),1E-6)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-0.8304062),1E-6)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.5229658),1E-3)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.170505),1E-3)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-0.8304062),1E-3)
   
   # Use validation set to determine number of boosting iteration
   gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
@@ -404,7 +404,7 @@ test_that("Combine tree-boosting and Gaussian process model ", {
                    early_stopping_rounds = 5,
                    use_gp_model_for_validation = FALSE)
   expect_equal(bst$best_iter, 27)
-  expect_lt(abs(bst$best_score - 1.293498),1E-6)
+  expect_lt(abs(bst$best_score - 1.293498),1E-3)
   
   # Also use GPModel for calculating validation error
   gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
@@ -466,12 +466,12 @@ test_that("Combine tree-boosting and Gaussian process model with Vecchia approxi
                    min_data_in_leaf = 5, objective = "regression_l2",
                    verbose = 0)
   cov_pars_est <- c(0.24800160, 0.89155814, 0.08301144)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-6)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
   # Prediction
   pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7819426),1E-6)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.345712),1E-6)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-1.23809),1E-6)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7819426),1E-3)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.345712),1E-3)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-1.23809),1E-3)
   # Same thing with Vecchia approximation
   gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                       vecchia_approx =TRUE, num_neighbors = ntrain-1)
@@ -479,10 +479,10 @@ test_that("Combine tree-boosting and Gaussian process model with Vecchia approxi
   bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                    learning_rate = 0.05, max_depth = 6,
                    min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-6)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
   pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7819426),1E-4)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.345712),1E-4)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7819426),1E-3)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.345712),1E-3)
   expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-1.23809),1E-3)
   
 })
@@ -589,7 +589,7 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
                  leaves_newton_update = FALSE,
                  use_nesterov_acc = TRUE)
   cov_pars <- c(0.01806612, 0.59318355, 0.39198746)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-4)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-3)
   
   # Prediction
   pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
@@ -597,9 +597,9 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
   expect_lt(sqrt(mean((pred$fixed_effect - y_test)^2)),1.018)
   expect_lt(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2)),0.238)
   expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.3737357, -0.1906376, -1.2750302,
-                                                    rep(0,n_new)))),1E-4)
+                                                    rep(0,n_new)))),1E-3)
   expect_lt(sum(abs(head(pred$fixed_effect)-c(4.921429, 4.176900, 2.743165,
-                                              4.141866, 5.018322, 4.935220))),1E-4)
+                                              4.141866, 5.018322, 4.935220))),1E-3)
   
   # Using validation set
   # Do not include random effect predictions for validation
@@ -617,7 +617,7 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
                    use_gp_model_for_validation = FALSE,
                    use_nesterov_acc = TRUE)
   expect_equal(bst$best_iter, 19)
-  expect_lt(abs(bst$best_score - 1.035405),1E-4)
+  expect_lt(abs(bst$best_score - 1.035405),1E-3)
   # Include random effect predictions for validation 
   gp_model <- GPModel(group_data = group_data_train)
   gp_model$set_prediction_data(group_data_pred = group_data_test)
@@ -634,7 +634,7 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
                    use_gp_model_for_validation = TRUE,
                    use_nesterov_acc = TRUE)
   expect_equal(bst$best_iter, 19)
-  expect_lt(abs(bst$best_score - 0.05520368),1E-4)
+  expect_lt(abs(bst$best_score - 0.05520368),1E-3)
 })
 
 
