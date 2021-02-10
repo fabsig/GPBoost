@@ -282,7 +282,7 @@ namespace GPBoost {
 		std::unique_ptr < REModelTemplate<den_mat_t, chol_den_mat_t> > re_model_den_;
 		vec_t cov_pars_;//covariance paramters
 		vec_t init_cov_pars_;//Initial values for covariance parameters
-		bool cov_pars_initialized_ = false;
+		bool cov_pars_initialized_ = false;// This is true of InitializeCovParsIfNotDefined() has been called
 		bool covariance_matrix_has_been_factorized_ = false;//If true, the covariance matrix Psi has been factorized for the cov_pars_ (either through OptimCovPar/OptimLinRegrCoefCovPar or EvalNegLogLikelihood) and will not be factorized anew when making predictions in Predict
 		bool init_cov_pars_provided_ = false;
 		vec_t std_dev_cov_pars_;

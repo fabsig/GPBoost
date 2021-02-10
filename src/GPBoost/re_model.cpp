@@ -107,10 +107,6 @@ namespace GPBoost {
 			init_cov_pars_provided_ = true;
 			covariance_matrix_has_been_factorized_ = false;
 		}
-		//else {//CONTINUE HERE: can we outcomment this or is it needed somewhere?
-		//	init_cov_pars_provided_ = false;
-		//}
-		//cov_pars_initialized_ = false;
 		lr_cov_ = lr;
 		acc_rate_cov_ = acc_rate_cov;
 		max_iter_ = max_iter;
@@ -531,6 +527,8 @@ namespace GPBoost {
 			if (!cov_pars_initialized_) {
 				Log::Fatal("Covariance parameters have not been estimated or are not given.");
 			}
+			// Note: cov_pars_initialized_ is set to true by InitializeCovParsIfNotDefined() which is called by OptimCovPar(), OptimLinRegrCoefCovPar(), and EvalNegLogLikelihood().
+			//			It is assume that if one of these three functions has been called, the covariance parameters have been estimated
 			cov_pars_pred_trans = cov_pars_;
 			// Note: For non-Gaussian data: don't calculate the Laplace approximation if fixed_effects==nullptr 
 			//	since it is assume that the same fixed_effects and thus Laplace approx is used as during training
