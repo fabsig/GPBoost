@@ -1611,7 +1611,7 @@ gpb.GPModel <- R6::R6Class(
     dim_coords = 2L,
     num_gp_rand_coef = 0L,
     has_covariates = FALSE,
-    num_coef = NULL,
+    num_coef = 0,
     group_data = NULL,
     group_rand_coef_data = NULL,
     ind_effect_group_rand_coef = NULL,

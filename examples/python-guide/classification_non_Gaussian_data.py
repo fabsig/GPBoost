@@ -19,18 +19,15 @@ likelihood = "bernoulli_probit"
 
 # Non-linear function for simulation
 def f1d(x):
-    return (1.5 * (1 / (1 + np.exp(-(x - 0.5) * 20)) + 0.75 * x) - 1.3)
+    return 1 / (1 + np.exp(-(x - 0.5) * 20)) - 0.5
 
 # Parameters for gpboost in examples below
 # Note: the tuning parameters are by no means optimal for all situations considered here
+params = {'learning_rate': 0.1, 'min_data_in_leaf': 20, 'objective': likelihood,
+          'verbose': 0, 'monotone_constraints': [1, 0]}
+num_boost_round = 25
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
-    params = {'learning_rate': 0.05, 'min_data_in_leaf': 20, 'objective': "binary",
-              'verbose': 0, 'monotone_constraints': [1, 0]}
-    num_boost_round = 150
-else:
-    params = {'learning_rate': 0.05, 'min_data_in_leaf': 20, 'objective': likelihood,
-              'verbose': 0, 'monotone_constraints': [1, 0]}
-    num_boost_round = 75
+    params['objective'] = 'binary'
 
 # --------------------Grouped random effects model----------------
 # Simulate data
@@ -41,7 +38,7 @@ np.random.seed(1)
 group = np.arange(n)  # grouping variable
 for i in range(m):
     group[int(i * n / m):int((i + 1) * n / m)] = i
-b1 = np.random.normal(size=m)  # simulate random effects
+b1 = 0.5 * np.random.normal(size=m)  # simulate random effects
 eps = b1[group]
 eps = eps - np.mean(eps)
 # simulate fixed effects
@@ -61,7 +58,7 @@ elif likelihood == "poisson":
     y = stats.poisson.ppf(np.random.uniform(size=n), mu=mu)
 elif likelihood == "gamma":
     mu = np.exp(f + eps)
-    y = stats.gamma.ppf(np.random.uniform(size=n), loc=mu, a=1)
+    y = mu * stats.gamma.ppf(np.random.uniform(size=n), a=1)
 fig1, ax1 = plt.subplots()
 ax1.hist(y, bins=50)  # visualize response variable
 
@@ -102,6 +99,14 @@ ax1.scatter(X[:, 0], y, linewidth=2, color="black", alpha=0.02)
 ax1.set_title("Data and predicted response variable")
 ax1.legend()
 
+# Cross-validation for finding number of iterations
+gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+cvbst = gpb.cv(params=params, train_set=data_train,
+               gp_model=gp_model, use_gp_model_for_validation=True,
+               num_boost_round=200, early_stopping_rounds=5,
+               nfold=4, verbose_eval=True, show_stdv=False, seed=1)
+print("Best number of iterations: " + str(np.argmin(next(iter(cvbst.values())))))
+
 # Showing training loss
 print('Showing training loss...')
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
@@ -110,14 +115,6 @@ bst = gpb.train(params=params,
                 gp_model=gp_model,
                 num_boost_round=5,
                 valid_sets=data_train)
-
-# Cross-validation for finding number of iterations
-gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-cvbst = gpb.cv(params=params, train_set=data_train,
-               gp_model=gp_model, use_gp_model_for_validation=True,
-               num_boost_round=200, early_stopping_rounds=5,
-               nfold=4, verbose_eval=True, show_stdv=False, seed=1)
-print("Best number of iterations: " + str(np.argmin(next(iter(cvbst.values())))))
 
 
 # --------------------Gaussian process model----------------
@@ -143,7 +140,7 @@ X_test = np.column_stack((np.linspace(0, 1, ntest), np.zeros(ntest)))
 X = np.row_stack((X_train, X_test))
 f = f1d(X[:, 0])
 # Simulate spatial Gaussian process
-sigma2_1 = 1  # marginal variance of GP
+sigma2_1 = 0.25  # marginal variance of GP
 rho = 0.1  # range parameter
 D = np.zeros((n, n))  # distance matrix
 for i in range(0, n):
@@ -169,7 +166,7 @@ elif likelihood == "poisson":
     y = stats.poisson.ppf(np.random.uniform(size=n), mu=mu)
 elif likelihood == "gamma":
     mu = np.exp(f + eps)
-    y = stats.gamma.ppf(np.random.uniform(size=n), loc=mu, a=1)
+    y = mu * stats.gamma.ppf(np.random.uniform(size=n), a=1)
 # Split into training and test data
 y_train = y[0:ntrain]
 data_train = gpb.Dataset(X_train, y_train)  # create dataset for gpb.train
@@ -181,7 +178,7 @@ plt.hist(y_train, bins=50)  # visualize response variable
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential", likelihood=likelihood)
 # Use the option "trace": true to monitor convergence of hyperparameter estimation of the gp_model. E.g.:
 # gp_model.set_optim_params(params={"trace": True})
-print("Train GPBoost model with GP model (takes approx. 1 minute)")
+print("Train GPBoost model with GP model (takes a few seconds)")
 bst = gpb.train(params=params,
                 train_set=data_train,
                 gp_model=gp_model,
@@ -225,7 +222,7 @@ axs[1, 1].plot(X_test[:, 0], pred['fixed_effect'], linewidth=2, label="Pred F")
 axs[1, 1].set_title("Predicted and true F")
 axs[1, 1].legend()
 
-# Cross-validation for finding number of iterations (takes some time...)
+# Cross-validation for finding number of iterations (takes a few seconds)
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential", likelihood=likelihood)
 cvbst = gpb.cv(params=params, train_set=data_train,
                gp_model=gp_model, use_gp_model_for_validation=True,

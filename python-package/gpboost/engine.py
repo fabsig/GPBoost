@@ -465,6 +465,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
             gp_model.set_likelihood(gp_model_train.get_likelihood_name()) # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
             gp_model_train.set_optim_params(params=gp_model.get_optim_params())
+            gp_model_train.set_optim_coef_params(params=gp_model.get_optim_params())
         else: # no gp_model
             cvbooster = Booster(tparam, train_set)
         if eval_train_metric:

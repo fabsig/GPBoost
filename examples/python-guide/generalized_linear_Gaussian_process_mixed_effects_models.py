@@ -46,7 +46,7 @@ elif likelihood == "poisson":
     y = stats.poisson.ppf(np.random.uniform(size=n), mu=mu)
 elif likelihood == "gamma":
     mu = np.exp(f + eps)
-    y = stats.gamma.ppf(np.random.uniform(size=n), loc=mu, a=1)
+    y = mu * stats.gamma.ppf(np.random.uniform(size=n), a=1)
 plt.hist(y, bins=50)  # visualize response variable
 
 # Train model
@@ -66,6 +66,7 @@ pred_lin['var'][0:5]  # Predicted latent variance
 pred_lin_resp = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
                                  predict_response=True)
 pred_lin_resp['mu'][0:5]  # Predicted response variable (label)
+
 
 # --------------------Gaussian process model----------------
 # Simulate data
@@ -111,7 +112,7 @@ elif likelihood == "poisson":
     y = stats.poisson.ppf(np.random.uniform(size=n), mu=mu)
 elif likelihood == "gamma":
     mu = np.exp(eps)
-    y = stats.gamma.ppf(np.random.uniform(size=n), loc=mu, a=1)
+    y = mu * stats.gamma.ppf(np.random.uniform(size=n), a=1)
 # Split into training and test data
 y_train = y[0:ntrain]
 y_test = y[ntrain:n]

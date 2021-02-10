@@ -3735,7 +3735,7 @@ class GPModel(object):
         self.dim_coords = 2
         self.num_gp_rand_coef = 0
         self.has_covariates = False
-        self.num_coef = None
+        self.num_coef = 0
         self.group_data = None
         self.group_rand_coef_data = None
         self.ind_effect_group_rand_coef = None

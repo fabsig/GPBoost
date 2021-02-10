@@ -148,24 +148,24 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
   bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
                  objective = "binary", train_gp_model_cov_pars=FALSE, nrounds=1)
   record_results <- gpb.get.eval.result(bst, "train", "Approx. negative marginal log-likelihood")
-  expect_lt(abs(record_results[1]-599.795), 1e-3)
+  expect_lt(abs(record_results[1]-599.7875), 1e-3)
   bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
                  objective = "regression", train_gp_model_cov_pars=FALSE, nrounds=1)
   record_results <- gpb.get.eval.result(bst, "train", "Approx. negative marginal log-likelihood")
-  expect_lt(abs(record_results[1]-599.795), 1e-3)
+  expect_lt(abs(record_results[1]-599.7875), 1e-3)
   # Can also use other metrics
   bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
                  objective = "binary", train_gp_model_cov_pars=FALSE, nrounds=1,
                  eval=list("binary_logloss","binary_error"), use_gp_model_for_validation = FALSE)
   record_results <- gpb.get.eval.result(bst, "train", "binary_logloss")
-  expect_lt(abs(record_results[1]-0.674702), 1e-3)
+  expect_lt(abs(record_results[1]-0.6749423), 1e-3)
   record_results <- gpb.get.eval.result(bst, "train", "binary_error")
   expect_lt(abs(record_results[1]-0.466), 1e-3)
   bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
                  objective = "regression", train_gp_model_cov_pars=FALSE, nrounds=1,
                  eval=list("l2","binary_error"), use_gp_model_for_validation = FALSE)
   record_results <- gpb.get.eval.result(bst, "train", "l2")
-  expect_lt(abs(record_results[1]-0.240814), 1e-3)
+  expect_lt(abs(record_results[1]-0.2409584), 1e-3)
   record_results <- gpb.get.eval.result(bst, "train", "binary_error")
   expect_lt(abs(record_results[1]-0.466), 1e-3)
   
@@ -177,8 +177,8 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                    use_gp_model_for_validation=FALSE, eval = "binary_error",
                    early_stopping_rounds=10)
   record_results <- gpb.get.eval.result(bst, "test", "binary_error")
-  expect_lt(abs(min(record_results)-0.326), 1e-6)
-  expect_equal(which.min(record_results), 8)
+  expect_lt(abs(min(record_results)-0.323), 1e-6)
+  expect_equal(which.min(record_results), 11)
   
   # Find number of iterations using validation data with use_gp_model_for_validation=TRUE
   gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
@@ -189,8 +189,8 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                    use_gp_model_for_validation=TRUE, eval = "binary_error",
                    early_stopping_rounds=10)
   record_results <- gpb.get.eval.result(bst, "test", "binary_error")
-  expect_lt(abs(min(record_results)-0.239), 1e-6)
-  expect_equal(which.min(record_results), 21)
+  expect_lt(abs(min(record_results)-0.241), 1e-6)
+  expect_equal(which.min(record_results), 16)
   # Compare to when ignoring random effects part
   bst <- gpb.train(data = dtrain, nrounds=100, valids=valids,
                    learning_rate=0.1, objective = "binary", verbose = 0,
@@ -206,19 +206,19 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                    use_gp_model_for_validation=TRUE, eval = "binary_logloss",
                    early_stopping_rounds=10)
   record_results <- gpb.get.eval.result(bst, "test", "binary_logloss")
-  expect_lt(abs(min(record_results)-0.4917417), 1e-5)
+  expect_lt(abs(min(record_results)-0.4917724), 1e-4)
   expect_equal(which.min(record_results), 6)
   bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                    learning_rate=0.5, objective = "regression", verbose = 0,
                    use_gp_model_for_validation=TRUE, eval = "l2", early_stopping_rounds=10)
   record_results <- gpb.get.eval.result(bst, "test", "l2")
-  expect_lt(abs(min(record_results)-0.1643653), 1e-4)
+  expect_lt(abs(min(record_results)-0.164367), 1e-4)
   expect_equal(which.min(record_results), 6)
   bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                    learning_rate=0.5, objective = "binary", verbose = 0,
                    use_gp_model_for_validation=TRUE, eval = "l2", early_stopping_rounds=10)
   record_results <- gpb.get.eval.result(bst, "test", "l2")
-  expect_lt(abs(min(record_results)-0.1643653), 1e-4)
+  expect_lt(abs(min(record_results)-0.164367), 1e-4)
   expect_equal(which.min(record_results), 6)
   
   # CV for finding number of boosting iterations when use_gp_model_for_validation = FALSE
@@ -235,10 +235,10 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                   fit_GP_cov_pars_OOS = FALSE,
                   folds = folds,
                   verbose = 0)
-  expect_equal(cvbst$best_iter, 5)
+  expect_equal(cvbst$best_iter, 8)
   expect_lt(abs(cvbst$best_score-0.353), 1E-4)
   # same thing but "wrong" likelihood given in gp_model
-  gp_model <- GPModel(group_data = group_data_train)
+  gp_model <- GPModel(group_data = group_data_train, likelihood="gaussian")
   gp_model$set_optim_params(params=list(lr_cov=0.01))
   cvbst <- gpb.cv(params = params,
                   data = dtrain,
@@ -251,7 +251,7 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                   fit_GP_cov_pars_OOS = FALSE,
                   folds = folds,
                   verbose = 0)
-  expect_equal(cvbst$best_iter, 5)
+  expect_equal(cvbst$best_iter, 8)
   expect_lt(abs(cvbst$best_score-0.353), 1E-4)
   # CV for finding number of boosting iterations when use_gp_model_for_validation = TRUE
   gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
@@ -267,8 +267,8 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                   fit_GP_cov_pars_OOS = FALSE,
                   folds = folds,
                   verbose = 0)
-  expect_equal(cvbst$best_iter, 30)
-  expect_lt(abs(cvbst$best_score-0.243), 1E-4)
+  expect_equal(cvbst$best_iter, 11)
+  expect_lt(abs(cvbst$best_score-0.253), 1E-4)
   
   # Create random effects model and train GPBoost model
   gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
@@ -282,27 +282,25 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                  min_data_in_leaf = 5,
                  objective = "binary",
                  verbose = 0)
-  cov_pars <- c(0.4581991, 0.3429415)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+  cov_pars <- c(0.4590238, 0.3459622)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-4)
   
   # Prediction
   pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                   predict_var = TRUE, rawscore = TRUE)
-  expect_lt(sqrt(mean((pred$fixed_effect - f_test)^2)),0.663)
-  expect_lt(sum(abs(head(pred$fixed_effect)-c(0.4791272, -0.1744148, 0.9284747,
-                                              0.8183078, -0.6986425, 0.8669949))),1E-6)
-  expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.092220, -1.024815, -1.203819,
-                                                    rep(0,n_new)))),1E-6)
-  expect_lt(sum(abs(head(pred$random_effect_mean)-c(1.5492283, 0.1948716, 0.6561371,
-                                                    1.2325282, 0.2249754, 0.5894416))),1E-6)
-  expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1292745, 0.1284435, 0.1291609,
-                                                   rep(0.8011406,n_new)))),1E-6)
+  expect_lt(sqrt(mean((pred$fixed_effect - f_test)^2)),0.669)
+  expect_lt(sum(abs(head(pred$fixed_effect)-c(0.50838036, -0.04856841, 0.98790471,
+                                              0.85061835, -0.66672775, 0.82663328))),1E-4)
+  expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.105474, -1.054165, -1.229913,
+                                                    rep(0,n_new)))),1E-4)
+  expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1293166, 0.1284276, 0.1291630,
+                                                   rep(0.8049860,n_new)))),1E-4)
   # Predict response
   pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                   predict_var = TRUE, rawscore = FALSE)
-  expect_equal(mean(as.numeric(pred$response_mean>0.5) != y_test),0.229)
-  expect_lt(sum(abs(tail(pred$response_var)-c(0.146077725, 0.179428082, 0.012855503,
-                                              0.230808713, 0.161401483, 0.241088278))),1E-6)
+  expect_equal(mean(as.numeric(pred$response_mean>0.5) != y_test),0.24)
+  expect_lt(sum(abs(tail(pred$response_var)-c(0.14240846, 0.15886214, 0.01679182,
+                                              0.23539907, 0.15786380, 0.23181410))),1E-4)
   
   # Prediction when having only one grouped random effect
   group_1 <- rep(1,ntrain) # grouping variable
@@ -323,17 +321,16 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                  leaves_newton_update = FALSE)
   pred <- predict(bst, data = X_test[1:length(unique(b1)),], group_data_pred = 1:length(unique(b1)), rawscore = TRUE)
   # plot(pred$random_effect_mean,b1)
-  expect_lt(abs(sqrt(sum((pred$random_effect_mean - b1)^2))-1.665886),1E-6)
-  expect_lt(abs(cor(pred$random_effect_mean,b1)-0.942044),1E-6)
+  expect_lt(abs(sqrt(sum((pred$random_effect_mean - b1)^2))-1.694375),1E-6)
   # Prediction for only new groups
   group_test <- c(-1,-1,-2,-2)
   pred <- predict(bst, data = X_test[1:4,], group_data_pred = group_test, rawscore = TRUE)
-  fix_eff <- c(0.2179516, 0.3181951, 0.6611486, 0.4956463)
-  expect_lt(sum(abs(pred$fixed_effect-fix_eff)),1E-6)
+  fix_eff <- c(0.1417854, 0.4552882, 0.6778837, 0.4008403)
+  expect_lt(sum(abs(pred$fixed_effect-fix_eff)),1E-4)
   expect_lt(sum(abs(pred$random_effect_mean-rep(0,4))),1E-6)
   pred <- predict(bst, data = X_test[1:4,], group_data_pred = group_test, rawscore = FALSE)
-  resp <- c(0.5702958, 0.6020259, 0.7044731, 0.6564551)
-  expect_lt(sum(abs(pred$response_mean-resp)),1E-6)
+  resp <- c(0.5458346, 0.6442121, 0.7090155, 0.6276075)
+  expect_lt(sum(abs(pred$response_mean-resp)),1E-4)
   # Prediction for only new cluster_ids
   cluster_ids_pred <- c(-1,-1,-2,-2)
   group_test <- c(1,3,3,9999)
@@ -372,9 +369,9 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                   fit_GP_cov_pars_OOS = TRUE,
                   folds = folds,
                   verbose = 0)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4786203, 0.3436059))),1E-3)
-  expect_equal(cvbst$best_iter, 30)
-  expect_lt(abs(cvbst$best_score-0.243), 1E-4)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4063094, 0.2978389))),1E-3)
+  expect_equal(cvbst$best_iter, 11)
+  expect_lt(abs(cvbst$best_score-0.253), 1E-4)
   
   # Use of validation data and cross-validation with custom metric
   bin_cust_error <- function(preds, dtrain) {
@@ -389,8 +386,8 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                    learning_rate=0.1, objective = "binary", verbose = 0,
                    use_gp_model_for_validation=FALSE,
                    early_stopping_rounds=10, eval = bin_cust_error, metric = "bin_cust_error")
-  expect_equal(bst$best_iter, 27)
-  expect_lt(abs(bst$best_score - 0.356),1E-6)
+  expect_equal(bst$best_iter, 17)
+  expect_lt(abs(bst$best_score - 0.359),1E-6)
   # CV
   gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
   gp_model$set_optim_params(params=list(lr_cov=0.01))
@@ -405,8 +402,8 @@ test_that("Combine tree-boosting and grouped random effects model for binary cla
                   folds = folds,
                   verbose = 0,
                   eval = bin_cust_error, metric = "bin_cust_error")
-  expect_equal(cvbst$best_iter, 21)
-  expect_lt(abs(cvbst$best_score-0.356), 1E-4)
+  expect_equal(cvbst$best_iter, 18)
+  expect_lt(abs(cvbst$best_score-0.355), 1E-4)
 })
 
 # print("Ignore [GPBoost] [Warning]")
@@ -455,15 +452,15 @@ test_that("Combine tree-boosting and Gaussian process model for binary classific
                    min_data_in_leaf = 5,
                    objective = "binary",
                    verbose = 0)
-  cov_pars_est <- c(0.3049804, 0.1050220)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-6)
+  cov_pars_est <- c(0.3108350, 0.0981372)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
   # Prediction
   pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, rawscore = TRUE)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7347603),1E-6)
-  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.8476357),1E-6)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7760144),1E-3)
+  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.8737312),1E-3)
   # Predict response
   pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, rawscore = FALSE)
-  expect_equal(mean(as.numeric(pred$response_mean>0.5) != y_test),0.306)
+  expect_equal(mean(as.numeric(pred$response_mean>0.5) != y_test),0.3)
   
   # Use validation set to determine number of boosting iteration with use_gp_model_for_validation = FALSE
   dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
@@ -482,13 +479,13 @@ test_that("Combine tree-boosting and Gaussian process model for binary classific
                    valids = valids,
                    early_stopping_rounds = 2,
                    use_gp_model_for_validation = FALSE)
-  expect_equal(bst$best_iter, 2)
-  expect_lt(abs(bst$best_score - 0.6368231),1E-6)
+  expect_equal(bst$best_iter, 4)
+  expect_lt(abs(bst$best_score - 0.6354925),1E-3)
   
   # Also use GPModel for calculating validation error
   gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                       likelihood = "bernoulli_probit")
-  gp_model$set_optim_params(params=list(maxit=20, use_nesterov_acc=FALSE, lr_cov=0.01))
+  gp_model$set_optim_params(params=list(maxit=20, use_nesterov_acc=TRUE, lr_cov=0.1))
   gp_model$set_prediction_data(gp_coords_pred = coords_test)
   bst <- gpb.train(data = dtrain,
                    gp_model = gp_model,
@@ -502,7 +499,7 @@ test_that("Combine tree-boosting and Gaussian process model for binary classific
                    early_stopping_rounds = 2,
                    use_gp_model_for_validation = TRUE)
   expect_equal(bst$best_iter, 4)
-  expect_lt(abs(bst$best_score - 0.5901579),1E-6)
+  expect_lt(abs(bst$best_score - 0.598013),1E-3)
 })
 
 # print("Ignore [GPBoost] [Warning]")
@@ -542,7 +539,7 @@ test_that("Combine tree-boosting and Gaussian process model with Vecchia approxi
   # Train model
   gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                       likelihood = "bernoulli_probit")
-  gp_model$set_optim_params(params=list(maxit=20, lr_cov=0.1, use_nesterov_acc=FALSE))
+  gp_model$set_optim_params(params=list(maxit=20, lr_cov=0.1, use_nesterov_acc=TRUE))
   bst <- gpb.train(data = dtrain,
                    gp_model = gp_model,
                    nrounds = 5,
@@ -551,15 +548,15 @@ test_that("Combine tree-boosting and Gaussian process model with Vecchia approxi
                    min_data_in_leaf = 5,
                    objective = "binary",
                    verbose = 0)
-  cov_pars_est <- c(0.009769709, 0.102480262)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-6)
+  cov_pars_est <- c(0.007398005, 0.217491983)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
   pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, rawscore = TRUE)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.9995755),1E-3)
-  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-1.08882),1E-5)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-1.014963),1E-3)
+  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-1.089913),1E-3)
   # Same thing with Vecchia approximation
   gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                       likelihood = "bernoulli_probit", vecchia_approx =TRUE, num_neighbors = ntrain-1)
-  gp_model$set_optim_params(params=list(maxit=20, lr_cov=0.1, use_nesterov_acc=FALSE))
+  gp_model$set_optim_params(params=list(maxit=20, lr_cov=0.1, use_nesterov_acc=TRUE))
   bst <- gpb.train(data = dtrain,
                    gp_model = gp_model,
                    nrounds = 5,
@@ -568,10 +565,10 @@ test_that("Combine tree-boosting and Gaussian process model with Vecchia approxi
                    min_data_in_leaf = 5,
                    objective = "binary",
                    verbose = 0)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-4)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
   pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, rawscore = TRUE)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.9995755),1E-2)
-  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-1.08882),1E-5)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-1.014963),1E-2)
+  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-1.089913),1E-5)
 })
 
 
@@ -620,21 +617,21 @@ test_that("Combine tree-boosting and Gaussian process model for binary classific
                    min_data_in_leaf = 5,
                    objective = "binary",
                    verbose = 0)
-  cov_pars_est <- c(0.40703396, 0.07840501)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-6)
+  cov_pars_est <- c(0.41423246, 0.07679558)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
   # Prediction
   pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                   predict_var = TRUE, rawscore = TRUE)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7977482),1E-6)
-  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.901253),1E-6)
-  expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.3382676, 0.3150307, 0.3291939,
-                                                   0.3142572, 0.3057511, 0.3148995))),1E-6)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.8202178),1E-3)
+  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.9190403),1E-3)
+  expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.3461192, 0.3223743, 0.3370548,
+                                                   0.3203710, 0.3129613, 0.3223448))),1E-3)
   # Predict response
   pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
                   predict_var = TRUE, rawscore = FALSE)
-  expect_equal(mean(as.numeric(pred$response_mean>0.5) != y_test),0.354)
-  expect_lt(sum(abs(tail(pred$response_var)-c(0.2306970, 0.2168194, 0.2379142,
-                                              0.2499998, 0.2065659, 0.2498905))),1E-6)
+  expect_equal(mean(as.numeric(pred$response_mean>0.5) != y_test),0.36)
+  expect_lt(sum(abs(tail(pred$response_var)-c(0.2285220, 0.2145017, 0.2365308,
+                                              0.2499335, 0.2040604, 0.2496684))),1E-3)
 })
 
 test_that("Combine tree-boosting and random effects for Poisson regression", {
@@ -695,24 +692,24 @@ test_that("Combine tree-boosting and random effects for Poisson regression", {
                  min_data_in_leaf = 5,
                  objective = "poisson",
                  verbose = 0)
-  cov_pars_est <- c(0.6224754, 0.5104921)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-6)
+  cov_pars_est <- c(0.5298005, 0.3679606)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
   # Prediction
   pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                   predict_var = TRUE, rawscore = TRUE)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.9381403),1E-3)
-  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.6802708),1E-6)
-  expect_lt(sum(abs(tail(pred$fixed_effect)-c(1.0841644, 0.8463133, -1.3554539,
-                                              1.1019021, -0.4096338, 1.1612471))),1E-6)
-  expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.479007, -1.459210, -1.543509, rep(0,3)))),1E-6)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.620999),1E-3)
+  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.3282319),1E-3)
+  expect_lt(sum(abs(tail(pred$fixed_effect)-c(0.6112468, 0.2207926, -1.8283913,
+                                              0.9526463, -0.8715353, 0.4141166))),1E-3)
+  expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-0.9872481, -0.9253784, -1.0406593, rep(0,3)))),1E-3)
   # Predict response
   pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                   predict_var = TRUE, rawscore = FALSE)
-  expect_lt(abs(sqrt(mean((pred$response_mean - y_test)^2))-1.82978),1E-3)
-  expect_lt(sum(abs(tail(pred$response_mean)-c(0.69682285, 0.55978659, 0.05708538,
-                                               5.30360003, 1.16982009, 5.6278688))),1E-6)
-  expect_lt(sum(abs(tail(pred$response_var)-c(0.73059350, 0.58096361, 0.05732695,
-                                              64.50936817, 4.05027211, 72.29479429))),1E-6)
+  expect_lt(abs(sqrt(mean((pred$response_mean - y_test)^2))-1.877285),1E-3)
+  expect_lt(sum(abs(tail(pred$response_mean)-c(0.70996419, 0.51064673, 0.05881372,
+                                               4.06139626, 0.65530486, 2.37025413))),1E-3)
+  expect_lt(sum(abs(tail(pred$response_var)-c(0.74485005, 0.52816388, 0.05906951,
+                                              28.04672802, 1.27973201, 10.53955372))),1E-3)
 })
 
 test_that("Combine tree-boosting and random effects for gamma regression", {
@@ -774,21 +771,21 @@ test_that("Combine tree-boosting and random effects for gamma regression", {
                  min_data_in_leaf = 5,
                  objective = "gamma",
                  verbose = 0)
-  cov_pars_est <- c(0.6668737, 0.7859035)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-6)
+  cov_pars_est <- c(0.5949303, 0.5049800)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
   # Prediction
   pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                   predict_var = TRUE, rawscore = TRUE)
-  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.8447757),1E-5)
-  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.9389919),1E-4)
-  expect_lt(sum(abs(tail(pred$fixed_effect)-c(1.6898380, 0.9208370, -1.1452591,
-                                              1.3257071, -0.5361580, 0.9184303))),1E-6)
-  expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-2.030927, -1.763782, -2.138062, rep(0,3)))),1E-5)
+  expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.511943),1E-3)
+  expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.5044135),1E-3)
+  expect_lt(sum(abs(tail(pred$fixed_effect)-c(0.9704019, 0.4897463, -1.4103412,
+                                              0.8554430, -1.1343691, 0.5088563))),1E-3)
+  expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.547486, -1.280387, -1.624886, rep(0,3)))),1E-3)
   # Predict response
   pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                   predict_var = TRUE, rawscore = FALSE)
-  expect_lt(sum(abs(tail(pred$response_mean)-c(0.73498286, 0.44483760, 0.03878086,
-                                               7.78419756, 1.20952854, 5.18007181))),1E-6)
-  expect_lt(sum(abs(tail(pred$response_var)-c(6.143304e-01, 2.247967e-01, 1.712339e-03,
-                                              4.574791e+02, 1.104526e+01, 2.025887e+02))),1E-4)
+  expect_lt(sum(abs(tail(pred$response_mean)-c(0.58019538, 0.46850401, 0.04967875,
+                                               4.07714990, 0.55743247, 2.88294257))),1E-3)
+  expect_lt(sum(abs(tail(pred$response_var)-c(0.38211969, 0.24891311, 0.00280526,
+                                              83.24530802, 1.55607648, 41.62156343))),1E-3)
 })

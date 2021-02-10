@@ -78,6 +78,7 @@ namespace GPBoost {
 		}
 		if (!GaussLikelihood() && !cov_pars_optimizer_hase_been_set_) {
 			optimizer_cov_pars_ = "gradient_descent";
+			optimizer_coef_ = "gradient_descent";
 		}
 	}
 

@@ -6,10 +6,10 @@ library(gpboost)
 
 ## Choose likelihood: either "bernoulli_probit" (=default for binary data), "bernoulli_logit",
 ##                       "poisson", or "gamma"
-likelihood <- "bernoulli_probit"
+likelihood <- "gamma"
 
 # Non-linear prior mean function for simulation in examples below
-f1d <- function(x) 1.5*(1/(1+exp(-(x-0.5)*20))+0.75*x)-1.3
+f1d <- function(x) 1/(1+exp(-(x-0.5)*20)) - 0.5
 sim_non_lin_f <- function(n){
   X <- matrix(runif(2*n),ncol=2)
   f <- f1d(X[,1])
@@ -18,14 +18,9 @@ sim_non_lin_f <- function(n){
 
 # Parameters for gpboost in examples below 
 # Note: the tuning parameters are by no means optimal for all situations considered here
-if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
-  params <- list(learning_rate = 0.05, min_data_in_leaf = 20, objective = "binary")
-  nrounds = 150
-} else {
-  params <- list(learning_rate = 0.05, min_data_in_leaf = 20, objective = likelihood)
-  nrounds = 75
-}
-
+params <- list(learning_rate = 0.1, min_data_in_leaf = 20, objective = likelihood)
+nrounds <- 25
+if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) params$objective="binary"
 
 #--------------------Combine tree-boosting and grouped random effects model----------------
 # Simulate data
@@ -35,7 +30,7 @@ set.seed(1)
 # Simulate random and fixed effects
 group <- rep(1,n) # grouping variable
 for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-b1 <- rnorm(m)
+b1 <- 0.5*rnorm(m)
 eps <- b1[group]
 eps <- eps - mean(eps)
 sim_data <- sim_non_lin_f(n=n)
@@ -142,7 +137,7 @@ X_test <- cbind(x,rep(0,nx^2))
 X <- rbind(X_train,X_test)
 f <- f1d(X[,1])
 # Simulate spatial Gaussian process
-sigma2_1 <- 1 # marginal variance of GP
+sigma2_1 <- 0.25 # marginal variance of GP
 rho <- 0.1 # range parameter
 D <- as.matrix(dist(coords))
 Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
@@ -174,7 +169,7 @@ hist(y_train,breaks=50)# visualize response variable
 # Train model
 gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                     likelihood = likelihood)
-# Takes approx. 1  minute
+# Takes a few seconds
 bst <- gpb.train(data = dtrain, gp_model = gp_model,
                  monotone_constraints = c(1,0),
                  nrounds = nrounds, params = params, verbose = 0)
@@ -211,7 +206,7 @@ plot4 <- ggplot(data=data.frame(x=X_test[,1],f=pred$fixed_effect), aes(x=x,y=f))
   ggtitle("Predicted and true F(X)") + xlab("X") + ylab("y")
 grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
 
-# Cross-validation for finding number of iterations (takes some time...)
+# Cross-validation for finding number of iterations (takes a few seconds)
 gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                     likelihood = likelihood)
 cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,

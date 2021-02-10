@@ -290,7 +290,6 @@ namespace GPBoost {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T2>>(new Likelihood<T2>(likelihood_strg,
 						num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]));
 				}
-				//note: this is usually not used for Gaussian data (only for the boosting part in the GPBoost algorithm calling 'GetLikelihood'
 				if (!gauss_likelihood_) {
 					likelihood_[cluster_i]->InitializeModeAvec();
 				}
