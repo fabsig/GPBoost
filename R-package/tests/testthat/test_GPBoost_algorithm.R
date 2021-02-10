@@ -638,7 +638,8 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
 })
 
 
-test_that("Loading a GPBoost model from a text file works", {
+test_that("Saving and loading a GPBoost model from a file works", {
+  
   ntrain <- ntest <- 1000
   n <- ntrain + ntest
   # Simulate fixed effects
