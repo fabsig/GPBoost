@@ -998,13 +998,6 @@ namespace GPBoost {
 						if (has_covariates_) {
 							resid -= X_ * coef;
 						}
-						//if (y_obs != nullptr) {
-						//	vec_t y = Eigen::Map<const vec_t>(y_obs, num_data_);
-						//	resid = y - (X_ * coef);
-						//}
-						//else {
-						//	resid = y_vec_ - (X_ * coef);
-						//}
 						//add external fixed effects to linear predictor
 						if (fixed_effects != nullptr) {
 #pragma omp parallel for schedule(static)
@@ -1044,7 +1037,9 @@ namespace GPBoost {
 						}
 						else {//not gauss_likelihood_
 							//We reset the initial modes to 0. This is done to avoid that different calls to the prediction function lead to (very small) differences
-							//	as the mode is calculated from different starting values 
+							//	as the mode is calculated from different starting values.
+							//	If one is willing to accept these (very) small differences, one could disable this with the advantage of having faster predictions
+							//	as the mode does not need to be found anew.
 							for (const auto& cluster_i : unique_clusters_) {
 								likelihood_[cluster_i]->InitializeModeAvec();
 							}
