@@ -987,15 +987,24 @@ namespace GPBoost {
 			vec_t fixed_effects_vec;
 			if (pred_for_observed_data) {//TODO (low prio): this acutally needs to be done only for the GP realizations for which predictions are made (currently it is done for all of them in unique_clusters_pred)
 				if (gauss_likelihood_) {
-					if (has_covariates_) {
+					if (has_covariates_ || fixed_effects != nullptr) {
 						vec_t resid;
 						if (y_obs != nullptr) {
-							vec_t y = Eigen::Map<const vec_t>(y_obs, num_data_);
-							resid = y - (X_ * coef);
+							resid = Eigen::Map<const vec_t>(y_obs, num_data_);
 						}
 						else {
-							resid = y_vec_ - (X_ * coef);
+							resid = y_vec_;
 						}
+						if (has_covariates_) {
+							resid -= X_ * coef;
+						}
+						//if (y_obs != nullptr) {
+						//	vec_t y = Eigen::Map<const vec_t>(y_obs, num_data_);
+						//	resid = y - (X_ * coef);
+						//}
+						//else {
+						//	resid = y_vec_ - (X_ * coef);
+						//}
 						//add external fixed effects to linear predictor
 						if (fixed_effects != nullptr) {
 #pragma omp parallel for schedule(static)
