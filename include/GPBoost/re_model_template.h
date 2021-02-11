@@ -488,8 +488,8 @@ namespace GPBoost {
 			if ((!has_covariates_ || !gauss_likelihood_) && y_data != nullptr) {
 				SetY(y_data);
 			}
-			if (!gauss_likelihood_) {
-				CHECK(y_has_been_set_);//response variable data needs to have been set before for non-Gaussian data
+			if (!has_covariates_ || !gauss_likelihood_) {
+				CHECK(y_has_been_set_);//response variable data needs to have been set at this point for non-Gaussian data and for Gaussian data without covariates
 			}
 			// Initialization of linear regression coefficients related variables
 			vec_t beta, beta_lag1, beta_after_grad_aux, beta_after_grad_aux_lag1, resid, fixed_effects_vec;
