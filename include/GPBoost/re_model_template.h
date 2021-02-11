@@ -996,6 +996,13 @@ namespace GPBoost {
 						else {
 							resid = y_vec_ - (X_ * coef);
 						}
+						//add external fixed effects to linear predictor
+						if (fixed_effects != nullptr) {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_data_; ++i) {
+								resid[i] -= fixed_effects[i];
+							}
+						}
 						SetY(resid.data());
 					}//end if has_covariates_
 					else {//no covariates
@@ -1007,7 +1014,8 @@ namespace GPBoost {
 				else {//if not gauss_likelihood_
 					if (has_covariates_) {
 						fixed_effects_vec = X_ * coef;
-						if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
+						//add external fixed effects to linear predictor
+						if (fixed_effects != nullptr) {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < num_data_; ++i) {
 								fixed_effects_vec[i] += fixed_effects[i];
@@ -1020,7 +1028,7 @@ namespace GPBoost {
 					}
 				}//end if not gauss_likelihood_
 				SetCovParsComps(cov_pars);
-				if (!(vecchia_approx_ && gauss_likelihood_)) {// no need to call CalcCovFactor here for the Vecchia approximation for Gaussian data, this is done in the prediction steps
+				if (!(vecchia_approx_ && gauss_likelihood_)) {// no need to call CalcCovFactor here for the Vecchia approximation for Gaussian data, this is done in the prediction steps below
 					if (calc_cov_factor) {
 						if (gauss_likelihood_) {
 							CalcCovFactor(false, true, 1., false);// Create covariance matrix and factorize it
@@ -1225,13 +1233,15 @@ namespace GPBoost {
 					}//end (vecchia_approx_ && gauss_likelihood_)
 					else {// not vecchia_approx_ or not gauss_likelihood_
 
-						//Genereal case: not Vecchia approximation for Gaussian data
+						//Genereal case: either non-Gaussian data or Gaussian data without the Vecchia approximation
 						//NOTE: if vecchia_approx_==true and gauss_likelihood_==false, the cross-covariance matrix Sigma_{1,2} = cov(x_pred,x) is not approximated but the exact version is used
 						bool predict_var_or_response = predict_var || predict_response;
 						CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 							re_group_levels_pred, re_group_rand_coef_data_pred, gp_coords_mat_pred, gp_rand_coef_data_pred,
 							predict_cov_mat, predict_var_or_response, mean_pred_id, cov_mat_pred_id, var_pred_id, fixed_effects_ptr);
-					}//end not vecchia_approx_
+
+					}//end not vecchia_approx_ or not gauss_likelihood_
+
 					if (fixed_effects_pred != nullptr) {//add externaly provided fixed effects
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
@@ -1276,6 +1286,7 @@ namespace GPBoost {
 					//end write covariance / variance on output
 				}//end cluster_i with data
 			}//end loop over cluster
+
 			//Set cross-covariances between different independent clusters to 0
 			if (predict_cov_mat && unique_clusters_pred.size() > 1 && (!predict_response || gauss_likelihood_)) {
 				for (const auto& cluster_i : unique_clusters_pred) {

@@ -67,7 +67,7 @@ nplot <- 200# number of predictions
 X_test_plot <- cbind(seq(from=0,to=1,length.out=nplot),rep(0.5,nplot))
 group_data_pred <- rep(-9999,dim(X_test_plot)[1])# only new / unobserved levels
 # Predict response variable
-pred_prob <- predict(bst, data = X_test_plot, group_data_pred = group_data_pred, rawscore = FALSE)$response_mean
+pred_resp <- predict(bst, data = X_test_plot, group_data_pred = group_data_pred, rawscore = FALSE)$response_mean
 # Predict latent variable including variance
 pred <- predict(bst, data = X_test_plot, group_data_pred = group_data_pred,
                 predict_var=TRUE, rawscore = TRUE)
@@ -79,7 +79,7 @@ lines(X_test_plot[,1],pred$fixed_effect,col=4,lwd=3)
 legend(legend=c("True F","Pred F"),"bottomright",bty="n",lwd=3,col=c(2,4))
 
 plot(X[,1],y,col=rgb(0,0,0,alpha=0.1),main="Data and predicted response variable")
-lines(X_test_plot[,1],pred_prob,col=3,lwd=3)
+lines(X_test_plot[,1],pred_resp,col=3,lwd=3)
 
 # Cross-validation for finding number of iterations
 dtrain <- gpb.Dataset(data = X, label = y)

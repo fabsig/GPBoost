@@ -2082,5 +2082,6 @@ predict.GPModel <- function(object,
                            use_saved_data = use_saved_data,
                            vecchia_pred_type = vecchia_pred_type,
                            num_neighbors_pred = num_neighbors_pred,
-                           predict_response = predict_response))
+                           predict_response = predict_response,
+                           ...))
 }
