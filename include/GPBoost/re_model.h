@@ -246,6 +246,7 @@ namespace GPBoost {
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
 		* \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
+		* \param suppress_calc_cov_factor If true, the covariance matrix of the observed data is not factorized (default=false), otherwise it is dynamically decided whether to factorize or nor
 		*/
 		void Predict(const double* y_obs, data_size_t num_data_pred, double* out_predict,
 			bool predict_cov_mat = false, bool predict_var = false, bool predict_response = false,
@@ -253,7 +254,8 @@ namespace GPBoost {
 			double* gp_coords_data_pred = nullptr, const double* gp_rand_coef_data_pred = nullptr,
 			const double* cov_pars_pred = nullptr, const double* covariate_data_pred = nullptr,
 			bool use_saved_data = false, const char* vecchia_pred_type = nullptr, int num_neighbors_pred = -1,
-			const double* fixed_effects = nullptr, const double* fixed_effects_pred = nullptr) const;
+			const double* fixed_effects = nullptr, const double* fixed_effects_pred = nullptr,
+			bool suppress_calc_cov_factor = false) const;
 
 		int GetNumIt() const;
 

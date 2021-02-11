@@ -204,10 +204,14 @@ int GPB_PredictREModel(REModelHandle handle,
 	const double* fixed_effects_pred) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->Predict(y_data, num_data_pred, out_predict, predict_cov_mat, predict_var, predict_response,
+	ref_remodel->Predict(y_data, num_data_pred, out_predict,
+		predict_cov_mat, predict_var, predict_response,
 		cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred,
-		gp_coords_pred, gp_rand_coef_data_pred, cov_pars, covariate_data_pred,
-		use_saved_data, vecchia_pred_type, num_neighbors_pred, fixed_effects, fixed_effects_pred);
+		gp_coords_pred, gp_rand_coef_data_pred,
+		cov_pars, covariate_data_pred,
+		use_saved_data, vecchia_pred_type, num_neighbors_pred,
+		fixed_effects, fixed_effects_pred,
+		false);
 	API_END();
 }
 

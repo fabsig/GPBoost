@@ -627,19 +627,18 @@ test_that("Binary classification with linear predictor and Gaussian process mode
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
                          y = y, X=X, params = list(optimizer_cov = "gradient_descent",
                                                    optimizer_coef = "gradient_descent",
-                                                   use_nesterov_acc = TRUE, lr_cov=0.2, lr_coef = 0.5))
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.696179e+02, 3.880672e-03))),1E-4)
-  expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(3.802902, 12.376393))),1E-5)
-  expect_equal(gp_model$get_num_optim_iter(), 224)
+                                                   use_nesterov_acc = TRUE, lr_cov=0.1, lr_coef = 0.1, maxit=10))
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.57183630, 0.03950405))),1E-3)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.4944061, 2.6655779))),1E-3)
   
   # Prediction
   coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
   X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
   pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                   predict_var = TRUE, predict_response = FALSE)
-  expected_mu <- c(-2.385294, 6.278181, 16.179245)
-  expected_var <- c(169.6179, 169.6179, 169.6179)
-  expect_lt(sum(abs(pred$mu-expected_mu)),1E-4)
+  expected_mu <- c(-0.6681749, 1.1436874, 3.2701744)
+  expected_var <- c(1.557348, 1.563401, 1.381139)
+  expect_lt(sum(abs(pred$mu-expected_mu)),1E-3)
   expect_lt(sum(abs(as.vector(pred$var)-expected_var)),1E-3)
 })
 
@@ -735,16 +734,16 @@ test_that("Poisson regression ", {
   # Prediction
   coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
   pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
-  expected_mu <- c(0.4329083, 0.4042546, 0.6833764)
+  expected_mu <- c(0.4329068, 0.4042531, 0.6833738)
   expected_cov <- c(6.550626e-01, 5.553938e-01, -8.406290e-06, 5.553938e-01, 6.631295e-01, -7.658261e-06, -8.406290e-06, -7.658261e-06, 4.170417e-01)
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
   # Predict response
   pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var=TRUE, predict_response = TRUE)
-  expected_mu <- c(2.139216, 2.087191, 2.439754)
-  expected_var <- c(6.373449, 6.185910, 5.519918)
+  expected_mu <- c(2.139213, 2.087188, 2.439748)
+  expected_var <- c(6.373433, 6.185895, 5.519896)
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
-  expect_lt(sum(abs(pred$var-expected_var)),1E-6)
+  expect_lt(sum(abs(pred$var-expected_var)),1E-5)
   # Evaluate approximate negative marginal log-likelihood
   nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
   expect_lt(abs(nll-195.03708036),1E-6)
@@ -764,7 +763,7 @@ test_that("Gamma regression ", {
   # Prediction
   group_test <- c(1,3,3,9999)
   pred <- predict(gp_model, y=y, group_data_pred = group_test, predict_cov_mat = TRUE, predict_response = FALSE)
-  expected_mu <- c(0.2095341, -0.9170787, -0.9170787, 0.0000000)
+  expected_mu <- c(0.2095341, -0.9170767, -0.9170767, 0.0000000)
   expected_cov <- c(0.08105393, 0.00000000, 0.00000000, 0.00000000, 0.00000000,
                     0.09842279, 0.09842279, 0.00000000, 0.00000000, 0.09842279,
                     0.09842279, 0.00000000, 0.00000000, 0.00000000, 0.00000000, 0.51745540)
@@ -772,8 +771,8 @@ test_that("Gamma regression ", {
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
   # Predict response
   pred <- predict(gp_model, y=y, group_data_pred = group_test, predict_var=TRUE, predict_response = TRUE)
-  expected_mu <- c(1.284104, 0.419846, 0.419846, 1.295281)
-  expected_var <- c(1.9273575, 0.2127337, 0.2127337, 3.9519573)
+  expected_mu <- c(1.2841038, 0.4198468, 0.4198468, 1.2952811)
+  expected_var <- c(1.9273575, 0.2127346, 0.2127346, 3.9519573)
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
   expect_lt(sum(abs(pred$var-expected_var)),1E-6)
   # Evaluate negative log-likelihood
@@ -811,7 +810,7 @@ test_that("Gamma regression ", {
   # Prediction
   coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
   pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
-  expected_mu <- c(0.3376246, 0.3023851, 0.7810419)
+  expected_mu <- c(0.3376250, 0.3023855, 0.7810425)
   expected_cov <- c(0.4567916157, 0.4033257822, -0.0002256179, 0.4033257822, 0.4540419202, 
                     -0.0002258048, -0.0002256179, -0.0002258048, 0.3368598330)
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)

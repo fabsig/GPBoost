@@ -510,7 +510,8 @@ namespace GPBoost {
 		double* gp_coords_data_pred, const double* gp_rand_coef_data_pred,
 		const double* cov_pars_pred, const double* covariate_data_pred,
 		bool use_saved_data, const char* vecchia_pred_type, int num_neighbors_pred,
-		const double* fixed_effects, const double* fixed_effects_pred) const {
+		const double* fixed_effects, const double* fixed_effects_pred,
+		bool suppress_calc_cov_factor) const {
 		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
 		if (cov_pars_pred != nullptr) {
@@ -530,14 +531,22 @@ namespace GPBoost {
 			// Note: cov_pars_initialized_ is set to true by InitializeCovParsIfNotDefined() which is called by OptimCovPar(), OptimLinRegrCoefCovPar(), and EvalNegLogLikelihood().
 			//			It is assume that if one of these three functions has been called, the covariance parameters have been estimated
 			cov_pars_pred_trans = cov_pars_;
-			// Note: For non-Gaussian data: don't calculate the Laplace approximation if fixed_effects==nullptr 
-			//	since it is assume that the same fixed_effects and thus Laplace approx is used as during training
-			if (GaussLikelihood() || fixed_effects == nullptr) {
+			if (GaussLikelihood()) {
+				// We don't factorize the covariance matrix for Gaussian data in case this has already been done (e.g. at the end of the estimation)
+				// For non-Gaussian, we always calculate the Laplace approximation to guarantee that all calls to predict() return the same values
+				//	Otherwise, there can be (very) small difference between (i) calculating predictions using an estimated a model and
+				//	(ii) loading / initializing an empty a model, providing the same covariance paramters, and thus recalculating the mode.
+				//	This is due to very small differences in the mode which are found differently: for an estimated model, the mode has been iteratively found during the estimation,
+				//	in particular, in the last optimization round the mode has been initialized at the previous value,
+				//	where as when the covariance parameters are provided here, the mode is found using these parameters but initilized from 0.
 				calc_cov_factor = !covariance_matrix_has_been_factorized_;
 			}
 		}// end use saved cov_pars
 		if (has_covariates_) {
 			CHECK(coef_initialized_ == true);
+		}
+		if (suppress_calc_cov_factor) {
+			calc_cov_factor = false;
 		}
 		if (sparse_) {
 			re_model_sp_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred,

@@ -94,7 +94,8 @@ namespace LightGBM {
 								nullptr, nullptr,
 								nullptr, nullptr,
 								true, nullptr, -1,
-								nullptr, nullptr);
+								nullptr, nullptr,
+								true);
 							// Note that the re_model already has the updated response data score - label = F_t - y 
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
@@ -111,7 +112,8 @@ namespace LightGBM {
 								nullptr, nullptr,
 								nullptr, nullptr,
 								true, nullptr, -1,
-								nullptr, score);
+								nullptr, score,
+								true);
 							// Note that the re_model already has the updated training score (= F_t)
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 							//	We this dont provide this here (see the above nullptr). This also implies

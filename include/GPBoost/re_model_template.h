@@ -1034,9 +1034,10 @@ namespace GPBoost {
 							CalcCovFactor(false, true, 1., false);// Create covariance matrix and factorize it
 						}
 						else {//not gauss_likelihood_
-							//We reset the initial modes to 0. This is done to avoid that different calls to the prediction function lead to (very small) differences.
+							//We reset the initial modes to 0. This is done to avoid that different calls to the prediction function lead to (very small) differences
+							//	as the mode is calculated from different starting values 
 							for (const auto& cluster_i : unique_clusters_) {
-								likelihood_[cluster_i]->InitializeModeAvec();//TODO: maybe ommit this step?
+								likelihood_[cluster_i]->InitializeModeAvec();
 							}
 							if (vecchia_approx_) {
 								CalcCovFactor(false, true, 1., false);
@@ -1801,7 +1802,7 @@ namespace GPBoost {
 		* \param fixed_effects Fixed effects component of location parameter
 		*/
 		void CalcGradFLaplace(double* grad_F, const double* fixed_effects = nullptr) {
-			if (num_clusters_ == 1 && (!vecchia_approx_ || vecchia_ordering_ == "none")) {//only one cluster / independent realization
+			if (num_clusters_ == 1 && (!vecchia_approx_ || vecchia_ordering_ == "none")) {//only one cluster / independent realization and order of data does not matter
 				gp_id_t cluster_i = unique_clusters_[0];
 				vec_t grad_F_cluster_i(num_data_);
 				if (vecchia_approx_) {
@@ -2749,7 +2750,7 @@ namespace GPBoost {
 		*/
 		double CalcModePostRandEff(const double* fixed_effects = nullptr) {
 			double mll;
-			if (num_clusters_ == 1 && (!vecchia_approx_ || vecchia_ordering_ == "none")) {//only one cluster / independent realization
+			if (num_clusters_ == 1 && (!vecchia_approx_ || vecchia_ordering_ == "none")) {//only one cluster / independent realization and order of data does not matter
 				gp_id_t cluster_i = unique_clusters_[0];
 				if (vecchia_approx_) {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects,
