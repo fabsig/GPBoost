@@ -93,6 +93,22 @@ gp_model <- fitGPModel(group_data = group_data,
 summary(gp_model)
 
 
+#--------------------Saving a GPModel and loading it from a file----------------
+gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
+pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+# Save model to file
+filename <- tempfile(fileext = ".RData")
+saveGPModel(gp_model,filename = filename)
+# Load from file and make predictions again
+gp_model_loaded <- loadGPModel(filename = filename)
+pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], predict_var = TRUE)
+# Check equality
+pred$mu - pred_loaded$mu
+pred$var - pred_loaded$var
+
+
+
+
 
 #######################
 ## GPBoost algorithm
@@ -266,6 +282,7 @@ bst <- gpb.train(data = dtrain,
                  train_gp_model_cov_pars = FALSE)
 # The GPModel has not changed:
 summary(gp_model)
+
 
 #--------------------Cross validation-------------------------
 # Create random effects model and dataset

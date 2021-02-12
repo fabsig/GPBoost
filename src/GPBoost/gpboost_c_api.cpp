@@ -256,3 +256,19 @@ int GPB_SetLikelihood(REModelHandle handle,
 	ref_remodel->SetLikelihood(likelihood_s);
 	API_END();
 }
+
+int GPB_GetResponseData(REModelHandle handle,
+	double* response_data) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->GetY(response_data);
+	API_END();
+}
+
+int GPB_GetCovariateData(REModelHandle handle,
+	double* covariate_data) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->GetCovariateData(covariate_data);
+	API_END();
+}

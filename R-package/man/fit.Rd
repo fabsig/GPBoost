@@ -2,7 +2,7 @@
 % Please edit documentation in R/GPModel.R
 \name{fit}
 \alias{fit}
-\title{Generic 'fit' method}
+\title{Generic 'fit' method for a \code{GPModel}}
 \usage{
 fit(gp_model, y, X, params, fixed_effects = NULL)
 }
@@ -53,5 +53,5 @@ fit(gp_model, y, X, params, fixed_effects = NULL)
 \item{fixed_effects}{A \code{vector} of optional external fixed effects which are held fixed during training.}
 }
 \description{
-Generic 'fit' method
+Generic 'fit' method for a \code{GPModel}
 }

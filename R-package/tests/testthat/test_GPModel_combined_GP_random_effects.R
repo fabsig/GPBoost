@@ -228,3 +228,33 @@ test_that("Combined GP and grouped random effects model with cluster_id's not co
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
 })
 
+test_that("Saving GPModel works ", {
+  
+  y <- eps + X%*%beta + xi
+  # Fit model
+  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group,
+                         y = y, X=X,
+                         params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls"))
+  
+  # Prediction 
+  coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+  group_test <- c(1,2,9999)
+  X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
+  pred <- predict(gp_model, gp_coords_pred = coord_test, group_data_pred = group_test,
+                  X_pred = X_test, predict_cov_mat = TRUE)
+  # Save model to file
+  filename <- tempfile(fileext = ".RData")
+  saveGPModel(gp_model,filename = filename)
+  # Delete model
+  gp_model$finalize()
+  expect_null(gp_model$.__enclos_env__$private$handle)
+  rm(gp_model)
+  # Load from file and make predictions again
+  gp_model_loaded <- loadGPModel(filename = filename)
+  pred_loaded <- predict(gp_model_loaded, gp_coords_pred = coord_test, group_data_pred = group_test,
+                         X_pred = X_test, predict_cov_mat = TRUE)
+  expect_equal(pred$mu, pred_loaded$mu)
+  expect_equal(pred$cov, pred_loaded$cov)
+
+})
+

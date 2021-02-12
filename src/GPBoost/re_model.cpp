@@ -434,6 +434,24 @@ namespace GPBoost {
 		}
 	}
 
+	void REModel::GetY(double* y) const {
+		if (sparse_) {
+			re_model_sp_->GetY(y);
+		}
+		else {
+			re_model_den_->GetY(y);
+		}
+	}
+
+	void REModel::GetCovariateData(double* covariate_data) const {
+		if (sparse_) {
+			re_model_sp_->GetCovariateData(covariate_data);
+		}
+		else {
+			re_model_den_->GetCovariateData(covariate_data);
+		}
+	}
+
 	void REModel::GetCovPar(double* cov_par, bool calc_std_dev) const {
 		if (cov_pars_.size() == 0) {
 			Log::Fatal("Covariance parameters have not been estimated or set");

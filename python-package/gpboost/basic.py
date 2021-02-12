@@ -4541,9 +4541,9 @@ class GPModel(object):
                 cluster_ids_preds_c = cluster_ids_preds_c.ctypes.data_as(
                     ctypes.POINTER(ctypes.c_int))
             # Set data for linear fixed-effects
-            if X_pred is not None:
-                if not self.has_covariates:
-                    raise ValueError("Covariate data provided in 'X_pred' but model has no linear predictor")
+            if self.has_covariates:
+                if X_pred is None:
+                    raise ValueError("No covariate data is provided in 'X_pred' but model has linear predictor")
                 if not isinstance(X_pred, np.ndarray):
                     raise ValueError("X_pred needs to be a numpy.ndarray")
                 if len(X_pred.shape) > 2:

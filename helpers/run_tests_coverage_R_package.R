@@ -3,6 +3,7 @@
 # Run unit tests locally
 library(testthat)
 library(gpboost)
+Sys.setenv(GPBOOST_ALL_TESTS = "GPBOOST_ALL_TESTS")
 path_tests = paste0(getwd(),.Platform$file.sep,file.path("R-package","tests","testthat"))
 test_dir(path_tests, reporter = "summary")
 

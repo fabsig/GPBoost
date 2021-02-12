@@ -325,4 +325,22 @@ GPBOOST_C_EXPORT int GPB_GetOptimizerCoef(REModelHandle handle,
 GPBOOST_C_EXPORT int GPB_SetLikelihood(REModelHandle handle,
 	const char* likelihood);
 
+/*!
+* \brief Return (last used) response variable data
+* \param handle Handle of REModel
+* \param[out] response_data Response variable data (memory needs to be preallocated)
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetResponseData(REModelHandle handle,
+	double* response_data);
+
+/*!
+* \brief Return covariate data
+* \param handle Handle of REModel
+* \param[out] covariate_data covariate data
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetCovariateData(REModelHandle handle,
+	double* covariate_data);
+
 #endif  // GPBOOST_C_API_H_

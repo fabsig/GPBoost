@@ -1,3 +1,7 @@
+gpb.is.GPModel <- function(x) {
+  return(gpb.check.r6.class(object = x, name = "GPModel"))
+}
+
 gpb.is.Booster <- function(x) {
   return(gpb.check.r6.class(object = x, name = "gpb.Booster"))
 }

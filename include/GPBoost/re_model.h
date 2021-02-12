@@ -187,6 +187,18 @@ namespace GPBoost {
 		void SetY(const float* y) const;
 
 		/*!
+		* \brief Return (last used) response variable data
+		* \param[out] y Response variable data (memory needs to be preallocated)
+		*/
+		void GetY(double* y) const;
+
+		/*!
+		* \brief Return covariate data
+		* \param[out] covariate_data covariate data
+		*/
+		void GetCovariateData(double* covariate_data) const;
+
+		/*!
 		* \brief Get covariance paramters
 		* \param[out] cov_par Covariance paramters stored in cov_pars_. This vector needs to be pre-allocated of length number of covariance paramters or twice this if calc_std_dev = true
 		* \param calc_std_dev If true, standard deviations are also exported

@@ -521,6 +521,7 @@ namespace GPBoost {
 					CHECK(y_data != nullptr);
 					// Copy of response data (used only for Gaussian data and if there are also linear covariates since then y_ is modified during the optimization algorithm and this contains the original data)
 					y_vec_ = Eigen::Map<const vec_t>(y_data, num_data_);
+					y_has_been_set_ = true;
 					resid = y_vec_ - (X_ * beta);
 					SetY(resid.data());
 				}
@@ -1751,6 +1752,52 @@ namespace GPBoost {
 				}
 			}
 			y_has_been_set_ = true;
+		}
+
+		/*!
+		* \brief Return (last used) response variable data
+		* \param[out] y Response variable data (memory needs to be preallocated)
+		*/
+		void GetY(double* y) {
+			if (!y_has_been_set_) {
+				Log::Fatal("Respone variable data has not been set");
+			}
+			if (has_covariates_ && gauss_likelihood_) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_data_; ++i) {
+					y[i] = y_vec_[i];
+				}
+			}
+			else if (likelihood_[unique_clusters_[0]]->label_type() == "double") {
+				for (const auto& cluster_i : unique_clusters_) {
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
+						y[data_indices_per_cluster_[cluster_i][i]] = y_[cluster_i][i];
+					}
+				}
+			}
+			else if (likelihood_[unique_clusters_[0]]->label_type() == "int") {
+				for (const auto& cluster_i : unique_clusters_) {
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
+						y[data_indices_per_cluster_[cluster_i][i]] = y_int_[cluster_i][i];
+					}
+				}
+			}
+		}
+
+		/*!
+		* \brief Return covariate data
+		* \param[out] covariate_data covariate data
+		*/
+		void GetCovariateData(double* covariate_data) {
+			if (!has_covariates_) {
+				Log::Fatal("Model does not have covariates for a linear predictor");
+			}
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < num_data_ * num_coef_; ++i) {
+				covariate_data[i] = X_.data()[i];
+			}
 		}
 
 		/*!

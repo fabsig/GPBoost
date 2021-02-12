@@ -929,6 +929,22 @@ LGBM_SE GPB_SetLikelihood_R(LGBM_SE handle,
   R_API_END();
 }
 
+LGBM_SE GPB_GetResponseData_R(LGBM_SE handle,
+    LGBM_SE response_data,
+    LGBM_SE call_state) {
+    R_API_BEGIN();
+    CHECK_CALL(GPB_GetResponseData(R_GET_PTR(handle), R_REAL_PTR(response_data)));
+    R_API_END();
+}
+
+LGBM_SE GPB_GetCovariateData_R(LGBM_SE handle,
+    LGBM_SE covariate_data,
+    LGBM_SE call_state) {
+    R_API_BEGIN();
+    CHECK_CALL(GPB_GetCovariateData(R_GET_PTR(handle), R_REAL_PTR(covariate_data)));
+    R_API_END();
+}
+
 // .Call() calls
 static const R_CallMethodDef CallEntries[] = {
   {"LGBM_GetLastError_R"              , (DL_FUNC) &LGBM_GetLastError_R              , 3},
@@ -990,6 +1006,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC) &GPB_GetOptimizerCovPars_R        , 5},
   {"GPB_GetOptimizerCoef_R"           , (DL_FUNC) &GPB_GetOptimizerCoef_R           , 5},
   {"GPB_SetLikelihood_R"              , (DL_FUNC) &GPB_SetLikelihood_R              , 3},
+  {"GPB_GetResponseData_R"            , (DL_FUNC) &GPB_GetResponseData_R            , 3},
+  {"GPB_GetCovariateData_R"           , (DL_FUNC) &GPB_GetCovariateData_R           , 3},
   {NULL, NULL, 0}
 };
 

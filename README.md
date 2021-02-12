@@ -2,80 +2,130 @@
      alt="GPBoost icon"
      align = "right"
      width="40%" />
-     
-GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
-===============================================================================
-     
+
+# GPBoost R Package
+
+[![License](https://img.shields.io/badge/Licence-Apache%202.0-green.svg)](https://github.com/fabsig/GPBoost/blob/master/LICENSE)
+[![CRAN Version](https://www.r-pkg.org/badges/version/gpboost)](https://cran.r-project.org/package=gpboost)
+[![Downloads](https://cranlogs.r-pkg.org/badges/grand-total/gpboost)](https://cran.r-project.org/package=gpboost)
+
+This is the R package implementation of the GPBoost library. See https://github.com/fabsig/GPBoost for more information on the modeling background and the software implementation.
+
 ### Table of Contents
-1. [Get Started](#get-started)
-2. [Modeling Background](#modeling-background)
-3. [News](#news)
-4. [Open Issues - Contribute](#open-issues---contribute)
-5. [References](#references)
-6. [License](#license)
+* [Examples](#examples)
+* [Installation](#installation)
+* [Installation from source](#installation-from-source)
+* [Testing](#testing)
 
-## Get started
-**GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.** It also allows for independently doing tree-boosting as well as inference and prediction for Gaussian process and mixed effects models. 
+## Examples
 
-The GPBoost library is written in C++ and it has a C API. There exist both a [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and an [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package).
+* [**Detailed R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo):
+  * [GPBoost algorithm](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/GPBoost_algorithm.R) for combining tree-boosting with Gaussian process and random effects models
+  * [GPBoost algorithm for binary classification and other non-Gaussian data](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/classification_non_Gaussian_data.R) (Poisson regression, etc.)
+  * [Cross validation](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/cross_validation.R) for parameter tuning
+  * [Linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/linear_Gaussian_process_mixed_effects_models.R)
+  * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/generalized_linear_Gaussian_process_mixed_effects_models.R)
+  * [Standard boosting functionality (without Gaussian process or random  effects)](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/boosting.R)
+* [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
 
-**For more information**, you may want to have a look at:
+The following is also a short example.
 
-* The [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrating how GPBoost can be used in R and Python
-* The [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package) with installation instructions for the Python and R packages
-* The companion article [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) or this [**blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb)  on how to combine tree-boosting with mixed effects models
-* Detailed [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
-* [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) presenting the most important parameters / settings for using the GPBoost library
-* [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst) an exhaustive list of all possible parametes and customizations for the tree-boosting part
-* The [**CLI installation guide**](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst) explaining how to install the command line interface (CLI) version
+```r
+# Combine tree-boosting and grouped random effects model
+library(gpboost)
+data(GPBoost_data, package = "gpboost")
+gp_model <- GPModel(group_data = group_data)
+bst <- gpboost(data = X, label = y, gp_model = gp_model,
+               nrounds = 10, objective = "regression_l2")
+summary(gp_model)
+pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
+pred$random_effect_mean + pred$fixed_effect
+```
+
+## Installation
+
+The `gpboost` package is [available on CRAN](https://cran.r-project.org/package=gpboost) and can be installed as follows:
+
+```r
+install.packages("gpboost", repos = "https://cran.r-project.org")
+```
+
+## Installation from source
+
+It is much easier to install the package from CRAN. However, the package can also be build from source as described in the following. In short, the **main steps** for installation are the following ones:
+
+* Install [**git**](https://git-scm.com/downloads)
+* Install [**CMake**](https://cmake.org/)
+* Install [**Rtools**](https://cran.r-project.org/bin/windows/Rtools/) (**for Windows only**). Choose the option 'add rtools to system PATH'.
+* Make sure that you have an appropriate **C++ compiler** (see below for more details). E.g. for Windows, simply download the free [Visual Studio Community Edition](https://visualstudio.microsoft.com/downloads/) and do not forget to select 'Desktop development with C++' when installing it
+* **Install the GPBoost package** from the command line using:
+```sh
+git clone --recursive https://github.com/fabsig/GPBoost
+cd GPBoost
+Rscript build_r.R
+```
+
+Below is a more complete installation guide.
+
+### Preparation
+
+You need to install [git](https://git-scm.com/downloads) and [CMake](https://cmake.org/) first. Note that 32-bit R/Rtools is not supported for custom installation.
+
+#### Windows Preparation
+
+NOTE: Windows users may need to run with administrator rights (either R or the command prompt, depending on the way you are installing this package).
+
+Installing a 64-bit version of [Rtools](https://cran.r-project.org/bin/windows/Rtools/) is mandatory.
+
+After installing `Rtools` and `CMake`, be sure the following paths are added to the environment variable `PATH`. These may have been automatically added when installing other software.
+
+* `Rtools`
+    - If you have `Rtools` 3.x, example:
+        - `C:\Rtools\mingw_64\bin`
+    - If you have `Rtools` 4.x, example (NOTE: two paths are required):
+        - `C:\rtools40\mingw64\bin`
+        - `C:\rtools40\usr\bin`
+* `CMake`
+    - example: `C:\Program Files\CMake\bin`
+* `R`
+    - example: `C:\Program Files\R\R-3.6.1\bin`
 
 
-## Modeling Background
-Both tree-boosting and Gaussian processes are techniques that achieve **state-of-the-art predictive accuracy**. Besides this, **tree-boosting** has the following advantages: 
+The default compiler is Visual Studio (or [VS Build Tools](https://visualstudio.microsoft.com/downloads/)) in Windows, with an automatic fallback to MingGW64 (i.e. it is enough to only have Rtools and CMake). To force the usage of MinGW64, you can add the `--use-mingw` (for R 3.x) or `--use-msys2` (for R 4.x) flags (see below).
 
-* Automatic modeling of non-linearities, discontinuities, and complex high-order interactions
-* Robust to outliers in and multicollinearity among predictor variables
-* Scale-invariance to monotone transformations of the predictor variables
-* Automatic handling of missing values in predictor variables
+#### Mac OS Preparation
 
-**Gaussian process** and **mixed effects** models have the following advantages:
+You can perform installation either with **Apple Clang** or **gcc**. In case you prefer **Apple Clang**, you should install **OpenMP** (details for installation can be found in the [Installation Guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#apple-clang)) first and **CMake** version 3.12 or higher is required. In case you prefer **gcc**, you need to install it (details for installation can be found in the [Installation Guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#gcc)) and set some environment variables to tell R to use `gcc` and `g++`. If you install these from Homebrew, your versions of `g++` and `gcc` are most likely in `/usr/local/bin`, as shown below.
 
-* Probabilistic predictions which allows for uncertainty quantification
-* Modeling of dependency which, among other things, can allow for more efficient learning of the fixed effects / regression function
+```
+# replace 8 with version of gcc installed on your machine
+export CXX=/usr/local/bin/g++-8 CC=/usr/local/bin/gcc-8
+```
 
-For the GPBoost algorithm, it is assumed that the **response variable (label) is the sum of a non-linear mean function and so-called random effects**. The **random effects** can consists of
+### Install
 
-- Gaussian processes (including random coefficient processes)
-- Grouped random effects (including nested, crossed, and random coefficient effects)
-- A sum of the above
+Build and install the R package with the following commands:
 
-The model is trained using the **GPBoost algorithm, where training means learning the covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, **covariance parameters can be learned using (Nesterov accelerated) gradient descent or Fisher scoring. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) for more details.**
+```sh
+git clone --recursive https://github.com/fabsig/GPBoost
+cd GPBoost
+Rscript build_r.R
+```
 
-## News
 
-* See the [GitHub releases](https://github.com/fabsig/GPBoost/releases) page
-* 04/06/2020 : First release of GPBoost
+The `build_r.R` script builds the package in a temporary directory called `gpboost_r`. It will destroy and recreate that directory each time you run the script. That script supports the following command-line options:
 
-## Open Issues - Contribute
+- `--skip-install`: Build the package tarball, but do not install it.
+- `--use-gpu`: Build a GPU-enabled version of the library.
+- `--use-mingw`: Force the use of MinGW toolchain, regardless of R version.
+- `--use-msys2`: Force the use of MSYS2 toolchain, regardless of R version.
 
-#### Software issues
-- Add possibility to save gp_model to file
-- Add [Python tests](https://github.com/fabsig/GPBoost/tree/master/tests) (see corresponding [R tests](https://github.com/fabsig/GPBoost/tree/master/R-package/tests))
-- Setting up Travis CI for GPBoost 
+Note: for the build with Visual Studio/VS Build Tools in Windows, you should use the Windows CMD or PowerShell.
 
-#### Computational issues
-- Add GPU support for Gaussian processes
+## Testing
 
-#### Methodological issues
-- Add a spatio-temporal Gaussian process model (e.g. a separable one)
-- Add possibility to predict latent Gaussian processes and random effects (e.g. random coefficients)
-
-## References
-
-Sigrist Fabio. "[Gaussian Process Boosting](http://arxiv.org/abs/2004.02653)". Preprint (2020).
-
-Guolin Ke, Qi Meng, Thomas Finley, Taifeng Wang, Wei Chen, Weidong Ma, Qiwei Ye, Tie-Yan Liu. "[LightGBM: A Highly Efficient Gradient Boosting Decision Tree](https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree)". Advances in Neural Information Processing Systems 30 (NIPS 2017), pp. 3149-3157.
-
-## License
-
-This project is licensed under the terms of the Apache License 2.0. See [LICENSE](https://github.com/fabsig/GPBoost/blob/master/LICENSE) for additional details.
+There is currently no integration service set up that automatically runs unit tests. However, any contribution needs to pass all unit tests in the `R-package/tests/testthat` directory. These tests can be run using the [run_tests_coverage_R_package.R](https://github.com/fabsig/GPBoost/blob/master/helpers/run_tests_coverage_R_package.R) file. In any case, make sure that you run the full set of tests by speciying the following environment variable
+```R
+Sys.setenv(GPBOOST_ALL_TESTS = "GPBOOST_ALL_TESTS")
+```
+before runing the tests in the `R-package/tests/testthat` directory.

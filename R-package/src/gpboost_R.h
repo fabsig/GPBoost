@@ -976,4 +976,26 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_SetLikelihood_R(
 	LGBM_SE likelihood,
 	LGBM_SE call_state);
 
+/*!
+* \brief Return (last used) response variable data
+* \param handle Handle of REModel
+* \param[out] response_data Response variable data (memory needs to be preallocated)
+* \return 0 when succeed, -1 when failure happens
+*/
+LIGHTGBM_C_EXPORT LGBM_SE GPB_GetResponseData_R(
+	LGBM_SE handle,
+	LGBM_SE response_data,
+	LGBM_SE call_state);
+
+/*!
+* \brief Return covariate data
+* \param handle Handle of REModel
+* \param[out] covariate_data covariate data
+* \return 0 when succeed, -1 when failure happens
+*/
+LIGHTGBM_C_EXPORT LGBM_SE GPB_GetCovariateData_R(
+	LGBM_SE handle,
+	LGBM_SE covariate_data,
+	LGBM_SE call_state);
+
 #endif  // GPBOOST_R_H_

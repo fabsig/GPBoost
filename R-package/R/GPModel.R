@@ -406,7 +406,7 @@ gpb.GPModel <- R6::R6Class(
       
       private$free_raw_data <- free_raw_data
       # Should we free raw data?
-      if (isTRUE(free_raw_data)) {
+      if (isTRUE(private$free_raw_data)) {
         private$group_data <- NULL
         private$group_rand_coef_data <- NULL
         private$gp_coords <- NULL
@@ -1121,6 +1121,17 @@ gpb.GPModel <- R6::R6Class(
                        fixed_effects = NULL,
                        fixed_effects_pred = NULL) {
       
+      if (private$model_has_been_loaded_from_saved_file) {
+        
+        if (is.null(y)) {
+          y <- private$y_loaded_from_file
+        }
+        if (is.null(cov_pars)) {
+          cov_pars <- private$cov_pars_loaded_from_file
+        }
+        
+      }
+      
       if(predict_cov_mat && predict_var){
         predict_cov_mat <- TRUE
         predict_var <- FALSE
@@ -1332,10 +1343,11 @@ gpb.GPModel <- R6::R6Class(
         }
         
         # Set data for linear fixed-effects
-        if (!is.null(X_pred)){
+        
+        if(private$has_covariates){
           
-          if(!private$has_covariates){
-            stop("predict.GPModel: Covariate data provided in ", sQuote("X_pred"), " but model has no linear predictor")
+          if(is.null(X_pred)){
+            stop("predict.GPModel: No covariate data is provided in ", sQuote("X_pred"), " but model has linear predictor")
           }
           
           if (is.numeric(X_pred)) {
@@ -1362,7 +1374,26 @@ gpb.GPModel <- R6::R6Class(
             stop("predict.GPModel: Number of covariates in ", sQuote("X_pred"), " is not correct")
           }
           
-          X_pred <- as.vector(matrix(X_pred))
+          if (private$model_has_been_loaded_from_saved_file) {##NEW
+              
+              if (is.null(fixed_effects)) {
+                fixed_effects <- as.vector(private$X_loaded_from_file %*% private$coefs_loaded_from_file)
+              } else {
+                fixed_effects <- fixed_effects + as.vector(private$X_loaded_from_file %*% private$coefs_loaded_from_file)
+              }
+            
+            if (is.null(fixed_effects_pred)) {
+              fixed_effects_pred <- as.vector(X_pred %*% private$coefs_loaded_from_file)
+            } else {
+              fixed_effects_pred <- fixed_effects_pred + as.vector(X_pred %*% private$coefs_loaded_from_file)
+            }
+            
+            
+          } else {
+            
+            X_pred <- as.vector(matrix(X_pred))
+            
+          }
           
         } 
         
@@ -1509,7 +1540,7 @@ gpb.GPModel <- R6::R6Class(
       
     },
     
-    get_group_data = function() {
+    get_group_data = function() {##TODO: get all this data from C++ and don't double save this here in R
       if(isTRUE(private$free_raw_data)){
         stop("GPModel: cannot return ", sQuote("group_data"), ",
           please set ", sQuote("free_raw_data = FALSE"), " when you create the ", sQuote("GPModel"))
@@ -1547,6 +1578,30 @@ gpb.GPModel <- R6::R6Class(
              please set ", sQuote("free_raw_data = FALSE"), " when you create the ", sQuote("GPModel"))
       }
       return(private$cluster_ids)
+    },
+    
+    get_response_data = function() {##NEW
+      
+      response_data <- numeric(private$num_data)
+      response_data <- gpb.call("GPB_GetResponseData_R",
+                                ret=response_data,
+                                private$handle)
+      
+      return(response_data)
+    },
+    
+    get_covariate_data = function() {##NEW
+      
+      if (!private$has_covariates) {
+        stop("GPModel: Model has no covariate data for linear predictor")
+      }
+      covariate_data <- numeric(private$num_data * private$num_coef)
+      covariate_data <- gpb.call("GPB_GetCovariateData_R",
+                                 ret=covariate_data,
+                                 private$handle)
+      covariate_data <- matrix(covariate_data,ncol=private$num_coef)
+      
+      return(covariate_data)
     },
     
     get_cov_function = function() {
@@ -1597,6 +1652,48 @@ gpb.GPModel <- R6::R6Class(
                likelihood_c_str)
       
       return(invisible(NULL))
+    },
+    
+    save = function(filename) {
+      
+      if (!(is.character(filename) && length(filename) == 1L)) {
+        stop("save.GPModel: filename should be a string")
+      }
+      
+      if (isTRUE(private$free_raw_data)) {
+        stop("save.GPModel: cannot save when free_raw_data=TRUE has been set")
+      }
+      
+      save_data <- list()
+      save_data[["params"]] <- self$get_optim_params()
+      save_data[["likelihood"]] <- self$get_likelihood_name()
+      save_data[["cov_pars"]] <- self$get_cov_pars()
+      
+      save_data[["y"]] <- self$get_response_data()
+      
+      save_data[["has_covariates"]] <- private$has_covariates
+      if (private$has_covariates) {
+        save_data[["coefs"]] <- self$get_coef()
+        save_data[["num_coef"]] <- private$num_coef
+        save_data[["X"]] <- self$get_covariate_data()
+      }
+      
+      save_data[["group_data"]] <- self$get_group_data()
+      save_data[["group_rand_coef_data"]] <- self$get_group_rand_coef_data()
+      save_data[["gp_coords"]] <- self$get_gp_coords()
+      save_data[["gp_rand_coef_data"]] <- self$get_gp_rand_coef_data()
+      save_data[["ind_effect_group_rand_coef"]] <- self$get_ind_effect_group_rand_coef()
+      save_data[["cluster_ids"]] <- self$get_cluster_ids()
+      save_data[["vecchia_approx"]] <- private$vecchia_approx
+      save_data[["num_neighbors"]] <- private$num_neighbors
+      save_data[["vecchia_ordering"]] <- private$vecchia_ordering
+      save_data[["vecchia_pred_type"]] <- private$vecchia_pred_type
+      save_data[["num_neighbors_pred"]] <- private$num_neighbors_pred
+      save_data[["cov_function"]] <- self$get_cov_function()
+      save_data[["cov_fct_shape"]] <- self$get_cov_fct_shape()
+      
+      save(save_data, file = filename)
+      
     }
     
   ),
@@ -1629,6 +1726,11 @@ gpb.GPModel <- R6::R6Class(
     cluster_ids = NULL,
     free_raw_data = FALSE,
     num_data_pred = NULL,
+    model_has_been_loaded_from_saved_file = FALSE,##NEW
+    y_loaded_from_file = NULL,
+    cov_pars_loaded_from_file = NULL,
+    coefs_loaded_from_file = NULL,
+    X_loaded_from_file = NULL,
     params = list(maxit = 1000L,
                   delta_rel_conv = 1E-6,
                   init_coef = NULL,
@@ -1728,7 +1830,7 @@ GPModel <- function(group_data = NULL,
                     free_raw_data = FALSE,
                     likelihood = "gaussian") {
   
-  # Create new dataset
+  # Create new GPModel
   invisible(gpb.GPModel$new(group_data = group_data,
                             group_rand_coef_data = group_rand_coef_data,
                             ind_effect_group_rand_coef = ind_effect_group_rand_coef,
@@ -1747,9 +1849,9 @@ GPModel <- function(group_data = NULL,
   
 }
 
-#' Generic 'fit' method
+#' Generic 'fit' method for a \code{GPModel}
 #'
-#' Generic 'fit' method
+#' Generic 'fit' method for a \code{GPModel}
 #' 
 #' @param gp_model a \code{GPModel}
 #' @inheritParams GPModel_shared_params
@@ -2084,4 +2186,120 @@ predict.GPModel <- function(object,
                            num_neighbors_pred = num_neighbors_pred,
                            predict_response = predict_response,
                            ...))
+}
+
+#' @name saveGPModel
+#' @title Save a \code{GPModel}
+#' @description Save a \code{GPModel}
+#' @param gp_model a \code{GPModel}
+#' @param filename filename for saving
+#'
+#' @return A \code{GPModel}
+#'
+#' @examples
+#' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
+#' 
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' # Save model to file
+#' filename <- tempfile(fileext = ".RData")
+#' saveGPModel(gp_model,filename = filename)
+#' # Load from file and make predictions again
+#' gp_model_loaded <- loadGPModel(filename = filename)
+#' pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' # Check equality
+#' pred$mu - pred_loaded$mu
+#' pred$var - pred_loaded$var
+#' 
+#' @rdname saveGPModel
+#' @export
+#' 
+saveGPModel <- function(gp_model, filename){
+  
+  if (!gpb.is.GPModel(x = gp_model)) {
+    stop("saveGPModel: gp_model should be a ", sQuote("GPModel"))
+  }
+  
+  if (!(is.character(filename) && length(filename) == 1L)) {
+    stop("saveGPModel: filename should be a string")
+  }
+  
+  # Save GPModel
+  return(
+    invisible(gp_model$save(
+      filename = filename
+    ))
+  )
+  
+}
+
+#' @name loadGPModel
+#' @title Load a \code{GPModel} from a file
+#' @description Load a \code{GPModel} from a file
+#' @param filename filename for loading
+#'
+#' @return A \code{GPModel}
+#'
+#' @examples
+#' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
+#' 
+#' 
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' # Save model to file
+#' filename <- tempfile(fileext = ".RData")
+#' saveGPModel(gp_model,filename = filename)
+#' # Load from file and make predictions again
+#' gp_model_loaded <- loadGPModel(filename = filename)
+#' pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' # Check equality
+#' pred$mu - pred_loaded$mu
+#' pred$var - pred_loaded$var
+#' 
+#' @rdname loadGPModel
+#' @export
+loadGPModel <- function(filename){
+  
+  if (!(is.character(filename) && length(filename) == 1L)) {
+    stop("load.GPModel: filename should be a string")
+  }
+  
+  load(file = filename)
+  gp_model <- gpb.GPModel$new(group_data = save_data[["group_data"]],
+                              group_rand_coef_data = save_data[["group_rand_coef_data"]],
+                              ind_effect_group_rand_coef = save_data[["ind_effect_group_rand_coef"]],
+                              gp_coords = save_data[["gp_coords"]],
+                              gp_rand_coef_data = save_data[["gp_rand_coef_data"]],
+                              cov_function = save_data[["cov_function"]],
+                              cov_fct_shape = save_data[["cov_fct_shape"]],
+                              vecchia_approx = save_data[["vecchia_approx"]],
+                              num_neighbors = save_data[["num_neighbors"]],
+                              vecchia_ordering = save_data[["vecchia_ordering"]],
+                              vecchia_pred_type = save_data[["vecchia_pred_type"]],
+                              num_neighbors_pred = save_data[["num_neighbors_pred"]],
+                              cluster_ids = save_data[["cluster_ids"]],
+                              free_raw_data = FALSE,
+                              likelihood = save_data[["likelihood"]])
+  gp_model$set_optim_params(params = save_data[["params"]])
+  gp_model$set_optim_coef_params(params = save_data[["params"]])
+  gp_model$.__enclos_env__$private$model_has_been_loaded_from_saved_file = TRUE
+  gp_model$.__enclos_env__$private$cov_pars_loaded_from_file = save_data[["cov_pars"]]
+  gp_model$.__enclos_env__$private$y_loaded_from_file <- save_data[["y"]]
+  gp_model$.__enclos_env__$private$has_covariates <- save_data[["has_covariates"]]
+  if (save_data[["has_covariates"]]) {
+    gp_model$.__enclos_env__$private$coefs_loaded_from_file = save_data[["coefs"]]
+    gp_model$.__enclos_env__$private$num_coef <- save_data[["num_coef"]]
+    gp_model$.__enclos_env__$private$X_loaded_from_file = save_data[["X"]]
+  }
+  
+  
+  
+  
+  
+  return(
+    invisible(gp_model)
+  )
+  
 }
