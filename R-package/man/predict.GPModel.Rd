@@ -63,7 +63,6 @@ Make predictions for a \code{GPModel}
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
-\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -80,6 +79,7 @@ pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat
 pred$mu # Predicted mean
 pred$cov # Predicted covariance
 
+\donttest{
 #--------------------Gaussian process model----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        likelihood="gaussian", y = y, params = list(std_dev = TRUE))

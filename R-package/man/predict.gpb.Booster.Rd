@@ -56,7 +56,6 @@ Predicted values based on class \code{gpb.Booster}
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
-\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -94,6 +93,7 @@ pred$fixed_effect # Predicted fixed effect from tree ensemble
 # Sum them up to otbain a single prediction
 pred$random_effect_mean + pred$fixed_effect
 
+\donttest{
 #--------------------Combine tree-boosting and Gaussian process model----------------
 # Create Gaussian process model
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",

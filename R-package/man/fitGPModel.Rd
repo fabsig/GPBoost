@@ -112,7 +112,6 @@ Estimates the parameters of a \code{GPModel} using maximum likelihood estimation
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
-\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -130,6 +129,7 @@ pred$mu # Predicted mean
 pred$cov # Predicted covariance
 
 
+\donttest{
 #--------------------Mixed effects model: random effects and linear fixed effects----------------
 X1 <- cbind(rep(1,length(y)),X) # Add intercept column
 gp_model <- fitGPModel(group_data = group_data[,1], likelihood="gaussian",

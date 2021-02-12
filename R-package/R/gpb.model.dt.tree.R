@@ -28,7 +28,6 @@
 #' }
 #'
 #' @examples
-#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -44,7 +43,6 @@
 #' model <- gpb.train(params, dtrain, 10L)
 #'
 #' tree_dt <- gpb.model.dt.tree(model)
-#' }
 #' @importFrom data.table := rbindlist
 #' @importFrom jsonlite fromJSON
 #' @export

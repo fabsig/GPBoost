@@ -39,7 +39,6 @@ The columns of the \code{data.table} are:
 Parse a GPBoost model json dump into a \code{data.table} structure.
 }
 \examples{
-\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -55,5 +54,4 @@ params <- list(
 model <- gpb.train(params, dtrain, 10L)
 
 tree_dt <- gpb.model.dt.tree(model)
-}
 }

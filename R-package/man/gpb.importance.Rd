@@ -24,7 +24,6 @@ For a tree model, a \code{data.table} with the following columns:
 Creates a \code{data.table} of feature importances in a model.
 }
 \examples{
-\donttest{
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
 dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -44,5 +43,4 @@ model <- gpb.train(
 
 tree_imp1 <- gpb.importance(model, percentage = TRUE)
 tree_imp2 <- gpb.importance(model, percentage = FALSE)
-}
 }

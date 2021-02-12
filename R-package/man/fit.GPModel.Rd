@@ -62,7 +62,6 @@ Estimates the parameters of a \code{GPModel} using maximum likelihood estimation
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
-\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -79,6 +78,7 @@ pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat
 pred$mu # Predicted mean
 pred$cov # Predicted covariance
  
+\donttest{
 #--------------------Gaussian process model----------------
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                     likelihood="gaussian")

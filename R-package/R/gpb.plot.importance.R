@@ -18,7 +18,6 @@
 #' and silently returns a processed data.table with \code{top_n} features sorted by defined importance.
 #'
 #' @examples
-#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -38,7 +37,6 @@
 #'
 #' tree_imp <- gpb.importance(model, percentage = TRUE)
 #' gpb.plot.importance(tree_imp, top_n = 5L, measure = "Gain")
-#' }
 #' @importFrom graphics barplot par
 #' @export
 gpb.plot.importance <- function(tree_imp,

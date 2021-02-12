@@ -1769,7 +1769,6 @@ fit <- function(gp_model, y, X, params, fixed_effects = NULL) UseMethod("fit")
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -1786,6 +1785,7 @@ fit <- function(gp_model, y, X, params, fixed_effects = NULL) UseMethod("fit")
 #' pred$mu # Predicted mean
 #' pred$cov # Predicted covariance
 #'  
+#' \donttest{
 #' #--------------------Gaussian process model----------------
 #' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
 #'                     likelihood="gaussian")
@@ -1827,7 +1827,6 @@ fit.GPModel <- function(gp_model,
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -1845,6 +1844,7 @@ fit.GPModel <- function(gp_model,
 #' pred$cov # Predicted covariance
 #'
 #'
+#' \donttest{
 #' #--------------------Mixed effects model: random effects and linear fixed effects----------------
 #' X1 <- cbind(rep(1,length(y)),X) # Add intercept column
 #' gp_model <- fitGPModel(group_data = group_data[,1], likelihood="gaussian",
@@ -1961,7 +1961,6 @@ fitGPModel <- function(group_data = NULL,
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -1970,6 +1969,7 @@ fitGPModel <- function(group_data = NULL,
 #'                        params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' 
+#' \donttest{
 #' #--------------------Gaussian process model----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
 #'                        likelihood="gaussian", y = y, params = list(std_dev = TRUE))
@@ -2023,7 +2023,6 @@ summary.GPModel <- function(object, ...){
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -2040,6 +2039,7 @@ summary.GPModel <- function(object, ...){
 #' pred$mu # Predicted mean
 #' pred$cov # Predicted covariance
 #' 
+#' \donttest{
 #' #--------------------Gaussian process model----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
 #'                        likelihood="gaussian", y = y, params = list(std_dev = TRUE))

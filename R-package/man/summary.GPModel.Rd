@@ -20,7 +20,6 @@ Summary for a \code{GPModel}
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
-\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -29,6 +28,7 @@ gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian"
                        params = list(std_dev = TRUE))
 summary(gp_model)
 
+\donttest{
 #--------------------Gaussian process model----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        likelihood="gaussian", y = y, params = list(std_dev = TRUE))

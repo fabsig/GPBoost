@@ -16,7 +16,6 @@
 #'         Contribution columns to each class.
 #'
 #' @examples
-#' \donttest{
 #' Logit <- function(x) log(x / (1.0 - x))
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -39,7 +38,6 @@
 #' )
 #'
 #' tree_interpretation <- gpb.interprete(model, test$data, 1L:5L)
-#' }
 #' @importFrom data.table as.data.table
 #' @export
 gpb.interprete <- function(model,

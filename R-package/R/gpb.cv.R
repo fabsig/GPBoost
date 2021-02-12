@@ -50,7 +50,6 @@ CVBooster <- R6::R6Class(
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -72,7 +71,6 @@ CVBooster <- R6::R6Class(
 #'                 use_gp_model_for_validation = TRUE)
 #' print(paste0("Optimal number of iterations: ", cvbst$best_iter,
 #'              ", best test error: ", cvbst$best_score))
-#' }
 #' @importFrom data.table data.table setorderv
 #' @export
 gpb.cv <- function(params = list()

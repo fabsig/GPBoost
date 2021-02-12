@@ -996,7 +996,6 @@ Booster <- R6::R6Class(
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -1034,6 +1033,7 @@ Booster <- R6::R6Class(
 #' # Sum them up to otbain a single prediction
 #' pred$random_effect_mean + pred$fixed_effect
 #' 
+#' \donttest{
 #' #--------------------Combine tree-boosting and Gaussian process model----------------
 #' # Create Gaussian process model
 #' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
@@ -1259,7 +1259,6 @@ gpb.dump <- function(booster, num_iteration = NULL) {
 #' @return numeric vector of evaluation result
 #'
 #' @examples
-#' \donttest{
 #' # train a regression model
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -1286,7 +1285,6 @@ gpb.dump <- function(booster, num_iteration = NULL) {
 #'
 #' # Get L2 values for "test" dataset
 #' gpb.get.eval.result(model, "test", "l2")
-#' }
 #' @export
 gpb.get.eval.result <- function(booster, data_name, eval_name, iters = NULL, is_err = FALSE) {
   
