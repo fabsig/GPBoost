@@ -517,6 +517,21 @@ Booster <- R6::R6Class(
         , gpb.c_str(x = filename)
       )
       
+      # Save gp_model
+      if (private$has_gp_model) {##NEW
+        if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
+          stop("gpb.save: cannot save to file.
+                Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
+        }
+        filename_gp_model <- paste0(filename,"_gp_model.RData")
+        filename_raw_data <- paste0(filename,"_raw_data.RData")
+        private$gp_model$save(filename_gp_model)
+        raw_data <- private$train_set$.__enclos_env__$private$raw_data
+        label <- private$train_set$.__enclos_env__$private$info$label
+        save(raw_data, label, file = filename_raw_data)
+        
+      }
+      
       return(invisible(self))
     },
     
@@ -599,7 +614,7 @@ Booster <- R6::R6Class(
         
         if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
           stop("predict: cannot make predictions for Gaussian process.
-                Set ", sQuote("free_raw_data = FALSE"), " when you construct gpb.Dataset")
+                # Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
         }
         fixed_effect_train = predictor$predict( data = private$train_set$.__enclos_env__$private$raw_data
                                                 , start_iteration = start_iteration
@@ -1101,30 +1116,35 @@ predict.gpb.Booster <- function(object,
 #' @return gpb.Booster
 #'
 #' @examples
-#' \donttest{
-#' data(agaricus.train, package = "gpboost")
-#' train <- agaricus.train
-#' dtrain <- gpb.Dataset(train$data, label = train$label)
-#' data(agaricus.test, package = "gpboost")
-#' test <- agaricus.test
-#' dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
-#' params <- list(objective = "regression", metric = "l2")
-#' valids <- list(test = dtest)
-#' model <- gpb.train(
-#'   params = params
-#'   , data = dtrain
-#'   , nrounds = 5L
-#'   , valids = valids
-#'   , min_data = 1L
-#'   , learning_rate = 1.0
-#'   , early_stopping_rounds = 3L
-#' )
-#' model_file <- tempfile(fileext = ".txt")
-#' gpb.save(model, model_file)
-#' load_booster <- gpb.load(filename = model_file)
-#' model_string <- model$save_model_to_string(NULL) # saves best iteration
-#' load_booster_from_str <- gpb.load(model_str = model_string)
-#' }
+#' 
+#' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
+#' 
+#' # Train model and make prediction
+#' gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
+#' bst <- gpboost(data = X,
+#'                label = y,
+#'                gp_model = gp_model,
+#'                nrounds = 16,
+#'                learning_rate = 0.05,
+#'                max_depth = 6,
+#'                min_data_in_leaf = 5,
+#'                objective = "regression_l2",
+#'                verbose = 0)
+#' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
+#'                 predict_var= TRUE)
+#' # Save model to file
+#' filename <- tempfile(fileext = ".RData")
+#' gpb.save(bst,filename = filename)
+#' # Load from file and make predictions again
+#' bst_loaded <- gpb.load(filename = filename)
+#' pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test[,1],
+#'                        predict_var= TRUE)
+#' # Check equality
+#' pred$fixed_effect - pred_loaded$fixed_effect
+#' pred$random_effect_mean - pred_loaded$random_effect_mean
+#' pred$random_effect_cov - pred_loaded$random_effect_cov
+#' 
 #' @export
 gpb.load <- function(filename = NULL, model_str = NULL) {
   
@@ -1138,7 +1158,24 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
     if (!file.exists(filename)) {
       stop(sprintf("gpb.load: file '%s' passed to filename does not exist", filename))
     }
-    return(invisible(Booster$new(modelfile = filename)))
+    ##NEW
+    bst <- Booster$new(modelfile = filename)
+    ## Does it have a gp_model?
+    con <- file(filename)
+    has_gp_model <- read.table(con,skip=2,nrow=1)
+    if (has_gp_model=="has_gp_model=1") {
+      bst$.__enclos_env__$private$has_gp_model = TRUE
+      filename_gp_model <- paste0(filename,"_gp_model.RData")
+      filename_raw_data <- paste0(filename,"_raw_data.RData")
+      gp_model <- loadGPModel(filename = filename_gp_model)
+      bst$.__enclos_env__$private$gp_model <- gp_model
+      load(file = filename_raw_data)
+      dtrain <- gpb.Dataset(data = raw_data, label = label)
+      bst$.__enclos_env__$private$train_set <- dtrain
+    } else if (has_gp_model!="has_gp_model=0") {
+      stop("gpb.load: file does not have correct format")
+    }
+    return(invisible(bst))
   }
   
   if (model_str_provided) {
@@ -1161,27 +1198,35 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' @return gpb.Booster
 #'
 #' @examples
-#' \donttest{
+#' 
 #' library(gpboost)
-#' data(agaricus.train, package = "gpboost")
-#' train <- agaricus.train
-#' dtrain <- gpb.Dataset(train$data, label = train$label)
-#' data(agaricus.test, package = "gpboost")
-#' test <- agaricus.test
-#' dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
-#' params <- list(objective = "regression", metric = "l2")
-#' valids <- list(test = dtest)
-#' model <- gpb.train(
-#'   params = params
-#'   , data = dtrain
-#'   , nrounds = 10L
-#'   , valids = valids
-#'   , min_data = 1L
-#'   , learning_rate = 1.0
-#'   , early_stopping_rounds = 5L
-#' )
-#' gpb.save(model, tempfile(fileext = ".txt"))
-#' }
+#' data(GPBoost_data, package = "gpboost")
+#' 
+#' # Train model and make prediction
+#' gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
+#' bst <- gpboost(data = X,
+#'                label = y,
+#'                gp_model = gp_model,
+#'                nrounds = 16,
+#'                learning_rate = 0.05,
+#'                max_depth = 6,
+#'                min_data_in_leaf = 5,
+#'                objective = "regression_l2",
+#'                verbose = 0)
+#' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
+#'                 predict_var= TRUE)
+#' # Save model to file
+#' filename <- tempfile(fileext = ".RData")
+#' gpb.save(bst,filename = filename)
+#' # Load from file and make predictions again
+#' bst_loaded <- gpb.load(filename = filename)
+#' pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test[,1],
+#'                        predict_var= TRUE)
+#' # Check equality
+#' pred$fixed_effect - pred_loaded$fixed_effect
+#' pred$random_effect_mean - pred_loaded$random_effect_mean
+#' pred$random_effect_cov - pred_loaded$random_effect_cov
+#' 
 #' @export
 gpb.save <- function(booster, filename, num_iteration = NULL) {
   

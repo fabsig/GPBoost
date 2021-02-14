@@ -825,40 +825,44 @@ test_that("Gamma regression ", {
   expect_lt(abs(nll-154.4561783),1E-6)
 })
 
-test_that("Saving GPModel works for non-Gaussian data", {
-  
-  probs <- pnorm(Z1 %*% b_gr_1 + X%*%beta)
-  y <- as.numeric(sim_rand_unif(n=n, init_c=0.542) < probs)
-  # Train model
-  gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
-                         y = y, X=X, params = list(optimizer_cov = "gradient_descent",
-                                                   optimizer_coef = "gradient_descent",
-                                                   use_nesterov_acc=TRUE))
-  # Make predictions
-  X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
-  group_test <- c(1,3,3,9999)
-  pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
-                  predict_cov_mat = TRUE, predict_response = FALSE)
-  # Predict response
-  pred_resp <- predict(gp_model, y=y, group_data_pred = group_test,
-                       X_pred = X_test, predict_var = TRUE, predict_response = TRUE)
-  # Save model to file
-  filename <- tempfile(fileext = ".RData")
-  saveGPModel(gp_model,filename = filename)
-  # Delete model
-  gp_model$finalize()
-  expect_null(gp_model$.__enclos_env__$private$handle)
-  rm(gp_model)
-  # Load from file and make predictions again
-  gp_model_loaded <- loadGPModel(filename = filename)
-  pred_loaded <- predict(gp_model_loaded, group_data_pred = group_test,
-                         X_pred = X_test, predict_cov_mat = TRUE, predict_response = FALSE)
-  pred_resp_loaded <- predict(gp_model_loaded, y=y, group_data_pred = group_test,
-                              X_pred = X_test, predict_var = TRUE, predict_response = TRUE)
-  
-  expect_equal(pred$mu, pred_loaded$mu)
-  expect_equal(pred$cov, pred_loaded$cov)
-  expect_equal(pred_resp$mu, pred_resp_loaded$mu)
-  expect_equal(pred_resp$var, pred_resp_loaded$var)
-})
+
+# Avoid being tested on CRAN
+if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+  test_that("Saving a GPModel and loading from file works for non-Gaussian data", {
+    
+    probs <- pnorm(Z1 %*% b_gr_1 + X%*%beta)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.542) < probs)
+    # Train model
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y, X=X, params = list(optimizer_cov = "gradient_descent",
+                                                     optimizer_coef = "gradient_descent",
+                                                     use_nesterov_acc=TRUE))
+    # Make predictions
+    X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
+    group_test <- c(1,3,3,9999)
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    # Predict response
+    pred_resp <- predict(gp_model, y=y, group_data_pred = group_test,
+                         X_pred = X_test, predict_var = TRUE, predict_response = TRUE)
+    # Save model to file
+    filename <- tempfile(fileext = ".RData")
+    saveGPModel(gp_model,filename = filename)
+    # Delete model
+    gp_model$finalize()
+    expect_null(gp_model$.__enclos_env__$private$handle)
+    rm(gp_model)
+    # Load from file and make predictions again
+    gp_model_loaded <- loadGPModel(filename = filename)
+    pred_loaded <- predict(gp_model_loaded, group_data_pred = group_test,
+                           X_pred = X_test, predict_cov_mat = TRUE, predict_response = FALSE)
+    pred_resp_loaded <- predict(gp_model_loaded, y=y, group_data_pred = group_test,
+                                X_pred = X_test, predict_var = TRUE, predict_response = TRUE)
+    
+    expect_equal(pred$mu, pred_loaded$mu)
+    expect_equal(pred$cov, pred_loaded$cov)
+    expect_equal(pred_resp$mu, pred_resp_loaded$mu)
+    expect_equal(pred_resp$var, pred_resp_loaded$var)
+  })
+}
 

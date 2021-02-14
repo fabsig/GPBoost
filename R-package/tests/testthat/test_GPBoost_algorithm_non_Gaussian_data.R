@@ -778,4 +778,93 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(tail(pred$response_var)-c(4.687067e-01, 2.430343e-01, 2.573891e-03, 1.435430e+02, 4.112302e+00, 7.652238e+01))),1E-3)
   })
   
+
+  test_that("Saving and loading a booster with a gp_model for non-Gaussian data ", {
+    
+    ntrain <- ntest <- 1000
+    n <- ntrain + ntest
+    # Simulate fixed effects
+    sim_data <- sim_friedman3(n=n, n_irrelevant=5, init_c=0.2644234)
+    f <- sim_data$f
+    f <- f - mean(f)
+    X <- sim_data$X
+    # Simulate grouped random effects
+    sigma2_1 <- 0.6 # variance of first random effect
+    sigma2_2 <- 0.4 # variance of second random effect
+    sigma2 <- 0.1^2 # error variance
+    m <- 40 # number of categories / levels for grouping variable
+    # first random effect
+    group <- rep(1,ntrain) # grouping variable
+    for(i in 1:m) group[((i-1)*ntrain/m+1):(i*ntrain/m)] <- i
+    group <- c(group, group)
+    n_new <- 3# number of new random effects in test data
+    group[(length(group)-n_new+1):length(group)] <- rep(99999,n_new)
+    Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
+    b1 <- sqrt(sigma2_1) * qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.5542))
+    # Second random effect
+    n_obs_gr <- ntrain/m# number of sampels per group
+    group2 <- rep(1,ntrain) # grouping variable
+    for(i in 1:m) group2[(1:n_obs_gr)+n_obs_gr*(i-1)] <- 1:n_obs_gr
+    group2 <- c(group2,group2)
+    group2[(length(group2)-n_new+1):length(group2)] <- rep(99999,n_new)
+    Z2 <- model.matrix(rep(1,n)~factor(group2)-1)
+    b2 <- sqrt(sigma2_2) * qnorm(sim_rand_unif(n=length(unique(group2)), init_c=0.82354))
+    eps <- Z1 %*% b1 + Z2 %*% b2
+    eps <- eps - mean(eps)
+    group_data <- cbind(group,group2)
+    # Observed data
+    probs <- pnorm(f + eps)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.574) < probs)
+    # Split in training and test data
+    y_train <- y[1:ntrain]
+    X_train <- X[1:ntrain,]
+    group_data_train <- group_data[1:ntrain,]
+    y_test <- y[1:ntest+ntrain]
+    X_test <- X[1:ntest+ntrain,]
+    f_test <- f[1:ntest+ntrain]
+    group_data_test <- group_data[1:ntest+ntrain,]
+    
+    # Train model and make predictions
+    gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE, lr_cov=0.01))
+    bst <- gpboost(data = X_train,
+                   label = y_train,
+                   gp_model = gp_model,
+                   nrounds = 30,
+                   learning_rate = 0.1,
+                   max_depth = 6,
+                   min_data_in_leaf = 5,
+                   objective = "binary",
+                   verbose = 0)
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = TRUE)
+    # Predict response
+    pred_resp <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = FALSE)
+    # Save to file
+    filename <- tempfile(fileext = ".model")
+    gpb.save(bst, filename=filename)
+    
+    # finalize and destroy models
+    bst$finalize()
+    expect_null(bst$.__enclos_env__$private$handle)
+    rm(bst)
+    gp_model$finalize()
+    expect_null(gp_model$.__enclos_env__$private$handle)
+    rm(gp_model)
+    
+    # Load from file and make predictions again
+    bst_loaded <- gpb.load(filename = filename)
+    pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                           predict_var= TRUE, rawscore = TRUE)
+    pred_resp_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                           predict_var= TRUE, rawscore = FALSE)
+    expect_equal(pred$fixed_effect, pred_loaded$fixed_effect)
+    expect_equal(pred$random_effect_mean, pred_loaded$random_effect_mean)
+    expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
+    expect_equal(pred_resp$response_mean, pred_resp_loaded$response_mean)
+    expect_equal(pred_resp$response_var, pred_resp_loaded$response_var)
+    
+  })
+  
 }

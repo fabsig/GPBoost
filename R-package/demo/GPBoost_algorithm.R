@@ -268,3 +268,31 @@ bst <- gpb.train(data = dtrain,
                  train_gp_model_cov_pars = FALSE)
 # The GPModel has not changed:
 summary(gp_model)
+
+
+#--------------------Saving a booster with a gp_model and loading it from a file----------------
+data(GPBoost_data, package = "gpboost")
+# Train model and make prediction
+gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
+bst <- gpboost(data = X,
+               label = y,
+               gp_model = gp_model,
+               nrounds = 16,
+               learning_rate = 0.05,
+               max_depth = 6,
+               min_data_in_leaf = 5,
+               objective = "regression_l2",
+               verbose = 0)
+pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
+                predict_var= TRUE)
+# Save model to file
+filename <- tempfile(fileext = ".RData")
+gpb.save(bst,filename = filename)
+# Load from file and make predictions again
+bst_loaded <- gpb.load(filename = filename)
+pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test[,1],
+                       predict_var= TRUE)
+# Check equality
+pred$fixed_effect - pred_loaded$fixed_effect
+pred$random_effect_mean - pred_loaded$random_effect_mean
+pred$random_effect_cov - pred_loaded$random_effect_cov

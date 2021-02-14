@@ -2217,8 +2217,8 @@ predict.GPModel <- function(object,
 #' 
 saveGPModel <- function(gp_model, filename){
   
-  if (!gpb.is.GPModel(x = gp_model)) {
-    stop("saveGPModel: gp_model should be a ", sQuote("GPModel"))
+  if (!gpb.check.r6.class(gp_model, "GPModel")) {
+    stop("saveGPModel: gp_model needs to be a ", sQuote("GPModel"))
   }
   
   if (!(is.character(filename) && length(filename) == 1L)) {
@@ -2244,7 +2244,6 @@ saveGPModel <- function(gp_model, filename){
 #' @examples
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
-#' 
 #' 
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
 #' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)

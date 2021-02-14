@@ -318,6 +318,8 @@ namespace LightGBM {
 		// output model type
 		ss << SubModelName() << '\n';
 		ss << "version=" << kModelVersion << '\n';
+		// Indicator for existence of re_model
+		ss << "has_gp_model=" << objective_function_->HasGPModel() << '\n';
 		// output number of class
 		ss << "num_class=" << num_class_ << '\n';
 		ss << "num_tree_per_iteration=" << num_tree_per_iteration_ << '\n';
@@ -329,11 +331,6 @@ namespace LightGBM {
 		if (objective_function_ != nullptr) {
 			ss << "objective=" << objective_function_->ToString() << '\n';
 		}
-		//output everything related to Nesterov acceleration
-		ss << "use_nesterov_acc=" << use_nesterov_acc_ << '\n';
-		ss << "nesterov_acc_rate=" << nesterov_acc_rate_ << '\n';
-		ss << "momentum_schedule_version=" << momentum_schedule_version_ << '\n';
-		ss << "momentum_offset=" << momentum_offset_ << '\n';
 
 		if (average_output_) {
 			ss << "average_output" << '\n';
@@ -412,10 +409,6 @@ namespace LightGBM {
 	}
 
 	bool GBDT::SaveModelToFile(int start_iteration, int num_iteration, int feature_importance_type, const char* filename) const {
-		if (objective_function_->HasGPModel()) {
-			Log::Warning("The GPModel is not saved to file");
-		}
-
 		/*! \brief File to write models */
 		auto writer = VirtualFileWriter::Make(filename);
 		if (!writer->Init()) {
@@ -497,18 +490,6 @@ namespace LightGBM {
 		}
 		else {
 			Log::Fatal("Model file doesn't specify max_feature_idx");
-			return false;
-		}
-
-		// get everything related to Nesterov acceleration
-		if (key_vals.count("use_nesterov_acc")) {
-			Common::Atoi(key_vals["use_nesterov_acc"].c_str(), &use_nesterov_acc_);
-			Common::Atof(key_vals["nesterov_acc_rate"].c_str(), &nesterov_acc_rate_);
-			Common::Atoi(key_vals["momentum_schedule_version"].c_str(), &momentum_schedule_version_);
-			Common::Atoi(key_vals["momentum_offset"].c_str(), &momentum_offset_);
-		}
-		else {
-			Log::Fatal("Model file doesn't specify the whether Nesterov boosting is done or not");
 			return false;
 		}
 
