@@ -18,55 +18,55 @@ and on how to save models
 # Simulate data
 n = 100  # number of samples
 m = 25  # number of categories / levels for grouping variable
+np.random.seed(1)
+# simulate grouped random effects
 group = np.arange(n)  # grouping variable
 for i in range(m):
     group[int(i * n / m):int((i + 1) * n / m)] = i
-# incidence matrix relating grouped random effects to samples
-Z1 = np.zeros((n, m))
-for i in range(m):
-    Z1[np.where(group == i), i] = 1
-sigma2_1 = 1 ** 2  # random effect variance
-sigma2 = 0.5 ** 2  # error variance
-np.random.seed(1)
-b1 = np.sqrt(sigma2_1) * np.random.normal(size=m)  # simulate random effects
-eps = Z1.dot(b1)
-xi = np.sqrt(sigma2) * np.random.normal(size=n)  # simulate error term
-y = eps + xi  # observed data
+b1 = 1 * np.random.normal(size=m)  # simulate random effects
+eps = b1[group]
+# simulate fixed effects
+X = np.column_stack(
+    (np.ones(n), np.random.uniform(size=n)))  # design matrix / covariate data for fixed effect
+beta = np.array([0, 3])  # regression coefficents
+xi = np.sqrt(0.01) * np.random.normal(size=n)  # simulate error term
+y = eps + xi + X.dot(beta) # observed data
 
-# Define and fit model
-gp_model = gpb.GPModel(group_data=group)
-gp_model.fit(y=y, params={"std_dev": True}) # use option "trace": True for monitoring convergence
+# --------------------Training----------------
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+gp_model.fit(y=y, X=X, params={"std_dev": True})
 gp_model.summary()
-
-# Make predictions
-group_test = np.arange(m)
-pred = gp_model.predict(group_data_pred=group_test)
-# Compare true and predicted random effects
-plt.scatter(b1, pred['mu'])
-plt.title("Comparison of true and predicted random effects")
-plt.xlabel("truth")
-plt.ylabel("predicted")
-plt.show()
-# Also predict covariance matrix
-pred = gp_model.predict(group_data_pred=np.array([1, 1, 2, 2, -1, -1]),
-                        predict_cov_mat=True)
-pred['mu']# Predicted mean
-pred['cov']# Predicted covariance
-
 # Other optimization specifications: gradient descent (without Nesterov acceleration)
-gp_model = gpb.GPModel(group_data=group)
-gp_model.fit(y=y, params={"optimizer_cov": "gradient_descent", "lr_cov": 0.1,
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+gp_model.fit(y=y, X=X, params={"optimizer_cov": "gradient_descent", "lr_cov": 0.1,
                           "std_dev": True, "use_nesterov_acc": False, "maxit": 100})
 gp_model.summary()
 
-# Other convergence criterion
-gp_model = gpb.GPModel(group_data=group)
-gp_model.fit(y=y, params={"optimizer_cov": "fisher_scoring", "std_dev": True,
-                          "convergence_criterion": "relative_change_in_parameters"})
-gp_model.summary()
+# --------------------Prediction----------------
+group_test = np.array([1,2,-1])
+X_test = np.column_stack((np.ones(len(group_test)), np.random.uniform(size=len(group_test))))
+pred = gp_model.predict(group_data_pred=group_test, X_pred=X_test, predict_var = True)
+pred['mu']# Predicted mean
+pred['var']# Predicted variances
 
 # Evaluate negative log-likelihood
-gp_model.neg_log_likelihood(cov_pars=np.array([sigma2, sigma2_1]), y=y)
+gp_model.neg_log_likelihood(cov_pars=np.array([1, 0.1]), y=y)
+
+#--------------------Saving a GPModel and loading it from a file----------------
+# Train model and make predictions
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+gp_model.fit(y=y, X=X)
+group_test = np.array([1,2,-1])
+X_test = np.column_stack((np.ones(len(group_test)), np.random.uniform(size=len(group_test))))
+pred = gp_model.predict(group_data_pred=group_test, X_pred=X_test, predict_var = True)
+# Save model to file
+gp_model.save_model('gp_model.json')
+# Load from file and make predictions again
+gp_model_loaded = gpb.GPModel(model_file = 'gp_model.json')
+pred_loaded = gp_model_loaded.predict(group_data_pred=group_test, X_pred=X_test, predict_var = True)
+# Check equality
+print(pred['mu'] - pred_loaded['mu'])
+print(pred['var'] - pred_loaded['var'])
 
 # --------------------Two crossed random effects and a random slope----------------
 # NOTE: run the above example first to create the first random effect
@@ -77,16 +77,9 @@ n_obs_gr = int(n / m)  # number of sampels per group
 group2 = np.arange(n)  # grouping variable for second random effect
 for i in range(m):
     group2[(n_obs_gr * i):(n_obs_gr * (i + 1))] = np.arange(n_obs_gr)
-# incidence matrix relating grouped random effects to samples
-Z2 = np.zeros((n, n_obs_gr))
-for i in range(n_obs_gr):
-    Z2[np.where(group2 == i), i] = 1
-Z3 = np.diag(x).dot(Z1)
-sigma2_2 = 0.5 ** 2  # variance of second random effect
-sigma2_3 = 0.75 ** 2  # variance of random slope for first random effect
-b2 = np.sqrt(sigma2_2) * np.random.normal(size=n_obs_gr)  # simulate random effects
-b3 = np.sqrt(sigma2_3) * np.random.normal(size=m)
-eps2 = Z1.dot(b1) + Z2.dot(b2) + Z3.dot(b3)
+b2 = 0.5 * np.random.normal(size=n_obs_gr)  # simulate random effects
+b3 = 0.75 * np.random.normal(size=m)
+eps2 = b1[group] + b2[group2] + x * b3[group]
 y = eps2 + xi  # observed data
 # Define and fit model
 group_data = np.column_stack((group, group2))
@@ -94,18 +87,6 @@ gp_model = gpb.GPModel(group_data=group_data, group_rand_coef_data=x, ind_effect
 gp_model.fit(y=y, params={"std_dev": True})
 gp_model.summary()
 
-# --------------------Mixed effects model: random effects and linear fixed effects----------------
-# NOTE: run the above example first to create the random effects part
-# Simulate data
-np.random.seed(1)
-X = np.column_stack(
-    (np.random.uniform(size=n), np.random.uniform(size=n)))  # design matrix / covariate data for fixed effect
-beta = np.array([3, 3])  # regression coefficents
-y = eps2 + xi + X.dot(beta)  # add fixed effect to observed data
-# Define and fit model
-gp_model = gpb.GPModel(group_data=group_data, group_rand_coef_data=x, ind_effect_group_rand_coef=[1])
-gp_model.fit(y=y, X=X, params={"std_dev": True})
-gp_model.summary()
 
 # --------------------Two nested random effects----------------
 n = 1000  # number of samples
@@ -252,37 +233,3 @@ y = eps + xi
 gp_model = gpb.GPModel(group_data=group, gp_coords=coords, cov_function="exponential")
 gp_model.fit(y=y, params={"std_dev": True})
 gp_model.summary()
-
-
-#--------------------Saving a GPModel and loading it from a file----------------
-# Simulate data
-n = 100  # number of samples
-m = 25  # number of categories / levels for grouping variable
-np.random.seed(1)
-# simulate grouped random effects
-group = np.arange(n)  # grouping variable
-for i in range(m):
-    group[int(i * n / m):int((i + 1) * n / m)] = i
-b1 = np.random.normal(size=m)  # simulate random effects
-eps = b1[group]
-# simulate fixed effects
-X = np.column_stack(
-    (np.ones(n), np.random.uniform(size=n)))  # design matrix / covariate data for fixed effect
-beta = np.array([0, 3])  # regression coefficents
-xi = np.sqrt(0.01) * np.random.normal(size=n)  # simulate error term
-y = eps + xi + X.dot(beta) # observed data
-
-# Train model and make predictions
-gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
-gp_model.fit(y=y, X=X)
-group_test = np.array([1,2,-1])
-X_test = np.column_stack((np.ones(len(group_test)), np.random.uniform(size=len(group_test))))
-pred = gp_model.predict(group_data_pred=group_test, X_pred=X_test, predict_var = True)
-# Save model to file
-gp_model.save_model('gp_model.json')
-# Load from file and make predictions again
-gp_model_loaded = gpb.GPModel(model_file = 'gp_model.json')
-pred_loaded = gp_model_loaded.predict(group_data_pred=group_test, X_pred=X_test, predict_var = True)
-# Check equality
-pred['mu'] - pred_loaded['mu']
-pred['var'] - pred_loaded['var']

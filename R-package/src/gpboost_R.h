@@ -7,7 +7,6 @@
 #define GPBOOST_R_H_
 
 #include <LightGBM/c_api.h>
-#include <GPBoost/gpboost_c_api.h>
 #include "R_object_helper.h"
 
 /*!

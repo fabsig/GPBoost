@@ -4440,8 +4440,7 @@ class GPModel(object):
         cov_pars = self.get_cov_pars()
         message = "Covariance parameters "
         if self.params["std_dev"]:
-            message = message + "and standard deviations (second row) "
-        message = message + "in the following order:"
+            message = message + "and standard deviations (second row):"
         print(message)
         print(self.cov_par_names)
         print(cov_pars)
@@ -4449,8 +4448,7 @@ class GPModel(object):
             coef = self.get_coef()
             message = "Linear regression coefficients "
             if self.params["std_dev"]:
-                message = message + "and standard deviations (second row) "
-            message = message + "in the following order:"
+                message = message + "and standard deviations (second row):"
             print(message)
             print(self.coef_names)
             print(coef)

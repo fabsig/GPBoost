@@ -26,8 +26,8 @@
 #include <algorithm>    // std::shuffle
 #include <random>       // std::default_random_engine
 //#include <typeinfo> // Only needed for debugging
-#include <chrono>  // only needed for debugging
-#include <thread> // only needed for debugging
+//#include <chrono>  // only needed for debugging
+//#include <thread> // only needed for debugging
 //std::this_thread::sleep_for(std::chrono::milliseconds(200));// Only for debugging
 //std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 //std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
@@ -2611,17 +2611,6 @@ namespace GPBoost {
 					//		However, performing the acceleration before or after the gradient update gives equivalent algorithms
 				}
 				CalcCovFactorOrModeAndNegLL(cov_pars_new, fixed_effects);
-
-				//DELETE THIS (not needed anymore since mode is reset below)
-				//// Reset mode for Laplace approximation to 0 in case there was an NA so that NA's don't propagate to the next iteration
-				//if (!gauss_likelihood_) {
-				//	if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
-				//		for (const auto& cluster_i : unique_clusters_) {
-				//			likelihood_[cluster_i]->InitializeModeAvec();
-				//		}
-				//	}
-				//}
-
 				// Safeguard agains too large steps by halving the learning rate when the objective increases
 				if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
 					decrease_found = true;
@@ -2711,15 +2700,6 @@ namespace GPBoost {
 						}
 					}
 					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEff(fixed_effects_vec.data());//calculate mode and approximate marginal likelihood
-
-					//DELETE THIS (not needed anymore since mode is reset below)
-					//// Reset mode for Laplace approximation to 0 in case there was an NA so that NA's don't propagate to the next iteration
-					//if (std::isnan(neg_log_likelihood_after_lin_coef_update_) || std::isinf(neg_log_likelihood_after_lin_coef_update_)) {
-					//	for (const auto& cluster_i : unique_clusters_) {
-					//		likelihood_[cluster_i]->InitializeModeAvec();
-					//	}
-					//}
-
 				}
 				// Safeguard agains too large steps by halving the learning rate when the objective increases
 				if (neg_log_likelihood_after_lin_coef_update_ <= neg_log_likelihood_lag1_) {

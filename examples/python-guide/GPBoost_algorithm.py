@@ -146,6 +146,7 @@ params = { 'objective': 'regression_l2',
             'verbose': 0,
             'leaves_newton_update': True }
 evals_result = {}  # record eval results for plotting
+gp_model.set_prediction_data(group_data_pred=group[test_ind])
 bst = gpb.train(params=params,
                 train_set=data_train,
                 num_boost_round=100,

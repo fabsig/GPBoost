@@ -55,7 +55,6 @@ OBJECTS = \
     treelearner/voting_parallel_tree_learner.o \
     c_api.o \
     gpboost_R.o \
-    gpboost_c_api.o \
     re_model.o \
     sparse_matrix_utils.o \
     GP_utils.o \

@@ -71,7 +71,7 @@ bst = gpb.train(params=params,
                 train_set=data_train,
                 gp_model=gp_model,
                 num_boost_round=num_boost_round)
-gp_model.summary()  # Trained random effects model (true variance = 0.25)
+gp_model.summary()  # Trained random effects model (true variance = 0.5)
 
 # Showing training loss
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
@@ -200,7 +200,8 @@ y_train = y[0:ntrain]
 data_train = gpb.Dataset(X_train, y_train)  # create dataset for gpb.train
 y_test = y[ntrain:n]
 eps_test = eps[ntrain:n]
-plt.hist(y_train, bins=50)  # visualize response variable
+fig1, ax1 = plt.subplots()
+ax1.hist(y_train, bins=50)  # visualize response variable
 
 # Train model
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential", likelihood=likelihood)

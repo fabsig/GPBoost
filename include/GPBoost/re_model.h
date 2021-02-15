@@ -10,8 +10,8 @@
 #define GPB_RE_MODEL_H_
 
 #include <GPBoost/type_defs.h>
-#include <GPBoost/export.h>
 #include <GPBoost/re_model_template.h>
+#include <LightGBM/export.h>
 
 #include <memory>
 
@@ -28,7 +28,7 @@ namespace GPBoost {
 	class REModel {
 	public:
 		/*! \brief Null costructor */
-		GPBOOST_EXPORT REModel();
+		LIGHTGBM_EXPORT REModel();
 
 		/*!
 		* \brief Costructor
@@ -53,14 +53,14 @@ namespace GPBoost {
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions
 		* \param likelihood Likelihood function for the observed response variable. Default = "gaussian"
 		*/
-		GPBOOST_EXPORT REModel(data_size_t num_data, const gp_id_t* cluster_ids_data = nullptr, const char* re_group_data = nullptr, data_size_t num_re_group = 0,
+		LIGHTGBM_EXPORT REModel(data_size_t num_data, const gp_id_t* cluster_ids_data = nullptr, const char* re_group_data = nullptr, data_size_t num_re_group = 0,
 			const double* re_group_rand_coef_data = nullptr, const int32_t* ind_effect_group_rand_coef = nullptr, data_size_t num_re_group_rand_coef = 0,
 			data_size_t num_gp = 0, const double* gp_coords_data = nullptr, int dim_gp_coords = 2, const double* gp_rand_coef_data = nullptr, data_size_t num_gp_rand_coef = 0,
 			const char* cov_fct = nullptr, double cov_fct_shape = 0., bool vecchia_approx = false, int num_neighbors = 30, const char* vecchia_ordering = nullptr,
 			const char* vecchia_pred_type = nullptr, int num_neighbors_pred = 30, const char* likelihood = nullptr);
 
 		/*! \brief Destructor */
-		GPBOOST_EXPORT ~REModel();
+		LIGHTGBM_EXPORT ~REModel();
 
 		/*! \brief Disable copy */
 		REModel& operator=(const REModel&) = delete;
