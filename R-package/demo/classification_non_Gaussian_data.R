@@ -9,7 +9,7 @@ library(gpboost)
 likelihood <- "bernoulli_probit"
 
 # Non-linear prior mean function for simulation in examples below
-f1d <- function(x) 1/(1+exp(-(x-0.5)*20)) - 0.5
+f1d <- function(x) 1/(1+exp(-(x-0.5)*10)) - 0.5
 sim_non_lin_f <- function(n){
   X <- matrix(runif(2*n),ncol=2)
   f <- f1d(X[,1])
@@ -30,7 +30,7 @@ set.seed(1)
 # Simulate random and fixed effects
 group <- rep(1,n) # grouping variable
 for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-b1 <- 0.5*rnorm(m)
+b1 <- sqrt(0.5) * rnorm(m)
 eps <- b1[group]
 eps <- eps - mean(eps)
 sim_data <- sim_non_lin_f(n=n)
@@ -60,7 +60,7 @@ bst <- gpboost(data = X, label = y, verbose = 0,
                monotone_constraints = c(1,0),
                nrounds = nrounds, 
                params = params)
-summary(gp_model) # Trained random effects model
+summary(gp_model) # Trained random effects model (true variance = 0.5)
 
 # Make predictions
 nplot <- 200# number of predictions
@@ -105,7 +105,7 @@ pred_lin_resp <- predict(gp_model, y = y, X_pred = X_test_lin,
 
 # Plot results
 plot(x,f1d(x),type="l",lwd=3,col=2,main="Data, true and fitted function")
-points(X[,1],y)
+points(X[,1],y,col=rgb(0,0,0,alpha=0.1))
 lines(X_test_plot[,1],pred$fixed_effect,col=4,lwd=3)
 lines(X_test_plot[,1],pred_lin$mu,col=3,lwd=3)
 legend(legend=c("True F","Pred F GPBoost","Pred F linear"),"bottomright",bty="n",lwd=3,col=c(2,4,3))

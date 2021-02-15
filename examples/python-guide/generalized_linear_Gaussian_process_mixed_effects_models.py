@@ -49,23 +49,39 @@ elif likelihood == "gamma":
     y = mu * stats.gamma.ppf(np.random.uniform(size=n), a=1)
 plt.hist(y, bins=50)  # visualize response variable
 
-# Train model
+# --------------------Train model----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 gp_model.fit(y=y, X=X)  # use option params={"trace": True} for monitoring convergence
 gp_model.summary()
 
-# Make predictions
+# --------------------Make predictions----------------
 group_test = np.arange(m)
 X_test = np.column_stack((np.ones(m), np.zeros(m)))
 # Predict latent variable
-pred_lin = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
-                            predict_var=True, predict_response=False)
-pred_lin['mu'][0:5]  # Predicted latent mean
-pred_lin['var'][0:5]  # Predicted latent variance
+pred = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
+                        predict_var=True, predict_response=False)
+pred['mu'][0:5]  # Predicted latent mean
+pred['var'][0:5]  # Predicted latent variance
 # Predict response variable
-pred_lin_resp = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
-                                 predict_response=True)
-pred_lin_resp['mu'][0:5]  # Predicted response variable (label)
+pred_resp = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
+                             predict_var=True, predict_response=True)
+pred_resp['mu'][0:5]  # Predicted response variable (label)
+pred_resp['var'][0:5]  # # Predicted varianec of response
+
+#--------------------Saving a booster with a gp_model and loading it from a file----------------
+# Save trained model
+gp_model.save_model('gp_model.txt')
+# Load from file and make predictions again
+gp_model_loaded = gpb.GPModel(model_file = 'gp_model.txt')
+pred_loaded = gp_model_loaded.predict(X_pred=X_test, group_data_pred=group_test,
+                                      predict_var=True, predict_response=False)
+pred_resp_loaded = gp_model_loaded.predict(X_pred=X_test, group_data_pred=group_test,
+                                           predict_var=True, predict_response=True)
+# Check equality
+print(np.sum(np.abs(pred['mu'] - pred_loaded['mu'])))
+print(np.sum(np.abs(pred['var'] - pred_loaded['var'])))
+print(np.sum(np.abs(pred_resp['mu'] - pred_resp_loaded['mu'])))
+print(np.sum(np.abs(pred_resp['var'] - pred_resp_loaded['var'])))
 
 
 # --------------------Gaussian process model----------------

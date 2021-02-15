@@ -27,7 +27,7 @@ gp_model <- GPModel(group_data = group)
 #                   lr_cov = 0.05, use_nesterov_acc = TRUE)
 # gp_model$set_optim_params(params=re_params)
 
-# print("Train boosting with random effects model")
+# Train boosting with random effects model
 bst <- gpboost(data = X,
                label = y,
                gp_model = gp_model,
@@ -54,7 +54,6 @@ bst <- gpb.train(data = dtrain,
 print("Estimated random effects model")
 summary(gp_model)
 
-
 #--------------------Prediction using gpboost--------------
 group_test <- 1:m
 x_test <- seq(from=0,to=1,length.out=m)
@@ -74,7 +73,6 @@ plot(x,f1d(x),type="l",ylim = c(-0.25,3.25), col = "red", lwd = 2,
 points(x_test,pred_mean, col = "blue", lwd = 2)
 legend("bottomright", legend = c("truth", "fitted"),
        lwd=2, col = c("red", "blue"), bty = "n")
-
 
 #--------------------Using validation set-------------------------
 set.seed(1)
@@ -295,3 +293,4 @@ pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_t
 pred$fixed_effect - pred_loaded$fixed_effect
 pred$random_effect_mean - pred_loaded$random_effect_mean
 pred$random_effect_cov - pred_loaded$random_effect_cov
+

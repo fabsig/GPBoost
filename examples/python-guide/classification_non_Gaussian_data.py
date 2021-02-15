@@ -4,6 +4,9 @@ import gpboost as gpb
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
+def f1d(x):
+    """Non-linear function for simulation"""
+    return 1 / (1 + np.exp(-(x - 0.5) * 10)) - 0.5
 
 plt.style.use('ggplot')
 print("It is recommended that the examples are run in interactive mode")
@@ -16,11 +19,6 @@ for several non-Gaussian likelihoods
 # Choose likelihood: either "bernoulli_probit" (=default for binary data), "bernoulli_logit",
 #                      "poisson", or "gamma"
 likelihood = "bernoulli_probit"
-
-# Non-linear function for simulation
-def f1d(x):
-    return 1 / (1 + np.exp(-(x - 0.5) * 20)) - 0.5
-
 # Parameters for gpboost in examples below
 # Note: the tuning parameters are by no means optimal for all situations considered here
 params = {'learning_rate': 0.1, 'min_data_in_leaf': 20, 'objective': likelihood,
@@ -38,7 +36,7 @@ np.random.seed(1)
 group = np.arange(n)  # grouping variable
 for i in range(m):
     group[int(i * n / m):int((i + 1) * n / m)] = i
-b1 = 0.5 * np.random.normal(size=m)  # simulate random effects
+b1 = np.sqrt(0.5) * np.random.normal(size=m)  # simulate random effects
 eps = b1[group]
 eps = eps - np.mean(eps)
 # simulate fixed effects
@@ -62,6 +60,7 @@ elif likelihood == "gamma":
 fig1, ax1 = plt.subplots()
 ax1.hist(y, bins=50)  # visualize response variable
 
+#--------------------Training----------------
 # create dataset for gpb.train
 data_train = gpb.Dataset(X, y)
 # Train model
@@ -72,15 +71,24 @@ bst = gpb.train(params=params,
                 train_set=data_train,
                 gp_model=gp_model,
                 num_boost_round=num_boost_round)
-gp_model.summary()  # Trained random effects model
+gp_model.summary()  # Trained random effects model (true variance = 0.25)
 
-# Make predictions
+# Showing training loss
+gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+bst = gpb.train(params=params,
+                train_set=data_train,
+                gp_model=gp_model,
+                num_boost_round=num_boost_round,
+                valid_sets=data_train)
+
+#--------------------Prediction----------------
 nplot = 200  # number of predictions
 X_test_plot = np.column_stack((np.linspace(0, 1, nplot), np.zeros(nplot)))
 group_data_pred = -np.ones(nplot)
 # Predict response variable
-pred_resp = bst.predict(data=X_test_plot, group_data_pred=group_data_pred, raw_score=False)
-# Predict latent variable including variance
+pred_resp = bst.predict(data=X_test_plot, group_data_pred=group_data_pred,
+                        raw_score=False)
+# Predict latent variable and also variance
 pred = bst.predict(data=X_test_plot, group_data_pred=group_data_pred,
                    predict_var=True, raw_score=True)
 
@@ -99,7 +107,7 @@ ax1.scatter(X[:, 0], y, linewidth=2, color="black", alpha=0.02)
 ax1.set_title("Data and predicted response variable")
 ax1.legend()
 
-# Cross-validation for finding number of iterations
+#--------------------Cross-validation for finding number of iterations----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 cvbst = gpb.cv(params=params, train_set=data_train,
                gp_model=gp_model, use_gp_model_for_validation=True,
@@ -107,14 +115,34 @@ cvbst = gpb.cv(params=params, train_set=data_train,
                nfold=4, verbose_eval=True, show_stdv=False, seed=1)
 print("Best number of iterations: " + str(np.argmin(next(iter(cvbst.values())))))
 
-# Showing training loss
-print('Showing training loss...')
+#--------------------Saving a booster with a gp_model and loading it from a file----------------
+# Train model and make prediction
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 bst = gpb.train(params=params,
                 train_set=data_train,
                 gp_model=gp_model,
-                num_boost_round=5,
-                valid_sets=data_train)
+                num_boost_round=num_boost_round)
+group_test = np.array([1,2,-1])
+Xtest = np.random.rand(len(group_test), 2)
+# Predict latent and response variable
+pred = bst.predict(data=Xtest, group_data_pred=group_test, 
+                   predict_var=True, raw_score=True)
+pred_resp = bst.predict(data=Xtest, group_data_pred=group_test,
+                        predict_var=True, raw_score=False)
+# Save model
+bst.save_model('model.txt')
+# Load from file and make predictions again
+bst_loaded = gpb.Booster(model_file = 'model.txt')
+pred_loaded = bst_loaded.predict(data=Xtest, group_data_pred=group_test,
+                                 predict_var=True, raw_score=True)
+pred_resp_loaded = bst_loaded.predict(data=Xtest, group_data_pred=group_test,
+                                 predict_var=True, raw_score=False)
+# Check equality
+print(pred['fixed_effect'] - pred_loaded['fixed_effect'])
+print(pred['random_effect_mean'] - pred_loaded['random_effect_mean'])
+print(pred['random_effect_cov'] - pred_loaded['random_effect_cov'])
+print(pred_resp['response_mean'] - pred_resp_loaded['response_mean'])
+print(pred_resp['response_var'] - pred_resp_loaded['response_var'])
 
 
 # --------------------Gaussian process model----------------

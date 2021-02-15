@@ -119,7 +119,6 @@ Booster <- R6::R6Class(
           stop("gpb.Booster: Can only use a string as model file path")
         }
         
-        ##NEW
         ## Does it have a gp_model?
         con <- file(modelfile)
         has_gp_model <- read.table(con,skip=2,nrow=1)
@@ -532,7 +531,7 @@ Booster <- R6::R6Class(
       )
       
       # Save gp_model
-      if (private$has_gp_model) {##NEW
+      if (private$has_gp_model) {
   
         if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
           stop("gpb.save: cannot save to file.
@@ -638,7 +637,7 @@ Booster <- R6::R6Class(
                                                 , rawscore = TRUE
                                                 , predleaf = FALSE
                                                 , predcontrib = FALSE
-                                                , header = FALSE
+                                                , header = header
                                                 , reshape = FALSE )
         
         if(private$gp_model$get_likelihood_name() == "gaussian"){
@@ -664,7 +663,7 @@ Booster <- R6::R6Class(
                                             , rawscore = TRUE
                                             , predleaf = FALSE
                                             , predcontrib = FALSE
-                                            , header = FALSE
+                                            , header = header
                                             , reshape = FALSE )
           
           if (length(fixed_effect) != length(random_effect_pred$mu)){
@@ -687,7 +686,7 @@ Booster <- R6::R6Class(
                                             , rawscore = TRUE
                                             , predleaf = FALSE
                                             , predcontrib = FALSE
-                                            , header = FALSE
+                                            , header = header
                                             , reshape = FALSE )
           
           if (rawscore) {

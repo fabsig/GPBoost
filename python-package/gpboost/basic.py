@@ -3238,13 +3238,12 @@ class Booster:
             pred_var_cov = None
             response_mean = None
             response_var = None
-
             if self.train_set.data is None:
                 raise GPBoostError("Cannot make predictions for Gaussian process. "
                                    "Set free_raw_data = False when you construct the Dataset")
-            fixed_effect_train = predictor.predict(self.train_set.data, num_iteration,
-                                                   True, False, False, False, False)
-
+            fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
+                                                   num_iteration=num_iteration, raw_score=True, pred_leaf=False,
+                                                   pred_contrib=False, data_has_header=data_has_header, is_reshape=False)
             if self.gp_model.get_likelihood_name() == "gaussian":  # Gaussian data
                 residual = self.train_set.label - fixed_effect_train
                 # Note: we need to provide the response variable y as this was not saved
@@ -3273,9 +3272,9 @@ class Booster:
                 random_effect_mean = random_effect_pred['mu']
             else:  # non-Gaussian data
                 fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
-                                                 num_iteration=num_iteration, raw_score=True, pred_leaf=pred_leaf,
-                                                 pred_contrib=pred_contrib, data_has_header=data_has_header,
-                                                 is_reshape=is_reshape)
+                                                 num_iteration=num_iteration, raw_score=True, pred_leaf=False,
+                                                 pred_contrib=False, data_has_header=data_has_header,
+                                                 is_reshape=False)
                 if raw_score:
                     # Note: we don't need to provide the response variable y as this is saved
                     #   in the gp_model ("in C++") for non-Gaussian data

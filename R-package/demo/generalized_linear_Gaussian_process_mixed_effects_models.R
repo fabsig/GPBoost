@@ -44,14 +44,15 @@ summary(gp_model)
 group_test <- 1:m
 X_test <- cbind(rep(1,m),rep(0,m))
 # Predict latent variable
-pred_lin <- predict(gp_model, X_pred = X_test, group_data_pred = group_test,
+pred <- predict(gp_model, X_pred = X_test, group_data_pred = group_test,
                     predict_var = TRUE, predict_response = FALSE)
-pred_lin$mu[1:5] # Predicted latent mean
-pred_lin$var[1:5] # Predicted latent variance
+pred$mu[1:5] # Predicted latent mean
+pred$var[1:5] # Predicted latent variance
 # Predict response variable
-pred_lin_resp <- predict(gp_model, X_pred = X_test,
-                         group_data_pred = group_test, predict_response = TRUE)
-pred_lin_resp$mu[1:5] # Predicted response variable (label)
+pred_resp <- predict(gp_model, X_pred = X_test, group_data_pred = group_test,
+                         predict_var = TRUE, predict_response = TRUE)
+pred_resp$mu[1:5] # Predicted response variable (label)
+pred_resp$var[1:5] # Predicted varianec of response
 
 
 #--------------------Gaussian process model----------------

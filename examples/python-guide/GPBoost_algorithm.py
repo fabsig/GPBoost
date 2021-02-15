@@ -26,6 +26,7 @@ f = f1d(X[:, 0])
 xi = np.sqrt(0.01) * np.random.normal(size=n)  # simulate error term
 y = f + eps + xi  # observed data
 
+#--------------------Training----------------
 # define GPModel
 gp_model = gpb.GPModel(group_data=group)
 # The default optimizer for covariance parameters (hyperparameters) is Fisher scoring.
@@ -51,7 +52,15 @@ bst = gpb.train(params=params,
 # Estimated random effects model
 gp_model.summary()
 
-# predict
+# Showing training loss
+gp_model = gpb.GPModel(group_data=group)
+bst = gpb.train(params=params,
+                train_set=data_train,
+                gp_model=gp_model,
+                num_boost_round=15,
+                valid_sets=data_train)
+
+#--------------------Prediction----------------
 group_test = np.arange(m)
 Xtest = np.zeros((m, 2))
 Xtest[:, 0] = np.linspace(0, 1, m)
@@ -72,15 +81,7 @@ plt.title("Comparison of true and fitted fixed effect")
 plt.legend()
 plt.show()
 
-# Showing training loss
-gp_model = gpb.GPModel(group_data=group)
-bst = gpb.train(params=params,
-                train_set=data_train,
-                gp_model=gp_model,
-                num_boost_round=16,
-                valid_sets=data_train)
-
-# Using validation set
+#--------------------Using a validation set----------------
 np.random.seed(1)
 train_ind = np.random.choice(n, int(0.9 * n), replace=False)
 test_ind = [i for i in range(n) if i not in train_ind]
@@ -117,7 +118,26 @@ bst = gpb.train(params=params,
 gpb.plot_metric(evals_result, figsize=(10, 5))
 plt.show()
 
-# Do Newton updates for tree leaves
+#--------------------Saving a booster with a gp_model and loading it from a file----------------
+# Train model and make prediction
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+data_train = gpb.Dataset(X, y)
+bst = gpb.train(params=params, train_set=data_train,
+                gp_model=gp_model, num_boost_round=15)
+group_test = np.array([1,2,-1])
+Xtest = np.random.rand(len(group_test), 2)
+pred = bst.predict(data=Xtest, group_data_pred=group_test, predict_var=True)
+# Save model
+bst.save_model('model.txt')
+# Load from file and make predictions again
+bst_loaded = gpb.Booster(model_file = 'model.txt')
+pred_loaded = bst_loaded.predict(data=Xtest, group_data_pred=group_test, predict_var=True)
+# Check equality
+print(pred['fixed_effect'] - pred_loaded['fixed_effect'])
+print(pred['random_effect_mean'] - pred_loaded['random_effect_mean'])
+print(pred['random_effect_cov'] - pred_loaded['random_effect_cov'])
+
+#--------------------Do Newton updates for tree leaves----------------
 print("Training with Newton updates for tree leaves")
 params = { 'objective': 'regression_l2',
             'learning_rate': 0.05,
@@ -137,30 +157,6 @@ bst = gpb.train(params=params,
 # plot validation scores
 gpb.plot_metric(evals_result, figsize=(10, 5))
 plt.show()
-
-#--------------------Saving a booster with a gp_model and loading it from a file----------------
-# Train model and make prediction
-gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
-data_train = gpb.Dataset(X, y)
-params = { 'objective': 'regression_l2',
-            'learning_rate': 0.05,
-            'max_depth': 6,
-            'min_data_in_leaf': 5,
-            'verbose': 0 }
-bst = gpb.train(params=params, train_set=data_train,
-                gp_model=gp_model, num_boost_round=15)
-group_test = np.array([1,2,-1])
-Xtest = np.random.rand(len(group_test), 2)
-pred = bst.predict(data=Xtest, group_data_pred=group_test, predict_var=True)
-# Save model
-bst.save_model('model.txt')
-# Load from file and make predictions again
-bst_loaded = gpb.Booster(model_file = 'model.txt')
-pred_loaded = bst_loaded.predict(data=Xtest, group_data_pred=group_test, predict_var=True)
-# Check equality
-pred['fixed_effect'] - pred_loaded['fixed_effect']
-pred['random_effect_mean'] - pred_loaded['random_effect_mean']
-pred['random_effect_cov'] - pred_loaded['random_effect_cov']
 
 
 # --------------------Combine tree-boosting and Gaussian process model----------------
@@ -226,43 +222,4 @@ pred['fixed_effect']
 pred['random_effect_mean']
 # Predicted (posterior) covariance matrix of GP
 pred['random_effect_cov']
-
-
-#--------------------Saving a booster with a gp_model and loading it from a file----------------
-# Simulate data
-n = 5000  # number of samples
-m = 500  # number of groups
-np.random.seed(1)
-group = np.arange(n)  # grouping variable
-for i in range(m):
-    group[int(i * n / m):int((i + 1) * n / m)] = i
-b1 = np.random.normal(size=m)  # simulate random effects
-eps = b1[group]
-X = np.random.rand(n, 2)
-f = f1d(X[:, 0])
-xi = np.sqrt(0.01) * np.random.normal(size=n)  # simulate error term
-y = f + eps + xi  # observed data
-
-# Train model and make prediction
-gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
-data_train = gpb.Dataset(X, y)
-params = { 'objective': 'regression_l2',
-            'learning_rate': 0.05,
-            'max_depth': 6,
-            'min_data_in_leaf': 5,
-            'verbose': 0 }
-bst = gpb.train(params=params, train_set=data_train,
-                gp_model=gp_model, num_boost_round=15)
-group_test = np.array([1,2,-1])
-Xtest = np.random.rand(len(group_test), 2)
-pred = bst.predict(data=Xtest, group_data_pred=group_test, predict_var=True)
-# Save model
-bst.save_model('model.txt')
-# Load from file and make predictions again
-bst_loaded = gpb.Booster(model_file = 'model.txt')
-pred_loaded = bst_loaded.predict(data=Xtest, group_data_pred=group_test, predict_var=True)
-# Check equality
-pred['fixed_effect'] - pred_loaded['fixed_effect']
-pred['random_effect_mean'] - pred_loaded['random_effect_mean']
-pred['random_effect_cov'] - pred_loaded['random_effect_cov']
 
