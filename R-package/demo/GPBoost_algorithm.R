@@ -84,27 +84,7 @@ dtest <- gpb.Dataset.create.valid(dtrain, data = X[-train_ind,], label = y[-trai
 valids <- list(test = dtest)
 gp_model <- GPModel(group_data = group[train_ind])
 
-# Do not include random effect predictions for validation
-print("Training with validation data and use_gp_model_for_validation = FALSE")
-bst <- gpb.train(data = dtrain,
-                 gp_model = gp_model,
-                 nrounds = 100,
-                 learning_rate = 0.05,
-                 max_depth = 6,
-                 min_data_in_leaf = 5,
-                 objective = "regression_l2",
-                 verbose = 1,
-                 valids = valids,
-                 early_stopping_rounds = 5,
-                 use_gp_model_for_validation = FALSE)
-print(paste0("Optimal number of iterations: ", bst$best_iter,
-             ", best test error: ", bst$best_score))
-# Plot validation error
-val_error <- unlist(bst$record_evals$test$l2$eval)
-plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
-     xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
-
-# Include random effect predictions for validation (observe the lower test error)
+# Include random effect predictions for validation (=default)
 gp_model <- GPModel(group_data = group[train_ind])
 gp_model$set_prediction_data(group_data_pred = group[-train_ind])
 print("Training with validation data and use_gp_model_for_validation = TRUE ")
@@ -126,6 +106,26 @@ val_error <- unlist(bst$record_evals$test$l2$eval)
 plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
      xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
 
+# Do not include random effect predictions for validation (observe the higher test error)
+print("Training with validation data and use_gp_model_for_validation = FALSE")
+bst <- gpb.train(data = dtrain,
+                 gp_model = gp_model,
+                 nrounds = 100,
+                 learning_rate = 0.05,
+                 max_depth = 6,
+                 min_data_in_leaf = 5,
+                 objective = "regression_l2",
+                 verbose = 1,
+                 valids = valids,
+                 early_stopping_rounds = 5,
+                 use_gp_model_for_validation = FALSE)
+print(paste0("Optimal number of iterations: ", bst$best_iter,
+             ", best test error: ", bst$best_score))
+# Plot validation error
+val_error <- unlist(bst$record_evals$test$l2$eval)
+plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
+     xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
+
 #--------------------Do Newton updates for tree leaves---------------
 print("Training with Newton updates for tree leaves")
 bst <- gpb.train(data = dtrain,
@@ -138,7 +138,7 @@ bst <- gpb.train(data = dtrain,
                  verbose = 1,
                  valids = valids,
                  early_stopping_rounds = 5,
-                 use_gp_model_for_validation = FALSE,
+                 use_gp_model_for_validation = TRUE,
                  leaves_newton_update = TRUE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
              ", best test error: ", bst$best_score))
@@ -250,7 +250,6 @@ cvbst <- gpb.cv(params = params,
               nfold = 4,
               eval = "l2",
               early_stopping_rounds = 5,
-              use_gp_model_for_validation = FALSE,
               fit_GP_cov_pars_OOS = TRUE)
 print(paste0("Optimal number of iterations: ", cvbst$best_iter))
 # Fitted model (note: ideally, one would have to find the optimal combination of 

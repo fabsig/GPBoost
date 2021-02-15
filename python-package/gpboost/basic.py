@@ -94,7 +94,6 @@ def _load_lib():
 
 _LIB = _load_lib()
 
-
 NUMERIC_TYPES = (int, float, bool)
 
 
@@ -218,6 +217,7 @@ def param_dict_to_str(data):
                     return "[{}]".format(','.join(map(str, x)))
                 else:
                     return str(x)
+
             pairs.append(str(key) + '=' + ','.join(map(to_string, val)))
         elif isinstance(val, (str, NUMERIC_TYPES)) or is_numeric(val):
             pairs.append(str(key) + '=' + str(val))
@@ -745,9 +745,9 @@ class _InnerPredictor:
         """Get size of prediction result."""
         if nrow > MAX_INT32:
             raise GPBoostError('GPBoost cannot perform prediction for data'
-                                'with number of rows greater than MAX_INT32 (%d).\n'
-                                'You can split your data into chunks'
-                                'and then concatenate predictions for them' % MAX_INT32)
+                               'with number of rows greater than MAX_INT32 (%d).\n'
+                               'You can split your data into chunks'
+                               'and then concatenate predictions for them' % MAX_INT32)
         n_preds = ctypes.c_int64(0)
         _safe_call(_LIB.LGBM_BoosterCalcNumPredict(
             self.handle,
@@ -796,7 +796,8 @@ class _InnerPredictor:
         if nrow > MAX_INT32:
             sections = np.arange(start=MAX_INT32, stop=nrow, step=MAX_INT32)
             # __get_num_preds() cannot work with nrow > MAX_INT32, so calculate overall number of predictions piecemeal
-            n_preds = [self.__get_num_preds(start_iteration, num_iteration, i, predict_type) for i in np.diff([0] + list(sections) + [nrow])]
+            n_preds = [self.__get_num_preds(start_iteration, num_iteration, i, predict_type) for i in
+                       np.diff([0] + list(sections) + [nrow])]
             n_preds_sections = np.array([0] + n_preds, dtype=np.intp).cumsum()
             preds = np.zeros(sum(n_preds), dtype=np.float64)
             for chunk, (start_idx_pred, end_idx_pred) in zip(np.array_split(mat, sections),
@@ -855,6 +856,7 @@ class _InnerPredictor:
 
     def __pred_for_csr(self, csr, start_iteration, num_iteration, predict_type):
         """Predict for a CSR data."""
+
         def inner_predict(csr, start_iteration, num_iteration, predict_type, preds=None):
             nrow = len(csr.indptr) - 1
             n_preds = self.__get_num_preds(start_iteration, num_iteration, nrow, predict_type)
@@ -939,15 +941,18 @@ class _InnerPredictor:
             n_preds_sections = np.array([0] + n_preds, dtype=np.intp).cumsum()
             preds = np.zeros(sum(n_preds), dtype=np.float64)
             for (start_idx, end_idx), (start_idx_pred, end_idx_pred) in zip(zip(sections, sections[1:]),
-                                                                            zip(n_preds_sections, n_preds_sections[1:])):
+                                                                            zip(n_preds_sections,
+                                                                                n_preds_sections[1:])):
                 # avoid memory consumption by arrays concatenation operations
-                inner_predict(csr[start_idx:end_idx], start_iteration, num_iteration, predict_type, preds[start_idx_pred:end_idx_pred])
+                inner_predict(csr[start_idx:end_idx], start_iteration, num_iteration, predict_type,
+                              preds[start_idx_pred:end_idx_pred])
             return preds, nrow
         else:
             return inner_predict(csr, start_iteration, num_iteration, predict_type)
 
     def __pred_for_csc(self, csc, start_iteration, num_iteration, predict_type):
         """Predict for a CSC data."""
+
         def inner_predict_sparse(csc, start_iteration, num_iteration, predict_type):
             ptr_indptr, type_ptr_indptr, __ = c_int_array(csc.indptr)
             ptr_data, type_ptr_data, _ = c_float_array(csc.data)
@@ -1170,7 +1175,8 @@ class Dataset:
                     assert num_data == len(used_indices)
                     for i in range(len(used_indices)):
                         for j in range(predictor.num_class):
-                            sub_init_score[i * predictor.num_class + j] = init_score[used_indices[i] * predictor.num_class + j]
+                            sub_init_score[i * predictor.num_class + j] = init_score[
+                                used_indices[i] * predictor.num_class + j]
                     init_score = sub_init_score
             if predictor.num_class > 1:
                 # need to regroup init_score
@@ -1204,8 +1210,8 @@ class Dataset:
         # process for args
         params = {} if params is None else params
         args_names = (getattr(self.__class__, '_lazy_init')
-                      .__code__
-                      .co_varnames[:getattr(self.__class__, '_lazy_init').__code__.co_argcount])
+                          .__code__
+                          .co_varnames[:getattr(self.__class__, '_lazy_init').__code__.co_argcount])
         for key, _ in params.items():
             if key in args_names:
                 _log_warning('{0} keyword has been found in `params` and will be ignored.\n'
@@ -1433,8 +1439,9 @@ class Dataset:
                     assert used_indices.flags.c_contiguous
                     if self.reference.group is not None:
                         group_info = np.array(self.reference.group).astype(np.int32, copy=False)
-                        _, self.group = np.unique(np.repeat(range(len(group_info)), repeats=group_info)[self.used_indices],
-                                                  return_counts=True)
+                        _, self.group = np.unique(
+                            np.repeat(range(len(group_info)), repeats=group_info)[self.used_indices],
+                            return_counts=True)
                     self.handle = ctypes.c_void_p()
                     params_str = param_dict_to_str(self.params)
                     _safe_call(_LIB.LGBM_DatasetGetSubset(
@@ -1449,7 +1456,8 @@ class Dataset:
                         self.set_group(self.group)
                     if self.get_label() is None:
                         raise ValueError("Label should not be None.")
-                    if isinstance(self._predictor, _InnerPredictor) and self._predictor is not self.reference._predictor:
+                    if isinstance(self._predictor,
+                                  _InnerPredictor) and self._predictor is not self.reference._predictor:
                         self.get_data()
                         self._set_init_score_by_predictor(self._predictor, self.data, used_indices)
             else:
@@ -1697,7 +1705,7 @@ class Dataset:
                 return self._free_handle()
         else:
             raise GPBoostError("Cannot set categorical feature after freed raw data, "
-                                "set free_raw_data=False when construct Dataset to avoid this.")
+                               "set free_raw_data=False when construct Dataset to avoid this.")
 
     def _set_predictor(self, predictor):
         """Set predictor for continued training.
@@ -1705,7 +1713,8 @@ class Dataset:
         It is not recommended for user to call this function.
         Please use init_model argument in engine.train() or engine.cv() instead.
         """
-        if predictor is self._predictor and (predictor is None or predictor.current_iteration() == self._predictor.current_iteration()):
+        if predictor is self._predictor and (
+                predictor is None or predictor.current_iteration() == self._predictor.current_iteration()):
             return self
         if self.handle is None:
             self._predictor = predictor
@@ -1717,7 +1726,7 @@ class Dataset:
             self._set_init_score_by_predictor(self._predictor, self.reference.data, self.used_indices)
         else:
             raise GPBoostError("Cannot set predictor after freed raw data, "
-                                "set free_raw_data=False when construct Dataset to avoid this.")
+                               "set free_raw_data=False when construct Dataset to avoid this.")
         return self
 
     def set_reference(self, reference):
@@ -1744,7 +1753,7 @@ class Dataset:
             return self._free_handle()
         else:
             raise GPBoostError("Cannot set reference after freed raw data, "
-                                "set free_raw_data=False when construct Dataset to avoid this.")
+                               "set free_raw_data=False when construct Dataset to avoid this.")
 
     def set_feature_name(self, feature_name):
         """Set feature name.
@@ -1885,7 +1894,7 @@ class Dataset:
         if reserved_string_buffer_size < required_string_buffer_size.value:
             raise BufferError(
                 "Allocated feature name buffer size ({}) was inferior to the needed size ({})."
-                .format(reserved_string_buffer_size, required_string_buffer_size.value)
+                    .format(reserved_string_buffer_size, required_string_buffer_size.value)
             )
         return [string_buffers[i].value.decode('utf-8') for i in range(num_feature)]
 
@@ -1950,7 +1959,7 @@ class Dataset:
             self.need_slice = False
         if self.data is None:
             raise GPBoostError("Cannot call `get_data` after freed raw data, "
-                                "set free_raw_data=False when construct Dataset to avoid this.")
+                               "set free_raw_data=False when construct Dataset to avoid this.")
         return self.data
 
     def get_group(self):
@@ -2081,7 +2090,7 @@ class Dataset:
             elif isinstance(self.data, pd_DataFrame):
                 if not PANDAS_INSTALLED:
                     raise GPBoostError("Cannot add features to DataFrame type of raw data "
-                                        "without pandas installed")
+                                       "without pandas installed")
                 if isinstance(other.data, np.ndarray):
                     self.data = concat((self.data, pd_DataFrame(other.data)),
                                        axis=1, ignore_index=True)
@@ -2165,6 +2174,7 @@ class Booster:
         gp_model : GPModel or None, optional (default=None)
             GPModel object for Gaussian process boosting.
         """
+        global raw_data
         self.handle = None
         self.network = False
         self.__need_reload_eval_info = True
@@ -2268,6 +2278,26 @@ class Booster:
             self.pandas_categorical = train_set.pandas_categorical
             self.train_set_version = train_set.version
         elif model_file is not None:
+            ## Does it have a gp_model?
+            with open(model_file) as fp:
+                for i, line in enumerate(fp):
+                    if i == 2:
+                        has_gp_model = line
+                    elif i>2:
+                        break
+            if has_gp_model == "has_gp_model=1\n":
+                self.has_gp_model = True
+                filename_gp_model = model_file + "_gp_model.json"
+                filename_raw_data = model_file + "_raw_data.json"
+                self.gp_model = GPModel(model_file=filename_gp_model)
+                with open(filename_raw_data, "r") as f:
+                    raw_data = json.load(f)
+                label = np.array(raw_data["label"])
+                data = np.array(raw_data["data"])
+                self.train_set = Dataset(data=data, label=label)
+            elif has_gp_model != "has_gp_model=0\n":
+                raise ValueError("File does not have correct format")
+
             # Prediction task
             out_num_iterations = ctypes.c_int(0)
             self.handle = ctypes.c_void_p()
@@ -2557,7 +2587,7 @@ class Booster:
                             .format(type(data).__name__))
         if data._predictor is not self.__init_predictor:
             raise GPBoostError("Add validation data failed, "
-                                "you should use same predictor for these data")
+                               "you should use same predictor for these data")
         _safe_call(_LIB.LGBM_BoosterAddValidData(
             self.handle,
             data.construct().handle))
@@ -2633,7 +2663,7 @@ class Booster:
                                 .format(type(train_set).__name__))
             if train_set._predictor is not self.__init_predictor:
                 raise GPBoostError("Replace training data failed, "
-                                    "you should use same predictor for these data")
+                                   "you should use same predictor for these data")
             self.train_set = train_set
             _safe_call(_LIB.LGBM_BoosterResetTrainingData(
                 self.handle,
@@ -2925,6 +2955,20 @@ class Booster:
             ctypes.c_int(importance_type_int),
             c_str(filename)))
         _dump_pandas_categorical(self.pandas_categorical, filename)
+        # Save gp_model
+        if self.has_gp_model:
+            if self.train_set.data is None:
+                raise GPBoostError("Cannot save to file. Set free_raw_data = False when you construct the Dataset")
+            filename_gp_model = filename + "_gp_model.json"
+            filename_raw_data = filename + "_raw_data.json"
+            self.gp_model.save_model(filename_gp_model)
+            raw_data = {}
+            raw_data['data'] = self.train_set.data
+            raw_data['label'] = self.train_set.label
+            with open(filename_raw_data, 'w+') as f:
+                json.dump(raw_data, f, default=json_default_with_numpy)
+            print("gp_model and raw data have been saved to the following files: " + filename_gp_model + " and " + filename_raw_data)
+
         return self
 
     def shuffle_models(self, start_iteration=0, end_iteration=-1):
@@ -3196,7 +3240,7 @@ class Booster:
             response_var = None
 
             if self.train_set.data is None:
-                raise GPBoostError("cannot make predictions for Gaussian process. "
+                raise GPBoostError("Cannot make predictions for Gaussian process. "
                                    "Set free_raw_data = False when you construct the Dataset")
             fixed_effect_train = predictor.predict(self.train_set.data, num_iteration,
                                                    True, False, False, False, False)
@@ -3401,7 +3445,7 @@ class Booster:
         if reserved_string_buffer_size < required_string_buffer_size.value:
             raise BufferError(
                 "Allocated feature name buffer size ({}) was inferior to the needed size ({})."
-                .format(reserved_string_buffer_size, required_string_buffer_size.value)
+                    .format(reserved_string_buffer_size, required_string_buffer_size.value)
             )
         return [string_buffers[i].value.decode('utf-8') for i in range(num_feature)]
 
@@ -3471,6 +3515,7 @@ class Booster:
         result_array_like : numpy array or pandas DataFrame (if pandas is installed)
             If ``xgboost_style=True``, the histogram of used splitting values for the specified feature.
         """
+
         def add(root):
             """Recursively add thresholds."""
             if 'split_index' in root:  # non-leaf
@@ -3600,7 +3645,7 @@ class Booster:
                 if reserved_string_buffer_size < required_string_buffer_size.value:
                     raise BufferError(
                         "Allocated eval name buffer size ({}) was inferior to the needed size ({})."
-                        .format(reserved_string_buffer_size, required_string_buffer_size.value)
+                            .format(reserved_string_buffer_size, required_string_buffer_size.value)
                     )
                 self.__name_inner_eval = \
                     [string_buffers[i].value.decode('utf-8') for i in range(self.__num_inner_eval)]
@@ -3646,6 +3691,7 @@ class Booster:
                 self.__attr.pop(key, None)
         return self
 
+
 class GPModel(object):
     """Gaussian process or mixed effects model ."""
 
@@ -3669,7 +3715,8 @@ class GPModel(object):
                  vecchia_pred_type="order_obs_first_cond_obs_only",
                  num_neighbors_pred=None,
                  cluster_ids=None,
-                 free_raw_data=False):
+                 free_raw_data=False,
+                 model_file=None):
         """Initialize a GPModel.
 
         Parameters
@@ -3718,12 +3765,9 @@ class GPModel(object):
             free_raw_data : bool, optional (default=False)
                 If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python
                 after initialization
+            model_file : string or None, optional (default=None)
+            Path to the model file.
         """
-        if num_neighbors_pred is None:
-            num_neighbors_pred = num_neighbors
-
-        if group_data is None and gp_coords is None:
-            raise ValueError("Both group_data and gp_coords are None. Provide at least one of them")
 
         # Initialize variables
         self.handle = ctypes.c_void_p()
@@ -3754,7 +3798,7 @@ class GPModel(object):
             self.cov_par_names = []
         self.coef_names = None
         self.cluster_ids = None
-        self.free_raw_data = False
+        self.free_raw_data = free_raw_data
         self.num_data_pred = 0
         self.params = {"maxit": 1000,
                        "delta_rel_conv": 1e-6,
@@ -3770,8 +3814,55 @@ class GPModel(object):
                        "convergence_criterion": "relative_change_in_log_likelihood",
                        "std_dev": False}
         self.prediction_data_is_set = False
-        self.free_raw_data = False
         self.vecchia_approx = vecchia_approx
+        self.model_has_been_loaded_from_saved_file = False
+        self.cov_pars_loaded_from_file = None
+        self.y_loaded_from_file = None
+        self.coefs_loaded_from_file = None
+        self.X_loaded_from_file = None
+
+        if model_file is not None:
+            with open(model_file, "r") as f:
+                save_data = json.load(f)
+            # Set feature data overwriting arguments for constructor
+            if save_data["group_data"] is not None:
+                group_data = np.array(save_data["group_data"])
+            if save_data["group_rand_coef_data"] is not None:
+                group_rand_coef_data = np.array(save_data["group_rand_coef_data"])
+            if save_data["ind_effect_group_rand_coef"] is not None:
+                ind_effect_group_rand_coef = np.array(save_data["ind_effect_group_rand_coef"])
+            if save_data["gp_coords"] is not None:
+                gp_coords = np.array(save_data["gp_coords"])
+            if save_data["gp_rand_coef_data"] is not None:
+                gp_rand_coef_data = np.array(save_data["gp_rand_coef_data"])
+            cov_function = save_data["cov_function"]
+            cov_fct_shape = save_data["cov_fct_shape"]
+            vecchia_approx = save_data["vecchia_approx"]
+            num_neighbors = save_data["num_neighbors"]
+            vecchia_ordering = save_data["vecchia_ordering"]
+            vecchia_pred_type = save_data["vecchia_pred_type"]
+            num_neighbors_pred = save_data["num_neighbors_pred"]
+            if save_data["cluster_ids"] is not None:
+                cluster_ids = np.array(save_data["cluster_ids"])
+            likelihood = save_data["likelihood"]
+            # Set additionaly required data
+            self.model_has_been_loaded_from_saved_file = True
+            if save_data["cov_pars"] is not None:
+                self.cov_pars_loaded_from_file = np.array(save_data["cov_pars"])
+            if save_data["y"] is not None:
+                self.y_loaded_from_file = np.array(save_data["y"])
+            self.has_covariates = save_data["has_covariates"]
+            if save_data["has_covariates"]:
+                if save_data["coefs"] is not None:
+                    self.coefs_loaded_from_file = np.array(save_data["coefs"])
+                self.num_coef = save_data["num_coef"]
+                if save_data["X"] is not None:
+                    self.X_loaded_from_file = np.array(save_data["X"])
+
+        if num_neighbors_pred is None:
+            num_neighbors_pred = num_neighbors
+        if group_data is None and gp_coords is None:
+            raise ValueError("Both group_data and gp_coords are None. Provide at least one of them")
 
         # Define default NULL values for calling C function
         group_data_c = ctypes.c_void_p()
@@ -3944,6 +4035,12 @@ class GPModel(object):
             self.gp_rand_coef_data = None
             self.cluster_ids = None
 
+        if model_file is not None:
+            if save_data["params"]['init_cov_pars'] is not None:
+                save_data["params"]['init_cov_pars'] = np.array(save_data["params"]['init_cov_pars'])
+            self.set_optim_params(params=save_data["params"])
+            self.set_optim_coef_params(params=save_data["params"])
+
     def __check_params(self):
         if (self.cov_function not in self._SUPPORTED_COV_FUNCTIONS):
             raise ValueError("cov_function '{0:s}' not supported. ".format(self.cov_function))
@@ -4053,8 +4150,8 @@ class GPModel(object):
                     If True, (asymptotic) standard deviations are calculated for the covariance parameters
         """
 
-        if ((self.num_cov_pars == 1 and self.get_likelihood_name()=="gaussian") or
-            (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
+        if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or
+                (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
         if not isinstance(y, np.ndarray):
             raise ValueError("y needs to be a numpy.ndarray")
@@ -4135,8 +4232,8 @@ class GPModel(object):
         -------
         result : the value of the negative log-likelihood
         """
-        if ((self.num_cov_pars == 1 and self.get_likelihood_name()=="gaussian") or
-            (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
+        if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or
+                (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
         if not isinstance(y, np.ndarray):
             raise ValueError("y needs to be a numpy.ndarray")
@@ -4431,6 +4528,12 @@ class GPModel(object):
             the predicted covariance matrix (=None if 'predict_cov_mat=False'), and the thirs entry result['var'] are
             predicted variances (=None if 'predict_var=False')
         """
+
+        if self.model_has_been_loaded_from_saved_file:
+            if y is None:
+                y = self.y_loaded_from_file
+            if cov_pars is None:
+                cov_pars = self.cov_pars_loaded_from_file
         if predict_cov_mat and predict_var:
             predict_cov_mat = True
             predict_var = False
@@ -4554,8 +4657,18 @@ class GPModel(object):
                     raise ValueError("Incorrect number of data points in X_pred")
                 if X_pred.shape[1] != self.num_coef:
                     raise ValueError("Incorrect number of covariates in X_pred")
-                X_pred_c = X_pred.astype(np.float64)
-                X_pred_c, _, _ = c_float_array(X_pred_c.flatten(order='F'))
+                if self.model_has_been_loaded_from_saved_file:
+                    if fixed_effects is None:
+                        fixed_effects = self.X_loaded_from_file.dot(self.coefs_loaded_from_file)
+                    else:
+                        fixed_effects = fixed_effects + self.X_loaded_from_file.dot(self.coefs_loaded_from_file)
+                    if fixed_effects_pred is None:
+                        fixed_effects_pred = X_pred.dot(self.coefs_loaded_from_file)
+                    else:
+                        fixed_effects_pred = fixed_effects_pred + X_pred.dot(self.coefs_loaded_from_file)
+                else:
+                    X_pred_c = X_pred.astype(np.float64)
+                    X_pred_c, _, _ = c_float_array(X_pred_c.flatten(order='F'))
         else:
             if not self.prediction_data_is_set:
                 raise ValueError("No data has been set for making predictions. Call set_prediction_data first")
@@ -4753,6 +4866,82 @@ class GPModel(object):
             gp_rand_coef_data_pred_c,
             X_pred_c))
 
+    def get_response_data(self):
+        """Get response variable data.
+        Returns
+        -------
+        y : a numpy array with the response variable data
+        """
+
+        y = np.zeros(self.num_data, dtype=np.float64)
+        _safe_call(_LIB.GPB_GetResponseData(
+            self.handle,
+            y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))))
+        return y
+
+    def get_covariate_data(self):
+        """Get response variable data.
+        Returns
+        -------
+        y : a numpy array with the response variable data
+        """
+
+        if not self.has_covariates:
+            raise ValueError("Model has no covariate data for linear predictor")
+        covariate_data = np.zeros(self.num_data * self.num_coef, dtype=np.float64)
+        _safe_call(_LIB.GPB_GetCovariateData(
+            self.handle,
+            covariate_data.ctypes.data_as(ctypes.POINTER(ctypes.c_double))))
+        covariate_data = covariate_data.reshape((self.num_data, self.num_coef), order='F')
+        return covariate_data
+
+    def save_model(self, filename):
+        """Save a GPModel to file.
+
+        Parameters
+        ----------
+        filename : string
+            Filename to save a GPModel.
+
+        Returns
+        -------
+        self : GPModel
+            Returns self.
+        """
+
+        if (self.free_raw_data):
+            raise ValueError("Cannot save when free_raw_data=TRUE has been set")
+
+        save_data = {}
+        # Parameters
+        save_data["params"] = self.get_optim_params()
+        save_data["likelihood"] = self.get_likelihood_name()
+        save_data["cov_pars"] = self.get_cov_pars()
+        # Response data
+        save_data["y"] = self.get_response_data()
+        # Feature data
+        save_data["group_data"] = self.group_data
+        save_data["group_rand_coef_data"] = self.group_rand_coef_data
+        save_data["gp_coords"] = self.gp_coords
+        save_data["gp_rand_coef_data"] = self.gp_rand_coef_data
+        save_data["ind_effect_group_rand_coef"] = self.ind_effect_group_rand_coef
+        save_data["cluster_ids"] = self.cluster_ids
+        save_data["vecchia_approx"] = self.vecchia_approx
+        save_data["num_neighbors"] = self.num_neighbors
+        save_data["vecchia_ordering"] = self.vecchia_ordering
+        save_data["vecchia_pred_type"] = self.vecchia_pred_type
+        save_data["num_neighbors_pred"] = self.num_neighbors_pred
+        save_data["cov_function"] = self.cov_function
+        save_data["cov_fct_shape"] = self.cov_fct_shape
+        # Covariate data
+        save_data["has_covariates"] = self.has_covariates
+        if self.has_covariates:
+            save_data["coefs"] = self.get_coef()
+            save_data["num_coef"] = self.num_coef
+            save_data["X"] = self.get_covariate_data()
+        with open(filename, 'w+') as f:
+            json.dump(save_data, f, default=json_default_with_numpy)
+
     def get_likelihood_name(self):
         buffer_len = 1 << 20
         string_buffer = ctypes.create_string_buffer(buffer_len)
@@ -4781,4 +4970,3 @@ class GPModel(object):
             self.handle,
             ctypes.byref(num_it)))
         return num_it.value
-

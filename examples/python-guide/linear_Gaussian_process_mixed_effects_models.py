@@ -7,10 +7,11 @@ plt.style.use('ggplot')
 print("It is recommended that the examples are run in interactive mode")
 
 """
-This script contains various examples on 
-  (i) grouped (or clustered) random effects models
-  (ii) Gaussian process (GP) models
-  (iii) models that combine GP and grouped random effects
+This script contains various examples on how to do inference and prediction for
+  - grouped (or clustered) random effects models
+  - Gaussian process (GP) models
+  - models that combine GP and grouped random effects
+and on how to save models
 """
 
 # --------------------Grouped random effects model: single-level random effect----------------
@@ -98,7 +99,7 @@ gp_model.summary()
 # Simulate data
 np.random.seed(1)
 X = np.column_stack(
-    (np.random.uniform(size=n), np.random.uniform(size=n)))  # desing matrix / covariate data for fixed effect
+    (np.random.uniform(size=n), np.random.uniform(size=n)))  # design matrix / covariate data for fixed effect
 beta = np.array([3, 3])  # regression coefficents
 y = eps2 + xi + X.dot(beta)  # add fixed effect to observed data
 # Define and fit model
@@ -167,9 +168,9 @@ ntest = 5
 coords_test = np.column_stack(
     (np.random.uniform(size=ntest), np.random.uniform(size=ntest))) / 10.
 pred = gp_model.predict(gp_coords_pred=coords_test, predict_cov_mat=True)
-print("Predicted (posterior/conditional) mean of GP")
+# Predicted (posterior/conditional) mean of GP
 pred['mu']
-print("Predicted (posterior/conditional) covariance matrix of GP")
+# Predicted (posterior/conditional) covariance matrix of GP
 pred['cov']
 
 # Evaluate negative log-likelihood
@@ -216,6 +217,7 @@ gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential", gp_rand_coe
 gp_model.fit(y=y, params={"std_dev": True})
 gp_model.summary()
 
+
 # --------------------Combine Gaussian process with grouped random effects----------------
 n = 200  # number of samples
 m = 25  # number of categories / levels for grouping variable
@@ -250,3 +252,37 @@ y = eps + xi
 gp_model = gpb.GPModel(group_data=group, gp_coords=coords, cov_function="exponential")
 gp_model.fit(y=y, params={"std_dev": True})
 gp_model.summary()
+
+
+#--------------------Saving a GPModel and loading it from a file----------------
+# Simulate data
+n = 100  # number of samples
+m = 25  # number of categories / levels for grouping variable
+np.random.seed(1)
+# simulate grouped random effects
+group = np.arange(n)  # grouping variable
+for i in range(m):
+    group[int(i * n / m):int((i + 1) * n / m)] = i
+b1 = np.random.normal(size=m)  # simulate random effects
+eps = b1[group]
+# simulate fixed effects
+X = np.column_stack(
+    (np.ones(n), np.random.uniform(size=n)))  # design matrix / covariate data for fixed effect
+beta = np.array([0, 3])  # regression coefficents
+xi = np.sqrt(0.01) * np.random.normal(size=n)  # simulate error term
+y = eps + xi + X.dot(beta) # observed data
+
+# Train model and make predictions
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+gp_model.fit(y=y, X=X)
+group_test = np.array([1,2,-1])
+X_test = np.column_stack((np.ones(len(group_test)), np.random.uniform(size=len(group_test))))
+pred = gp_model.predict(group_data_pred=group_test, X_pred=X_test, predict_var = True)
+# Save model to file
+gp_model.save_model('gp_model.json')
+# Load from file and make predictions again
+gp_model_loaded = gpb.GPModel(model_file = 'gp_model.json')
+pred_loaded = gp_model_loaded.predict(group_data_pred=group_test, X_pred=X_test, predict_var = True)
+# Check equality
+pred['mu'] - pred_loaded['mu']
+pred['var'] - pred_loaded['var']

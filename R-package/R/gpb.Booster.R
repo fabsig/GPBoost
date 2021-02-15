@@ -37,7 +37,6 @@ Booster <- R6::R6Class(
       params <- append(params, list(...))
       handle <- gpb.null.handle()
       
-      
       if (!is.null(gp_model)) { # has gp_model
         # Check if gp_model is gpb.Dataset or not
         if (!gpb.check.r6.class(gp_model, "GPModel")) {
@@ -118,6 +117,21 @@ Booster <- R6::R6Class(
         # Do we have a model file as character?
         if (!is.character(modelfile)) {
           stop("gpb.Booster: Can only use a string as model file path")
+        }
+        
+        ##NEW
+        ## Does it have a gp_model?
+        con <- file(modelfile)
+        has_gp_model <- read.table(con,skip=2,nrow=1)
+        if (has_gp_model=="has_gp_model=1") {
+          private$has_gp_model = TRUE
+          filename_gp_model <- paste0(modelfile,"_gp_model.RData")
+          filename_raw_data <- paste0(modelfile,"_raw_data.RData")
+          private$gp_model <- gpb.GPModel$new(modelfile = filename_gp_model)
+          load(file = filename_raw_data)
+          private$train_set <- gpb.Dataset(data = raw_data, label = label)
+        } else if (has_gp_model!="has_gp_model=0") {
+          stop("gpb.load: file does not have correct format")
         }
         
         # Create booster from model
@@ -519,6 +533,7 @@ Booster <- R6::R6Class(
       
       # Save gp_model
       if (private$has_gp_model) {##NEW
+  
         if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
           stop("gpb.save: cannot save to file.
                 Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
@@ -529,7 +544,8 @@ Booster <- R6::R6Class(
         raw_data <- private$train_set$.__enclos_env__$private$raw_data
         label <- private$train_set$.__enclos_env__$private$info$label
         save(raw_data, label, file = filename_raw_data)
-        
+        message("gp_model and raw data have been saved to the following files: ", filename_gp_model, " and ", filename_raw_data)
+
       }
       
       return(invisible(self))
@@ -626,7 +642,7 @@ Booster <- R6::R6Class(
                                                 , reshape = FALSE )
         
         if(private$gp_model$get_likelihood_name() == "gaussian"){
-
+          
           residual = private$train_set$.__enclos_env__$private$info$label-fixed_effect_train
           # Note: we need to provide the response variable y as this was not saved
           #   in the gp_model ("in C++") for Gaussian data but was overwritten during training
@@ -675,7 +691,7 @@ Booster <- R6::R6Class(
                                             , reshape = FALSE )
           
           if (rawscore) {
-
+            
             # Note: we don't need to provide the response variable y as this is saved
             #   in the gp_model ("in C++") for non-Gaussian data
             random_effect_pred = private$gp_model$predict(group_data_pred = group_data_pred,
@@ -734,7 +750,7 @@ Booster <- R6::R6Class(
                     random_effect_cov = pred_var_cov,
                     response_mean = response_mean,
                     response_var = response_var))
-  
+        
       }##end GPBoost prediction
       else {##prediction without random effects
         return(
@@ -1158,24 +1174,7 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
     if (!file.exists(filename)) {
       stop(sprintf("gpb.load: file '%s' passed to filename does not exist", filename))
     }
-    ##NEW
-    bst <- Booster$new(modelfile = filename)
-    ## Does it have a gp_model?
-    con <- file(filename)
-    has_gp_model <- read.table(con,skip=2,nrow=1)
-    if (has_gp_model=="has_gp_model=1") {
-      bst$.__enclos_env__$private$has_gp_model = TRUE
-      filename_gp_model <- paste0(filename,"_gp_model.RData")
-      filename_raw_data <- paste0(filename,"_raw_data.RData")
-      gp_model <- loadGPModel(filename = filename_gp_model)
-      bst$.__enclos_env__$private$gp_model <- gp_model
-      load(file = filename_raw_data)
-      dtrain <- gpb.Dataset(data = raw_data, label = label)
-      bst$.__enclos_env__$private$train_set <- dtrain
-    } else if (has_gp_model!="has_gp_model=0") {
-      stop("gpb.load: file does not have correct format")
-    }
-    return(invisible(bst))
+    return(invisible(Booster$new(modelfile = filename)))
   }
   
   if (model_str_provided) {

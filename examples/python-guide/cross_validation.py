@@ -38,7 +38,6 @@ params = { 'objective': 'regression_l2',
             'min_data_in_leaf': 5,
             'verbose': 0 }
 
-print('Starting cross-validation...')
 # do cross-validation
 cvbst = gpb.cv(params=params, train_set=data_train,
                num_boost_round=100, early_stopping_rounds=5,
@@ -47,7 +46,6 @@ print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
 
 
 # --------------------Combine tree-boosting and grouped random effects model----------------
-print('Simulating data...')
 # Simulate data
 def f1d(x):
     """Non-linear function for simulation"""
@@ -89,19 +87,18 @@ params = { 'objective': 'regression_l2',
             'min_data_in_leaf': 5,
             'verbose': 0 }
 
-print('Starting cross-validation...')
 # do cross-validation
+gp_model = gpb.GPModel(group_data=group)
+cvbst = gpb.cv(params=params, train_set=data_train,
+               gp_model=gp_model, use_gp_model_for_validation=True,
+               num_boost_round=100, early_stopping_rounds=5,
+               nfold=2, verbose_eval=True, show_stdv=False, seed=1)
+print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
+
+# Do not include random effect predictions for validation (observe the higher test error)
 cvbst = gpb.cv(params=params, train_set=data_train,
                gp_model=gp_model, use_gp_model_for_validation=False,
                num_boost_round=100, early_stopping_rounds=5,
                nfold=2, verbose_eval=True, show_stdv=False, seed=1)
 print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
 
-# Include random effect predictions for validation (observe the lower test error)
-gp_model = gpb.GPModel(group_data=group)
-print("Running cross validation for GPBoost model and use_gp_model_for_validation = TRUE")
-cvbst = gpb.cv(params=params, train_set=data_train,
-               gp_model=gp_model, use_gp_model_for_validation=True,
-               num_boost_round=100, early_stopping_rounds=5,
-               nfold=2, verbose_eval=True, show_stdv=False, seed=1)
-print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))

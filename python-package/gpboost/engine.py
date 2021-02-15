@@ -308,8 +308,8 @@ def train(params, train_set, num_boost_round=100,
     booster.best_score = collections.defaultdict(collections.OrderedDict)
     for dataset_name, eval_name, score, _ in evaluation_result_list:
         booster.best_score[dataset_name][eval_name] = score
-    if not keep_training_booster:
-        booster.model_from_string(booster.model_to_string(), False)
+    if not keep_training_booster and gp_model is None:
+        booster.model_from_string(booster.model_to_string(), False).free_dataset()
 
     return booster
 

@@ -19,28 +19,33 @@ Load GPBoost takes in either a file path or model string.
               If both are provided, Load will default to loading from file
 }
 \examples{
-\donttest{
-data(agaricus.train, package = "gpboost")
-train <- agaricus.train
-dtrain <- gpb.Dataset(train$data, label = train$label)
-data(agaricus.test, package = "gpboost")
-test <- agaricus.test
-dtest <- gpb.Dataset.create.valid(dtrain, test$data, label = test$label)
-params <- list(objective = "regression", metric = "l2")
-valids <- list(test = dtest)
-model <- gpb.train(
-  params = params
-  , data = dtrain
-  , nrounds = 5L
-  , valids = valids
-  , min_data = 1L
-  , learning_rate = 1.0
-  , early_stopping_rounds = 3L
-)
-model_file <- tempfile(fileext = ".txt")
-gpb.save(model, model_file)
-load_booster <- gpb.load(filename = model_file)
-model_string <- model$save_model_to_string(NULL) # saves best iteration
-load_booster_from_str <- gpb.load(model_str = model_string)
-}
+
+library(gpboost)
+data(GPBoost_data, package = "gpboost")
+
+# Train model and make prediction
+gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
+bst <- gpboost(data = X,
+               label = y,
+               gp_model = gp_model,
+               nrounds = 16,
+               learning_rate = 0.05,
+               max_depth = 6,
+               min_data_in_leaf = 5,
+               objective = "regression_l2",
+               verbose = 0)
+pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
+                predict_var= TRUE)
+# Save model to file
+filename <- tempfile(fileext = ".RData")
+gpb.save(bst,filename = filename)
+# Load from file and make predictions again
+bst_loaded <- gpb.load(filename = filename)
+pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test[,1],
+                       predict_var= TRUE)
+# Check equality
+pred$fixed_effect - pred_loaded$fixed_effect
+pred$random_effect_mean - pred_loaded$random_effect_mean
+pred$random_effect_cov - pred_loaded$random_effect_cov
+
 }
