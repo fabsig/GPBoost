@@ -11,7 +11,6 @@
 
 #define _USE_MATH_DEFINES // for M_PI
 #include <cmath>
-#include <GPBoost/log.h>
 #include <GPBoost/type_defs.h>
 #include <GPBoost/re_comp.h>
 #include <GPBoost/sparse_matrix_utils.h>
@@ -32,11 +31,15 @@
 //std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 //std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
 //double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
-//Log::Info("Time for : %g", el_time);// Only for debugging
+//Log::REInfo("Time for : %g", el_time);// Only for debugging
 
 #ifndef M_PI
 #define M_PI      3.1415926535897932384626433832795029
 #endif
+
+#include <LightGBM/utils/log.h>
+using LightGBM::Log;
+
 
 namespace GPBoost {
 
@@ -109,7 +112,7 @@ namespace GPBoost {
 			std::vector<std::vector<string_t>> re_group_levels;//Matrix with group levels for the grouped random effects (re_group_levels[j] contains the levels for RE number j)
 			if (num_re_group > 0) {
 				if (vecchia_approx) {
-					Log::Fatal("The Veccia approximation cannot be used when there are grouped random effects (in the current implementation).");
+					Log::REFatal("The Veccia approximation cannot be used when there are grouped random effects (in the current implementation).");
 				}
 				num_re_group_ = num_re_group;
 				CHECK(re_group_data != nullptr);
@@ -138,7 +141,7 @@ namespace GPBoost {
 			//Do some checks for GP components and set meta data (number of components etc.)
 			if (num_gp > 0) {
 				if (num_gp > 1) {
-					Log::Fatal("num_gp can only be either 0 or 1 in the current implementation");
+					Log::REFatal("num_gp can only be either 0 or 1 in the current implementation");
 				}
 				num_gp_ = num_gp;
 				ind_intercept_gp_ = num_comps_total_;
@@ -149,7 +152,7 @@ namespace GPBoost {
 				cov_fct_ = std::string(cov_fct);
 				cov_fct_shape_ = cov_fct_shape;
 				if (vecchia_approx) {
-					Log::Info("Starting nearest neighbor search for Vecchia approximation");
+					Log::REInfo("Starting nearest neighbor search for Vecchia approximation");
 					CHECK(num_neighbors > 0);
 					num_neighbors_ = num_neighbors;
 					CHECK(num_neighbors_pred > 0);
@@ -167,7 +170,7 @@ namespace GPBoost {
 					else {
 						vecchia_pred_type_ = std::string(vecchia_pred_type);
 						if (SUPPORTED_VECCHIA_PRED_TYPES_.find(vecchia_pred_type_) == SUPPORTED_VECCHIA_PRED_TYPES_.end()) {
-							Log::Fatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
+							Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
 						}
 					}
 				}
@@ -186,7 +189,7 @@ namespace GPBoost {
 					double num_mem_d = ((double)num_gp_total_) * ((double)num_data_) * ((double)num_neighbors_) * ((double)num_neighbors_);
 					int mem_size = (int)(num_mem_d * 8. / 1000000.);
 					if (mem_size > 8000) {
-						Log::Warning("The current implementation of the Vecchia approximation is not optimized for memory usage. In your case (num. obs. = %d and num. neighbors = %d), at least approximately %d mb of memory is needed. If this is a problem, contact the developer of this package and ask to implement this feature.", num_data_, num_neighbors_, mem_size);
+						Log::REWarning("The current implementation of the Vecchia approximation is not optimized for memory usage. In your case (num. obs. = %d and num. neighbors = %d), at least approximately %d mb of memory is needed. If this is a problem, contact the developer of this package and ask to implement this feature.", num_data_, num_neighbors_, mem_size);
 					}
 				}
 			}
@@ -278,7 +281,7 @@ namespace GPBoost {
 				re_comps_.insert({ cluster_i, re_comps_cluster_i });
 			}//end loop over clusters
 			if (vecchia_approx_) {
-				Log::Info("Nearest neighbors for Vecchia approximation found");
+				Log::REInfo("Nearest neighbors for Vecchia approximation found");
 			}
 			//Initialize likelihoods
 			for (const auto& cluster_i : unique_clusters_) {
@@ -297,38 +300,38 @@ namespace GPBoost {
 
 			////Following only prints stuff for debugging
 
-			//Log::Info("********************** Meta data ********************************");
-			//Log::Info("num_data_ : %d", num_data_);
-			//Log::Info("num_clusters_ : %d", num_clusters_);
-			//Log::Info("num_re_group_ : %d", num_re_group_);
-			//Log::Info("num_re_group_rand_coef_ : %d", num_re_group_rand_coef_);
-			//Log::Info("num_re_group_total_ : %d", num_re_group_total_);
-			//Log::Info("num_gp_rand_coef_ : %d", num_gp_rand_coef_);
-			//Log::Info("num_gp_total_ : %d", num_gp_total_);
-			//Log::Info("num_cov_par_: %d", num_cov_par_);
-			//for (unsigned i = 0; i < ind_par_.size(); i++) { Log::Info("ind_par_[%d]: %d", i, ind_par_[i]); }
+			//Log::REInfo("********************** Meta data ********************************");
+			//Log::REInfo("num_data_ : %d", num_data_);
+			//Log::REInfo("num_clusters_ : %d", num_clusters_);
+			//Log::REInfo("num_re_group_ : %d", num_re_group_);
+			//Log::REInfo("num_re_group_rand_coef_ : %d", num_re_group_rand_coef_);
+			//Log::REInfo("num_re_group_total_ : %d", num_re_group_total_);
+			//Log::REInfo("num_gp_rand_coef_ : %d", num_gp_rand_coef_);
+			//Log::REInfo("num_gp_total_ : %d", num_gp_total_);
+			//Log::REInfo("num_cov_par_: %d", num_cov_par_);
+			//for (unsigned i = 0; i < ind_par_.size(); i++) { Log::REInfo("ind_par_[%d]: %d", i, ind_par_[i]); }
 
-			//Log::Info("******************************************************");
+			//Log::REInfo("******************************************************");
 			//int ii = 0;
 			//for (const auto& cluster_i : unique_clusters_) {
-			//	Log::Info("unique_clusters_[%d]: %d", ii, cluster_i);
-			//	Log::Info("num_data_per_cluster_[%d]: %d", cluster_i, num_data_per_cluster_[cluster_i]);
-			//	//for (int j = 0; j < std::min((int)data_indices_per_cluster_[cluster_i].size(), 10); ++j) { Log::Info("data_indices_per_cluster_[%d][%d]: %d", cluster_i, j, data_indices_per_cluster_[cluster_i][j]); }
+			//	Log::REInfo("unique_clusters_[%d]: %d", ii, cluster_i);
+			//	Log::REInfo("num_data_per_cluster_[%d]: %d", cluster_i, num_data_per_cluster_[cluster_i]);
+			//	//for (int j = 0; j < std::min((int)data_indices_per_cluster_[cluster_i].size(), 10); ++j) { Log::REInfo("data_indices_per_cluster_[%d][%d]: %d", cluster_i, j, data_indices_per_cluster_[cluster_i][j]); }
 
 			//	if (num_re_group_ > 0) {
-			//		Log::Info("*********************** Grouped REs *******************************");
-			//		//Log::Info("re_comps_[cluster_i] %s ", typeid(re_comps_[cluster_i]).name());
-			//		//Log::Info("re_comps_[cluster_i].size(): %d", re_comps_[cluster_i].size());
+			//		Log::REInfo("*********************** Grouped REs *******************************");
+			//		//Log::REInfo("re_comps_[cluster_i] %s ", typeid(re_comps_[cluster_i]).name());
+			//		//Log::REInfo("re_comps_[cluster_i].size(): %d", re_comps_[cluster_i].size());
 			//		//for (const auto& re_comp : re_comps_[cluster_i]) {
 			//		for (int j = 0; j < re_comps_[cluster_i].size(); ++j) {
 			//			std::shared_ptr<RECompGroup<T1>> re_comp_group = std::dynamic_pointer_cast<RECompGroup<T1>>(re_comps_[cluster_i][j]);
-			//			//for (const auto& el : re_comp_group->group_data_) { Log::Info("re_comps_[%d][j].group_data_[i]: %d", cluster_i, el); }
+			//			//for (const auto& el : re_comp_group->group_data_) { Log::REInfo("re_comps_[%d][j].group_data_[i]: %d", cluster_i, el); }
 			//			if (!re_comp_group->is_rand_coef_) {
-			//				for (int i = 0; i < std::min((int)(*re_comp_group->group_data_).size(), 10); i++) { Log::Info("re_comps_[%d][%d].group_data_[%d]: %s", cluster_i, j, i, (*re_comp_group->group_data_)[i]); }
+			//				for (int i = 0; i < std::min((int)(*re_comp_group->group_data_).size(), 10); i++) { Log::REInfo("re_comps_[%d][%d].group_data_[%d]: %s", cluster_i, j, i, (*re_comp_group->group_data_)[i]); }
 			//			}
 			//			else if (re_comp_group->is_rand_coef_) {
-			//				for (int i = 0; i < std::min(num_data_per_cluster_[cluster_i], 10); i++) { Log::Info("re_comps_[%d][%d].group_data_ref_[%d]: %s", cluster_i, j, i, (*re_comp_group->group_data_)[i]); }
-			//				for (int i = 0; i < std::min(num_data_per_cluster_[cluster_i], 10); i++) { Log::Info("re_comps_[%d][%d].rand_coef_data_[%d]: %g", cluster_i, j, i, re_comp_group->rand_coef_data_[i]); }
+			//				for (int i = 0; i < std::min(num_data_per_cluster_[cluster_i], 10); i++) { Log::REInfo("re_comps_[%d][%d].group_data_ref_[%d]: %s", cluster_i, j, i, (*re_comp_group->group_data_)[i]); }
+			//				for (int i = 0; i < std::min(num_data_per_cluster_[cluster_i], 10); i++) { Log::REInfo("re_comps_[%d][%d].rand_coef_data_[%d]: %g", cluster_i, j, i, re_comp_group->rand_coef_data_[i]); }
 			//			}
 			//		}
 			//	}
@@ -428,29 +431,29 @@ namespace GPBoost {
 			bool learn_covariance_parameters = true) {
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
-				Log::Fatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov.c_str());
+				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov.c_str());
 			}
 			if (SUPPORTED_CONV_CRIT_.find(convergence_criterion) == SUPPORTED_CONV_CRIT_.end()) {
-				Log::Fatal("Convergence criterion '%s' is not supported.", convergence_criterion.c_str());
+				Log::REFatal("Convergence criterion '%s' is not supported.", convergence_criterion.c_str());
 			}
 			if (!gauss_likelihood_) {
 				if(optimizer_cov != "gradient_descent") {
-					Log::Fatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian data. Only 'gradient_descent' is supported.", optimizer_cov.c_str());
+					Log::REFatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian data. Only 'gradient_descent' is supported.", optimizer_cov.c_str());
 				}
 				if (calc_std_dev) {
-					Log::Fatal("Calculation of standard deviations is not supported for non-Gaussian data.");
+					Log::REFatal("Calculation of standard deviations is not supported for non-Gaussian data.");
 				}
 			}
 			if (covariate_data != nullptr) {
 				if (SUPPORTED_OPTIM_COEF_.find(optimizer_coef) == SUPPORTED_OPTIM_COEF_.end()) {
-					Log::Fatal("Optimizer option '%s' is not supported for regression coefficients.", optimizer_coef.c_str());
+					Log::REFatal("Optimizer option '%s' is not supported for regression coefficients.", optimizer_coef.c_str());
 				}
 				if (!gauss_likelihood_ && optimizer_coef != "gradient_descent") {
-					Log::Fatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian data. Only 'gradient_descent' is supported.", optimizer_coef.c_str());
+					Log::REFatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian data. Only 'gradient_descent' is supported.", optimizer_coef.c_str());
 				}
 			}
 			if (gauss_likelihood_ && fixed_effects != nullptr) {
-				Log::Fatal("Additional external fixed effects in 'fixed_effects' can currently only be used for non-Gaussian data");
+				Log::REFatal("Additional external fixed effects in 'fixed_effects' can currently only be used for non-Gaussian data");
 			}
 			// Initialization of variables
 			if (covariate_data == nullptr) {
@@ -507,7 +510,7 @@ namespace GPBoost {
 					}
 				}
 				if (!has_intercept) {
-					Log::Warning("The covariate data contains no column of ones. This means that there is no intercept included.");
+					Log::REWarning("The covariate data contains no column of ones. This means that there is no intercept included.");
 				}
 				beta = vec_t(num_covariates);
 				if (init_coef == nullptr) {
@@ -536,11 +539,11 @@ namespace GPBoost {
 					fixed_effects_ptr = fixed_effects_vec.data();
 				}
 			}//end if has_covariates_
-			Log::Debug("Initial covariance parameters");
-			for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %g", i, cov_pars[i]); }
+			Log::REDebug("Initial covariance parameters");
+			for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars[i]); }
 			if (has_covariates_) {
-				Log::Debug("Initial linear regression coefficients");
-				for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %g", i, beta[i]); }
+				Log::REDebug("Initial linear regression coefficients");
+				for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
 			}
 			// Initialize optimizer:
 			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian data)
@@ -548,10 +551,10 @@ namespace GPBoost {
 			CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
 			// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
 			if (gauss_likelihood_) {
-				Log::Debug("Initial negative log-likelihood: %g", neg_log_likelihood_);
+				Log::REDebug("Initial negative log-likelihood: %g", neg_log_likelihood_);
 			}
 			else {
-				Log::Debug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
+				Log::REDebug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
 			}
 			// Start optimization
 			for (int it = 0; it < max_iter; ++it) {
@@ -618,7 +621,7 @@ namespace GPBoost {
 						cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, acc_rate_cov, nesterov_schedule_version, momentum_offset, fixed_effects_ptr);
 					// Check for NA or Inf
 					if (std::isnan(cov_pars[0]) || std::isinf(cov_pars[0])) {
-						Log::Fatal("NaN or Inf occurred in covariance parameters. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
+						Log::REFatal("NaN or Inf occurred in covariance parameters. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
 					}
 				}
 
@@ -643,14 +646,14 @@ namespace GPBoost {
 				}
 				// Output for debugging
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
-					Log::Debug("Covariance parameter optimization iteration number %d", it + 1);
-					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::Debug("cov_pars[%d]: %g", i, cov_pars[i]); }
-					for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::Debug("beta[%d]: %g", i, beta[i]); }
+					Log::REDebug("Covariance parameter optimization iteration number %d", it + 1);
+					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars[i]); }
+					for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
 					if (gauss_likelihood_) {
-						Log::Debug("Negative log-likelihood: %g", neg_log_likelihood_);
+						Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
 					}
 					else {
-						Log::Debug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
+						Log::REDebug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
 					}
 				}
 				// Check whether to terminate
@@ -660,7 +663,7 @@ namespace GPBoost {
 				}
 			}//end for loop for optimization
 			if (num_it == max_iter) {
-				Log::Debug("GPModel: no convergence after the maximal number of iterations");
+				Log::REDebug("GPModel: no convergence after the maximal number of iterations");
 			}
 			for (int i = 0; i < num_cov_par_; ++i) {
 				optim_cov_pars[i] = cov_pars[i];
@@ -911,25 +914,25 @@ namespace GPBoost {
 			CHECK(num_data_pred > 0);
 			//Check whether required data is missing
 			if (re_group_rand_coef_data_pred == nullptr && num_re_group_rand_coef_ > 0) {
-				Log::Fatal("Missing covariate data for random coefficients for grouped random effects for making predictions");
+				Log::REFatal("Missing covariate data for random coefficients for grouped random effects for making predictions");
 			}
 			if (gp_coords_data_pred == nullptr && num_gp_ > 0) {
-				Log::Fatal("Missing coordinate data for Gaussian process for making predictions");
+				Log::REFatal("Missing coordinate data for Gaussian process for making predictions");
 			}
 			if (gp_rand_coef_data_pred == nullptr && num_gp_rand_coef_ > 0) {
-				Log::Fatal("Missing covariate data for random coefficients for Gaussian process for making predictions");
+				Log::REFatal("Missing covariate data for random coefficients for Gaussian process for making predictions");
 			}
 			if (cluster_ids_data_pred == nullptr && num_clusters_ > 1) {
-				Log::Fatal("Missing cluster_id data for making predictions");
+				Log::REFatal("Missing cluster_id data for making predictions");
 			}
 			if (!gauss_likelihood_ && predict_response && predict_cov_mat) {
-				Log::Fatal("Calculation of the predictive covariance matrix is not supported when predicting the response variable (label) for non-Gaussian data");
+				Log::REFatal("Calculation of the predictive covariance matrix is not supported when predicting the response variable (label) for non-Gaussian data");
 			}
 			if (predict_cov_mat && predict_var) {
-				Log::Fatal("Calculation of both the predictive covariance matrix and variances is not supported. Choose one of these option (predict_cov_mat or predict_var)");
+				Log::REFatal("Calculation of both the predictive covariance matrix and variances is not supported. Choose one of these option (predict_cov_mat or predict_var)");
 			}
 			if (vecchia_approx_ && gauss_likelihood_ && predict_var) {
-				Log::Debug("Calculation of only predictive variances is currently not optimized for the Vecchia approximation. If you need only variances and this takes too much time or memory, contact the developer or open a GitHub issue.");
+				Log::REDebug("Calculation of only predictive variances is currently not optimized for the Vecchia approximation. If you need only variances and this takes too much time or memory, contact the developer or open a GitHub issue.");
 			}
 			if (has_covariates_) {
 				CHECK(covariate_data_pred != nullptr);
@@ -937,19 +940,19 @@ namespace GPBoost {
 			}
 			if (y_obs == nullptr) {
 				if (!y_has_been_set_) {
-					Log::Fatal("Observed data is not provided and has not been set before");
+					Log::REFatal("Observed data is not provided and has not been set before");
 				}
 			}
 			if (num_data_pred > 10000 && predict_cov_mat) {
 				double num_mem_d = ((double)num_data_pred) * ((double)num_data_pred);
 				int mem_size = (int)(num_mem_d * 8. / 1000000.);
-				Log::Warning("The covariance matrix can be very large for large sample sizes which might lead to memory limitations. In your case (n = %d), the covariance needs at least approximately %d mb of memory. If you only need variances or covariances for linear combinations, contact the developer of this package or open a GitHub issue and ask to implement this feature.", num_data_pred, mem_size);
+				Log::REWarning("The covariance matrix can be very large for large sample sizes which might lead to memory limitations. In your case (n = %d), the covariance needs at least approximately %d mb of memory. If you only need variances or covariances for linear combinations, contact the developer of this package or open a GitHub issue and ask to implement this feature.", num_data_pred, mem_size);
 			}
 			if (vecchia_approx_) {
 				if (vecchia_pred_type != nullptr) {
 					string_t vecchia_pred_type_S = std::string(vecchia_pred_type);
 					if (SUPPORTED_VECCHIA_PRED_TYPES_.find(vecchia_pred_type_S) == SUPPORTED_VECCHIA_PRED_TYPES_.end()) {
-						Log::Fatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_S.c_str());
+						Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_S.c_str());
 					}
 					vecchia_pred_type_ = vecchia_pred_type_S;
 				}
@@ -1202,7 +1205,7 @@ namespace GPBoost {
 						double num_mem_d = ((double)num_neighbors_pred_) * ((double)num_neighbors_pred_) * (double)(num_data_tot)+(double)(num_neighbors_pred_) * (double)(num_data_tot);
 						int mem_size = (int)(num_mem_d * 8. / 1000000.);
 						if (mem_size > 4000) {
-							Log::Debug("The current implementation of the Vecchia approximation needs a lot of memory if the number of neighbors is large. In your case (nb. of neighbors = %d, nb. of observations = %d, nb. of predictions = %d), this needs at least approximately %d mb of memory. If this is a problem for you, contact the developer of this package or open a GitHub issue and ask to change this.", num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
+							Log::REDebug("The current implementation of the Vecchia approximation needs a lot of memory if the number of neighbors is large. In your case (nb. of neighbors = %d, nb. of observations = %d, nb. of predictions = %d), this needs at least approximately %d mb of memory. If this is a problem for you, contact the developer of this package or open a GitHub issue and ask to change this.", num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
 						}
 						//TODO: implement a more efficient version when only predictive variances are required and not full covariance matrices
 						bool predict_var_or_cov_mat = predict_var || predict_cov_mat;
@@ -1382,7 +1385,7 @@ namespace GPBoost {
 		void NewtonUpdateLeafValues(const int* data_leaf_index,
 			const int num_leaves, double* leaf_values, double marg_variance = 1.) {
 			if (!gauss_likelihood_) {
-				Log::Fatal("Newton updates for leaf values is only supported for Gaussian data");
+				Log::REFatal("Newton updates for leaf values is only supported for Gaussian data");
 			}
 			CHECK(y_aux_has_been_calculated_);//y_aux_ has already been calculated when calculating the gradient for finding the tree structure from 'GetGradients' in 'regression_objetive.hpp'
 			den_mat_t HTPsiInvH(num_leaves, num_leaves);
@@ -1728,7 +1731,7 @@ namespace GPBoost {
 		*/
 		void SetY(const float* y_data) {
 			if (gauss_likelihood_) {
-				Log::Fatal("SetY is not implemented for Gaussian data and lables of type float (since it is not needed)");
+				Log::REFatal("SetY is not implemented for Gaussian data and lables of type float (since it is not needed)");
 			}//end gauss_likelihood_
 			else {//not gauss_likelihood_
 				(*likelihood_[unique_clusters_[0]]).template CheckY<float>(y_data, num_data_);
@@ -1760,7 +1763,7 @@ namespace GPBoost {
 		*/
 		void GetY(double* y) {
 			if (!y_has_been_set_) {
-				Log::Fatal("Respone variable data has not been set");
+				Log::REFatal("Respone variable data has not been set");
 			}
 			if (has_covariates_ && gauss_likelihood_) {
 #pragma omp parallel for schedule(static)
@@ -1792,7 +1795,7 @@ namespace GPBoost {
 		*/
 		void GetCovariateData(double* covariate_data) {
 			if (!has_covariates_) {
-				Log::Fatal("Model does not have covariates for a linear predictor");
+				Log::REFatal("Model does not have covariates for a linear predictor");
 			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_data_ * num_coef_; ++i) {
@@ -1939,7 +1942,7 @@ namespace GPBoost {
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
 		void CalcChol(T3& psi, gp_id_t cluster_i, bool analyze_pattern) {
 			if (analyze_pattern) {
-				Log::Warning("Pattern of Cholesky factor is not analyzed when dense matrices are used.");
+				Log::REWarning("Pattern of Cholesky factor is not analyzed when dense matrices are used.");
 			}
 			chol_facts_solve_[cluster_i].compute(psi);
 			chol_facts_[cluster_i] = chol_facts_solve_[cluster_i].matrixL();
@@ -2630,15 +2633,15 @@ namespace GPBoost {
 			}
 			if (halving_done) {
 				if (optimizer_cov == "fisher_scoring") {
-					Log::Debug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. The learning rate has been decreased in this iteration.", it + 1);
+					Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. The learning rate has been decreased in this iteration.", it + 1);
 				}
 				else if (optimizer_cov == "gradient_descent") {
 					lr_cov = lr; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring) 
-					Log::Debug("GPModel covariance parameter estimation: The learning rate has been decreased permanently since with the previous learning rate, there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_cov);
+					Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently since with the previous learning rate, there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_cov);
 				}
 			}
 			if (!decrease_found) {
-				Log::Debug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
+				Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
 			}
 			if (use_nesterov_acc) {
 				cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
@@ -2721,10 +2724,10 @@ namespace GPBoost {
 			}
 			if (halving_done) {
 				lr_coef = lr; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring) 
-				Log::Debug("GPModel linear regression coefficient estimation: The learning rate has been decreased permanently since with the previous learning rate, there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_coef);
+				Log::REDebug("GPModel linear regression coefficient estimation: The learning rate has been decreased permanently since with the previous learning rate, there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_coef);
 			}
 			if (!decrease_found) {
-				Log::Debug("GPModel linear regression coefficient estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
+				Log::REDebug("GPModel linear regression coefficient estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_HALVING_STEPS_);
 			}
 			if (use_nesterov_acc) {
 				beta_after_grad_aux_lag1 = beta_after_grad_aux;
@@ -3070,17 +3073,17 @@ namespace GPBoost {
 		void CalcYAux(double marg_variance = 1.) {
 			for (const auto& cluster_i : unique_clusters_) {
 				if (y_.find(cluster_i) == y_.end()) {
-					Log::Fatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
+					Log::REFatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
 				}
 				if (vecchia_approx_) {
 					if (B_.find(cluster_i) == B_.end()) {
-						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+						Log::REFatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 					}
 					y_aux_[cluster_i] = B_[cluster_i].transpose() * D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];
 				}//end vecchia_approx_
 				else {//not vecchia_approx_
 					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
-						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+						Log::REFatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 					}
 					if (use_woodbury_identity_) {
 						vec_t MInvZty;
@@ -3119,7 +3122,7 @@ namespace GPBoost {
 		void CalcYtilde(bool also_calculate_ytilde2 = false) {
 			for (const auto& cluster_i : unique_clusters_) {
 				if (y_.find(cluster_i) == y_.end()) {
-					Log::Fatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
+					Log::REFatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
 				}
 				if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 					y_tilde_[cluster_i] = (Zty_[cluster_i].array() / chol_facts_[cluster_i].diagonal().array()).matrix();
@@ -3150,7 +3153,7 @@ namespace GPBoost {
 		void CalcYtilde(bool also_calculate_ytilde2 = false) {
 			for (const auto& cluster_i : unique_clusters_) {
 				if (y_.find(cluster_i) == y_.end()) {
-					Log::Fatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
+					Log::REFatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
 				}
 				if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 					y_tilde_[cluster_i] = y_tilde_[cluster_i] = (Zty_[cluster_i].array() / chol_facts_[cluster_i].diagonal().array()).matrix();
@@ -3192,7 +3195,7 @@ namespace GPBoost {
 			}
 			for (const auto& cluster_i : clusters_iterate) {
 				if (y_.find(cluster_i) == y_.end()) {
-					Log::Fatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
+					Log::REFatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
 				}
 				if (vecchia_approx_) {
 					if (CalcYAux_already_done) {
@@ -3200,7 +3203,7 @@ namespace GPBoost {
 					}
 					else {
 						if (B_.find(cluster_i) == B_.end()) {
-							Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+							Log::REFatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 						}
 						vec_t y_aux_sqrt = B_[cluster_i] * y_[cluster_i];
 						yTPsiInvy += (y_aux_sqrt.transpose() * D_inv_[cluster_i] * y_aux_sqrt)(0, 0);
@@ -3208,14 +3211,14 @@ namespace GPBoost {
 				}//end vecchia_approx_
 				else {//not vecchia_approx_
 					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
-						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+						Log::REFatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 					}
 					if (use_woodbury_identity_) {
 						if (!CalcYtilde_already_done) {
 							CalcYtilde<T1>(false);//y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
 						}
 						else if ((int)y_tilde_[cluster_i].size() != cum_num_rand_eff_[cluster_i][num_comps_total_]) {
-							Log::Fatal("y_tilde = L^-1 * Z^T * y has not the correct number of data points. Call 'CalcYtilde' first.");
+							Log::REFatal("y_tilde = L^-1 * Z^T * y has not the correct number of data points. Call 'CalcYtilde' first.");
 						}
 						yTPsiInvy += (y_[cluster_i].transpose() * y_[cluster_i])(0, 0) - (y_tilde_[cluster_i].transpose() * y_tilde_[cluster_i])(0, 0);
 					}//end use_woodbury_identity_
@@ -3258,7 +3261,7 @@ namespace GPBoost {
 			}
 			for (const auto& cluster_i : clusters_iterate) {
 				if (y_.find(cluster_i) == y_.end()) {
-					Log::Fatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
+					Log::REFatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
 				}
 				if (vecchia_approx_) {
 					if (CalcYAux_already_done) {
@@ -3266,7 +3269,7 @@ namespace GPBoost {
 					}
 					else {
 						if (B_.find(cluster_i) == B_.end()) {
-							Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+							Log::REFatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 						}
 						vec_t y_aux_sqrt = B_[cluster_i] * y_[cluster_i];
 						yTPsiInvy += (y_aux_sqrt.transpose() * D_inv_[cluster_i] * y_aux_sqrt)(0, 0);
@@ -3274,14 +3277,14 @@ namespace GPBoost {
 				}//end vecchia_approx_
 				else {//not vecchia_approx_
 					if (chol_facts_.find(cluster_i) == chol_facts_.end()) {
-						Log::Fatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
+						Log::REFatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first.");
 					}
 					if (use_woodbury_identity_) {
 						if (!CalcYtilde_already_done) {
 							CalcYtilde<T1>(false);//y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
 						}
 						else if ((int)y_tilde_[cluster_i].size() != cum_num_rand_eff_[cluster_i][num_comps_total_]) {
-							Log::Fatal("y_tilde = L^-1 * Z^T * y has not the correct number of data points. Call 'CalcYtilde' first.");
+							Log::REFatal("y_tilde = L^-1 * Z^T * y has not the correct number of data points. Call 'CalcYtilde' first.");
 						}
 						yTPsiInvy += (y_[cluster_i].transpose() * y_[cluster_i])(0, 0) - (y_tilde_[cluster_i].transpose() * y_tilde_[cluster_i])(0, 0);
 					}//end use_woodbury_identity_
@@ -3398,7 +3401,7 @@ namespace GPBoost {
 			}//end gauss_likelihood_
 			else {//not gauss_likelihood_
 				if (include_error_var) {
-					Log::Fatal("There is no error variance (nugget effect) for non-Gaussian data");
+					Log::REFatal("There is no error variance (nugget effect) for non-Gaussian data");
 				}
 				cov_grad = vec_t::Zero(num_cov_par_);
 				vec_t cov_grad_cluster_i(num_cov_par_);
@@ -3707,7 +3710,7 @@ namespace GPBoost {
 			FI.triangularView<Eigen::StrictlyLower>() = FI.triangularView<Eigen::StrictlyUpper>().transpose();
 			//for (int i = 0; i < std::min((int)FI.rows(),4); ++i) {//For debugging only
 			//    for (int j = i; j < std::min((int)FI.cols(),4); ++j) {
-			//	    Log::Info("FI(%d,%d) %g", i, j, FI(i, j));
+			//	    Log::REInfo("FI(%d,%d) %g", i, j, FI(i, j));
 			//    }
 			//}
 		}
@@ -3733,7 +3736,7 @@ namespace GPBoost {
 		*/
 		void CalcStdDevCoef(vec_t& cov_pars, const den_mat_t& X, vec_t& std_dev) {
 			if ((int)std_dev.size() >= num_data_) {
-				Log::Warning("Sample size too small to calculate standard deviations for coefficients");
+				Log::REWarning("Sample size too small to calculate standard deviations for coefficients");
 				for (int i = 0; i < (int)std_dev.size(); ++i) {
 					std_dev[i] = std::numeric_limits<double>::quiet_NaN();
 				}
@@ -4312,7 +4315,7 @@ namespace GPBoost {
 			const den_mat_t& gp_coords_mat_obs, const den_mat_t& gp_coords_mat_pred,
 			bool predict_cov_mat, vec_t& mean_pred_id, T1& cov_mat_pred_id) {
 			if (num_gp_rand_coef_ > 0) {
-				Log::Fatal("The Vecchia approximation for latent process(es) is currently not implemented when having random coefficients");
+				Log::REFatal("The Vecchia approximation for latent process(es) is currently not implemented when having random coefficients");
 			}
 			int num_data_cli = num_data_per_cluster_[cluster_i];
 			int num_data_pred_cli = num_data_per_cluster_pred[cluster_i];

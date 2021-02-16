@@ -7,11 +7,13 @@
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 */
 #include <GPBoost/Vecchia_utils.h>
-#include <GPBoost/log.h>
 #include <numeric>      // std::iota
 #include <algorithm>    // std::sort
 #include <mutex>
 #include<cmath>
+#include <LightGBM/utils/log.h>
+using LightGBM::Log;
+
 
 namespace GPBoost {
 
@@ -84,7 +86,7 @@ namespace GPBoost {
     CHECK((int)nearest_neighbors.size() == (num_data - start_at));
     CHECK((int)coords.rows() == num_data);
     if (num_neighbors > end_search_at + 1) {
-      Log::Info("The number of neighbors (%d) for the Vecchia approximation needs to be smaller than the number of data points (%d). It is set to %d.", num_neighbors, end_search_at + 2, end_search_at + 1);
+      Log::REInfo("The number of neighbors (%d) for the Vecchia approximation needs to be smaller than the number of data points (%d). It is set to %d.", num_neighbors, end_search_at + 2, end_search_at + 1);
       num_neighbors = end_search_at + 1;
     }
     int dim_coords = (int)coords.cols();
@@ -211,25 +213,25 @@ namespace GPBoost {
 
     //for (int i = first_i; i < num_data; ++i) {
     //  for (int j = 0; j < nearest_neighbors[i - start_at].size(); ++j) {
-    //    Log::Info("nearest_neighbors[%d][%d]: %d", i - start_at, j, nearest_neighbors[i - start_at][j]);
+    //    Log::REInfo("nearest_neighbors[%d][%d]: %d", i - start_at, j, nearest_neighbors[i - start_at][j]);
     //  }
     //}
-    //Log::Info(" ");
+    //Log::REInfo(" ");
     //for (int i = first_i; i < num_data; ++i) {
     //  for (int j = 0; j < nearest_neighbors[i - start_at].size(); ++j) {
-    //    Log::Info("dist_obs_neighbors[%d](0,%d): %f", i, j, dist_obs_neighbors[i- start_at](0,j));
+    //    Log::REInfo("dist_obs_neighbors[%d](0,%d): %f", i, j, dist_obs_neighbors[i- start_at](0,j));
     //  }
     //}
-    //Log::Info(" ");
+    //Log::REInfo(" ");
     //for (int i = first_i; i < num_data; ++i) {
     //  for (int j = 0; j < nearest_neighbors[i- start_at].size(); ++j) {
     //    for (int k = 0; k < nearest_neighbors[i- start_at].size(); ++k) {
-    //      Log::Info("dist_between_neighbors[%d](%d,%d): %f", i, j, k, dist_between_neighbors[i- start_at](j, k));
+    //      Log::REInfo("dist_between_neighbors[%d](%d,%d): %f", i, j, k, dist_between_neighbors[i- start_at](j, k));
     //    }
     //  }
     //}
-    //Log::Info(" ");
-    //Log::Info(" ");
+    //Log::REInfo(" ");
+    //Log::REInfo(" ");
 
   }
 

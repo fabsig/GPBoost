@@ -9,7 +9,6 @@
 #ifndef GPB_COV_FUNCTIONS_
 #define GPB_COV_FUNCTIONS_
 
-#include <GPBoost/log.h>
 #include <GPBoost/type_defs.h>
 
 #include <string>
@@ -17,6 +16,10 @@
 #include <string>
 #include <vector>
 #include <cmath>
+
+#include <LightGBM/utils/log.h>
+using LightGBM::Log;
+
 
 namespace GPBoost {
 
@@ -42,11 +45,11 @@ namespace GPBoost {
 		*/
 		CovFunction(string_t cov_fct_type, double shape = 0.) {
 			if (SUPPORTED_COV_TYPES_.find(cov_fct_type) == SUPPORTED_COV_TYPES_.end()) {
-				Log::Fatal("Covariance of type '%s' is not supported.", cov_fct_type.c_str());
+				Log::REFatal("Covariance of type '%s' is not supported.", cov_fct_type.c_str());
 			}
 			if (cov_fct_type == "matern") {
 				if (!(AreSame(shape, 0.5) || AreSame(shape, 1.5) || AreSame(shape, 2.5))) {
-					Log::Fatal("Only shape / smoothness parameters 0.5, 1.5, and 2.5 supported for the Matern covariance function");
+					Log::REFatal("Only shape / smoothness parameters 0.5, 1.5, and 2.5 supported for the Matern covariance function");
 				}
 			}
 			cov_fct_type_ = cov_fct_type;
@@ -143,7 +146,7 @@ namespace GPBoost {
 				sigma = (pars[0] * ((-pars[1] * dist.array().pow(shape_)).exp())).matrix();
 			}
 			else {
-				Log::Fatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
+				Log::REFatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
 		}
 
@@ -166,7 +169,7 @@ namespace GPBoost {
 				sigma = (pars[0] * ((-pars[1] * dist.array().pow(shape_)).exp())).matrix().sparseView();
 			}
 			else {
-				Log::Fatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
+				Log::REFatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
 		}
 
@@ -205,7 +208,7 @@ namespace GPBoost {
 				sigma_grad = cm * sigma.cwiseProduct(dist.array().pow(shape_).matrix());
 			}
 			else {
-				Log::Fatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
+				Log::REFatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
 		}
 
@@ -235,7 +238,7 @@ namespace GPBoost {
 				sigma_grad = cm * sigma.cwiseProduct(dist.array().pow(shape_).matrix());
 			}
 			else {
-				Log::Fatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
+				Log::REFatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
 		}
 

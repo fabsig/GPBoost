@@ -7,7 +7,8 @@
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 */
 #include <GPBoost/sparse_matrix_utils.h>
-#include <GPBoost/log.h>
+#include <LightGBM/utils/log.h>
+using LightGBM::Log;
 
 //#include <typeinfo> // Only needed for debugging
 //#include <chrono>  // Only needed for debugging
@@ -60,7 +61,7 @@ namespace GPBoost {
 
 	void sp_Lower_sp_RHS_cs_solve(cs* A, cs* B, sp_mat_t& A_inv_B, bool lower) {
 		if (A->m != A->n || B->n < 1 || A->n < 1 || A->n != B->m) {
-			Log::Fatal("Dimensions of system to be solved are inconsistent");
+			Log::REFatal("Dimensions of system to be solved are inconsistent");
 		}
 		int lo = lower;
 

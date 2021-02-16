@@ -7,7 +7,9 @@
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 */
 #include <GPBoost/re_model.h>
-#include <GPBoost/log.h>
+#include <LightGBM/utils/log.h>
+using LightGBM::Log;
+using LightGBM::LogLevelRE;
 
 namespace GPBoost {
 
@@ -122,10 +124,10 @@ namespace GPBoost {
 		}
 		momentum_offset_ = momentum_offset;
 		if (trace) {
-			Log::ResetLogLevel(LogLevel::Debug);
+			Log::ResetLogLevelRE(LogLevelRE::Debug);
 		}
 		else {
-			Log::ResetLogLevel(LogLevel::Info);
+			Log::ResetLogLevelRE(LogLevelRE::Info);
 		}
 		calc_std_dev_ = calc_std_dev;
 	}
@@ -454,7 +456,7 @@ namespace GPBoost {
 
 	void REModel::GetCovPar(double* cov_par, bool calc_std_dev) const {
 		if (cov_pars_.size() == 0) {
-			Log::Fatal("Covariance parameters have not been estimated or set");
+			Log::REFatal("Covariance parameters have not been estimated or set");
 		}
 		//Transform covariance paramters back to original scale
 		vec_t cov_pars_orig(num_cov_pars_);
@@ -544,7 +546,7 @@ namespace GPBoost {
 		}//end if cov_pars_pred != nullptr
 		else {// use saved cov_pars
 			if (!cov_pars_initialized_) {
-				Log::Fatal("Covariance parameters have not been estimated or are not given.");
+				Log::REFatal("Covariance parameters have not been estimated or are not given.");
 			}
 			// Note: cov_pars_initialized_ is set to true by InitializeCovParsIfNotDefined() which is called by OptimCovPar(), OptimLinRegrCoefCovPar(), and EvalNegLogLikelihood().
 			//			It is assume that if one of these three functions has been called, the covariance parameters have been estimated

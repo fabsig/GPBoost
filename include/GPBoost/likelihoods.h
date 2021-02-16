@@ -12,7 +12,6 @@
 #define _USE_MATH_DEFINES // for M_SQRT1_2 and M_PI
 #include <cmath>
 
-#include <GPBoost/log.h>
 #include <GPBoost/type_defs.h>
 #include <GPBoost/sparse_matrix_utils.h>
 
@@ -21,6 +20,9 @@
 #include <string>
 #include <vector>
 #include <cmath>
+
+#include <LightGBM/utils/log.h>
+using LightGBM::Log;
 
 //Mathematical constants usually defined in cmath
 #ifndef M_PI
@@ -39,8 +41,8 @@
 #define M_2_SQRTPI      1.12837916709551257390
 #endif
 
-#include <chrono>  // only needed for debugging
-#include <thread> // only needed for debugging
+//#include <chrono>  // only needed for debugging
+//#include <thread> // only needed for debugging
 
 namespace GPBoost {
 
@@ -61,7 +63,7 @@ namespace GPBoost {
 		Likelihood(string_t type, data_size_t num_data, data_size_t num_re) {
 			string_t likelihood = ParseLikelihoodAlias(type);
 			if (SUPPORTED_LIKELIHOODS_.find(likelihood) == SUPPORTED_LIKELIHOODS_.end()) {
-				Log::Fatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
+				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
 			}
 			likelihood_type_ = likelihood;
 			num_data_ = num_data;
@@ -110,7 +112,7 @@ namespace GPBoost {
 		void SetLikelihood(const string_t& type) {
 			string_t likelihood = ParseLikelihoodAlias(type);
 			if (SUPPORTED_LIKELIHOODS_.find(likelihood) == SUPPORTED_LIKELIHOODS_.end()) {
-				Log::Fatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
+				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
 			}
 			likelihood_type_ = likelihood;
 		}
@@ -139,19 +141,19 @@ namespace GPBoost {
 				//#pragma omp parallel for schedule(static)//problematic with error message below... 
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (fabs(y_data[i]) >= EPSILON_ && !AreSame<T>(y_data[i], 1.)) {
-						Log::Fatal("Response variable (label) data needs to be 0 or 1 for likelihood of type '%s'.", likelihood_type_.c_str());
+						Log::REFatal("Response variable (label) data needs to be 0 or 1 for likelihood of type '%s'.", likelihood_type_.c_str());
 					}
 				}
 			}
 			else if (likelihood_type_ == "poisson") {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (y_data[i] < 0) {
-						Log::Fatal("Found negative response variable. Response variable cannot be negative for likelihood of type '%s'.", likelihood_type_.c_str());
+						Log::REFatal("Found negative response variable. Response variable cannot be negative for likelihood of type '%s'.", likelihood_type_.c_str());
 					}
 					else {
 						double intpart;
 						if (std::modf(y_data[i], &intpart) != 0.0) {
-							Log::Fatal("Found non-integer response variable. Response variable can only be integer valued for likelihood of type '%s'.", likelihood_type_.c_str());
+							Log::REFatal("Found non-integer response variable. Response variable can only be integer valued for likelihood of type '%s'.", likelihood_type_.c_str());
 						}
 					}
 				}
@@ -159,7 +161,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "gamma") {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (y_data[i] < 0) {
-						Log::Fatal("Found negative response variable. Response variable cannot be negative for likelihood of type '%s'.", likelihood_type_.c_str());
+						Log::REFatal("Found negative response variable. Response variable cannot be negative for likelihood of type '%s'.", likelihood_type_.c_str());
 					}
 				}
 			}
@@ -209,7 +211,7 @@ namespace GPBoost {
 		double LogLikelihood(const double* y_data, const int* y_data_int,
 			const double* location_par, const data_size_t num_data) {
 			if (!normalizing_constant_has_been_calculated_) {
-				Log::Fatal("The normalizing constant has not been calculated. Call 'CalculateNormalizingConstant' first.");
+				Log::REFatal("The normalizing constant has not been calculated. Call 'CalculateNormalizingConstant' first.");
 			}
 			double ll = 0.;
 			if (likelihood_type_ == "bernoulli_probit") {
@@ -407,7 +409,7 @@ namespace GPBoost {
 				return std::exp(value);
 			}
 			else {
-				Log::Fatal("CondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				Log::REFatal("CondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				return 0.;
 			}
 		}
@@ -427,7 +429,7 @@ namespace GPBoost {
 				return 1.;
 			}
 			else {
-				Log::Fatal("FirstDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				Log::REFatal("FirstDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				return 0.;
 			}
 		}
@@ -448,7 +450,7 @@ namespace GPBoost {
 				return 0.;
 			}
 			else {
-				Log::Fatal("SecondDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				Log::REFatal("SecondDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				return 0.;
 			}
 		}
@@ -539,7 +541,7 @@ namespace GPBoost {
 				}
 			}
 			if (it == MAXIT_MODE_NEWTON_) {
-				Log::Debug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
+				Log::REDebug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
 			}
 			if (no_fixed_effects) {
 				CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
@@ -556,15 +558,15 @@ namespace GPBoost {
 			mode_has_been_calculated_ = true;
 
 			////Only for debugging -> delete this
-			//Log::Info("Number of iterations: %d", it);
-			//Log::Info("approx_marginal_ll: %g", approx_marginal_ll);
-			//Log::Info("Mode");
+			//Log::REInfo("Number of iterations: %d", it);
+			//Log::REInfo("approx_marginal_ll: %g", approx_marginal_ll);
+			//Log::REInfo("Mode");
 			//for (int i = 0; i < 10; ++i) {
-			//	Log::Info("mode_[%d]: %g", i, mode_[i]);
+			//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
 			//}
-			//Log::Info("a");
+			//Log::REInfo("a");
 			//for (int i = 0; i < 5; ++i) {
-			//	Log::Info("a[%d]: %g", i, a_vec_[i]);
+			//	Log::REInfo("a[%d]: %g", i, a_vec_[i]);
 			//}
 		}//end FindModePostRandEffCalcMLLStable
 
@@ -643,7 +645,7 @@ namespace GPBoost {
 				}
 			}//end mode finding algorithm
 			if (it == MAXIT_MODE_NEWTON_) {
-				Log::Debug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
+				Log::REDebug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
 			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -660,18 +662,18 @@ namespace GPBoost {
 			mode_has_been_calculated_ = true;
 
 			////Only for debugging -> delete this
-			//Log::Info("");
-			//Log::Info("Number of iterations: %d", it);
-			//Log::Info("Mode");
+			//Log::REInfo("");
+			//Log::REInfo("Number of iterations: %d", it);
+			//Log::REInfo("Mode");
 			//for (int i = 0; i < 10; ++i) {
-			//	Log::Info("mode_[%d]: %g", i, mode_[i]);
+			//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
 			//}
 			//double approx_marginal_ll_1 = -0.5 * (mode_.dot(SigmaI * mode_)); 
 			//double approx_marginal_ll_2 = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			//double approx_marginal_ll_3 = 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() - 0.5 * SigmaI.diagonal().array().log().sum();
-			//Log::Info("approx_marginal_ll_1: %g", approx_marginal_ll_1);
-			//Log::Info("approx_marginal_ll_2: %g", approx_marginal_ll_2);
-			//Log::Info("approx_marginal_ll_3: %g", approx_marginal_ll_3);
+			//Log::REInfo("approx_marginal_ll_1: %g", approx_marginal_ll_1);
+			//Log::REInfo("approx_marginal_ll_2: %g", approx_marginal_ll_2);
+			//Log::REInfo("approx_marginal_ll_3: %g", approx_marginal_ll_3);
 			//std::this_thread::sleep_for(std::chrono::milliseconds(200));
 		}//end FindModePostRandEffCalcMLLGroupedRE
 
@@ -733,7 +735,7 @@ namespace GPBoost {
 				rhs = second_deriv_neg_ll_.asDiagonal() * mode_ + first_deriv_ll_;//right hand side for updating mode
 				SigmaI_plus_W = SigmaI;
 				SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
-				//Log::Info("Number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging, can be deleted
+				//Log::REInfo("Number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging, can be deleted
 				chol_facts_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_W);//This is usually the bottleneck
 				mode_ = chol_facts_SigmaI_plus_ZtWZ_.solve(rhs);
 				// Calculate new objective function
@@ -758,7 +760,7 @@ namespace GPBoost {
 				}
 			}
 			if (it == MAXIT_MODE_NEWTON_) {
-				Log::Debug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
+				Log::REDebug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
 			}
 			if (no_fixed_effects) {
 				CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
@@ -774,11 +776,11 @@ namespace GPBoost {
 			approx_marginal_ll += -((den_mat_t)chol_facts_SigmaI_plus_ZtWZ_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 			////Only for debugging -> delete this
-			//Log::Info("Number of iterations: %d", it);
-			//Log::Info("approx_marginal_ll: %g", approx_marginal_ll);
-			//Log::Info("Mode");
+			//Log::REInfo("Number of iterations: %d", it);
+			//Log::REInfo("approx_marginal_ll: %g", approx_marginal_ll);
+			//Log::REInfo("Mode");
 			//for (int i = 0; i < 10; ++i) {
-			//	Log::Info("mode_[%d]: %g", i, mode_[i]);
+			//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
 			//}
 			//std::this_thread::sleep_for(std::chrono::milliseconds(200));
 		}//end FindModePostRandEffCalcMLLVecchia
@@ -861,16 +863,16 @@ namespace GPBoost {
 					}
 				}
 				////Only for debugging -> delete this
-				//Log::Info("explicit_derivative: %g", explicit_derivative);
+				//Log::REInfo("explicit_derivative: %g", explicit_derivative);
 				//for (int i = 0; i < 5; ++i) {
-				//	Log::Info("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
+				//	Log::REInfo("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
 				//}
 				//for (int i = 0; i < 5; ++i) {
-				//	Log::Info("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
+				//	Log::REInfo("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
 				//}
-				//Log::Info("cov_grad");
+				//Log::REInfo("cov_grad");
 				//for (int i = 0; i < par_count; ++i) {
-				//	Log::Info("cov_grad[%d]: %g", i, cov_grad[i]);
+				//	Log::REInfo("cov_grad[%d]: %g", i, cov_grad[i]);
 				//}
 			}//end calc_cov_grad
 			// calculate gradient wrt fixed effects
@@ -1034,16 +1036,16 @@ namespace GPBoost {
 					}
 				}//end not only_one_random_effect
 				//Only for debugging -> delete this
-				//Log::Info("explicit_derivative: %g", explicit_derivative);
+				//Log::REInfo("explicit_derivative: %g", explicit_derivative);
 				//for (int i = 0; i < 5; ++i) {
-				//	Log::Info("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
+				//	Log::REInfo("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
 				//}
 				//for (int i = 0; i < 5; ++i) {
-				//	Log::Info("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
+				//	Log::REInfo("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
 				//}
-				//Log::Info("cov_grad");
+				//Log::REInfo("cov_grad");
 				//for (int i = 0; i < num_comps; ++i) {
-				//	Log::Info("cov_grad[%d]: %g", i, cov_grad[i]);
+				//	Log::REInfo("cov_grad[%d]: %g", i, cov_grad[i]);
 				//}
 			}//end calc_cov_grad
 			// calculate gradient wrt fixed effects
@@ -1137,17 +1139,17 @@ namespace GPBoost {
 					cov_grad[j] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
 				}
 				////Only for debugging -> delete this				
-				//Log::Info("explicit_derivative: %g", explicit_derivative);
+				//Log::REInfo("explicit_derivative: %g", explicit_derivative);
 				//for (int i = 0; i < 5; ++i) {
-				//	Log::Info("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
+				//	Log::REInfo("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
 				//}
 				//for (int i = 0; i < 5; ++i) {
-				//	Log::Info("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
+				//	Log::REInfo("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
 				//}
 				////Only for debugging -> delete this
-				//Log::Info("cov_grad");
+				//Log::REInfo("cov_grad");
 				//for (int i = 0; i < num_par; ++i) {
-				//	Log::Info("cov_grad[%d]: %g", i, cov_grad[i]);
+				//	Log::REInfo("cov_grad[%d]: %g", i, cov_grad[i]);
 				//}
 			}//end calc_cov_grad
 			// calculate gradient wrt fixed effects

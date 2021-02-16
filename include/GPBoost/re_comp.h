@@ -9,7 +9,6 @@
 #ifndef GPB_RE_COMP_H_
 #define GPB_RE_COMP_H_
 
-#include <GPBoost/log.h>
 #include <GPBoost/type_defs.h>
 #include <GPBoost/cov_fcts.h>
 #include <GPBoost/GP_utils.h>
@@ -19,6 +18,9 @@
 #include <vector>
 #include <type_traits>
 #include <random>
+
+#include <LightGBM/utils/log.h>
+using LightGBM::Log;
 
 namespace GPBoost {
 
@@ -283,10 +285,10 @@ namespace GPBoost {
     */
     std::shared_ptr<T> GetZSigmaZt() override {
       if (this->cov_pars_.size() == 0) {
-        Log::Fatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
+        Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
       }
       if (this->ZZt_.cols() == 0) {
-        Log::Fatal("Matrix ZZt_ not defined");
+        Log::REFatal("Matrix ZZt_ not defined");
       }
       return(std::make_shared<T>(this->cov_pars_[0] * ZZt_));
     }
@@ -300,13 +302,13 @@ namespace GPBoost {
     */
     std::shared_ptr<T> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double = 1.) override {
       if (this->cov_pars_.size() == 0) {
-        Log::Fatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
+        Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
       }
       if (this->ZZt_.cols() == 0) {
-        Log::Fatal("Matrix ZZt_ not defined");
+        Log::REFatal("Matrix ZZt_ not defined");
       }
       if (ind_par != 0) {
-        Log::Fatal("No covariance parameter for index number %d", ind_par);
+        Log::REFatal("No covariance parameter for index number %d", ind_par);
       }
       double cm = transf_scale ? this->cov_pars_[0] : 1.;
       return(std::make_shared<T>(cm * ZZt_));
@@ -606,7 +608,7 @@ namespace GPBoost {
     */
     void FindInitCovPar(vec_t& pars) override {
       if (!dist_saved_ && !coord_saved_) {
-        Log::Fatal("Cannot determine initial covariance parameters if neither distances nor coordinates are given");
+        Log::REFatal("Cannot determine initial covariance parameters if neither distances nor coordinates are given");
       }
       pars[0] = 1;
       double mean_dist = 0;
@@ -654,7 +656,7 @@ namespace GPBoost {
         pars[1] = 3. / std::pow(mean_dist, cov_function_->shape_);//pars[1] = 1/range^shape
       }
       else {
-        Log::Fatal("Finding initial values for covariance paramters for covariance of type '%s' is not supported.", cov_function_->cov_fct_type_.c_str());
+        Log::REFatal("Finding initial values for covariance paramters for covariance of type '%s' is not supported.", cov_function_->cov_fct_type_.c_str());
       }
     }
 
@@ -662,7 +664,7 @@ namespace GPBoost {
     * \brief Calculate covariance matrix at unique locations
     */
     void CalcSigma() override {
-      if (this->cov_pars_.size() == 0) { Log::Fatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
+      if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
       (*cov_function_).template GetCovMat<T>(*dist_, this->cov_pars_, sigma_);
       //cov_function_->GetCovMat<T>(*dist_, this->cov_pars_, sigma_);//does not work for mingw compiler, thus use code above
       sigma_defined_ = true;
@@ -674,7 +676,7 @@ namespace GPBoost {
     */
     std::shared_ptr<T> GetZSigmaZt() override {
       if (!sigma_defined_) {
-        Log::Fatal("Sigma has not been calculated");
+        Log::REFatal("Sigma has not been calculated");
       }
       if (this->is_rand_coef_ || has_Z_) {
         return(std::make_shared<T>(this->Z_ * sigma_ * this->Z_.transpose()));
@@ -697,7 +699,7 @@ namespace GPBoost {
     void CalcSigmaAndSigmaGrad(const den_mat_t& dist, den_mat_t& cov_mat,
       den_mat_t& cov_grad_1, den_mat_t& cov_grad_2,
       bool calc_gradient = false, bool transf_scale = true, double nugget_var = 1.) override {
-      if (this->cov_pars_.size() == 0) { Log::Fatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
+      if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
       (*cov_function_).template GetCovMat<den_mat_t>(dist, this->cov_pars_, cov_mat);
       if (calc_gradient) {
         //gradient wrt to variance parameter
@@ -722,10 +724,10 @@ namespace GPBoost {
     */
     std::shared_ptr<T> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double nugget_var = 1.) override {
       if (!sigma_defined_) {
-        Log::Fatal("Sigma has not been calculated");
+        Log::REFatal("Sigma has not been calculated");
       }
       if (ind_par != 0 && ind_par != 1) {
-        Log::Fatal("No covariance parameter for index number %d", ind_par);
+        Log::REFatal("No covariance parameter for index number %d", ind_par);
       }
       if (ind_par == 0) {//variance
         if (transf_scale) {
@@ -761,7 +763,7 @@ namespace GPBoost {
     */
     sp_mat_t* GetZ() override {
       if (!has_Z_) {
-        Log::Fatal("Gaussian process has no matrix Z");
+        Log::REFatal("Gaussian process has no matrix Z");
       }
       return(&(this->Z_));
     }
