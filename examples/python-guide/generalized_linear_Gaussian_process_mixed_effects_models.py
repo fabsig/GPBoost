@@ -4,7 +4,6 @@ import gpboost as gpb
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
-
 plt.style.use('ggplot')
 print("It is recommended that the examples are run in interactive mode")
 

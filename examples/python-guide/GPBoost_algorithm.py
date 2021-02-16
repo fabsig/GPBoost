@@ -4,13 +4,13 @@ import gpboost as gpb
 import numpy as np
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
-print("It is recommended that the examples are run in interactive mode")
 def f1d(x):
     """Non-linear function for simulation"""
     return (1.7 * (1 / (1 + np.exp(-(x - 0.5) * 20)) + 0.75 * x))
+print("It is recommended that the examples are run in interactive mode")
 
 # --------------------Combine tree-boosting and grouped random effects model----------------
-# Simulate data
+# --------------------Simulate data----------------
 n = 5000  # number of samples
 m = 500  # number of groups
 np.random.seed(1)
@@ -117,6 +117,15 @@ bst = gpb.train(params=params,
 # plot validation scores
 gpb.plot_metric(evals_result, figsize=(10, 5))
 plt.show()
+
+#--------------------Cross-validation for determining number of iterations----------------
+gp_model = gpb.GPModel(group_data=group)
+data_train = gpb.Dataset(X, y)
+cvbst = gpb.cv(params=params, train_set=data_train,
+               gp_model=gp_model, use_gp_model_for_validation=True,
+               num_boost_round=100, early_stopping_rounds=5,
+               nfold=2, verbose_eval=True, show_stdv=False, seed=1)
+print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
 
 #--------------------Saving a booster with a gp_model and loading it from a file----------------
 # Train model and make prediction

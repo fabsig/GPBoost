@@ -4,11 +4,10 @@ import gpboost as gpb
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
+plt.style.use('ggplot')
 def f1d(x):
     """Non-linear function for simulation"""
     return 1 / (1 + np.exp(-(x - 0.5) * 10)) - 0.5
-
-plt.style.use('ggplot')
 print("It is recommended that the examples are run in interactive mode")
 
 """
