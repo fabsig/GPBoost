@@ -336,6 +336,7 @@ if __name__ == "__main__":
           version=version,
           description='GPBoost Python Package',
           long_description=readme,
+          long_description_content_type='text/markdown',
           install_requires=[
               'wheel',
               'numpy',
@@ -357,7 +358,7 @@ if __name__ == "__main__":
           url='https://github.com/fabsig/GPBoost',
           classifiers=['Development Status :: 5 - Production/Stable',
                        'Intended Audience :: Science/Research',
-                       'License :: OSI Approved :: MIT License',
+                       'License :: OSI Approved :: Apache Software License',
                        'Natural Language :: English',
                        'Operating System :: MacOS',
                        'Operating System :: Microsoft :: Windows',

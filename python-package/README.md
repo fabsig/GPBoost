@@ -3,8 +3,7 @@
      align = "right"
      width="40%" />
 
-GPBoost Python Package
-=======================
+# GPBoost Python Package
 
 [![License](https://img.shields.io/badge/Licence-Apache%202.0-green.svg)](https://github.com/fabsig/GPBoost/blob/master/LICENSE)
 [<img src="https://img.shields.io/pypi/pyversions/gpboost.svg?logo=python&logoColor=white">](https://pypi.org/project/gpboost)
@@ -13,8 +12,7 @@ GPBoost Python Package
 
 This is the Python package implementation of the GPBoost library. See https://github.com/fabsig/GPBoost for more information on the modeling background and the software implementation.
 
-Examples
---------
+## Examples
 
 - [**Detailed Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide):
   * [GPBoost algorithm](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm.py) for combining tree-boosting with Gaussian process and random effects models
@@ -26,8 +24,7 @@ Examples
 - [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
 - [**Blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) and [corresponding code](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm_blog_post_example.py) on how to combine tree-boosting with mixed effects models
 
-Installation
-------------
+## Installation
 
 ### Before you install
 
