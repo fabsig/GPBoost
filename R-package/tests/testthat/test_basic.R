@@ -14,21 +14,23 @@ set.seed(708L)
 #               to an accumulator then returns the current value.
 #               This is used to mock the situation where an evaluation
 #               metric increases every iteration
+
+ACCUMULATOR_ENVIRONMENT <- new.env()
 ACCUMULATOR_NAME <- "INCREASING_METRIC_ACUMULATOR"
-assign(x = ACCUMULATOR_NAME, value = 0.0, envir = .GlobalEnv)
+assign(x = ACCUMULATOR_NAME, value = 0.0, envir = ACCUMULATOR_ENVIRONMENT)
 
 .increasing_metric <- function(preds, dtrain) {
-  if (!exists(ACCUMULATOR_NAME, envir = .GlobalEnv)) {
-    assign(ACCUMULATOR_NAME, 0.0, envir = .GlobalEnv)
+  if (!exists(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)) {
+    assign(ACCUMULATOR_NAME, 0.0, envir = ACCUMULATOR_ENVIRONMENT)
   }
   assign(
     x = ACCUMULATOR_NAME
-    , value = get(ACCUMULATOR_NAME, envir = .GlobalEnv) + 0.1
-    , envir = .GlobalEnv
+    , value = get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT) + 0.1
+    , envir = ACCUMULATOR_ENVIRONMENT
   )
   return(list(
     name = "increasing_metric"
-    , value = get(ACCUMULATOR_NAME, envir = .GlobalEnv)
+    , value = get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
     , higher_better = TRUE
   ))
 }
@@ -837,7 +839,7 @@ test_that("gpb.train() does not stop early if early_stopping_rounds is not given
 
   increasing_metric_starting_value <- get(
     ACCUMULATOR_NAME
-    , envir = .GlobalEnv
+    , envir = ACCUMULATOR_ENVIRONMENT
   )
   nrounds <- 10L
   metrics <- list(
@@ -952,7 +954,7 @@ test_that("If first_metric_only is TRUE, gpb.train() decides to stop early based
   set.seed(708L)
   nrounds <- 10L
   early_stopping_rounds <- 3L
-  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = .GlobalEnv)
+  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
   bst <- gpb.train(
     params = list(
       objective = "regression"
@@ -999,7 +1001,7 @@ test_that("If first_metric_only is TRUE, gpb.train() decides to stop early based
 test_that("gpb.train() works when a mixture of functions and strings are passed to eval", {
   set.seed(708L)
   nrounds <- 10L
-  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = .GlobalEnv)
+  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
   bst <- gpb.train(
     params = list(
       objective = "regression"
@@ -1054,7 +1056,7 @@ test_that("gpb.train() works when a list of strings or a character vector is pas
 
     set.seed(708L)
     nrounds <- 10L
-    increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = .GlobalEnv)
+    increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
     bst <- gpb.train(
       params = list(
         objective = "binary"
@@ -1090,7 +1092,7 @@ test_that("gpb.train() works when a list of strings or a character vector is pas
 test_that("gpb.train() works when you specify both 'metric' and 'eval' with strings", {
   set.seed(708L)
   nrounds <- 10L
-  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = .GlobalEnv)
+  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
   bst <- gpb.train(
     params = list(
       objective = "binary"
@@ -1121,7 +1123,7 @@ test_that("gpb.train() works when you specify both 'metric' and 'eval' with stri
 test_that("gpb.train() works when you give a function for eval", {
   set.seed(708L)
   nrounds <- 10L
-  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = .GlobalEnv)
+  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
   bst <- gpb.train(
     params = list(
       objective = "binary"
@@ -1502,7 +1504,7 @@ test_that("gpb.cv() works when you specify both 'metric' and 'eval' with strings
   set.seed(708L)
   nrounds <- 10L
   nfolds <- 4L
-  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = .GlobalEnv)
+  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
   bst <- gpb.cv(
     params = list(
       objective = "binary"
@@ -1535,7 +1537,7 @@ test_that("gpb.cv() works when you give a function for eval", {
   set.seed(708L)
   nrounds <- 10L
   nfolds <- 3L
-  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = .GlobalEnv)
+  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
   bst <- gpb.cv(
     params = list(
       objective = "binary"
@@ -1558,7 +1560,7 @@ test_that("If first_metric_only is TRUE, gpb.cv() decides to stop early based on
   nrounds <- 10L
   nfolds <- 5L
   early_stopping_rounds <- 3L
-  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = .GlobalEnv)
+  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
   bst <- gpb.cv(
     params = list(
       objective = "regression"
@@ -1617,7 +1619,7 @@ test_that("early stopping works with gpb.cv()", {
   nrounds <- 10L
   nfolds <- 5L
   early_stopping_rounds <- 3L
-  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = .GlobalEnv)
+  increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
   bst <- gpb.cv(
     params = list(
       objective = "regression"
