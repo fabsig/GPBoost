@@ -124,4 +124,8 @@ Note: for the build with Visual Studio/VS Build Tools in Windows, you should use
 
 ## Testing
 
-There is currently no integration service set up that automatically runs unit tests. However, any contribution needs to pass all unit tests in the `R-package/tests/testthat` directory. These tests can be run using the [run_tests_coverage_R_package.R](https://github.com/fabsig/GPBoost/blob/master/helpers/run_tests_coverage_R_package.R) file.
+There is currently no integration service set up that automatically runs unit tests. However, any contribution needs to pass all unit tests in the `R-package/tests/testthat` directory. These tests can be run using the [run_tests_coverage_R_package.R](https://github.com/fabsig/GPBoost/blob/master/helpers/run_tests_coverage_R_package.R) file. In any case, make sure that you run the full set of tests by speciying the following environment variable
+```R
+Sys.setenv(GPBOOST_ALL_TESTS = "GPBOOST_ALL_TESTS")
+```
+before runing the tests in the `R-package/tests/testthat` directory.
