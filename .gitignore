@@ -13,7 +13,7 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Bb]uild/
-**/.README.html
+**/README.html
 
 # Compiled Object files
 *.slo
