@@ -317,7 +317,7 @@ test_that("Creating a Booster from a Dataset with an existing predictor should w
     expect_equal(bst$current_iter(), nrounds)
     expect_equal(bst$eval_train()[[1L]][["value"]], 0.1115352)
     expect_equal(bst_from_ds$current_iter(), nrounds)
-    dumped_model <- jsonlite::fromJSON(bst$dump_model())
+    dumped_model <- RJSONIO::fromJSON(bst$dump_model())
     expect_identical(bst_from_ds$eval_train(), list())
     expect_equal(bst_from_ds$current_iter(), nrounds)
 })

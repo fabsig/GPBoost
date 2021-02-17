@@ -150,7 +150,7 @@ bst <- gpboost(data = X,
                verbose = 0)
 pred <- predict(bst, data = Xtest, group_data_pred = group_test, predict_var= TRUE)
 # Save model to file
-filename <- tempfile(fileext = ".RData")
+filename <- tempfile(fileext = ".json")
 gpb.save(bst,filename = filename)
 # Load from file and make predictions again
 bst_loaded <- gpb.load(filename = filename)

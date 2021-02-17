@@ -69,9 +69,9 @@ pred_resp['var'][0:5]  # # Predicted varianec of response
 
 #--------------------Saving a booster with a gp_model and loading it from a file----------------
 # Save trained model
-gp_model.save_model('gp_model.txt')
+gp_model.save_model('gp_model.json')
 # Load from file and make predictions again
-gp_model_loaded = gpb.GPModel(model_file = 'gp_model.txt')
+gp_model_loaded = gpb.GPModel(model_file = 'gp_model.json')
 pred_loaded = gp_model_loaded.predict(X_pred=X_test, group_data_pred=group_test,
                                       predict_var=True, predict_response=False)
 pred_resp_loaded = gp_model_loaded.predict(X_pred=X_test, group_data_pred=group_test,

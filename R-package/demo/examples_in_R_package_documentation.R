@@ -97,7 +97,7 @@ summary(gp_model)
 gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
 pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
 # Save model to file
-filename <- tempfile(fileext = ".RData")
+filename <- tempfile(fileext = ".json")
 saveGPModel(gp_model,filename = filename)
 # Load from file and make predictions again
 gp_model_loaded <- loadGPModel(filename = filename)
@@ -105,7 +105,6 @@ pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], p
 # Check equality
 pred$mu - pred_loaded$mu
 pred$var - pred_loaded$var
-
 
 
 
@@ -320,7 +319,7 @@ bst <- gpboost(data = X,
 pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
                 predict_var= TRUE)
 # Save model to file
-filename <- tempfile(fileext = ".RData")
+filename <- tempfile(fileext = ".json")
 gpb.save(bst,filename = filename)
 # Load from file and make predictions again
 bst_loaded <- gpb.load(filename = filename)

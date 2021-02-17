@@ -129,9 +129,9 @@ pred = bst.predict(data=Xtest, group_data_pred=group_test,
 pred_resp = bst.predict(data=Xtest, group_data_pred=group_test,
                         predict_var=True, raw_score=False)
 # Save model
-bst.save_model('model.txt')
+bst.save_model('model.json')
 # Load from file and make predictions again
-bst_loaded = gpb.Booster(model_file = 'model.txt')
+bst_loaded = gpb.Booster(model_file = 'model.json')
 pred_loaded = bst_loaded.predict(data=Xtest, group_data_pred=group_test,
                                  predict_var=True, raw_score=True)
 pred_resp_loaded = bst_loaded.predict(data=Xtest, group_data_pred=group_test,

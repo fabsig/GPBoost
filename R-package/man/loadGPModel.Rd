@@ -22,7 +22,7 @@ data(GPBoost_data, package = "gpboost")
 gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
 pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
 # Save model to file
-filename <- tempfile(fileext = ".RData")
+filename <- tempfile(fileext = ".json")
 saveGPModel(gp_model,filename = filename)
 # Load from file and make predictions again
 gp_model_loaded <- loadGPModel(filename = filename)

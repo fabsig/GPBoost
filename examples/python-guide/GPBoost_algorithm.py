@@ -137,9 +137,9 @@ group_test = np.array([1,2,-1])
 Xtest = np.random.rand(len(group_test), 2)
 pred = bst.predict(data=Xtest, group_data_pred=group_test, predict_var=True)
 # Save model
-bst.save_model('model.txt')
+bst.save_model('model.json')
 # Load from file and make predictions again
-bst_loaded = gpb.Booster(model_file = 'model.txt')
+bst_loaded = gpb.Booster(model_file = 'model.json')
 pred_loaded = bst_loaded.predict(data=Xtest, group_data_pred=group_test, predict_var=True)
 # Check equality
 print(pred['fixed_effect'] - pred_loaded['fixed_effect'])

@@ -524,7 +524,7 @@ test_that("gpb.train() works with force_col_wise and force_row_wise", {
   # and force_row_wise are not causing any weird side effects
   for (bst in list(bst_row_wise, bst_col_wise)) {
     expect_equal(bst$current_iter(), nrounds)
-    parsed_model <- jsonlite::fromJSON(bst$dump_model())
+    parsed_model <- RJSONIO::fromJSON(bst$dump_model())
     expect_equal(parsed_model$objective, "binary sigmoid:1")
     expect_false(parsed_model$average_output)
   }
@@ -554,7 +554,7 @@ test_that("gpb.train() works as expected with sparse features", {
 
   expect_true(gpboost:::gpb.is.Booster(bst))
   expect_equal(bst$current_iter(), nrounds)
-  parsed_model <- jsonlite::fromJSON(bst$dump_model())
+  parsed_model <- RJSONIO::fromJSON(bst$dump_model())
   expect_equal(parsed_model$objective, "binary sigmoid:1")
   expect_false(parsed_model$average_output)
   expected_error <- 0.6931268
@@ -1217,7 +1217,7 @@ test_that("gpb.train() supports non-ASCII feature names", {
     , colnames = feature_names
   )
   expect_true(gpboost:::gpb.is.Booster(bst))
-  dumped_model <- jsonlite::fromJSON(bst$dump_model())
+  dumped_model <- RJSONIO::fromJSON(bst$dump_model())
 
   # UTF-8 strings are not well-supported on Windows
   # * https://developer.r-project.org/Blog/public/2020/05/02/utf-8-support-on-windows/

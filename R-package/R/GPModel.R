@@ -112,44 +112,67 @@ gpb.GPModel <- R6::R6Class(
                           num_neighbors_pred = num_neighbors,
                           cluster_ids = NULL,
                           free_raw_data = FALSE,
-                          modelfile = NULL) {
-      
-      ## NEW
-      if (!is.null(modelfile)){
+                          modelfile = NULL,
+                          model_list = NULL) {
+
+      if (!is.null(modelfile) | !is.null(model_list)){
         
-        if (!(is.character(modelfile) && length(modelfile) == 1L)) {
-          stop("gpb.GPModel: modelfile should be a string")
+        if (!is.null(modelfile)) {
+          if (!(is.character(modelfile) && length(modelfile) == 1L)) {
+            stop("gpb.GPModel: modelfile should be a string")
+          }
+          if (!file.exists(modelfile)) {
+            stop(sprintf("gpb.GPModel: file '%s' passed to modelfile does not exist", modelfile))
+          }
+          # Load data
+          model_list = RJSONIO::fromJSON(content=modelfile)
+        } else {
+          if (!is.list(model_list)) {
+            stop("gpb.GPModel: Can only use a list as model_list")
+          }
         }
-        if (!file.exists(modelfile)) {
-          stop(sprintf("gpb.GPModel: file '%s' passed to modelfile does not exist", modelfile))
+        # Make sure that data in correct format
+        MAYBE_CONVERT_TO_MATRIX <- c("cov_pars","group_data", "group_rand_coef_data",
+                                     "gp_coords", "gp_rand_coef_data",
+                                     "ind_effect_group_rand_coef",
+                                     "cluster_ids","coefs","X")
+        for (feature in MAYBE_CONVERT_TO_MATRIX) {
+          if (!is.null(model_list[[feature]])) {
+            if (is.list(model_list[[feature]])) {
+              model_list[[feature]] <- matrix(unlist(model_list[[feature]]),
+                                             nrow = length(model_list[[feature]]),
+                                             byrow = TRUE)
+              if (dim(model_list[[feature]])[2]==1) {
+                model_list[[feature]] <- as.vector(model_list[[feature]])
+              }
+            }
+          }
         }
         
-        # Load data
-        load(file = modelfile)
         # Set feature data overwriting arguments for constructor
-        group_data = save_data[["group_data"]]
-        group_rand_coef_data = save_data[["group_rand_coef_data"]]
-        ind_effect_group_rand_coef = save_data[["ind_effect_group_rand_coef"]]
-        gp_coords = save_data[["gp_coords"]]
-        gp_rand_coef_data = save_data[["gp_rand_coef_data"]]
-        cov_function = save_data[["cov_function"]]
-        cov_fct_shape = save_data[["cov_fct_shape"]]
-        vecchia_approx = save_data[["vecchia_approx"]]
-        num_neighbors = save_data[["num_neighbors"]]
-        vecchia_ordering = save_data[["vecchia_ordering"]]
-        vecchia_pred_type = save_data[["vecchia_pred_type"]]
-        num_neighbors_pred = save_data[["num_neighbors_pred"]]
-        cluster_ids = save_data[["cluster_ids"]]
-        likelihood = save_data[["likelihood"]]
+        group_data = model_list[["group_data"]]
+        group_rand_coef_data = model_list[["group_rand_coef_data"]]
+        ind_effect_group_rand_coef = model_list[["ind_effect_group_rand_coef"]]
+        gp_coords = model_list[["gp_coords"]]
+        gp_rand_coef_data = model_list[["gp_rand_coef_data"]]
+        cov_function = model_list[["cov_function"]]
+        cov_fct_shape = model_list[["cov_fct_shape"]]
+        vecchia_approx = model_list[["vecchia_approx"]]
+        num_neighbors = model_list[["num_neighbors"]]
+        vecchia_ordering = model_list[["vecchia_ordering"]]
+        vecchia_pred_type = model_list[["vecchia_pred_type"]]
+        num_neighbors_pred = model_list[["num_neighbors_pred"]]
+        cluster_ids = model_list[["cluster_ids"]]
+        likelihood = model_list[["likelihood"]]
         # Set additionaly required data
         private$model_has_been_loaded_from_saved_file = TRUE
-        private$cov_pars_loaded_from_file = save_data[["cov_pars"]]
-        private$y_loaded_from_file = save_data[["y"]]
-        private$has_covariates = save_data[["has_covariates"]]
-        if (save_data[["has_covariates"]]) {
-          private$coefs_loaded_from_file = save_data[["coefs"]]
-          private$num_coef = save_data[["num_coef"]]
-          private$X_loaded_from_file = save_data[["X"]]
+        private$cov_pars_loaded_from_file = model_list[["cov_pars"]]
+        private$y_loaded_from_file = model_list[["y"]]
+        private$has_covariates = model_list[["has_covariates"]]
+        if (model_list[["has_covariates"]]) {
+          private$coefs_loaded_from_file = model_list[["coefs"]]
+          private$num_coef = model_list[["num_coef"]]
+          private$X_loaded_from_file = model_list[["X"]]
         }
       }# end !is.null(modelfile)
       
@@ -456,8 +479,8 @@ gpb.GPModel <- R6::R6Class(
       }
       
       if (!is.null(modelfile)){
-        self$set_optim_params(params = save_data[["params"]])
-        self$set_optim_coef_params(params = save_data[["params"]])
+        self$set_optim_params(params = model_list[["params"]])
+        self$set_optim_coef_params(params = model_list[["params"]])
       }
       
     },
@@ -1700,46 +1723,69 @@ gpb.GPModel <- R6::R6Class(
       return(invisible(NULL))
     },
     
+    model_to_list = function() {
+      if (isTRUE(private$free_raw_data)) {
+        stop("model_to_list: cannot convert to json when free_raw_data=TRUE has been set")
+      }
+      model_list <- list()
+      # Parameters
+      model_list[["params"]] <- self$get_optim_params()
+      model_list[["likelihood"]] <- self$get_likelihood_name()
+      model_list[["cov_pars"]] <- self$get_cov_pars()
+      # Response data
+      model_list[["y"]] <- self$get_response_data()
+      # Feature data
+      model_list[["group_data"]] <- self$get_group_data()
+      model_list[["group_rand_coef_data"]] <- self$get_group_rand_coef_data()
+      model_list[["gp_coords"]] <- self$get_gp_coords()
+      model_list[["gp_rand_coef_data"]] <- self$get_gp_rand_coef_data()
+      model_list[["ind_effect_group_rand_coef"]] <- self$get_ind_effect_group_rand_coef()
+      model_list[["cluster_ids"]] <- self$get_cluster_ids()
+      model_list[["vecchia_approx"]] <- private$vecchia_approx
+      model_list[["num_neighbors"]] <- private$num_neighbors
+      model_list[["vecchia_ordering"]] <- private$vecchia_ordering
+      model_list[["vecchia_pred_type"]] <- private$vecchia_pred_type
+      model_list[["num_neighbors_pred"]] <- private$num_neighbors_pred
+      model_list[["cov_function"]] <- self$get_cov_function()
+      model_list[["cov_fct_shape"]] <- self$get_cov_fct_shape()
+      # Covariate data
+      model_list[["has_covariates"]] <- private$has_covariates
+      if (private$has_covariates) {
+        model_list[["coefs"]] <- self$get_coef()
+        model_list[["num_coef"]] <- private$num_coef
+        model_list[["X"]] <- self$get_covariate_data()
+      }
+      # Make sure that data is saved in correct format by RJSONIO::toJSON
+      MAYBE_CONVERT_TO_VECTOR <- c("cov_pars","group_data", "group_rand_coef_data",
+                                   "gp_coords", "gp_rand_coef_data",
+                                   "ind_effect_group_rand_coef",
+                                   "cluster_ids","coefs","X")
+      for (feature in MAYBE_CONVERT_TO_VECTOR) {
+        if (!is.null(model_list[[feature]])) {
+          if (is.vector(model_list[[feature]])) {
+            model_list[[feature]] <- as.vector(model_list[[feature]])
+          }
+          if (is.matrix(model_list[[feature]])) {
+            if (dim(model_list[[feature]])[2] == 1) {
+              model_list[[feature]] <- as.vector(model_list[[feature]])
+            }
+          }
+        }
+      }
+      return(model_list)
+    },
+    
     save = function(filename) {
       
       if (!(is.character(filename) && length(filename) == 1L)) {
         stop("save.GPModel: filename should be a string")
       }
-      
       if (isTRUE(private$free_raw_data)) {
         stop("save.GPModel: cannot save when free_raw_data=TRUE has been set")
       }
-      save_data <- list()
-      # Parameters
-      save_data[["params"]] <- self$get_optim_params()
-      save_data[["likelihood"]] <- self$get_likelihood_name()
-      save_data[["cov_pars"]] <- self$get_cov_pars()
-      # Response data
-      save_data[["y"]] <- self$get_response_data()
-      # Feature data
-      save_data[["group_data"]] <- self$get_group_data()
-      save_data[["group_rand_coef_data"]] <- self$get_group_rand_coef_data()
-      save_data[["gp_coords"]] <- self$get_gp_coords()
-      save_data[["gp_rand_coef_data"]] <- self$get_gp_rand_coef_data()
-      save_data[["ind_effect_group_rand_coef"]] <- self$get_ind_effect_group_rand_coef()
-      save_data[["cluster_ids"]] <- self$get_cluster_ids()
-      save_data[["vecchia_approx"]] <- private$vecchia_approx
-      save_data[["num_neighbors"]] <- private$num_neighbors
-      save_data[["vecchia_ordering"]] <- private$vecchia_ordering
-      save_data[["vecchia_pred_type"]] <- private$vecchia_pred_type
-      save_data[["num_neighbors_pred"]] <- private$num_neighbors_pred
-      save_data[["cov_function"]] <- self$get_cov_function()
-      save_data[["cov_fct_shape"]] <- self$get_cov_fct_shape()
-      # Covariate data
-      save_data[["has_covariates"]] <- private$has_covariates
-      if (private$has_covariates) {
-        save_data[["coefs"]] <- self$get_coef()
-        save_data[["num_coef"]] <- private$num_coef
-        save_data[["X"]] <- self$get_covariate_data()
-      }
-
-      save(save_data, file = filename)
-      
+      # Use RJSONIO since jsonlite and rjson omit the last digit of a double!
+      save_data_json <- RJSONIO::toJSON(self$model_to_list(), digits=17)
+      write(save_data_json, file=filename)
     }
     
   ),
@@ -2249,7 +2295,7 @@ predict.GPModel <- function(object,
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
 #' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
 #' # Save model to file
-#' filename <- tempfile(fileext = ".RData")
+#' filename <- tempfile(fileext = ".json")
 #' saveGPModel(gp_model,filename = filename)
 #' # Load from file and make predictions again
 #' gp_model_loaded <- loadGPModel(filename = filename)
@@ -2259,6 +2305,7 @@ predict.GPModel <- function(object,
 #' pred$var - pred_loaded$var
 #' 
 #' @rdname saveGPModel
+#' @importFrom RJSONIO toJSON
 #' @export
 #' 
 saveGPModel <- function(gp_model, filename){
@@ -2290,7 +2337,7 @@ saveGPModel <- function(gp_model, filename){
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
 #' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
 #' # Save model to file
-#' filename <- tempfile(fileext = ".RData")
+#' filename <- tempfile(fileext = ".json")
 #' saveGPModel(gp_model,filename = filename)
 #' # Load from file and make predictions again
 #' gp_model_loaded <- loadGPModel(filename = filename)
@@ -2300,6 +2347,7 @@ saveGPModel <- function(gp_model, filename){
 #' pred$var - pred_loaded$var
 #' 
 #' @rdname loadGPModel
+#' @importFrom RJSONIO fromJSON
 #' @export
 loadGPModel <- function(filename){
   

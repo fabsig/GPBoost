@@ -318,8 +318,6 @@ namespace LightGBM {
 		// output model type
 		ss << SubModelName() << '\n';
 		ss << "version=" << kModelVersion << '\n';
-		// Indicator for existence of re_model
-		ss << "has_gp_model=" << objective_function_->HasGPModel() << '\n';
 		// output number of class
 		ss << "num_class=" << num_class_ << '\n';
 		ss << "num_tree_per_iteration=" << num_tree_per_iteration_ << '\n';

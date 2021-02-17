@@ -44,7 +44,7 @@
 #'
 #' tree_dt <- gpb.model.dt.tree(model)
 #' @importFrom data.table := rbindlist
-#' @importFrom jsonlite fromJSON
+#' @importFrom RJSONIO fromJSON
 #' @export
 gpb.model.dt.tree <- function(model, num_iteration = NULL) {
 
@@ -52,13 +52,11 @@ gpb.model.dt.tree <- function(model, num_iteration = NULL) {
   json_model <- gpb.dump(booster = model, num_iteration = num_iteration)
 
   # Parse json model second
-  parsed_json_model <- jsonlite::fromJSON(
-    txt = json_model
-    , simplifyVector = TRUE
-    , simplifyDataFrame = FALSE
-    , simplifyMatrix = FALSE
-    , flatten = FALSE
-  )
+  parsed_json_model <- RJSONIO::fromJSON(content = json_model, simplify = FALSE)
+  # Make sure that format is correct
+  if (is.list(parsed_json_model[[9]])) {
+    parsed_json_model[[9]] <- unlist(parsed_json_model[[9]])
+  }
 
   # Parse tree model third
   tree_list <- lapply(parsed_json_model$tree_info, single.tree.parse)

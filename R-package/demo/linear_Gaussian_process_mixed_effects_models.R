@@ -86,7 +86,7 @@ gp_model <- fitGPModel(group_data = group, y = y)
 group_test = c(1,1,2,2,-1,-1)
 pred <- predict(gp_model, group_data_pred = group_test, predict_var = TRUE)
 # Save model to file
-filename <- tempfile(fileext = ".RData")
+filename <- tempfile(fileext = ".json")
 saveGPModel(gp_model,filename = filename)
 # Load from file and make predictions again
 gp_model_loaded <- loadGPModel(filename = filename)

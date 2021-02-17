@@ -846,7 +846,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred_resp <- predict(gp_model, y=y, group_data_pred = group_test,
                          X_pred = X_test, predict_var = TRUE, predict_response = TRUE)
     # Save model to file
-    filename <- tempfile(fileext = ".RData")
+    filename <- tempfile(fileext = ".json")
     saveGPModel(gp_model,filename = filename)
     # Delete model
     gp_model$finalize()

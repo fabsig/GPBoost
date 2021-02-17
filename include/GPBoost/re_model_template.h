@@ -990,6 +990,8 @@ namespace GPBoost {
 			const double* fixed_effects_ptr = fixed_effects;
 			vec_t fixed_effects_vec;
 			if (pred_for_observed_data) {//TODO (low prio): this acutally needs to be done only for the GP realizations for which predictions are made (currently it is done for all of them in unique_clusters_pred)
+				
+				// Set response data and fixed effects
 				if (gauss_likelihood_) {
 					if (has_covariates_ || fixed_effects != nullptr) {
 						vec_t resid;
@@ -1033,6 +1035,7 @@ namespace GPBoost {
 						SetY(y_obs);
 					}
 				}//end if not gauss_likelihood_
+
 				SetCovParsComps(cov_pars);
 				if (!(vecchia_approx_ && gauss_likelihood_)) {// no need to call CalcCovFactor here for the Vecchia approximation for Gaussian data, this is done in the prediction steps below
 					if (calc_cov_factor) {
@@ -1180,7 +1183,7 @@ namespace GPBoost {
 					}//end write covariance / variance on output
 
 				}//end cluster_i with no observed data
-				else {//Case 2: there exists observed data for this cluster_i (= typically the case)
+				else {//Case 2: there exists observed data for this cluster_i (= typically case)
 
 					den_mat_t gp_coords_mat_pred;
 					if (num_gp_ > 0) {

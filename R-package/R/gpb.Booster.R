@@ -121,25 +121,40 @@ Booster <- R6::R6Class(
         
         ## Does it have a gp_model?
         con <- file(modelfile)
-        has_gp_model <- read.table(con,skip=2,nrow=1)
-        if (has_gp_model=="has_gp_model=1") {
+        has_gp_model <- read.table(con,skip=1,nrow=1)
+        if (paste0(as.vector(has_gp_model),collapse = "")=="has_gp_model:1,") {
+          
           private$has_gp_model = TRUE
-          filename_gp_model <- paste0(modelfile,"_gp_model.RData")
-          filename_raw_data <- paste0(modelfile,"_raw_data.RData")
-          private$gp_model <- gpb.GPModel$new(modelfile = filename_gp_model)
-          load(file = filename_raw_data)
-          private$train_set <- gpb.Dataset(data = raw_data, label = label)
-        } else if (has_gp_model!="has_gp_model=0") {
-          stop("gpb.load: file does not have correct format")
+          save_data = RJSONIO::fromJSON(content=modelfile)
+          # Do we have a booster_str as character?
+          if (!is.character(save_data[["booster_str"]])) {
+            stop("gpb.Booster: Can only use a string as booster_str in modelfile")
+          }
+          # Create booster from string
+          handle <- gpb.call(
+            fun_name = "LGBM_BoosterLoadModelFromString_R"
+            , ret = handle
+            , gpb.c_str(x = save_data[["booster_str"]])
+          )
+          # create gp_model from list
+          private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
+          private$train_set <- gpb.Dataset(
+            data = matrix(unlist(save_data[["raw_data"]]$data),
+                          nrow = length(save_data[["raw_data"]]$data),
+                          byrow = TRUE),
+            label = save_data[["raw_data"]]$label)
+
+        } else { # has no gp_model
+          
+          # Create booster from model
+          handle <- gpb.call(
+            fun_name = "LGBM_BoosterCreateFromModelfile_R"
+            , ret = handle
+            , gpb.c_str(x = modelfile)
+          )
+          
         }
-        
-        # Create booster from model
-        handle <- gpb.call(
-          fun_name = "LGBM_BoosterCreateFromModelfile_R"
-          , ret = handle
-          , gpb.c_str(x = modelfile)
-        )
-        
+
       } else if (!is.null(model_str)) {
         
         # Do we have a model_str as character?
@@ -147,7 +162,7 @@ Booster <- R6::R6Class(
           stop("gpb.Booster: Can only use a string as model_str")
         }
         
-        # Create booster from model
+        # Create booster from string
         handle <- gpb.call(
           fun_name = "LGBM_BoosterLoadModelFromString_R"
           , ret = handle
@@ -520,16 +535,6 @@ Booster <- R6::R6Class(
         num_iteration <- self$best_iter
       }
       
-      # Save booster model
-      gpb.call(
-        fun_name = "LGBM_BoosterSaveModel_R"
-        , ret = NULL
-        , private$handle
-        , as.integer(num_iteration)
-        , as.integer(feature_importance_type)
-        , gpb.c_str(x = filename)
-      )
-      
       # Save gp_model
       if (private$has_gp_model) {
   
@@ -537,13 +542,34 @@ Booster <- R6::R6Class(
           stop("gpb.save: cannot save to file.
                 Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
         }
-        filename_gp_model <- paste0(filename,"_gp_model.RData")
-        filename_raw_data <- paste0(filename,"_raw_data.RData")
-        private$gp_model$save(filename_gp_model)
-        raw_data <- private$train_set$.__enclos_env__$private$raw_data
-        label <- private$train_set$.__enclos_env__$private$info$label
-        save(raw_data, label, file = filename_raw_data)
-        message("gp_model and raw data have been saved to the following files: ", filename_gp_model, " and ", filename_raw_data)
+        save_data <- list()
+        save_data[["has_gp_model"]] <- 1L
+        save_data[["booster_str"]] <- self$save_model_to_string(num_iteration = num_iteration,
+                                                                feature_importance_type=feature_importance_type)
+        save_data[["gp_model_str"]] <- private$gp_model$model_to_list()
+        save_data[["raw_data"]] <- list()
+        save_data[["raw_data"]][["label"]] <- as.vector(private$train_set$.__enclos_env__$private$info$label)
+        save_data[["raw_data"]][["data"]] <- private$train_set$.__enclos_env__$private$raw_data
+        if (is.matrix(save_data[["raw_data"]][["data"]])) {
+          if (dim(save_data[["raw_data"]][["data"]])[2] == 1) {
+            save_data[["raw_data"]][["data"]] <- as.vector(save_data[["raw_data"]][["data"]])
+          }
+        }
+  
+        save_data <- RJSONIO::toJSON(save_data, digits=17)
+        write(save_data, file=filename)
+        
+      } else {# has no gp_model
+        
+        # Save booster model
+        gpb.call(
+          fun_name = "LGBM_BoosterSaveModel_R"
+          , ret = NULL
+          , private$handle
+          , as.integer(num_iteration)
+          , as.integer(feature_importance_type)
+          , gpb.c_str(x = filename)
+        )
 
       }
       
@@ -1149,7 +1175,7 @@ predict.gpb.Booster <- function(object,
 #' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
 #'                 predict_var= TRUE)
 #' # Save model to file
-#' filename <- tempfile(fileext = ".RData")
+#' filename <- tempfile(fileext = ".json")
 #' gpb.save(bst,filename = filename)
 #' # Load from file and make predictions again
 #' bst_loaded <- gpb.load(filename = filename)
@@ -1214,7 +1240,7 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
 #'                 predict_var= TRUE)
 #' # Save model to file
-#' filename <- tempfile(fileext = ".RData")
+#' filename <- tempfile(fileext = ".json")
 #' gpb.save(bst,filename = filename)
 #' # Load from file and make predictions again
 #' bst_loaded <- gpb.load(filename = filename)

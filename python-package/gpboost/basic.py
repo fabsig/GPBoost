@@ -2278,39 +2278,33 @@ class Booster:
             self.pandas_categorical = train_set.pandas_categorical
             self.train_set_version = train_set.version
         elif model_file is not None:
-            ## Does it have a gp_model?
+            # Does it have a gp_model?
             with open(model_file) as fp:
                 for i, line in enumerate(fp):
-                    if i == 2:
+                    if i == 1:
                         has_gp_model = line
-                    elif i>2:
+                    elif i > 1:
                         break
-            if has_gp_model == "has_gp_model=1\n":
+            if has_gp_model == '"has_gp_model": 1,\n' or has_gp_model == ' "has_gp_model": 1,\n':
                 self.has_gp_model = True
-                filename_gp_model = model_file + "_gp_model.json"
-                filename_raw_data = model_file + "_raw_data.json"
-                self.gp_model = GPModel(model_file=filename_gp_model)
-                with open(filename_raw_data, "r") as f:
-                    raw_data = json.load(f)
-                label = np.array(raw_data["label"])
-                data = np.array(raw_data["data"])
-                self.train_set = Dataset(data=data, label=label)
-            elif has_gp_model != "has_gp_model=0\n":
-                raise ValueError("File does not have correct format")
-
-            # Prediction task
-            out_num_iterations = ctypes.c_int(0)
-            self.handle = ctypes.c_void_p()
-            _safe_call(_LIB.LGBM_BoosterCreateFromModelfile(
-                c_str(model_file),
-                ctypes.byref(out_num_iterations),
-                ctypes.byref(self.handle)))
-            out_num_class = ctypes.c_int(0)
-            _safe_call(_LIB.LGBM_BoosterGetNumClasses(
-                self.handle,
-                ctypes.byref(out_num_class)))
-            self.__num_class = out_num_class.value
-            self.pandas_categorical = _load_pandas_categorical(file_name=model_file)
+                with open(model_file, "r") as f:
+                    save_data = json.load(f)
+                self.model_from_string(save_data['booster_str'], not silent)
+                self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
+                self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
+            else:# has no gp_model
+                out_num_iterations = ctypes.c_int(0)
+                self.handle = ctypes.c_void_p()
+                _safe_call(_LIB.LGBM_BoosterCreateFromModelfile(
+                    c_str(model_file),
+                    ctypes.byref(out_num_iterations),
+                    ctypes.byref(self.handle)))
+                out_num_class = ctypes.c_int(0)
+                _safe_call(_LIB.LGBM_BoosterGetNumClasses(
+                    self.handle,
+                    ctypes.byref(out_num_class)))
+                self.__num_class = out_num_class.value
+                self.pandas_categorical = _load_pandas_categorical(file_name=model_file)
         elif model_str is not None:
             self.model_from_string(model_str, not silent)
         else:
@@ -2947,27 +2941,31 @@ class Booster:
         """
         if num_iteration is None:
             num_iteration = self.best_iteration
-        importance_type_int = FEATURE_IMPORTANCE_TYPE_MAPPER[importance_type]
-        _safe_call(_LIB.LGBM_BoosterSaveModel(
-            self.handle,
-            ctypes.c_int(start_iteration),
-            ctypes.c_int(num_iteration),
-            ctypes.c_int(importance_type_int),
-            c_str(filename)))
-        _dump_pandas_categorical(self.pandas_categorical, filename)
+
         # Save gp_model
         if self.has_gp_model:
             if self.train_set.data is None:
                 raise GPBoostError("Cannot save to file. Set free_raw_data = False when you construct the Dataset")
-            filename_gp_model = filename + "_gp_model.json"
-            filename_raw_data = filename + "_raw_data.json"
-            self.gp_model.save_model(filename_gp_model)
-            raw_data = {}
-            raw_data['data'] = self.train_set.data
-            raw_data['label'] = self.train_set.label
-            with open(filename_raw_data, 'w+') as f:
-                json.dump(raw_data, f, default=json_default_with_numpy)
-            print("gp_model and raw data have been saved to the following files: " + filename_gp_model + " and " + filename_raw_data)
+            save_data = {}
+            save_data['has_gp_model'] = 1
+            save_data['booster_str'] = self.model_to_string(num_iteration=num_iteration,
+                                                            start_iteration=start_iteration,
+                                                            importance_type=importance_type)
+            save_data['gp_model_str'] = self.gp_model.model_to_dict()
+            save_data['raw_data'] = {}
+            save_data['raw_data']['data'] = self.train_set.data
+            save_data['raw_data']['label'] = self.train_set.label
+            with open(filename, 'w+') as f:
+                json.dump(save_data, f, default=json_default_with_numpy, indent="")
+        else:  # has no gp_model
+            importance_type_int = FEATURE_IMPORTANCE_TYPE_MAPPER[importance_type]
+            _safe_call(_LIB.LGBM_BoosterSaveModel(
+                self.handle,
+                ctypes.c_int(start_iteration),
+                ctypes.c_int(num_iteration),
+                ctypes.c_int(importance_type_int),
+                c_str(filename)))
+            _dump_pandas_categorical(self.pandas_categorical, filename)
 
         return self
 
@@ -3243,7 +3241,8 @@ class Booster:
                                    "Set free_raw_data = False when you construct the Dataset")
             fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
                                                    num_iteration=num_iteration, raw_score=True, pred_leaf=False,
-                                                   pred_contrib=False, data_has_header=data_has_header, is_reshape=False)
+                                                   pred_contrib=False, data_has_header=data_has_header,
+                                                   is_reshape=False)
             if self.gp_model.get_likelihood_name() == "gaussian":  # Gaussian data
                 residual = self.train_set.label - fixed_effect_train
                 # Note: we need to provide the response variable y as this was not saved
@@ -3715,7 +3714,8 @@ class GPModel(object):
                  num_neighbors_pred=None,
                  cluster_ids=None,
                  free_raw_data=False,
-                 model_file=None):
+                 model_file=None,
+                 model_dict=None):
         """Initialize a GPModel.
 
         Parameters
@@ -3765,7 +3765,9 @@ class GPModel(object):
                 If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python
                 after initialization
             model_file : string or None, optional (default=None)
-            Path to the model file.
+                Path to the model file.
+            model_dict : dict or None, optional (default=None)
+                Dict with model file
         """
 
         # Initialize variables
@@ -3820,43 +3822,44 @@ class GPModel(object):
         self.coefs_loaded_from_file = None
         self.X_loaded_from_file = None
 
-        if model_file is not None:
-            with open(model_file, "r") as f:
-                save_data = json.load(f)
+        if (model_file is not None) or (model_dict is not None):
+            if model_file is not None:
+                with open(model_file, "r") as f:
+                    model_dict = json.load(f)
             # Set feature data overwriting arguments for constructor
-            if save_data["group_data"] is not None:
-                group_data = np.array(save_data["group_data"])
-            if save_data["group_rand_coef_data"] is not None:
-                group_rand_coef_data = np.array(save_data["group_rand_coef_data"])
-            if save_data["ind_effect_group_rand_coef"] is not None:
-                ind_effect_group_rand_coef = np.array(save_data["ind_effect_group_rand_coef"])
-            if save_data["gp_coords"] is not None:
-                gp_coords = np.array(save_data["gp_coords"])
-            if save_data["gp_rand_coef_data"] is not None:
-                gp_rand_coef_data = np.array(save_data["gp_rand_coef_data"])
-            cov_function = save_data["cov_function"]
-            cov_fct_shape = save_data["cov_fct_shape"]
-            vecchia_approx = save_data["vecchia_approx"]
-            num_neighbors = save_data["num_neighbors"]
-            vecchia_ordering = save_data["vecchia_ordering"]
-            vecchia_pred_type = save_data["vecchia_pred_type"]
-            num_neighbors_pred = save_data["num_neighbors_pred"]
-            if save_data["cluster_ids"] is not None:
-                cluster_ids = np.array(save_data["cluster_ids"])
-            likelihood = save_data["likelihood"]
+            if model_dict.get("group_data") is not None:
+                group_data = np.array(model_dict.get("group_data"))
+            if model_dict.get("group_rand_coef_data") is not None:
+                group_rand_coef_data = np.array(model_dict.get("group_rand_coef_data"))
+            if model_dict.get("ind_effect_group_rand_coef") is not None:
+                ind_effect_group_rand_coef = np.array(model_dict.get("ind_effect_group_rand_coef"))
+            if model_dict.get("gp_coords") is not None:
+                gp_coords = np.array(model_dict.get("gp_coords"))
+            if model_dict.get("gp_rand_coef_data") is not None:
+                gp_rand_coef_data = np.array(model_dict.get("gp_rand_coef_data"))
+            cov_function = model_dict.get("cov_function")
+            cov_fct_shape = model_dict.get("cov_fct_shape")
+            vecchia_approx = model_dict.get("vecchia_approx")
+            num_neighbors = model_dict.get("num_neighbors")
+            vecchia_ordering = model_dict.get("vecchia_ordering")
+            vecchia_pred_type = model_dict.get("vecchia_pred_type")
+            num_neighbors_pred = model_dict.get("num_neighbors_pred")
+            if model_dict.get("cluster_ids") is not None:
+                cluster_ids = np.array(model_dict.get("cluster_ids"))
+            likelihood = model_dict.get("likelihood")
             # Set additionaly required data
             self.model_has_been_loaded_from_saved_file = True
-            if save_data["cov_pars"] is not None:
-                self.cov_pars_loaded_from_file = np.array(save_data["cov_pars"])
-            if save_data["y"] is not None:
-                self.y_loaded_from_file = np.array(save_data["y"])
-            self.has_covariates = save_data["has_covariates"]
-            if save_data["has_covariates"]:
-                if save_data["coefs"] is not None:
-                    self.coefs_loaded_from_file = np.array(save_data["coefs"])
-                self.num_coef = save_data["num_coef"]
-                if save_data["X"] is not None:
-                    self.X_loaded_from_file = np.array(save_data["X"])
+            if model_dict.get("cov_pars") is not None:
+                self.cov_pars_loaded_from_file = np.array(model_dict.get("cov_pars"))
+            if model_dict.get("y") is not None:
+                self.y_loaded_from_file = np.array(model_dict.get("y"))
+            self.has_covariates = model_dict.get("has_covariates")
+            if model_dict.get("has_covariates"):
+                if model_dict.get("coefs") is not None:
+                    self.coefs_loaded_from_file = np.array(model_dict.get("coefs"))
+                self.num_coef = model_dict.get("num_coef")
+                if model_dict.get("X") is not None:
+                    self.X_loaded_from_file = np.array(model_dict.get("X"))
 
         if num_neighbors_pred is None:
             num_neighbors_pred = num_neighbors
@@ -3876,20 +3879,20 @@ class GPModel(object):
                 raise ValueError("group_data needs to be a numpy.ndarray")
             if len(group_data.shape) > 2:
                 raise ValueError("group_data needs to be either a vector or a two-dimensional matrix (array)")
+            if len(group_data.shape) == 1:
+                group_data = group_data.reshape((len(group_data), 1))
+            self.num_group_re = group_data.shape[1]
+            self.num_data = group_data.shape[0]
             self.group_data = deepcopy(group_data)
-            if len(self.group_data.shape) == 1:
-                self.group_data = self.group_data.reshape((len(self.group_data), 1))
-            self.num_group_re = self.group_data.shape[1]
-            self.num_data = self.group_data.shape[0]
             if self.group_data.dtype.names is None:
                 for ig in range(self.num_group_re):
                     self.cov_par_names.append('Group_' + str(ig + 1))
             else:
                 self.cov_par_names.extend(list(self.group_data.dtype.names))
-            if not self.group_data.dtype == np.dtype(str):
-                self.group_data = self.group_data.astype(np.dtype(str))
+            if not group_data.dtype == np.dtype(str):
+                group_data = group_data.astype(np.dtype(str))
             # Convert to correct format for passing to C
-            group_data_c = self.group_data.flatten(order='F')
+            group_data_c = group_data.flatten(order='F')
             group_data_c = string_array_c_str(group_data_c)
             # Set data for grouped random coefficients
             if group_rand_coef_data is not None:
@@ -4035,10 +4038,10 @@ class GPModel(object):
             self.cluster_ids = None
 
         if model_file is not None:
-            if save_data["params"]['init_cov_pars'] is not None:
-                save_data["params"]['init_cov_pars'] = np.array(save_data["params"]['init_cov_pars'])
-            self.set_optim_params(params=save_data["params"])
-            self.set_optim_coef_params(params=save_data["params"])
+            if model_dict["params"]['init_cov_pars'] is not None:
+                model_dict["params"]['init_cov_pars'] = np.array(model_dict["params"]['init_cov_pars'])
+            self.set_optim_params(params=model_dict["params"])
+            self.set_optim_coef_params(params=model_dict["params"])
 
     def __check_params(self):
         if (self.cov_function not in self._SUPPORTED_COV_FUNCTIONS):
@@ -4892,6 +4895,47 @@ class GPModel(object):
         covariate_data = covariate_data.reshape((self.num_data, self.num_coef), order='F')
         return covariate_data
 
+    def model_to_dict(self):
+        """Convert a GPModel to a dict for saving.
+
+        Returns
+        -------
+        model_dict : dict
+            GPModel in dict format.
+        """
+
+        if (self.free_raw_data):
+            raise ValueError("cannot convert to json when free_raw_data has been set to True")
+
+        model_dict = {}
+        # Parameters
+        model_dict["params"] = self.get_optim_params()
+        model_dict["likelihood"] = self.get_likelihood_name()
+        model_dict["cov_pars"] = self.get_cov_pars()
+        # Response data
+        model_dict["y"] = self.get_response_data()
+        # Feature data
+        model_dict["group_data"] = self.group_data
+        model_dict["group_rand_coef_data"] = self.group_rand_coef_data
+        model_dict["gp_coords"] = self.gp_coords
+        model_dict["gp_rand_coef_data"] = self.gp_rand_coef_data
+        model_dict["ind_effect_group_rand_coef"] = self.ind_effect_group_rand_coef
+        model_dict["cluster_ids"] = self.cluster_ids
+        model_dict["vecchia_approx"] = self.vecchia_approx
+        model_dict["num_neighbors"] = self.num_neighbors
+        model_dict["vecchia_ordering"] = self.vecchia_ordering
+        model_dict["vecchia_pred_type"] = self.vecchia_pred_type
+        model_dict["num_neighbors_pred"] = self.num_neighbors_pred
+        model_dict["cov_function"] = self.cov_function
+        model_dict["cov_fct_shape"] = self.cov_fct_shape
+        # Covariate data
+        model_dict["has_covariates"] = self.has_covariates
+        if self.has_covariates:
+            model_dict["coefs"] = self.get_coef()
+            model_dict["num_coef"] = self.num_coef
+            model_dict["X"] = self.get_covariate_data()
+        return model_dict
+
     def save_model(self, filename):
         """Save a GPModel to file.
 
@@ -4907,37 +4951,10 @@ class GPModel(object):
         """
 
         if (self.free_raw_data):
-            raise ValueError("Cannot save when free_raw_data=TRUE has been set")
-
-        save_data = {}
-        # Parameters
-        save_data["params"] = self.get_optim_params()
-        save_data["likelihood"] = self.get_likelihood_name()
-        save_data["cov_pars"] = self.get_cov_pars()
-        # Response data
-        save_data["y"] = self.get_response_data()
-        # Feature data
-        save_data["group_data"] = self.group_data
-        save_data["group_rand_coef_data"] = self.group_rand_coef_data
-        save_data["gp_coords"] = self.gp_coords
-        save_data["gp_rand_coef_data"] = self.gp_rand_coef_data
-        save_data["ind_effect_group_rand_coef"] = self.ind_effect_group_rand_coef
-        save_data["cluster_ids"] = self.cluster_ids
-        save_data["vecchia_approx"] = self.vecchia_approx
-        save_data["num_neighbors"] = self.num_neighbors
-        save_data["vecchia_ordering"] = self.vecchia_ordering
-        save_data["vecchia_pred_type"] = self.vecchia_pred_type
-        save_data["num_neighbors_pred"] = self.num_neighbors_pred
-        save_data["cov_function"] = self.cov_function
-        save_data["cov_fct_shape"] = self.cov_fct_shape
-        # Covariate data
-        save_data["has_covariates"] = self.has_covariates
-        if self.has_covariates:
-            save_data["coefs"] = self.get_coef()
-            save_data["num_coef"] = self.num_coef
-            save_data["X"] = self.get_covariate_data()
+            raise ValueError("Cannot save when free_raw_data has been set to True")
+        model_dict = self.model_to_dict()
         with open(filename, 'w+') as f:
-            json.dump(save_data, f, default=json_default_with_numpy)
+            json.dump(model_dict, f, default=json_default_with_numpy)
 
     def get_likelihood_name(self):
         buffer_len = 1 << 20
