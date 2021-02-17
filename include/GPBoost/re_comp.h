@@ -394,7 +394,7 @@ namespace GPBoost {
   private:
     /*! \brief Number of groups */
     data_size_t num_group_;
-    /*! \brief Data with group labels / levels */
+    /*! \brief Group labels / levels */
     std::shared_ptr<std::vector<re_group_t>> group_data_;
     /*! \brief Keys: Group labels, values: index number (integer value) for every group level. I.e., maps string labels to numbers */
     std::shared_ptr<std::map<re_group_t, int>> map_group_label_index_;

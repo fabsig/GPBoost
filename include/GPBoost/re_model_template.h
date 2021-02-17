@@ -25,8 +25,8 @@
 #include <algorithm>    // std::shuffle
 #include <random>       // std::default_random_engine
 //#include <typeinfo> // Only needed for debugging
-//#include <chrono>  // only needed for debugging
-//#include <thread> // only needed for debugging
+#include <chrono>  // only needed for debugging
+#include <thread> // only needed for debugging
 //std::this_thread::sleep_for(std::chrono::milliseconds(200));// Only for debugging
 //std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 //std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
@@ -87,7 +87,6 @@ namespace GPBoost {
 			CHECK(num_data > 0);
 			num_data_ = num_data;
 			vecchia_approx_ = vecchia_approx;
-
 			//Set up likelihood
 			string_t likelihood_strg;
 			if (likelihood == nullptr) {
@@ -429,6 +428,11 @@ namespace GPBoost {
 			string_t convergence_criterion = "relative_change_in_log_likelihood",
 			const double* fixed_effects = nullptr,
 			bool learn_covariance_parameters = true) {
+
+			//std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();//DELETE
+			//std::chrono::steady_clock::time_point begin, end;//DELETE
+			//double el_time;
+
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
 				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov.c_str());
@@ -590,10 +594,11 @@ namespace GPBoost {
 						}
 						EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_likelihood_after_lin_coef_update_, true, true, true);
 					}
-				}// end update regression coefficients
+				}
 				else {
 					neg_log_likelihood_after_lin_coef_update_ = neg_log_likelihood_lag1_;
 				}
+				// end update regression coefficients
 
 				// Update covariance parameters using one step of gradient descent or Fisher scoring
 				if (learn_covariance_parameters) {
@@ -624,6 +629,7 @@ namespace GPBoost {
 						Log::REFatal("NaN or Inf occurred in covariance parameters. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
 					}
 				}
+				// end update covariance parameters
 
 				// Check convergence
 				bool likelihood_is_na = std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_);//if the likelihood is NA, we monitor the parameters instead of the likelihood
@@ -687,6 +693,11 @@ namespace GPBoost {
 					}
 				}
 			}
+
+			//end = std::chrono::steady_clock::now();//DELETE
+			//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - beginall).count()) / 1000000.;// Only for debugging
+			//Log::REInfo("TOTAL TIME for covariance parameter estimtion: %g", el_time);// Only for debugging
+
 		}//end OptimLinRegrCoefCovPar
 
 		/*!

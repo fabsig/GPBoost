@@ -44,6 +44,13 @@ using LightGBM::Log;
 //#include <chrono>  // only needed for debugging
 //#include <thread> // only needed for debugging
 
+//std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();//DELETE
+//std::chrono::steady_clock::time_point begin, end;//DELETE
+//double el_time;
+//end = std::chrono::steady_clock::now();//DELETE
+//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - beginall).count()) / 1000000.;// Only for debugging
+//Log::REInfo("TOTAL TIME for mode calculation: %g", el_time);// Only for debugging
+
 namespace GPBoost {
 
 	/*!
@@ -939,19 +946,25 @@ namespace GPBoost {
 			sp_mat_t SigmaI_plus_ZtWZ_inv;
 			if (only_one_random_effect) {
 				SigmaI_plus_ZtWZ_inv = diag_SigmaI_plus_ZtWZ_.array().inverse().matrix().asDiagonal();
+				//Noto: calculations could be slightly faster by not using the matrix SigmaI_plus_ZtWZ_inv but instead dividing 
+				//	directly with the vector diag_SigmaI_plus_ZtWZ_.array() in all calculations below. 
+				//	However, this function is not the bottleneck as the mode calculation is slower and it is unclear how much the decrease in time is
 			}
 			else {
 				sp_mat_t Id(num_REs, num_REs);
 				Id.setIdentity();
 				SigmaI_plus_ZtWZ_inv = chol_facts_SigmaI_plus_ZtWZ_.solve(Id);
 			}
+
 			// calculate gradient of approx. marginal likeligood wrt the mode
 			vec_t d_mll_d_mode;
+			std::shared_ptr<RECompGroup<T1>> re_comp;//used only if only_one_random_effect==true
 			if (only_one_random_effect) {
 				d_mll_d_mode = vec_t::Zero(num_REs);
-				std::shared_ptr<RECompGroup<T1>> re = std::dynamic_pointer_cast<RECompGroup<T1>>(re_comps_cluster_i[0]);
-				for (int i = 0; i < num_data; ++i) {//TODO: run this in parallel
-					int re_nb = (*re->map_group_label_index_)[(*re->group_data_)[i]];
+				re_comp = std::dynamic_pointer_cast<RECompGroup<T1>>(re_comps_cluster_i[0]);
+//#pragma omp parallel for schedule(static)//Note: this cannot be done in parallel as problem occurs during the "reductiob" when to threads try to write at the same time to d_mll_d_mode[re_nb]
+				for (int i = 0; i < num_data; ++i) {
+					int re_nb = (*re_comp->map_group_label_index_)[(*re_comp->group_data_)[i]];
 					d_mll_d_mode[re_nb] += third_deriv[i];
 				}
 #pragma omp parallel for schedule(static)
@@ -978,6 +991,7 @@ namespace GPBoost {
 					d_mll_d_mode[i] = -0.5 * (Zt_d_W_d_mode_i_Z.cwiseProduct(SigmaI_plus_ZtWZ_inv)).sum();
 				}
 			}//end not only_one_random_effect
+
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
 				sp_mat_t ZtWZ = Zt * second_deriv_neg_ll_.asDiagonal() * Z;
@@ -1035,7 +1049,7 @@ namespace GPBoost {
 						cov_grad[j] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
 					}
 				}//end not only_one_random_effect
-				//Only for debugging -> delete this
+				//Only for debugging -> can be deleted
 				//Log::REInfo("explicit_derivative: %g", explicit_derivative);
 				//for (int i = 0; i < 5; ++i) {
 				//	Log::REInfo("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
@@ -1051,14 +1065,24 @@ namespace GPBoost {
 			// calculate gradient wrt fixed effects
 			if (calc_F_grad) {
 				vec_t d_detmll_d_F(num_data);
+				if (only_one_random_effect) {
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data; ++i) {
-					//vec_t zi = Z.row(i);
-					//den_mat_t zi_zit = zi * zi.transpose();
-					sp_mat_t zi_zit = Zt.col(i) * Z.row(i);//=Z.row(i) * (Z.row(i)).transpose()
-					d_detmll_d_F[i] = -0.5 * third_deriv[i] * (SigmaI_plus_ZtWZ_inv.cwiseProduct(zi_zit)).sum();
+					for (int i = 0; i < num_data; ++i) {
+						int re_nb = (*re_comp->map_group_label_index_)[(*re_comp->group_data_)[i]];
+						d_detmll_d_F[i] = -0.5 * third_deriv[i] * SigmaI_plus_ZtWZ_inv.diagonal()[re_nb];
+						//sp_mat_t zi_zit = Zt.col(i) * Z.row(i);//=Z.row(i) * (Z.row(i)).transpose()
+						//d_detmll_d_F[i] = -0.5 * third_deriv[i] * (SigmaI_plus_ZtWZ_inv.cwiseProduct(zi_zit)).sum();
+						// Note: if there is only one random effect zi_zit=Z.row(i) * (Z.row(i)).transpose() is a diagonal 
+						//	with 1. on the row/column number corresponding to the random effect for observation number i and 0. otherwise
+					}
 				}
-				//sp_mat_t SigmaI_plus_ZtWZ_inv_Zt_W = SigmaI_plus_ZtWZ_inv * Zt * second_deriv_neg_ll_.asDiagonal();//DELETE
+				else {
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data; ++i) {
+						sp_mat_t zi_zit = Zt.col(i) * Z.row(i);//=Z.row(i) * (Z.row(i)).transpose()
+						d_detmll_d_F[i] = -0.5 * third_deriv[i] * (SigmaI_plus_ZtWZ_inv.cwiseProduct(zi_zit)).sum();
+					}
+				}
 				vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = d_mll_d_mode.transpose() * SigmaI_plus_ZtWZ_inv * Zt * second_deriv_neg_ll_.asDiagonal();
 				fixed_effect_grad = -first_deriv_ll_ + d_detmll_d_F - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
 			}//end calc_F_grad
