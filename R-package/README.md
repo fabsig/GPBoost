@@ -85,6 +85,10 @@ After installing `Rtools` and `CMake`, be sure the following paths are added to 
     - If you have `Rtools` 4.x, example (NOTE: two paths are required):
         - `C:\rtools40\mingw64\bin`
         - `C:\rtools40\usr\bin`
+        - For instance, when installing in R with `install.packages()`, these paths can be added locally in R as follows prior to installation:
+```R 
+Sys.setenv(PATH=paste0(Sys.getenv("PATH"),";C:\\Rtools\\mingw_64\\bin\\;C:\\rtools40\\usr\\bin\\"))
+```
 * `CMake`
     - example: `C:\Program Files\CMake\bin`
 * `R`

@@ -476,7 +476,8 @@ namespace GPBoost {
     * \param coords Coordinates (features) for Gaussian process
     * \param cov_fct Type of covariance function
     * \param shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
-    * \param save_dist_use_Z_for_duplicates If true, distances are calculated and saved here, and an incidendce matrix Z is used for duplicate locations. save_dist_use_Z_for_duplicates = false is used for the Vecchia approximation which saves the required distances in the REModel (REModelTemplate)
+    * \param save_dist_use_Z_for_duplicates If true, distances are calculated and saved here, and an incidendce matrix Z is used for duplicate locations. 
+    *           save_dist_use_Z_for_duplicates = false is used for the Vecchia approximation which saves the required distances in the REModel (REModelTemplate)
     */
     RECompGP(const den_mat_t& coords, string_t cov_fct = "exponential",
       double shape = 0., bool save_dist_use_Z_for_duplicates = true) {
