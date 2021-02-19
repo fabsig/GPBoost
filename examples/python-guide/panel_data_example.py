@@ -21,7 +21,7 @@ gp_model = gpb.GPModel(group_data=data[['firm', 'year']])
 # Create dataset for gpb.train
 data_train = gpb.Dataset(data=data[['value', 'capital']], label=data['invest'])
 # Specify boosting parameters as dict
-# Note: no attempt has been done in appropriately selecting tuning parameters
+# Note: no attempt has been done to optimaly choose tuning parameters
 params = { 'objective': 'regression_l2',
             'learning_rate': 1,
             'max_depth': 6,
