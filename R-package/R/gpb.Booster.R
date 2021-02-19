@@ -1151,13 +1151,14 @@ predict.gpb.Booster <- function(object,
 #' @title Load GPBoost model
 #' @description  Load GPBoost takes in either a file path or model string.
 #'               If both are provided, Load will default to loading from file
+#'               Boosters with gp_models can only be loaded from file.
 #' @param filename path of model file
 #' @param model_str a str containing the model
 #'
 #' @return gpb.Booster
 #'
 #' @examples
-#' 
+#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -1185,7 +1186,7 @@ predict.gpb.Booster <- function(object,
 #' pred$fixed_effect - pred_loaded$fixed_effect
 #' pred$random_effect_mean - pred_loaded$random_effect_mean
 #' pred$random_effect_cov - pred_loaded$random_effect_cov
-#' 
+#' }
 #' @export
 gpb.load <- function(filename = NULL, model_str = NULL) {
   
@@ -1222,7 +1223,7 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' @return gpb.Booster
 #'
 #' @examples
-#' 
+#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -1250,7 +1251,7 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' pred$fixed_effect - pred_loaded$fixed_effect
 #' pred$random_effect_mean - pred_loaded$random_effect_mean
 #' pred$random_effect_cov - pred_loaded$random_effect_cov
-#' 
+#' }
 #' @export
 gpb.save <- function(booster, filename, num_iteration = NULL) {
   

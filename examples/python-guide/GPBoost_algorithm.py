@@ -1,5 +1,11 @@
-# coding: utf-8
-# pylint: disable = invalid-name, C0111
+# -*- coding: utf-8 -*-
+"""
+Examples on how to use the GPBoost algorithm for combining tree-boosting
+with random effects and Gaussian process models
+
+@author: Fabio Sigrist
+"""
+
 import gpboost as gpb
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,20 +20,20 @@ print("It is recommended that the examples are run in interactive mode")
 n = 5000  # number of samples
 m = 500  # number of groups
 np.random.seed(1)
-# simulate grouped random effects
+# Simulate grouped random effects
 group = np.arange(n)  # grouping variable
 for i in range(m):
     group[int(i * n / m):int((i + 1) * n / m)] = i
 b1 = np.random.normal(size=m)  # simulate random effects
 eps = b1[group]
-# simulate fixed effects
+# Simulate fixed effects
 X = np.random.rand(n, 2)
 f = f1d(X[:, 0])
 xi = np.sqrt(0.01) * np.random.normal(size=n)  # simulate error term
 y = f + eps + xi  # observed data
 
 #--------------------Training----------------
-# define GPModel
+# Define GPModel
 gp_model = gpb.GPModel(group_data=group)
 # The default optimizer for covariance parameters (hyperparameters) is Fisher scoring.
 # This can be changed as follows:
@@ -35,9 +41,9 @@ gp_model = gpb.GPModel(group_data=group)
 #                                   "use_nesterov_acc": True, "acc_rate_cov": 0.5})
 # Use the option "trace": true to monitor convergence of hyperparameter estimation of the gp_model. E.g.:
 # gp_model.set_optim_params(params={"trace": True})
-# create dataset for gpb.train
+# Create dataset for gpb.train
 data_train = gpb.Dataset(X, y)
-# specify your configurations as a dict
+# Specify boosting parameters as dict
 params = { 'objective': 'regression_l2',
             'learning_rate': 0.05,
             'max_depth': 6,

@@ -1,16 +1,17 @@
-# coding: utf-8
-# pylint: disable = invalid-name, C0111
+# -*- coding: utf-8 -*-
+"""
+Examples on how to use the GPBoost algorithm for combining tree-boosting
+with random effects and Gaussian process models for non-Gaussian data
+
+@author: Fabio Sigrist
+"""
+
 import gpboost as gpb
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 plt.style.use('ggplot')
 print("It is recommended that the examples are run in interactive mode")
-
-"""
-Examples of generalized linear Gaussian process and random effects models
-for several non-Gaussian likelihoods
-"""
 
 # Choose likelihood: either "bernoulli_probit" (=default for binary data),
 #                     "bernoulli_logit", "poisson", or "gamma"
@@ -59,13 +60,13 @@ X_test = np.column_stack((np.ones(m), np.zeros(m)))
 # Predict latent variable
 pred = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
                         predict_var=True, predict_response=False)
-pred['mu'][0:5]  # Predicted latent mean
-pred['var'][0:5]  # Predicted latent variance
+print(pred['mu'][0:5])  # Predicted latent mean
+print(pred['var'][0:5])  # Predicted latent variance
 # Predict response variable
 pred_resp = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
                              predict_var=True, predict_response=True)
-pred_resp['mu'][0:5]  # Predicted response variable (label)
-pred_resp['var'][0:5]  # # Predicted varianec of response
+print(pred_resp['mu'][0:5])  # Predicted response variable (label)
+print(pred_resp['var'][0:5])  # # Predicted varianec of response
 
 #--------------------Saving a booster with a gp_model and loading it from a file----------------
 # Save trained model

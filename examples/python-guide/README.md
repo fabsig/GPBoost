@@ -20,4 +20,5 @@ Examples include:
   * [Cross validation](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/cross_validation.py) for parameter tuning
   * [Linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/linear_Gaussian_process_mixed_effects_models.py)
   * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/generalized_linear_Gaussian_process_mixed_effects_models.py)
+  * [GPBoost algorithm applied to panel data](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/panel_data_example.py)
   * [Standard boosting functionality (without Gaussian process or random  effects)](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/boosting.py)

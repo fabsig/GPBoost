@@ -1,5 +1,11 @@
-# coding: utf-8
-# pylint: disable = invalid-name, C0111
+# -*- coding: utf-8 -*-
+"""
+Demo code used in this blog post: 
+https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb
+
+@author: Fabio Sigrist
+"""
+
 import gpboost as gpb
 import numpy as np
 import sklearn.datasets as datasets

@@ -1264,14 +1264,15 @@ namespace GPBoost {
 							predict_cov_mat, predict_var_or_response, mean_pred_id, cov_mat_pred_id, var_pred_id, fixed_effects_ptr);
 
 					}//end not vecchia_approx_ or not gauss_likelihood_
-
-					if (fixed_effects_pred != nullptr) {//add externaly provided fixed effects
+					//add externaly provided fixed effects
+					if (fixed_effects_pred != nullptr) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 							mean_pred_id[i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i]];
 						}
 					}
-					if (has_covariates_) {//add linear regression predictor
+					//add linear regression predictor
+					if (has_covariates_) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 							mean_pred_id[i] += mu[data_indices_per_cluster_pred[cluster_i][i]];
@@ -2356,7 +2357,7 @@ namespace GPBoost {
 					}
 				}
 				den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords);
-				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T1>>(new RECompGP<T1>(gp_coords_mat, cov_fct, cov_fct_shape, true)));
+				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T1>>(new RECompGP<T1>(gp_coords_mat, cov_fct, cov_fct_shape, true, false)));
 				//Random slopes
 				if (num_gp_rand_coef > 0) {
 					for (int j = 0; j < num_gp_rand_coef; ++j) {
@@ -2413,7 +2414,7 @@ namespace GPBoost {
 				}
 			}
 			den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords);
-			re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T1>>(new RECompGP<T1>(gp_coords_mat, cov_fct, cov_fct_shape, false)));
+			re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T1>>(new RECompGP<T1>(gp_coords_mat, cov_fct, cov_fct_shape, false, false)));
 			find_nearest_neighbors_Veccia_fast(gp_coords_mat, num_data_per_cluster[cluster_i], num_neighbors,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1);
 

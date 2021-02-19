@@ -464,7 +464,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood..
-		*		Calculations are done using a numerically stable variant based on B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
+		*		Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
 		*		In the notation of the paper: "Sigma = Z*Sigma*Z^T" and "Z = Id".
 		*		This version is used for the Laplace approximation when dense matrices are used (e.g. GP models).
 		* \param y_data Response variable data if response variable is continuous
@@ -475,8 +475,11 @@ namespace GPBoost {
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
 		template <typename T1>//T1 can be either den_mat_t or sp_mat_t
-		void FindModePostRandEffCalcMLLStable(const double* y_data, const int* y_data_int,
-			const double* fixed_effects, const data_size_t num_data, const std::shared_ptr<T1> ZSigmaZt,
+		void FindModePostRandEffCalcMLLStable(const double* y_data,
+			const int* y_data_int,
+			const double* fixed_effects,
+			const data_size_t num_data,
+			const std::shared_ptr<T1> ZSigmaZt,
 			double& approx_marginal_ll) {
 			// Initialize variables
 			if (!mode_initialized_) {
@@ -521,11 +524,11 @@ namespace GPBoost {
 				// Calculate Cholesky factor for calculation of approx. marginal log-likelihood (objective function) and for use in next iteration
 				Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
 				Id_plus_Wsqrt_ZSigmaZt_Wsqrt = Id + Wsqrt * (*ZSigmaZt) * Wsqrt;
-				chol_facts_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.compute(Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
+				chol_fact_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.compute(Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
 				// Update mode and a_vec_
 				v_aux = second_deriv_neg_ll_.asDiagonal() * mode_ + first_deriv_ll_;
 				v_aux2 = Wsqrt * (*ZSigmaZt) * v_aux;
-				a_vec_ = v_aux - Wsqrt * (chol_facts_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.solve(v_aux2));
+				a_vec_ = v_aux - Wsqrt * (chol_fact_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.solve(v_aux2));
 				mode_ = (*ZSigmaZt) * a_vec_;
 				// Calculate new objective function
 				if (no_fixed_effects) {
@@ -560,8 +563,8 @@ namespace GPBoost {
 			}
 			Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
 			Id_plus_Wsqrt_ZSigmaZt_Wsqrt = Id + Wsqrt * (*ZSigmaZt) * Wsqrt;
-			chol_facts_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.compute(Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
-			approx_marginal_ll -= ((den_mat_t)chol_facts_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.matrixL()).diagonal().array().log().sum();
+			chol_fact_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.compute(Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
+			approx_marginal_ll -= ((den_mat_t)chol_fact_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.matrixL()).diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 
 			////Only for debugging -> delete this
@@ -577,9 +580,11 @@ namespace GPBoost {
 			//}
 		}//end FindModePostRandEffCalcMLLStable
 
+
+
 		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood.
-		*		Calculations are done by directly factorizing/inverting (Sigma^-1 + Zt*W*Z).
+		*		Calculations are done by directly factorizing ("inverting) (Sigma^-1 + Zt*W*Z).
 		*		NOTE: IT IS ASSUMED THAT SIGMA IS A DIAGONAL MATRIX
 		*		This version is used for the Laplace approximation when there are only grouped random effects.
 		* \param y_data Response variable data if response variable is continuous
@@ -591,9 +596,14 @@ namespace GPBoost {
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		* \param only_one_random_effect true if there is only one random effect and ZtZ is diagonal
 		*/
-		void FindModePostRandEffCalcMLLGroupedRE(const double* y_data, const int* y_data_int,
-			const double* fixed_effects, const data_size_t num_data, const sp_mat_t& SigmaI, const sp_mat_t& Zt,
-			double& approx_marginal_ll, bool only_one_random_effect = false) {
+		void FindModePostRandEffCalcMLLGroupedRE(const double* y_data,
+			const int* y_data_int,
+			const double* fixed_effects,
+			const data_size_t num_data,
+			const sp_mat_t& SigmaI,
+			const sp_mat_t& Zt,
+			double& approx_marginal_ll,
+			bool only_one_random_effect = false) {
 			// Initialize variables
 			if (!mode_initialized_) {
 				InitializeModeAvec();
@@ -630,8 +640,8 @@ namespace GPBoost {
 				}
 				else {
 					SigmaI_plus_ZtWZ = SigmaI + Zt * second_deriv_neg_ll_.asDiagonal() * Z;
-					chol_facts_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_ZtWZ);
-					mode_ += chol_facts_SigmaI_plus_ZtWZ_.solve(rhs);
+					chol_fact_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_ZtWZ);
+					mode_ += chol_fact_SigmaI_plus_ZtWZ_.solve(rhs);
 				}
 				// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 				location_par = Z * mode_;
@@ -663,8 +673,8 @@ namespace GPBoost {
 			}
 			else {
 				SigmaI_plus_ZtWZ = SigmaI + Zt * second_deriv_neg_ll_.asDiagonal() * Z;
-				chol_facts_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_ZtWZ);
-				approx_marginal_ll += -((den_mat_t)chol_facts_SigmaI_plus_ZtWZ_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
+				chol_fact_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_ZtWZ);
+				approx_marginal_ll += -((den_mat_t)chol_fact_SigmaI_plus_ZtWZ_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
 			}
 			mode_has_been_calculated_ = true;
 
@@ -686,9 +696,10 @@ namespace GPBoost {
 
 		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood.
-		*		Calculations are done by inverting (Sigma^-1 + W) where it is assumed that an approximate Cholesky factor of Sigma^-1 has
-		*		previously been calculated using a Vecchia approximation.
-		*		This version is used for the Laplace approximation when there are only GP radnom effects and the Vecchia approximation is used.
+		*		Calculations are done by factorizing ("inverting) (Sigma^-1 + W) where it is assumed that an approximate Cholesky factor
+		*		of Sigma^-1 has previously been calculated using a Vecchia approximation.
+		*		This version is used for the Laplace approximation when there are only GP random effects and the Vecchia approximation is used.
+		*		Caveat: Sigma^-1 + W can be not very sparse
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
@@ -697,8 +708,12 @@ namespace GPBoost {
 		* \param D_inv Diagonal matrix D^-1 in Vecchia approximation Sigma^-1 = B^T D^-1 B
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
-		void FindModePostRandEffCalcMLLVecchia(const double* y_data, const int* y_data_int,
-			const double* fixed_effects, const data_size_t num_data, const sp_mat_t& B, const sp_mat_t& D_inv,
+		void FindModePostRandEffCalcMLLVecchia(const double* y_data,
+			const int* y_data_int,
+			const double* fixed_effects,
+			const data_size_t num_data,
+			const sp_mat_t& B,
+			const sp_mat_t& D_inv,
 			double& approx_marginal_ll) {
 			// Initialize variables
 			if (!mode_initialized_) {
@@ -743,8 +758,8 @@ namespace GPBoost {
 				SigmaI_plus_W = SigmaI;
 				SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
 				//Log::REInfo("Number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging, can be deleted
-				chol_facts_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_W);//This is usually the bottleneck
-				mode_ = chol_facts_SigmaI_plus_ZtWZ_.solve(rhs);
+				chol_fact_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_W);//This is usually the bottleneck
+				mode_ = chol_fact_SigmaI_plus_ZtWZ_.solve(rhs);
 				// Calculate new objective function
 				B_mode = B * mode_;
 				if (no_fixed_effects) {
@@ -779,8 +794,8 @@ namespace GPBoost {
 			}
 			SigmaI_plus_W = SigmaI;
 			SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
-			chol_facts_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_W);
-			approx_marginal_ll += -((den_mat_t)chol_facts_SigmaI_plus_ZtWZ_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
+			chol_fact_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_W);
+			approx_marginal_ll += -((den_mat_t)chol_fact_SigmaI_plus_ZtWZ_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 			////Only for debugging -> delete this
 			//Log::REInfo("Number of iterations: %d", it);
@@ -795,7 +810,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate the gradient of the negative Laplace approximated marginal log-likelihood wrt covariance parameters, fixed effects, or linear regression coefficients
-		*		Calculations are done using a numerically stable variant based on B = (Id + Wsqrt * ZSigmaZt * Wsqrt).
+		*		Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
 		*		In the notation of the paper: "Sigma = Z*Sigma*Z^T" and "Z = Id".
 		*		This version is used for the Laplace approximation when dense matrices are used (e.g. GP models).
 		* \param y_data Response variable data if response variable is continuous
@@ -841,7 +856,7 @@ namespace GPBoost {
 				CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
 			}
 			Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
-			T1 L = chol_facts_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.matrixL();
+			T1 L = chol_fact_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.matrixL();
 			T1 L_inv_Wsqrt, WI_plus_Sigma_inv, C;
 			CalcLInvH(L, Wsqrt, L_inv_Wsqrt, true);//L_inv_Wsqrt = L\Wsqrt		
 			C = L_inv_Wsqrt * (*ZSigmaZt);
@@ -897,8 +912,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate the gradient of the negative Laplace approximated marginal log-likelihood wrt covariance parameters, fixed effects, or linear regression coefficients
-		*		Calculations are done by directly factorizing/inverting (Sigma^-1 + Zt*W*Z).
-		*		In the notation of the paper: "Sigma = Z*Sigma*Z^T" and "Z = Id".
+		*		Calculations are done by directly factorizing ("inverting) (Sigma^-1 + Zt*W*Z).
 		*		NOTE: IT IS ASSUMED THAT SIGMA IS A DIAGONAL MATRIX
 		*		This version is used for the Laplace approximation when there are only grouped random effects.
 		* \param y_data Response variable data if response variable is continuous
@@ -953,7 +967,7 @@ namespace GPBoost {
 			else {
 				sp_mat_t Id(num_REs, num_REs);
 				Id.setIdentity();
-				SigmaI_plus_ZtWZ_inv = chol_facts_SigmaI_plus_ZtWZ_.solve(Id);
+				SigmaI_plus_ZtWZ_inv = chol_fact_SigmaI_plus_ZtWZ_.solve(Id);
 			}
 
 			// calculate gradient of approx. marginal likeligood wrt the mode
@@ -1091,9 +1105,10 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate the gradient of the negative Laplace approximated marginal log-likelihood wrt covariance parameters, fixed effects, or linear regression coefficients
-		*		Calculations are done by inverting (Sigma^-1 + W) where it is assumed that an approximate Cholesky factor of Sigma^-1 has
-		*		previously been calculated using a Vecchia approximation.
-		*		This version is used for the Laplace approximation when there are only GP radnom effects and the Vecchia approximation is used.
+		*		Calculations are done by factorizing ("inverting) (Sigma^-1 + W) where it is assumed that an approximate Cholesky factor
+		*		of Sigma^-1 has previously been calculated using a Vecchia approximation.
+		*		This version is used for the Laplace approximation when there are only GP random effects and the Vecchia approximation is used.
+		*		Caveat: Sigma^-1 + W can be not very sparse
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
@@ -1137,7 +1152,7 @@ namespace GPBoost {
 			// Calculate (Sigma^-1 + W)^-1
 			sp_mat_t Id(num_data, num_data);
 			Id.setIdentity();
-			sp_mat_t SigmaI_plus_W_inv = chol_facts_SigmaI_plus_ZtWZ_.solve(Id);
+			sp_mat_t SigmaI_plus_W_inv = chol_fact_SigmaI_plus_ZtWZ_.solve(Id);
 			// calculate gradient of approx. marginal likeligood wrt the mode
 			vec_t d_mll_d_mode = -0.5 * (SigmaI_plus_W_inv.diagonal().array() * third_deriv.array()).matrix();
 			// calculate gradient wrt covariance parameters
@@ -1189,8 +1204,9 @@ namespace GPBoost {
 
 		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
-		*		Calculations are done using a numerically stable variant based on B = (Id + Wsqrt * ZSigmaZt * Wsqrt).
-		*		This version is used for the Laplace approximation when there are GP random effects.
+		*		Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
+		*		In the notation of the paper: "Sigma = Z*Sigma*Z^T" and "Z = Id".
+		*		This version is used for the Laplace approximation when dense matrices are used (e.g. GP models).
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
@@ -1220,7 +1236,7 @@ namespace GPBoost {
 				sp_mat_t Wsqrt(num_data, num_data);//diagonal matrix with square root of negative second derivatives on the diagonal (sqrt of negative Hessian of log-likelihood)
 				Wsqrt.setIdentity();
 				Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
-				T1 L = chol_facts_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.matrixL();
+				T1 L = chol_fact_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_.matrixL();
 				T1 Maux, Maux2;
 				Maux = Wsqrt * Cross_Cov.transpose();
 				CalcLInvH(L, Maux, Maux2, true);//Maux2 = L\(Wsqrt * Cross_Cov^T)
@@ -1239,8 +1255,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
-		*		Calculations are done by directly factorizing/inverting (Sigma^-1 + Zt*W*Z).
-		*		In the notation of the paper: "Sigma = Z*Sigma*Z^T" and "Z = Id".
+		*		Calculations are done by directly factorizing ("inverting) (Sigma^-1 + Zt*W*Z).
 		*		NOTE: IT IS ASSUMED THAT SIGMA IS A DIAGONAL MATRIX
 		*		This version is used for the Laplace approximation when there are only grouped random effects.
 		* \param y_data Response variable data if response variable is continuous
@@ -1280,7 +1295,7 @@ namespace GPBoost {
 					Maux2 = diag_SigmaI_plus_ZtWZ_.array().sqrt().inverse().matrix().asDiagonal() * Maux;
 				}
 				else {
-					T1 L = chol_facts_SigmaI_plus_ZtWZ_.matrixL();
+					T1 L = chol_fact_SigmaI_plus_ZtWZ_.matrixL();
 					CalcLInvH(L, Maux, Maux2, true);
 				}
 				if (calc_pred_cov) {
@@ -1300,9 +1315,10 @@ namespace GPBoost {
 
 		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
-		*		Calculations are done by inverting (Sigma^-1 + W) where it is assumed that an approximate Cholesky factor of Sigma^-1 has
-		*		previously been calculated using a Vecchia approximation.
-		*		This version is used for the Laplace approximation when there are only GP radnom effects and the Vecchia approximation is used.
+		*		Calculations are done by factorizing ("inverting) (Sigma^-1 + W) where it is assumed that an approximate Cholesky factor
+		*		of Sigma^-1 has previously been calculated using a Vecchia approximation.
+		*		This version is used for the Laplace approximation when there are only GP random effects and the Vecchia approximation is used.
+		*		Caveat: Sigma^-1 + W can be not very sparse
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
@@ -1333,7 +1349,7 @@ namespace GPBoost {
 				T1 SigmaI_CrossCovT = B.transpose() * D_inv * B * Cross_Cov.transpose();
 				// calculate Maux = L\(Sigma^-1 * Cross_Cov^T), L = Chol(Sigma^-1 + W)
 				T1 Maux;
-				sp_mat_t L = chol_facts_SigmaI_plus_ZtWZ_.matrixL();
+				sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_.matrixL();
 				CalcLInvH(L, SigmaI_CrossCovT, Maux, true);
 				if (calc_pred_cov) {
 					pred_cov += -Cross_Cov * SigmaI_CrossCovT + Maux.transpose() * Maux;
@@ -1462,7 +1478,7 @@ namespace GPBoost {
 	private:
 		/*! \brief Number of data points */
 		data_size_t num_data_;
-		/*! \brief Number (dimension) of random effecst */
+		/*! \brief Number (dimension) of random effects */
 		data_size_t num_re_;
 		/*! \brief Posterior mode used for Laplace approximation */
 		vec_t mode_;
@@ -1477,9 +1493,11 @@ namespace GPBoost {
 		/*! \brief Diagonal of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'GroupedRE' when there is only one random effect and ZtWZ is diagonal. Otherwise 'diag_SigmaI_plus_ZtWZ_' is used for grouped REs) */
 		vec_t diag_SigmaI_plus_ZtWZ_;
 		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in versions 'Vecchia' and 'GroupedRE'. For grouped REs, this is used if there is more than one random effect) */
-		chol_sp_mat_t chol_facts_SigmaI_plus_ZtWZ_;
+		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_;
 		/*! \brief Cholesky factors of matrix I + Wsqrt *  Z * Sigma * Zt * Wsqrt in Laplace approximation (used only in version 'Stable' i.e. neither only grouped REs nor Vecchia approximation) */
-		T2 chol_facts_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_;
+		T2 chol_fact_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_;
+		/*! \brief Cholesky factors of matrix Sigma * Zt * W * Z + I in Laplace approximation (used only in version 'OnlyOneGPCalculationsOnREScale' i.e. neither only GP and calculations are done on the random effects scale b and not on the "data scale" Zb) */
+		T2 chol_fact_SigmaZtWZ_plus_Id;
 		/*! \brief If true, the mode has been initialized to 0 */
 		bool mode_initialized_ = false;
 		/*! \brief If true, the mode has been determined */

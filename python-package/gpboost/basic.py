@@ -493,6 +493,16 @@ def _get_bad_pandas_dtypes(dtypes):
     return bad_indices
 
 
+def _get_bad_pandas_dtypes_int(dtypes):
+    pandas_dtype_mapper = {'int8': 'int', 'int16': 'int', 'int32': 'int',
+                           'int64': 'int', 'uint8': 'int', 'uint16': 'int',
+                           'uint32': 'int', 'uint64': 'int'}
+    bad_indices = [i for i, dtype in enumerate(dtypes) if (dtype.name not in pandas_dtype_mapper
+                                                           and (not is_dtype_sparse(dtype)
+                                                                or dtype.subtype.name not in pandas_dtype_mapper))]
+    return bad_indices
+
+
 def _data_from_pandas(data, feature_name, categorical_feature, pandas_categorical):
     if isinstance(data, pd_DataFrame):
         if len(data.shape) != 2 or data.shape[0] < 1:
@@ -545,6 +555,82 @@ def _label_from_pandas(label):
             raise ValueError('DataFrame.dtypes for label must be int, float or bool')
         label = np.ravel(label.values.astype(np.float32, copy=False))
     return label
+
+
+def _format_check_data(data, get_variable_names=False, data_name="data", check_data_type=True, convert_to_type=None):
+    """
+    Checks for correct data types, converts to numpy array, formats data, and determines variables names. Used in
+    GPModel
+    """
+    variable_names = None
+    if not isinstance(data, (np.ndarray, pd_Series, pd_DataFrame)) and not is_1d_list(data):
+        raise ValueError(
+            data_name + " needs to be either of type pandas.DataFrame, pandas.Series, numpy.ndarray or a 1-D list")
+    if not isinstance(data, list):
+        if len(data.shape) > 2 or data.shape[0] < 1:
+            raise ValueError(data_name + " needs to be either 1 or 2 dimensional and it must be non empty ")
+    if isinstance(data, pd_DataFrame):
+        data = data.rename(columns=str)
+        if check_data_type:
+            bad_indices = _get_bad_pandas_dtypes(data.dtypes)
+            if bad_indices:
+                raise ValueError(data_name + ": DataFrame.dtypes must be int, float or bool.\n"
+                                             "Did not expect the data types in the following fields: "
+                                 + ', '.join(data.columns[bad_indices]))
+        if get_variable_names:
+            variable_names = list(data.columns)
+        data = data.values
+    elif isinstance(data, pd_Series):
+        if check_data_type:
+            if _get_bad_pandas_dtypes([data.dtypes]):
+                raise ValueError(data_name + ': Series.dtypes must be int, float or bool')
+        if get_variable_names:
+            variable_names = [data.name]
+        data = data.values
+        data = data.reshape((len(data), 1))
+    elif isinstance(data, np.ndarray):
+        if len(data.shape) == 1:
+            data = data.reshape((len(data), 1))
+        if get_variable_names and data.dtype.names is not None:
+            variable_names = list(data.dtype.names)
+    elif is_1d_list(data):
+        data = np.array(data)
+        data = data.reshape((len(data), 1))
+    if convert_to_type is not None:
+        if data.dtype != convert_to_type:
+            data = data.astype(convert_to_type)
+    return data, variable_names
+
+
+def _format_check_1D_data(data, data_name="data", check_must_be_int=False, convert_to_type=None):
+    if not isinstance(data, (np.ndarray, pd_Series, pd_DataFrame)) and not is_1d_list(data):
+        raise ValueError(
+            data_name + " needs to be either of type pandas.DataFrame, pandas.Series, numpy.ndarray or a 1-D list")
+    if not isinstance(data, list):
+        if len(data.shape) != 1 or data.shape[0] < 1:
+            raise ValueError(data_name + " needs to be 1 dimensional and it must be non empty ")
+    if isinstance(data, pd_DataFrame):
+        if check_must_be_int:
+            if _get_bad_pandas_dtypes_int([data.dtypes]):
+                raise ValueError(data_name + ': DataFrame.dtypes must be int')
+        else:
+            if _get_bad_pandas_dtypes([data.dtypes]):
+                raise ValueError(data_name + ': DataFrame.dtypes must be int, float or bool')
+        data = np.ravel(data.values)
+    elif isinstance(data, pd_Series):
+        if check_must_be_int:
+            if _get_bad_pandas_dtypes_int([data.dtypes]):
+                raise ValueError(data_name + ': Series.dtypes must be int')
+        else:
+            if _get_bad_pandas_dtypes([data.dtypes]):
+                raise ValueError(data_name + ': Series.dtypes must be int, float or bool')
+        data = data.values
+    elif is_1d_list(data):
+        data = np.array(data)
+    if convert_to_type is not None:
+        if data.dtype != convert_to_type:
+            data = data.astype(convert_to_type)
+    return data
 
 
 def _dump_pandas_categorical(pandas_categorical, file_name=None):
@@ -2292,7 +2378,7 @@ class Booster:
                 self.model_from_string(save_data['booster_str'], not silent)
                 self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
                 self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
-            else:# has no gp_model
+            else:  # has no gp_model
                 out_num_iterations = ctypes.c_int(0)
                 self.handle = ctypes.c_void_p()
                 _safe_call(_LIB.LGBM_BoosterCreateFromModelfile(
@@ -3174,13 +3260,13 @@ class Booster:
             Used only if data is string.
         is_reshape : bool, optional (default=True)
             If True, result is reshaped to [nrow, ncol].
-        group_data_pred : numpy array with numeric or string data or None, optional (default=None)
+        group_data_pred : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
             Labels of group levels for grouped random effects. Used only if the Booster has a GPModel
-        group_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
+        group_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
             Covariate data for grouped random coefficients. Used only if the Booster has a GPModel
-        gp_coords_pred : numpy array with numeric data or None, optional (default=None)
+        gp_coords_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
             Coordinates (features) for Gaussian process. Used only if the Booster has a GPModel
-        gp_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
+        gp_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
             Covariate data for Gaussian process random coefficients. Used only if the Booster has a GPModel
         vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
             Type of Vecchia approximation used for making predictions. Used only if the Booster has a GPModel.
@@ -3193,7 +3279,7 @@ class Booster:
             ordered first and neighbors are selected among all points
         num_neighbors_pred : integer or None, optional (default=None)
             Number of neighbors for the Vecchia approximation for making predictions. Used only if the Booster has a GPModel
-        cluster_ids_pred : one dimensional numpy array (vector) with integer data or None, optional (default=None)
+        cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
             IDs / labels indicating independent realizations of random effects / Gaussian processes
             (same values = same process realization). Used only if the Booster has a GPModel
         predict_cov_mat : bool, optional (default=False)
@@ -3722,15 +3808,15 @@ class GPModel(object):
         ----------
             likelihood : string, optional (default="gaussian")
                 likelihood function (distribution) of the response variable
-            group_data : numpy array with numeric or string data or None, optional (default=None)
+            group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 Labels of group levels for grouped random effects
-            group_rand_coef_data : numpy array with numeric data or None, optional (default=None)
+            group_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for grouped random coefficients
-            ind_effect_group_rand_coef  : one dimensional numpy array (vector) with integer data or None, optional (default=None)
+            ind_effect_group_rand_coef : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
                 Indices that relate every random coefficients to a "base" intercept grouped random effect. Counting starts at 1.
-            gp_coords : numpy array with numeric data or None, optional (default=None)
+            gp_coords : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Coordinates (features) for Gaussian process
-            gp_rand_coef_data : numpy array with numeric data or None, optional (default=None)
+            gp_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for Gaussian process random coefficients
             cov_function : string, optional (default="exponential")
                 Covariance function for the Gaussian process. The following covariance functions are available:
@@ -3758,9 +3844,9 @@ class GPModel(object):
                 is ordered first and neighbors are selected among all points
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
-            cluster_ids : one dimensional numpy array (vector) with integer data or None, optional (default=None)
+            cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
                 IDs / labels indicating independent realizations of random effects / Gaussian processes
-                (same values = same process realization)
+                (same values = same random effects / GP realization)
             free_raw_data : bool, optional (default=False)
                 If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python
                 after initialization
@@ -3770,7 +3856,7 @@ class GPModel(object):
                 Dict with model file
         """
 
-        # Initialize variables
+        # Initialize variables with default values
         self.handle = ctypes.c_void_p()
         self.num_data = None
         self.num_group_re = 0
@@ -3799,7 +3885,7 @@ class GPModel(object):
             self.cov_par_names = []
         self.coef_names = None
         self.cluster_ids = None
-        self.free_raw_data = free_raw_data
+        self.free_raw_data = False
         self.num_data_pred = 0
         self.params = {"maxit": 1000,
                        "delta_rel_conv": 1e-6,
@@ -3815,7 +3901,6 @@ class GPModel(object):
                        "convergence_criterion": "relative_change_in_log_likelihood",
                        "std_dev": False}
         self.prediction_data_is_set = False
-        self.vecchia_approx = vecchia_approx
         self.model_has_been_loaded_from_saved_file = False
         self.cov_pars_loaded_from_file = None
         self.y_loaded_from_file = None
@@ -3874,21 +3959,20 @@ class GPModel(object):
         gp_rand_coef_data_c = ctypes.c_void_p()
         cluster_ids_c = ctypes.c_void_p()
         # Set data for grouped random effects
-        if group_data is not None:  ##TODO: add support for pandas
-            if not isinstance(group_data, np.ndarray):
-                raise ValueError("group_data needs to be a numpy.ndarray")
-            if len(group_data.shape) > 2:
-                raise ValueError("group_data needs to be either a vector or a two-dimensional matrix (array)")
-            if len(group_data.shape) == 1:
-                group_data = group_data.reshape((len(group_data), 1))
+        if group_data is not None:
+            group_data, group_data_names = _format_check_data(data=group_data, get_variable_names=True,
+                                                              data_name="group_data", check_data_type=False,
+                                                              convert_to_type=None)
+            # Note: groupe_data is saved here in its original format and is only converted to string before
+            #   sending it to C++
             self.num_group_re = group_data.shape[1]
             self.num_data = group_data.shape[0]
             self.group_data = deepcopy(group_data)
-            if self.group_data.dtype.names is None:
+            if group_data_names is None:
                 for ig in range(self.num_group_re):
                     self.cov_par_names.append('Group_' + str(ig + 1))
             else:
-                self.cov_par_names.extend(list(self.group_data.dtype.names))
+                self.cov_par_names.extend(group_data_names)
             if not group_data.dtype == np.dtype(str):
                 group_data = group_data.astype(np.dtype(str))
             # Convert to correct format for passing to C
@@ -3896,37 +3980,30 @@ class GPModel(object):
             group_data_c = string_array_c_str(group_data_c)
             # Set data for grouped random coefficients
             if group_rand_coef_data is not None:
-                if not isinstance(group_rand_coef_data, np.ndarray):
-                    raise ValueError("group_rand_coef_data needs to be a numpy.ndarray")
-                if len(group_rand_coef_data.shape) > 2:
-                    raise ValueError(
-                        "group_rand_coef_data needs to be either a vector or a two-dimensional matrix (array)")
+                group_rand_coef_data, group_rand_coef_data_names = _format_check_data(data=group_rand_coef_data,
+                                                                                      get_variable_names=True,
+                                                                                      data_name="group_rand_coef_data",
+                                                                                      check_data_type=True,
+                                                                                      convert_to_type=np.float64)
                 self.group_rand_coef_data = deepcopy(group_rand_coef_data)
-                if len(self.group_rand_coef_data.shape) == 1:
-                    self.group_rand_coef_data = self.group_rand_coef_data.reshape((len(self.group_rand_coef_data), 1))
                 if self.group_rand_coef_data.shape[0] != self.num_data:
                     raise ValueError("Incorrect number of data points in group_rand_coef_data")
-                self.group_rand_coef_data = self.group_rand_coef_data.astype(np.dtype(np.float64))
-                if ind_effect_group_rand_coef is None:
-                    raise ValueError(
-                        "Indices of grouped random effects (ind_effect_group_rand_coef) for random slopes in group_rand_coef_data not provided")
-                if not isinstance(ind_effect_group_rand_coef, np.ndarray) and not isinstance(ind_effect_group_rand_coef,
-                                                                                             list):
-                    raise ValueError("ind_effect_group_rand_coef needs to be a numpy.ndarray")
-                self.ind_effect_group_rand_coef = deepcopy(ind_effect_group_rand_coef)
-                if isinstance(self.ind_effect_group_rand_coef, list):
-                    self.ind_effect_group_rand_coef = np.array(self.ind_effect_group_rand_coef)
-                if len(self.ind_effect_group_rand_coef.shape) != 1:
-                    raise ValueError("ind_effect_group_rand_coef needs to be a vector / one-dimensional numpy.ndarray ")
-                if self.ind_effect_group_rand_coef.shape[0] != self.group_rand_coef_data.shape[1]:
-                    raise ValueError(
-                        "Number of random coefficients in group_rand_coef_data does not match number in ind_effect_group_rand_coef")
-                self.ind_effect_group_rand_coef = self.ind_effect_group_rand_coef.astype(np.dtype(int))
                 self.num_group_rand_coef = self.group_rand_coef_data.shape[1]
+                if ind_effect_group_rand_coef is None:
+                    raise ValueError("Indices of grouped random effects (ind_effect_group_rand_coef) for "
+                                     "random slopes in group_rand_coef_data not provided")
+                ind_effect_group_rand_coef = _format_check_1D_data(ind_effect_group_rand_coef,
+                                                                   data_name="ind_effect_group_rand_coef",
+                                                                   check_must_be_int=True,
+                                                                   convert_to_type=np.dtype(int))
+                self.ind_effect_group_rand_coef = deepcopy(ind_effect_group_rand_coef)
+                if self.ind_effect_group_rand_coef.shape[0] != self.num_group_rand_coef:
+                    raise ValueError("Number of random coefficients in group_rand_coef_data does not match number "
+                                     "in ind_effect_group_rand_coef")
                 counter_re = np.zeros(self.num_group_re)
                 counter_re.astype(np.dtype(int))
                 for ii in range(self.num_group_rand_coef):
-                    if self.group_rand_coef_data.dtype.names is None:
+                    if group_rand_coef_data_names is None:
                         self.cov_par_names.append(
                             self.cov_par_names[self.ind_effect_group_rand_coef[ii]] + "_rand_coef_nb_" + str(
                                 int(counter_re[self.ind_effect_group_rand_coef[ii] - 1] + 1)))
@@ -3936,30 +4013,26 @@ class GPModel(object):
                     else:
                         self.cov_par_names.append(
                             self.cov_par_names[self.ind_effect_group_rand_coef[ii]] + "_rand_coef_" +
-                            self.group_data.dtype.names[ii])
-                self.group_rand_coef_data = self.group_rand_coef_data.astype(np.float64)
+                            group_rand_coef_data_names[ii])
                 group_rand_coef_data_c, _, _ = c_float_array(self.group_rand_coef_data.flatten(order='F'))
                 ind_effect_group_rand_coef_c = self.ind_effect_group_rand_coef.ctypes.data_as(
                     ctypes.POINTER(ctypes.c_int))
         # Set data for Gaussian process
         if gp_coords is not None:
-            if not isinstance(gp_coords, np.ndarray):
-                raise ValueError("gp_coords needs to be a numpy.ndarray")
-            if len(gp_coords.shape) > 2:
-                raise ValueError("gp_coords needs to be either a vector or a two-dimensional matrix (array)")
+            gp_coords, names_not_used = _format_check_data(data=gp_coords, get_variable_names=False,
+                                                           data_name="gp_coords", check_data_type=True,
+                                                           convert_to_type=np.float64)
             self.gp_coords = deepcopy(gp_coords)
-            if len(self.gp_coords.shape) == 1:
-                self.gp_coords = self.gp_coords.reshape((len(self.gp_coords), 1))
             if self.num_data is None:
                 self.num_data = self.gp_coords.shape[0]
             else:
                 if self.gp_coords.shape[0] != self.num_data:
                     raise ValueError("Incorrect number of data points in gp_coords")
-            self.gp_coords = self.gp_coords.astype(np.float64)
             self.num_gp = 1
             self.dim_coords = gp_coords.shape[1]
             self.cov_function = cov_function
             self.cov_fct_shape = cov_fct_shape
+            self.vecchia_approx = vecchia_approx
             self.vecchia_ordering = vecchia_ordering
             self.vecchia_pred_type = vecchia_pred_type
             self.num_neighbors = num_neighbors
@@ -3968,38 +4041,31 @@ class GPModel(object):
             gp_coords_c, _, _ = c_float_array(self.gp_coords.flatten(order='F'))
             # Set data for GP random coefficients
             if gp_rand_coef_data is not None:
-                if not isinstance(gp_rand_coef_data, np.ndarray):
-                    raise ValueError("gp_rand_coef_data needs to be a numpy.ndarray")
-                if len(gp_rand_coef_data.shape) > 2:
-                    raise ValueError(
-                        "gp_rand_coef_data needs to be either a vector or a two-dimensional matrix (array)")
+                gp_rand_coef_data, gp_rand_coef_data_names = _format_check_data(data=gp_rand_coef_data,
+                                                                                get_variable_names=True,
+                                                                                data_name="gp_rand_coef_data",
+                                                                                check_data_type=True,
+                                                                                convert_to_type=np.float64)
                 self.gp_rand_coef_data = deepcopy(gp_rand_coef_data)
-                if len(self.gp_rand_coef_data.shape) == 1:
-                    self.gp_rand_coef_data = self.gp_rand_coef_data.reshape((len(self.gp_rand_coef_data), 1))
                 if self.gp_rand_coef_data.shape[0] != self.num_data:
                     raise ValueError("Incorrect number of data points in gp_rand_coef_data")
-                self.gp_rand_coef_data = self.gp_rand_coef_data.astype(np.dtype(np.float64))
                 self.num_gp_rand_coef = self.gp_rand_coef_data.shape[1]
                 gp_rand_coef_data_c, _, _ = c_float_array(self.gp_rand_coef_data.flatten(order='F'))
                 for ii in range(self.num_gp_rand_coef):
-                    if self.gp_rand_coef_data.dtype.names is None:
+                    if gp_rand_coef_data_names is None:
                         self.cov_par_names.extend(
                             ["GP_rand_coef_nb_" + str(ii + 1) + "_var", "GP_rand_coef_nb_" + str(ii + 1) + "_range"])
                     else:
                         self.cov_par_names.extend(
-                            ["GP_rand_coef_" + self.gp_rand_coef_data.dtype.names[ii] + "_var",
-                             "GP_rand_coef_" + self.gp_rand_coef_data.dtype.names[ii] + "_range"])
-
+                            ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
+                             "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range"])
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids is not None:
-            if not isinstance(cluster_ids, np.ndarray):
-                raise ValueError("cluster_ids needs to be a numpy.ndarray")
+            cluster_ids = _format_check_1D_data(cluster_ids, data_name="cluster_ids",
+                                                check_must_be_int=True, convert_to_type=np.dtype(int))
             self.cluster_ids = deepcopy(cluster_ids)
-            if len(self.cluster_ids.shape) != 1:
-                raise ValueError("cluster_ids needs to be a vector / one-dimensional numpy.ndarray ")
             if self.cluster_ids.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in cluster_ids")
-            self.cluster_ids = self.cluster_ids.astype(np.dtype(int))
             cluster_ids_c = self.cluster_ids.ctypes.data_as(
                 ctypes.POINTER(ctypes.c_int))
 
@@ -4030,6 +4096,7 @@ class GPModel(object):
             ctypes.byref(self.handle)))
 
         # Should we free raw data?
+        self.free_raw_data = free_raw_data
         if free_raw_data:
             self.group_data = None
             self.group_rand_coef_data = None
@@ -4070,26 +4137,19 @@ class GPModel(object):
             for param in params:
                 if param == "init_cov_pars":
                     if params[param] is not None:
-                        if not isinstance(params[param], np.ndarray):
-                            raise ValueError("params['init_cov_pars'] needs to be a numpy.ndarray")
-                        if len(params[param].shape) != 1:
-                            raise ValueError(
-                                "params['init_cov_pars'] needs to be a vector / one-dimensional numpy.ndarray")
+                        params[param] = _format_check_1D_data(params[param], data_name="params['init_cov_pars']",
+                                                              check_must_be_int=False, convert_to_type=np.float64)
                         if params[param].shape[0] != self.num_cov_pars:
-                            raise ValueError(
-                                "params['init_cov_pars'] does not contain the correct number of parameters")
-                        params[param] = params[param].astype(np.float64)
+                            raise ValueError("params['init_cov_pars'] does not contain the correct number"
+                                             "of parameters")
                 if param == "init_coef":
                     if params[param] is not None:
-                        if not isinstance(params[param], np.ndarray):
-                            raise ValueError("params['init_coef'] needs to be a numpy.ndarray")
-                        if len(self.params[param].shape) != 1:
-                            raise ValueError("params['init_coef'] needs to be a vector / one-dimensional numpy.ndarray")
+                        params[param] = _format_check_1D_data(params[param], data_name="params['init_coef']",
+                                                              check_must_be_int=False, convert_to_type=np.float64)
                         if self.num_coef is None:
                             self.num_coef = self.params[param].shape[0]
                         if self.params[param].shape[0] != self.num_coef:
                             raise ValueError("params['init_coef'] does not contain the correct number of parameters")
-                        params[param] = params[param].astype(np.float64)
                 if param in self.params:
                     self.params[param] = params[param]
                 elif param not in ["optimizer_cov", "optimizer_coef", "init_cov_pars"]:
@@ -4107,9 +4167,9 @@ class GPModel(object):
 
         Parameters
         ----------
-        y : numpy array
+        y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
             Response variable data
-        X : numpy array with numeric data or None, optional (default=None)
+        X : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
             Covariate data for fixed effects ( = linear regression term)
         params : dict or None, optional (default=None)
             Parameters for fitting / optimization:
@@ -4126,9 +4186,9 @@ class GPModel(object):
                     Maximal number of iterations for optimization algorithm
                 delta_rel_conv : double, optional (default = 1e-6)
                     Convergence criterion: stop optimization if relative change in parameters is below this value
-                init_coef : numpy array, optional (default = None)
+                init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
-                init_cov_pars : numpy array, optional (default = None)
+                init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for covariance parameters of Gaussian process and random effects (can be None)
                 lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
@@ -4155,18 +4215,14 @@ class GPModel(object):
         if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or
                 (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
-        if not isinstance(y, np.ndarray):
-            raise ValueError("y needs to be a numpy.ndarray")
-        if len(y.shape) != 1:
-            raise ValueError("y needs to be a vector / one-dimensional numpy.ndarray ")
+        y = _format_check_1D_data(y, data_name="y", check_must_be_int=False, convert_to_type=np.float64)
         if y.shape[0] != self.num_data:
             raise ValueError("Incorrect number of data points in y")
-        y_c = y.astype(np.dtype(np.float64))
-        y_c = y_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         X_c = ctypes.c_void_p()
         fixed_effects_c = ctypes.c_void_p()
 
-        if fixed_effects is not None:
+        if fixed_effects is not None:  ##TODO: maybe add support for pandas for fixed_effects (low prio)
             if X is not None:
                 raise ValueError("Cannot provide both X and fixed_effects")
             if not isinstance(fixed_effects, np.ndarray):
@@ -4175,28 +4231,23 @@ class GPModel(object):
                 raise ValueError("fixed_effects needs to be a vector / one-dimensional numpy.ndarray ")
             if fixed_effects.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in fixed_effects")
-            fixed_effects_c = fixed_effects.astype(np.dtype(np.float64))
+            fixed_effects_c = fixed_effects.astype(np.float64)
             fixed_effects_c = fixed_effects_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
         if X is not None:
-            if not isinstance(X, np.ndarray):
-                raise ValueError("X needs to be a numpy.ndarray")
-            if len(X.shape) > 2:
-                raise ValueError("X needs to be either a vector or a two-dimensional matrix (array)")
-            if len(X.shape) == 1:
-                X = X.reshape((len(X), 1))
+            X, X_names = _format_check_data(data=X, get_variable_names=False, data_name="X", check_data_type=True,
+                                            convert_to_type=np.float64)
             if X.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in X")
             self.has_covariates = True
             self.num_coef = X.shape[1]
-            X_c = X.astype(np.float64)
-            X_c, _, _ = c_float_array(X_c.flatten(order='F'))
+            X_c, _, _ = c_float_array(X.flatten(order='F'))
             self.coef_names = []
             for ii in range(self.num_coef):
-                if X.dtype.names is None:
+                if X_names is None:
                     self.coef_names.append("Covariate_" + str(ii + 1))
                 else:
-                    self.coef_names.append(X.dtype.names[ii])
+                    self.coef_names.append(X_names[ii])
         else:
             self.has_covariates = False
         # Set parameters for optimizer
@@ -4225,9 +4276,9 @@ class GPModel(object):
 
         Parameters
         ----------
-        cov_pars : numpy array
+        cov_pars : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
             Covariance parameters of Gaussian process and random effects
-        y : numpy array
+        y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
             Response variable data
 
         Returns
@@ -4237,21 +4288,14 @@ class GPModel(object):
         if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or
                 (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
-        if not isinstance(y, np.ndarray):
-            raise ValueError("y needs to be a numpy.ndarray")
-        if len(y.shape) != 1:
-            raise ValueError("y needs to be a vector / one-dimensional numpy.ndarray ")
+        y = _format_check_1D_data(y, data_name="y", check_must_be_int=False, convert_to_type=np.float64)
         if y.shape[0] != self.num_data:
             raise ValueError("Incorrect number of data points in y")
-        y_c = y.astype(np.dtype(np.float64))
-        y_c = y_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-        if not isinstance(cov_pars, np.ndarray):
-            raise ValueError("cov_pars needs to be a numpy.ndarray")
-        if len(cov_pars.shape) != 1:
-            raise ValueError("cov_pars needs to be a vector / one-dimensional numpy.ndarray")
+        y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        cov_pars = _format_check_1D_data(cov_pars, data_name="cov_pars", check_must_be_int=False,
+                                         convert_to_type=np.float64)
         if cov_pars.shape[0] != self.num_cov_pars:
             raise ValueError("params['init_cov_pars'] does not contain the correct number of parameters")
-        cov_pars = cov_pars.astype(np.float64)
         cov_pars_c = cov_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
         negll = ctypes.c_double(0)
@@ -4277,7 +4321,7 @@ class GPModel(object):
                     Maximal number of iterations for optimization algorithm
                 delta_rel_conv : double, optional (default = 1e-6)
                     Convergence criterion: stop optimization if relative change in parameters is below this value
-                init_cov_pars : numpy array, optional (default = None)
+                init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for covariance parameters of Gaussian process and random effects (can be None)
                 lr_cov : double, optional (default = -1.)
                     If <= 0, internal default values are used.
@@ -4360,7 +4404,7 @@ class GPModel(object):
                     Options: "gradient_descent" or "wls". Gradient descent steps are done simultaneously with
                     gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
                     for the regression coefficients using weighted least squares
-                init_coef : numpy array, optional (default = None)
+                init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (can be None)
                 lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
@@ -4479,16 +4523,16 @@ class GPModel(object):
 
         Parameters
         ----------
-            y : numpy array or None, optional (default=None)
+            y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
                 Observed response variable data (can be None, e.g. when the model has been estimated already and
                 the same data is used for making predictions)
-            group_data_pred : numpy array with numeric or string data or None, optional (default=None)
+            group_data_pred : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 Labels of group levels for grouped random effects
-            group_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
+            group_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for grouped random coefficients
-            gp_coords_pred : numpy array with numeric data or None, optional (default=None)
+            gp_coords_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Coordinates (features) for Gaussian process
-            gp_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
+            gp_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for Gaussian process random coefficients
             vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
                 Type of Vecchia approximation used for making predictions.
@@ -4501,9 +4545,9 @@ class GPModel(object):
                 ordered first and neighbors are selected among all points
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
-            cluster_ids_pred : one dimensional numpy array (vector) with integer data or None, optional (default=None)
+            cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
                 IDs / labels indicating independent realizations of random effects / Gaussian processes
-                (same values = same process realization)
+                (same values = same random effects / GP realization)
             predict_cov_mat : bool (default=False)
                 If True, the (posterior / conditional) predictive covariance is calculated in addition to the
                 (posterior / conditional) predictive mean
@@ -4512,7 +4556,7 @@ class GPModel(object):
             cov_pars : numpy array or None, optional (default = None)
                 A vector containing covariance parameters (used if the GPModel has not been trained or if predictions
                 should be made for other parameters than the estimated ones)
-            X_pred : numpy array with numeric data or None, optional (default=None)
+            X_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for fixed effects ( = linear regression term)
             use_saved_data : bool (default=False)
                 If True, predictions are done using a priory set data via the function 'set_prediction_data'
@@ -4545,20 +4589,14 @@ class GPModel(object):
             self.num_neighbors_pred = num_neighbors_pred
         y_c = ctypes.c_void_p()
         if y is not None:
-            if not isinstance(y, np.ndarray):
-                raise ValueError("y needs to be a numpy.ndarray")
-            if len(y.shape) != 1:
-                raise ValueError("y needs to be a vector / one-dimensional numpy.ndarray ")
+            y = _format_check_1D_data(y, data_name="y", check_must_be_int=False, convert_to_type=np.float64)
             if y.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in y")
-            y_c = y.astype(np.dtype(np.float64))
-            y_c = y_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         cov_pars_c = ctypes.c_void_p()
         if cov_pars is not None:
-            if not isinstance(cov_pars, np.ndarray):
-                raise ValueError("cov_pars needs to be a numpy.ndarray")
-            if len(cov_pars.shape) != 1:
-                raise ValueError("cov_pars needs to be a vector / one-dimensional numpy.ndarray")
+            cov_pars = _format_check_1D_data(cov_pars, data_name="cov_pars", check_must_be_int=False,
+                                             convert_to_type=np.float64)
             if cov_pars.shape[0] != self.num_cov_pars:
                 raise ValueError("cov_pars does not contain the correct number of parameters")
             cov_pars_c = cov_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -4568,16 +4606,13 @@ class GPModel(object):
         gp_rand_coef_data_pred_c = ctypes.c_void_p()
         cluster_ids_pred_c = ctypes.c_void_p()
         X_pred_c = ctypes.c_void_p()
-        num_data_pred = self.num_data_pred
+        num_data_pred = 0
         if not use_saved_data:
             # Set data for grouped random effects
             if group_data_pred is not None:
-                if not isinstance(group_data_pred, np.ndarray):
-                    raise ValueError("group_data_pred needs to be a numpy.ndarray")
-                if len(group_data_pred.shape) > 2:
-                    raise ValueError("group_data_pred needs to be either a vector or a two-dimensional matrix (array)")
-                if len(group_data_pred.shape) == 1:
-                    group_data_pred = group_data_pred.reshape((len(group_data_pred), 1))
+                group_data_pred, not_used = _format_check_data(data=group_data_pred, get_variable_names=False,
+                                                               data_name="group_data_pred", check_data_type=False,
+                                                               convert_to_type=None)
                 if group_data_pred.shape[1] != self.num_group_re:
                     raise ValueError("Number of grouped random effects in group_data_pred is not correct")
                 num_data_pred = group_data_pred.shape[0]
@@ -4586,28 +4621,23 @@ class GPModel(object):
                 group_data_pred_c = string_array_c_str(group_data_pred_c)
                 # Set data for grouped random coefficients
                 if group_rand_coef_data_pred is not None:
-                    if not isinstance(group_rand_coef_data_pred, np.ndarray):
-                        raise ValueError("group_rand_coef_data_pred needs to be a numpy.ndarray")
-                    if len(group_rand_coef_data_pred.shape) > 2:
-                        raise ValueError(
-                            "group_rand_coef_data_pred needs to be either a vector or a two-dimensional matrix (array)")
-                    if len(group_rand_coef_data_pred.shape) == 1:
-                        group_rand_coef_data_pred = group_rand_coef_data_pred.reshape(
-                            (len(group_rand_coef_data_pred), 1))
+                    group_rand_coef_data_pred, not_used = _format_check_data(data=group_rand_coef_data_pred,
+                                                                             get_variable_names=False,
+                                                                             data_name="group_rand_coef_data_pred",
+                                                                             check_data_type=True,
+                                                                             convert_to_type=np.float64)
                     if group_rand_coef_data_pred.shape[0] != num_data_pred:
                         raise ValueError("Incorrect number of data points in group_rand_coef_data_pred")
                     if group_rand_coef_data_pred.shape[1] != self.num_group_rand_coef:
                         raise ValueError("Incorrect number of covariates in group_rand_coef_data_pred")
-                    group_rand_coef_data_pred_c = group_rand_coef_data_pred.astype(np.dtype(np.float64))
-                    group_rand_coef_data_c, _, _ = c_float_array(group_rand_coef_data_pred_c.flatten(order='F'))
+                    group_rand_coef_data_c, _, _ = c_float_array(group_rand_coef_data_pred.flatten(order='F'))
             # Set data for Gaussian process
             if gp_coords_pred is not None:
-                if not isinstance(gp_coords_pred, np.ndarray):
-                    raise ValueError("gp_coords_pred needs to be a numpy.ndarray")
-                if len(gp_coords_pred.shape) > 2:
-                    raise ValueError("gp_coords_pred needs to be either a vector or a two-dimensional matrix (array)")
-                if len(gp_coords_pred.shape) == 1:
-                    gp_coords_pred = gp_coords_pred.reshape((len(gp_coords_pred), 1))
+                gp_coords_pred, not_used = _format_check_data(data=gp_coords_pred,
+                                                              get_variable_names=False,
+                                                              data_name="gp_coords_pred",
+                                                              check_data_type=True,
+                                                              convert_to_type=np.float64)
                 if num_data_pred == 0:
                     num_data_pred = gp_coords_pred.shape[0]
                 else:
@@ -4615,44 +4645,33 @@ class GPModel(object):
                         raise ValueError("Incorrect number of data points in gp_coords_pred")
                 if gp_coords_pred.shape[1] != self.dim_coords:
                     raise ValueError("Incorrect dimension / number of coordinates (=features) in gp_coords_pred")
-                gp_coords_pred_c = gp_coords_pred.astype(np.float64)
-                gp_coords_pred_c, _, _ = c_float_array(gp_coords_pred_c.flatten(order='F'))
+                gp_coords_pred_c, _, _ = c_float_array(gp_coords_pred.flatten(order='F'))
                 # Set data for GP random coefficients
                 if gp_rand_coef_data_pred is not None:
-                    if not isinstance(gp_rand_coef_data_pred, np.ndarray):
-                        raise ValueError("gp_rand_coef_data_pred needs to be a numpy.ndarray")
-                    if len(gp_rand_coef_data_pred.shape) > 2:
-                        raise ValueError(
-                            "gp_rand_coef_data_pred needs to be either a vector or a two-dimensional matrix (array)")
-                    if len(gp_rand_coef_data_pred.shape) == 1:
-                        gp_rand_coef_data_pred = gp_rand_coef_data_pred.reshape((len(gp_rand_coef_data_pred), 1))
+                    gp_rand_coef_data_pred, not_used = _format_check_data(data=gp_rand_coef_data_pred,
+                                                                          get_variable_names=False,
+                                                                          data_name="gp_rand_coef_data_pred",
+                                                                          check_data_type=True,
+                                                                          convert_to_type=np.float64)
                     if gp_rand_coef_data_pred.shape[0] != num_data_pred:
                         raise ValueError("Incorrect number of data points in gp_rand_coef_data_pred")
                     if gp_rand_coef_data_pred.shape[1] != self.num_gp_rand_coef:
                         raise ValueError("Incorrect number of covariates in gp_rand_coef_data_pred")
-                    gp_rand_coef_data_pred_c = gp_rand_coef_data_pred.astype(np.dtype(np.float64))
-                    gp_rand_coef_data_pred_c, _, _ = c_float_array(gp_rand_coef_data_pred_c.flatten(order='F'))
+                    gp_rand_coef_data_pred_c, _, _ = c_float_array(gp_rand_coef_data_pred.flatten(order='F'))
             # Set IDs for independent processes (cluster_ids)
             if cluster_ids_pred is not None:
-                if not isinstance(cluster_ids_pred, np.ndarray):
-                    raise ValueError("cluster_ids_pred needs to be a numpy.ndarray")
-                if len(cluster_ids_pred.shape) != 1:
-                    raise ValueError("cluster_ids_pred needs to be a vector / one-dimensional numpy.ndarray ")
-                if cluster_ids_pred.shape[0] != num_data_pred:
-                    raise ValueError("Incorrect number of data points in cluster_ids_pred")
-                cluster_ids_preds_c = cluster_ids_pred.astype(np.dtype(int))
-                cluster_ids_preds_c = cluster_ids_preds_c.ctypes.data_as(
-                    ctypes.POINTER(ctypes.c_int))
+                cluster_ids_pred = _format_check_1D_data(cluster_ids_pred, data_name="cluster_ids_pred",
+                                                         check_must_be_int=True, convert_to_type=np.dtype(int))
+                cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
             # Set data for linear fixed-effects
             if self.has_covariates:
                 if X_pred is None:
                     raise ValueError("No covariate data is provided in 'X_pred' but model has linear predictor")
-                if not isinstance(X_pred, np.ndarray):
-                    raise ValueError("X_pred needs to be a numpy.ndarray")
-                if len(X_pred.shape) > 2:
-                    raise ValueError("X_pred needs to be either a vector or a two-dimensional matrix (array)")
-                if len(X_pred.shape) == 1:
-                    X_pred = X_pred.reshape((len(X_pred), 1))
+                X_pred, not_used = _format_check_data(data=X_pred,
+                                                      get_variable_names=False,
+                                                      data_name="X_pred",
+                                                      check_data_type=True,
+                                                      convert_to_type=np.float64)
                 if X_pred.shape[0] != num_data_pred:
                     raise ValueError("Incorrect number of data points in X_pred")
                 if X_pred.shape[1] != self.num_coef:
@@ -4667,8 +4686,7 @@ class GPModel(object):
                     else:
                         fixed_effects_pred = fixed_effects_pred + X_pred.dot(self.coefs_loaded_from_file)
                 else:
-                    X_pred_c = X_pred.astype(np.float64)
-                    X_pred_c, _, _ = c_float_array(X_pred_c.flatten(order='F'))
+                    X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
         else:
             if not self.prediction_data_is_set:
                 raise ValueError("No data has been set for making predictions. Call set_prediction_data first")
@@ -4682,8 +4700,8 @@ class GPModel(object):
                 raise ValueError("fixed_effects needs to be a vector / one-dimensional numpy.ndarray ")
             if fixed_effects.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in fixed_effects")
-            fixed_effects_c = fixed_effects.astype(np.dtype(np.float64))
-            fixed_effects_c = fixed_effects_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            fixed_effects = fixed_effects.astype(np.float64)
+            fixed_effects_c = fixed_effects.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         if fixed_effects_pred is not None:
             if not isinstance(fixed_effects_pred, np.ndarray):
                 raise ValueError("fixed_effects_pred needs to be a numpy.ndarray")
@@ -4691,8 +4709,8 @@ class GPModel(object):
                 raise ValueError("fixed_effects_pred needs to be a vector / one-dimensional numpy.ndarray ")
             if fixed_effects_pred.shape[0] != num_data_pred:
                 raise ValueError("Incorrect number of data points in fixed_effects_pred")
-            fixed_effects_pred_c = fixed_effects_pred.astype(np.dtype(np.float64))
-            fixed_effects_pred_c = fixed_effects_pred_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            fixed_effects_pred = fixed_effects_pred.astype(np.float64)
+            fixed_effects_pred_c = fixed_effects_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
         if predict_var:
             preds = np.zeros(2 * num_data_pred, dtype=np.float64)
@@ -4743,18 +4761,18 @@ class GPModel(object):
 
         Parameters
         ----------
-            group_data_pred : numpy array with numeric or string data or None, optional (default=None)
+            group_data_pred : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 Labels of group levels for grouped random effects
-            group_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
+            group_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for grouped random coefficients
-            gp_coords_pred : numpy array with numeric data or None, optional (default=None)
+            gp_coords_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Coordinates (features) for Gaussian process
-            gp_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
+            gp_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for Gaussian process random coefficients
-            cluster_ids_pred : one dimensional numpy array (vector) with integer data or None, optional (default=None)
+            cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
                 IDs / labels indicating independent realizations of random effects / Gaussian processes
-                (same values = same process realization)
-            X_pred : numpy array with numeric data or None, optional (default=None)
+                (same values = same random effects / GP realization)
+            X_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for fixed effects ( = linear regression term)
         """
         group_data_pred_c = ctypes.c_void_p()
@@ -4766,12 +4784,9 @@ class GPModel(object):
         num_data_pred = 0
         # Set data for grouped random effects
         if group_data_pred is not None:
-            if not isinstance(group_data_pred, np.ndarray):
-                raise ValueError("group_data_pred needs to be a numpy.ndarray")
-            if len(group_data_pred.shape) > 2:
-                raise ValueError("group_data_pred needs to be either a vector or a two-dimensional matrix (array)")
-            if len(group_data_pred.shape) == 1:
-                group_data_pred = group_data_pred.reshape((len(group_data_pred), 1))
+            group_data_pred, not_used = _format_check_data(data=group_data_pred, get_variable_names=False,
+                                                           data_name="group_data_pred", check_data_type=False,
+                                                           convert_to_type=None)
             if group_data_pred.shape[1] != self.num_group_re:
                 raise ValueError("Number of grouped random effects in group_data_pred is not correct")
             num_data_pred = group_data_pred.shape[0]
@@ -4780,28 +4795,23 @@ class GPModel(object):
             group_data_pred_c = string_array_c_str(group_data_pred_c)
             # Set data for grouped random coefficients
             if group_rand_coef_data_pred is not None:
-                if not isinstance(group_rand_coef_data_pred, np.ndarray):
-                    raise ValueError("group_rand_coef_data_pred needs to be a numpy.ndarray")
-                if len(group_rand_coef_data_pred.shape) > 2:
-                    raise ValueError(
-                        "group_rand_coef_data_pred needs to be either a vector or a two-dimensional matrix (array)")
-                if len(group_rand_coef_data_pred.shape) == 1:
-                    group_rand_coef_data_pred = group_rand_coef_data_pred.reshape(
-                        (len(group_rand_coef_data_pred), 1))
+                group_rand_coef_data_pred, not_used = _format_check_data(data=group_rand_coef_data_pred,
+                                                                         get_variable_names=False,
+                                                                         data_name="group_rand_coef_data_pred",
+                                                                         check_data_type=True,
+                                                                         convert_to_type=np.float64)
                 if group_rand_coef_data_pred.shape[0] != num_data_pred:
                     raise ValueError("Incorrect number of data points in group_rand_coef_data_pred")
                 if group_rand_coef_data_pred.shape[1] != self.num_group_rand_coef:
                     raise ValueError("Incorrect number of covariates in group_rand_coef_data_pred")
-                group_rand_coef_data_pred_c = group_rand_coef_data_pred.astype(np.dtype(np.float64))
-                group_rand_coef_data_c, _, _ = c_float_array(group_rand_coef_data_pred_c.flatten(order='F'))
+                group_rand_coef_data_c, _, _ = c_float_array(group_rand_coef_data_pred.flatten(order='F'))
         # Set data for Gaussian process
         if gp_coords_pred is not None:
-            if not isinstance(gp_coords_pred, np.ndarray):
-                raise ValueError("gp_coords_pred needs to be a numpy.ndarray")
-            if len(gp_coords_pred.shape) > 2:
-                raise ValueError("gp_coords_pred needs to be either a vector or a two-dimensional matrix (array)")
-            if len(gp_coords_pred.shape) == 1:
-                gp_coords_pred = gp_coords_pred.reshape((len(gp_coords_pred), 1))
+            gp_coords_pred, not_used = _format_check_data(data=gp_coords_pred,
+                                                          get_variable_names=False,
+                                                          data_name="gp_coords_pred",
+                                                          check_data_type=True,
+                                                          convert_to_type=np.float64)
             if num_data_pred == 0:
                 num_data_pred = gp_coords_pred.shape[0]
             else:
@@ -4809,50 +4819,38 @@ class GPModel(object):
                     raise ValueError("Incorrect number of data points in gp_coords_pred")
             if gp_coords_pred.shape[1] != self.dim_coords:
                 raise ValueError("Incorrect dimension / number of coordinates (=features) in gp_coords_pred")
-            gp_coords_pred_c = gp_coords_pred.astype(np.float64)
-            gp_coords_pred_c, _, _ = c_float_array(gp_coords_pred_c.flatten(order='F'))
+            gp_coords_pred_c, _, _ = c_float_array(gp_coords_pred.flatten(order='F'))
             # Set data for GP random coefficients
             if gp_rand_coef_data_pred is not None:
-                if not isinstance(gp_rand_coef_data_pred, np.ndarray):
-                    raise ValueError("gp_rand_coef_data_pred needs to be a numpy.ndarray")
-                if len(gp_rand_coef_data_pred.shape) > 2:
-                    raise ValueError(
-                        "gp_rand_coef_data_pred needs to be either a vector or a two-dimensional matrix (array)")
-                if len(gp_rand_coef_data_pred.shape) == 1:
-                    gp_rand_coef_data_pred = gp_rand_coef_data_pred.reshape((len(gp_rand_coef_data_pred), 1))
+                gp_rand_coef_data_pred, not_used = _format_check_data(data=gp_rand_coef_data_pred,
+                                                                      get_variable_names=False,
+                                                                      data_name="gp_rand_coef_data_pred",
+                                                                      check_data_type=True,
+                                                                      convert_to_type=np.float64)
                 if gp_rand_coef_data_pred.shape[0] != num_data_pred:
                     raise ValueError("Incorrect number of data points in gp_rand_coef_data_pred")
                 if gp_rand_coef_data_pred.shape[1] != self.num_gp_rand_coef:
                     raise ValueError("Incorrect number of covariates in gp_rand_coef_data_pred")
-                gp_rand_coef_data_pred_c = gp_rand_coef_data_pred.astype(np.dtype(np.float64))
-                gp_rand_coef_data_pred_c, _, _ = c_float_array(gp_rand_coef_data_pred_c.flatten(order='F'))
+                gp_rand_coef_data_pred_c, _, _ = c_float_array(gp_rand_coef_data_pred.flatten(order='F'))
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids_pred is not None:
-            if not isinstance(cluster_ids_pred, np.ndarray):
-                raise ValueError("cluster_ids_pred needs to be a numpy.ndarray")
-            if len(cluster_ids_pred.shape) != 1:
-                raise ValueError("cluster_ids_pred needs to be a vector / one-dimensional numpy.ndarray ")
-            if cluster_ids_pred.shape[0] != num_data_pred:
-                raise ValueError("Incorrect number of data points in cluster_ids_pred")
-            cluster_ids_preds_c = cluster_ids_pred.astype(np.dtype(int))
-            cluster_ids_preds_c = cluster_ids_preds_c.ctypes.data_as(
-                ctypes.POINTER(ctypes.c_int))
+            cluster_ids_pred = _format_check_1D_data(cluster_ids_pred, data_name="cluster_ids_pred",
+                                                     check_must_be_int=True, convert_to_type=np.dtype(int))
+            cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
         # Set data for linear fixed-effects
-        if X_pred is not None:
-            if not self.has_covariates:
-                raise ValueError("Covariate data provided in 'X_pred' but model has no linear predictor")
-            if not isinstance(X_pred, np.ndarray):
-                raise ValueError("X_pred needs to be a numpy.ndarray")
-            if len(X_pred.shape) > 2:
-                raise ValueError("X_pred needs to be either a vector or a two-dimensional matrix (array)")
-            if len(X_pred.shape) == 1:
-                X_pred = X_pred.reshape((len(X_pred), 1))
+        if self.has_covariates:
+            if X_pred is None:
+                raise ValueError("No covariate data is provided in 'X_pred' but model has linear predictor")
+            X_pred, not_used = _format_check_data(data=X_pred,
+                                                  get_variable_names=False,
+                                                  data_name="X_pred",
+                                                  check_data_type=True,
+                                                  convert_to_type=np.float64)
             if X_pred.shape[0] != num_data_pred:
                 raise ValueError("Incorrect number of data points in X_pred")
-            if X_pred.shape[0] != self.num_coef:
+            if X_pred.shape[1] != self.num_coef:
                 raise ValueError("Incorrect number of covariates in X_pred")
-            X_pred_c = X_pred.astype(np.float64)
-            X_pred_c, _, _ = c_float_array(X_pred_c.flatten(order='F'))
+            X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
         self.num_data_pred = num_data_pred
         self.prediction_data_is_set = True
 

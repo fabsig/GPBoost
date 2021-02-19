@@ -1,5 +1,11 @@
-# coding: utf-8
-# pylint: disable = invalid-name, C0111
+# -*- coding: utf-8 -*-
+"""
+Examples of generalized linear Gaussian process and random effects models
+for several non-Gaussian likelihoods
+
+@author: Fabio Sigrist
+"""
+
 import gpboost as gpb
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,11 +15,6 @@ def f1d(x):
     """Non-linear function for simulation"""
     return 1 / (1 + np.exp(-(x - 0.5) * 10)) - 0.5
 print("It is recommended that the examples are run in interactive mode")
-
-"""
-Examples of generalized linear Gaussian process and random effects models
-for several non-Gaussian likelihoods
-"""
 
 # Choose likelihood: either "bernoulli_probit" (=default for binary data), "bernoulli_logit",
 #                      "poisson", or "gamma"

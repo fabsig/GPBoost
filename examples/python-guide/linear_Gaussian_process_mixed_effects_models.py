@@ -1,18 +1,19 @@
-# coding: utf-8
-# pylint: disable = invalid-name, C0111
+# -*- coding: utf-8 -*-
+"""
+Various examples on how to do inference and prediction for
+  (i) grouped (or clustered) random effects models
+  (ii) Gaussian process (GP) models
+  (iii) models that combine GP and grouped random effects
+and on how to save models
+
+@author: Fabio Sigrist
+"""
+
 import gpboost as gpb
 import numpy as np
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 print("It is recommended that the examples are run in interactive mode")
-
-"""
-This script contains various examples on how to do inference and prediction for
-  (i) grouped (or clustered) random effects models
-  (ii) Gaussian process (GP) models
-  (iii) models that combine GP and grouped random effects
-and on how to save models
-"""
 
 # --------------------Simulate data----------------
 n = 1000  # number of samples
@@ -62,15 +63,15 @@ gp_model.fit(y=y, X=X, params={"optimizer_cov": "gradient_descent", "lr_cov": 0.
                                "maxit": 100, "trace": True})
 gp_model.summary()
 
-# Evaluate negative log-likelihood
-gp_model.neg_log_likelihood(cov_pars=np.array([1, 0.1]), y=y)
-
 # --------------------Prediction----------------
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+gp_model.fit(y=y, X=X)
+
 group_test = np.array([1,2,-1])
 X_test = np.column_stack((np.ones(len(group_test)), np.random.uniform(size=len(group_test))))
 pred = gp_model.predict(group_data_pred=group_test, X_pred=X_test, predict_var = True)
-pred['mu']# Predicted mean
-pred['var']# Predicted variances
+print(pred['mu'])# Predicted mean
+print(pred['var'])# Predicted variances
 
 #--------------------Saving a GPModel and loading it from a file----------------
 # Train model and make predictions
@@ -101,6 +102,17 @@ group_data = np.column_stack((group, group_nested))
 gp_model = gpb.GPModel(group_data=group_data)
 gp_model.fit(y=y_nested, params={"std_dev": True})
 gp_model.summary()
+
+# --------------------Using cluster_ids for independent realizations of random effects----------------
+# Define and train model
+cluster_ids = np.zeros(n)
+cluster_ids[int(n/2):n] = 1
+gp_model = gpb.GPModel(group_data=group, cluster_ids=cluster_ids)
+gp_model = gpb.GPModel(group_data=group)
+gp_model.fit(y=y, X=X, params={"std_dev": True})
+gp_model.summary()
+#Note: gives sames result here as when not using cluster_ids since the 
+#   random effects of different groups are independent anyway
 
 
 # --------------------Gaussian process model----------------
@@ -139,9 +151,6 @@ gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
 # gp_model = gpb.GPModel(gp_coords=coords, cov_function="powered_exponential", cov_fct_shape=1.1)
 gp_model.fit(y=y, params={"std_dev": True})
 gp_model.summary()
-
-# Evaluate negative log-likelihood
-gp_model.neg_log_likelihood(cov_pars=np.array([sigma2, sigma2_1, rho]), y=y)
 
 # Other optimization specifications (gradient descent with Nesterov acceleration)
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")

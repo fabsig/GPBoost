@@ -1,11 +1,16 @@
-# coding: utf-8
-# pylint: disable = invalid-name, C0111
+# -*- coding: utf-8 -*-
+"""
+Examples on how cross-validation can be done for finding the number of 
+boosting iterations
+
+@author: Fabio Sigrist
+"""
+
 import gpboost as gpb
 import numpy as np
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 print("It is recommended that the examples are run in interactive mode")
-print("This script shows how cross-validation can be done for finding the number of iterations")
 
 #--------------------Cross validation for tree-boosting without GP or random effects----------------
 print('Simulating data...')

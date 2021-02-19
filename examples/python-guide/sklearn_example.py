@@ -1,14 +1,17 @@
-# coding: utf-8
-# pylint: disable = invalid-name, C0111
+# -*- coding: utf-8 -*-
+"""
+Examples on how to use the scikit-learn wrapper interface for the GPBoost
+algorithm for combining tree-boosting with random effects and Gaussian
+process models
+
+@author: Fabio Sigrist
+"""
+
 import numpy as np
 import gpboost as gpb
 import random
 
-from sklearn.metrics import mean_squared_error
-from sklearn.model_selection import GridSearchCV
-
 print('Simulating data...')
-
 # Simulate data
 n = 5000  # number of samples
 m = 500  # number of groups

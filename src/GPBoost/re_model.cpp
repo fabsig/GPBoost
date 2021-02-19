@@ -349,7 +349,9 @@ namespace GPBoost {
 				re_model_den_->EvalLAApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
 			}
 		}
-		covariance_matrix_has_been_factorized_ = true;
+		covariance_matrix_has_been_factorized_ = false;
+		//set to false as otherwise the covariance is not factorized for prediction for Gaussian data and this can lead to problems 
+		//(e.g. fitting model with covariates, then calling likelihood without covariates, then making prediction with covariates)
 	}
 
 	void REModel::CalcGradient(double* y, const double* fixed_effects, bool calc_cov_factor) {
