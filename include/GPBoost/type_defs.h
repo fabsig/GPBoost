@@ -35,6 +35,8 @@ namespace GPBoost {
 	typedef Eigen::SparseVector<double> sp_vec_t;
 	typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::NaturalOrdering<int>> chol_sp_mat_t; // sparse Cholesky factor. TODO Maybe use other ordering?
 	typedef Eigen::LLT<Eigen::MatrixXd, Eigen::Lower> chol_den_mat_t;
+	typedef Eigen::PartialPivLU<Eigen::MatrixXd> LU_solver_den_mat_t;
+	typedef Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> LU_solver_sp_mat_t;
 
 	typedef std::string string_t;
 

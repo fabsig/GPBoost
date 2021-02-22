@@ -28,9 +28,9 @@ namespace GPBoost {
 	* \brief This class models the random effects components
 	*
 	*        Some details:
-	*		 1. The template parameter T can either be <sp_mat_t> or <den_mat_t>
+	*		 1. The template parameter <T_mat> can either be <sp_mat_t> or <den_mat_t>
 	*/
-	template<typename T>
+	template<typename T_mat>
 	class RECompBase {
 	public:
 		/*! \brief Virtual destructor */
@@ -75,7 +75,7 @@ namespace GPBoost {
 		* \return Covariance matrix Z*Sigma*Z^T of this component
 		*   Note that since sigma_ is saved (since it is used in GetZSigmaZt and GetZSigmaZtGrad) we return a pointer and do not write on an input paramter in order to avoid copying
 		*/
-		virtual std::shared_ptr<T> GetZSigmaZt() = 0;
+		virtual std::shared_ptr<T_mat> GetZSigmaZt() = 0;
 
 		/*!
 		* \brief Virtual function that calculates the derivatives of the covariance matrix Z*Sigma*Z^T
@@ -84,7 +84,7 @@ namespace GPBoost {
 		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale = false to transform back)
 		* \return Derivative of covariance matrix Z*Sigma*Z^T with respect to the parameter number ind_par
 		*/
-		virtual std::shared_ptr<T> GetZSigmaZtGrad(int ind_par = 0, bool transf_scale = true, double = 1.) = 0;
+		virtual std::shared_ptr<T_mat> GetZSigmaZtGrad(int ind_par = 0, bool transf_scale = true, double = 1.) = 0;
 
 		/*!
 		* \brief Virtual function that returns the matrix Z
@@ -153,8 +153,8 @@ namespace GPBoost {
 	*
 	*        Some details:
 	*/
-	template<typename T>
-	class RECompGroup : public RECompBase<T> {
+	template<typename T_mat>
+	class RECompGroup : public RECompBase<T_mat> {
 	public:
 		/*! \brief Constructor */
 		RECompGroup();
@@ -193,7 +193,7 @@ namespace GPBoost {
 			//	this->Z_.insert(i, map_group_label_index[group_data[i]]) = 1.;
 			//}
 			if (calculateZZt) {
-				ConstructZZt<T>();
+				ConstructZZt<T_mat>();
 			}
 			group_data_ = std::make_shared<std::vector<re_group_t>>(group_data);
 			map_group_label_index_ = std::make_shared<std::map<re_group_t, int>>(map_group_label_index);
@@ -230,7 +230,7 @@ namespace GPBoost {
 			//	this->Z_.insert(i, (*map_group_label_index_)[(*group_data_)[i]]) = this->rand_coef_data_[i];
 			//}
 			if (calculateZZt) {
-				ConstructZZt<T>();
+				ConstructZZt<T_mat>();
 			}
 		}
 
@@ -288,14 +288,14 @@ namespace GPBoost {
 		* \param pars Vector of length 1 with covariance parameter sigma_j for grouped RE component number j
 		* \return Covariance matrix Z*Sigma*Z^T of this component
 		*/
-		std::shared_ptr<T> GetZSigmaZt() override {
+		std::shared_ptr<T_mat> GetZSigmaZt() override {
 			if (this->cov_pars_.size() == 0) {
 				Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
 			}
 			if (this->ZZt_.cols() == 0) {
 				Log::REFatal("Matrix ZZt_ not defined");
 			}
-			return(std::make_shared<T>(this->cov_pars_[0] * ZZt_));
+			return(std::make_shared<T_mat>(this->cov_pars_[0] * ZZt_));
 		}
 
 		/*!
@@ -305,7 +305,7 @@ namespace GPBoost {
 		* \param nugget_var Nugget effect variance parameter sigma^2 (not use here)
 		* \return Derivative of covariance matrix Z*Sigma*Z^T with respect to the parameter number ind_par
 		*/
-		std::shared_ptr<T> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double = 1.) override {
+		std::shared_ptr<T_mat> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double = 1.) override {
 			if (this->cov_pars_.size() == 0) {
 				Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
 			}
@@ -316,7 +316,7 @@ namespace GPBoost {
 				Log::REFatal("No covariance parameter for index number %d", ind_par);
 			}
 			double cm = transf_scale ? this->cov_pars_[0] : 1.;
-			return(std::make_shared<T>(cm * ZZt_));
+			return(std::make_shared<T_mat>(cm * ZZt_));
 		}
 
 		/*!
@@ -334,7 +334,7 @@ namespace GPBoost {
 		* \param predict_cov_mat If true, all matrices are calculated. If false only Ztilde*Sigma*Z^T required for the conditional mean is calculated
 		* \param rand_coef_data_pred Covariate data for varying coefficients
 		*/
-		void AddPredCovMatrices(const std::vector<re_group_t>& group_data_pred, std::vector<T>& pred_mats,
+		void AddPredCovMatrices(const std::vector<re_group_t>& group_data_pred, std::vector<T_mat>& pred_mats,
 			bool predict_cov_mat = false, double* rand_coef_data_pred = nullptr) {
 			int num_data_pred = (int)group_data_pred.size();
 			sp_mat_t Ztilde(num_data_pred, num_group_);
@@ -349,8 +349,8 @@ namespace GPBoost {
 					}
 				}
 			}
-			T ZtildeZT;
-			CalculateZ1Z2T<T>(Ztilde, this->Z_, ZtildeZT);
+			T_mat ZtildeZT;
+			CalculateZ1Z2T<T_mat>(Ztilde, this->Z_, ZtildeZT);
 			pred_mats[0] += (this->cov_pars_[0] * ZtildeZT);
 
 			if (predict_cov_mat) {
@@ -378,11 +378,11 @@ namespace GPBoost {
 						}
 					}
 				}
-				T ZtildeZtildeT;
-				CalculateZ1Z2T<T>(Ztilde, Ztilde, ZtildeZtildeT);
+				T_mat ZtildeZtildeT;
+				CalculateZ1Z2T<T_mat>(Ztilde, Ztilde, ZtildeZtildeT);
 				pred_mats[2] += (this->cov_pars_[0] * ZtildeZtildeT);
-				T ZstarZstarT;
-				CalculateZ1Z2T<T>(Zstar, Zstar, ZstarZstarT);
+				T_mat ZstarZstarT;
+				CalculateZ1Z2T<T_mat>(Zstar, Zstar, ZstarZstarT);
 				pred_mats[4] += (this->cov_pars_[0] * ZstarZstarT);
 			}
 		}
@@ -404,7 +404,7 @@ namespace GPBoost {
 		/*! \brief Keys: Group labels, values: index number (integer value) for every group level. I.e., maps string labels to numbers */
 		std::shared_ptr<std::map<re_group_t, int>> map_group_label_index_;
 		/*! \brief Matrix Z*Z^T */
-		T ZZt_;
+		T_mat ZZt_;
 
 		/*! \brief Constructs the matrix ZZt_ if sparse matrices are used */
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr >
@@ -457,10 +457,10 @@ namespace GPBoost {
 		//	}
 		//}
 
-		template<typename T1, typename T2>
+		template<typename T_mat, typename T_chol>
 		friend class REModelTemplate;
 
-		template<typename T2>
+		template<typename T_chol>
 		friend class Likelihood;//for access of map_group_label_index_ and group_data_ in 'CalcGradNegMargLikelihoodLAApproxGroupedRE'
 	};
 
@@ -470,8 +470,8 @@ namespace GPBoost {
 	*        Some details:
 	*        ...
 	*/
-	template<typename T>
-	class RECompGP : public RECompBase<T> {
+	template<typename T_mat>
+	class RECompGP : public RECompBase<T_mat> {
 	public:
 		/*! \brief Constructor */
 		RECompGP();
@@ -498,7 +498,7 @@ namespace GPBoost {
 			this->is_rand_coef_ = false;
 			has_Z_ = false;
 			this->num_cov_par_ = 2;
-			cov_function_ = std::unique_ptr<CovFunction<T>>(new CovFunction<T>(cov_fct, shape));
+			cov_function_ = std::unique_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape));
 			if (save_dist_use_Z_for_duplicates || save_random_effects_indices_of_data) {
 				std::vector<int> uniques;//unique points
 				std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
@@ -558,7 +558,7 @@ namespace GPBoost {
 			this->is_rand_coef_ = true;
 			has_Z_ = true;
 			this->num_cov_par_ = 2;
-			cov_function_ = std::unique_ptr<CovFunction<T>>(new CovFunction<T>(cov_fct, shape));
+			cov_function_ = std::unique_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape));
 			sp_mat_t coef_W(this->num_data_, this->num_data_);
 			for (int i = 0; i < this->num_data_; ++i) {
 				coef_W.insert(i, i) = this->rand_coef_data_[i];
@@ -587,7 +587,7 @@ namespace GPBoost {
 			this->num_data_ = (data_size_t)rand_coef_data.size();
 			has_Z_ = true;
 			this->num_cov_par_ = 2;
-			cov_function_ = std::unique_ptr<CovFunction<T>>(new CovFunction<T>(cov_fct, shape));
+			cov_function_ = std::unique_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape));
 			dist_saved_ = false;
 			coord_saved_ = false;
 			this->Z_ = sp_mat_t(this->num_data_, this->num_data_);
@@ -693,8 +693,8 @@ namespace GPBoost {
 		*/
 		void CalcSigma() override {
 			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
-			(*cov_function_).template GetCovMat<T>(*dist_, this->cov_pars_, sigma_);
-			//cov_function_->GetCovMat<T>(*dist_, this->cov_pars_, sigma_);//does not work for mingw compiler, thus use code above
+			(*cov_function_).template GetCovMat<T_mat>(*dist_, this->cov_pars_, sigma_);
+			//cov_function_->GetCovMat<T_mat>(*dist_, this->cov_pars_, sigma_);//does not work for mingw compiler, thus use code above
 			sigma_defined_ = true;
 		}
 
@@ -702,15 +702,15 @@ namespace GPBoost {
 		* \brief Calculate covariance matrix
 		* \return Covariance matrix Z*Sigma*Z^T of this component
 		*/
-		std::shared_ptr<T> GetZSigmaZt() override {
+		std::shared_ptr<T_mat> GetZSigmaZt() override {
 			if (!sigma_defined_) {
 				Log::REFatal("Sigma has not been calculated");
 			}
 			if (this->is_rand_coef_ || has_Z_) {
-				return(std::make_shared<T>(this->Z_ * sigma_ * this->Z_.transpose()));
+				return(std::make_shared<T_mat>(this->Z_ * sigma_ * this->Z_.transpose()));
 			}
 			else {
-				return(std::make_shared<T>(sigma_));
+				return(std::make_shared<T_mat>(sigma_));
 			}
 		}
 
@@ -750,7 +750,7 @@ namespace GPBoost {
 		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale = false to transform back)
 		* \return Derivative of covariance matrix Z*Sigma*Z^T with respect to the parameter number ind_par
 		*/
-		std::shared_ptr<T> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double nugget_var = 1.) override {
+		std::shared_ptr<T_mat> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double nugget_var = 1.) override {
 			if (!sigma_defined_) {
 				Log::REFatal("Sigma has not been calculated");
 			}
@@ -764,24 +764,24 @@ namespace GPBoost {
 				else {
 					double correct = 1. / this->cov_pars_[0];//divide sigma_ by cov_pars_[0]
 					if (this->is_rand_coef_ || has_Z_) {
-						return(std::make_shared<T>(correct * this->Z_ * sigma_ * this->Z_.transpose()));
+						return(std::make_shared<T_mat>(correct * this->Z_ * sigma_ * this->Z_.transpose()));
 					}
 					else {
-						return(std::make_shared<T>(correct * sigma_));
+						return(std::make_shared<T_mat>(correct * sigma_));
 					}
 				}
 			}
 			else {//inverse range (ind_par == 1)
-				T Z_sigma_grad_Zt;
+				T_mat Z_sigma_grad_Zt;
 				if (has_Z_) {
-					T sigma_grad;
-					(*cov_function_).template GetCovMatGradRange<T>(*dist_, sigma_, this->cov_pars_, sigma_grad, transf_scale, nugget_var);
+					T_mat sigma_grad;
+					(*cov_function_).template GetCovMatGradRange<T_mat>(*dist_, sigma_, this->cov_pars_, sigma_grad, transf_scale, nugget_var);
 					Z_sigma_grad_Zt = this->Z_ * sigma_grad * this->Z_.transpose();
 				}
 				else {
-					(*cov_function_).template GetCovMatGradRange<T>(*dist_, sigma_, this->cov_pars_, Z_sigma_grad_Zt, transf_scale, nugget_var);
+					(*cov_function_).template GetCovMatGradRange<T_mat>(*dist_, sigma_, this->cov_pars_, Z_sigma_grad_Zt, transf_scale, nugget_var);
 				}
-				return(std::make_shared<T>(Z_sigma_grad_Zt));
+				return(std::make_shared<T_mat>(Z_sigma_grad_Zt));
 			}
 		}
 
@@ -804,7 +804,7 @@ namespace GPBoost {
 		* \param predict_cov_mat If true, all matrices are calculated. If false only Ztilde*Sigma*Z^T required for the conditional mean is calculated
 		* \param rand_coef_data_pred Covariate data for varying coefficients
 		*/
-		void AddPredCovMatrices(const den_mat_t& coords, const den_mat_t& coords_pred, std::vector<T>& pred_mats,
+		void AddPredCovMatrices(const den_mat_t& coords, const den_mat_t& coords_pred, std::vector<T_mat>& pred_mats,
 			bool predict_cov_mat = false, double* rand_coef_data_pred = nullptr) {
 			int num_data_pred = (int)coords_pred.rows();
 			std::vector<int>  uniques_pred;//unique points
@@ -839,9 +839,9 @@ namespace GPBoost {
 					}
 				}
 			}
-			T ZstarSigmatildeTZT;
-			T Sigmatilde;
-			(*cov_function_).template GetCovMat<T>(cross_dist, this->cov_pars_, Sigmatilde);
+			T_mat ZstarSigmatildeTZT;
+			T_mat Sigmatilde;
+			(*cov_function_).template GetCovMat<T_mat>(cross_dist, this->cov_pars_, Sigmatilde);
 			if (this->has_Z_) {
 				ZstarSigmatildeTZT = Zstar * Sigmatilde * this->Z_.transpose();
 			}
@@ -852,9 +852,9 @@ namespace GPBoost {
 			if (predict_cov_mat) {
 				den_mat_t dist;
 				CalculateDistances(coords_pred, dist);
-				T Sigmastar;
-				(*cov_function_).template GetCovMat<T>(dist, this->cov_pars_, Sigmastar);
-				T ZstarSigmastarZstarT = Zstar * Sigmastar * Zstar.transpose();
+				T_mat Sigmastar;
+				(*cov_function_).template GetCovMat<T_mat>(dist, this->cov_pars_, Sigmastar);
+				T_mat ZstarSigmastarZstarT = Zstar * Sigmastar * Zstar.transpose();
 				pred_mats[4] += ZstarSigmastarZstarT;
 			}
 		}
@@ -871,13 +871,13 @@ namespace GPBoost {
 		/*! \brief Indicates whether the GP has a non-identity incidence matrix Z */
 		bool has_Z_;
 		/*! \brief Covariance function */
-		std::unique_ptr<CovFunction<T>> cov_function_;
+		std::unique_ptr<CovFunction<T_mat>> cov_function_;
 		/*! \brief Covariance matrix (for a certain choice of covariance paramters). This is saved for re-use at two locations in the code: GetZSigmaZt and GetZSigmaZtGrad) */
-		T sigma_;
+		T_mat sigma_;
 		/*! \brief Indicates whether sigma_ has been defined or not */
 		bool sigma_defined_ = false;
 
-		template<typename T1, typename T2>
+		template<typename T_mat, typename T_chol>
 		friend class REModelTemplate;
 	};
 

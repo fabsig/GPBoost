@@ -23,16 +23,16 @@ using LightGBM::Log;
 
 namespace GPBoost {
 
-	template<typename T>
+	template<typename T_mat>
 	class RECompGP;
 
 	/*!
 	* \brief This class implements the covariance functions used for the Gaussian proceses
 	*
 	*   Some details:
-	*		 1. The template parameter T can either be <sp_mat_t> or <den_mat_t>
+	*		 1. The template parameter <T_mat> can either be <sp_mat_t> or <den_mat_t>
 	*/
-	template<class T>
+	template<class T_mat>
 	class CovFunction {
 	public:
 		/*! \brief Constructor */
@@ -256,7 +256,7 @@ namespace GPBoost {
 		/*! \brief List of supported covariance functions */
 		const std::set<string_t> SUPPORTED_COV_TYPES_{ "exponential", "gaussian", "powered_exponential", "matern" };
 
-		friend class RECompGP<T>;
+		friend class RECompGP<T_mat>;
 	};
 
 }  // namespace GPBoost

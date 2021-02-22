@@ -55,9 +55,9 @@ namespace GPBoost {
 
 	/*!
 	* \brief This class implements the likelihoods for the Gaussian proceses
-	* The template parameter T2 can be either <chol_sp_mat_t> or <chol_den_mat_t>
+	* The template parameter <T_chol> can be either <chol_sp_mat_t> or <chol_den_mat_t>
 	*/
-	template<typename T2>
+	template<typename T_chol>
 	class Likelihood {
 	public:
 		/*! \brief Constructor */
@@ -579,8 +579,6 @@ namespace GPBoost {
 			//	Log::REInfo("a[%d]: %g", i, a_vec_[i]);
 			//}
 		}//end FindModePostRandEffCalcMLLStable
-
-
 
 		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood.
@@ -1495,9 +1493,9 @@ namespace GPBoost {
 		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in versions 'Vecchia' and 'GroupedRE'. For grouped REs, this is used if there is more than one random effect) */
 		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_;
 		/*! \brief Cholesky factors of matrix I + Wsqrt *  Z * Sigma * Zt * Wsqrt in Laplace approximation (used only in version 'Stable' i.e. neither only grouped REs nor Vecchia approximation) */
-		T2 chol_fact_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_;
+		T_chol chol_fact_Id_plus_Wsqrt_ZSigmaZt_Wsqrt_;
 		/*! \brief Cholesky factors of matrix Sigma * Zt * W * Z + I in Laplace approximation (used only in version 'OnlyOneGPCalculationsOnREScale' i.e. neither only GP and calculations are done on the random effects scale b and not on the "data scale" Zb) */
-		T2 chol_fact_SigmaZtWZ_plus_Id;
+		T_chol solver_SigmaZtWZ_plus_Id_;
 		/*! \brief If true, the mode has been initialized to 0 */
 		bool mode_initialized_ = false;
 		/*! \brief If true, the mode has been determined */
