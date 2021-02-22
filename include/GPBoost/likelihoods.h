@@ -976,7 +976,7 @@ namespace GPBoost {
 			if (only_one_random_effect) {
 				d_mll_d_mode = vec_t::Zero(num_REs);
 				re_comp = std::dynamic_pointer_cast<RECompGroup<T1>>(re_comps_cluster_i[0]);
-//#pragma omp parallel for schedule(static)//Note: this cannot be done in parallel as problem occurs during the "reductiob" when to threads try to write at the same time to d_mll_d_mode[re_nb]
+				//#pragma omp parallel for schedule(static)//Note: this cannot be done in parallel as problem occurs during the "reductiob" when to threads try to write at the same time to d_mll_d_mode[re_nb]
 				for (int i = 0; i < num_data; ++i) {
 					int re_nb = (*re_comp->map_group_label_index_)[(*re_comp->group_data_)[i]];
 					d_mll_d_mode[re_nb] += third_deriv[i];
