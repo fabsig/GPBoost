@@ -16,6 +16,9 @@ data = grunfeld.load_pandas().data
  # Visualize response variable
 plt.hist(data['invest'], bins=50)
 
+"""
+Boosting with two crossed firm and year grouped random effects
+"""
 # Define random effects model (assuming firm and year random effects) 
 gp_model = gpb.GPModel(group_data=data[['firm', 'year']])
 # Create dataset for gpb.train
@@ -32,10 +35,10 @@ bst = gpb.train(params=params,
                 train_set=data_train,
                 gp_model=gp_model,
                 num_boost_round=1800)
-# Estimated random effects model
+# Estimated random effects model (variances of random effects)
 gp_model.summary()
 
-# Cross-validation for determining number of iterations
+# Cross-validation for determining number of boosting iterations
 gp_model = gpb.GPModel(group_data=data[['firm', 'year']])
 data_train = gpb.Dataset(data=data[['value', 'capital']], label=data['invest'])
 cvbst = gpb.cv(params=params, train_set=data_train,
@@ -44,10 +47,43 @@ cvbst = gpb.cv(params=params, train_set=data_train,
                nfold=2, verbose_eval=True, show_stdv=False, seed=1)
 print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
 
-# Linear mixed effecst models (with firm and year random effects)
+
+"""
+Linear mixed effecst model with two crossed firm and year grouped random effects
+"""
 lin_gp_model = gpb.GPModel(group_data=data[['firm', 'year']])
+lin_gp_model = gpb.GPModel(group_data=data['firm'], gp_coords=data['year'], cov_function="exponential")
 # Add interecept for linear model
 X = data[['value', 'capital']]
 X['intercept'] = 1
 lin_gp_model.fit(y=data['invest'], X=X, params={"std_dev": True})
 lin_gp_model.summary()
+
+
+"""
+Boosting with a grouped firm random effect and an AR(1) year random effect
+"""
+gp_model_ar1 = gpb.GPModel(group_data=data['firm'], gp_coords=data['year'], cov_function="exponential")
+data_train = gpb.Dataset(data=data[['value', 'capital']], label=data['invest'])
+# Train GPBoost model (takes a few seconds)
+bst = gpb.train(params=params,
+                train_set=data_train,
+                gp_model=gp_model_ar1,
+                num_boost_round=1800)
+# Estimated random effects model (variances of random effects and range parameters)
+gp_model_ar1.summary()
+cov_pars = gp_model_ar1.get_cov_pars()
+phi_hat = np.exp(-1/cov_pars[3])
+sigma2_hat = cov_pars[2] * (1. - phi_hat ** 2)
+print("Estimated innovation variance and AR(1) coefficient of year effect:")
+print([sigma2_hat ,phi_hat])
+    
+# Cross-validation for determining number of boosting iterations
+gp_model_ar1 = gpb.GPModel(group_data=data['firm'], gp_coords=data['year'], cov_function="exponential")
+data_train = gpb.Dataset(data=data[['value', 'capital']], label=data['invest'])
+cvbst = gpb.cv(params=params, train_set=data_train,
+               gp_model=gp_model_ar1, use_gp_model_for_validation=True,
+               num_boost_round=5000, early_stopping_rounds=5,
+               nfold=2, verbose_eval=True, show_stdv=False, seed=1)
+print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
+
