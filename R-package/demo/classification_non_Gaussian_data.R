@@ -18,7 +18,8 @@ sim_non_lin_f <- function(n){
 
 # Parameters for gpboost in examples below 
 # Note: the tuning parameters are by no means optimal for all situations considered here
-params <- list(learning_rate = 0.1, min_data_in_leaf = 20, objective = likelihood)
+params <- list(learning_rate = 0.1, min_data_in_leaf = 20,
+               objective = likelihood, monotone_constraints = c(1,0))
 nrounds <- 25
 if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) params$objective="binary"
 
@@ -52,17 +53,16 @@ if (likelihood == "bernoulli_probit") {
 }
 hist(y,breaks=50)# visualize response variable
 
-# Training
+#--------------------Training----------------
 # Define random effects model
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
 bst <- gpboost(data = X, label = y, verbose = 0,
                gp_model = gp_model,
-               monotone_constraints = c(1,0),
                nrounds = nrounds, 
                params = params)
 summary(gp_model) # Trained random effects model (true variance = 0.5)
 
-# Make predictions
+#--------------------Prediction----------------
 nplot <- 200# number of predictions
 X_test_plot <- cbind(seq(from=0,to=1,length.out=nplot),rep(0.5,nplot))
 group_data_pred <- rep(-9999,dim(X_test_plot)[1])# only new / unobserved levels
@@ -81,14 +81,37 @@ legend(legend=c("True F","Pred F"),"bottomright",bty="n",lwd=3,col=c(2,4))
 plot(X[,1],y,col=rgb(0,0,0,alpha=0.1),main="Data and predicted response variable")
 lines(X_test_plot[,1],pred_resp,col=3,lwd=3)
 
-# Cross-validation for finding number of iterations
+#--------------------Cross-validation for finding number of iterations----------------
 dtrain <- gpb.Dataset(data = X, label = y)
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
-cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
-                nrounds = 200, nfold = 4, verbose = 1,
-                early_stopping_rounds = 5, monotone_constraints = c(1,0),
+cvbst <- gpb.cv(params = params,
+                data = dtrain,
+                gp_model = gp_model,
+                nrounds = 200,
+                nfold = 4,
+                verbose = 1,
+                early_stopping_rounds = 5,
                 use_gp_model_for_validation = TRUE)
 print(paste0("Optimal number of iterations: ", cvbst$best_iter))
+
+#--------------------Using a validation set for finding number of iterations----------------
+set.seed(1)
+train_ind <- sample.int(n,size=as.integer(0.8*n))
+dtrain <- gpb.Dataset(data = X[train_ind,], label = y[train_ind])
+dvalid <- gpb.Dataset.create.valid(dtrain, data = X[-train_ind,], label = y[-train_ind])
+valids <- list(test = dvalid)
+gp_model <- GPModel(group_data = group[train_ind])
+gp_model$set_prediction_data(group_data_pred = group[-train_ind])
+bst <- gpb.train(data = dtrain,
+                 gp_model = gp_model,
+                 nrounds = 100,
+                 params = params,
+                 verbose = 1,
+                 valids = valids,
+                 early_stopping_rounds = 5,
+                 use_gp_model_for_validation = TRUE)
+print(paste0("Optimal number of iterations: ", bst$best_iter,
+             ", best test error: ", bst$best_score))
 
 #--------------------Compare to generalized linear mixed effects model----------------
 X_lin <- cbind(rep(1,n),X)# Add intercept column
@@ -171,7 +194,6 @@ gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                     likelihood = likelihood)
 # Takes a few seconds
 bst <- gpb.train(data = dtrain, gp_model = gp_model,
-                 monotone_constraints = c(1,0),
                  nrounds = nrounds, params = params, verbose = 0)
 summary(gp_model)# Trained GP model
 
@@ -209,9 +231,13 @@ grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
 # Cross-validation for finding number of iterations (takes a few seconds)
 gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                     likelihood = likelihood)
-cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
-                nrounds = 200, nfold = 4, verbose = 1,
-                early_stopping_rounds = 5, monotone_constraints = c(1,0),
+cvbst <- gpb.cv(params = params,
+                data = dtrain,
+                gp_model = gp_model,
+                nrounds = 200,
+                nfold = 4,
+                verbose = 1,
+                early_stopping_rounds = 5,
                 use_gp_model_for_validation = TRUE)
 print(paste0("Optimal number of iterations: ", cvbst$best_iter))
 

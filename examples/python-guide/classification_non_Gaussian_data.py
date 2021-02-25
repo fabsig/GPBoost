@@ -109,11 +109,34 @@ ax1.legend()
 
 #--------------------Cross-validation for finding number of iterations----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-cvbst = gpb.cv(params=params, train_set=data_train,
-               gp_model=gp_model, use_gp_model_for_validation=True,
-               num_boost_round=200, early_stopping_rounds=5,
-               nfold=4, verbose_eval=True, show_stdv=False, seed=1)
+cvbst = gpb.cv(params=params,
+               train_set=data_train,
+               gp_model=gp_model,
+               use_gp_model_for_validation=True,
+               num_boost_round=200,
+               early_stopping_rounds=5,
+               nfold=4,
+               verbose_eval=True,
+               show_stdv=False,
+               seed=1)
 print("Best number of iterations: " + str(np.argmin(next(iter(cvbst.values())))))
+
+#--------------------Using a validation set for finding number of iterations----------------
+np.random.seed(1)
+train_ind = np.random.choice(n, int(0.9 * n), replace=False)
+test_ind = [i for i in range(n) if i not in train_ind]
+dtrain = gpb.Dataset(X[train_ind, :], y[train_ind])
+dvalid = gpb.Dataset(X[test_ind, :], y[test_ind], reference=dtrain)
+gp_model = gpb.GPModel(group_data=group[train_ind], likelihood=likelihood)
+gp_model.set_prediction_data(group_data_pred=group[test_ind])
+bst = gpb.train(params=params,
+                train_set=dtrain,
+                num_boost_round=100,
+                gp_model=gp_model,
+                valid_sets=dvalid,
+                early_stopping_rounds=5,
+                use_gp_model_for_validation=True)
+print("Best number of iterations: " + str(bst.best_iteration))
 
 #--------------------Saving a booster with a gp_model and loading it from a file----------------
 # Train model and make prediction
@@ -253,8 +276,14 @@ axs[1, 1].legend()
 
 # Cross-validation for finding number of iterations (takes a few seconds)
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential", likelihood=likelihood)
-cvbst = gpb.cv(params=params, train_set=data_train,
-               gp_model=gp_model, use_gp_model_for_validation=True,
-               num_boost_round=200, early_stopping_rounds=5,
-               nfold=4, verbose_eval=True, show_stdv=False, seed=1)
+cvbst = gpb.cv(params=params,
+               train_set=data_train,
+               gp_model=gp_model,
+               use_gp_model_for_validation=True,
+               num_boost_round=200,
+               early_stopping_rounds=5,
+               nfold=4,
+               verbose_eval=True,
+               show_stdv=False,
+               seed=1)
 print("Best number of iterations: " + str(np.argmin(next(iter(cvbst.values())))))
