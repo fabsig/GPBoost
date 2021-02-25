@@ -53,7 +53,6 @@ print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
 Linear mixed effecst model with two crossed firm and year grouped random effects
 """
 lin_gp_model = gpb.GPModel(group_data=data[['firm', 'year']])
-lin_gp_model = gpb.GPModel(group_data=data['firm'], gp_coords=data['year'], cov_function="exponential")
 # Add interecept for linear model
 X = data[['value', 'capital']]
 X['intercept'] = 1
