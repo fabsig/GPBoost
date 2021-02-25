@@ -602,7 +602,7 @@ def _format_check_data(data, get_variable_names=False, data_name="data", check_d
     return data, variable_names
 
 
-def _format_check_1D_data(data, data_name="data", check_must_be_int=False, convert_to_type=None):
+def _format_check_1D_data(data, data_name="data", check_data_type=True, check_must_be_int=False, convert_to_type=None):
     if not isinstance(data, (np.ndarray, pd_Series, pd_DataFrame)) and not is_1d_list(data):
         raise ValueError(
             data_name + " needs to be either of type pandas.DataFrame, pandas.Series, numpy.ndarray or a 1-D list")
@@ -610,20 +610,22 @@ def _format_check_1D_data(data, data_name="data", check_must_be_int=False, conve
         if len(data.shape) != 1 or data.shape[0] < 1:
             raise ValueError(data_name + " needs to be 1 dimensional and it must be non empty ")
     if isinstance(data, pd_DataFrame):
-        if check_must_be_int:
-            if _get_bad_pandas_dtypes_int([data.dtypes]):
-                raise ValueError(data_name + ': DataFrame.dtypes must be int')
-        else:
-            if _get_bad_pandas_dtypes([data.dtypes]):
-                raise ValueError(data_name + ': DataFrame.dtypes must be int, float or bool')
+        if check_data_type:
+            if check_must_be_int:
+                if _get_bad_pandas_dtypes_int([data.dtypes]):
+                    raise ValueError(data_name + ': DataFrame.dtypes must be int')
+            else:
+                if _get_bad_pandas_dtypes([data.dtypes]):
+                    raise ValueError(data_name + ': DataFrame.dtypes must be int, float or bool')
         data = np.ravel(data.values)
     elif isinstance(data, pd_Series):
-        if check_must_be_int:
-            if _get_bad_pandas_dtypes_int([data.dtypes]):
-                raise ValueError(data_name + ': Series.dtypes must be int')
-        else:
-            if _get_bad_pandas_dtypes([data.dtypes]):
-                raise ValueError(data_name + ': Series.dtypes must be int, float or bool')
+        if check_data_type:
+            if check_must_be_int:
+                if _get_bad_pandas_dtypes_int([data.dtypes]):
+                    raise ValueError(data_name + ': Series.dtypes must be int')
+            else:
+                if _get_bad_pandas_dtypes([data.dtypes]):
+                    raise ValueError(data_name + ': Series.dtypes must be int, float or bool')
         data = data.values
     elif is_1d_list(data):
         data = np.array(data)
@@ -3885,6 +3887,7 @@ class GPModel(object):
             self.cov_par_names = []
         self.coef_names = None
         self.cluster_ids = None
+        self.cluster_ids_map_to_int = None
         self.free_raw_data = False
         self.num_data_pred = 0
         self.params = {"maxit": 1000,
@@ -3994,14 +3997,14 @@ class GPModel(object):
                                      "random slopes in group_rand_coef_data not provided")
                 ind_effect_group_rand_coef = _format_check_1D_data(ind_effect_group_rand_coef,
                                                                    data_name="ind_effect_group_rand_coef",
-                                                                   check_must_be_int=True,
+                                                                   check_data_type=True, check_must_be_int=True,
                                                                    convert_to_type=np.dtype(int))
                 self.ind_effect_group_rand_coef = deepcopy(ind_effect_group_rand_coef)
                 if self.ind_effect_group_rand_coef.shape[0] != self.num_group_rand_coef:
                     raise ValueError("Number of random coefficients in group_rand_coef_data does not match number "
                                      "in ind_effect_group_rand_coef")
                 counter_re = np.zeros(self.num_group_re)
-                counter_re.astype(np.dtype(int))
+                counter_re = counter_re.astype(np.dtype(int))
                 for ii in range(self.num_group_rand_coef):
                     if group_rand_coef_data_names is None:
                         self.cov_par_names.append(
@@ -4061,13 +4064,16 @@ class GPModel(object):
                              "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range"])
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids is not None:
-            cluster_ids = _format_check_1D_data(cluster_ids, data_name="cluster_ids",
-                                                check_must_be_int=True, convert_to_type=np.dtype(int))
+            cluster_ids = _format_check_1D_data(cluster_ids, data_name="cluster_ids", check_data_type=False,
+                                                check_must_be_int=False, convert_to_type=None)
             self.cluster_ids = deepcopy(cluster_ids)
             if self.cluster_ids.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in cluster_ids")
-            cluster_ids_c = self.cluster_ids.ctypes.data_as(
-                ctypes.POINTER(ctypes.c_int))
+            # Convert cluster_ids to int and save conversion map
+            if not cluster_ids.dtype == np.dtype(int):
+                self.cluster_ids_map_to_int = dict([(cl_name,cl_int) for cl_int,cl_name in enumerate(sorted(set(cluster_ids)))])
+                cluster_ids = np.array([self.cluster_ids_map_to_int[cl_name] for cl_name in cluster_ids])
+            cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
 
         self.__check_params()
         self.__determine_num_cov_pars(likelihood=likelihood)
@@ -4103,6 +4109,7 @@ class GPModel(object):
             self.gp_coords = None
             self.gp_rand_coef_data = None
             self.cluster_ids = None
+            self.cluster_ids_map_to_int = None
 
         if model_file is not None:
             if model_dict["params"]['init_cov_pars'] is not None:
@@ -4138,14 +4145,16 @@ class GPModel(object):
                 if param == "init_cov_pars":
                     if params[param] is not None:
                         params[param] = _format_check_1D_data(params[param], data_name="params['init_cov_pars']",
-                                                              check_must_be_int=False, convert_to_type=np.float64)
+                                                              check_data_type=True, check_must_be_int=False,
+                                                              convert_to_type=np.float64)
                         if params[param].shape[0] != self.num_cov_pars:
                             raise ValueError("params['init_cov_pars'] does not contain the correct number"
                                              "of parameters")
                 if param == "init_coef":
                     if params[param] is not None:
                         params[param] = _format_check_1D_data(params[param], data_name="params['init_coef']",
-                                                              check_must_be_int=False, convert_to_type=np.float64)
+                                                              check_data_type=True, check_must_be_int=False,
+                                                              convert_to_type=np.float64)
                         if self.num_coef is None:
                             self.num_coef = self.params[param].shape[0]
                         if self.params[param].shape[0] != self.num_coef:
@@ -4215,7 +4224,7 @@ class GPModel(object):
         if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or
                 (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
-        y = _format_check_1D_data(y, data_name="y", check_must_be_int=False, convert_to_type=np.float64)
+        y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False, convert_to_type=np.float64)
         if y.shape[0] != self.num_data:
             raise ValueError("Incorrect number of data points in y")
         y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -4288,11 +4297,11 @@ class GPModel(object):
         if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or
                 (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
-        y = _format_check_1D_data(y, data_name="y", check_must_be_int=False, convert_to_type=np.float64)
+        y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False, convert_to_type=np.float64)
         if y.shape[0] != self.num_data:
             raise ValueError("Incorrect number of data points in y")
         y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-        cov_pars = _format_check_1D_data(cov_pars, data_name="cov_pars", check_must_be_int=False,
+        cov_pars = _format_check_1D_data(cov_pars, data_name="cov_pars", check_data_type=True, check_must_be_int=False,
                                          convert_to_type=np.float64)
         if cov_pars.shape[0] != self.num_cov_pars:
             raise ValueError("params['init_cov_pars'] does not contain the correct number of parameters")
@@ -4589,13 +4598,13 @@ class GPModel(object):
             self.num_neighbors_pred = num_neighbors_pred
         y_c = ctypes.c_void_p()
         if y is not None:
-            y = _format_check_1D_data(y, data_name="y", check_must_be_int=False, convert_to_type=np.float64)
+            y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False, convert_to_type=np.float64)
             if y.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in y")
             y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         cov_pars_c = ctypes.c_void_p()
         if cov_pars is not None:
-            cov_pars = _format_check_1D_data(cov_pars, data_name="cov_pars", check_must_be_int=False,
+            cov_pars = _format_check_1D_data(cov_pars, data_name="cov_pars", check_data_type=True, check_must_be_int=False,
                                              convert_to_type=np.float64)
             if cov_pars.shape[0] != self.num_cov_pars:
                 raise ValueError("cov_pars does not contain the correct number of parameters")
@@ -4661,7 +4670,23 @@ class GPModel(object):
             # Set IDs for independent processes (cluster_ids)
             if cluster_ids_pred is not None:
                 cluster_ids_pred = _format_check_1D_data(cluster_ids_pred, data_name="cluster_ids_pred",
-                                                         check_must_be_int=True, convert_to_type=np.dtype(int))
+                                                         check_data_type=False, check_must_be_int=False,
+                                                         convert_to_type=None)
+                if self.cluster_ids_pred.shape[0] != num_data_pred:
+                    raise ValueError("Incorrect number of data points in cluster_ids_pred")
+                if self.cluster_ids_map_to_int is None and not cluster_ids_pred.dtype == np.dtype(int):
+                    raise ValueError("cluster_ids_pred needs to be of type int as the data provided in cluster_ids"
+                                     "when initializing the model was also int (or cluster_ids was not provided)")
+                if self.cluster_ids_map_to_int is not None:
+                    # Convert cluster_ids_pred to int
+                    cluster_ids_pred_map_to_int = dict(
+                        [(cl_name, cl_int) for cl_int, cl_name in enumerate(sorted(set(cluster_ids_pred)))])
+                    for key in cluster_ids_pred_map_to_int:
+                        if key in self.cluster_ids_map_to_int:
+                            cluster_ids_pred_map_to_int[key] = self.cluster_ids_map_to_int[key]
+                        else:
+                            cluster_ids_pred_map_to_int[key] = cluster_ids_pred_map_to_int[key] + len(self.cluster_ids_map_to_int)
+                    cluster_ids_pred = np.array([cluster_ids_pred_map_to_int[x] for x in cluster_ids_pred])
                 cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
             # Set data for linear fixed-effects
             if self.has_covariates:
@@ -4835,7 +4860,24 @@ class GPModel(object):
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids_pred is not None:
             cluster_ids_pred = _format_check_1D_data(cluster_ids_pred, data_name="cluster_ids_pred",
-                                                     check_must_be_int=True, convert_to_type=np.dtype(int))
+                                                     check_data_type=False, check_must_be_int=False,
+                                                     convert_to_type=None)
+            if self.cluster_ids_pred.shape[0] != num_data_pred:
+                raise ValueError("Incorrect number of data points in cluster_ids_pred")
+            if self.cluster_ids_map_to_int is None and not cluster_ids_pred.dtype == np.dtype(int):
+                raise ValueError("cluster_ids_pred needs to be of type int as the data provided in cluster_ids"
+                                 "when initializing the model was also int (or cluster_ids was not provided)")
+            if self.cluster_ids_map_to_int is not None:
+                # Convert cluster_ids_pred to int
+                cluster_ids_pred_map_to_int = dict(
+                    [(cl_name, cl_int) for cl_int, cl_name in enumerate(sorted(set(cluster_ids_pred)))])
+                for key in cluster_ids_pred_map_to_int:
+                    if key in self.cluster_ids_map_to_int:
+                        cluster_ids_pred_map_to_int[key] = self.cluster_ids_map_to_int[key]
+                    else:
+                        cluster_ids_pred_map_to_int[key] = cluster_ids_pred_map_to_int[key] + len(
+                            self.cluster_ids_map_to_int)
+                cluster_ids_pred = np.array([cluster_ids_pred_map_to_int[x] for x in cluster_ids_pred])
             cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
         # Set data for linear fixed-effects
         if self.has_covariates:

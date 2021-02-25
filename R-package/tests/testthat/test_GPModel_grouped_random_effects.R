@@ -268,4 +268,26 @@ test_that("not constant cluster_id's for grouped random effects ", {
                     2.000000, 0.000000, 0.000000, 0.000000, 2.000000)
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+  
+  # cluster_ids can be string 
+  cluster_ids_string <- paste0(as.character(cluster_ids),"_s")
+  gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids_string,
+                         y = y,
+                         params = list(optimizer_cov = "fisher_scoring", maxit=100, std_dev = TRUE,
+                                       convergence_criterion = "relative_change_in_parameters"))
+  expected_values <- c(0.0006328951, 0.0004002780, 2.0227167465, 1.2794785483)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
+  expect_equal(gp_model$get_num_optim_iter(), 13)
+  # Prediction
+  group_data_pred = c(1,1,7)
+  cluster_ids_pred_string = paste0(as.character(c(1,3,1)),"_s")
+  pred <- gp_model$predict(y = y, group_data_pred = group_data_pred,
+                           cluster_ids_pred = cluster_ids_pred_string,
+                           cov_pars = c(0.75,1.25), predict_cov_mat = TRUE)
+  expected_mu <- c(-1.552917, 0.000000, 0.000000)
+  expected_cov <- c(1.038462, 0.000000, 0.000000, 0.000000,
+                    2.000000, 0.000000, 0.000000, 0.000000, 2.000000)
+  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+  
 })

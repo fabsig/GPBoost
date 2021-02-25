@@ -108,11 +108,10 @@ gp_model.summary()
 cluster_ids = np.zeros(n)
 cluster_ids[int(n/2):n] = 1
 gp_model = gpb.GPModel(group_data=group, cluster_ids=cluster_ids)
-gp_model = gpb.GPModel(group_data=group)
 gp_model.fit(y=y, X=X, params={"std_dev": True})
 gp_model.summary()
-#Note: gives sames result here as when not using cluster_ids since the 
-#   random effects of different groups are independent anyway
+#Note: gives sames result in this example as when not using cluster_ids (see above)
+#   since the random effects of different groups are independent anyway
 
 
 # --------------------Gaussian process model----------------

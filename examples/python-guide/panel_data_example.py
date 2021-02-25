@@ -15,6 +15,7 @@ plt.style.use('ggplot')
 data = grunfeld.load_pandas().data
  # Visualize response variable
 plt.hist(data['invest'], bins=50)
+plt.title("Histogram of response variable")
 
 """
 Boosting with two crossed firm and year grouped random effects
@@ -61,7 +62,8 @@ lin_gp_model.summary()
 
 
 """
-Boosting with a grouped firm random effect and an AR(1) year random effect
+Boosting with grouped firm random effects and one "global" AR(1) year random effect
+     I.e., all firms share the same temporal AR(1) effect.
 """
 gp_model_ar1 = gpb.GPModel(group_data=data['firm'], gp_coords=data['year'], cov_function="exponential")
 data_train = gpb.Dataset(data=data[['value', 'capital']], label=data['invest'])
@@ -77,13 +79,28 @@ phi_hat = np.exp(-1/cov_pars[3])
 sigma2_hat = cov_pars[2] * (1. - phi_hat ** 2)
 print("Estimated innovation variance and AR(1) coefficient of year effect:")
 print([sigma2_hat ,phi_hat])
-    
-# Cross-validation for determining number of boosting iterations
-gp_model_ar1 = gpb.GPModel(group_data=data['firm'], gp_coords=data['year'], cov_function="exponential")
+
+
+"""
+Boosting with grouped firm random effects and separate AR(1) year random effects per firm
+     I.e., every firms has its own temporal AR(1) effect. This can be done using
+     the 'cluster_ids' parameter.
+"""
+gp_model_ar1 = gpb.GPModel(group_data=data['firm'], gp_coords=data['year'], 
+                           cluster_ids=data['firm'], cov_function="exponential")
+# Need to use the more robust option gradient_descent instead of fisher_scoring in this example
+gp_model_ar1.set_optim_params(params={"optimizer_cov": "gradient_descent"})
 data_train = gpb.Dataset(data=data[['value', 'capital']], label=data['invest'])
-cvbst = gpb.cv(params=params, train_set=data_train,
-               gp_model=gp_model_ar1, use_gp_model_for_validation=True,
-               num_boost_round=5000, early_stopping_rounds=5,
-               nfold=2, verbose_eval=True, show_stdv=False, seed=1)
-print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
+# Train GPBoost model (takes a few seconds)
+bst = gpb.train(params=params,
+                train_set=data_train,
+                gp_model=gp_model_ar1,
+                num_boost_round=1800)
+# Estimated random effects model (variances of random effects and range parameters)
+gp_model_ar1.summary()
+cov_pars = gp_model_ar1.get_cov_pars()
+phi_hat = np.exp(-1/cov_pars[3])
+sigma2_hat = cov_pars[2] * (1. - phi_hat ** 2)
+print("Estimated innovation variance and AR(1) coefficient of year effect:")
+print([sigma2_hat ,phi_hat])
 

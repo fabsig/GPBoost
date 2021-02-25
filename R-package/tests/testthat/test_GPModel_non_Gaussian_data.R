@@ -47,6 +47,13 @@ X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # desing matrix / covariate data fo
 beta <- c(0.1,2) # regression coefficents
 # cluster_ids 
 cluster_ids <- c(rep(1,0.4*n),rep(2,0.6*n))
+# GP with multiple observations at the same locations
+coords_multiple <- matrix(sim_rand_unif(n=n*d/4, init_c=0.1), ncol=d)
+coords_multiple <- rbind(coords_multiple,coords_multiple,coords_multiple,coords_multiple)
+D_multiple <- as.matrix(dist(coords_multiple))
+Sigma_multiple <- sigma2_1*exp(-D_multiple/rho)+diag(1E-10,n)
+L_multiple <- t(chol(Sigma_multiple))
+b_multiple <- qnorm(sim_rand_unif(n=n, init_c=0.8))
 
 
 # print("Ignore [GPBoost] [Fatal]")
@@ -129,7 +136,8 @@ test_that("Binary classification with Gaussian process model ", {
   Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
   pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                            gp_rand_coef_data_pred=Z_SVC_test,
-                           cov_pars = c(1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE)
+                           cov_pars = c(1,0.1,0.8,0.15,1.1,0.08),
+                           predict_cov_mat = TRUE, predict_response = FALSE)
   expected_mu <- c(0.18346008, 0.03479258, -0.17247579)
   expected_cov <- c(1.039879e+00, 7.521981e-01, -3.256500e-04, 7.521981e-01,
                     8.907289e-01, -6.719282e-05, -3.256500e-04, -6.719282e-05, 9.147899e-01)
@@ -157,7 +165,7 @@ test_that("Binary classification with Gaussian process model ", {
                       cluster_ids = cluster_ids,likelihood = "bernoulli_probit")
   pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                            cluster_ids_pred = cluster_ids_pred,
-                           cov_pars = c(1.5,0.15), predict_cov_mat = TRUE)
+                           cov_pars = c(1.5,0.15), predict_cov_mat = TRUE, predict_response = FALSE)
   expected_mu <- c(0.1509569, 0.0000000, 0.9574946)
   expected_cov <- c(1.2225959453, 0.0000000000, 0.0003074858, 0.0000000000,
                     1.5000000000, 0.0000000000, 0.0003074858, 0.0000000000, 1.0761874845)
@@ -165,6 +173,32 @@ test_that("Binary classification with Gaussian process model ", {
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
 })
 
+test_that("Binary classification with Gaussian process model with multiple observations at the same location", {
+  eps_multiple <- as.vector(L_multiple %*% b_multiple)
+  probs <- pnorm(eps_multiple)
+  y <- as.numeric(sim_rand_unif(n=n, init_c=0.9341) < probs)
+  
+  gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential",
+                         y = y,likelihood = "bernoulli_probit",
+                         params = list(optimizer_cov = "gradient_descent",
+                                       lr_cov=0.1, use_nesterov_acc=TRUE))
+  cov_pars <- c(0.6857065, 0.2363754)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
+  expect_equal(gp_model$get_num_optim_iter(), 8)
+  # Prediction
+  coord_test <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
+  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                           cov_pars = c(1.5,0.15), predict_cov_mat = TRUE, predict_response = FALSE)
+  expected_mu <- c(-0.2633282, -0.2637633, -0.2637633)
+  expected_cov <- c(0.9561355, 0.8535206, 0.8535206, 0.8535206, 1.0180227,
+                    1.0180227, 0.8535206, 1.0180227, 1.0180227)
+  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+  pred_resp <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                           cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = TRUE)
+  expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.4263502, 0.4263502))),1E-6)
+  expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2445757, 0.2445757))),1E-6)
+})
 
 test_that("Binary classification with grouped random effects model ", {
   
@@ -224,7 +258,7 @@ test_that("Binary classification with grouped random effects model ", {
   pred <- predict(gp_model, y=y, group_data_pred = group_test, predict_response = TRUE)
   expect_lt(sum(abs(pred$mu-rep(0.5,4))),1E-6)
   # Prediction for only new cluster_ids
-  cluster_ids_pred <- c(-1,-1,-2,-2)
+  cluster_ids_pred <- c(-1L,-1L,-2L,-2L)
   group_test <- c(1,3,3,9999)
   pred <- predict(gp_model, y=y, group_data_pred = group_test, cluster_ids_pred = cluster_ids_pred,
                   predict_var = TRUE, predict_response = FALSE)

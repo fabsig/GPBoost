@@ -20,7 +20,7 @@ gpb.Booster
 Save GPBoost model
 }
 \examples{
-
+\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -48,5 +48,5 @@ pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_t
 pred$fixed_effect - pred_loaded$fixed_effect
 pred$random_effect_mean - pred_loaded$random_effect_mean
 pred$random_effect_cov - pred_loaded$random_effect_cov
-
+}
 }

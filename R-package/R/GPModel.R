@@ -116,6 +116,7 @@ gpb.GPModel <- R6::R6Class(
                           model_list = NULL) {
 
       if (!is.null(modelfile) | !is.null(model_list)){
+        # Load model from file or list
         
         if (!is.null(modelfile)) {
           if (!(is.character(modelfile) && length(modelfile) == 1L)) {
@@ -398,10 +399,17 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(cluster_ids)) {
         
         if (is.vector(cluster_ids)) {
+          if (length(cluster_ids) != private$num_data) {
+            stop("GPModel: Length of ", sQuote("cluster_ids"), "does not match number of data points")
+          }
+          private$cluster_ids = cluster_ids
           
-          # Check whether matrix is the correct type first ("integer")
+          # Convert cluster_ids to int and save conversion map
           if (storage.mode(cluster_ids) != "integer") {
-            storage.mode(cluster_ids) <- "integer"
+            
+            private$cluster_ids_map_to_int <- structure(1:length(unique(cluster_ids)),names=c(unique(cluster_ids)))
+            cluster_ids = private$cluster_ids_map_to_int[cluster_ids]
+
           }
           
         } else {
@@ -410,11 +418,6 @@ gpb.GPModel <- R6::R6Class(
           
         }
         
-        if (length(cluster_ids) != private$num_data) {
-          stop("GPModel: Length of ", sQuote("cluster_ids"), "does not match number of data points")
-        }
-        
-        private$cluster_ids = cluster_ids
         cluster_ids <- as.vector(cluster_ids)
         
       }
@@ -476,6 +479,7 @@ gpb.GPModel <- R6::R6Class(
         private$gp_coords <- NULL
         private$gp_rand_coef_data <- NULL
         private$cluster_ids <- NULL
+        private$cluster_ids_map_to_int <- NULL
       }
       
       if (!is.null(modelfile)){
@@ -1133,13 +1137,27 @@ gpb.GPModel <- R6::R6Class(
         
       }
       
-      # Set IDs for independent processes
+      # Set cluster_ids for independent processes
       if (!is.null(cluster_ids_pred)) {
         
         if (is.vector(cluster_ids_pred)) {
           
-          if (storage.mode(cluster_ids_pred) != "integer") {
-            storage.mode(cluster_ids_pred) <- "integer"
+          if (is.null(private$cluster_ids_map_to_int) & storage.mode(cluster_ids_pred) != "integer") {
+            stop("predict.GPModel: cluster_ids_pred needs to be of type int as the data provided in cluster_ids when initializing the model was also int (or cluster_ids was not provided)")
+          }
+          
+          if (!is.null(private$cluster_ids_map_to_int)) {
+            
+            cluster_ids_pred_map_to_int <- structure(1:length(unique(cluster_ids_pred)),names=c(unique(cluster_ids_pred)))
+            for (key in names(cluster_ids_pred_map_to_int)) {
+              if (key %in% names(private$cluster_ids_map_to_int)) {
+                cluster_ids_pred_map_to_int[key] = private$cluster_ids_map_to_int[key]
+              } else {
+                cluster_ids_pred_map_to_int[key] = cluster_ids_pred_map_to_int[key] + length(private$cluster_ids_map_to_int)
+              }
+            }
+            cluster_ids_pred <- cluster_ids_pred_map_to_int[cluster_ids_pred]
+            
           }
           
         } else {
@@ -1149,7 +1167,7 @@ gpb.GPModel <- R6::R6Class(
         }
         
         if (length(cluster_ids_pred) != num_data_pred) {
-          stop("predict.GPModel: Length of ", sQuote("cluster_ids_pred"), "does not match number of data points")
+          stop("predict.GPModel: Length of ", sQuote("cluster_ids_pred"), " does not match number of predicted data points")
         }
         
         cluster_ids_pred <- as.vector(cluster_ids_pred)
@@ -1466,13 +1484,27 @@ gpb.GPModel <- R6::R6Class(
           
         } 
         
-        # Set IDs for independent processes
+        # Set cluster_ids for independent processes
         if (!is.null(cluster_ids_pred)) {
           
           if (is.vector(cluster_ids_pred)) {
             
-            if (storage.mode(cluster_ids_pred) != "integer") {
-              storage.mode(cluster_ids_pred) <- "integer"
+            if (is.null(private$cluster_ids_map_to_int) & storage.mode(cluster_ids_pred) != "integer") {
+              stop("predict.GPModel: cluster_ids_pred needs to be of type int as the data provided in cluster_ids when initializing the model was also int (or cluster_ids was not provided)")
+            }
+            
+            if (!is.null(private$cluster_ids_map_to_int)) {
+              
+              cluster_ids_pred_map_to_int <- structure(1:length(unique(cluster_ids_pred)),names=c(unique(cluster_ids_pred)))
+              for (key in names(cluster_ids_pred_map_to_int)) {
+                if (key %in% names(private$cluster_ids_map_to_int)) {
+                  cluster_ids_pred_map_to_int[key] = private$cluster_ids_map_to_int[key]
+                } else {
+                  cluster_ids_pred_map_to_int[key] = cluster_ids_pred_map_to_int[key] + length(private$cluster_ids_map_to_int)
+                }
+              }
+              cluster_ids_pred <- cluster_ids_pred_map_to_int[cluster_ids_pred]
+                
             }
             
           } else {
@@ -1816,6 +1848,7 @@ gpb.GPModel <- R6::R6Class(
     cov_par_names = NULL,
     coef_names = NULL,
     cluster_ids = NULL,
+    cluster_ids_map_to_int = NULL,
     free_raw_data = FALSE,
     num_data_pred = NULL,
     model_has_been_loaded_from_saved_file = FALSE,

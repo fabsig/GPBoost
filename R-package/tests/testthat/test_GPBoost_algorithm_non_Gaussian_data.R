@@ -333,7 +333,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     resp <- c(0.5823307, 0.6717290, 0.7082572, 0.6809350)
     expect_lt(sum(abs(pred$response_mean-resp)),1E-3)
     # Prediction for only new cluster_ids
-    cluster_ids_pred <- c(-1,-1,-2,-2)
+    cluster_ids_pred <- c(-1L,-1L,-2L,-2L)
     group_test <- c(1,3,3,9999)
     pred <- predict(bst, data = X_test[1:4,], group_data_pred = group_test,
                     cluster_ids_pred = cluster_ids_pred, rawscore = TRUE)
