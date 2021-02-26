@@ -456,12 +456,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_est <- c(0.32547158, 0.09894853)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
     # Prediction
-    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, rawscore = TRUE)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.8028029),1E-3)
-    expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.8899398),1E-3)
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                    predict_var = TRUE, rawscore = TRUE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.24749388, 0.28896391, 0.04963995, -0.35500930, 0.42937428, 0.10558641))),1E-3)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.2321455, 0.2107143, 0.2202334, 0.2068175, 0.1996631, 0.2079684))),1E-3)
+    expect_lt(sum(abs(tail(pred$fixed_effect)-c(0.4537209, 0.6142190, 0.4559592, -0.1477286, 0.6142190, 0.5476603))),1E-3)
     # Predict response
-    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, rawscore = FALSE)
-    expect_equal(mean(as.numeric(pred$response_mean>0.5) != y_test),0.302)
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                    predict_var = TRUE, rawscore = FALSE)
+    expect_lt(sum(abs(tail(pred$response_mean)-c(0.7362129, 0.7941293, 0.6764175, 0.3236067, 0.8296542, 0.7238643))),1E-3)
+    expect_lt(sum(abs(tail(pred$response_var)-c(0.1942035, 0.1634879, 0.2188769, 0.2188854, 0.1413281, 0.1998848))),1E-3)
     
     # Use validation set to determine number of boosting iteration with use_gp_model_for_validation = FALSE
     dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
@@ -501,6 +505,89 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      use_gp_model_for_validation = TRUE)
     expect_equal(bst$best_iter, 4)
     expect_lt(abs(bst$best_score - 0.5963344),1E-3)
+  })
+  
+  
+  test_that("Combine tree-boosting and Gaussian process model for binary classification with multiple observations at the same location", {
+    
+    ntrain <- ntest <- 400
+    n <- ntrain + ntest
+    # Simulate fixed effects
+    sim_data <- sim_friedman3(n=n, n_irrelevant=5, init_c=0.69)
+    f <- sim_data$f
+    f <- f - mean(f)
+    X <- sim_data$X
+    # Simulate spatial Gaussian process
+    sigma2_1 <- 1 # marginal variance of GP
+    rho <- 0.1 # range parameter
+    d <- 2 # dimension of GP locations
+    coords <- matrix(sim_rand_unif(n=n*d/8, init_c=0.12), ncol=d)
+    coords <- rbind(coords,coords,coords,coords,coords,coords,coords,coords)
+    D <- as.matrix(dist(coords))
+    Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-15,n)
+    C <- t(chol(Sigma))
+    b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.987864))
+    eps <- as.vector(C %*% b_1)
+    # Observed data
+    probs <- pnorm(f + eps)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.52574) < probs)
+    # Split into training and test data
+    y_train <- y[1:ntrain]
+    X_train <- X[1:ntrain,]
+    coords_train <- coords[1:ntrain,]
+    dtrain <- gpb.Dataset(data = X_train, label = y_train)
+    y_test <- y[1:ntest+ntrain]
+    X_test <- X[1:ntest+ntrain,]
+    f_test <- f[1:ntest+ntrain]
+    coords_test <- coords[1:ntest+ntrain,]
+    eps_test <- eps[1:ntest+ntrain]
+    
+    # Train model
+    gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                        likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01))
+    bst <- gpb.train(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 2,
+                     learning_rate = 0.5,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     objective = "binary",
+                     verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.6173788,0.1152799))),1E-3)
+    # Prediction
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                    predict_var = TRUE, rawscore = TRUE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.05406968, -0.93746985, -0.54497531, -0.43572233, -1.36700844, -1.10225263))),1E-3)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.2037120, 0.2004085, 0.1537798, 0.2064919, 0.2400464, 0.2400181))),1E-3)
+    expect_lt(sum(abs(tail(pred$fixed_effect)-c(0.6304276, -0.3152193, 0.4869929, 0.5693566, 0.5431916, 0.5693566))),1E-3)
+    # Predict response
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                    predict_var = TRUE, rawscore = FALSE)
+    expect_lt(sum(abs(tail(pred$response_mean)-c(0.7336512, 0.1264469, 0.4784755, 0.5484167, 0.2297120, 0.3161289))),1E-3)
+    expect_lt(sum(abs(tail(pred$response_var)-c(0.1954071, 0.1104581, 0.2495367, 0.2476558, 0.1769444, 0.2161914))),1E-3)
+    
+    # Use validation set to determine number of boosting iteration with use_gp_model_for_validation = FALSE
+    dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+    valids <- list(test = dtest)
+    gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                        likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.1))
+    gp_model$set_prediction_data(gp_coords_pred = coords_test)
+    bst <- gpb.train(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 10,
+                     learning_rate = 0.1,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     objective = "binary",
+                     verbose = 1,
+                     valids = valids,
+                     early_stopping_rounds = 2,
+                     use_gp_model_for_validation = TRUE)
+    expect_equal(bst$best_iter, 10)
+    expect_lt(abs(bst$best_score - 0.6129902),1E-3)
+
   })
   
   

@@ -28,7 +28,7 @@ namespace GPBoost {
 	* \brief This class models the random effects components
 	*
 	*        Some details:
-	*		 1. The template parameter <T_mat> can either be <sp_mat_t> or <den_mat_t>
+	*		 1. The template parameter <T_mat> can be either <den_mat_t> or <sp_mat_t>
 	*/
 	template<typename T_mat>
 	class RECompBase {
@@ -63,7 +63,7 @@ namespace GPBoost {
 		* \param sigma2 Marginal variance
 		* \param[out] pars Vector with covariance parameters
 		*/
-		virtual void FindInitCovPar(vec_t& pars) = 0;
+		virtual void FindInitCovPar(vec_t& pars) const = 0;
 
 		/*!
 		* \brief Virtual function that calculates Sigma (not needed for grouped REs, at unique locations for GPs)
@@ -75,7 +75,7 @@ namespace GPBoost {
 		* \return Covariance matrix Z*Sigma*Z^T of this component
 		*   Note that since sigma_ is saved (since it is used in GetZSigmaZt and GetZSigmaZtGrad) we return a pointer and do not write on an input paramter in order to avoid copying
 		*/
-		virtual std::shared_ptr<T_mat> GetZSigmaZt() = 0;
+		virtual std::shared_ptr<T_mat> GetZSigmaZt() const = 0;
 
 		/*!
 		* \brief Virtual function that calculates the derivatives of the covariance matrix Z*Sigma*Z^T
@@ -84,7 +84,7 @@ namespace GPBoost {
 		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale = false to transform back)
 		* \return Derivative of covariance matrix Z*Sigma*Z^T with respect to the parameter number ind_par
 		*/
-		virtual std::shared_ptr<T_mat> GetZSigmaZtGrad(int ind_par = 0, bool transf_scale = true, double = 1.) = 0;
+		virtual std::shared_ptr<T_mat> GetZSigmaZtGrad(int ind_par = 0, bool transf_scale = true, double = 1.) const = 0;
 
 		/*!
 		* \brief Virtual function that returns the matrix Z
@@ -93,17 +93,23 @@ namespace GPBoost {
 		virtual sp_mat_t* GetZ() = 0;
 
 		/*!
-		* \brief Ignore this. It is only used for the class RECompGP and not for other derived classes. It is here in order that the base class can have this as a virtual method and no conversion needs to be made in the Vecchia approximation calculation (slightly a hack)
+		* \brief This is only used for the class RECompGP and not for other derived classes. It is here in order that the base class can have this as a virtual method and no conversion needs to be made in the Vecchia approximation calculation (slightly a hack)
 		*/
 		virtual void CalcSigmaAndSigmaGrad(const den_mat_t& dist, den_mat_t& cov_mat,
 			den_mat_t& cov_grad_1, den_mat_t& cov_grad_2,
-			bool calc_gradient = false, bool transf_scale = true, double = 1.) = 0;
+			bool calc_gradient = false, bool transf_scale = true, double = 1.) const = 0;
+
+		/*!
+		* \brief Virtual function that returns the number of unique random effects
+		* \return Number of unique random effects
+		*/
+		virtual data_size_t GetNumUniqueREs() const = 0;
 
 		/*!
 		* \brief Returns number of covariance parameters
 		* \return Number of covariance parameters
 		*/
-		int NumCovPar() {
+		int NumCovPar() const {
 			return(num_cov_par_);
 		}
 
@@ -113,7 +119,7 @@ namespace GPBoost {
 		* \param num_data_pred Number of prediction points
 		* \param rand_coef_data_pred Covariate data for varying coefficients
 		*/
-		void AddPredUncondVar(double* pred_uncond_var, int num_data_pred, const double* const rand_coef_data_pred = nullptr) {
+		void AddPredUncondVar(double* pred_uncond_var, int num_data_pred, const double* const rand_coef_data_pred = nullptr) const {
 			if (this->is_rand_coef_) {
 #pragma omp for schedule(static)
 				for (int i = 0; i < num_data_pred; ++i) {
@@ -143,8 +149,10 @@ namespace GPBoost {
 		vec_t cov_pars_;
 		/*! \brief Indices that indicate to which random effect every data point is related (random_effects_indices_of_data_[i] is the random effect for observation number i) */
 		std::vector<data_size_t> random_effects_indices_of_data_;
+		/*! \brief Indicates whether the random effect component has/uses random_effects_indices_of_data_ */
+		bool has_random_effects_indices_of_data_ = false;
 
-		template<typename T1, typename T2>
+		template<typename T_mat, typename t_chol>
 		friend class REModelTemplate;
 	};
 
@@ -273,7 +281,7 @@ namespace GPBoost {
 		* \param sigma2 Marginal variance
 		* \param[out] pars Vector of length 1 with variance of the grouped random effect
 		*/
-		void FindInitCovPar(vec_t& pars) override {//TODO: find better initial estimates (as e.g. the variance of the group means)
+		void FindInitCovPar(vec_t& pars) const override {//TODO: find better initial estimates (as e.g. the variance of the group means)
 			pars[0] = 1;
 		}
 
@@ -288,7 +296,7 @@ namespace GPBoost {
 		* \param pars Vector of length 1 with covariance parameter sigma_j for grouped RE component number j
 		* \return Covariance matrix Z*Sigma*Z^T of this component
 		*/
-		std::shared_ptr<T_mat> GetZSigmaZt() override {
+		std::shared_ptr<T_mat> GetZSigmaZt() const override {
 			if (this->cov_pars_.size() == 0) {
 				Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
 			}
@@ -305,7 +313,7 @@ namespace GPBoost {
 		* \param nugget_var Nugget effect variance parameter sigma^2 (not use here)
 		* \return Derivative of covariance matrix Z*Sigma*Z^T with respect to the parameter number ind_par
 		*/
-		std::shared_ptr<T_mat> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double = 1.) override {
+		std::shared_ptr<T_mat> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double = 1.) const override {
 			if (this->cov_pars_.size() == 0) {
 				Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
 			}
@@ -387,13 +395,15 @@ namespace GPBoost {
 			}
 		}
 
-		/*!
-		* \brief Ignore this. This is not used for this class (it is only used for the class RECompGP). It is here in order that the base class can have this as a virtual method and no conversion needs to be made in the Vecchia approximation calculation (slightly a hack)
-		*/
+		// Ignore this. This is not used for this class (it is only used for the class RECompGP). It is here in order that the base class can have this as a virtual method and no conversion needs to be made in the Vecchia approximation calculation (slightly a hack)
 		void CalcSigmaAndSigmaGrad(const den_mat_t&, den_mat_t&,
 			den_mat_t&, den_mat_t&,
-			bool = false, bool = true, double = 1.) override {
+			bool = false, bool = true, double = 1.) const override {
 
+		}
+
+		data_size_t GetNumUniqueREs() const {
+			return(num_group_);
 		}
 
 	private:
@@ -457,7 +467,7 @@ namespace GPBoost {
 		//	}
 		//}
 
-		template<typename T_mat, typename T_chol>
+		template<typename T_mat, typename t_chol>
 		friend class REModelTemplate;
 
 		template<typename T_chol>
@@ -483,23 +493,24 @@ namespace GPBoost {
 		* \param shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
 		* \param save_dist_use_Z_for_duplicates If true, distances are calculated and saved here, and an incidendce matrix Z_ is used for duplicate locations.
 		*           save_dist_use_Z_for_duplicates = false is used for the Vecchia approximation which saves the required distances in the REModel (REModelTemplate)
-		*           Default = true
-		* \param save_random_effects_indices_of_data If true, distances are calculated and saved here, and a vector random_effects_indices_of_data_
-		*           which relates random effects b to samples Zb is used for duplicate locations.
-		*           save_data_indices_random_effects = true is currently used when doing calculations on the random effects scale b and not on the "data scale" Zb for non-Gaussian data
-		*           Default = false
+		* \param save_random_effects_indices_of_data If true a vector random_effects_indices_of_data_ , which relates random effects b to samples Zb, is used (the matrix Z_ is then not constructed)
+		*           save_random_effects_indices_of_data = true is currently only used when doing calculations on the random effects scale b and not on the "data scale" Zb for non-Gaussian data
+		*			This option can only be selected when save_dist_use_Z_for_duplicates = true
 		*/
 		RECompGP(const den_mat_t& coords,
 			string_t cov_fct,
 			double shape,
 			bool save_dist_use_Z_for_duplicates,
 			bool save_random_effects_indices_of_data) {
+			if (save_random_effects_indices_of_data && !save_dist_use_Z_for_duplicates) {
+				Log::REFatal("'save_dist_use_Z_for_duplicates' cannot be 'false' when 'save_random_effects_indices_of_data' is 'true'");
+			}
 			this->num_data_ = (data_size_t)coords.rows();
 			this->is_rand_coef_ = false;
 			has_Z_ = false;
 			this->num_cov_par_ = 2;
 			cov_function_ = std::unique_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape));
-			if (save_dist_use_Z_for_duplicates || save_random_effects_indices_of_data) {
+			if (save_dist_use_Z_for_duplicates) {
 				std::vector<int> uniques;//unique points
 				std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
 				DetermineUniqueDuplicateCoords(coords, this->num_data_, uniques, unique_idx);
@@ -508,33 +519,35 @@ namespace GPBoost {
 				}
 				else {//there are multiple observations at the same locations
 					coords_ = coords(uniques, Eigen::all);
-					if (save_dist_use_Z_for_duplicates) {
-						this->Z_.resize(this->num_data_, uniques.size());
-						this->Z_.setZero();
-						for (int i = 0; i < this->num_data_; ++i) {
-							this->Z_.insert(i, unique_idx[i]) = 1.;
-						}
-						has_Z_ = true;
-					}
 				}
-				if (save_random_effects_indices_of_data) {
+				if (save_random_effects_indices_of_data) {// create random_effects_indices_of_data_
 					this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
 #pragma omp for schedule(static)
 					for (int i = 0; i < this->num_data_; ++i) {
 						this->random_effects_indices_of_data_[i] = unique_idx[i];
 					}
+					has_random_effects_indices_of_data_ = true;
+				}
+				else if ((data_size_t)uniques.size() != this->num_data_) {// create incidence matrix Z_
+					this->Z_.resize(this->num_data_, uniques.size());
+					this->Z_.setZero();
+					for (int i = 0; i < this->num_data_; ++i) {
+						this->Z_.insert(i, unique_idx[i]) = 1.;
+					}
+					has_Z_ = true;
 				}
 				//Calculate distances
 				den_mat_t dist;
 				CalculateDistances(coords_, dist);
 				dist_ = std::make_shared<den_mat_t>(dist);
 				dist_saved_ = true;
-			}//end save_dist_use_Z_for_duplicates || save_data_indices_random_effects
+			}//end save_dist_use_Z_for_duplicates
 			else {//this option is used for the Vecchia approximation
 				coords_ = coords;
 				dist_saved_ = false;
 			}
 			coord_saved_ = true;
+			num_random_effects_ = (data_size_t)coords_.rows();
 		}
 
 		/*!
@@ -570,6 +583,7 @@ namespace GPBoost {
 				this->Z_ = coef_W;
 			}
 			coord_saved_ = false;
+			num_random_effects_ = (data_size_t)this->Z_.cols();
 		}
 
 		/*!
@@ -594,6 +608,7 @@ namespace GPBoost {
 			for (int i = 0; i < this->num_data_; ++i) {
 				this->Z_.insert(i, i) = this->rand_coef_data_[i];
 			}
+			num_random_effects_ = this->num_data_;
 		}
 
 		/*! \brief Destructor */
@@ -634,7 +649,7 @@ namespace GPBoost {
 		* \param sigma2 Marginal variance
 		* \param[out] pars Vector with covariance parameters
 		*/
-		void FindInitCovPar(vec_t& pars) override {
+		void FindInitCovPar(vec_t& pars) const override {
 			if (!dist_saved_ && !coord_saved_) {
 				Log::REFatal("Cannot determine initial covariance parameters if neither distances nor coordinates are given");
 			}
@@ -702,7 +717,7 @@ namespace GPBoost {
 		* \brief Calculate covariance matrix
 		* \return Covariance matrix Z*Sigma*Z^T of this component
 		*/
-		std::shared_ptr<T_mat> GetZSigmaZt() override {
+		std::shared_ptr<T_mat> GetZSigmaZt() const override {
 			if (!sigma_defined_) {
 				Log::REFatal("Sigma has not been calculated");
 			}
@@ -726,7 +741,7 @@ namespace GPBoost {
 		*/
 		void CalcSigmaAndSigmaGrad(const den_mat_t& dist, den_mat_t& cov_mat,
 			den_mat_t& cov_grad_1, den_mat_t& cov_grad_2,
-			bool calc_gradient = false, bool transf_scale = true, double nugget_var = 1.) override {
+			bool calc_gradient = false, bool transf_scale = true, double nugget_var = 1.) const override {
 			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
 			(*cov_function_).template GetCovMat<den_mat_t>(dist, this->cov_pars_, cov_mat);
 			if (calc_gradient) {
@@ -750,7 +765,7 @@ namespace GPBoost {
 		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale = false to transform back)
 		* \return Derivative of covariance matrix Z*Sigma*Z^T with respect to the parameter number ind_par
 		*/
-		std::shared_ptr<T_mat> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double nugget_var = 1.) override {
+		std::shared_ptr<T_mat> GetZSigmaZtGrad(int ind_par, bool transf_scale = true, double nugget_var = 1.) const override {
 			if (!sigma_defined_) {
 				Log::REFatal("Sigma has not been calculated");
 			}
@@ -810,20 +825,26 @@ namespace GPBoost {
 			std::vector<int>  uniques_pred;//unique points
 			std::vector<int>  unique_idx_pred;//used for constructing incidence matrix Z_ if there are duplicates
 			DetermineUniqueDuplicateCoords(coords_pred, num_data_pred, uniques_pred, unique_idx_pred);
-			//Create matrix Zstar
-			sp_mat_t Zstar(num_data_pred, uniques_pred.size());
-			Zstar.setZero();
-			den_mat_t coords_pred_unique;
 			bool has_duplicates = (int)uniques_pred.size() != num_data_pred;
+			bool has_Zstar = has_duplicates || this->is_rand_coef_;
+			sp_mat_t Zstar;
+			den_mat_t coords_pred_unique;
+			//Create matrix Zstar
+			if (has_Zstar) {
+				Zstar = sp_mat_t(num_data_pred, uniques_pred.size());
+				Zstar.setZero();
+			}
 			if (has_duplicates) {//Only keep unique coordinates if there are multiple observations with the same coordinates
 				coords_pred_unique = coords_pred(uniques_pred, Eigen::all);
 			}
-			for (int i = 0; i < num_data_pred; ++i) {
-				if (this->is_rand_coef_) {
-					Zstar.insert(i, unique_idx_pred[i]) = rand_coef_data_pred[i];
-				}
-				else {
-					Zstar.insert(i, unique_idx_pred[i]) = 1.;
+			if (has_Zstar) {
+				for (int i = 0; i < num_data_pred; ++i) {
+					if (this->is_rand_coef_) {
+						Zstar.insert(i, unique_idx_pred[i]) = rand_coef_data_pred[i];
+					}
+					else {
+						Zstar.insert(i, unique_idx_pred[i]) = 1.;
+					}
 				}
 			}
 			//Calculate cross distances between "existing" and "new" points
@@ -840,23 +861,42 @@ namespace GPBoost {
 				}
 			}
 			T_mat ZstarSigmatildeTZT;
-			T_mat Sigmatilde;
-			(*cov_function_).template GetCovMat<T_mat>(cross_dist, this->cov_pars_, Sigmatilde);
-			if (this->has_Z_) {
-				ZstarSigmatildeTZT = Zstar * Sigmatilde * this->Z_.transpose();
-			}
-			else {
-				ZstarSigmatildeTZT = Zstar * Sigmatilde;
+			if (has_Zstar || this->has_Z_) {
+				T_mat Sigmatilde;
+				(*cov_function_).template GetCovMat<T_mat>(cross_dist, this->cov_pars_, Sigmatilde);
+				if (has_Zstar && this->has_Z_) {
+					ZstarSigmatildeTZT = Zstar * Sigmatilde * this->Z_.transpose();
+				}
+				else if (has_Zstar && !(this->has_Z_)){
+					ZstarSigmatildeTZT = Zstar * Sigmatilde;
+				}
+				else if (!has_Zstar && this->has_Z_) {
+					ZstarSigmatildeTZT = Sigmatilde * this->Z_.transpose();
+				}
+			}//end has_Zstar || this->has_Z_
+			else { //no Zstar and no Z_
+				(*cov_function_).template GetCovMat<T_mat>(cross_dist, this->cov_pars_, ZstarSigmatildeTZT);
 			}
 			pred_mats[1] += ZstarSigmatildeTZT;
+
 			if (predict_cov_mat) {
 				den_mat_t dist;
 				CalculateDistances(coords_pred, dist);
-				T_mat Sigmastar;
-				(*cov_function_).template GetCovMat<T_mat>(dist, this->cov_pars_, Sigmastar);
-				T_mat ZstarSigmastarZstarT = Zstar * Sigmastar * Zstar.transpose();
+				T_mat ZstarSigmastarZstarT;
+				if (has_Zstar) {
+					T_mat Sigmastar;
+					(*cov_function_).template GetCovMat<T_mat>(dist, this->cov_pars_, Sigmastar);
+					ZstarSigmastarZstarT = Zstar * Sigmastar * Zstar.transpose();
+				}
+				else {
+					(*cov_function_).template GetCovMat<T_mat>(dist, this->cov_pars_, ZstarSigmastarZstarT);
+				}
 				pred_mats[4] += ZstarSigmastarZstarT;
 			}
+		}
+
+		data_size_t GetNumUniqueREs() const {
+			return(num_random_effects_);
 		}
 
 	private:
@@ -876,8 +916,10 @@ namespace GPBoost {
 		T_mat sigma_;
 		/*! \brief Indicates whether sigma_ has been defined or not */
 		bool sigma_defined_ = false;
+		/*! \brief Number of random effects (usually, number of unique random effects except for the Vecchia approximation where unique locations are not separately modelled) */
+		data_size_t num_random_effects_;
 
-		template<typename T_mat, typename T_chol>
+		template<typename T_mat, typename t_chol>
 		friend class REModelTemplate;
 	};
 

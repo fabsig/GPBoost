@@ -30,7 +30,7 @@ namespace GPBoost {
 	* \brief This class implements the covariance functions used for the Gaussian proceses
 	*
 	*   Some details:
-	*		 1. The template parameter <T_mat> can either be <sp_mat_t> or <den_mat_t>
+	*		 1. The template parameter <T_mat> can be either <den_mat_t> or <sp_mat_t>
 	*/
 	template<class T_mat>
 	class CovFunction {

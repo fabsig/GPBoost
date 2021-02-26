@@ -198,6 +198,19 @@ test_that("Binary classification with Gaussian process model with multiple obser
                            cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = TRUE)
   expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.4263502, 0.4263502))),1E-6)
   expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2445757, 0.2445757))),1E-6)
+  
+  # ##DELETE
+  # fixed_effects = rep(0,length(y))
+  # fixed_effects_pred = rep(-1,3)
+  # gp_model$predict(y = y, gp_coords_pred = coord_test,
+  #                  fixed_effects=fixed_effects, fixed_effects_pred=fixed_effects_pred,
+  #                  cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = FALSE)
+  # 
+  # gp_model$set_prediction_data(gp_coords_pred = coord_test)
+  # gp_model$predict(y = y, use_saved_data = TRUE,
+  #                  fixed_effects=fixed_effects, fixed_effects_pred=fixed_effects_pred,
+  #                  cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = FALSE)
+  
 })
 
 test_that("Binary classification with grouped random effects model ", {

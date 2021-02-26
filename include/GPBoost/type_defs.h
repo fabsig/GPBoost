@@ -26,17 +26,15 @@
 namespace GPBoost {
 
 	/*! \brief Type of Eigen matrices */
-	typedef Eigen::SparseMatrix<double> sp_mat_t; // column-major sparse matrix type of double
-	typedef Eigen::SparseMatrix<double, Eigen::RowMajor> sp_mat_rm_t; // row-major sparse matrix type of double
-	typedef Eigen::Triplet<double> Triplet_t;
 	typedef Eigen::MatrixXd den_mat_t;
 	typedef Eigen::VectorXd vec_t;
 	typedef Eigen::VectorXi vec_int_t;
+	typedef Eigen::SparseMatrix<double> sp_mat_t; // column-major sparse matrix type of double
+	typedef Eigen::SparseMatrix<double, Eigen::RowMajor> sp_mat_rm_t; // row-major sparse matrix type of double
+	typedef Eigen::Triplet<double> Triplet_t;
 	typedef Eigen::SparseVector<double> sp_vec_t;
-	typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::NaturalOrdering<int>> chol_sp_mat_t; // sparse Cholesky factor. TODO Maybe use other ordering?
 	typedef Eigen::LLT<Eigen::MatrixXd, Eigen::Lower> chol_den_mat_t;
-	typedef Eigen::PartialPivLU<Eigen::MatrixXd> LU_solver_den_mat_t;
-	typedef Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> LU_solver_sp_mat_t;
+	typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::NaturalOrdering<int>> chol_sp_mat_t; // sparse Cholesky factor. TODO Maybe use other ordering?
 
 	typedef std::string string_t;
 

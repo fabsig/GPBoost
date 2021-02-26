@@ -403,7 +403,7 @@ namespace LightGBM {
 				//Calculate gradients if (i) there is no GP model ( = classical iid boosting) or
 				//	(ii) if there is a GP model ( = Gaussian process boosting) in the first iteration or 
 				//	(iii) if there is a GP model & Nesteroc acceleration is used. 
-				//	If ther is a GP model, this also finds optimal covariance parameters.
+				//	If there is a GP model, this also finds optimal covariance parameters.
 				//	But we only do this for the first iteration (when there is no Nesteroc acceleration), afterwards gradients are calculated at the end of every iteration 
 				//		to avoid double calculation for validation losses.
 				Boosting();//calculate gradients

@@ -92,7 +92,7 @@ namespace LightGBM {
 								nullptr, nullptr,
 								true, nullptr, -1,
 								nullptr, nullptr,
-								true);
+								true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated response data score - label = F_t - y 
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
@@ -110,11 +110,11 @@ namespace LightGBM {
 								nullptr, nullptr,
 								true, nullptr, -1,
 								nullptr, score,
-								true);
+								true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated training score (= F_t)
-							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter().
-							//	We this dont provide this here (see the above nullptr). This also implies
-							//	that the Laplace approximation (in particualr the mode) is note calculated again
+							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
+							//	We thus dont provide this here (see the above nullptr). This also implies
+							//	that the Laplace approximation (in particular the mode) is note calculated again
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
 							for (data_size_t i = 0; i < num_data_; ++i) {
 								sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], gp_pred[i], config_);

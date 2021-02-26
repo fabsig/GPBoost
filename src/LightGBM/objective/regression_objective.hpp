@@ -265,7 +265,7 @@ namespace LightGBM {
 					Log::Info("[GPBoost with %s likelihood]: initscore=%f",
 						likelihood_type_.c_str(), initscore);
 
-					//DELTE code below
+					//DELETE code below
 //// Old (incorrect) version 1 (set scores to 0)
 //					if (re_model_->GetLikelihood() == std::string("gaussian")) {
 //						sumw = static_cast<double>(num_data_);

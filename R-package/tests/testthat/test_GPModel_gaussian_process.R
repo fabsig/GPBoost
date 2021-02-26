@@ -318,7 +318,6 @@ test_that("Gaussian process model with multiple observations at the same locatio
   
   # Prediction
   coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
-  cluster_ids_pred = c(1,3,1)
   gp_model <- GPModel(gp_coords = coords_multiple, cov_function = "exponential")
   pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                            cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE)

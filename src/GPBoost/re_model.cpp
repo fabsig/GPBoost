@@ -16,29 +16,74 @@ namespace GPBoost {
 	REModel::REModel() {
 	}
 
-	REModel::REModel(data_size_t num_data, const gp_id_t* cluster_ids_data, const char* re_group_data, data_size_t num_re_group,
-		const double* re_group_rand_coef_data, const int32_t* ind_effect_group_rand_coef, data_size_t num_re_group_rand_coef,
-		data_size_t num_gp, const double* gp_coords_data, int dim_gp_coords, const double* gp_rand_coef_data, data_size_t num_gp_rand_coef,
-		const char* cov_fct, double cov_fct_shape, bool vecchia_approx, int num_neighbors, const char* vecchia_ordering,
-		const char* vecchia_pred_type, int num_neighbors_pred, const char* likelihood) {
+	REModel::REModel(data_size_t num_data,
+		const gp_id_t* cluster_ids_data,
+		const char* re_group_data,
+		data_size_t num_re_group,
+		const double* re_group_rand_coef_data,
+		const int32_t* ind_effect_group_rand_coef,
+		data_size_t num_re_group_rand_coef,
+		data_size_t num_gp,
+		const double* gp_coords_data,
+		int dim_gp_coords,
+		const double* gp_rand_coef_data,
+		data_size_t num_gp_rand_coef,
+		const char* cov_fct,
+		double cov_fct_shape,
+		bool vecchia_approx,
+		int num_neighbors,
+		const char* vecchia_ordering,
+		const char* vecchia_pred_type,
+		int num_neighbors_pred,
+		const char* likelihood) {
 		if ((num_gp + num_gp_rand_coef) == 0) {
 			sparse_ = true;
 			re_model_sp_ = std::unique_ptr<REModelTemplate<sp_mat_t, chol_sp_mat_t>>(new REModelTemplate<sp_mat_t, chol_sp_mat_t>(
-				num_data, cluster_ids_data, re_group_data, num_re_group,
-				re_group_rand_coef_data, ind_effect_group_rand_coef, num_re_group_rand_coef,
-				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef,
-				cov_fct, cov_fct_shape, vecchia_approx, num_neighbors, vecchia_ordering,
-				vecchia_pred_type, num_neighbors_pred, likelihood));
+				num_data,
+				cluster_ids_data,
+				re_group_data,
+				num_re_group,
+				re_group_rand_coef_data,
+				ind_effect_group_rand_coef,
+				num_re_group_rand_coef,
+				num_gp,
+				gp_coords_data,
+				dim_gp_coords,
+				gp_rand_coef_data,
+				num_gp_rand_coef,
+				cov_fct,
+				cov_fct_shape,
+				vecchia_approx,
+				num_neighbors, 
+				vecchia_ordering,
+				vecchia_pred_type,
+				num_neighbors_pred,
+				likelihood));
 			num_cov_pars_ = re_model_sp_->num_cov_par_;
 		}
 		else {
 			sparse_ = false;
-			re_model_den_ = std::unique_ptr <REModelTemplate< den_mat_t, chol_den_mat_t >>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
-				num_data, cluster_ids_data, re_group_data, num_re_group,
-				re_group_rand_coef_data, ind_effect_group_rand_coef, num_re_group_rand_coef,
-				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef,
-				cov_fct, cov_fct_shape, vecchia_approx, num_neighbors, vecchia_ordering,
-				vecchia_pred_type, num_neighbors_pred, likelihood));
+			re_model_den_ = std::unique_ptr <REModelTemplate< den_mat_t, chol_den_mat_t>>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
+				num_data,
+				cluster_ids_data,
+				re_group_data,
+				num_re_group,
+				re_group_rand_coef_data,
+				ind_effect_group_rand_coef,
+				num_re_group_rand_coef,
+				num_gp,
+				gp_coords_data,
+				dim_gp_coords,
+				gp_rand_coef_data,
+				num_gp_rand_coef,
+				cov_fct,
+				cov_fct_shape,
+				vecchia_approx,
+				num_neighbors,
+				vecchia_ordering,
+				vecchia_pred_type,
+				num_neighbors_pred,
+				likelihood));
 			num_cov_pars_ = re_model_den_->num_cov_par_;
 		}
 		if (!GaussLikelihood()) {
