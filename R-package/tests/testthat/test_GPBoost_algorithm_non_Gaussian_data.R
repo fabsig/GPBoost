@@ -72,7 +72,7 @@ legend(legend=c("True","Pred F","Pred p"),"bottomright",bty="n",lwd=3,col=c(2,4,
 # Avoid that long tests get executed on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
-  test_that("Combine tree-boosting and grouped random effects model for binary classification ", {
+  test_that("GPBoost algorithm with grouped random effects model for binary classification ", {
     
     ntrain <- ntest <- 1000
     n <- ntrain + ntest
@@ -84,7 +84,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Simulate grouped random effects
     sigma2_1 <- 0.6 # variance of first random effect
     sigma2_2 <- 0.4 # variance of second random effect
-    sigma2 <- 0.1^2 # error variance
     m <- 40 # number of categories / levels for grouping variable
     # first random effect
     group <- rep(1,ntrain) # grouping variable
@@ -407,8 +406,139 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(cvbst$best_score-0.357), 1E-3)
   })
   
+  test_that("GPBoost algorithm for binary classification when having only one grouping variable", {
+    
+    ntrain <- ntest <- 1000
+    n <- ntrain + ntest
+    # Simulate fixed effects
+    sim_data <- sim_friedman3(n=n, n_irrelevant=5, init_c=0.2644234)
+    f <- sim_data$f
+    f <- f - mean(f)
+    X <- sim_data$X
+    # Simulate grouped random effects
+    sigma2_1 <- 1 # variance of random effect
+    m <- 40 # number of categories / levels for grouping variable
+    # first random effect
+    group <- rep(1,ntrain) # grouping variable
+    for(i in 1:m) group[((i-1)*ntrain/m+1):(i*ntrain/m)] <- i
+    group <- c(group, group)
+    n_new <- 3# number of new random effects in test data
+    group[(length(group)-n_new+1):length(group)] <- rep(99999,n_new)
+    Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
+    b1 <- sqrt(sigma2_1) * qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.5542))
+    eps <- Z1 %*% b1
+    eps <- eps - mean(eps)
+    group_data <- group
+    # Observed data
+    probs <- pnorm(f + eps)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.574) < probs)
+    # Signal-to-noise ratio of approx. 1
+    # var(f) / var(eps)
+    # Split in training and test data
+    y_train <- y[1:ntrain]
+    X_train <- X[1:ntrain,]
+    group_data_train <- group_data[1:ntrain]
+    y_test <- y[1:ntest+ntrain]
+    X_test <- X[1:ntest+ntrain,]
+    f_test <- f[1:ntest+ntrain]
+    group_data_test <- group_data[1:ntest+ntrain]
+    # Data for Booster
+    dtrain <- gpb.Dataset(data = X_train, label = y_train)
+    dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+    valids <- list(test = dtest)
+    params <- list(learning_rate = 0.1, objective = "binary")
+    # Folds for CV
+    group_aux <- rep(1,ntrain) # grouping variable
+    for(i in 1:(ntrain/4)) group_aux[(1:4)+4*(i-1)] <- 1:4
+    folds <- list()
+    for(i in 1:4) folds[[i]] <- as.integer(which(group_aux==i))
+    
+    # Find number of iterations using validation data with use_gp_model_for_validation=FALSE
+    gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
+                     learning_rate=0.1, objective = "binary", verbose = 0,
+                     use_gp_model_for_validation=FALSE, eval = "binary_error",
+                     early_stopping_rounds=10)
+    record_results <- gpb.get.eval.result(bst, "test", "binary_error")
+    expect_lt(abs(min(record_results)-0.356), 1e-3)
+    expect_equal(which.min(record_results), 17)
+    # Find number of iterations using validation data with use_gp_model_for_validation=TRUE
+    gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_prediction_data(group_data_pred = group_data_test)
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
+                     learning_rate=0.1, objective = "binary", verbose = 0,
+                     use_gp_model_for_validation=TRUE, eval = "binary_error",
+                     early_stopping_rounds=10)
+    record_results <- gpb.get.eval.result(bst, "test", "binary_error")
+    expect_lt(abs(min(record_results)-0.262), 1e-3)
+    expect_equal(which.min(record_results), 36)
+
+    # CV for finding number of boosting iterations when use_gp_model_for_validation = FALSE
+    gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    cvbst <- gpb.cv(params = params,
+                    data = dtrain,
+                    gp_model=gp_model,
+                    nrounds = 100,
+                    nfold = 4,
+                    eval = "binary_error",
+                    early_stopping_rounds = 5,
+                    use_gp_model_for_validation = FALSE,
+                    fit_GP_cov_pars_OOS = FALSE,
+                    folds = folds,
+                    verbose = 0)
+    expect_equal(cvbst$best_iter, 11)
+    expect_lt(abs(cvbst$best_score-0.361), 1E-3)
+    # CV for finding number of boosting iterations when use_gp_model_for_validation = TRUE
+    gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    cvbst <- gpb.cv(params = params,
+                    data = dtrain,
+                    gp_model = gp_model,
+                    nrounds = 100,
+                    nfold = 4,
+                    eval = "binary_error",
+                    early_stopping_rounds = 5,
+                    use_gp_model_for_validation = TRUE,
+                    fit_GP_cov_pars_OOS = FALSE,
+                    folds = folds,
+                    verbose = 0)
+    expect_equal(cvbst$best_iter, 21)
+    expect_lt(abs(cvbst$best_score-0.24), 1E-3)
+    
+    # Create random effects model and train GPBoost model
+    gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    bst <- gpboost(data = X_train,
+                   label = y_train,
+                   gp_model = gp_model,
+                   nrounds = 30,
+                   learning_rate = 0.1,
+                   max_depth = 6,
+                   min_data_in_leaf = 5,
+                   objective = "binary",
+                   verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9894106)),1E-3)
+    
+    # Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = TRUE)
+    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.3673679, 0.4869528, 0.5851113, 0.5361039, -1.1595777, 0.3324141))),1E-3)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-2.005104, -2.005104, -2.005104,
+                                                      rep(0,n_new)))),1E-3)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.2158951, 0.2158951, 0.2158951,
+                                                     rep(0.9894106,n_new)))),1E-3)
+    # Predict response
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = FALSE)
+    expect_lt(sum(abs(tail(pred$response_mean)-c(0.049299126, 0.035037818, 0.003220474, 0.584439012, 0.264326280, 0.404603870))),1E-3)
+    expect_lt(sum(abs(tail(pred$response_var)-c(0.046868722, 0.033810169, 0.003210102, 0.242870053, 0.194457898, 0.240899578))),1E-3)
+  })
   
-  test_that("Combine tree-boosting and Gaussian process model for binary classification ", {
+  
+  test_that("GPBoost algorithm with Gaussian process model for binary classification ", {
     
     ntrain <- ntest <- 500
     n <- ntrain + ntest
@@ -508,7 +638,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   
-  test_that("Combine tree-boosting and Gaussian process model for binary classification with multiple observations at the same location", {
+  test_that("GPBoost algorithm with Gaussian process model for binary classification with multiple observations at the same location", {
     
     ntrain <- ntest <- 400
     n <- ntrain + ntest
@@ -567,7 +697,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(tail(pred$response_mean)-c(0.7336512, 0.1264469, 0.4784755, 0.5484167, 0.2297120, 0.3161289))),1E-3)
     expect_lt(sum(abs(tail(pred$response_var)-c(0.1954071, 0.1104581, 0.2495367, 0.2476558, 0.1769444, 0.2161914))),1E-3)
     
-    # Use validation set to determine number of boosting iteration with use_gp_model_for_validation = FALSE
+    # Use validation set to determine number of boosting iteration
     dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
     valids <- list(test = dtest)
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
@@ -581,7 +711,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      max_depth = 6,
                      min_data_in_leaf = 5,
                      objective = "binary",
-                     verbose = 1,
+                     verbose = 0,
                      valids = valids,
                      early_stopping_rounds = 2,
                      use_gp_model_for_validation = TRUE)
@@ -591,7 +721,106 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   
-  test_that("Combine tree-boosting and Gaussian process model with Vecchia approximation for binary classification", {
+  test_that("GPBoost algorithm for binary classification with combined Gaussian process and grouped random effects model", {
+    
+    ntrain <- ntest <- 500
+    n <- ntrain + ntest
+    # Simulate fixed effects
+    sim_data <- sim_friedman3(n=n, n_irrelevant=5, init_c=0.6549)
+    f <- sim_data$f
+    f <- f - mean(f)
+    X <- sim_data$X
+    # Simulate spatial Gaussian process
+    sigma2_1 <- 1 # marginal variance of GP
+    rho <- 0.1 # range parameter
+    d <- 2 # dimension of GP locations
+    coords <- matrix(sim_rand_unif(n=n*d, init_c=0.633), ncol=d)
+    D <- as.matrix(dist(coords))
+    Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
+    C <- t(chol(Sigma))
+    b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.67))
+    eps <- as.vector(C %*% b_1)
+    # Simulate grouped random effects
+    sigma2_grp <- 1 # variance of random effect
+    m <- 50 # number of categories / levels for grouping variable
+    # first random effect
+    group <- rep(1,ntrain) # grouping variable
+    for(i in 1:m) group[((i-1)*ntrain/m+1):(i*ntrain/m)] <- i
+    group <- c(group, group)
+    n_new <- 3# number of new random effects in test data
+    group[(length(group)-n_new+1):length(group)] <- rep(99999,n_new)
+    Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
+    b_grp <- sqrt(sigma2_grp) * qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.52))
+    eps <- C %*% b_1 + Z1 %*% b_grp
+    group_data <- group
+    eps <- eps - mean(eps)
+    # Observed data
+    probs <- pnorm(f + eps)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.234) < probs)
+    # Split into training and test data
+    y_train <- y[1:ntrain]
+    X_train <- X[1:ntrain,]
+    coords_train <- coords[1:ntrain,]
+    group_data_train <- group_data[1:ntrain]
+    dtrain <- gpb.Dataset(data = X_train, label = y_train)
+    y_test <- y[1:ntest+ntrain]
+    X_test <- X[1:ntest+ntrain,]
+    f_test <- f[1:ntest+ntrain]
+    coords_test <- coords[1:ntest+ntrain,]
+    group_data_test <- group_data[1:ntest+ntrain]
+    eps_test <- eps[1:ntest+ntrain]
+    
+    # Train model
+    gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                        group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    bst <- gpb.train(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 5,
+                     learning_rate = 0.5,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     objective = "binary",
+                     verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.2389215, 0.2944260, 0.3475830))),1E-3)
+    # Prediction
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                    group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = TRUE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.436542801, 0.245372153, 0.288168072, -0.006999516, -0.477860266, -0.203127508))),1E-3)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.2119429, 0.2562735, 0.2217990, 0.3436291, 0.3518722, 0.3410436))),1E-3)
+    expect_lt(sum(abs(tail(pred$fixed_effect)-c(0.5161346, -0.1779920, 0.4925039, 0.1653966, -0.9710911, 0.3308892))),1E-3)
+    # Predict response
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                    group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = FALSE)
+    expect_lt(sum(abs(tail(pred$response_mean)-c(0.8065837, 0.5239684, 0.7599888, 0.5543460, 0.1063464, 0.5439247))),1E-3)
+    expect_lt(sum(abs(tail(pred$response_var)-c(0.15600640, 0.24942552, 0.18240580, 0.24704651, 0.09503686, 0.24807062))),1E-3)
+    
+    # Use validation set to determine number of boosting iteration
+    dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+    valids <- list(test = dtest)
+    gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                        group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_prediction_data(gp_coords_pred = coords_test, group_data_pred = group_data_test)
+    bst <- gpb.train(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 100,
+                     learning_rate = 0.1,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     objective = "binary",
+                     verbose = 0,
+                     valids = valids,
+                     early_stopping_rounds = 2,
+                     use_gp_model_for_validation = TRUE)
+    expect_equal(bst$best_iter, 12)
+    expect_lt(abs(bst$best_score - 0.5826647),1E-3)
+  })
+  
+  
+  test_that("GPBoost algorithm with Gaussian process model with Vecchia approximation for binary classification", {
     
     ntrain <- ntest <- 100
     n <- ntrain + ntest
@@ -659,7 +888,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-1.295551),1E-3)
   })
   
-  test_that("Combine tree-boosting and Gaussian process model for binary classification with logit link", {
+  test_that("GPBoost algorithm with Gaussian process model for binary classification with logit link", {
     
     ntrain <- ntest <- 500
     n <- ntrain + ntest
@@ -719,7 +948,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(tail(pred$response_var)-c(0.2273978, 0.2134153, 0.2359810, 0.2498721, 0.2028934, 0.2495832))),1E-3)
   })
   
-  test_that("Combine tree-boosting and random effects for Poisson regression", {
+  test_that("GPBoost algorithm with grouped random effects for Poisson regression", {
     
     ntrain <- ntest <- 1000
     n <- ntrain + ntest
@@ -792,7 +1021,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(tail(pred$response_var)-c(0.59613634, 0.54436787, 0.05150895, 29.70184658, 1.75269350, 22.09284402))),1E-3)
   })
   
-  test_that("Combine tree-boosting and random effects for gamma regression", {
+  test_that("GPBoost algorithm with grouped random effects for gamma regression", {
     
     ntrain <- ntest <- 1000
     n <- ntrain + ntest
