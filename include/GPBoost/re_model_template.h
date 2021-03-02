@@ -219,8 +219,8 @@ namespace GPBoost {
 				do_symbolic_decomposition_ = false;
 				only_grouped_REs_use_woodbury_identity_ = false;
 			}
-			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do calculations on the b-scale instead of the Zb-scale (currently only for non-Gaussian data)
-
+			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (currently only for non-Gaussian data)
+			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (only effective for Gaussian data)
 			//Create RE/GP component models
 			for (const auto& cluster_i : unique_clusters_) {
 				std::vector<std::shared_ptr<RECompBase<T_mat>>> re_comps_cluster_i;
@@ -375,7 +375,16 @@ namespace GPBoost {
 				CHECK(num_comps_total_ == 1);
 				CHECK(num_re_group_total_ == 1);
 			}
+			if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {//only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
+				CHECK(!vecchia_approx_);
+				CHECK(num_gp_total_ == 0);
+				CHECK(num_comps_total_ == 1);
+				CHECK(num_re_group_total_ == 1);
+			}
 			if (only_grouped_REs_use_woodbury_identity_) {//only_grouped_REs_use_woodbury_identity_
+				if (gauss_likelihood_ && only_one_grouped_RE_calculations_on_RE_scale_) {
+					Log::REFatal("Cannot enable 'only_one_grouped_RE_calculations_on_RE_scale_' if 'only_grouped_REs_use_woodbury_identity_' is enabled for Gaussian data");
+				}
 				CHECK(num_gp_total_ == 0);
 				CHECK(num_comps_total_ == num_re_group_total_);
 			}
@@ -878,6 +887,7 @@ namespace GPBoost {
 			const gp_id_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
 			const double* re_group_rand_coef_data_pred = nullptr, double* gp_coords_data_pred = nullptr,
 			const double* gp_rand_coef_data_pred = nullptr, const double* covariate_data_pred = nullptr) {
+			CHECK(num_data_pred > 0);
 			if (cluster_ids_data_pred == nullptr) {
 				cluster_ids_data_pred_.clear();
 			}
@@ -916,6 +926,7 @@ namespace GPBoost {
 			else {
 				covariate_data_pred_ = std::vector<double>(covariate_data_pred, covariate_data_pred + num_data_pred * num_coef_);
 			}
+			num_data_pred_ = num_data_pred;
 		}//end SetPredictionData
 
 		/*!
@@ -956,6 +967,12 @@ namespace GPBoost {
 			//First check whether previously set data should be used and load it if required
 			std::vector<std::vector<string_t>> re_group_levels_pred;//Matrix with group levels for the grouped random effects (re_group_levels_pred[j] contains the levels for RE number j)
 			if (use_saved_data) {
+				if (num_data_pred > 0) {
+					CHECK(num_data_pred == num_data_pred_);
+				}
+				else {
+					num_data_pred = num_data_pred_;
+				}
 				re_group_levels_pred = re_group_levels_pred_;
 				if (cluster_ids_data_pred_.empty()) {
 					cluster_ids_data_pred = nullptr;
@@ -1054,7 +1071,6 @@ namespace GPBoost {
 				mu = X_pred * coef;
 			}
 			vec_t cov_pars = Eigen::Map<const vec_t>(cov_pars_pred, num_cov_par_);
-
 			//Set up cluster IDs
 			std::map<gp_id_t, int> num_data_per_cluster_pred;
 			std::map<gp_id_t, std::vector<int>> data_indices_per_cluster_pred;
@@ -1062,7 +1078,6 @@ namespace GPBoost {
 			data_size_t num_clusters_pred;
 			SetUpGPIds(num_data_pred, cluster_ids_data_pred, num_data_per_cluster_pred,
 				data_indices_per_cluster_pred, unique_clusters_pred, num_clusters_pred);
-
 			//Check whether predictions are made for existing clusters or if only for new independet clusters predictions are made
 			bool pred_for_observed_data = false;
 			for (const auto& cluster_i : unique_clusters_pred) {
@@ -1158,7 +1173,7 @@ namespace GPBoost {
 				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) == unique_clusters_.end()) {
 					T_mat psi;
 					std::vector<std::shared_ptr<RECompBase<T_mat>>> re_comps_cluster_i;
-					int num_REs_pred;
+					int num_REs_pred = num_data_per_cluster_pred[cluster_i];
 					//Calculate covariance matrix if needed
 					if (predict_cov_mat || predict_var || predict_response) {
 						if (vecchia_approx_) {
@@ -1333,7 +1348,7 @@ namespace GPBoost {
 						}
 						gp_coords_mat_pred = Eigen::Map<den_mat_t>(gp_coords_pred.data(), num_data_per_cluster_pred[cluster_i], dim_gp_coords_);
 					}
-					if (only_one_grouped_RE_calculations_on_RE_scale_) {
+					if (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
 						random_effects_indices_of_data_pred = std::vector<data_size_t>(num_data_per_cluster_pred[cluster_i]);
 						std::vector<string_t> re_group_levels_pred_unique;
 						std::map<re_group_t, int> map_group_label_index_pred;
@@ -1353,7 +1368,7 @@ namespace GPBoost {
 						}
 						re_group_levels_pred[0] = re_group_levels_pred_unique;
 						num_REs_pred = (int)re_group_levels_pred[0].size();
-					}//end only_one_grouped_RE_calculations_on_RE_scale_
+					}//end only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
 					else if (only_one_GP_calculations_on_RE_scale_) {
 						random_effects_indices_of_data_pred = std::vector<data_size_t>(num_data_per_cluster_pred[cluster_i]);
 						std::vector<int> uniques;//unique points
@@ -1369,7 +1384,8 @@ namespace GPBoost {
 					}//end only_one_GP_calculations_on_RE_scale_
 					// Initialize predictive mean and covariance
 					vec_t mean_pred_id;
-					if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
+					if (only_one_GP_calculations_on_RE_scale_ || 
+						only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
 						mean_pred_id = vec_t(num_REs_pred);
 					}
 					else {
@@ -1421,7 +1437,7 @@ namespace GPBoost {
 
 					}//end (vecchia_approx_ && gauss_likelihood_)
 					else {// not vecchia_approx_ or not gauss_likelihood_
-						//Genereal case: either non-Gaussian data or Gaussian data without the Vecchia approximation
+						//General case: either non-Gaussian data or Gaussian data without the Vecchia approximation
 						//NOTE: if vecchia_approx_==true and gauss_likelihood_==false, the cross-covariance matrix Sigma_{1,2} = cov(x_pred,x) is not approximated but the exact version is used
 						bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);//variance needs to be available for resposne prediction for non-Gaussian data 
 						CalcPred(cluster_i,
@@ -1438,7 +1454,8 @@ namespace GPBoost {
 							cov_mat_pred_id,
 							var_pred_id);
 						//map from predictions from random effects scale b to "data scale" Zb
-						if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
+						if (only_one_GP_calculations_on_RE_scale_ ||
+							only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
 							vec_t mean_pred_id_on_RE_scale = mean_pred_id;
 							mean_pred_id = vec_t(num_data_per_cluster_pred[cluster_i]);
 #pragma omp parallel for schedule(static)
@@ -1464,7 +1481,7 @@ namespace GPBoost {
 								Zpred.setFromTriplets(triplets.begin(), triplets.end());
 								cov_mat_pred_id = Zpred * cov_mat_pred_id_on_RE_scale * Zpred.transpose();
 							}
-						}//end only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_
+						}//end only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
 					}//end not vecchia_approx_ or not gauss_likelihood_
 					//add externaly provided fixed effects
 					if (fixed_effects_pred != nullptr) {
@@ -1513,7 +1530,6 @@ namespace GPBoost {
 					//end write covariance / variance on output
 				}//end cluster_i with data
 			}//end loop over cluster
-
 			//Set cross-covariances between different independent clusters to 0
 			if (predict_cov_mat && unique_clusters_pred.size() > 1 && (!predict_response || gauss_likelihood_)) {
 				for (const auto& cluster_i : unique_clusters_pred) {
@@ -1730,8 +1746,10 @@ namespace GPBoost {
 		// SPECIAL CASES OF RE MODELS FOR FASTER CALCULATIONS
 		/*! \brief If true, the Woodbury, Sherman and Morrison matrix inversion formula is used for calculating the inverse of the covariance matrix (only used if there are only grouped REs and no Gaussian processes) */
 		bool only_grouped_REs_use_woodbury_identity_ = false;
-		/*! \brief True if there is only one grouped random effect component, and calculations are done on the b-scale instead of the Zb-scale (currently used only for non-Gaussian data) */
+		/*! \brief True if there is only one grouped random effect component, and (all) calculations are done on the b-scale instead of the Zb-scale (currently used only for non-Gaussian data) */
 		bool only_one_grouped_RE_calculations_on_RE_scale_ = false;
+		/*! \brief True if there is only one grouped random effect component for Gaussian data, can calculations for predictions (only) are done on the b-scale instead of the Zb-scale */
+		bool only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = false;
 		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (currently used only for non-Gaussian data) */
 		bool only_one_GP_calculations_on_RE_scale_ = false;
 
@@ -1849,8 +1867,11 @@ namespace GPBoost {
 		std::vector<double> gp_coords_data_pred_;
 		/*! \brief Covariate data for random GP for prediction */
 		std::vector<double> gp_rand_coef_data_pred_;
-		/*! \brief Covariate data  for linear regression term */
+		/*! \brief Covariate data for linear regression term */
 		std::vector<double> covariate_data_pred_;
+		/*! \brief Number of prediction points */
+		data_size_t num_data_pred_;
+
 
 		/*! \brief Nesterov schedule */
 		double NesterovSchedule(int iter, int momentum_schedule_version = 0,
@@ -2596,7 +2617,10 @@ namespace GPBoost {
 					for (const auto& id : data_indices_per_cluster[cluster_i]) {
 						group_data.push_back(re_group_levels[j][id]);//group_data_.push_back(std::string(re_group_data[j * num_data_ + id]));
 					}
-					re_comps_cluster_i.push_back(std::shared_ptr<RECompGroup<T_mat>>(new RECompGroup<T_mat>(group_data, calculateZZt, only_one_grouped_RE_calculations_on_RE_scale_)));
+					re_comps_cluster_i.push_back(std::shared_ptr<RECompGroup<T_mat>>(new RECompGroup<T_mat>(
+						group_data,
+						calculateZZt,
+						!only_one_grouped_RE_calculations_on_RE_scale_)));
 				}
 				//Random slopes
 				if (num_re_group_rand_coef > 0) {
@@ -2607,7 +2631,12 @@ namespace GPBoost {
 						}
 						std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_cluster_i[ind_effect_group_rand_coef[j] - 1]);//Subtract -1 since ind_effect_group_rand_coef[j] starts counting at 1 not 0
 						re_comps_cluster_i.push_back(std::shared_ptr<RECompGroup<T_mat>>(new RECompGroup<T_mat>(
-							re_comp->group_data_, re_comp->map_group_label_index_, re_comp->num_group_, rand_coef_data, calculateZZt)));
+							re_comp->random_effects_indices_of_data_.data(),
+							re_comp->num_data_,
+							re_comp->map_group_label_index_,
+							re_comp->num_group_,
+							rand_coef_data,
+							calculateZZt)));
 					}
 				}
 			}
@@ -2620,7 +2649,8 @@ namespace GPBoost {
 					}
 				}
 				den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords);
-				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(gp_coords_mat,
+				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
+					gp_coords_mat,
 					cov_fct,
 					cov_fct_shape,
 					true,
@@ -2633,8 +2663,13 @@ namespace GPBoost {
 							rand_coef_data.push_back(gp_rand_coef_data[j * num_data + id]);
 						}
 						std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp]);
-						re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(re_comp->dist_, re_comp->has_Z_,
-							&re_comp->Z_, rand_coef_data, cov_fct, cov_fct_shape)));
+						re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
+							re_comp->dist_,
+							re_comp->has_Z_,
+							&re_comp->Z_,
+							rand_coef_data,
+							cov_fct,
+							cov_fct_shape)));
 					}
 				}
 			}
@@ -4137,7 +4172,7 @@ namespace GPBoost {
 			T_mat& cov_mat_pred_id,
 			vec_t& var_pred_id) {
 			int num_REs_obs, num_REs_pred;
-			if (only_one_grouped_RE_calculations_on_RE_scale_) {
+			if (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
 				num_REs_pred = (int)re_group_levels_pred[0].size();
 				num_REs_obs = re_comps_[cluster_i][0]->GetNumUniqueREs();
 			}
@@ -4166,42 +4201,22 @@ namespace GPBoost {
 					cov_mat_pred_id.setZero();
 				}
 			}
-			// Vector which contains covariance matrices needed for making predictions in the following order:
-			//		0. Ztilde*Sigma*Z^T, 1. Zstar*Sigmatilde^T*Z^T, 2. Ztilde*Sigma*Ztilde^T, 3. Ztilde*Sigmatilde*Zstar^T, 4. Zstar*Sigmastar*Zstar^T
-			//		Note: Ztilde relates existing random effects to predictions and Zstar relates new / unobserved random effects to predictions
-			std::vector<T_mat> pred_mats(5);
-			//Define which covariance matrices are zero ('false') or non-zero ('true')
-			std::vector<bool> active_mats{ false, false, false, false, false };
-			if (num_re_group_total_ > 0) {
-				active_mats[0] = true;
-				active_mats[2] = true;
-				active_mats[4] = true;
-			}
-			if (num_gp_total_ > 0) {
-				active_mats[1] = true;
-				active_mats[4] = true;
-			}
-			for (int i = 0; i < 2; ++i) {
-				if (active_mats[i]) {
-					pred_mats[i].resize(num_REs_pred, num_REs_obs);
-					pred_mats[i].setZero();
-				}
-			}
-			if (predict_cov_mat) {
-				for (int i = 2; i < 5; ++i) {
-					if (active_mats[i]) {
-						pred_mats[i].resize(num_REs_pred, num_REs_pred);
-						pred_mats[i].setZero();
-					}
-				}
-			}
+			T_mat cross_cov(num_REs_pred, num_REs_obs);//Cross covariance between prediction and observation points
 			//Calculate covariance matrices
 			int cn = 0;//component number
+			bool dont_add_but_overwrite = true;
 			//Grouped random effects
 			if (num_re_group_ > 0) {
-				if (only_one_grouped_RE_calculations_on_RE_scale_) {
+				if (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
 					std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][cn]);
-					re_comp->AddPredCovMatrices(re_group_levels_pred[0], pred_mats, predict_cov_mat);
+					re_comp->AddPredCovMatrices(re_group_levels_pred[0],
+						cross_cov,
+						cov_mat_pred_id,
+						predict_cov_mat,
+						dont_add_but_overwrite,
+						true,
+						nullptr);
+					dont_add_but_overwrite = false;
 					if (predict_var) {
 						re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
 					}
@@ -4213,7 +4228,14 @@ namespace GPBoost {
 						for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
 							group_data.push_back(re_group_levels_pred[j][id]);
 						}
-						re_comp->AddPredCovMatrices(group_data, pred_mats, predict_cov_mat);
+						re_comp->AddPredCovMatrices(group_data,
+							cross_cov,
+							cov_mat_pred_id,
+							predict_cov_mat,
+							dont_add_but_overwrite,
+							false,
+							nullptr);
+						dont_add_but_overwrite = false;
 						if (predict_var) {
 							re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
 						}
@@ -4229,7 +4251,13 @@ namespace GPBoost {
 								rand_coef_data.push_back(re_group_rand_coef_data_pred[j * num_data_pred + id]);
 								group_data.push_back(re_group_levels_pred[ind_effect_group_rand_coef_[j] - 1][id]);//subtract 1 since counting starts at one for this index
 							}
-							re_comp->AddPredCovMatrices(group_data, pred_mats, predict_cov_mat, rand_coef_data.data());
+							re_comp->AddPredCovMatrices(group_data,
+								cross_cov,
+								cov_mat_pred_id,
+								predict_cov_mat,
+								false,
+								false,
+								rand_coef_data.data());
 							if (predict_var) {
 								re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
 							}
@@ -4241,7 +4269,14 @@ namespace GPBoost {
 			//Gaussian process
 			if (num_gp_ > 0) {
 				std::shared_ptr<RECompGP<T_mat>> re_comp_base = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][cn]);
-				re_comp_base->AddPredCovMatrices(re_comp_base->coords_, gp_coords_mat_pred, pred_mats, predict_cov_mat);
+				re_comp_base->AddPredCovMatrices(re_comp_base->coords_,
+					gp_coords_mat_pred,
+					cross_cov,
+					cov_mat_pred_id,
+					predict_cov_mat,
+					dont_add_but_overwrite,
+					nullptr);
+				dont_add_but_overwrite = false;
 				if (predict_var) {
 					re_comp_base->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
 				}
@@ -4255,7 +4290,13 @@ namespace GPBoost {
 						for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
 							rand_coef_data.push_back(gp_rand_coef_data_pred[j * num_data_pred + id]);
 						}
-						re_comp->AddPredCovMatrices(re_comp_base->coords_, gp_coords_mat_pred, pred_mats, predict_cov_mat, rand_coef_data.data());
+						re_comp->AddPredCovMatrices(re_comp_base->coords_,
+							gp_coords_mat_pred,
+							cross_cov,
+							cov_mat_pred_id,
+							predict_cov_mat,
+							false,
+							rand_coef_data.data());
 						if (predict_var) {
 							re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
 						}
@@ -4263,45 +4304,56 @@ namespace GPBoost {
 					}
 				}
 			}
-			T_mat M_aux(num_REs_pred, num_REs_obs);//Ztilde*Sigma*Z^T + Zstar*Sigmatilde^T*Z^T
-			M_aux.setZero();
-			for (int i = 0; i < 2; ++i) {
-				if (active_mats[i]) {
-					M_aux += pred_mats[i];
-				}
-			}
-			if (predict_cov_mat) {
-				for (int i = 2; i < 5; ++i) {
-					if (active_mats[i]) {
-						cov_mat_pred_id += pred_mats[i];
-						if (i == 3) {//Ztilde*Sigmatilde*Zstar^T
-							cov_mat_pred_id += T_mat(pred_mats[i].transpose());
-						}
-					}
-				}
-			}
+
 			//Calculate predictive means and covariances
 			if (gauss_likelihood_) {//Gaussian data
-				mean_pred_id = M_aux * y_aux_[cluster_i];
-				if (predict_cov_mat) {
+				if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+					vec_t Zt_y_aux = vec_t::Zero(num_REs_obs);
+#pragma omp parallel
+					{
+						vec_t Zt_y_aux_private = vec_t::Zero(num_REs_obs);
+#pragma omp for
+						for (data_size_t i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
+							Zt_y_aux_private[re_comps_[cluster_i][0]->random_effects_indices_of_data_[i]] += y_aux_[cluster_i][i];
+						}
+#pragma omp critical
+						{
+							for (data_size_t i_re = 0; i_re < num_REs_obs; ++i_re) {
+								Zt_y_aux[i_re] += Zt_y_aux_private[i_re];
+							}
+						}//end omp critical
+					}//end omp parallel
+					mean_pred_id = cross_cov * Zt_y_aux;
+				}//end only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
+				else {
+					mean_pred_id = cross_cov * y_aux_[cluster_i];
+				}
+				if ((predict_cov_mat || predict_var) && only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+					sp_mat_t* Z = re_comps_[cluster_i][0]->GetZ();
+					T_mat cross_cov_temp = cross_cov;
+					cross_cov = cross_cov_temp * (*Z).transpose();
+					cross_cov_temp.resize(0, 0);
+					//TODO (low-prio): things could be done more efficiently (using random_effects_indices_of_data_) as ZtZ_ is diagonal
+				}
+				if (predict_cov_mat){
 					if (only_grouped_REs_use_woodbury_identity_) {
-						T_mat ZtM_aux = T_mat(Zt_[cluster_i] * M_aux.transpose());
+						T_mat ZtM_aux = T_mat(Zt_[cluster_i] * cross_cov.transpose());
 						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 							ZtM_aux = chol_facts_[cluster_i].diagonal().array().inverse().matrix().asDiagonal() * ZtM_aux;
-							cov_mat_pred_id -= (M_aux * T_mat(M_aux.transpose()) - ZtM_aux.transpose() * ZtM_aux);
+							cov_mat_pred_id -= (cross_cov * T_mat(cross_cov.transpose()) - ZtM_aux.transpose() * ZtM_aux);
 						}
 						else {
-							cov_mat_pred_id -= (M_aux * T_mat(M_aux.transpose()) - ZtM_aux.transpose() * chol_facts_solve_[cluster_i].solve(ZtM_aux));
+							cov_mat_pred_id -= (cross_cov * T_mat(cross_cov.transpose()) - ZtM_aux.transpose() * chol_facts_solve_[cluster_i].solve(ZtM_aux));
 						}
 					}
 					else {
-						cov_mat_pred_id -= (M_aux * (chol_facts_solve_[cluster_i].solve(T_mat(M_aux.transpose()))));
+						cov_mat_pred_id -= (cross_cov * (chol_facts_solve_[cluster_i].solve(T_mat(cross_cov.transpose()))));
 					}
 				}//end predict_cov_mat
 				if (predict_var) {
 					T_mat M_aux2;
 					if (only_grouped_REs_use_woodbury_identity_) {
-						T_mat ZtM_aux = T_mat(Zt_[cluster_i] * M_aux.transpose());
+						T_mat ZtM_aux = T_mat(Zt_[cluster_i] * cross_cov.transpose());
 						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 							M_aux2 = chol_facts_[cluster_i].diagonal().array().inverse().matrix().asDiagonal() * ZtM_aux;
 						}
@@ -4309,14 +4361,14 @@ namespace GPBoost {
 							CalcLInvH(chol_facts_[cluster_i], ZtM_aux, M_aux2, true);
 						}
 						M_aux2 = M_aux2.cwiseProduct(M_aux2);
-						M_aux = M_aux.cwiseProduct(M_aux);
+						cross_cov = cross_cov.cwiseProduct(cross_cov);
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_REs_pred; ++i) {
-							var_pred_id[i] -= M_aux.row(i).sum() - M_aux2.col(i).sum();
+							var_pred_id[i] -= cross_cov.row(i).sum() - M_aux2.col(i).sum();
 						}
 					}//end only_grouped_REs_use_woodbury_identity_
 					else {//not only_grouped_REs_use_woodbury_identity_
-						T_mat M_auxT = M_aux.transpose();
+						T_mat M_auxT = cross_cov.transpose();
 						CalcLInvH(chol_facts_[cluster_i], M_auxT, M_aux2, true);
 						M_aux2 = M_aux2.cwiseProduct(M_aux2);
 #pragma omp parallel for schedule(static)
@@ -4337,7 +4389,7 @@ namespace GPBoost {
 						num_data_per_cluster_[cluster_i],
 						B_[cluster_i],
 						D_inv_[cluster_i],
-						M_aux,
+						cross_cov,
 						mean_pred_id,
 						cov_mat_pred_id,
 						var_pred_id,
@@ -4353,7 +4405,7 @@ namespace GPBoost {
 							num_data_per_cluster_[cluster_i],
 							SigmaI_[cluster_i],
 							Zt_[cluster_i],
-							M_aux,
+							cross_cov,
 							mean_pred_id,
 							cov_mat_pred_id,
 							var_pred_id,
@@ -4368,7 +4420,7 @@ namespace GPBoost {
 							num_data_per_cluster_[cluster_i],
 							re_comps_[cluster_i][0]->cov_pars_[0],
 							re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
-							M_aux,
+							cross_cov,
 							mean_pred_id,
 							cov_mat_pred_id,
 							var_pred_id,
@@ -4383,7 +4435,7 @@ namespace GPBoost {
 							num_data_per_cluster_[cluster_i],
 							ZSigmaZt_[cluster_i], //Note: ZSigmaZt_ contains only Sigma if only_one_GP_calculations_on_RE_scale_==true
 							re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
-							M_aux,
+							cross_cov,
 							mean_pred_id,
 							cov_mat_pred_id,
 							var_pred_id,
@@ -4397,7 +4449,7 @@ namespace GPBoost {
 							fixed_effects_cluster_i_ptr,
 							num_data_per_cluster_[cluster_i],
 							ZSigmaZt_[cluster_i],
-							M_aux,
+							cross_cov,
 							mean_pred_id,
 							cov_mat_pred_id,
 							var_pred_id,
@@ -4856,13 +4908,9 @@ namespace GPBoost {
 				sp_mat_t Identity_obs(num_data_cli, num_data_cli);
 				Identity_obs.setIdentity();
 				sp_mat_t ZoSigmaZoT_plusI_Inv = -Z_o * M_aux_Woodbury2 + Identity_obs;
-
 				sp_mat_t ZpSigmaZoT = Z_p * B_inv * D * B_inv.transpose() * Z_o_T;
-
 				sp_mat_t M_aux = ZpSigmaZoT * ZoSigmaZoT_plusI_Inv;
-
 				mean_pred_id = M_aux * y_[cluster_i];
-
 				sp_mat_t Identity_pred(num_data_pred_cli, num_data_pred_cli);
 				Identity_pred.setIdentity();
 				cov_mat_pred_id = T_mat(Z_p * B_inv * D * B_inv.transpose() * Z_p.transpose() + Identity_pred - M_aux * ZpSigmaZoT.transpose());

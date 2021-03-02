@@ -151,8 +151,6 @@ namespace GPBoost {
 		vec_t cov_pars_;
 		/*! \brief Indices that indicate to which random effect every data point is related (random_effects_indices_of_data_[i] is the random effect for observation number i) */
 		std::vector<data_size_t> random_effects_indices_of_data_;
-		/*! \brief Indicates whether the random effect component has random_effects_indices_of_data_ and duplicates (in coords_ and group_data_) have been dropped */
-		bool has_random_effects_indices_of_data_duplicates_dropped_ = false;
 
 		template<typename T_mat, typename t_chol>
 		friend class REModelTemplate;
@@ -172,14 +170,13 @@ namespace GPBoost {
 		/*!
 		* \brief Constructor without random coefficient data
 		* \param group_data Group data: factorial variable between 1 and the number of different groups
-		* \param num_data Number of data points
 		* \param calculateZZt If true, the matrix Z*Z^T is calculated and saved (not needed if Woodbury identity is used)
-		* \param save_random_effects_indices_of_data_and_no_Z If true a vector random_effects_indices_of_data_, which relates random effects b to samples Zb, is used (the matrix Z_ is then not constructed)
-		*           save_random_effects_indices_of_data_and_no_Z = true is currently only used when doing calculations on the random effects scale b and not on the "data scale" Zb for non-Gaussian data
+		* \param save_Z If true, the matrix Z_ is constructed and saved
 		*/
 		RECompGroup(std::vector<re_group_t>& group_data,
 			bool calculateZZt,
-			bool save_random_effects_indices_of_data_and_no_Z) {
+			bool save_Z) {
+			has_Z_ = save_Z;
 			this->num_data_ = (data_size_t)group_data.size();
 			this->is_rand_coef_ = false;
 			this->num_cov_par_ = 1;
@@ -191,16 +188,12 @@ namespace GPBoost {
 					num_group_ += 1;
 				}
 			}
-			if (save_random_effects_indices_of_data_and_no_Z) {
-				this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
+			this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < this->num_data_; ++i) {
-					this->random_effects_indices_of_data_[i] = map_group_label_index[group_data[i]];
-				}
-				has_random_effects_indices_of_data_duplicates_dropped_ = true;
-				has_Z_ = false;
+			for (int i = 0; i < this->num_data_; ++i) {
+				this->random_effects_indices_of_data_[i] = map_group_label_index[group_data[i]];
 			}
-			else {
+			if(save_Z){
 				// Create incidence matrix Z
 				this->Z_.resize(this->num_data_, num_group_);
 				std::vector<Triplet_t> triplets(this->num_data_);
@@ -215,9 +208,6 @@ namespace GPBoost {
 				//for (int i = 0; i < this->num_data_; ++i) {
 				//	this->Z_.insert(i, map_group_label_index[group_data[i]]) = 1.;
 				//}
-				has_random_effects_indices_of_data_duplicates_dropped_ = false;
-				has_Z_ = true;
-				group_data_ = std::make_shared<std::vector<re_group_t>>(group_data);
 			}
 			if (calculateZZt) {
 				ConstructZZt<T_mat>();
@@ -232,14 +222,15 @@ namespace GPBoost {
 		* \param rand_coef_data Covariate data for varying coefficients
 		* \param calculateZZt If true, the matrix Z*Z^T is calculated and saved (not needed if Woodbury identity is used)
 		*/
-		RECompGroup(std::shared_ptr<std::vector<re_group_t>> group_data,
+		RECompGroup(const data_size_t* random_effects_indices_of_data,
+			const data_size_t num_data,
 			std::shared_ptr<std::map<re_group_t, int>> map_group_label_index,
 			data_size_t num_group,
 			std::vector<double>& rand_coef_data,
 			bool calculateZZt) {
-			this->num_data_ = (data_size_t)(*group_data).size();
+			this->num_data_ = num_data;
 			num_group_ = num_group;
-			group_data_ = group_data;
+			//group_data_ = group_data;
 			map_group_label_index_ = map_group_label_index;
 			this->rand_coef_data_ = rand_coef_data;
 			this->is_rand_coef_ = true;
@@ -248,14 +239,13 @@ namespace GPBoost {
 			std::vector<Triplet_t> triplets(this->num_data_);
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < this->num_data_; ++i) {
-				triplets[i] = Triplet_t(i, (*map_group_label_index_)[(*group_data_)[i]], this->rand_coef_data_[i]);
+				triplets[i] = Triplet_t(i, random_effects_indices_of_data[i], this->rand_coef_data_[i]);
 			}
 			this->Z_.setFromTriplets(triplets.begin(), triplets.end());
 			//// Alternative version: inserting elements directly (see constructor above)
 			//for (int i = 0; i < this->num_data_; ++i) {
 			//	this->Z_.insert(i, (*map_group_label_index_)[(*group_data_)[i]]) = this->rand_coef_data_[i];
 			//}
-			has_random_effects_indices_of_data_duplicates_dropped_ = false;
 			has_Z_ = true;
 			if (calculateZZt) {
 				ConstructZZt<T_mat>();
@@ -357,18 +347,56 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate covariance matrices needed for prediction
+		* \brief Calculate and add covariance matrices from this component for prediction
 		* \param group_data_pred Group data for predictions
-		* \param[out] pred_mats Add covariance matrices from this component to this parameter which contains covariance matrices needed for making predictions in the following order: 
-		*				0. Ztilde*Sigma*Z^T, 1. Zstar*Sigmatilde^T*Z^T (=0 for grouped RE), 2. Ztilde*Sigma*Ztilde^T, 3. Ztilde*Sigmatilde*Zstar^T (=0 for grouped RE), 4. Zstar*Sigmastar*Zstar^T.
-		*				Note: Ztilde relates existing random effects to predictions and Zstar relates new / unobserved random effects to predictions
+		* \param[out] cross_cov Cross covariance between prediction and observation points 
+		* \param[out] uncond_pred_cov Unconditional covariance for prediction points (used only if predict_cov_mat==true)
 		* \param predict_cov_mat If true, all matrices are calculated. If false only Ztilde*Sigma*Z^T required for the conditional mean is calculated
-		* \param rand_coef_data_pred Covariate data for varying coefficients
+		* \param dont_add_but_overwrite If true, the matrices are not added but overwritten. If false, the matrices are added to cross_cov and uncond_pred_cov
+		* \param data_duplicates_dropped_for_prediction If true, duplicate groups in group_data (of training data) are dropped for creating prediction matrices (they are added again in re_model_template)
+		* \param rand_coef_data_pred Covariate data for varying coefficients (can be nullptr if this is not a random coefficient)
 		*/
-		void AddPredCovMatrices(const std::vector<re_group_t>& group_data_pred, std::vector<T_mat>& pred_mats,
-			bool predict_cov_mat = false, double* rand_coef_data_pred = nullptr) {
+		void AddPredCovMatrices(const std::vector<re_group_t>& group_data_pred,
+			T_mat& cross_cov,
+			T_mat& uncond_pred_cov,
+			bool predict_cov_mat,
+			bool dont_add_but_overwrite,
+			bool data_duplicates_dropped_for_prediction,
+			double* rand_coef_data_pred) {
 			int num_data_pred = (int)group_data_pred.size();
-			if (has_Z_) {
+			if (data_duplicates_dropped_for_prediction) {
+				T_mat ZtildeZT(num_data_pred, num_group_);
+				ZtildeZT.setZero();
+				for (int i = 0; i < num_data_pred; ++i) {
+					if (map_group_label_index_->find(group_data_pred[i]) != map_group_label_index_->end()) {//Group level 'group_data_pred[i]' exists in observed data
+						ZtildeZT.coeffRef(i, (*map_group_label_index_)[group_data_pred[i]]) = 1.;
+					}
+				}
+				if (dont_add_but_overwrite) {
+					cross_cov = this->cov_pars_[0] * ZtildeZT;
+				}
+				else {
+					cross_cov += this->cov_pars_[0] * ZtildeZT;
+				}
+				if (predict_cov_mat) {
+					T_mat ZstarZstarT(num_data_pred, num_data_pred);
+					ZstarZstarT.setZero();
+					T_mat ZtildeZtildeT(num_data_pred, num_data_pred);
+					ZtildeZtildeT.setZero();
+					for (int i = 0; i < num_data_pred; ++i) {
+						if (map_group_label_index_->find(group_data_pred[i]) == map_group_label_index_->end()) {
+							ZstarZstarT.coeffRef(i, i) = 1.;
+						}
+						else {
+							ZtildeZtildeT.coeffRef(i, i) = 1.;
+						}
+					}
+					uncond_pred_cov += (this->cov_pars_[0] * ZtildeZtildeT);
+					uncond_pred_cov += (this->cov_pars_[0] * ZstarZstarT);
+				}//end predict_cov_mat
+			}//end data_duplicates_dropped_for_prediction
+			else if (has_Z_) {
+				//Note: Ztilde relates existing random effects to predictionsand Zstar relates new / unobserved random effects to predictions
 				sp_mat_t Ztilde(num_data_pred, num_group_);
 				Ztilde.setZero();
 				for (int i = 0; i < num_data_pred; ++i) {
@@ -381,10 +409,15 @@ namespace GPBoost {
 						}
 					}
 				}
-				T_mat ZtildeZT;
-				CalculateZ1Z2T<T_mat>(Ztilde, this->Z_, ZtildeZT);
-				pred_mats[0] += (this->cov_pars_[0] * ZtildeZT);
-
+				if (dont_add_but_overwrite) {
+					CalculateZ1Z2T<T_mat>(Ztilde, this->Z_, cross_cov);
+					cross_cov *= this->cov_pars_[0];
+				}
+				else {
+					T_mat ZtildeZT;
+					CalculateZ1Z2T<T_mat>(Ztilde, this->Z_, ZtildeZT);
+					cross_cov += (this->cov_pars_[0] * ZtildeZT);
+				}
 				if (predict_cov_mat) {
 					//Count number of new group levels (i.e. group levels not in observed data)
 					int num_group_pred_new = 0;
@@ -412,40 +445,14 @@ namespace GPBoost {
 					}
 					T_mat ZtildeZtildeT;
 					CalculateZ1Z2T<T_mat>(Ztilde, Ztilde, ZtildeZtildeT);
-					pred_mats[2] += (this->cov_pars_[0] * ZtildeZtildeT);
+					uncond_pred_cov += (this->cov_pars_[0] * ZtildeZtildeT);
 					T_mat ZstarZstarT;
 					CalculateZ1Z2T<T_mat>(Zstar, Zstar, ZstarZstarT);
-					pred_mats[4] += (this->cov_pars_[0] * ZstarZstarT);
+					uncond_pred_cov += (this->cov_pars_[0] * ZstarZstarT);
 				}//end predict_cov_mat
 			}//end has_Z_
-			else if (has_random_effects_indices_of_data_duplicates_dropped_) {
-				T_mat ZtildeZT(num_data_pred, num_group_);
-				ZtildeZT.setZero();
-				for (int i = 0; i < num_data_pred; ++i) {
-					if (map_group_label_index_->find(group_data_pred[i]) != map_group_label_index_->end()) {//Group level 'group_data_pred[i]' exists in observed data
-						ZtildeZT.coeffRef(i, (*map_group_label_index_)[group_data_pred[i]]) = 1.;
-					}
-				}
-				pred_mats[0] += (this->cov_pars_[0] * ZtildeZT);
-				if (predict_cov_mat) {
-					T_mat ZstarZstarT(num_data_pred, num_data_pred);
-					ZstarZstarT.setZero();
-					T_mat ZtildeZtildeT(num_data_pred, num_data_pred);
-					ZtildeZtildeT.setZero();
-					for (int i = 0; i < num_data_pred; ++i) {
-						if (map_group_label_index_->find(group_data_pred[i]) == map_group_label_index_->end()) {
-							ZstarZstarT.coeffRef(i, i) = 1.;
-						}
-						else {
-							ZtildeZtildeT.coeffRef(i, i) = 1.;
-						}
-					}
-					pred_mats[2] += (this->cov_pars_[0] * ZtildeZtildeT);
-					pred_mats[4] += (this->cov_pars_[0] * ZstarZstarT);
-				}//end predict_cov_mat
-			}
 			else {
-				Log::REFatal("Need to have either 'Z_' or 'random_effects_indices_of_data_' for calling 'AddPredCovMatrices'");
+				Log::REFatal("Need to have either 'Z_' or enable 'data_duplicates_dropped_for_prediction' for calling 'AddPredCovMatrices'");
 			}
 		}
 
@@ -463,8 +470,6 @@ namespace GPBoost {
 	private:
 		/*! \brief Number of groups */
 		data_size_t num_group_;
-		/*! \brief Group labels / levels */
-		std::shared_ptr<std::vector<re_group_t>> group_data_;
 		/*! \brief Keys: Group labels, values: index number (integer value) for every group level. I.e., maps string labels to numbers */
 		std::shared_ptr<std::map<re_group_t, int>> map_group_label_index_;
 		/*! \brief Matrix Z*Z^T */
@@ -476,12 +481,10 @@ namespace GPBoost {
 			if (has_Z_) {
 				ZZt_ = this->Z_ * this->Z_.transpose();
 			}
-			else if (has_random_effects_indices_of_data_duplicates_dropped_){
+			else {
 				ZZt_ = T_mat(num_group_, num_group_);
 				ZZt_.setIdentity();
-			}
-			else {
-				Log::REFatal("Need to have either 'Z_' or 'random_effects_indices_of_data_' for constructing 'ZZt'");
+				//Note: If has_Z_==false, ZZt_ is only used for making predictiosn of new independet clusters when only_one_grouped_RE_calculations_on_RE_scale_==true
 			}
 		}
 
@@ -491,12 +494,10 @@ namespace GPBoost {
 			if (has_Z_) {
 				ZZt_ = den_mat_t(this->Z_ * this->Z_.transpose());
 			}
-			else if (has_random_effects_indices_of_data_duplicates_dropped_) {
+			else {
 				ZZt_ = T_mat(num_group_, num_group_);
 				ZZt_.setIdentity();
-			}
-			else {
-				Log::REFatal("Need to have either 'Z_' or 'random_effects_indices_of_data_' for constructing 'ZZt'");
+				//Note: If has_Z_==false, ZZt_ is only used for making predictiosn of new independet clusters when only_one_grouped_RE_calculations_on_RE_scale_==true
 			}
 		}
 
@@ -521,23 +522,6 @@ namespace GPBoost {
 		void CalculateZ1Z2T(sp_mat_t& Z1, sp_mat_t& Z2, T3& Z1Z2T) {
 			Z1Z2T = den_mat_t(Z1 * Z2.transpose());
 		}
-
-		///*! \brief Constructs the matrix Z_ if sparse matrices are used */
-		//template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type* = nullptr  >
-		//void ConstructZ() {
-		//	std::vector<Triplet_t> entries;
-		//	for (int i = 0; i < num_data_; ++i) {
-		//		entries.push_back(Triplet_t(i, group_data_[i] - 1, 1.));
-		//	}
-		//	Z_.setFromTriplets(entries.begin(), entries.end());
-		//}
-		///*! \brief Constructs the matrix Z_ if dense matrices are used */
-		//template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type* = nullptr  >
-		//void ConstructZ() {
-		//	for (int i = 0; i < num_data_; ++i) {
-		//		Z_(i, group_data_[i] - 1) = 1.;
-		//	}
-		//}
 
 		template<typename T_mat, typename t_chol>
 		friend class REModelTemplate;
@@ -884,17 +868,22 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate covariance matrices needed for prediction
+		* \brief Calculate and add covariance matrices from this component for prediction
 		* \param coords Coordinates for observed data
 		* \param coords_pred Coordinates for predictions
-		* \param[out] pred_mats Add covariance matrices from this component to this parameter which contains covariance matrices needed for making predictions in the following order: 
-		*				0. Ztilde*Sigma*Z^T, 1. Zstar*Sigmatilde^T*Z^T (=0 for grouped RE), 2. Ztilde*Sigma*Ztilde^T, 3. Ztilde*Sigmatilde*Zstar^T (=0 for grouped RE), 4. Zstar*Sigmastar*Zstar^T.
-		*				Note: Ztilde relates existing random effects to predictions and Zstar relates new / unobserved random effects to predictions
+		* \param[out] cross_cov Cross covariance between prediction and observation points
+		* \param[out] uncond_pred_cov Unconditional covariance for prediction points (used only if predict_cov_mat==true)
 		* \param predict_cov_mat If true, all matrices are calculated. If false only Ztilde*Sigma*Z^T required for the conditional mean is calculated
-		* \param rand_coef_data_pred Covariate data for varying coefficients
+		* \param dont_add_but_overwrite If true, the matrices are not added but overwritten
+		* \param rand_coef_data_pred Covariate data for varying coefficients (can be nullptr if this is not a random coefficient)
 		*/
-		void AddPredCovMatrices(const den_mat_t& coords, const den_mat_t& coords_pred, std::vector<T_mat>& pred_mats,
-			bool predict_cov_mat = false, double* rand_coef_data_pred = nullptr) {
+		void AddPredCovMatrices(const den_mat_t& coords,
+			const den_mat_t& coords_pred,
+			T_mat& cross_cov,
+			T_mat& uncond_pred_cov,
+			bool predict_cov_mat,
+			bool dont_add_but_overwrite,
+			double* rand_coef_data_pred) {
 			int num_data_pred = (int)coords_pred.rows();
 			std::vector<int>  uniques_pred;//unique points
 			std::vector<int>  unique_idx_pred;//used for constructing incidence matrix Z_ if there are duplicates
@@ -905,6 +894,7 @@ namespace GPBoost {
 			den_mat_t coords_pred_unique;
 			//Create matrix Zstar
 			if (has_Zstar) {
+				// Note: Ztilde relates existing random effects to predictions and Zstar relates new / unobserved random effects to predictions
 				Zstar = sp_mat_t(num_data_pred, uniques_pred.size());
 				Zstar.setZero();
 			}
@@ -951,7 +941,12 @@ namespace GPBoost {
 			else { //no Zstar and no Z_
 				(*cov_function_).template GetCovMat<T_mat>(cross_dist, this->cov_pars_, ZstarSigmatildeTZT);
 			}
-			pred_mats[1] += ZstarSigmatildeTZT;
+			if (dont_add_but_overwrite) {
+				cross_cov = ZstarSigmatildeTZT;
+			}
+			else {
+				cross_cov += ZstarSigmatildeTZT;
+			}
 
 			if (predict_cov_mat) {
 				den_mat_t dist;
@@ -965,7 +960,7 @@ namespace GPBoost {
 				else {
 					(*cov_function_).template GetCovMat<T_mat>(dist, this->cov_pars_, ZstarSigmastarZstarT);
 				}
-				pred_mats[4] += ZstarSigmastarZstarT;
+				uncond_pred_cov += ZstarSigmastarZstarT;
 			}
 		}
 
@@ -990,6 +985,8 @@ namespace GPBoost {
 		bool sigma_defined_ = false;
 		/*! \brief Number of random effects (usually, number of unique random effects except for the Vecchia approximation where unique locations are not separately modelled) */
 		data_size_t num_random_effects_;
+		/*! \brief Indicates whether the random effect component has random_effects_indices_of_data_ and duplicates in coords_ have been dropped */
+		bool has_random_effects_indices_of_data_duplicates_dropped_ = false;
 
 		template<typename T_mat, typename t_chol>
 		friend class REModelTemplate;

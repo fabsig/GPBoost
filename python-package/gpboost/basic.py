@@ -4715,6 +4715,7 @@ class GPModel(object):
         else:
             if not self.prediction_data_is_set:
                 raise ValueError("No data has been set for making predictions. Call set_prediction_data first")
+            num_data_pred = self.num_data_pred
 
         fixed_effects_c = ctypes.c_void_p()
         fixed_effects_pred_c = ctypes.c_void_p()
