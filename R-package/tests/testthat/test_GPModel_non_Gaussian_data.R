@@ -199,6 +199,19 @@ test_that("Binary classification with Gaussian process model with multiple obser
   expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.4263502, 0.4263502))),1E-6)
   expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2445757, 0.2445757))),1E-6)
   
+  # Multiple cluster IDs and multiple observations
+  coord_test <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
+  cluster_ids_pred = c(0L,3L,3L)
+  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test, cluster_ids_pred = cluster_ids_pred,
+                           cov_pars = c(1.5,0.15), predict_cov_mat = TRUE, predict_response = FALSE)
+  expected_cov <- c(0.9561355, 0.0000000, 0.0000000, 0.0000000, 1.5000000,
+                    1.5000000, 0.0000000, 1.5000000, 1.5000000)
+  expect_lt(sum(abs(pred$mu-c(-0.2633282, rep(0,2)))),1E-6)
+  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+  pred_resp <- gp_model$predict(y = y, gp_coords_pred = coord_test, cluster_ids_pred = cluster_ids_pred,
+                           cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = TRUE)
+  expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.5000000, 0.5000000))),1E-6)
+  expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2500000, 0.2500000))),1E-6)
 })
 
 # Avoid that long tests get executed on CRAN
@@ -263,11 +276,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-rep(0.5,4))),1E-6)
     # Prediction for only new cluster_ids
     cluster_ids_pred <- c(-1L,-1L,-2L,-2L)
-    group_test <- c(1,3,3,9999)
+    group_test <- c(1,99999,3,3)
     pred <- predict(gp_model, y=y, group_data_pred = group_test, cluster_ids_pred = cluster_ids_pred,
                     predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-rep(0,4))),1E-6)
-    expect_lt(sum(abs(pred$var-rep(0,0.4070775))),1E-6)
+    expect_lt(sum(abs(pred$var-rep(0.4070775,4))),1E-6)
     pred <- predict(gp_model, y=y, group_data_pred = group_test, cluster_ids_pred = cluster_ids_pred,
                     predict_response = TRUE)
     expect_lt(sum(abs(pred$mu-rep(0.5,4))),1E-6)
