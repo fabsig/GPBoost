@@ -611,7 +611,7 @@ def _format_check_data(data, get_variable_names=False, data_name="data", check_d
 def _format_check_1D_data(data, data_name="data", check_data_type=True, check_must_be_int=False, convert_to_type=None):
     if not isinstance(data, (np.ndarray, pd_Series, pd_DataFrame)) and not is_1d_list(data):
         raise ValueError(
-            data_name + " needs to be either of type pandas.DataFrame, pandas.Series, numpy.ndarray or a 1-D list")
+            data_name + " needs to be either 1-D pandas.DataFrame, pandas.Series, numpy.ndarray or a 1-D list")
     if not isinstance(data, list):
         if len(data.shape) != 1 or data.shape[0] < 1:
             raise ValueError(data_name + " needs to be 1 dimensional and it must be non empty ")

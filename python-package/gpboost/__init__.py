@@ -6,7 +6,7 @@
 from .basic import Booster, Dataset, register_logger, GPModel
 from .callback import (early_stopping, print_evaluation, record_evaluation,
                        reset_parameter)
-from .engine import cv, train, CVBooster
+from .engine import cv, train, CVBooster, grid_search_tune_parameters
 
 import os
 
@@ -29,7 +29,7 @@ if os.path.isfile(os.path.join(dir_path, 'VERSION.txt')):
 
 __all__ = ['Dataset', 'Booster', 'CVBooster',
            'register_logger',
-           'train', 'cv',
+           'train', 'cv', 'grid_search_tune_parameters',
            'GPBoostModel', 'GPBoostRegressor', 'GPBoostClassifier', 'GPBoostRanker',
            'print_evaluation', 'record_evaluation', 'reset_parameter', 'early_stopping',
            'plot_importance', 'plot_split_value_histogram', 'plot_metric', 'plot_tree', 'create_tree_digraph']

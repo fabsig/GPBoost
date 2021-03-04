@@ -13,8 +13,8 @@ from operator import attrgetter
 import numpy as np
 
 from . import callback
-from .basic import Booster, Dataset, GPBoostError, _ConfigAliases, _InnerPredictor, _log_warning, GPModel
-from .compat import SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFold
+from .basic import Booster, Dataset, GPBoostError, _ConfigAliases, _InnerPredictor, _log_warning, GPModel, _format_check_1D_data, is_numeric, is_1d_list, _get_bad_pandas_dtypes, _get_bad_pandas_dtypes_int
+from .compat import SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFold, pd_Series, is_dtype_sparse, pd_DataFrame
 
 
 def train(params, train_set, num_boost_round=100,
@@ -189,9 +189,9 @@ def train(params, train_set, num_boost_round=100,
         raise TypeError("Training only accepts Dataset object")
 
     train_set._update_params(params) \
-             ._set_predictor(predictor) \
-             .set_feature_name(feature_name) \
-             .set_categorical_feature(categorical_feature)
+        ._set_predictor(predictor) \
+        .set_feature_name(feature_name) \
+        .set_categorical_feature(categorical_feature)
 
     is_valid_contain_train = False
     train_data_name = "training"
@@ -227,7 +227,8 @@ def train(params, train_set, num_boost_round=100,
                              "developer of this package or open a GitHub issue.")
         if use_gp_model_for_validation and len(reduced_valid_sets) > 1:
             raise ValueError("Can use only one validation set when use_gp_model_for_validation = True")
-        if not is_valid_contain_train and use_gp_model_for_validation and len(reduced_valid_sets) > 0 and not gp_model.prediction_data_is_set:
+        if not is_valid_contain_train and use_gp_model_for_validation and len(
+                reduced_valid_sets) > 0 and not gp_model.prediction_data_is_set:
             raise ValueError("Prediction data for gp_model has not been set. Call gp_model.set_prediction_data() first")
         # update gp_model related parameters
         params['use_gp_model_for_validation'] = use_gp_model_for_validation
@@ -349,12 +350,14 @@ class CVBooster:
 
     def __getattr__(self, name):
         """Redirect methods call of CVBooster."""
+
         def handler_function(*args, **kwargs):
             """Call methods with each booster, and concatenate their results."""
             ret = []
             for booster in self.boosters:
                 ret.append(getattr(booster, name)(*args, **kwargs))
             return ret
+
         return handler_function
 
 
@@ -404,7 +407,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
     ret = CVBooster()
     for train_idx, test_idx in folds:
         train_set = full_data.subset(sorted(train_idx))
-        if full_data.free_raw_data:#NEW
+        if full_data.free_raw_data:  # NEW
             valid_set = full_data.subset(sorted(test_idx))
         else:
             valid_set = full_data.subset(sorted(test_idx), reference=train_set)
@@ -472,10 +475,11 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                                    gp_rand_coef_data_pred=gp_rand_coef_data_pred,
                                                    cluster_ids_pred=cluster_ids_pred)
             cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
-            gp_model.set_likelihood(gp_model_train.get_likelihood_name()) # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
+            gp_model.set_likelihood(
+                gp_model_train.get_likelihood_name())  # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
             gp_model_train.set_optim_params(params=gp_model.get_optim_params())
             gp_model_train.set_optim_coef_params(params=gp_model.get_optim_params())
-        else: # no gp_model
+        else:  # no gp_model
             cvbooster = Booster(tparam, train_set)
         if eval_train_metric:
             cvbooster.add_valid(train_set, 'train')
@@ -642,7 +646,7 @@ def cv(params, train_set, num_boost_round=100,
         ...}.
         If ``return_cvbooster=True``, also returns trained boosters via ``cvbooster`` key.
     """
-    if train_set.free_raw_data:#NEW
+    if train_set.free_raw_data:  # NEW
         _log_warning('For true out-of-sample (cross-) validation, it is recommended to set free_raw_data = False '
                      'when constructing the Dataset')
     if fit_GP_cov_pars_OOS:
@@ -695,9 +699,9 @@ def cv(params, train_set, num_boost_round=100,
         params['metric'] = metrics
 
     train_set._update_params(params) \
-             ._set_predictor(predictor) \
-             .set_feature_name(feature_name) \
-             .set_categorical_feature(categorical_feature)
+        ._set_predictor(predictor) \
+        .set_feature_name(feature_name) \
+        .set_categorical_feature(categorical_feature)
 
     results = collections.defaultdict(list)
     cvfolds = _make_n_folds(train_set, folds=folds, nfold=nfold,
@@ -756,3 +760,217 @@ def cv(params, train_set, num_boost_round=100,
         results['cvbooster'] = cvfolds
 
     return dict(results)
+
+
+def get_grid_size(param_grid):
+    dim = 1
+    for param in param_grid:
+        dim = dim * len(param_grid[param])
+    return (dim)
+
+
+def get_param_combination(param_comb_number, param_grid):
+    param_comb = {}
+    nk = param_comb_number
+    for param in param_grid:
+        ind_p = int(nk % len(param_grid[param]))
+        param_comb[param] = param_grid[param][ind_p]
+        nk = (nk - ind_p) / len(param_grid[param])
+    return (param_comb)
+
+
+def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_random=None,
+                                num_boost_round=100, gp_model=None,
+                                use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
+                                folds=None, nfold=5, stratified=False, shuffle=True,
+                                metrics=None, fobj=None, feval=None, init_model=None,
+                                feature_name='auto', categorical_feature='auto',
+                                early_stopping_rounds=None, fpreproc=None,
+                                verbose_eval=None, seed=0, callbacks=None):
+    """Choose tuning parameters from a grid in a determinstic or random way.
+
+    Parameters
+    ----------
+    param_grid : dict
+        Candidate parameters defining the grid over which a search is done.
+    train_set : Dataset
+        Data to be trained on.
+    params : dict, optional (default=None)
+        Other parameters not included in param_grid for Booster.
+    num_try_random : int, optional (default=None)
+        Number of random trial on parameter grid. If none, a deterministic search is done
+    num_boost_round : int, optional (default=100)
+        Number of boosting iterations.
+    gp_model : GPModel or None, optional (default=None)
+        GPModel object for the GPBoost algorithm
+    use_gp_model_for_validation : bool, optional (default=True)
+        If True, the gp_model (Gaussian process and/or random effects) is also used (in addition to the tree model)
+        for calculating predictions on the validation data
+    train_gp_model_cov_pars : bool, optional (default=True)
+        If True, the covariance parameters of the gp_model (Gaussian process and/or random effects) are estimated
+        in every boosting iterations, otherwise the gp_model parameters are not estimated. In the latter case, you
+        need to either estimate them beforehand or provide the values via the 'init_cov_pars' parameter when creating
+        the gp_model
+    folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
+        If generator or iterator, it should yield the train and test indices for each fold.
+        If object, it should be one of the scikit-learn splitter classes
+        (https://scikit-learn.org/stable/modules/classes.html#splitter-classes)
+        and have ``split`` method.
+        This argument has highest priority over other data split arguments.
+    nfold : int, optional (default=5)
+        Number of folds in CV.
+    stratified : bool, optional (default=False)
+        Whether to perform stratified sampling.
+    shuffle : bool, optional (default=True)
+        Whether to shuffle before splitting data.
+    metrics : string, list of strings or None, optional (default=None)
+        Evaluation metrics. If more than one metric is provided, only the first metric will be used to choose tuning parameters
+        If not None, the metric in ``params`` will be overridden.
+    fobj : callable or None, optional (default=None)
+        Customized objective function.
+        Should accept two parameters: preds, train_data,
+        and return (grad, hess).
+
+            preds : list or numpy 1-D array
+                The predicted values.
+            train_data : Dataset
+                The training dataset.
+            grad : list or numpy 1-D array
+                The value of the first order derivative (gradient) for each sample point.
+            hess : list or numpy 1-D array
+                The value of the second order derivative (Hessian) for each sample point.
+
+        For binary task, the preds is margin.
+        For multi-class task, the preds is group by class_id first, then group by row_id.
+        If you want to get i-th row preds in j-th class, the access way is score[j * num_data + i]
+        and you should group grad and hess in this way as well.
+
+    feval : callable, list of callable functions or None, optional (default=None)
+        Customized evaluation function.
+        If more than one evaluation function is provided, only the first evaluation function will be used to choose tuning parameters
+        Each evaluation function should accept two parameters: preds, train_data,
+        and return (eval_name, eval_result, is_higher_better) or list of such tuples.
+
+            preds : list or numpy 1-D array
+                The predicted values.
+            train_data : Dataset
+                The training dataset.
+            eval_name : string
+                The name of evaluation function (without whitespaces).
+            eval_result : float
+                The eval result.
+            is_higher_better : bool
+                Is eval result higher better, e.g. AUC is ``is_higher_better``.
+
+        For binary task, the preds is probability of positive class (or margin in case of specified ``fobj``).
+        For multi-class task, the preds is group by class_id first, then group by row_id.
+        If you want to get i-th row preds in j-th class, the access way is preds[j * num_data + i].
+        To ignore the default metric corresponding to the used objective,
+        set ``metrics`` to the string ``"None"``.
+    init_model : string, Booster or None, optional (default=None)
+        Filename of GPBoost model or Booster instance used for continue training.
+    feature_name : list of strings or 'auto', optional (default="auto")
+        Feature names.
+        If 'auto' and data is pandas DataFrame, data columns names are used.
+    categorical_feature : list of strings or int, or 'auto', optional (default="auto")
+        Categorical features.
+        If list of int, interpreted as indices.
+        If list of strings, interpreted as feature names (need to specify ``feature_name`` as well).
+        If 'auto' and data is pandas DataFrame, pandas unordered categorical columns are used.
+        All values in categorical features should be less than int32 max value (2147483647).
+        Large values could be memory consuming. Consider using consecutive integers starting from zero.
+        All negative values in categorical features will be treated as missing values.
+        The output cannot be monotonically constrained with respect to a categorical feature.
+    early_stopping_rounds : int or None, optional (default=None)
+        Activates early stopping.
+        CV score needs to improve at least every ``early_stopping_rounds`` round(s)
+        to continue.
+        Requires at least one metric. If there's more than one, will check all of them.
+        To check only the first metric, set the ``first_metric_only`` parameter to ``True`` in ``params``.
+        Last entry in evaluation history is the one from the best iteration.
+    fpreproc : callable or None, optional (default=None)
+        Preprocessing function that takes (dtrain, dtest, params)
+        and returns transformed versions of those.
+    verbose_eval : int or None, optional (default=None)
+        Whether to display information on the progress of tuning parameter choice.
+        If None or 0, verbose is of.
+        If = 1, summary progress information is displayed for every parameter combination.
+        If >= 2, detailed progress is displayed at every boosting stage for every parameter combination.
+    seed : int, optional (default=0)
+        Seed used to generate folds and random grid search (passed to numpy.random.seed).
+    callbacks : list of callables or None, optional (default=None)
+        List of callback functions that are applied at each iteration.
+        See Callbacks in Python API for more information.
+
+    Returns
+    -------
+
+    TODO
+
+    eval_hist : dict
+        Dictionary with best parameter combination and score
+        The dictionary has the following format:
+        {'best_param': best_param, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+    """
+    # Check correct format
+    if not isinstance(param_grid, dict):
+        raise ValueError("param_grid needs to be a dict")
+    if verbose_eval is None:
+        verbose_eval = 0
+    else:
+        if not isinstance(verbose_eval, int):
+            raise ValueError("verbose_eval needs to be int")
+    if params is None:
+        params = {}
+    else:
+        params = copy.deepcopy(params)
+    param_grid = copy.deepcopy(param_grid)
+    for param in param_grid:
+        if is_numeric(param_grid[param]):
+            param_grid[param] = [param_grid[param]]
+        param_grid[param] = _format_check_1D_data(param_grid[param],
+                                                  data_name=param, check_data_type=False,
+                                                  check_must_be_int=False, convert_to_type=None)
+    # Determine combinations of parameter values that should be tried out
+    grid_size = get_grid_size(param_grid)
+    if num_try_random is not None:
+        if num_try_random > grid_size:
+            raise ValueError("num_try_random is larger than the combination of all parameters")
+        try_param_combs = np.random.RandomState(seed).choice(a=grid_size, size=num_try_random, replace=False)
+        print("Starting random grid search with " + str(num_try_random) + " trials out of " + str(
+            grid_size) + " parameter combinations ...")
+    else:
+        try_param_combs = range(grid_size)
+        print("Starting deterministic grid search with " + str(grid_size) + " parameter combinations ...")
+    if verbose_eval < 2:
+        verbose_eval_cv = False
+    else:
+        verbose_eval_cv = True
+    best_score = 1e99
+    best_param = {}
+    best_num_boost_round = num_boost_round
+    counter_num_comb = 1
+    for param_comb_number in try_param_combs:
+        param_comb = get_param_combination(param_comb_number=param_comb_number, param_grid=param_grid)
+        for param in param_comb:
+            params[param] = param_comb[param]
+        if verbose_eval >= 1:
+            print("Trying parameter combination number " + str(counter_num_comb) +
+                  " of " + str(len(try_param_combs)) + " parameter combinations")
+        cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round,
+                   gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
+                   train_gp_model_cov_pars=train_gp_model_cov_pars,
+                   folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,
+                   metrics=metrics, fobj=fobj, feval=feval, init_model=init_model,
+                   feature_name=feature_name, categorical_feature=categorical_feature,
+                   early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
+                   verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks)
+        if np.min(cvbst[next(iter(cvbst))]) < best_score:
+            best_score = np.min(cvbst[next(iter(cvbst))])
+            best_param = param_comb
+            best_num_boost_round = np.argmin(cvbst[next(iter(cvbst))])
+            if verbose_eval >= 1:
+                print("***** New best score (" + str(best_score) + ") found for the following parameter combination:")
+                print(best_param)
+        counter_num_comb = counter_num_comb + 1
+    return {'best_param': best_param, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
