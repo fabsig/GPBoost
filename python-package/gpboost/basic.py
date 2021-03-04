@@ -3801,7 +3801,12 @@ class Booster:
 
 
 class GPModel(object):
-    """Gaussian process or mixed effects model ."""
+    """
+    Gaussian process or mixed effects model.
+
+    :Authors:
+        Fabio Sigrist
+    """
 
     _SUPPORTED_COV_FUNCTIONS = ("exponential", "gaussian", "powered_exponential", "matern")
     _SUPPORTED_VECCHIA_ORDERING = ("none", "random")

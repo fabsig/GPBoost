@@ -904,13 +904,13 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
 
     Returns
     -------
-
-    TODO
-
-    eval_hist : dict
+    return : dict
         Dictionary with best parameter combination and score
         The dictionary has the following format:
         {'best_param': best_param, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+
+    :Authors:
+        Fabio Sigrist
     """
     # Check correct format
     if not isinstance(param_grid, dict):
@@ -931,6 +931,16 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         param_grid[param] = _format_check_1D_data(param_grid[param],
                                                   data_name=param, check_data_type=False,
                                                   check_must_be_int=False, convert_to_type=None)
+    higher_better = False
+    if metrics is not None:
+        if isinstance(metrics, str):
+            metrics = [metrics]
+        if metrics[0].startswith(('auc', 'ndcg@', 'map@', 'average_precision')):
+            higher_better = True
+    elif feval is not None:
+        if callable(feval):
+            feval = [feval]
+        PH1, PH2, higher_better = feval[0](np.array([0]), Dataset(np.array([0]), np.array([0])))
     # Determine combinations of parameter values that should be tried out
     grid_size = get_grid_size(param_grid)
     if num_try_random is not None:
@@ -947,6 +957,10 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     else:
         verbose_eval_cv = True
     best_score = 1e99
+    current_score = 1e99
+    if higher_better:
+        best_score = -1e99
+        current_score = -1e99
     best_param = {}
     best_num_boost_round = num_boost_round
     counter_num_comb = 1
@@ -965,12 +979,26 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                    feature_name=feature_name, categorical_feature=categorical_feature,
                    early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
                    verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks)
-        if np.min(cvbst[next(iter(cvbst))]) < best_score:
-            best_score = np.min(cvbst[next(iter(cvbst))])
+        current_score_is_better = False
+        if higher_better:
+            current_score = np.max(cvbst[next(iter(cvbst))])
+            if current_score > best_score:
+                current_score_is_better = True
+        else:
+            current_score = np.min(cvbst[next(iter(cvbst))])
+            if current_score < best_score:
+                current_score_is_better = True
+        if current_score_is_better:
+            best_score = current_score
             best_param = param_comb
-            best_num_boost_round = np.argmin(cvbst[next(iter(cvbst))])
+            if higher_better:
+                best_num_boost_round = np.argmax(cvbst[next(iter(cvbst))])
+            else:
+                best_num_boost_round = np.argmin(cvbst[next(iter(cvbst))])
             if verbose_eval >= 1:
                 print("***** New best score (" + str(best_score) + ") found for the following parameter combination:")
-                print(best_param)
+                best_param_print = copy.deepcopy(best_param)
+                best_param_print['num_boost_round'] = best_num_boost_round
+                print(best_param_print)
         counter_num_comb = counter_num_comb + 1
     return {'best_param': best_param, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
