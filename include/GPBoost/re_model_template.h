@@ -699,7 +699,10 @@ namespace GPBoost {
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
 					Log::REDebug("GPModel parameter optimization iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars[i]); }
-					for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
+					for (int i = 0; i < std::min((int)beta.size(), 10); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
+					if (has_covariates_ && beta.size() > 10) {
+						Log::REDebug("Note: only the first 10 linear regression coefficients are shown");
+					}
 					if (gauss_likelihood_) {
 						Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
 					}
