@@ -1,5 +1,11 @@
 # coding: utf-8
-"""Scikit-learn wrapper interface for GPBoost."""
+"""
+Scikit-learn wrapper interface for GPBoost.
+
+Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+"""
 import copy
 
 from inspect import signature

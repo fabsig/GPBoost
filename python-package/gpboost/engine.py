@@ -1,5 +1,11 @@
 # coding: utf-8
-"""Library with training routines of GPBoost."""
+"""
+Library with training routines of GPBoost.
+
+Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+"""
 import collections
 import copy
 from operator import attrgetter
@@ -398,7 +404,10 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
     ret = CVBooster()
     for train_idx, test_idx in folds:
         train_set = full_data.subset(sorted(train_idx))
-        valid_set = full_data.subset(sorted(test_idx))
+        if full_data.free_raw_data:#NEW
+            valid_set = full_data.subset(sorted(test_idx))
+        else:
+            valid_set = full_data.subset(sorted(test_idx), reference=train_set)
         # run preprocessing on the data set if needed
         if fpreproc is not None:
             train_set, valid_set, tparam = fpreproc(train_set, valid_set, params.copy())
@@ -419,20 +428,20 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             cluster_ids = None
             cluster_ids_pred = None
             if gp_model.group_data is not None:
-                group_data = gp_model.group_data[train_idx, :]
-                group_data_pred = gp_model.group_data[test_idx, :]
+                group_data = gp_model.group_data[train_idx]
+                group_data_pred = gp_model.group_data[test_idx]
                 if gp_model.group_rand_coef_data is not None:
-                    group_rand_coef_data = gp_model.group_rand_coef_data[train_idx, :]
-                    group_rand_coef_data_pred = gp_model.group_rand_coef_data[test_idx, :]
+                    group_rand_coef_data = gp_model.group_rand_coef_data[train_idx]
+                    group_rand_coef_data_pred = gp_model.group_rand_coef_data[test_idx]
             if gp_model.gp_coords is not None:
-                gp_coords = gp_model.gp_coords[train_idx, :]
-                gp_coords_pred = gp_model.gp_coords[test_idx, :]
+                gp_coords = gp_model.gp_coords[train_idx]
+                gp_coords_pred = gp_model.gp_coords[test_idx]
                 if gp_model.gp_rand_coef_data is not None:
-                    gp_rand_coef_data = gp_model.gp_rand_coef_data[train_idx, :]
-                    gp_rand_coef_data_pred = gp_model.gp_rand_coef_data[test_idx, :]
+                    gp_rand_coef_data = gp_model.gp_rand_coef_data[train_idx]
+                    gp_rand_coef_data_pred = gp_model.gp_rand_coef_data[test_idx]
             if gp_model.cluster_ids is not None:
-                cluster_ids = gp_model.cluster_ids[train_idx, :]
-                cluster_ids_pred = gp_model.cluster_ids[test_idx, :]
+                cluster_ids = gp_model.cluster_ids[train_idx]
+                cluster_ids_pred = gp_model.cluster_ids[test_idx]
             vecchia_approx = gp_model.vecchia_approx
             num_neighbors = gp_model.num_neighbors
             vecchia_ordering = gp_model.vecchia_ordering
@@ -633,6 +642,9 @@ def cv(params, train_set, num_boost_round=100,
         ...}.
         If ``return_cvbooster=True``, also returns trained boosters via ``cvbooster`` key.
     """
+    if train_set.free_raw_data:#NEW
+        _log_warning('For true out-of-sample (cross-) validation, it is recommended to set free_raw_data = False '
+                     'when constructing the Dataset')
     if fit_GP_cov_pars_OOS:
         raise ValueError("The GPBoostOOS algorithm (fit_GP_cov_pars_OOS=True) is currently not supported in Python. "
                          "If you need this feature, contact the developer of this package or open a GitHub issue.")

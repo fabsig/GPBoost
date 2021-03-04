@@ -1,5 +1,11 @@
 # coding: utf-8
-"""Wrapper for C API of GPBoost."""
+"""
+Wrapper for C API of GPBoost.
+
+Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+"""
 import ctypes
 import json
 import os
@@ -1597,7 +1603,7 @@ class Dataset:
         ret.pandas_categorical = self.pandas_categorical
         return ret
 
-    def subset(self, used_indices, params=None):
+    def subset(self, used_indices, params=None, reference=None):
         """Get subset of current Dataset.
 
         Parameters
@@ -1606,6 +1612,8 @@ class Dataset:
             Indices used to create the subset.
         params : dict or None, optional (default=None)
             These parameters will be passed to Dataset constructor.
+        reference : Dataset or None, optional (default=None)
+            If this is Dataset for validation, training data should be used as reference.
 
         Returns
         -------
@@ -1614,12 +1622,26 @@ class Dataset:
         """
         if params is None:
             params = self.params
-        ret = Dataset(None, reference=self, feature_name=self.feature_name,
-                      categorical_feature=self.categorical_feature, params=params,
-                      free_raw_data=self.free_raw_data)
-        ret._predictor = self._predictor
+        if self.free_raw_data:#NEW
+            ret = Dataset(None, reference=self, feature_name=self.feature_name,
+                          categorical_feature=self.categorical_feature, params=params,
+                          free_raw_data=self.free_raw_data)
+            ret.used_indices = sorted(used_indices)
+        else:
+            used_indices_sorted = sorted(used_indices)
+            data_subset = self.data[used_indices_sorted]
+            label_subset = self.label[used_indices_sorted]
+            weight_subset = None
+            if self.weight is not None:
+                weight_subset = self.weight[used_indices_sorted]
+            group_subset = None
+            if self.group is not None:
+                group_subset = self.group[used_indices_sorted]
+            ret = Dataset(data_subset, label=label_subset, reference=reference,
+                          weight=group_subset, group=weight_subset, init_score=self.init_score,
+                          silent=self.silent, params=params, free_raw_data=self.free_raw_data)
         ret.pandas_categorical = self.pandas_categorical
-        ret.used_indices = sorted(used_indices)
+        ret._predictor = self._predictor
         return ret
 
     def save_binary(self, filename):
@@ -4071,7 +4093,8 @@ class GPModel(object):
                 raise ValueError("Incorrect number of data points in cluster_ids")
             # Convert cluster_ids to int and save conversion map
             if not cluster_ids.dtype == np.dtype(int):
-                self.cluster_ids_map_to_int = dict([(cl_name,cl_int) for cl_int,cl_name in enumerate(sorted(set(cluster_ids)))])
+                self.cluster_ids_map_to_int = dict(
+                    [(cl_name, cl_int) for cl_int, cl_name in enumerate(sorted(set(cluster_ids)))])
                 cluster_ids = np.array([self.cluster_ids_map_to_int[cl_name] for cl_name in cluster_ids])
             cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
 
@@ -4224,7 +4247,8 @@ class GPModel(object):
         if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or
                 (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
-        y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False, convert_to_type=np.float64)
+        y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
+                                  convert_to_type=np.float64)
         if y.shape[0] != self.num_data:
             raise ValueError("Incorrect number of data points in y")
         y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -4297,7 +4321,8 @@ class GPModel(object):
         if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or
                 (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
-        y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False, convert_to_type=np.float64)
+        y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
+                                  convert_to_type=np.float64)
         if y.shape[0] != self.num_data:
             raise ValueError("Incorrect number of data points in y")
         y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -4598,13 +4623,15 @@ class GPModel(object):
             self.num_neighbors_pred = num_neighbors_pred
         y_c = ctypes.c_void_p()
         if y is not None:
-            y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False, convert_to_type=np.float64)
+            y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
+                                      convert_to_type=np.float64)
             if y.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in y")
             y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         cov_pars_c = ctypes.c_void_p()
         if cov_pars is not None:
-            cov_pars = _format_check_1D_data(cov_pars, data_name="cov_pars", check_data_type=True, check_must_be_int=False,
+            cov_pars = _format_check_1D_data(cov_pars, data_name="cov_pars", check_data_type=True,
+                                             check_must_be_int=False,
                                              convert_to_type=np.float64)
             if cov_pars.shape[0] != self.num_cov_pars:
                 raise ValueError("cov_pars does not contain the correct number of parameters")
@@ -4685,7 +4712,8 @@ class GPModel(object):
                         if key in self.cluster_ids_map_to_int:
                             cluster_ids_pred_map_to_int[key] = self.cluster_ids_map_to_int[key]
                         else:
-                            cluster_ids_pred_map_to_int[key] = cluster_ids_pred_map_to_int[key] + len(self.cluster_ids_map_to_int)
+                            cluster_ids_pred_map_to_int[key] = cluster_ids_pred_map_to_int[key] + len(
+                                self.cluster_ids_map_to_int)
                     cluster_ids_pred = np.array([cluster_ids_pred_map_to_int[x] for x in cluster_ids_pred])
                 cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
             # Set data for linear fixed-effects

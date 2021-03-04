@@ -185,9 +185,6 @@ def early_stopping(stopping_rounds, first_metric_only=False, verbose=True):
             raise ValueError('For early stopping, '
                              'at least one dataset and eval metric is required for evaluation')
 
-        if verbose:
-            _log_info("Training until validation scores don't improve for {} rounds".format(stopping_rounds))
-
         # split is needed for "<dataset type> <metric>" case (e.g. "train l1")
         first_metric[0] = env.evaluation_result_list[0][1].split(" ")[-1]
         for eval_ret in env.evaluation_result_list:
