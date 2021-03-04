@@ -205,22 +205,7 @@ namespace GPBoost {
 					}
 				}
 			}
-
-			//Define options for faster calculations for special cases of RE models
-			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && !vecchia_approx_;//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (currently only for non-Gaussian data)
-			// Decide whether to use the Woodbury identity (i.e. do matrix inversion on the b scale and not the Zb scale)
-			if (num_re_group_ > 0 && num_gp_total_ == 0) {
-				do_symbolic_decomposition_ = true;//Symbolic decompostion is only done if sparse matrices are used
-				only_grouped_REs_use_woodbury_identity_ = true;//Faster to use Woodbury identity since the dimension of the random effects is typically much smaller than the number of data points
-				//Note: the use of the Woodburry identity is currently only implemented for grouped random effects (which is also the only use of it). 
-				//		If this should be applied to GPs in the future, adaptions need to be made e.g. in the calculations of the gradient (see y_tilde2_)
-			}
-			else {
-				do_symbolic_decomposition_ = false;
-				only_grouped_REs_use_woodbury_identity_ = false;
-			}
-			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (currently only for non-Gaussian data)
-			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (only effective for Gaussian data)
+			DetermineSpecialCasesModelsEstimationPrediction();
 			//Create RE/GP component models
 			for (const auto& cluster_i : unique_clusters_) {
 				std::vector<std::shared_ptr<RECompBase<T_mat>>> re_comps_cluster_i;
@@ -342,52 +327,7 @@ namespace GPBoost {
 					likelihood_[cluster_i]->InitializeModeAvec();
 				}
 			}
-
-			//Some checks
-			if (only_one_GP_calculations_on_RE_scale_ && only_grouped_REs_use_woodbury_identity_) {
-				Log::REFatal("Cannot set both 'only_one_GP_calculations_on_RE_scale_' and 'only_grouped_REs_use_woodbury_identity_' to 'true'");
-			}
-			if (only_one_GP_calculations_on_RE_scale_ && only_one_grouped_RE_calculations_on_RE_scale_) {
-				Log::REFatal("Cannot set both 'only_one_GP_calculations_on_RE_scale_' and 'only_one_grouped_RE_calculations_on_RE_scale_' to 'true'");
-			}
-			if (vecchia_approx_) {//vecchia_approx_
-				if (num_re_group_total_ > 0) {
-					Log::REFatal("Vecchia approximation can currently not be used when there are grouped random effects");
-				}
-			}
-			if (only_one_GP_calculations_on_RE_scale_){//only_one_GP_calculations_on_RE_scale_
-				if (gauss_likelihood_) {
-					Log::REFatal("Option 'only_one_GP_calculations_on_RE_scale_' is currently not implemented for Gaussian data");
-				}
-				if (vecchia_approx_) {
-					Log::REFatal("Option 'only_one_GP_calculations_on_RE_scale_' is currently not implemented for Vecchia approximation data");
-				}
-				CHECK(num_gp_total_ == 1);
-				CHECK(num_comps_total_ == 1);
-				CHECK(num_re_group_total_ == 0);
-			}
-			if (only_one_grouped_RE_calculations_on_RE_scale_) {//only_one_grouped_RE_calculations_on_RE_scale_
-				if (gauss_likelihood_) {
-					Log::REFatal("Option 'only_one_grouped_RE_calculations_on_RE_scale_' is currently not implemented for Gaussian data");
-				}
-				CHECK(!vecchia_approx_);
-				CHECK(num_gp_total_ == 0);
-				CHECK(num_comps_total_ == 1);
-				CHECK(num_re_group_total_ == 1);
-			}
-			if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {//only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
-				CHECK(!vecchia_approx_);
-				CHECK(num_gp_total_ == 0);
-				CHECK(num_comps_total_ == 1);
-				CHECK(num_re_group_total_ == 1);
-			}
-			if (only_grouped_REs_use_woodbury_identity_) {//only_grouped_REs_use_woodbury_identity_
-				if (gauss_likelihood_ && only_one_grouped_RE_calculations_on_RE_scale_) {
-					Log::REFatal("Cannot enable 'only_one_grouped_RE_calculations_on_RE_scale_' if 'only_grouped_REs_use_woodbury_identity_' is enabled for Gaussian data");
-				}
-				CHECK(num_gp_total_ == 0);
-				CHECK(num_comps_total_ == num_re_group_total_);
-			}
+			CheckCompatibilitySpecialOptions();
 
 
 			////Following only prints things for debugging
@@ -476,6 +416,8 @@ namespace GPBoost {
 			for (int j = 0; j < num_gp_total_; ++j) {
 				ind_par_.push_back(ind_par_.back() + 2);//end points of parameter indices of components
 			}
+			DetermineSpecialCasesModelsEstimationPrediction();
+			CheckCompatibilitySpecialOptions();
 		}
 
 		/*!
@@ -509,15 +451,27 @@ namespace GPBoost {
 		* \param learn_covariance_parameters If true, covariance parameters are estimated (default = true)
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data,
-			const double* covariate_data, int num_covariates,
-			double* optim_cov_pars, double* optim_coef,
+			const double* covariate_data,
+			int num_covariates,
+			double* optim_cov_pars,
+			double* optim_coef,
 			int& num_it,
-			double* init_cov_pars, double* init_coef = nullptr,
-			double lr_coef = 0.1, double lr_cov = -1., double acc_rate_coef = 0.5, double acc_rate_cov = 0.5, int momentum_offset = 2,
-			int max_iter = 1000, double delta_rel_conv = 1.0e-6,
-			bool use_nesterov_acc = true, int nesterov_schedule_version = 0,
-			string_t optimizer_cov = "fisher_scoring", string_t optimizer_coef = "wls",
-			double* std_dev_cov_par = nullptr, double* std_dev_coef = nullptr, bool calc_std_dev = false,
+			double* init_cov_pars,
+			double* init_coef = nullptr,
+			double lr_coef = 0.1,
+			double lr_cov = -1.,
+			double acc_rate_coef = 0.5,
+			double acc_rate_cov = 0.5,
+			int momentum_offset = 2,
+			int max_iter = 1000,
+			double delta_rel_conv = 1.0e-6,
+			bool use_nesterov_acc = true,
+			int nesterov_schedule_version = 0,
+			string_t optimizer_cov = "fisher_scoring",
+			string_t optimizer_coef = "wls",
+			double* std_dev_cov_par = nullptr,
+			double* std_dev_coef = nullptr,
+			bool calc_std_dev = false,
 			string_t convergence_criterion = "relative_change_in_log_likelihood",
 			const double* fixed_effects = nullptr,
 			bool learn_covariance_parameters = true) {
@@ -717,6 +671,9 @@ namespace GPBoost {
 						Log::REFatal("NaN or Inf occurred in covariance parameters. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
 					}
 				}
+				else {
+					neg_log_likelihood_ = neg_log_likelihood_after_lin_coef_update_;
+				}
 				// end update covariance parameters
 
 				// Check convergence
@@ -740,7 +697,7 @@ namespace GPBoost {
 				}
 				// Output for debugging
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
-					Log::REDebug("Covariance parameter optimization iteration number %d", it + 1);
+					Log::REDebug("GPModel parameter optimization iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars[i]); }
 					for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
 					if (gauss_likelihood_) {
@@ -758,6 +715,9 @@ namespace GPBoost {
 			}//end for loop for optimization
 			if (num_it == max_iter) {
 				Log::REDebug("GPModel: no convergence after the maximal number of iterations");
+			}
+			else {
+				Log::REDebug("GPModel parameter estimation finished after %d iteration", num_it);
 			}
 			for (int i = 0; i < num_cov_par_; ++i) {
 				optim_cov_pars[i] = cov_pars[i];
@@ -2566,6 +2526,78 @@ namespace GPBoost {
 					re_group_levels[ire][id] = std::string(re_group_data + char_start);
 					char_start += number_chars + 1;
 				}
+			}
+		}
+
+		/*!
+		* \brief Function that determines whether to use special options for estimation and prediction for certain special cases of random effects models
+		*/
+		void DetermineSpecialCasesModelsEstimationPrediction() {
+			//Define options for faster calculations for special cases of RE models
+			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && !vecchia_approx_;//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (currently only for non-Gaussian data)
+			// Decide whether to use the Woodbury identity (i.e. do matrix inversion on the b scale and not the Zb scale)
+			if (num_re_group_ > 0 && num_gp_total_ == 0) {
+				do_symbolic_decomposition_ = true;//Symbolic decompostion is only done if sparse matrices are used
+				only_grouped_REs_use_woodbury_identity_ = true;//Faster to use Woodbury identity since the dimension of the random effects is typically much smaller than the number of data points
+				//Note: the use of the Woodburry identity is currently only implemented for grouped random effects (which is also the only use of it). 
+				//		If this should be applied to GPs in the future, adaptions need to be made e.g. in the calculations of the gradient (see y_tilde2_)
+			}
+			else {
+				do_symbolic_decomposition_ = false;
+				only_grouped_REs_use_woodbury_identity_ = false;
+			}
+			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (currently only for non-Gaussian data)
+			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (only effective for Gaussian data)
+		}
+
+		/*!
+		* \brief Function that checks the compatibility of the chosen special options for estimation and prediction for certain special cases of random effects models
+		*/
+		void CheckCompatibilitySpecialOptions() {
+			//Some checks
+			if (only_one_GP_calculations_on_RE_scale_ && only_grouped_REs_use_woodbury_identity_) {
+				Log::REFatal("Cannot set both 'only_one_GP_calculations_on_RE_scale_' and 'only_grouped_REs_use_woodbury_identity_' to 'true'");
+			}
+			if (only_one_GP_calculations_on_RE_scale_ && only_one_grouped_RE_calculations_on_RE_scale_) {
+				Log::REFatal("Cannot set both 'only_one_GP_calculations_on_RE_scale_' and 'only_one_grouped_RE_calculations_on_RE_scale_' to 'true'");
+			}
+			if (vecchia_approx_) {//vecchia_approx_
+				if (num_re_group_total_ > 0) {
+					Log::REFatal("Vecchia approximation can currently not be used when there are grouped random effects");
+				}
+			}
+			if (only_one_GP_calculations_on_RE_scale_) {//only_one_GP_calculations_on_RE_scale_
+				if (gauss_likelihood_) {
+					Log::REFatal("Option 'only_one_GP_calculations_on_RE_scale_' is currently not implemented for Gaussian data");
+				}
+				if (vecchia_approx_) {
+					Log::REFatal("Option 'only_one_GP_calculations_on_RE_scale_' is currently not implemented for Vecchia approximation data");
+				}
+				CHECK(num_gp_total_ == 1);
+				CHECK(num_comps_total_ == 1);
+				CHECK(num_re_group_total_ == 0);
+			}
+			if (only_one_grouped_RE_calculations_on_RE_scale_) {//only_one_grouped_RE_calculations_on_RE_scale_
+				if (gauss_likelihood_) {
+					Log::REFatal("Option 'only_one_grouped_RE_calculations_on_RE_scale_' is currently not implemented for Gaussian data");
+				}
+				CHECK(!vecchia_approx_);
+				CHECK(num_gp_total_ == 0);
+				CHECK(num_comps_total_ == 1);
+				CHECK(num_re_group_total_ == 1);
+			}
+			if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {//only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
+				CHECK(!vecchia_approx_);
+				CHECK(num_gp_total_ == 0);
+				CHECK(num_comps_total_ == 1);
+				CHECK(num_re_group_total_ == 1);
+			}
+			if (only_grouped_REs_use_woodbury_identity_) {//only_grouped_REs_use_woodbury_identity_
+				if (gauss_likelihood_ && only_one_grouped_RE_calculations_on_RE_scale_) {
+					Log::REFatal("Cannot enable 'only_one_grouped_RE_calculations_on_RE_scale_' if 'only_grouped_REs_use_woodbury_identity_' is enabled for Gaussian data");
+				}
+				CHECK(num_gp_total_ == 0);
+				CHECK(num_comps_total_ == num_re_group_total_);
 			}
 		}
 

@@ -315,7 +315,7 @@ namespace GPBoost {
 		bool has_covariates_ = false;
 		bool coef_initialized_ = false;
 		vec_t std_dev_coef_;
-		double lr_coef_ = 0.5;
+		double lr_coef_ = 0.1;
 		double acc_rate_coef_ = 0.5;
 		string_t optimizer_coef_ = "wls";//"gradient_descent" or "wls" (The default = "wls" is changed to "gradient_descent" for non-Gaussian data upon initialization)
 		string_t convergence_criterion_ = "relative_change_in_log_likelihood";//"relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
