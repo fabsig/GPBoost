@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Examples on how to use the GPBoost algorithm for combining tree-boosting
-with random effects and Gaussian process models for non-Gaussian data
+Examples of generalized linear Gaussian process and random effects models
+for several non-Gaussian likelihoods
 
 @author: Fabio Sigrist
 """

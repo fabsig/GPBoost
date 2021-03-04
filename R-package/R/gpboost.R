@@ -1,3 +1,7 @@
+# Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+# Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+# Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+
 #' @name gpb_shared_params
 #' @title Shared parameter docs
 #' @description Parameter docs shared by \code{gpb.train}, \code{gpb.cv}, and \code{gpboost}

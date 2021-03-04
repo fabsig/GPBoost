@@ -1,3 +1,7 @@
+# Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+# Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+# Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+
 #' @importFrom R6 R6Class
 Booster <- R6::R6Class(
   classname = "gpb.Booster",

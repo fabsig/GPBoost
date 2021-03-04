@@ -2,6 +2,8 @@
 ## for several non-Gaussian likelihoods
 ## See the examples in GPBoost_algorithm.R for more functionality
 
+## Author: Fabio Sigrist
+
 library(gpboost)
 
 ## Choose likelihood: either "bernoulli_probit" (=default for binary data), "bernoulli_logit",
@@ -21,6 +23,7 @@ sim_non_lin_f <- function(n){
 params <- list(learning_rate = 0.1, min_data_in_leaf = 20,
                objective = likelihood, monotone_constraints = c(1,0))
 nrounds <- 25
+if (likelihood=="bernoulli_logit") nrounds <- 50
 if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) params$objective="binary"
 
 #--------------------Combine tree-boosting and grouped random effects model----------------
@@ -100,7 +103,7 @@ train_ind <- sample.int(n,size=as.integer(0.8*n))
 dtrain <- gpb.Dataset(data = X[train_ind,], label = y[train_ind])
 dvalid <- gpb.Dataset.create.valid(dtrain, data = X[-train_ind,], label = y[-train_ind])
 valids <- list(test = dvalid)
-gp_model <- GPModel(group_data = group[train_ind])
+gp_model <- GPModel(group_data = group[train_ind], likelihood = likelihood)
 gp_model$set_prediction_data(group_data_pred = group[-train_ind])
 bst <- gpb.train(data = dtrain,
                  gp_model = gp_model,
@@ -112,6 +115,7 @@ bst <- gpb.train(data = dtrain,
                  use_gp_model_for_validation = TRUE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
              ", best test error: ", bst$best_score))
+
 
 #--------------------Compare to generalized linear mixed effects model----------------
 X_lin <- cbind(rep(1,n),X)# Add intercept column

@@ -1,4 +1,9 @@
-require(gpboost)
+## Examples on how cross-validation can be done for finding the number of 
+## boosting iterations
+
+## Author: Fabio Sigrist
+
+library(gpboost)
 
 #--------------------Cross-validation for tree-boosting without GP or random effects----------------
 # Non-linear function for simulation

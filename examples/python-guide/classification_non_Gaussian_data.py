@@ -24,6 +24,8 @@ likelihood = "bernoulli_probit"
 params = {'learning_rate': 0.1, 'min_data_in_leaf': 20, 'objective': likelihood,
           'verbose': 0, 'monotone_constraints': [1, 0]}
 num_boost_round = 25
+if likelihood == "bernoulli_logit":
+    num_boost_round = 50
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     params['objective'] = 'binary'
 

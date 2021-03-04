@@ -1,3 +1,7 @@
+## Examples used in the R package documentation / help files
+
+## Author: Fabio Sigrist
+
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 

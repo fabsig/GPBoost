@@ -1,3 +1,8 @@
+## Examples on how to use the GPBoost algorithm for combining tree-boosting
+## with random effects and Gaussian process models
+
+## Author: Fabio Sigrist
+
 library(gpboost)
 
 #--------------------Combine tree-boosting and grouped random effects model----------------

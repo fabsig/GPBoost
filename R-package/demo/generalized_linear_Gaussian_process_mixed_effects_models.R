@@ -1,6 +1,8 @@
 ## Examples of generalized linear Gaussian process and random effects models
 ## for several non-Gaussian likelihoods
 
+## Author: Fabio Sigrist
+
 library(gpboost)
 
 ## Choose likelihood: either "bernoulli_probit" (=default for binary data), 

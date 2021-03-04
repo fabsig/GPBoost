@@ -1,3 +1,7 @@
+# Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+# 
+# Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
+
 #' @name GPModel_shared_params
 #' @title Shared parameter docs
 #' @description Parameter docs shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}
