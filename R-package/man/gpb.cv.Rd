@@ -191,3 +191,6 @@ cvbst <- gpb.cv(params = params,
 print(paste0("Optimal number of iterations: ", cvbst$best_iter,
              ", best test error: ", cvbst$best_score))
 }
+\author{
+Authors of the LightGBM R package, Fabio Sigrist
+}

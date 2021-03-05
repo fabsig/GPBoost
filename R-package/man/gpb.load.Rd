@@ -50,3 +50,6 @@ pred$random_effect_mean - pred_loaded$random_effect_mean
 pred$random_effect_cov - pred_loaded$random_effect_cov
 }
 }
+\author{
+Authors of the LightGBM R package, Fabio Sigrist
+}

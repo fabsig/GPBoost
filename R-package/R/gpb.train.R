@@ -168,6 +168,7 @@
 #' # The GPModel has not changed:
 #' summary(gp_model)
 #' }
+#' @author Authors of the LightGBM R package, Fabio Sigrist
 #' @export
 gpb.train <- function(params = list(),
                       data,

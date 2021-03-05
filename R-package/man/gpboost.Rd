@@ -228,3 +228,6 @@ pred$fixed_effect # Predicted fixed effect from tree ensemble
 pred$random_effect_mean + pred$fixed_effect
 }
 }
+\author{
+Authors of the LightGBM R package, Fabio Sigrist
+}

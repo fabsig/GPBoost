@@ -152,6 +152,10 @@ def train(params, train_set, num_boost_round=100,
     -------
     booster : Booster
         The trained Booster model.
+
+    :Authors:
+        Authors of the LightGBM Python package
+        Fabio Sigrist
     """
     # create predictor first
     params = copy.deepcopy(params)
@@ -645,6 +649,10 @@ def cv(params, train_set, num_boost_round=100,
         'metric2-mean': [values], 'metric2-stdv': [values],
         ...}.
         If ``return_cvbooster=True``, also returns trained boosters via ``cvbooster`` key.
+
+    :Authors:
+        Authors of the LightGBM Python package
+        Fabio Sigrist
     """
     if train_set.free_raw_data:  # NEW
         _log_warning('For true out-of-sample (cross-) validation, it is recommended to set free_raw_data = False '
@@ -762,14 +770,46 @@ def cv(params, train_set, num_boost_round=100,
     return dict(results)
 
 
-def get_grid_size(param_grid):
-    dim = 1
+def _get_grid_size(param_grid):
+    """Determine total number of parameter combinations on a grid
+
+    Parameters
+    ----------
+    param_grid : dict
+        Parameter grid
+
+    Returns
+    -------
+    grid_size : int
+        Parameter grid size
+
+    :Authors:
+        Fabio Sigrist
+    """
+    grid_size = 1
     for param in param_grid:
-        dim = dim * len(param_grid[param])
-    return (dim)
+        grid_size = grid_size * len(param_grid[param])
+    return (grid_size)
 
 
-def get_param_combination(param_comb_number, param_grid):
+def _get_param_combination(param_comb_number, param_grid):
+    """Select parameter combination from a grid of parameters
+
+    Parameters
+    ----------
+    param_comb_number : int
+        Index number of parameter combination on parameter grid that should be returned.
+    param_grid : dict
+        Parameter grid
+
+    Returns
+    -------
+    param_comb : dict
+        Parameter combination
+
+    :Authors:
+        Fabio Sigrist
+    """
     param_comb = {}
     nk = param_comb_number
     for param in param_grid:
@@ -942,7 +982,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
             feval = [feval]
         PH1, PH2, higher_better = feval[0](np.array([0]), Dataset(np.array([0]), np.array([0])))
     # Determine combinations of parameter values that should be tried out
-    grid_size = get_grid_size(param_grid)
+    grid_size = _get_grid_size(param_grid)
     if num_try_random is not None:
         if num_try_random > grid_size:
             raise ValueError("num_try_random is larger than the combination of all parameters")
@@ -965,7 +1005,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     best_num_boost_round = num_boost_round
     counter_num_comb = 1
     for param_comb_number in try_param_combs:
-        param_comb = get_param_combination(param_comb_number=param_comb_number, param_grid=param_grid)
+        param_comb = _get_param_combination(param_comb_number=param_comb_number, param_grid=param_grid)
         for param in param_comb:
             params[param] = param_comb[param]
         if verbose_eval >= 1:

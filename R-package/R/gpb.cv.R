@@ -76,6 +76,7 @@ CVBooster <- R6::R6Class(
 #' print(paste0("Optimal number of iterations: ", cvbst$best_iter,
 #'              ", best test error: ", cvbst$best_score))
 #' @importFrom data.table data.table setorderv
+#' @author Authors of the LightGBM R package, Fabio Sigrist
 #' @export
 gpb.cv <- function(params = list()
                    , data

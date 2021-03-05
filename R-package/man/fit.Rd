@@ -55,3 +55,6 @@ fit(gp_model, y, X, params, fixed_effects = NULL)
 \description{
 Generic 'fit' method for a \code{GPModel}
 }
+\author{
+Fabio Sigrist
+}

@@ -84,5 +84,7 @@ gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
 gp_model <- GPModel(group_data = group_data,
                     gp_coords = coords, cov_function = "exponential",
                     likelihood="gaussian")
-
+}
+\author{
+Fabio Sigrist
 }

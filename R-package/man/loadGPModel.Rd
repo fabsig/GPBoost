@@ -32,3 +32,6 @@ pred$mu - pred_loaded$mu
 pred$var - pred_loaded$var
 
 }
+\author{
+Fabio Sigrist
+}

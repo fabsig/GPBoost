@@ -2264,7 +2264,12 @@ class Dataset:
 
 
 class Booster:
-    """Booster in GPBoost."""
+    """Class for boosting model in GPBoost.
+
+    :Authors:
+        Authors of the LightGBM Python package
+        Fabio Sigrist
+    """
 
     def __init__(self, params=None, train_set=None, model_file=None, model_str=None, silent=False, gp_model=None):
         """Initialize the Booster.
@@ -3802,7 +3807,7 @@ class Booster:
 
 class GPModel(object):
     """
-    Gaussian process or mixed effects model.
+    Class for random effects model (Gaussian process, grouped random effects, mixed effects models, etc.)
 
     :Authors:
         Fabio Sigrist

@@ -191,3 +191,6 @@ summary(gp_model)
 }
 
 }
+\author{
+Fabio Sigrist
+}

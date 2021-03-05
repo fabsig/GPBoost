@@ -216,11 +216,25 @@ namespace GPBoost {
 					std::vector<Triplet_t> entries_init_B_cluster_i;
 					std::vector<Triplet_t> entries_init_B_grad_cluster_i;
 					std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_per_cluster_[cluster_i]);
-					CreateREComponentsVecchia(num_data_, data_indices_per_cluster_, cluster_i, num_data_per_cluster_,
-						gp_coords_data, dim_gp_coords_, gp_rand_coef_data, num_gp_rand_coef_, cov_fct_, cov_fct_shape_, re_comps_cluster_i,
-						nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
-						entries_init_B_cluster_i, entries_init_B_grad_cluster_i,
-						z_outer_z_obs_neighbors_cluster_i, vecchia_ordering_, num_neighbors_);
+					CreateREComponentsVecchia(num_data_,
+						data_indices_per_cluster_,
+						cluster_i,
+						num_data_per_cluster_,
+						gp_coords_data,
+						dim_gp_coords_,
+						gp_rand_coef_data,
+						num_gp_rand_coef_,
+						cov_fct_,
+						cov_fct_shape_,
+						re_comps_cluster_i,
+						nearest_neighbors_cluster_i,
+						dist_obs_neighbors_cluster_i,
+						dist_between_neighbors_cluster_i,
+						entries_init_B_cluster_i,
+						entries_init_B_grad_cluster_i,
+						z_outer_z_obs_neighbors_cluster_i,
+						vecchia_ordering_,
+						num_neighbors_);
 					nearest_neighbors_.insert({ cluster_i, nearest_neighbors_cluster_i });
 					dist_obs_neighbors_.insert({ cluster_i, dist_obs_neighbors_cluster_i });
 					dist_between_neighbors_.insert({ cluster_i, dist_between_neighbors_cluster_i });
@@ -699,9 +713,9 @@ namespace GPBoost {
 				if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) || ((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) {
 					Log::REDebug("GPModel parameter optimization iteration number %d", it + 1);
 					for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars[i]); }
-					for (int i = 0; i < std::min((int)beta.size(), 10); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
-					if (has_covariates_ && beta.size() > 10) {
-						Log::REDebug("Note: only the first 10 linear regression coefficients are shown");
+					for (int i = 0; i < std::min((int)beta.size(), 5); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
+					if (has_covariates_ && beta.size() > 5) {
+						Log::REDebug("Note: only the first 5 linear regression coefficients are shown");
 					}
 					if (gauss_likelihood_) {
 						Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
@@ -2732,12 +2746,25 @@ namespace GPBoost {
 		* \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
 		* \param num_neighbors The number of neighbors used in the Vecchia approximation
 		*/
-		void CreateREComponentsVecchia(data_size_t num_data, std::map<gp_id_t, std::vector<int>>& data_indices_per_cluster, gp_id_t cluster_i, std::map<gp_id_t, int>& num_data_per_cluster,
-			const double* gp_coords_data, int dim_gp_coords, const double* gp_rand_coef_data, data_size_t num_gp_rand_coef, const string_t cov_fct, double cov_fct_shape,
-			std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i, std::vector<std::vector<int>>& nearest_neighbors_cluster_i,
-			std::vector<den_mat_t>& dist_obs_neighbors_cluster_i, std::vector<den_mat_t>& dist_between_neighbors_cluster_i,
-			std::vector<Triplet_t >& entries_init_B_cluster_i, std::vector<Triplet_t >& entries_init_B_grad_cluster_i,
-			std::vector<std::vector<den_mat_t>>& z_outer_z_obs_neighbors_cluster_i, string_t vecchia_ordering = "none", int num_neighbors = 30) {
+		void CreateREComponentsVecchia(data_size_t num_data,
+			std::map<gp_id_t, std::vector<int>>& data_indices_per_cluster,
+			gp_id_t cluster_i,
+			std::map<gp_id_t, int>& num_data_per_cluster,
+			const double* gp_coords_data,
+			int dim_gp_coords,
+			const double* gp_rand_coef_data,
+			data_size_t num_gp_rand_coef,
+			const string_t cov_fct,
+			double cov_fct_shape,
+			std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i,
+			std::vector<std::vector<int>>& nearest_neighbors_cluster_i,
+			std::vector<den_mat_t>& dist_obs_neighbors_cluster_i,
+			std::vector<den_mat_t>& dist_between_neighbors_cluster_i,
+			std::vector<Triplet_t >& entries_init_B_cluster_i,
+			std::vector<Triplet_t >& entries_init_B_grad_cluster_i,
+			std::vector<std::vector<den_mat_t>>& z_outer_z_obs_neighbors_cluster_i,
+			string_t vecchia_ordering = "none",
+			int num_neighbors = 30) {
 
 			if (vecchia_ordering == "random") {
 				unsigned seed = 0;

@@ -201,6 +201,7 @@ NULL
 #' # Sum them up to otbain a single prediction
 #' pred$random_effect_mean + pred$fixed_effect
 #' }
+#' @author Authors of the LightGBM R package, Fabio Sigrist
 #' @export
 gpboost <- function(data,
                     label = NULL,

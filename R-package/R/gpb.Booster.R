@@ -4,6 +4,8 @@
 
 #' @importFrom R6 R6Class
 Booster <- R6::R6Class(
+  # Class for boosting model in GPBoost
+  # Authors: Authors of the LightGBM R package, Fabio Sigrist
   classname = "gpb.Booster",
   cloneable = FALSE,
   public = list(
@@ -1119,6 +1121,7 @@ Booster <- R6::R6Class(
 #' # Sum them up to otbain a single prediction
 #' pred$random_effect_mean + pred$fixed_effect
 #' }
+#' @author Authors of the LightGBM R package, Fabio Sigrist
 #' @export
 predict.gpb.Booster <- function(object,
                                 data,
@@ -1191,6 +1194,7 @@ predict.gpb.Booster <- function(object,
 #' pred$random_effect_mean - pred_loaded$random_effect_mean
 #' pred$random_effect_cov - pred_loaded$random_effect_cov
 #' }
+#' @author Authors of the LightGBM R package, Fabio Sigrist
 #' @export
 gpb.load <- function(filename = NULL, model_str = NULL) {
   
@@ -1256,6 +1260,7 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' pred$random_effect_mean - pred_loaded$random_effect_mean
 #' pred$random_effect_cov - pred_loaded$random_effect_cov
 #' }
+#' @author Authors of the LightGBM R package, Fabio Sigrist
 #' @export
 gpb.save <- function(booster, filename, num_iteration = NULL) {
   

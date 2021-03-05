@@ -82,6 +82,8 @@ NULL
 
 #' @importFrom R6 R6Class
 gpb.GPModel <- R6::R6Class(
+  # Class for random effects model (Gaussian process, grouped random effects, mixed effects models, etc.)
+  # Author: Fabio Sigrist
   classname = "GPModel",
   cloneable = FALSE,
   public = list(
@@ -1941,7 +1943,7 @@ gpb.GPModel <- R6::R6Class(
 #' gp_model <- GPModel(group_data = group_data,
 #'                     gp_coords = coords, cov_function = "exponential",
 #'                     likelihood="gaussian")
-#'
+#' @author Fabio Sigrist
 #' @export
 GPModel <- function(group_data = NULL,
                     group_rand_coef_data = NULL,
@@ -1985,6 +1987,7 @@ GPModel <- function(group_data = NULL,
 #' @param gp_model a \code{GPModel}
 #' @inheritParams GPModel_shared_params
 #' 
+#' @author Fabio Sigrist
 #' @export 
 fit <- function(gp_model, y, X, params, fixed_effects = NULL) UseMethod("fit")
 
@@ -2032,6 +2035,7 @@ fit <- function(gp_model, y, X, params, fixed_effects = NULL) UseMethod("fit")
 #' 
 #' @method fit GPModel 
 #' @rdname fit.GPModel
+#' @author Fabio Sigrist
 #' @export
 fit.GPModel <- function(gp_model,
                         y,
@@ -2137,6 +2141,7 @@ fit.GPModel <- function(gp_model,
 #' }
 #' 
 #' @rdname fitGPModel
+#' @author Fabio Sigrist
 #' @export fitGPModel
 fitGPModel <- function(group_data = NULL,
                        group_rand_coef_data = NULL,
@@ -2209,6 +2214,7 @@ fitGPModel <- function(group_data = NULL,
 #' 
 #' @method summary GPModel 
 #' @rdname summary.GPModel
+#' @author Fabio Sigrist
 #' @export
 summary.GPModel <- function(object, ...){
   cov_pars <- object$get_cov_pars()
@@ -2284,6 +2290,7 @@ summary.GPModel <- function(object, ...){
 #' }
 #' 
 #' @rdname predict.GPModel
+#' @author Fabio Sigrist
 #' @export
 predict.GPModel <- function(object,
                             y = NULL,
@@ -2343,6 +2350,7 @@ predict.GPModel <- function(object,
 #' 
 #' @rdname saveGPModel
 #' @importFrom RJSONIO toJSON
+#' @author Fabio Sigrist
 #' @export
 #' 
 saveGPModel <- function(gp_model, filename){
@@ -2385,6 +2393,7 @@ saveGPModel <- function(gp_model, filename){
 #' 
 #' @rdname loadGPModel
 #' @importFrom RJSONIO fromJSON
+#' @author Fabio Sigrist
 #' @export
 loadGPModel <- function(filename){
   

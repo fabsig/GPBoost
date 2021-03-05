@@ -301,3 +301,6 @@ bst <- gpb.train(data = dtrain,
 summary(gp_model)
 }
 }
+\author{
+Authors of the LightGBM R package, Fabio Sigrist
+}

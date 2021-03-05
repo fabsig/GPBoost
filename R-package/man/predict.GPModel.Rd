@@ -93,3 +93,6 @@ pred$cov
 }
 
 }
+\author{
+Fabio Sigrist
+}
