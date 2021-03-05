@@ -37,6 +37,18 @@ namespace GPBoost {
 		virtual ~RECompBase() {};
 
 		/*!
+		* \brief Create and adds the matrix Z_
+		*			Note: this is currently only used when changing the likelihood in the re_model
+		*/
+		virtual void AddZ() = 0;
+
+		/*!
+		* \brief Drop the matrix Z_
+		*			Note: this is currently only used when changing the likelihood in the re_model
+		*/
+		virtual void DropZ() = 0;
+
+		/*!
 		* \brief Function that sets the covariance parameters
 		* \param pars Vector with covariance parameters
 		*/
@@ -194,22 +206,10 @@ namespace GPBoost {
 				this->random_effects_indices_of_data_[i] = map_group_label_index[group_data[i]];
 			}
 			if(save_Z){
-				// Create incidence matrix Z
-				this->Z_.resize(this->num_data_, num_group_);
-				std::vector<Triplet_t> triplets(this->num_data_);
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < this->num_data_; ++i) {
-					triplets[i] = Triplet_t(i, map_group_label_index[group_data[i]], 1);
-				}
-				this->Z_.setFromTriplets(triplets.begin(), triplets.end());
-				// Alternative version: inserting elements directly
-				// Note: compare to using triples, this is much slower when group_data is not ordered (e.g. [1,2,3,1,2,3]), otherwise if group_data is ordered (e.g. [1,1,2,2,3,3]) there is no big difference
-				////this->Z_.reserve(Eigen::VectorXi::Constant(this->num_data_, 1));//don't use this, it makes things much slower
-				//for (int i = 0; i < this->num_data_; ++i) {
-				//	this->Z_.insert(i, map_group_label_index[group_data[i]]) = 1.;
-				//}
+				CreateZ();// Create incidence matrix Z
 			}
-			if (calculateZZt) {
+			has_ZZt_ = calculateZZt;
+			if (has_ZZt_) {
 				ConstructZZt<T_mat>();
 			}
 			map_group_label_index_ = std::make_shared<std::map<re_group_t, int>>(map_group_label_index);
@@ -247,13 +247,63 @@ namespace GPBoost {
 			//	this->Z_.insert(i, (*map_group_label_index_)[(*group_data_)[i]]) = this->rand_coef_data_[i];
 			//}
 			has_Z_ = true;
-			if (calculateZZt) {
+			has_ZZt_ = calculateZZt;
+			if (has_ZZt_) {
 				ConstructZZt<T_mat>();
 			}
 		}
 
 		/*! \brief Destructor */
 		~RECompGroup() {
+		}
+
+		/*!
+		* \brief Create and adds the matrix Z_
+		*			Note: this is currently only used when changing the likelihood in the re_model
+		*/
+		void AddZ() override {
+			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
+			if (!has_Z_) {
+				CreateZ();
+				if (has_ZZt_) {
+					ConstructZZt<T_mat>();
+				}
+			}
+		}
+
+		/*!
+		* \brief Drop the matrix Z_
+		*			Note: this is currently only used when changing the likelihood in the re_model
+		*/
+		void DropZ() override {
+			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
+			if (has_Z_) {
+				this->Z_.resize(0, 0);
+				has_Z_ = false;
+				if (has_ZZt_) {
+					ConstructZZt<T_mat>();
+				}
+			}
+		}
+
+		/*!
+		* \brief Create the matrix Z_
+		*/
+		void CreateZ() {
+			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
+			this->Z_.resize(this->num_data_, num_group_);
+			std::vector<Triplet_t> triplets(this->num_data_);
+	#pragma omp parallel for schedule(static)
+			for (int i = 0; i < this->num_data_; ++i) {
+				triplets[i] = Triplet_t(i, this->random_effects_indices_of_data_[i], 1);
+			}
+			this->Z_.setFromTriplets(triplets.begin(), triplets.end());
+			// Alternative version: inserting elements directly
+			// Note: compared to using triples, this is much slower when group_data is not ordered (e.g. [1,2,3,1,2,3]), otherwise if group_data is ordered (e.g. [1,1,2,2,3,3]) there is no big difference
+			////this->Z_.reserve(Eigen::VectorXi::Constant(this->num_data_, 1));//don't use this, it makes things much slower
+			//for (int i = 0; i < this->num_data_; ++i) {
+			//	this->Z_.insert(i, this->random_effects_indices_of_data_[i]) = 1.;
+			//}
 		}
 
 		/*!
@@ -264,7 +314,6 @@ namespace GPBoost {
 			CHECK((int)pars.size() == 1);
 			this->cov_pars_ = pars;
 		}
-
 
 		/*!
 		* \brief Transform the covariance parameters
@@ -474,6 +523,8 @@ namespace GPBoost {
 		std::shared_ptr<std::map<re_group_t, int>> map_group_label_index_;
 		/*! \brief Matrix Z*Z^T */
 		T_mat ZZt_;
+		/*! \brief Indicates whether component has a matrix ZZt_ */
+		bool has_ZZt_;
 
 		/*! \brief Constructs the matrix ZZt_ if sparse matrices are used */
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr >
@@ -561,7 +612,6 @@ namespace GPBoost {
 			this->num_data_ = (data_size_t)coords.rows();
 			this->is_rand_coef_ = false;
 			has_Z_ = false;
-			has_random_effects_indices_of_data_duplicates_dropped_ = false;
 			this->num_cov_par_ = 2;
 			cov_function_ = std::unique_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape));
 			if (save_dist_use_Z_for_duplicates) {
@@ -574,16 +624,17 @@ namespace GPBoost {
 				else {//there are multiple observations at the same locations
 					coords_ = coords(uniques, Eigen::all);
 				}
+				num_random_effects_ = (data_size_t)coords_.rows();
 				if (save_random_effects_indices_of_data_and_no_Z) {// create random_effects_indices_of_data_
 					this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
 #pragma omp for schedule(static)
 					for (int i = 0; i < this->num_data_; ++i) {
 						this->random_effects_indices_of_data_[i] = unique_idx[i];
 					}
-					has_random_effects_indices_of_data_duplicates_dropped_ = true;
+					has_Z_ = false;
 				}
-				else if ((data_size_t)uniques.size() != this->num_data_) {// create incidence matrix Z_
-					this->Z_.resize(this->num_data_, uniques.size());
+				else if (num_random_effects_ != this->num_data_) {// create incidence matrix Z_
+					this->Z_.resize(this->num_data_, num_random_effects_);
 					this->Z_.setZero();
 					for (int i = 0; i < this->num_data_; ++i) {
 						this->Z_.insert(i, unique_idx[i]) = 1.;
@@ -599,9 +650,9 @@ namespace GPBoost {
 			else {//this option is used for the Vecchia approximation
 				coords_ = coords;
 				dist_saved_ = false;
+				num_random_effects_ = (data_size_t)coords_.rows();
 			}
 			coord_saved_ = true;
-			num_random_effects_ = (data_size_t)coords_.rows();
 		}
 
 		/*!
@@ -624,7 +675,6 @@ namespace GPBoost {
 			this->rand_coef_data_ = rand_coef_data;
 			this->is_rand_coef_ = true;
 			has_Z_ = true;
-			has_random_effects_indices_of_data_duplicates_dropped_ = false;
 			this->num_cov_par_ = 2;
 			cov_function_ = std::unique_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape));
 			sp_mat_t coef_W(this->num_data_, this->num_data_);
@@ -655,7 +705,6 @@ namespace GPBoost {
 			this->is_rand_coef_ = true;
 			this->num_data_ = (data_size_t)rand_coef_data.size();
 			has_Z_ = true;
-			has_random_effects_indices_of_data_duplicates_dropped_ = false;
 			this->num_cov_par_ = 2;
 			cov_function_ = std::unique_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape));
 			dist_saved_ = false;
@@ -669,6 +718,43 @@ namespace GPBoost {
 
 		/*! \brief Destructor */
 		~RECompGP() {
+		}
+
+		/*!
+		* \brief Create and adds the matrix Z_
+		*			Note: this is currently only used when changing the likelihood in the re_model
+		*/
+		void AddZ() override {
+			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
+			if (!has_Z_) {
+				if (num_random_effects_ != this->num_data_) {// create incidence matrix Z_
+					CHECK(this->random_effects_indices_of_data_.size() == this->num_data_);
+					this->Z_.resize(this->num_data_, num_random_effects_);
+					this->Z_.setZero();
+					for (int i = 0; i < this->num_data_; ++i) {
+						this->Z_.insert(i, this->random_effects_indices_of_data_[i]) = 1.;
+					}
+					has_Z_ = true;
+				}
+			}
+		}
+
+		/*!
+		* \brief Drop the matrix Z_
+		*			Note: this is currently only used when changing the likelihood in the re_model
+		*/
+		void DropZ() override {
+			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
+			if (has_Z_) {
+				this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
+				for (int k = 0; k < this->Z_.outerSize(); ++k) {
+					for (sp_mat_t::InnerIterator it(this->Z_, k); it; ++it) {
+						this->random_effects_indices_of_data_[(int)it.row()] = (data_size_t)it.col();
+					}
+				}
+				has_Z_ = false;
+				this->Z_.resize(0, 0);
+			}
 		}
 
 		/*!
@@ -985,8 +1071,6 @@ namespace GPBoost {
 		bool sigma_defined_ = false;
 		/*! \brief Number of random effects (usually, number of unique random effects except for the Vecchia approximation where unique locations are not separately modelled) */
 		data_size_t num_random_effects_;
-		/*! \brief Indicates whether the random effect component has random_effects_indices_of_data_ and duplicates in coords_ have been dropped */
-		bool has_random_effects_indices_of_data_duplicates_dropped_ = false;
 
 		template<typename T_mat, typename t_chol>
 		friend class REModelTemplate;

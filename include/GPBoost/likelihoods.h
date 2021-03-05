@@ -115,6 +115,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Set the type of likelihood
+		* \param type Likelihood name
 		*/
 		void SetLikelihood(const string_t& type) {
 			string_t likelihood = ParseLikelihoodAlias(type);
