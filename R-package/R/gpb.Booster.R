@@ -149,7 +149,7 @@ Booster <- R6::R6Class(
                           nrow = length(save_data[["raw_data"]]$data),
                           byrow = TRUE),
             label = save_data[["raw_data"]]$label)
-
+          
         } else { # has no gp_model
           
           # Create booster from model
@@ -160,7 +160,7 @@ Booster <- R6::R6Class(
           )
           
         }
-
+        
       } else if (!is.null(model_str)) {
         
         # Do we have a model_str as character?
@@ -543,7 +543,7 @@ Booster <- R6::R6Class(
       
       # Save gp_model
       if (private$has_gp_model) {
-  
+        
         if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
           stop("gpb.save: cannot save to file.
                 Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
@@ -561,7 +561,7 @@ Booster <- R6::R6Class(
             save_data[["raw_data"]][["data"]] <- as.vector(save_data[["raw_data"]][["data"]])
           }
         }
-  
+        
         save_data <- RJSONIO::toJSON(save_data, digits=17)
         write(save_data, file=filename)
         
@@ -576,7 +576,7 @@ Booster <- R6::R6Class(
           , as.integer(feature_importance_type)
           , gpb.c_str(x = filename)
         )
-
+        
       }
       
       return(invisible(self))
@@ -661,7 +661,7 @@ Booster <- R6::R6Class(
         
         if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
           stop("predict: cannot make predictions for Gaussian process.
-                # Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
+                Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
         }
         fixed_effect_train = predictor$predict( data = private$train_set$.__enclos_env__$private$raw_data
                                                 , start_iteration = start_iteration

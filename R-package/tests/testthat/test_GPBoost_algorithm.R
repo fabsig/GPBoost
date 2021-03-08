@@ -698,7 +698,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Save to file
     filename <- tempfile(fileext = ".model")
     gpb.save(bst, filename=filename)
-    
     # finalize and destroy models
     bst$finalize()
     expect_null(bst$.__enclos_env__$private$handle)
@@ -706,7 +705,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model$finalize()
     expect_null(gp_model$.__enclos_env__$private$handle)
     rm(gp_model)
-    
     # Load from file and make predictions again
     bst_loaded <- gpb.load(filename = filename)
     pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
