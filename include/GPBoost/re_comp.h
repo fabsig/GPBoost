@@ -164,7 +164,7 @@ namespace GPBoost {
 		/*! \brief Indices that indicate to which random effect every data point is related (random_effects_indices_of_data_[i] is the random effect for observation number i) */
 		std::vector<data_size_t> random_effects_indices_of_data_;
 
-		template<typename T_mat, typename t_chol>
+		template<typename T_mat_aux, typename T_chol_aux>
 		friend class REModelTemplate;
 	};
 
@@ -188,7 +188,7 @@ namespace GPBoost {
 		RECompGroup(std::vector<re_group_t>& group_data,
 			bool calculateZZt,
 			bool save_Z) {
-			has_Z_ = save_Z;
+			this->has_Z_ = save_Z;
 			this->num_data_ = (data_size_t)group_data.size();
 			this->is_rand_coef_ = false;
 			this->num_cov_par_ = 1;
@@ -246,7 +246,7 @@ namespace GPBoost {
 			//for (int i = 0; i < this->num_data_; ++i) {
 			//	this->Z_.insert(i, (*map_group_label_index_)[(*group_data_)[i]]) = this->rand_coef_data_[i];
 			//}
-			has_Z_ = true;
+			this->has_Z_ = true;
 			has_ZZt_ = calculateZZt;
 			if (has_ZZt_) {
 				ConstructZZt<T_mat>();
@@ -263,7 +263,7 @@ namespace GPBoost {
 		*/
 		void AddZ() override {
 			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
-			if (!has_Z_) {
+			if (!this->has_Z_) {
 				CreateZ();
 				if (has_ZZt_) {
 					ConstructZZt<T_mat>();
@@ -277,9 +277,9 @@ namespace GPBoost {
 		*/
 		void DropZ() override {
 			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
-			if (has_Z_) {
+			if (this->has_Z_) {
 				this->Z_.resize(0, 0);
-				has_Z_ = false;
+				this->has_Z_ = false;
 				if (has_ZZt_) {
 					ConstructZZt<T_mat>();
 				}
@@ -391,7 +391,7 @@ namespace GPBoost {
 		* \return A pointer to the matrix Z
 		*/
 		sp_mat_t* GetZ() override {
-			CHECK(has_Z_);
+			CHECK(this->has_Z_);
 			return(&(this->Z_));
 		}
 
@@ -444,7 +444,7 @@ namespace GPBoost {
 					uncond_pred_cov += (this->cov_pars_[0] * ZstarZstarT);
 				}//end predict_cov_mat
 			}//end data_duplicates_dropped_for_prediction
-			else if (has_Z_) {
+			else if (this->has_Z_) {
 				//Note: Ztilde relates existing random effects to predictionsand Zstar relates new / unobserved random effects to predictions
 				sp_mat_t Ztilde(num_data_pred, num_group_);
 				Ztilde.setZero();
@@ -499,7 +499,7 @@ namespace GPBoost {
 					CalculateZ1Z2T<T_mat>(Zstar, Zstar, ZstarZstarT);
 					uncond_pred_cov += (this->cov_pars_[0] * ZstarZstarT);
 				}//end predict_cov_mat
-			}//end has_Z_
+			}//end this->has_Z_
 			else {
 				Log::REFatal("Need to have either 'Z_' or enable 'data_duplicates_dropped_for_prediction' for calling 'AddPredCovMatrices'");
 			}
@@ -529,7 +529,7 @@ namespace GPBoost {
 		/*! \brief Constructs the matrix ZZt_ if sparse matrices are used */
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr >
 		void ConstructZZt() {
-			if (has_Z_) {
+			if (this->has_Z_) {
 				ZZt_ = this->Z_ * this->Z_.transpose();
 			}
 			else {
@@ -542,7 +542,7 @@ namespace GPBoost {
 		/*! \brief Constructs the matrix ZZt_ if dense matrices are used */
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr >
 		void ConstructZZt() {
-			if (has_Z_) {
+			if (this->has_Z_) {
 				ZZt_ = den_mat_t(this->Z_ * this->Z_.transpose());
 			}
 			else {
@@ -574,7 +574,7 @@ namespace GPBoost {
 			Z1Z2T = den_mat_t(Z1 * Z2.transpose());
 		}
 
-		template<typename T_mat, typename t_chol>
+		template<typename T_mat_aux, typename T_chol_aux>
 		friend class REModelTemplate;
 	};
 
@@ -611,7 +611,7 @@ namespace GPBoost {
 			}
 			this->num_data_ = (data_size_t)coords.rows();
 			this->is_rand_coef_ = false;
-			has_Z_ = false;
+			this->has_Z_ = false;
 			this->num_cov_par_ = 2;
 			cov_function_ = std::unique_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape));
 			if (save_dist_use_Z_for_duplicates) {
@@ -631,7 +631,7 @@ namespace GPBoost {
 					for (int i = 0; i < this->num_data_; ++i) {
 						this->random_effects_indices_of_data_[i] = unique_idx[i];
 					}
-					has_Z_ = false;
+					this->has_Z_ = false;
 				}
 				else if (num_random_effects_ != this->num_data_) {// create incidence matrix Z_
 					this->Z_.resize(this->num_data_, num_random_effects_);
@@ -639,7 +639,7 @@ namespace GPBoost {
 					for (int i = 0; i < this->num_data_; ++i) {
 						this->Z_.insert(i, unique_idx[i]) = 1.;
 					}
-					has_Z_ = true;
+					this->has_Z_ = true;
 				}
 				//Calculate distances
 				den_mat_t dist;
@@ -674,7 +674,7 @@ namespace GPBoost {
 			dist_saved_ = true;
 			this->rand_coef_data_ = rand_coef_data;
 			this->is_rand_coef_ = true;
-			has_Z_ = true;
+			this->has_Z_ = true;
 			this->num_cov_par_ = 2;
 			cov_function_ = std::unique_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape));
 			sp_mat_t coef_W(this->num_data_, this->num_data_);
@@ -704,7 +704,7 @@ namespace GPBoost {
 			this->rand_coef_data_ = rand_coef_data;
 			this->is_rand_coef_ = true;
 			this->num_data_ = (data_size_t)rand_coef_data.size();
-			has_Z_ = true;
+			this->has_Z_ = true;
 			this->num_cov_par_ = 2;
 			cov_function_ = std::unique_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape));
 			dist_saved_ = false;
@@ -726,15 +726,15 @@ namespace GPBoost {
 		*/
 		void AddZ() override {
 			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
-			if (!has_Z_) {
+			if (!this->has_Z_) {
 				if (num_random_effects_ != this->num_data_) {// create incidence matrix Z_
-					CHECK(this->random_effects_indices_of_data_.size() == this->num_data_);
+					CHECK((data_size_t)(this->random_effects_indices_of_data_.size()) == this->num_data_);
 					this->Z_.resize(this->num_data_, num_random_effects_);
 					this->Z_.setZero();
 					for (int i = 0; i < this->num_data_; ++i) {
 						this->Z_.insert(i, this->random_effects_indices_of_data_[i]) = 1.;
 					}
-					has_Z_ = true;
+					this->has_Z_ = true;
 				}
 			}
 		}
@@ -745,14 +745,14 @@ namespace GPBoost {
 		*/
 		void DropZ() override {
 			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
-			if (has_Z_) {
+			if (this->has_Z_) {
 				this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
 				for (int k = 0; k < this->Z_.outerSize(); ++k) {
 					for (sp_mat_t::InnerIterator it(this->Z_, k); it; ++it) {
 						this->random_effects_indices_of_data_[(int)it.row()] = (data_size_t)it.col();
 					}
 				}
-				has_Z_ = false;
+				this->has_Z_ = false;
 				this->Z_.resize(0, 0);
 			}
 		}
@@ -863,7 +863,7 @@ namespace GPBoost {
 			if (!sigma_defined_) {
 				Log::REFatal("Sigma has not been calculated");
 			}
-			if (this->is_rand_coef_ || has_Z_) {
+			if (this->is_rand_coef_ || this->has_Z_) {
 				return(std::make_shared<T_mat>(this->Z_ * sigma_ * this->Z_.transpose()));
 			}
 			else {
@@ -920,7 +920,7 @@ namespace GPBoost {
 				}
 				else {
 					double correct = 1. / this->cov_pars_[0];//divide sigma_ by cov_pars_[0]
-					if (this->is_rand_coef_ || has_Z_) {
+					if (this->is_rand_coef_ || this->has_Z_) {
 						return(std::make_shared<T_mat>(correct * this->Z_ * sigma_ * this->Z_.transpose()));
 					}
 					else {
@@ -930,7 +930,7 @@ namespace GPBoost {
 			}
 			else {//inverse range (ind_par == 1)
 				T_mat Z_sigma_grad_Zt;
-				if (has_Z_) {
+				if (this->has_Z_) {
 					T_mat sigma_grad;
 					(*cov_function_).template GetCovMatGradRange<T_mat>(*dist_, sigma_, this->cov_pars_, sigma_grad, transf_scale, nugget_var);
 					Z_sigma_grad_Zt = this->Z_ * sigma_grad * this->Z_.transpose();
@@ -947,7 +947,7 @@ namespace GPBoost {
 		* \return A pointer to the matrix Z
 		*/
 		sp_mat_t* GetZ() override {
-			if (!has_Z_) {
+			if (!this->has_Z_) {
 				Log::REFatal("Gaussian process has no matrix Z");
 			}
 			return(&(this->Z_));
@@ -1072,7 +1072,7 @@ namespace GPBoost {
 		/*! \brief Number of random effects (usually, number of unique random effects except for the Vecchia approximation where unique locations are not separately modelled) */
 		data_size_t num_random_effects_;
 
-		template<typename T_mat, typename t_chol>
+		template<typename T_mat_aux, typename T_chol_aux>
 		friend class REModelTemplate;
 	};
 
