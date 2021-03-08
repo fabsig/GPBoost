@@ -1,9 +1,8 @@
 ## Various examples on how to do inference and prediction for
-## (i) grouped (or clustered) random effects models
-## (ii) Gaussian process (GP) models
-## (iii) models that combine GP and grouped random effects
+##    (i) grouped (or clustered) random effects models
+##    (ii) Gaussian process (GP) models
+##    (iii) models that combine GP and grouped random effects
 ## and on how to save models
-
 ## Author: Fabio Sigrist
 
 library(gpboost)

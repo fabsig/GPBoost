@@ -1,6 +1,5 @@
 ## Examples on how cross-validation can be done for finding the number of 
-## boosting iterations
-
+##    boosting iterations
 ## Author: Fabio Sigrist
 
 library(gpboost)

@@ -1351,6 +1351,7 @@ class Dataset:
                 c_str(params_str),
                 ref_dataset,
                 ctypes.byref(self.handle)))
+            self.free_raw_data = True
         elif isinstance(data, scipy.sparse.csr_matrix):
             self.__init_from_csr(data, params_str, ref_dataset)
         elif isinstance(data, scipy.sparse.csc_matrix):
@@ -1622,7 +1623,7 @@ class Dataset:
         """
         if params is None:
             params = self.params
-        if self.free_raw_data:#NEW
+        if self.free_raw_data:
             ret = Dataset(None, reference=self, feature_name=self.feature_name,
                           categorical_feature=self.categorical_feature, params=params,
                           free_raw_data=self.free_raw_data)
@@ -1637,9 +1638,13 @@ class Dataset:
             group_subset = None
             if self.group is not None:
                 group_subset = self.group[used_indices_sorted]
+            init_score_subset = None
+            if self.init_score is not None:
+                init_score_subset = self.init_score[used_indices_sorted]
             ret = Dataset(data_subset, label=label_subset, reference=reference,
-                          weight=group_subset, group=weight_subset, init_score=self.init_score,
-                          silent=self.silent, params=params, free_raw_data=self.free_raw_data)
+                          weight=group_subset, group=weight_subset, init_score=init_score_subset,
+                          silent=self.silent, params=params, free_raw_data=self.free_raw_data,
+                          feature_name=self.feature_name, categorical_feature=self.categorical_feature)
         ret.pandas_categorical = self.pandas_categorical
         ret._predictor = self._predictor
         return ret

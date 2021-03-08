@@ -23,8 +23,8 @@ CVBooster <- R6::R6Class(
 )
 
 #' @name gpb.cv
-#' @title Main CV logic for GPBoost
-#' @description Cross validation logic used by GPBoost
+#' @title CV function for number of boosting iterations
+#' @description Cross validation function for determining number of boosting iterations
 #' @inheritParams gpb_shared_params
 #' @param nfold the original dataset is randomly partitioned into \code{nfold} equal size subsamples.
 #' @param label Vector of labels, used if \code{data} is not an \code{\link{gpb.Dataset}}
@@ -80,22 +80,22 @@ CVBooster <- R6::R6Class(
 #' @export
 gpb.cv <- function(params = list()
                    , data
-                   , nrounds = 10L
-                   , nfold = 4L
-                   , label = NULL
-                   , weight = NULL
-                   , obj = NULL
+                   , nrounds = 100L
                    , gp_model = NULL
                    , use_gp_model_for_validation = TRUE
                    , fit_GP_cov_pars_OOS = FALSE
                    , train_gp_model_cov_pars = TRUE
+                   , folds = NULL
+                   , nfold = 4L
+                   , label = NULL
+                   , weight = NULL
+                   , obj = NULL
                    , eval = NULL
                    , verbose = 1L
                    , record = TRUE
                    , eval_freq = 1L
                    , showsd = FALSE
                    , stratified = TRUE
-                   , folds = NULL
                    , init_model = NULL
                    , colnames = NULL
                    , categorical_feature = NULL
@@ -103,12 +103,12 @@ gpb.cv <- function(params = list()
                    , callbacks = list()
                    , reset_data = FALSE
                    , ...
-                   ) {
-
+) {
+  
   if (nrounds <= 0L) {
     stop("nrounds should be greater than zero")
   }
-
+  
   # If 'data' is not an gpb.Dataset, try to construct one using 'label'
   if (!gpb.is.Dataset(x = data)) {
     if (is.null(label)) {
@@ -116,7 +116,11 @@ gpb.cv <- function(params = list()
     }
     data <- gpb.Dataset(data = data, label = label)
   }
-
+  
+  if (data$.__enclos_env__$private$free_raw_data) {
+    warning("For true out-of-sample (cross-) validation, it is recommended to set free_raw_data = False when constructing the Dataset")
+  }
+  
   # Setup temporary variables
   params <- append(params, list(...))
   params$verbose <- verbose
@@ -128,7 +132,7 @@ gpb.cv <- function(params = list()
   
   params$use_gp_model_for_validation <- use_gp_model_for_validation
   params$train_gp_model_cov_pars <- train_gp_model_cov_pars
-
+  
   # set some parameters, resolving the way they were passed in with other parameters
   # in `params`.
   # this ensures that the model stored with Booster$save() correctly represents
@@ -144,13 +148,13 @@ gpb.cv <- function(params = list()
     , alternative_kwarg_value = early_stopping_rounds
   )
   early_stopping_rounds <- params[["early_stopping_round"]]
-
+  
   # Check for objective (function or not)
   if (is.function(params$objective)) {
     fobj <- params$objective
     params$objective <- "NONE"
   }
-
+  
   # If eval is a single function, store it as a 1-element list
   # (for backwards compatibility). If it is a list of functions, store
   # all of them. This makes it possible to pass any mix of strings like "auc"
@@ -168,28 +172,32 @@ gpb.cv <- function(params = list()
       has_custom_eval_functions <- TRUE
     }
   }
-
+  
   # Init predictor to empty
   predictor <- NULL
-
+  
   # Check for boosting from a trained model
   if (is.character(init_model)) {
     predictor <- Predictor$new(modelfile = init_model)
   } else if (gpb.is.Booster(x = init_model)) {
     predictor <- init_model$to_predictor()
   }
-
+  
   # Set the iteration to start from / end to (and check for boosting from a trained model, again)
   begin_iteration <- 1L
   if (!is.null(predictor)) {
     begin_iteration <- predictor$current_iter() + 1L
   }
   end_iteration <- begin_iteration + params[["num_iterations"]] - 1L
-
+  
   # Construct datasets, if needed
   data$update_params(params = params)
-  data$construct()
-
+  if (data$.__enclos_env__$private$free_raw_data) {
+    data$construct()
+  } else if (is.character(data$.__enclos_env__$private$raw_data)) {
+    data$construct()
+  }
+  
   # Check interaction constraints
   cnames <- NULL
   if (!is.null(colnames)) {
@@ -198,7 +206,7 @@ gpb.cv <- function(params = list()
     cnames <- data$get_colnames()
   }
   params[["interaction_constraints"]] <- gpb.check_interaction_constraints(params = params, column_names = cnames)
-
+  
   if (!is.null(gp_model)) {
     if (has_custom_eval_functions & use_gp_model_for_validation) {
       # Note: if this option should be added, it can be done similarly as in gpb.cv using booster$add_valid(..., valid_set_gp = valid_set_gp, ...)
@@ -213,66 +221,80 @@ gpb.cv <- function(params = list()
   if (!is.null(weight)) {
     data$setinfo(name = "weight", info = weight)
   }
-
+  
   # Update parameters with parsed parameters
   data$update_params(params = params)
-
+  
   # Create the predictor set
   data$.__enclos_env__$private$set_predictor(predictor = predictor)
-
+  
   # Write column names
   if (!is.null(colnames)) {
     data$set_colnames(colnames = colnames)
   }
-
+  
   # Write categorical features
   if (!is.null(categorical_feature)) {
     data$set_categorical_feature(categorical_feature = categorical_feature)
   }
-
+  
   # Check for folds
   if (!is.null(folds)) {
-
+    
     # Check for list of folds or for single value
-    if (!identical(class(folds), "list") || length(folds) < 2L) {
-      stop(sQuote("folds"), " must be a list with 2 or more elements that are vectors of indices for each CV-fold")
+    # if (!identical(class(folds), "list") || length(folds) < 2L) {##DELETE
+    #   stop(sQuote("folds"), " must be a list with 2 or more elements that are vectors of indices for each CV-fold")
+    # }
+    if (!identical(class(folds), "list")) {
+      stop(sQuote("folds"), " must be a list with vectors of indices for each CV-fold")
     }
-
+    
     # Set number of folds
     nfold <- length(folds)
-
+    
   } else {
-
+    
     # Check fold value
     if (nfold <= 1L) {
       stop(sQuote("nfold"), " must be > 1")
     }
-
+    
     # Create folds
-    folds <- generate.cv.folds(
-      nfold = nfold
-      , nrows = nrow(data)
-      , stratified = stratified
-      , label = getinfo(dataset = data, name = "label")
-      , group = getinfo(dataset = data, name = "group")
-      , params = params
-    )
-
+    if (data$.__enclos_env__$private$free_raw_data){
+      folds <- generate.cv.folds(
+        nfold = nfold
+        , nrows = nrow(data)
+        , stratified = stratified
+        , label = getinfo(dataset = data, name = "label")
+        , group = getinfo(dataset = data, name = "group")
+        , params = params
+      )
+    } else {
+      folds <- generate.cv.folds(
+        nfold = nfold
+        , nrows = nrow(data)
+        , stratified = stratified
+        , label = data$.__enclos_env__$private$info$label
+        , group = data$.__enclos_env__$private$info$group
+        , params = params
+      )
+    }
+    
   }
-
+  
   # Add printing log callback
   if (verbose > 0L && eval_freq > 0L) {
     callbacks <- add.cb(cb_list = callbacks, cb = cb.print.evaluation(period = eval_freq))
   }
-
+  
   # Add evaluation log callback
   if (record) {
     callbacks <- add.cb(cb_list = callbacks, cb = cb.record.evaluation())
   }
-
+  
   # Did user pass parameters that indicate they want to use early stopping?
   using_early_stopping <- !is.null(early_stopping_rounds) && early_stopping_rounds > 0L
-
+  
   boosting_param_names <- .PARAMETER_ALIASES()[["boosting"]]
   using_dart <- any(
     sapply(
@@ -282,12 +304,12 @@ gpb.cv <- function(params = list()
       }
     )
   )
-
+  
   # Cannot use early stopping with 'dart' boosting
   if (using_dart) {
     warning("Early stopping is not available in 'dart' mode.")
     using_early_stopping <- FALSE
-
+    
     # Remove the cb.early.stop() function if it was passed in to callbacks
     callbacks <- Filter(
       f = function(cb_func) {
@@ -296,7 +318,7 @@ gpb.cv <- function(params = list()
       , x = callbacks
     )
   }
-
+  
   # If user supplied early_stopping_rounds, add the early stopping callback
   if (using_early_stopping) {
     callbacks <- add.cb(
@@ -308,9 +330,9 @@ gpb.cv <- function(params = list()
       )
     )
   }
-
+  
   cb <- categorize.callbacks(cb_list = callbacks)
-
+  
   # Construct booster for each fold. The data.table() code below is used to
   # guarantee that indices are sorted while keeping init_score and weight together
   # with the correct indices. Note that it takes advantage of the fact that
@@ -328,42 +350,96 @@ gpb.cv <- function(params = list()
       if (folds_have_group) {
         test_indices <- folds[[k]]$fold
         test_group_indices <- folds[[k]]$group
-        test_groups <- getinfo(dataset = data, name = "group")[test_group_indices]
-        train_groups <- getinfo(dataset = data, name = "group")[-test_group_indices]
+        if (data$.__enclos_env__$private$free_raw_data){
+          test_groups <- getinfo(dataset = data, name = "group")[test_group_indices]
+          train_groups <- getinfo(dataset = data, name = "group")[-test_group_indices]
+        }else{
+          test_groups <- data$.__enclos_env__$private$info$group[test_group_indices]
+          train_groups <- data$.__enclos_env__$private$info$group[-test_group_indices]
+        }
       } else {
         test_indices <- folds[[k]]
       }
       train_indices <- seq_len(nrow(data))[-test_indices]
-
-      # set up test set
-      test_indexDT <- data.table::data.table(
-        indices = test_indices
-        , weight = getinfo(dataset = data, name = "weight")[test_indices]
-        , init_score = getinfo(dataset = data, name = "init_score")[test_indices]
-      )
-      data.table::setorderv(x = test_indexDT, cols = "indices", order = 1L)
-      dtest <- slice(data, test_indexDT$indices)
-      setinfo(dataset = dtest, name = "weight", info = test_indexDT$weight)
-      setinfo(dataset = dtest, name = "init_score", info = test_indexDT$init_score)
-
-      # set up training set
-      train_indexDT <- data.table::data.table(
-        indices = train_indices
-        , weight = getinfo(dataset = data, name = "weight")[train_indices]
-        , init_score = getinfo(dataset = data, name = "init_score")[train_indices]
-      )
-      data.table::setorderv(x = train_indexDT, cols = "indices", order = 1L)
-      dtrain <- slice(data, train_indexDT$indices)
-      setinfo(dataset = dtrain, name = "weight", info = train_indexDT$weight)
-      setinfo(dataset = dtrain, name = "init_score", info = train_indexDT$init_score)
-
+      
+      # set up test and train Datasets
+      if (data$.__enclos_env__$private$free_raw_data){# free_raw_data
+        
+        # set up indices for train and test data
+        test_indexDT <- data.table::data.table(
+          indices = test_indices
+          , weight = getinfo(dataset = data, name = "weight")[test_indices]
+          , init_score = getinfo(dataset = data, name = "init_score")[test_indices]
+        )
+        data.table::setorderv(x = test_indexDT, cols = "indices", order = 1L)
+        train_indexDT <- data.table::data.table(
+          indices = train_indices
+          , weight = getinfo(dataset = data, name = "weight")[train_indices]
+          , init_score = getinfo(dataset = data, name = "init_score")[train_indices]
+        )
+        data.table::setorderv(x = train_indexDT, cols = "indices", order = 1L)
+        
+        dtest <- slice(data, test_indexDT$indices)
+        setinfo(dataset = dtest, name = "weight", info = test_indexDT$weight)
+        setinfo(dataset = dtest, name = "init_score", info = test_indexDT$init_score)
+        
+        dtrain <- slice(data, train_indexDT$indices)
+        setinfo(dataset = dtrain, name = "weight", info = train_indexDT$weight)
+        setinfo(dataset = dtrain, name = "init_score", info = train_indexDT$init_score)
+        
+      }
+      else {# not free_raw_data
+        
+        # set up indices for train and test data
+        test_indexDT <- data.table::data.table(indices = test_indices)
+        data.table::setorderv(x = test_indexDT, cols = "indices", order = 1L)
+        train_indexDT <- data.table::data.table(indices = train_indices)
+        data.table::setorderv(x = train_indexDT, cols = "indices", order = 1L)
+        
+        weight_train = NULL
+        if (!is.null(data$.__enclos_env__$private$info$weight)) {
+          weight_train = data$.__enclos_env__$private$info$weight[train_indexDT$indices]
+        }
+        init_score_train = NULL
+        if (!is.null(data$.__enclos_env__$private$info$init_score)) {
+          init_score_train = data$.__enclos_env__$private$info$init_score[train_indexDT$indices]
+        }
+        dtrain <- gpb.Dataset(data = as.matrix(data$.__enclos_env__$private$raw_data[train_indexDT$indices,]),
+                              label = data$.__enclos_env__$private$info$label[train_indexDT$indices],
+                              weight = weight_train,
+                              init_score = init_score_train,
+                              colnames = data$.__enclos_env__$private$colnames,
+                              categorical_feature = data$.__enclos_env__$private$categorical_feature,
+                              params = data$.__enclos_env__$private$params,
+                              free_raw_data = data$.__enclos_env__$private$free_raw_data)
+        
+        weight_test = NULL
+        if (!is.null(data$.__enclos_env__$private$info$weight)) {
+          weight_test = data$.__enclos_env__$private$info$weight[test_indexDT$indices]
+        }
+        init_score_test = NULL
+        if (!is.null(data$.__enclos_env__$private$info$init_score)) {
+          init_score_test = data$.__enclos_env__$private$info$init_score[test_indexDT$indices]
+        }
+        dtest <- gpb.Dataset(data = as.matrix(data$.__enclos_env__$private$raw_data[test_indexDT$indices,]), 
+                             label = data$.__enclos_env__$private$info$label[test_indexDT$indices],
+                             weight = weight_test,
+                             init_score = init_score_test,
+                             reference = dtrain,
+                             colnames = data$.__enclos_env__$private$colnames,
+                             categorical_feature = data$.__enclos_env__$private$categorical_feature,
+                             params = data$.__enclos_env__$private$params,
+                             free_raw_data = data$.__enclos_env__$private$free_raw_data)
+        
+      }# end not free_raw_data
+      
       if (folds_have_group) {
         setinfo(dataset = dtest, name = "group", info = test_groups)
         setinfo(dataset = dtrain, name = "group", info = train_groups)
       }
-
+      
       if (!is.null(gp_model)) {
-
+        
         group_data_pred <- NULL
         group_data <- gp_model$get_group_data()
         if (!is.null(group_data)) {
@@ -445,40 +521,40 @@ gpb.cv <- function(params = list()
         gp_model$set_likelihood(gp_model_train$get_likelihood_name())##potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
         gp_model_train$set_optim_params(params = gp_model$get_optim_params())
         gp_model_train$set_optim_coef_params(params = gp_model$get_optim_params())
-
+        
       } else {
         booster <- Booster$new(params = params, train_set = dtrain)
       }
       
       booster$add_valid(data = dtest, name = "valid", valid_set_gp = valid_set_gp,
                         use_gp_model_for_validation = use_gp_model_for_validation)
-
+      
       return(
         list(booster = booster)
       )
     }
   )
-
+  
   # Create new booster
   cv_booster <- CVBooster$new(x = bst_folds)
-
+  
   # Callback env
   env <- CB_ENV$new()
   env$model <- cv_booster
   env$begin_iteration <- begin_iteration
   env$end_iteration <- end_iteration
-
+  
   # Start training model using number of iterations to start and end with
   for (i in seq.int(from = begin_iteration, to = end_iteration)) {
-
+    
     # Overwrite iteration in environment
     env$iteration <- i
     env$eval_list <- list()
-
+    
     for (f in cb$pre_iter) {
       f(env)
     }
-
+    
     # Update one boosting iteration
     msg <- lapply(cv_booster$boosters, function(fd) {
       fd$booster$update(fobj = fobj)
@@ -488,28 +564,28 @@ gpb.cv <- function(params = list()
       }
       return(out)
     })
-
+    
     # Prepare collection of evaluation results
     merged_msg <- gpb.merge.cv.result(msg = msg)
-
+    
     # Write evaluation result in environment
     env$eval_list <- merged_msg$eval_list
-
+    
     # Check for standard deviation requirement
     if (showsd) {
       env$eval_err_list <- merged_msg$eval_err_list
     }
-
+    
     # Loop through env
     for (f in cb$post_iter) {
       f(env)
     }
-
+    
     # Check for early stopping and break if needed
     if (env$met_early_stop) break
-
+    
   }
-
+  
   # When early stopping is not activated, we compute the best iteration / score ourselves
   # based on the first first metric
   if (record && is.na(env$best_score)) {
@@ -559,7 +635,7 @@ gpb.cv <- function(params = list()
     }
     
   }
-
+  
   if (reset_data) {
     lapply(cv_booster$boosters, function(fd) {
       # Store temporarily model data elsewhere
@@ -575,57 +651,57 @@ gpb.cv <- function(params = list()
       fd$booster$record_evals <- booster_old$record_evals
     })
   }
-
+  
   return(cv_booster)
-
+  
 }
 
 # Generates random (stratified if needed) CV folds
 generate.cv.folds <- function(nfold, nrows, stratified, label, group, params) {
-
+  
   # Check for group existence
   if (is.null(group)) {
-
+    
     # Shuffle
     rnd_idx <- sample.int(nrows)
-
+    
     # Request stratified folds
     if (isTRUE(stratified) && params$objective %in% c("binary", "multiclass") && length(label) == length(rnd_idx)) {
-
+      
       y <- label[rnd_idx]
       y <- as.factor(y)
       folds <- gpb.stratified.folds(y = y, k = nfold)
-
+      
     } else {
-
+      
       # Make simple non-stratified folds
       folds <- list()
-
+      
       # Loop through each fold
       for (i in seq_len(nfold)) {
         kstep <- length(rnd_idx) %/% (nfold - i + 1L)
         folds[[i]] <- rnd_idx[seq_len(kstep)]
         rnd_idx <- rnd_idx[-seq_len(kstep)]
       }
-
+      
     }
-
+    
   } else {
-
+    
     # When doing group, stratified is not possible (only random selection)
     if (nfold > length(group)) {
       stop("\nYou requested too many folds for the number of available groups.\n")
     }
-
+    
     # Degroup the groups
     ungrouped <- inverse.rle(list(lengths = group, values = seq_along(group)))
-
+    
     # Can't stratify, shuffle
     rnd_idx <- sample.int(length(group))
-
+    
     # Make simple non-stratified folds
     folds <- list()
-
+    
     # Loop through each fold
     for (i in seq_len(nfold)) {
       kstep <- length(rnd_idx) %/% (nfold - i + 1L)
@@ -635,11 +711,11 @@ generate.cv.folds <- function(nfold, nrows, stratified, label, group, params) {
       )
       rnd_idx <- rnd_idx[-seq_len(kstep)]
     }
-
+    
   }
-
+  
   return(folds)
-
+  
 }
 
 # Creates CV folds stratified by the values of y.
@@ -647,7 +723,7 @@ generate.cv.folds <- function(nfold, nrows, stratified, label, group, params) {
 # by always returning an unnamed list of fold indices.
 #' @importFrom stats quantile
 gpb.stratified.folds <- function(y, k = 10L) {
-
+  
   ## Group the numeric data based on their magnitudes
   ## and sample within those groups.
   ## When the number of samples is low, we may have
@@ -657,7 +733,7 @@ gpb.stratified.folds <- function(y, k = 10L) {
   ## At most, we will use quantiles. If the sample
   ## is too small, we just do regular unstratified CV
   if (is.numeric(y)) {
-
+    
     cuts <- length(y) %/% k
     if (cuts < 2L) {
       cuts <- 2L
@@ -670,84 +746,84 @@ gpb.stratified.folds <- function(y, k = 10L) {
       , unique(stats::quantile(y, probs = seq.int(0.0, 1.0, length.out = cuts)))
       , include.lowest = TRUE
     )
-
+    
   }
-
+  
   if (k < length(y)) {
-
+    
     ## Reset levels so that the possible levels and
     ## the levels in the vector are the same
     y <- as.factor(as.character(y))
     numInClass <- table(y)
     foldVector <- vector(mode = "integer", length(y))
-
+    
     ## For each class, balance the fold allocation as far
     ## as possible, then resample the remainder.
     ## The final assignment of folds is also randomized.
-
+    
     for (i in seq_along(numInClass)) {
-
+      
       ## Create a vector of integers from 1:k as many times as possible without
       ## going over the number of samples in the class. Note that if the number
       ## of samples in a class is less than k, nothing is producd here.
       seqVector <- rep(seq_len(k), numInClass[i] %/% k)
-
+      
       ## Add enough random integers to get  length(seqVector) == numInClass[i]
       if (numInClass[i] %% k > 0L) {
         seqVector <- c(seqVector, sample.int(k, numInClass[i] %% k))
       }
-
+      
       ## Shuffle the integers for fold assignment and assign to this classes's data
       foldVector[y == dimnames(numInClass)$y[i]] <- sample(seqVector)
-
+      
     }
-
+    
   } else {
-
+    
     foldVector <- seq(along = y)
-
+    
   }
-
+  
   out <- split(seq(along = y), foldVector)
   names(out) <- NULL
   return(out)
 }
 
 gpb.merge.cv.result <- function(msg, showsd = TRUE) {
-
+  
   # Get CV message length
   if (length(msg) == 0L) {
     stop("gpb.cv: size of cv result error")
   }
-
+  
   # Get evaluation message length
   eval_len <- length(msg[[1L]])
-
+  
   # Is evaluation message empty?
   if (eval_len == 0L) {
     stop("gpb.cv: should provide at least one metric for CV")
   }
-
+  
   # Get evaluation results using a list apply
   eval_result <- lapply(seq_len(eval_len), function(j) {
     as.numeric(lapply(seq_along(msg), function(i) {
       msg[[i]][[j]]$value }))
   })
-
+  
   # Get evaluation. Just taking the first element here to
   # get structure (name, higher_better, data_name)
   ret_eval <- msg[[1L]]
-
+  
   # Go through evaluation length items
   for (j in seq_len(eval_len)) {
     ret_eval[[j]]$value <- mean(eval_result[[j]])
   }
-
+  
   ret_eval_err <- NULL
-
+  
   # Check for standard deviation
   if (showsd) {
-
+    
     # Parse standard deviation
     for (j in seq_len(eval_len)) {
       ret_eval_err <- c(
@@ -755,12 +831,12 @@ gpb.merge.cv.result <- function(msg, showsd = TRUE) {
         , sqrt(mean(eval_result[[j]] ^ 2L) - mean(eval_result[[j]]) ^ 2L)
       )
     }
-
+    
     # Convert to list
     ret_eval_err <- as.list(ret_eval_err)
-
+    
   }
-
+  
   # Return errors
   return(
     list(
@@ -768,5 +844,241 @@ gpb.merge.cv.result <- function(msg, showsd = TRUE) {
       , eval_err_list = ret_eval_err
     )
   )
-
+  
 }
+
+get.grid.size <- function(param_grid) {
+  # Determine total number of parameter combinations on a grid
+  # Author: Fabio Sigrist
+  grid_size = 1
+  for (param in param_grid) {
+    grid_size = grid_size * length(param)
+  }
+  return(grid_size)
+}
+
+get.param.combination <- function(param_comb_number, param_grid) {
+  # Select parameter combination from a grid of parameters
+  # param_comb_number: Index number of parameter combination on parameter grid that should be returned (counting starts at 0)
+  # Author: Fabio Sigrist
+  param_comb = list()
+  nk = param_comb_number
+  for (param_name in names(param_grid)) {
+    ind_p = nk %% length(param_grid[[param_name]])
+    param_comb[[param_name]] = param_grid[[param_name]][ind_p + 1]
+    nk = (nk - ind_p) / length(param_grid[[param_name]])
+  }
+  return(param_comb)
+}
+
+#' @name gpb.grid.search.tune.parameters
+#' @title Function for choosing tuning parameters
+#' @description Function that allows for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
+#' @param param_grid \code{list} with candidate parameters defining the grid over which a search is done
+#' @param params \code{list} with other parameters not included in \code{param_grid}
+#' @param num_try_random \code{integer} with number of random trial on parameter grid. If NULL, a deterministic search is done
+#' @param folds \code{list} provides a possibility to use a list of pre-defined CV folds
+#'              (each element must be a vector of test fold's indices). When folds are supplied,
+#'              the \code{nfold} and \code{stratified} parameters are ignored.
+#' @param nfold the original dataset is randomly partitioned into \code{nfold} equal size subsamples.
+#' @param label Vector of labels, used if \code{data} is not an \code{\link{gpb.Dataset}}
+#' @param weight vector of response values. If not NULL, will set to dataset
+#' @param verbose_eval \code{integer}. Whether to display information on the progress of tuning parameter choice. 
+#' If None or 0, verbose is of.
+#' If = 1, summary progress information is displayed for every parameter combination.
+#' If >= 2, detailed progress is displayed at every boosting stage for every parameter combination.
+#' @param stratified a \code{boolean} indicating whether sampling of folds should be stratified
+#'                   by the values of outcome labels.
+#' @param colnames feature names, if not null, will use this to overwrite the names in dataset
+#' @param categorical_feature categorical features. This can either be a character vector of feature
+#'                            names or an integer vector with the indices of the features (e.g.
+#'                            \code{c(1L, 10L)} to say "the first and tenth columns").
+#' @param callbacks List of callback functions that are applied at each iteration.
+#' @inheritParams gpb_shared_params
+#' @param ... other parameters, see Parameters.rst for more information.
+#' @inheritSection gpb_shared_params Early Stopping
+#' @return         A \code{list} with the best parameter combination and score
+#' The list has the following format:
+#'  list("best_params" = best_params, "best_iter" = best_iter, "best_score" = best_score)
+#'
+#' @examples
+#' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
+#' 
+#' \donttest{
+#' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
+#' 
+#' # Create random effects model, dataset, and define parameter grif
+#' gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
+#' dtrain <- gpb.Dataset(X, label = y)
+#' params <- list(objective = "regression_l2")
+#' param_grid = list("learning_rate" = c(0.1,0.01), "min_data_in_leaf" = c(20),
+#'                   "max_depth" = c(5,10), "num_leaves" = 2^17, "max_bin" = c(255,1000))
+#' # Parameter tuning using cross-validation and deterministic grid search
+#' set.seed(1)
+#' opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
+#'                                               params = params,
+#'                                               num_try_random = NULL,
+#'                                               nfold = 4,
+#'                                               data = dtrain,
+#'                                               gp_model = gp_model,
+#'                                               verbose_eval = 1,
+#'                                               nrounds = 1000,
+#'                                               early_stopping_rounds = 5,
+#'                                               eval = "l2")
+#' # Parameter tuning using cross-validation and random grid search
+#' set.seed(1)
+#' opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
+#'                                               params = params,
+#'                                               num_try_random = 4,
+#'                                               nfold = 4,
+#'                                               data = dtrain,
+#'                                               gp_model = gp_model,
+#'                                               verbose_eval = 1,
+#'                                               nrounds = 1000,
+#'                                               early_stopping_rounds = 5,
+#'                                               eval = "l2")
+#' }
+#' @author Fabio Sigrist
+#' @export
+gpb.grid.search.tune.parameters <- function(param_grid
+                                            , data
+                                            , params = list()
+                                            , num_try_random = NULL
+                                            , nrounds = 100L
+                                            , gp_model = NULL
+                                            , use_gp_model_for_validation = TRUE
+                                            , train_gp_model_cov_pars = TRUE
+                                            , folds = NULL
+                                            , nfold = 4L
+                                            , label = NULL
+                                            , weight = NULL
+                                            , obj = NULL
+                                            , eval = NULL
+                                            , verbose_eval = 1L
+                                            , stratified = TRUE
+                                            , init_model = NULL
+                                            , colnames = NULL
+                                            , categorical_feature = NULL
+                                            , early_stopping_rounds = NULL
+                                            , callbacks = list()
+                                            , ...
+) {
+  
+  # Check format
+  if (!is.list(param_grid)) {
+    stop("gpb.grid.search.tune.parameters: param_grid needs to be a list")
+  }
+  if (is.null(verbose_eval)) {
+    verbose_eval = 0
+  } else {
+    verbose_eval = as.integer(verbose_eval)
+  }
+  if (is.null(params)) {
+    params <- list()
+  }
+  for (param in names(param_grid)) {
+    if (!is.vector(param_grid[[param]])) {
+      stop(paste0("gpb.grid.search.tune.parameters: Candidate parameters in param_grid need to be given as vectors for every parameter. Found other format for ", param))
+    }
+  }
+  # Higher better?
+  higher_better = FALSE
+  eval_copy <- eval
+  if (!is.null(eval_copy)) {
+    if (!is.list(eval_copy)) {
+      eval_copy <- list(eval_copy)
+    }
+    if (is.function(eval_copy[[1]])) {
+      dummy_data <- gpb.Dataset(data=matrix(c(0,1)),label=c(0,1))
+      dummy_data$construct()
+      higher_better <- eval_copy[[1]](0,dummy_data)$higher_better
+    } else {
+      higher_better <- .METRICS_HIGHER_BETTER()[eval_copy[[1]]]
+    }
+  }
+  # Determine combinations of parameter values that should be tried out
+  grid_size <- get.grid.size(param_grid)
+  if (is.null(num_try_random)) {
+    try_param_combs <- 0:(grid_size - 1L)
+    message(paste0("gpb.grid.search.tune.parameters: Starting deterministic grid search with ", grid_size, " parameter combinations..."))
+  } else {
+    if(num_try_random > grid_size){
+      stop("gpb.grid.search.tune.parameters: num_try_random is larger than the number of all possible combinations of parameters in param_grid")
+    }
+    try_param_combs <- sample.int(n = grid_size, size = num_try_random, replace = FALSE) - 1L
+    message(paste0("gpb.grid.search.tune.parameters: Starting random grid search with ", num_try_random, " trials out of ", grid_size, " parameter combinations..."))
+  }
+  if (verbose_eval < 2) {
+    verbose_cv <- 0L
+  } else {
+    verbose_cv <- 1L
+  }
+  best_score <- 1E99
+  if (higher_better) best_score <- -1E99
+  best_params <- list()
+  best_nrounds <- nrounds
+  counter_num_comb <- 1
+  for (param_comb_number in try_param_combs) {
+    param_comb = get.param.combination(param_comb_number=param_comb_number,
+                                       param_grid=param_grid)
+    for (param in names(param_comb)) {
+      params[[param]] <- param_comb[[param]]
+    }
+    if (verbose_eval >= 1L) {
+      message(paste0("Trying parameter combination number ", 
+                     counter_num_comb, " of ", length(try_param_combs), " parameter combinations..."))
+    }
+    cvbst <- gpb.cv(params = params
+                    , data = data
+                    , nrounds = nrounds
+                    , gp_model = gp_model
+                    , use_gp_model_for_validation = use_gp_model_for_validation
+                    , train_gp_model_cov_pars = train_gp_model_cov_pars
+                    , folds = folds
+                    , nfold = nfold
+                    , label = label
+                    , weight = weight
+                    , obj = obj
+                    , eval = eval
+                    , verbose = verbose_cv
+                    , record = TRUE
+                    , eval_freq = 1L
+                    , showsd = FALSE
+                    , stratified = stratified
+                    , init_model = init_model
+                    , colnames = colnames
+                    , categorical_feature = categorical_feature
+                    , early_stopping_rounds = early_stopping_rounds
+                    , callbacks = callbacks
+                    , reset_data = FALSE
+                    , ...
+    )
+    current_score_is_better <- FALSE
+    if (higher_better) {
+      if (cvbst$best_score > best_score) {
+        current_score_is_better <- TRUE
+      }
+    } else {
+      if (cvbst$best_score < best_score) {
+        current_score_is_better <- TRUE
+      }
+    }
+    if (current_score_is_better) {
+      best_score <- cvbst$best_score
+      best_iter <- cvbst$best_iter
+      best_params <- param_comb
+      if (verbose_eval >= 1L) {
+        param_comb_print <- param_comb
+        param_comb_print[["nrounds"]] <- best_iter
+        str <- lapply(seq_along(param_comb_print), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb_print, n=names(param_comb_print))
+        message(paste0("***** New best score (", best_score,  ") found for the following parameter combination: ", paste0(unlist(str), collapse=", ")))
+      }
+    }
+    counter_num_comb <- counter_num_comb + 1L
+  }
+  
+  return(list(best_params=best_params, best_iter=best_iter, best_score=best_score))
+  
+}
+

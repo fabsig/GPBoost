@@ -1492,7 +1492,7 @@ test_that("gpb.cv() works when you specify both 'metric' and 'eval' with strings
   # the difference metrics shouldn't have been mixed up with each other
   results <- bst$record_evals[["valid"]]
   expect_true(abs(results[["binary_error"]][["eval"]][[1L]] - 0.5005654) < TOLERANCE)
-  expect_true(abs(results[["binary_logloss"]][["eval"]][[1L]] - 0.7011232) < TOLERANCE)
+  expect_true(abs(results[["binary_logloss"]][["eval"]][[1L]] - 0.7016582) < TOLERANCE)
 
   # all boosters should have been created
   expect_length(bst$boosters, nfolds)

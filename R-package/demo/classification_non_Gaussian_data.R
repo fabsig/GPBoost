@@ -1,7 +1,6 @@
 ## Examples for combining tree-boosting with Gaussian process and random effects models
-## for several non-Gaussian likelihoods
+##    for several non-Gaussian likelihoods
 ## See the examples in GPBoost_algorithm.R for more functionality
-
 ## Author: Fabio Sigrist
 
 library(gpboost)

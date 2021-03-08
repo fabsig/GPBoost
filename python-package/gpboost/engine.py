@@ -411,7 +411,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
     ret = CVBooster()
     for train_idx, test_idx in folds:
         train_set = full_data.subset(sorted(train_idx))
-        if full_data.free_raw_data:  # NEW
+        if full_data.free_raw_data:
             valid_set = full_data.subset(sorted(test_idx))
         else:
             valid_set = full_data.subset(sorted(test_idx), reference=train_set)
@@ -654,14 +654,14 @@ def cv(params, train_set, num_boost_round=100,
         Authors of the LightGBM Python package
         Fabio Sigrist
     """
-    if train_set.free_raw_data:  # NEW
-        _log_warning('For true out-of-sample (cross-) validation, it is recommended to set free_raw_data = False '
-                     'when constructing the Dataset')
     if fit_GP_cov_pars_OOS:
         raise ValueError("The GPBoostOOS algorithm (fit_GP_cov_pars_OOS=True) is currently not supported in Python. "
                          "If you need this feature, contact the developer of this package or open a GitHub issue.")
     if not isinstance(train_set, Dataset):
-        raise TypeError("Training only accepts Dataset object")
+        raise TypeError("cv only accepts Dataset objects as train_set")
+    if train_set.free_raw_data:
+        _log_warning('For true out-of-sample (cross-) validation, it is recommended to set free_raw_data = False '
+                     'when constructing the Dataset')
 
     params = copy.deepcopy(params)
     if fobj is not None:
@@ -798,7 +798,7 @@ def _get_param_combination(param_comb_number, param_grid):
     Parameters
     ----------
     param_comb_number : int
-        Index number of parameter combination on parameter grid that should be returned.
+        Index number of parameter combination on parameter grid that should be returned (counting starts at 0).
     param_grid : dict
         Parameter grid
 
@@ -826,8 +826,8 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                                 metrics=None, fobj=None, feval=None, init_model=None,
                                 feature_name='auto', categorical_feature='auto',
                                 early_stopping_rounds=None, fpreproc=None,
-                                verbose_eval=None, seed=0, callbacks=None):
-    """Choose tuning parameters from a grid in a determinstic or random way.
+                                verbose_eval=1, seed=0, callbacks=None):
+    """Function that allows for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
 
     Parameters
     ----------
@@ -836,7 +836,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     train_set : Dataset
         Data to be trained on.
     params : dict, optional (default=None)
-        Other parameters not included in param_grid for Booster.
+        Other parameters not included in param_grid.
     num_try_random : int, optional (default=None)
         Number of random trial on parameter grid. If none, a deterministic search is done
     num_boost_round : int, optional (default=100)
@@ -931,7 +931,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     fpreproc : callable or None, optional (default=None)
         Preprocessing function that takes (dtrain, dtest, params)
         and returns transformed versions of those.
-    verbose_eval : int or None, optional (default=None)
+    verbose_eval : int or None, optional (default=1)
         Whether to display information on the progress of tuning parameter choice.
         If None or 0, verbose is of.
         If = 1, summary progress information is displayed for every parameter combination.
@@ -945,9 +945,9 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     Returns
     -------
     return : dict
-        Dictionary with best parameter combination and score
+        Dictionary with the best parameter combination and score
         The dictionary has the following format:
-        {'best_param': best_param, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+        {'best_params': best_params, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
 
     :Authors:
         Fabio Sigrist
@@ -985,13 +985,13 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     grid_size = _get_grid_size(param_grid)
     if num_try_random is not None:
         if num_try_random > grid_size:
-            raise ValueError("num_try_random is larger than the combination of all parameters")
+            raise ValueError("num_try_random is larger than the number of all possible combinations of parameters in param_grid")
         try_param_combs = np.random.RandomState(seed).choice(a=grid_size, size=num_try_random, replace=False)
         print("Starting random grid search with " + str(num_try_random) + " trials out of " + str(
-            grid_size) + " parameter combinations ...")
+            grid_size) + " parameter combinations...")
     else:
         try_param_combs = range(grid_size)
-        print("Starting deterministic grid search with " + str(grid_size) + " parameter combinations ...")
+        print("Starting deterministic grid search with " + str(grid_size) + " parameter combinations...")
     if verbose_eval < 2:
         verbose_eval_cv = False
     else:
@@ -1001,7 +1001,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     if higher_better:
         best_score = -1e99
         current_score = -1e99
-    best_param = {}
+    best_params = {}
     best_num_boost_round = num_boost_round
     counter_num_comb = 1
     for param_comb_number in try_param_combs:
@@ -1010,7 +1010,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
             params[param] = param_comb[param]
         if verbose_eval >= 1:
             print("Trying parameter combination number " + str(counter_num_comb) +
-                  " of " + str(len(try_param_combs)) + " parameter combinations")
+                  " of " + str(len(try_param_combs)) + " parameter combinations...")
         cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round,
                    gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
                    train_gp_model_cov_pars=train_gp_model_cov_pars,
@@ -1030,15 +1030,15 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                 current_score_is_better = True
         if current_score_is_better:
             best_score = current_score
-            best_param = param_comb
+            best_params = param_comb
             if higher_better:
                 best_num_boost_round = np.argmax(cvbst[next(iter(cvbst))])
             else:
                 best_num_boost_round = np.argmin(cvbst[next(iter(cvbst))])
             if verbose_eval >= 1:
                 print("***** New best score (" + str(best_score) + ") found for the following parameter combination:")
-                best_param_print = copy.deepcopy(best_param)
-                best_param_print['num_boost_round'] = best_num_boost_round
-                print(best_param_print)
+                best_params_print = copy.deepcopy(best_params)
+                best_params_print['num_boost_round'] = best_num_boost_round
+                print(best_params_print)
         counter_num_comb = counter_num_comb + 1
-    return {'best_param': best_param, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+    return {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}

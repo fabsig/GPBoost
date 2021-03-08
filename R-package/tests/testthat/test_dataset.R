@@ -235,7 +235,7 @@ test_that("gpb.Dataset: should be able to run gpb.cv() immediately after using g
 
   # read from a local file
   dtest_read_in <- gpb.Dataset(data = tmp_file)
-
+  
   param <- list(
     objective = "binary"
     , metric = "binary_logloss"
@@ -251,3 +251,4 @@ test_that("gpb.Dataset: should be able to run gpb.cv() immediately after using g
 
   expect_is(bst, "gpb.CVBooster")
 })
+

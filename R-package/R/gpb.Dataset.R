@@ -204,6 +204,7 @@ Dataset <- R6::R6Class(
             , params_str
             , ref_handle
           )
+          private$free_raw_data <- TRUE
 
         } else if (is.matrix(private$raw_data)) {
 
@@ -383,9 +384,8 @@ Dataset <- R6::R6Class(
 
       } else {
 
-        # Trying to work with unknown dimensions is not possible
         stop(
-          "dim: cannot get dimensions before dataset has been constructed, please call "
+          "dim: cannot get colnames before dataset has been constructed, please call "
           , "gpb.Dataset.construct explicitly"
         )
 

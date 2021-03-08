@@ -1,5 +1,7 @@
 context("GPBoost_combined_boosting_GP_random_effects")
 
+TOLERANCE <- 1E-3
+
 # Function that simulates uniform random variables
 sim_rand_unif <- function(n, init_c=0.1){
   mod_lcg <- 134456 # modulus for linear congruential generator (random0 used)
@@ -116,12 +118,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
                    objective = "regression_l2", train_gp_model_cov_pars=FALSE, nrounds=1)
     record_results <- gpb.get.eval.result(bst, "train", "Negative log-likelihood")
-    expect_lt(abs(record_results[1]-1573.9417522), 1e-3)
+    expect_lt(abs(record_results[1]-1573.9417522), TOLERANCE)
     
     bst <- gpb.train(data = dtrain, gp_model = gp_model, verbose = 0, valids = list(train=dtrain),
                      objective = "regression_l2", train_gp_model_cov_pars=FALSE, nrounds=1)
     record_results <- gpb.get.eval.result(bst, "train", "Negative log-likelihood")
-    expect_lt(abs(record_results[1]-1573.9417522), 1e-3)
+    expect_lt(abs(record_results[1]-1573.9417522), TOLERANCE)
     
     # CV for finding number of boosting iterations with use_gp_model_for_validation = FALSE
     gp_model <- GPModel(group_data = group_data_train)
@@ -136,8 +138,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     fit_GP_cov_pars_OOS = FALSE,
                     folds = folds,
                     verbose = 0)
-    expect_equal(cvbst$best_iter, 58)
-    expect_lt(abs(cvbst$best_score-1.021776), 1E-3)
+    expect_equal(cvbst$best_iter, 59)
+    expect_lt(abs(cvbst$best_score-1.027334), TOLERANCE)
     # CV for finding number of boosting iterations with use_gp_model_for_validation = TRUE
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
@@ -150,8 +152,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     fit_GP_cov_pars_OOS = FALSE,
                     folds = folds,
                     verbose = 0)
-    expect_equal(cvbst$best_iter, 61)
-    expect_lt(abs(cvbst$best_score-0.6430104), 1E-3)
+    expect_equal(cvbst$best_iter, 59)
+    expect_lt(abs(cvbst$best_score-0.6526893), TOLERANCE)
     
     # Create random effects model and train GPBoost model
     gp_model <- GPModel(group_data = group_data_train)
@@ -166,7 +168,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    verbose = 0,
                    leaves_newton_update = FALSE)
     cov_pars <- c(0.005087137, 0.590527753, 0.390570179)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-3)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
     
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
@@ -174,11 +176,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sqrt(mean((pred$fixed_effect - y_test)^2)),1.0241)
     expect_lt(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2)),0.235)
     expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.3918770, -0.1655551, -1.2513672,
-                                                      rep(0,n_new)))),1E-3)
+                                                      rep(0,n_new)))),TOLERANCE)
     expect_lt(sum(abs(head(pred$random_effect_mean)-c(-.5559122, 0.5031307, 0.5676980,
-                                                      -0.9293673, -0.5188209, -0.2505326))),1E-3)
+                                                      -0.9293673, -0.5188209, -0.2505326))),TOLERANCE)
     expect_lt(sum(abs(head(pred$fixed_effect)-c(4.894403, 3.957849, 3.281690,
-                                                4.162436, 5.101025, 4.889397))),1E-3)
+                                                4.162436, 5.101025, 4.889397))),TOLERANCE)
     
     ## Prediction when having only one grouped random effect
     group_1 <- rep(1,ntrain) # grouping variable
@@ -197,8 +199,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    leaves_newton_update = FALSE)
     pred <- predict(bst, data = X_test[1:length(unique(b1)),], group_data_pred = 1:length(unique(b1)))
     # plot(pred$random_effect_mean,b1)
-    expect_lt(abs(sqrt(sum((pred$random_effect_mean - b1)^2))-0.643814),1E-3)
-    expect_lt(abs(cor(pred$random_effect_mean,b1)-0.9914091),1E-3)
+    expect_lt(abs(sqrt(sum((pred$random_effect_mean - b1)^2))-0.643814),TOLERANCE)
+    expect_lt(abs(cor(pred$random_effect_mean,b1)-0.9914091),TOLERANCE)
     
     # GPBoostOOS algorithm: fit parameters on out-of-sample data
     gp_model <- GPModel(group_data = group_data_train)
@@ -213,9 +215,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     fit_GP_cov_pars_OOS = TRUE,
                     folds = folds,
                     verbose = 0)
-    expect_equal(cvbst$best_iter, 58)
-    cov_pars_OOS <- c(0.05207775, 0.59778132, 0.38708045)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),1E-3)
+    expect_equal(cvbst$best_iter, 59)
+    cov_pars_OOS <- c(0.05103639, 0.60775408, 0.38378833)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),TOLERANCE)
     
     # Train tree-boosting model while holding the GPModel fix
     bst <- gpb.train(data = dtrain,
@@ -227,7 +229,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      objective = "regression_l2",
                      verbose = 0,
                      train_gp_model_cov_pars = FALSE)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),1E-3)# no change in covariance parameters
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),TOLERANCE)# no change in covariance parameters
     
     # GPBoostOOS algorithm: fit parameters on out-of-sample data with random folds
     gp_model <- GPModel(group_data = group_data_train)
@@ -262,9 +264,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     fit_GP_cov_pars_OOS = TRUE,
                     folds = folds,
                     verbose = 0)
-    expect_equal(cvbst$best_iter, 59)
-    cov_pars_OOS <- c(0.04533179, 0.60691510, 0.38937517)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),1E-3)
+    expect_equal(cvbst$best_iter, 52)
+    cov_pars_OOS <- c(0.04468342, 0.60930957, 0.38893938)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),TOLERANCE)
     
     # Using validation set
     # Do not include random effect predictions for validation
@@ -281,7 +283,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      early_stopping_rounds = 5,
                      use_gp_model_for_validation = FALSE)
     expect_equal(bst$best_iter, 57)
-    expect_lt(abs(bst$best_score - 1.0326),1E-3)
+    expect_lt(abs(bst$best_score - 1.0326),TOLERANCE)
     # Include random effect predictions for validation 
     gp_model <- GPModel(group_data = group_data_train)
     gp_model$set_prediction_data(group_data_pred = group_data_test)
@@ -297,7 +299,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      early_stopping_rounds = 5,
                      use_gp_model_for_validation = TRUE)
     expect_equal(bst$best_iter, 59)
-    expect_lt(abs(bst$best_score - 0.04753591),1E-3)
+    expect_lt(abs(bst$best_score - 0.04753591),TOLERANCE)
     
     # Use of validation data and cross-validation with custom metric
     l4_loss <- function(preds, dtrain) {
@@ -318,7 +320,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      use_gp_model_for_validation = FALSE,
                      eval = l4_loss, metric = "l4")
     expect_equal(bst$best_iter, 57)
-    expect_lt(abs(bst$best_score - 3.058637),1E-3)
+    expect_lt(abs(bst$best_score - 3.058637),TOLERANCE)
     # CV
     gp_model <- GPModel(group_data = group_data_train)
     cvbst <- gpb.cv(params = params,
@@ -332,8 +334,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     folds = folds,
                     verbose = 0,
                     eval = l4_loss, metric = "l4")
-    expect_equal(cvbst$best_iter, 59)
-    expect_lt(abs(cvbst$best_score - 2.95402),1E-2)
+    expect_equal(cvbst$best_iter, 52)
+    expect_lt(abs(cvbst$best_score - 2.932338),TOLERANCE)
   })
   
   
@@ -385,12 +387,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      objective = "regression_l2",
                      verbose = 0)
     cov_pars_est <- c(0.1358229, 0.9099908, 0.1115316)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.5229658),1E-3)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.170505),1E-3)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-0.8304062),1E-3)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.5229658),TOLERANCE)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.170505),TOLERANCE)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-0.8304062),TOLERANCE)
     
     # Use validation set to determine number of boosting iteration
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
@@ -407,7 +409,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      early_stopping_rounds = 5,
                      use_gp_model_for_validation = FALSE)
     expect_equal(bst$best_iter, 27)
-    expect_lt(abs(bst$best_score - 1.293498),1E-3)
+    expect_lt(abs(bst$best_score - 1.293498),TOLERANCE)
     
     # Also use GPModel for calculating validation error
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
@@ -426,7 +428,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      use_gp_model_for_validation = TRUE)
     expect_equal(bst$best_iter, 27)
     # print(bst$best_score)
-    expect_lt(abs(bst$best_score - 0.550003),1E-3)
+    expect_lt(abs(bst$best_score - 0.550003),TOLERANCE)
   })
   
   
@@ -470,12 +472,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      min_data_in_leaf = 5, objective = "regression_l2",
                      verbose = 0)
     cov_pars_est <- c(0.24800160, 0.89155814, 0.08301144)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7819426),1E-3)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.345712),1E-3)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-1.23809),1E-3)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7819426),TOLERANCE)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.345712),TOLERANCE)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-1.23809),TOLERANCE)
     # Same thing with Vecchia approximation
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         vecchia_approx =TRUE, num_neighbors = ntrain-1)
@@ -483,11 +485,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                      learning_rate = 0.05, max_depth = 6,
                      min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),1E-3)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7819426),1E-3)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.345712),1E-3)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-1.23809),1E-3)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7819426),TOLERANCE)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.345712),TOLERANCE)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-1.23809),TOLERANCE)
     
   })
   
@@ -564,8 +566,8 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
                   fit_GP_cov_pars_OOS = FALSE,
                   folds = folds,
                   verbose = 0)
-  expect_equal(cvbst$best_iter, 20)
-  expect_lt(abs(cvbst$best_score-1.031217), 1E-2)
+  expect_equal(cvbst$best_iter, 19)
+  expect_lt(abs(cvbst$best_score-1.040297), TOLERANCE)
   # CV for finding number of boosting iterations with use_gp_model_for_validation = TRUE
   cvbst <- gpb.cv(params = params,
                   data = dtrain,
@@ -579,7 +581,7 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
                   folds = folds,
                   verbose = 0)
   expect_equal(cvbst$best_iter, 19)
-  expect_lt(abs(cvbst$best_score-0.6576395), 1E-3)
+  expect_lt(abs(cvbst$best_score-0.6608819), TOLERANCE)
   
   # Create random effects model and train GPBoost model
   gp_model <- GPModel(group_data = group_data_train)
@@ -595,7 +597,7 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
                  leaves_newton_update = FALSE,
                  use_nesterov_acc = TRUE)
   cov_pars <- c(0.01806612, 0.59318355, 0.39198746)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-3)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
   
   # Prediction
   pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
@@ -603,9 +605,9 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
   expect_lt(sqrt(mean((pred$fixed_effect - y_test)^2)),1.018)
   expect_lt(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2)),0.238)
   expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.3737357, -0.1906376, -1.2750302,
-                                                    rep(0,n_new)))),1E-3)
+                                                    rep(0,n_new)))),TOLERANCE)
   expect_lt(sum(abs(head(pred$fixed_effect)-c(4.921429, 4.176900, 2.743165,
-                                              4.141866, 5.018322, 4.935220))),1E-3)
+                                              4.141866, 5.018322, 4.935220))),TOLERANCE)
   
   # Using validation set
   # Do not include random effect predictions for validation
@@ -623,7 +625,7 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
                    use_gp_model_for_validation = FALSE,
                    use_nesterov_acc = TRUE)
   expect_equal(bst$best_iter, 19)
-  expect_lt(abs(bst$best_score - 1.035405),1E-3)
+  expect_lt(abs(bst$best_score - 1.035405),TOLERANCE)
   # Include random effect predictions for validation 
   gp_model <- GPModel(group_data = group_data_train)
   gp_model$set_prediction_data(group_data_pred = group_data_test)
@@ -640,7 +642,7 @@ test_that("GPBoost algorithm with Nesterov acceleration for grouped random effec
                    use_gp_model_for_validation = TRUE,
                    use_nesterov_acc = TRUE)
   expect_equal(bst$best_iter, 19)
-  expect_lt(abs(bst$best_score - 0.05520368),1E-3)
+  expect_lt(abs(bst$best_score - 0.05520368),TOLERANCE)
 })
 
 
