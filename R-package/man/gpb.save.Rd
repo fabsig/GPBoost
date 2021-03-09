@@ -4,14 +4,30 @@
 \alias{gpb.save}
 \title{Save GPBoost model}
 \usage{
-gpb.save(booster, filename, num_iteration = NULL)
+gpb.save(booster, filename, start_iteration = NULL, num_iteration = NULL,
+  save_raw_data = FALSE, ...)
 }
 \arguments{
 \item{booster}{Object of class \code{gpb.Booster}}
 
 \item{filename}{saved filename}
 
-\item{num_iteration}{number of iteration want to predict with, NULL or <= 0 means use best iteration}
+\item{start_iteration}{int or None, optional (default=None)
+Start index of the iteration to predict.
+If None or <= 0, starts from the first iteration.}
+
+\item{num_iteration}{int or None, optional (default=None)
+Limit number of iterations in the prediction.
+If None, if the best iteration exists and start_iteration is None or <= 0, the
+best iteration is used; otherwise, all iterations from start_iteration are used.
+If <= 0, all iterations from start_iteration are used (no limits).}
+
+\item{save_raw_data}{If TRUE, the raw data (predictor / covariate data) for the Booster is also saved.
+Enable this option if you want to change \code{start_iteration} or \code{num_iteration} at prediction time after loading.}
+
+\item{...}{Additional named arguments passed to the \code{predict()} method of
+the \code{gpb.Booster} object passed to \code{object}. 
+This is only used when there is a gp_model and when save_raw_data=FALSE}
 }
 \value{
 gpb.Booster

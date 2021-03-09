@@ -49,8 +49,6 @@ The `gpboost` package is [available on CRAN](https://cran.r-project.org/package=
 install.packages("gpboost", repos = "https://cran.r-project.org")
 ```
 
-*As of 22.02.2021, the Windows binaries are not yet published on CRAN. I.e., compilation from sources is still required. Hopefully, CRAN publishes them soon.*
-
 ## Installation from source
 
 It is much easier to install the package from CRAN. However, the package can also be build from source as described in the following. In short, the **main steps** for installation are the following ones:

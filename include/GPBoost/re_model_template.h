@@ -956,7 +956,7 @@ namespace GPBoost {
 			}
 			if (y_obs == nullptr) {
 				if (!y_has_been_set_) {
-					Log::REFatal("Observed data is not provided and has not been set before");
+					Log::REFatal("Response variable data is not provided and has not been set before");
 				}
 			}
 			if (num_data_pred > 10000 && predict_cov_mat) {

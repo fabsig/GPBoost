@@ -2305,6 +2305,10 @@ class Booster:
         self.best_score = {}
         self.has_gp_model = False
         self.gp_model = None
+        self.residual_loaded_from_file = None
+        self.label_loaded_from_file = None
+        self.fixed_effect_train_loaded_from_file = None
+        self.gp_model_prediction_data_loaded_from_file = False
         params = {} if params is None else deepcopy(params)
         if gp_model is not None:
             if not isinstance(gp_model, GPModel):
@@ -2411,7 +2415,15 @@ class Booster:
                     save_data = json.load(f)
                 self.model_from_string(save_data['booster_str'], not silent)
                 self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
-                self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
+                if save_data.get("raw_data") is not None:
+                    self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
+                else:
+                    if self.gp_model.get_likelihood_name() == "gaussian":
+                        self.residual_loaded_from_file = np.array(save_data['residual'])
+                    else:
+                        self.fixed_effect_train_loaded_from_file = np.array(save_data['fixed_effect_train'])
+                        self.label_loaded_from_file = np.array(save_data['label'])
+                    self.gp_model_prediction_data_loaded_from_file = True
             else:  # has no gp_model
                 out_num_iterations = ctypes.c_int(0)
                 self.handle = ctypes.c_void_p()
@@ -3036,7 +3048,8 @@ class Booster:
         return [item for i in range(1, self.__num_dataset)
                 for item in self.__inner_eval(self.name_valid_sets[i - 1], i, feval)]
 
-    def save_model(self, filename, num_iteration=None, start_iteration=0, importance_type='split'):
+    def save_model(self, filename, num_iteration=None, start_iteration=0, importance_type='split',
+                   save_raw_data=False, **kwargs):
         """Save Booster to file.
 
         Parameters
@@ -3053,6 +3066,12 @@ class Booster:
             What type of feature importance should be saved.
             If "split", result contains numbers of times the feature is used in a model.
             If "gain", result contains total gains of splits which use the feature.
+        save_raw_data : bool (default=False)
+            If true, the raw data (predictor / covariate data) for the Booster is also saved.
+            Enable this option if you want to change 'start_iteration' or 'num_iteration' at prediction time after loading.
+        **kwargs
+            Other parameters for the prediction function.
+            This is only used when there is a gp_model and when save_raw_data=False.
 
         Returns
         -------
@@ -3071,10 +3090,22 @@ class Booster:
             save_data['booster_str'] = self.model_to_string(num_iteration=num_iteration,
                                                             start_iteration=start_iteration,
                                                             importance_type=importance_type)
-            save_data['gp_model_str'] = self.gp_model.model_to_dict()
-            save_data['raw_data'] = {}
-            save_data['raw_data']['data'] = self.train_set.data
-            save_data['raw_data']['label'] = self.train_set.label
+            save_data['gp_model_str'] = self.gp_model.model_to_dict(include_response_data=False)
+            if save_raw_data:
+                save_data['raw_data'] = {}
+                save_data['raw_data']['data'] = self.train_set.data
+                save_data['raw_data']['label'] = self.train_set.label
+            else:
+                predictor = self._to_predictor(deepcopy(kwargs))
+                fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
+                                                       num_iteration=num_iteration, raw_score=True, pred_leaf=False,
+                                                       pred_contrib=False, data_has_header=False, is_reshape=False)
+                if self.gp_model.get_likelihood_name() == "gaussian":  # Gaussian data
+                    residual = self.train_set.label - fixed_effect_train
+                    save_data['residual'] = residual
+                else:
+                    save_data['fixed_effect_train'] = fixed_effect_train
+                    save_data['label'] = self.train_set.label
             with open(filename, 'w+') as f:
                 json.dump(save_data, f, default=json_default_with_numpy, indent="")
         else:  # has no gp_model
@@ -3343,28 +3374,32 @@ class Booster:
                 num_iteration = self.best_iteration
             else:
                 num_iteration = -1
-        make_random_effects_prediction = self.has_gp_model
         if self.has_gp_model:
-            if self.gp_model.num_group_re > 0 and group_data_pred is None:
-                warnings.warn("group_data_pred not provided. Predictions are done for the fixed effects only")
-                make_random_effects_prediction = False
-            if self.gp_model.num_gp > 0 and gp_coords_pred is None:
-                warnings.warn("gp_coords_pred not provided. Predictions are done for the fixed effects only")
-                make_random_effects_prediction = False
-        if make_random_effects_prediction:
             random_effect_mean = None
             pred_var_cov = None
             response_mean = None
             response_var = None
-            if self.train_set.data is None:
+            has_raw_data = False
+            if hasattr(self, 'train_set'):
+                if hasattr(self.train_set, 'data'):
+                    if self.train_set.data is not None:
+                        has_raw_data = True
+            if not has_raw_data and not self.gp_model_prediction_data_loaded_from_file:
                 raise GPBoostError("Cannot make predictions for Gaussian process. "
                                    "Set free_raw_data = False when you construct the Dataset")
-            fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
-                                                   num_iteration=num_iteration, raw_score=True, pred_leaf=False,
-                                                   pred_contrib=False, data_has_header=data_has_header,
-                                                   is_reshape=False)
+            elif not has_raw_data and self.gp_model_prediction_data_loaded_from_file:
+                if start_iteration != 0:
+                    raise GPBoostError("Cannot use the option 'start_iteration' after loading "
+                                       "from file without raw data. Set 'save_raw_data = TRUE' when you save the model")
             if self.gp_model.get_likelihood_name() == "gaussian":  # Gaussian data
-                residual = self.train_set.label - fixed_effect_train
+                if not has_raw_data and self.gp_model_prediction_data_loaded_from_file:
+                    residual = self.residual_loaded_from_file
+                else:
+                    fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
+                                                           num_iteration=num_iteration, raw_score=True, pred_leaf=False,
+                                                           pred_contrib=False, data_has_header=data_has_header,
+                                                           is_reshape=False)
+                    residual = self.train_set.label - fixed_effect_train
                 # Note: we need to provide the response variable y as this was not saved
                 #   in the gp_model ("in C++") for Gaussian data but was overwritten during training
                 random_effect_pred = self.gp_model.predict(y=residual,
@@ -3390,13 +3425,25 @@ class Booster:
                     pred_var_cov = random_effect_pred['var']
                 random_effect_mean = random_effect_pred['mu']
             else:  # non-Gaussian data
+                y = None
+                if not has_raw_data and self.gp_model_prediction_data_loaded_from_file:
+                    fixed_effect_train = self.fixed_effect_train_loaded_from_file
+                    y = self.label_loaded_from_file
+                else:
+                    fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
+                                                           num_iteration=num_iteration, raw_score=True, pred_leaf=False,
+                                                           pred_contrib=False, data_has_header=data_has_header,
+                                                           is_reshape=False)
+                    if self.gp_model.model_has_been_loaded_from_saved_file:
+                        y = self.train_set.label
                 fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
                                                  num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                  pred_contrib=False, data_has_header=data_has_header,
                                                  is_reshape=False)
                 if raw_score:
                     # Note: we don't need to provide the response variable y as this is saved
-                    #   in the gp_model ("in C++") for non-Gaussian data
+                    #   in the gp_model ("in C++") for non-Gaussian data. y is only not NULL when
+                    #   the model was loaded from a file
                     random_effect_pred = self.gp_model.predict(group_data_pred=group_data_pred,
                                                                group_rand_coef_data_pred=group_rand_coef_data_pred,
                                                                gp_coords_pred=gp_coords_pred,
@@ -3407,7 +3454,8 @@ class Booster:
                                                                predict_cov_mat=predict_cov_mat,
                                                                predict_var=predict_var,
                                                                predict_response=False,
-                                                               fixed_effects=fixed_effect_train)
+                                                               fixed_effects=fixed_effect_train,
+                                                               y=y)
                     if len(fixed_effect) != len(random_effect_pred['mu']):
                         warnings.warn("Number of data points in fixed effect (tree ensemble) and random effect "
                                       "are not equal")
@@ -3428,7 +3476,8 @@ class Booster:
                                                       predict_var=predict_var,
                                                       predict_response=True,
                                                       fixed_effects=fixed_effect_train,
-                                                      fixed_effects_pred=fixed_effect)
+                                                      fixed_effects_pred=fixed_effect,
+                                                      y=y)
                     response_mean = pred_resp['mu']
                     response_var = pred_resp['var']
                     fixed_effect = None
@@ -4979,8 +5028,13 @@ class GPModel(object):
         covariate_data = covariate_data.reshape((self.num_data, self.num_coef), order='F')
         return covariate_data
 
-    def model_to_dict(self):
+    def model_to_dict(self, include_response_data=True):
         """Convert a GPModel to a dict for saving.
+        
+        Parameters
+        ----------
+        include_response_data : bool (default=False)
+            If true, the response variable data is also included in the dict
 
         Returns
         -------
@@ -4997,7 +5051,8 @@ class GPModel(object):
         model_dict["likelihood"] = self.get_likelihood_name()
         model_dict["cov_pars"] = self.get_cov_pars()
         # Response data
-        model_dict["y"] = self.get_response_data()
+        if include_response_data:
+            model_dict["y"] = self.get_response_data()
         # Feature data
         model_dict["group_data"] = self.group_data
         model_dict["group_rand_coef_data"] = self.group_rand_coef_data

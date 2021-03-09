@@ -501,7 +501,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     record_results <- gpb.get.eval.result(bst, "test", "binary_error")
     expect_lt(abs(min(record_results)-0.263), TOLERANCE)
     expect_equal(which.min(record_results), 31)
-
+    
     # CV for finding number of boosting iterations when use_gp_model_for_validation = FALSE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
     gp_model$set_optim_params(params=list(lr_cov=0.1))
@@ -1007,7 +1007,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      use_gp_model_for_validation = TRUE)
     expect_equal(bst$best_iter, 12)
     expect_lt(abs(bst$best_score - 0.5826652),TOLERANCE)
-
+    
   })
   
   
@@ -1284,7 +1284,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.002805522, 83.582807760, 1.562551186, 41.791101074))),TOLERANCE)
   })
   
-
+  
   test_that("Saving and loading a booster with a gp_model for non-Gaussian data ", {
     
     ntrain <- ntest <- 1000
@@ -1342,15 +1342,30 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    min_data_in_leaf = 5,
                    objective = "binary",
                    verbose = 0)
+    # Predict raw score and response
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    # Predict response
     pred_resp <- predict(bst, data = X_test, group_data_pred = group_data_test,
-                    predict_var = TRUE, rawscore = FALSE)
+                         predict_var = TRUE, rawscore = FALSE)
+    pred2 <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = TRUE,
+                    num_iteration = 22, start_iteration = 0)
+    pred_resp2 <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                         predict_var = TRUE, rawscore = FALSE,
+                         num_iteration = 22, start_iteration = 0)
+    pred3 <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                     predict_var = TRUE, rawscore = TRUE,
+                     num_iteration = 20, start_iteration = 5)
+    pred_resp3 <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                          predict_var = TRUE, rawscore = FALSE,
+                          num_iteration = 20, start_iteration = 5)
     # Save to file
     filename <- tempfile(fileext = ".model")
-    gpb.save(bst, filename=filename)
-    
+    gpb.save(bst, filename=filename, save_raw_data = FALSE)
+    filename_num_it <- tempfile(fileext = ".model")
+    gpb.save(bst, filename=filename_num_it, save_raw_data = FALSE, num_iteration = 22, start_iteration = 0)
+    filename2 <- tempfile(fileext = ".model")
+    gpb.save(bst, filename=filename2, save_raw_data = TRUE)
     # finalize and destroy models
     bst$finalize()
     expect_null(bst$.__enclos_env__$private$handle)
@@ -1358,18 +1373,65 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model$finalize()
     expect_null(gp_model$.__enclos_env__$private$handle)
     rm(gp_model)
-    
-    # Load from file and make predictions again
+    # Load from file and make predictions again with save_raw_data = FALSE option
     bst_loaded <- gpb.load(filename = filename)
     pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
-                           predict_var= TRUE, rawscore = TRUE)
+                           predict_var = TRUE, rawscore = TRUE)
     pred_resp_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
-                           predict_var= TRUE, rawscore = FALSE)
+                                predict_var = TRUE, rawscore = FALSE)
     expect_equal(pred$fixed_effect, pred_loaded$fixed_effect)
     expect_equal(pred$random_effect_mean, pred_loaded$random_effect_mean)
     expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
     expect_equal(pred_resp$response_mean, pred_resp_loaded$response_mean)
     expect_equal(pred_resp$response_var, pred_resp_loaded$response_var)
+    # Different num_iteration when saving
+    bst_loaded <- gpb.load(filename = filename_num_it)
+    pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                           predict_var = TRUE, rawscore = TRUE)
+    pred_resp_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                                predict_var = TRUE, rawscore = FALSE)
+    expect_equal(pred2$fixed_effect, pred_loaded$fixed_effect)
+    expect_equal(pred2$random_effect_mean, pred_loaded$random_effect_mean)
+    expect_equal(pred2$random_effect_cov, pred_loaded$random_effect_cov)
+    expect_equal(pred_resp2$response_mean, pred_resp_loaded$response_mean)
+    expect_equal(pred_resp2$response_var, pred_resp_loaded$response_var)
+    expect_error({
+      pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                             predict_var= TRUE, start_iteration=5)
+    })
+    # Load from file and make predictions again with save_raw_data = TRUE option
+    bst_loaded <- gpb.load(filename = filename2)
+    pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                           predict_var= TRUE, rawscore = TRUE)
+    pred_resp_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                                predict_var= TRUE, rawscore = FALSE)
+    expect_equal(pred$fixed_effect, pred_loaded$fixed_effect)
+    expect_equal(pred$random_effect_mean, pred_loaded$random_effect_mean)
+    expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
+    expect_equal(pred_resp$response_mean, pred_resp_loaded$response_mean)
+    expect_equal(pred_resp$response_var, pred_resp_loaded$response_var)
+    # Same num_iteration when saving but different one for prediction
+    pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                           predict_var = TRUE, rawscore = TRUE, num_iteration = 22, start_iteration = 0)
+    pred_resp_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                                predict_var = TRUE, rawscore = FALSE, num_iteration = 22, start_iteration = 0)
+    expect_equal(pred2$fixed_effect, pred_loaded$fixed_effect)
+    expect_equal(pred2$random_effect_mean, pred_loaded$random_effect_mean)
+    expect_equal(pred2$random_effect_cov, pred_loaded$random_effect_cov)
+    expect_equal(pred_resp2$response_mean, pred_resp_loaded$response_mean)
+    expect_equal(pred_resp2$response_var, pred_resp_loaded$response_var)
+    # Set num_iteration and start_iteration
+    pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                           predict_var= TRUE, rawscore = TRUE,
+                           num_iteration = 20, start_iteration = 5)
+    pred_resp_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                                predict_var= TRUE, rawscore = FALSE,
+                                num_iteration = 20, start_iteration = 5)
+    expect_equal(pred3$fixed_effect, pred_loaded$fixed_effect)
+    expect_equal(pred3$random_effect_mean, pred_loaded$random_effect_mean)
+    expect_equal(pred3$random_effect_cov, pred_loaded$random_effect_cov)
+    expect_equal(pred_resp3$response_mean, pred_resp_loaded$response_mean)
+    expect_equal(pred_resp3$response_var, pred_resp_loaded$response_var)
     
   })
   
@@ -1423,7 +1485,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     dtrain <- gpb.Dataset(data = X, label = y)
     params <- list(objective = "binary", verbose = 0)
     param_grid = list("learning_rate" = c(0.5,0.11), "min_data_in_leaf" = c(20),
-                            "max_depth" = c(5), "num_leaves" = 2^17, "max_bin" = c(255,500))
+                      "max_depth" = c(5), "num_leaves" = 2^17, "max_bin" = c(255,500))
     opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
                                                   params = params,
                                                   num_try_random = NULL,

@@ -144,11 +144,26 @@ Booster <- R6::R6Class(
           )
           # create gp_model from list
           private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
-          private$train_set <- gpb.Dataset(
-            data = matrix(unlist(save_data[["raw_data"]]$data),
-                          nrow = length(save_data[["raw_data"]]$data),
-                          byrow = TRUE),
-            label = save_data[["raw_data"]]$label)
+          if (!is.null(save_data[["raw_data"]])) {
+            
+            private$train_set <- gpb.Dataset(
+              data = matrix(unlist(save_data[["raw_data"]]$data),
+                            nrow = length(save_data[["raw_data"]]$data),
+                            byrow = TRUE),
+              label = save_data[["raw_data"]]$label)
+            
+          } else {
+            
+            if (private$gp_model$get_likelihood_name() == "gaussian") {
+              private$residual_loaded_from_file <- save_data[["residual"]]
+            } else {
+              private$fixed_effect_train_loaded_from_file <- save_data[["fixed_effect_train"]]
+              private$label_loaded_from_file <- save_data[["label"]]
+            }
+            private$gp_model_prediction_data_loaded_from_file <- TRUE
+            
+          }
+          
           
         } else { # has no gp_model
           
@@ -534,11 +549,16 @@ Booster <- R6::R6Class(
     },
     
     # Save model
-    save_model = function(filename, num_iteration = NULL, feature_importance_type = 0L) {
+    save_model = function(filename, start_iteration = NULL, num_iteration = NULL,
+                          feature_importance_type = 0L, save_raw_data = FALSE, ...) {
       
       # Check if number of iteration is non existent
       if (is.null(num_iteration)) {
         num_iteration <- self$best_iter
+      }
+      # Check if start iteration is non existent
+      if (is.null(start_iteration)) {
+        start_iteration <- 0L
       }
       
       # Save gp_model
@@ -552,15 +572,39 @@ Booster <- R6::R6Class(
         save_data[["has_gp_model"]] <- 1L
         save_data[["booster_str"]] <- self$save_model_to_string(num_iteration = num_iteration,
                                                                 feature_importance_type=feature_importance_type)
-        save_data[["gp_model_str"]] <- private$gp_model$model_to_list()
-        save_data[["raw_data"]] <- list()
-        save_data[["raw_data"]][["label"]] <- as.vector(private$train_set$.__enclos_env__$private$info$label)
-        save_data[["raw_data"]][["data"]] <- private$train_set$.__enclos_env__$private$raw_data
-        if (is.matrix(save_data[["raw_data"]][["data"]])) {
-          if (dim(save_data[["raw_data"]][["data"]])[2] == 1) {
-            save_data[["raw_data"]][["data"]] <- as.vector(save_data[["raw_data"]][["data"]])
+        save_data[["gp_model_str"]] <- private$gp_model$model_to_list(include_response_data=FALSE)
+        
+        if (save_raw_data) {
+          
+          save_data[["raw_data"]] <- list()
+          save_data[["raw_data"]][["label"]] <- as.vector(private$train_set$.__enclos_env__$private$info$label)
+          save_data[["raw_data"]][["data"]] <- private$train_set$.__enclos_env__$private$raw_data
+          if (is.matrix(save_data[["raw_data"]][["data"]])) {
+            if (dim(save_data[["raw_data"]][["data"]])[2] == 1) {
+              save_data[["raw_data"]][["data"]] <- as.vector(save_data[["raw_data"]][["data"]])
+            }
           }
-        }
+          
+        } else {# do not save raw_data
+          
+          predictor <- Predictor$new(private$handle, ...)
+          fixed_effect_train = predictor$predict( data = private$train_set$.__enclos_env__$private$raw_data
+                                                  , start_iteration = start_iteration
+                                                  , num_iteration = num_iteration
+                                                  , rawscore = TRUE
+                                                  , predleaf = FALSE
+                                                  , predcontrib = FALSE
+                                                  , header = header
+                                                  , reshape = FALSE )
+          if (private$gp_model$get_likelihood_name() == "gaussian") {
+            residual = private$train_set$.__enclos_env__$private$info$label - fixed_effect_train
+            save_data[["residual"]] <- as.vector(residual)
+          } else {
+            save_data[["fixed_effect_train"]] <- as.vector(fixed_effect_train)
+            save_data[["label"]] <- as.vector(private$train_set$.__enclos_env__$private$info$label)
+          }
+          
+        }# end !save_raw_data
         
         save_data <- RJSONIO::toJSON(save_data, digits=17)
         write(save_data, file=filename)
@@ -583,11 +627,16 @@ Booster <- R6::R6Class(
     },
     
     # Save model to string
-    save_model_to_string = function(num_iteration = NULL, feature_importance_type = 0L) {
+    save_model_to_string = function(start_iteration = NULL, num_iteration = NULL,
+                                    feature_importance_type = 0L) {
       
       # Check if number of iteration is non existent
       if (is.null(num_iteration)) {
         num_iteration <- self$best_iter
+      }
+      # Check if start iteration is non existent
+      if (is.null(start_iteration)) {
+        start_iteration <- 0L
       }
       
       # Return model string
@@ -595,6 +644,7 @@ Booster <- R6::R6Class(
         gpb.call.return.str(
           fun_name = "LGBM_BoosterSaveModelToString_R"
           , private$handle
+          , as.integer(start_iteration)
           , as.integer(num_iteration)
           , as.integer(feature_importance_type)
         )
@@ -654,27 +704,43 @@ Booster <- R6::R6Class(
       
       if (private$has_gp_model) {
         
+        if (is.null(private$train_set$.__enclos_env__$private$raw_data) & 
+            !private$gp_model_prediction_data_loaded_from_file) {
+          stop("predict: cannot make predictions for random effects.
+                Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
+        } else if (is.null(private$train_set$.__enclos_env__$private$raw_data) & 
+                      private$gp_model_prediction_data_loaded_from_file) {
+          if (start_iteration != 0L) {
+            stop("predict: cannot use the option ", sQuote("start_iteration")," after loading 
+                 from file without raw data. Set ", sQuote("save_raw_data = TRUE"), " when you save the model")
+          }
+        }
+        
         random_effect_mean <- NA
         pred_var_cov <- NA
         response_mean <- NA
         response_var <- NA
         
-        if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
-          stop("predict: cannot make predictions for Gaussian process.
-                Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
-        }
-        fixed_effect_train = predictor$predict( data = private$train_set$.__enclos_env__$private$raw_data
-                                                , start_iteration = start_iteration
-                                                , num_iteration = num_iteration
-                                                , rawscore = TRUE
-                                                , predleaf = FALSE
-                                                , predcontrib = FALSE
-                                                , header = header
-                                                , reshape = FALSE )
-        
         if(private$gp_model$get_likelihood_name() == "gaussian"){
           
-          residual = private$train_set$.__enclos_env__$private$info$label-fixed_effect_train
+          # Either use raw_data or data loaded from file for determining residual
+          if (private$gp_model_prediction_data_loaded_from_file & 
+              is.null(private$train_set$.__enclos_env__$private$raw_data)) {
+            # Do not use raw_data but saved residual
+            residual = private$residual_loaded_from_file
+          } else {
+            # Use raw_data
+            fixed_effect_train = predictor$predict( data = private$train_set$.__enclos_env__$private$raw_data
+                                                    , start_iteration = start_iteration
+                                                    , num_iteration = num_iteration
+                                                    , rawscore = TRUE
+                                                    , predleaf = FALSE
+                                                    , predcontrib = FALSE
+                                                    , header = header
+                                                    , reshape = FALSE )
+            residual = private$train_set$.__enclos_env__$private$info$label - fixed_effect_train
+          }
+          
           # Note: we need to provide the response variable y as this was not saved
           #   in the gp_model ("in C++") for Gaussian data but was overwritten during training
           random_effect_pred = private$gp_model$predict(y=residual,
@@ -712,6 +778,29 @@ Booster <- R6::R6Class(
         }##end Gaussian data
         else{## non-Gaussian data
           
+          y <- NULL
+          # Either use raw_data or data loaded from file for determining fixed_effect_train
+          if (private$gp_model_prediction_data_loaded_from_file & 
+              is.null(private$train_set$.__enclos_env__$private$raw_data)) {
+            # Do not use raw_data but used saved fixed_effect_train and label
+            fixed_effect_train = private$fixed_effect_train_loaded_from_file
+            y <- private$label_loaded_from_file
+          } else {
+            # Use raw_data
+            fixed_effect_train = predictor$predict( data = private$train_set$.__enclos_env__$private$raw_data
+                                                    , start_iteration = start_iteration
+                                                    , num_iteration = num_iteration
+                                                    , rawscore = TRUE
+                                                    , predleaf = FALSE
+                                                    , predcontrib = FALSE
+                                                    , header = header
+                                                    , reshape = FALSE )
+            if (private$gp_model$.__enclos_env__$private$model_has_been_loaded_from_saved_file){
+              # The label is never saved in the gp_model, so we need to provide it to the predict function when the model as loaded from file
+              y <- private$train_set$.__enclos_env__$private$info$label
+            }
+          }
+          
           fixed_effect = predictor$predict( data = data
                                             , start_iteration = start_iteration
                                             , num_iteration = num_iteration
@@ -724,7 +813,8 @@ Booster <- R6::R6Class(
           if (rawscore) {
             
             # Note: we don't need to provide the response variable y as this is saved
-            #   in the gp_model ("in C++") for non-Gaussian data
+            #   in the gp_model ("in C++") for non-Gaussian data. y is only not NULL when
+            #   the model was loaded from a file
             random_effect_pred = private$gp_model$predict(group_data_pred = group_data_pred,
                                                           group_rand_coef_data_pred = group_rand_coef_data_pred,
                                                           gp_coords_pred = gp_coords_pred,
@@ -737,7 +827,8 @@ Booster <- R6::R6Class(
                                                           vecchia_pred_type = vecchia_pred_type,
                                                           num_neighbors_pred = num_neighbors_pred,
                                                           predict_response = FALSE,
-                                                          fixed_effects = fixed_effect_train)
+                                                          fixed_effects = fixed_effect_train,
+                                                          y = y)
             
             if (length(fixed_effect) != length(random_effect_pred$mu)){
               warning("Number of data points in fixed effect (tree ensemble) and random effect are not equal")
@@ -766,7 +857,8 @@ Booster <- R6::R6Class(
                                                   num_neighbors_pred = num_neighbors_pred,
                                                   predict_response = TRUE,
                                                   fixed_effects = fixed_effect_train,
-                                                  fixed_effects_pred = fixed_effect)
+                                                  fixed_effects_pred = fixed_effect,
+                                                  y=y)
             
             response_mean <-  pred_resp$mu
             response_var <-  pred_resp$var
@@ -826,6 +918,10 @@ Booster <- R6::R6Class(
     has_gp_model = FALSE,
     valid_sets_gp = list(),
     use_gp_model_for_validation = TRUE,
+    residual_loaded_from_file = NULL,
+    label_loaded_from_file = NULL,
+    fixed_effect_train_loaded_from_file = NULL,
+    gp_model_prediction_data_loaded_from_file = FALSE,
     valid_sets = list(),
     name_valid_sets = list(),
     predict_buffer = list(),
@@ -1226,7 +1322,19 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' @description Save GPBoost model
 #' @param booster Object of class \code{gpb.Booster}
 #' @param filename saved filename
-#' @param num_iteration number of iteration want to predict with, NULL or <= 0 means use best iteration
+#' @param start_iteration int or None, optional (default=None)
+#'                        Start index of the iteration to predict.
+#'                        If None or <= 0, starts from the first iteration.
+#' @param num_iteration int or None, optional (default=None)
+#'                      Limit number of iterations in the prediction.
+#'                      If None, if the best iteration exists and start_iteration is None or <= 0, the
+#'                      best iteration is used; otherwise, all iterations from start_iteration are used.
+#'                      If <= 0, all iterations from start_iteration are used (no limits).
+#' @param save_raw_data If TRUE, the raw data (predictor / covariate data) for the Booster is also saved.
+#' Enable this option if you want to change \code{start_iteration} or \code{num_iteration} at prediction time after loading.
+#' @param ... Additional named arguments passed to the \code{predict()} method of
+#'            the \code{gpb.Booster} object passed to \code{object}. 
+#'            This is only used when there is a gp_model and when save_raw_data=FALSE
 #'
 #' @return gpb.Booster
 #'
@@ -1262,7 +1370,8 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' }
 #' @author Authors of the LightGBM R package, Fabio Sigrist
 #' @export
-gpb.save <- function(booster, filename, num_iteration = NULL) {
+gpb.save <- function(booster, filename, start_iteration = NULL, num_iteration = NULL,
+                     save_raw_data = FALSE, ...) {
   
   if (!gpb.is.Booster(x = booster)) {
     stop("gpb.save: booster should be an ", sQuote("gpb.Booster"))
@@ -1276,7 +1385,10 @@ gpb.save <- function(booster, filename, num_iteration = NULL) {
   return(
     invisible(booster$save_model(
       filename = filename
+      , start_iteration = start_iteration
       , num_iteration = num_iteration
+      , save_raw_data = save_raw_data
+      , ...
     ))
   )
   

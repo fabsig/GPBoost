@@ -171,10 +171,12 @@ gpb.GPModel <- R6::R6Class(
         num_neighbors_pred = model_list[["num_neighbors_pred"]]
         cluster_ids = model_list[["cluster_ids"]]
         likelihood = model_list[["likelihood"]]
-        # Set additionaly required data
+        # Set additionally required data
         private$model_has_been_loaded_from_saved_file = TRUE
         private$cov_pars_loaded_from_file = model_list[["cov_pars"]]
-        private$y_loaded_from_file = model_list[["y"]]
+        if (!is.null(model_list[["y"]])) {
+          private$y_loaded_from_file = model_list[["y"]]
+        }
         private$has_covariates = model_list[["has_covariates"]]
         if (model_list[["has_covariates"]]) {
           private$coefs_loaded_from_file = model_list[["coefs"]]
@@ -1761,7 +1763,7 @@ gpb.GPModel <- R6::R6Class(
       return(invisible(NULL))
     },
     
-    model_to_list = function() {
+    model_to_list = function(include_response_data=TRUE) {
       if (isTRUE(private$free_raw_data)) {
         stop("model_to_list: cannot convert to json when free_raw_data=TRUE has been set")
       }
@@ -1771,7 +1773,9 @@ gpb.GPModel <- R6::R6Class(
       model_list[["likelihood"]] <- self$get_likelihood_name()
       model_list[["cov_pars"]] <- self$get_cov_pars()
       # Response data
-      model_list[["y"]] <- self$get_response_data()
+      if (include_response_data) {
+        model_list[["y"]] <- self$get_response_data()
+      }
       # Feature data
       model_list[["group_data"]] <- self$get_group_data()
       model_list[["group_rand_coef_data"]] <- self$get_group_rand_coef_data()
@@ -1821,8 +1825,8 @@ gpb.GPModel <- R6::R6Class(
       if (isTRUE(private$free_raw_data)) {
         stop("save.GPModel: cannot save when free_raw_data=TRUE has been set")
       }
-      # Use RJSONIO since jsonlite and rjson omit the last digit of a double!
-      save_data_json <- RJSONIO::toJSON(self$model_to_list(), digits=17)
+      # Use RJSONIO R package since jsonlite and rjson omit the last digit of a double
+      save_data_json <- RJSONIO::toJSON(self$model_to_list(include_response_data=TRUE), digits=17)
       write(save_data_json, file=filename)
     }
     

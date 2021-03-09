@@ -618,12 +618,14 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterSaveModel_R(
 /*!
 * \brief create string containing model
 * \param handle handle
+* \param start_iteration Start index of the iteration that should be saved
 * \param num_iteration, <= 0 means save all
 * \param out_str string of model
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterSaveModelToString_R(
 	LGBM_SE handle,
+	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
 	LGBM_SE feature_importance_type,
 	LGBM_SE buffer_len,
