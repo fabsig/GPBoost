@@ -1059,7 +1059,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_est <- c(0.1195943, 0.1479688)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, rawscore = TRUE)
-    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-1.053674),TOLERANCE)
+    expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-1.053674),1E-2)
     expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-1.085097),TOLERANCE)
     # Same thing with Vecchia approximation
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
