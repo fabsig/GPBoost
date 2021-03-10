@@ -1009,8 +1009,8 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         for param in param_comb:
             params[param] = param_comb[param]
         if verbose_eval >= 1:
-            print("Trying parameter combination number " + str(counter_num_comb) +
-                  " of " + str(len(try_param_combs)) + " parameter combinations...")
+            print("Trying parameter combination " + str(counter_num_comb) +
+                  " of " + str(len(try_param_combs)) + ": " + str(param_comb))
         cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round,
                    gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
                    train_gp_model_cov_pars=train_gp_model_cov_pars,

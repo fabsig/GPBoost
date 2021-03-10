@@ -33,11 +33,11 @@ y <- as.numeric(runif(n) < probs)
 gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
 gp_model$set_optim_params(params=list("optimizer_cov" = "gradient_descent"))
 dtrain <- gpb.Dataset(data = X, label = y)
-params <- list(objective = "binary", verbose = 0)
+params <- list(objective = "binary", verbose = 0, "num_leaves" = 2^10)
 
 # Small grid and deterministic grid search
 param_grid_small = list("learning_rate" = c(0.1,0.01), "min_data_in_leaf" = c(20,100),
-                        "max_depth" = c(5,10), "num_leaves" = 2^17, "max_bin" = c(255,1000))
+                        "max_depth" = c(5,10), "max_bin" = c(255,1000))
 set.seed(1)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid_small,
                                               params = params,
@@ -55,7 +55,7 @@ print(paste0("Best score: ", opt_params$best_score))
 
 # larger grid and random grid search
 param_grid_large = list("learning_rate" = c(0.5,0.1,0.05,0.01), "min_data_in_leaf" = c(5,10,20,50,100,200),
-                        "max_depth" = c(1,3,5,10,20), "num_leaves" = 2^17, "max_bin" = c(255,500,1000,2000))
+                        "max_depth" = c(1,3,5,10,20), "max_bin" = c(255,500,1000,2000))
 set.seed(1)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid_large,
                                               params = params,
@@ -100,7 +100,7 @@ dtrain <- gpb.Dataset(data = X, label = y)
 params <- list(objective = "binary", verbose = 0)
 # Parameter tuning using validation data
 param_grid = list("learning_rate" = c(0.1,0.01), "min_data_in_leaf" = c(20,100),
-                        "max_depth" = c(5,10), "num_leaves" = 2^17, "max_bin" = c(255,1000))
+                        "max_depth" = c(5,10), "max_bin" = c(255,1000))
 set.seed(1)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
                                               params = params,

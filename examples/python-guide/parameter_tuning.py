@@ -39,11 +39,11 @@ y = y.astype(np.float64)
 gp_model = gpb.GPModel(group_data=group, likelihood = "bernoulli_probit")
 gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent"})
 data_train = gpb.Dataset(X, y)
-params = { 'objective': 'binary', 'verbose': 0 }# Other parameters not contained in the grid of tuning parameters
-
+# Other parameters not contained in the grid of tuning parameters
+params = { 'objective': 'binary', 'verbose': 0, 'num_leaves': 2**10 }
 # Small grid and deterministic grid search
 param_grid_small = {'learning_rate': [0.1,0.01], 'min_data_in_leaf': [20,100],
-                    'max_depth': [5,10], 'num_leaves': 2**17, 'max_bin': [255,1000]}
+                    'max_depth': [5,10], 'max_bin': [255,1000]}
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid_small,
                                              params=params,
                                              num_try_random=None,
@@ -63,7 +63,7 @@ print(opt_params['best_params'])
 
 # larger grid and random grid search
 param_grid_large = {'learning_rate': [0.5,0.1,0.05,0.01], 'min_data_in_leaf': [5,10,20,50,100,200],
-                    'max_depth': [1,3,5,10,20], 'num_leaves': 2**17, 'max_bin': [255,500,1000,2000]}
+                    'max_depth': [1,3,5,10,20], 'max_bin': [255,500,1000,2000]}
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid_large,
                                              params=params,
                                              num_try_random=10,
@@ -110,10 +110,10 @@ folds = [(train_idx, valid_idx)]
 gp_model = gpb.GPModel(group_data=group, likelihood = "bernoulli_probit")
 gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent"})
 data_train = gpb.Dataset(X, y)
-params = { 'objective': 'binary', 'verbose': 0 }# Other parameters not contained in the grid of tuning parameters
+params = { 'objective': 'binary', 'verbose': 0, 'num_leaves': 2**10 }# Other parameters not contained in the grid of tuning parameters
 # Parameter tuning using validation data
 param_grid = {'learning_rate': [0.1,0.01], 'min_data_in_leaf': [20,100],
-              'max_depth': [5,10], 'num_leaves': 2**17, 'max_bin': [255,1000]}
+              'max_depth': [5,10], 'max_bin': [255,1000]}
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
                                              params=params,
                                              num_try_random=5,

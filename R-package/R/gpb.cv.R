@@ -47,6 +47,7 @@ CVBooster <- R6::R6Class(
 #' @param callbacks List of callback functions that are applied at each iteration.
 #' @param reset_data Boolean, setting it to TRUE (not the default value) will transform the booster model
 #'                   into a predictor model which frees up memory and the original datasets
+#' @param delete_boosters_folds Boolean, setting it to TRUE (not the default value) will delete the boosters of the individual folds
 #' @param ... other parameters, see Parameters.rst for more information.
 #' @inheritSection gpb_shared_params Early Stopping
 #' @return a trained model \code{gpb.CVBooster}.
@@ -102,6 +103,7 @@ gpb.cv <- function(params = list()
                    , early_stopping_rounds = NULL
                    , callbacks = list()
                    , reset_data = FALSE
+                   , delete_boosters_folds = FALSE
                    , ...
 ) {
   
@@ -651,6 +653,12 @@ gpb.cv <- function(params = list()
       fd$booster$record_evals <- booster_old$record_evals
     })
   }
+  if (delete_boosters_folds) {
+    lapply(cv_booster$boosters, function(fd) {
+      fd$booster$finalize()
+    })
+    cv_booster$boosters = NULL
+  }
   
   return(cv_booster)
   
@@ -1026,8 +1034,10 @@ gpb.grid.search.tune.parameters <- function(param_grid
       params[[param]] <- param_comb[[param]]
     }
     if (verbose_eval >= 1L) {
-      message(paste0("Trying parameter combination number ", 
-                     counter_num_comb, " of ", length(try_param_combs), " parameter combinations..."))
+      param_comb_str <- lapply(seq_along(param_comb), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb, n=names(param_comb))
+      param_comb_str <- paste0(unlist(param_comb_str), collapse=", ")
+      message(paste0("Trying parameter combination ", counter_num_comb, 
+                     " of ", length(try_param_combs), ": ", param_comb_str))
     }
     cvbst <- gpb.cv(params = params
                     , data = data
@@ -1051,7 +1061,7 @@ gpb.grid.search.tune.parameters <- function(param_grid
                     , categorical_feature = categorical_feature
                     , early_stopping_rounds = early_stopping_rounds
                     , callbacks = callbacks
-                    , reset_data = FALSE
+                    , delete_boosters_folds = TRUE
                     , ...
     )
     current_score_is_better <- FALSE

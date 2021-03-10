@@ -11,7 +11,7 @@ gpb.cv(params = list(), data, nrounds = 100L, gp_model = NULL,
   record = TRUE, eval_freq = 1L, showsd = FALSE, stratified = TRUE,
   init_model = NULL, colnames = NULL, categorical_feature = NULL,
   early_stopping_rounds = NULL, callbacks = list(), reset_data = FALSE,
-  ...)
+  delete_boosters_folds = FALSE, ...)
 }
 \arguments{
 \item{params}{List of parameters (many of them tuning paramters), see Parameters.rst for more information. A few key parameters:
@@ -140,6 +140,8 @@ If early stopping occurs, the model will have 'best_iter' field.}
 
 \item{reset_data}{Boolean, setting it to TRUE (not the default value) will transform the booster model
 into a predictor model which frees up memory and the original datasets}
+
+\item{delete_boosters_folds}{Boolean, setting it to TRUE (not the default value) will delete the boosters of the individual folds}
 
 \item{...}{other parameters, see Parameters.rst for more information.}
 }
