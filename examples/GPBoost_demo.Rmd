@@ -1,5 +1,5 @@
 ---
-title: "GPBoost Explained Using Examples"
+title: "GPBoost Demo for Spatial Data"
 author: "Fabio Sigrist"
 output:
   html_document:
