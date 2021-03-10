@@ -1037,7 +1037,7 @@ gpb.grid.search.tune.parameters <- function(param_grid
       param_comb_str <- lapply(seq_along(param_comb), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb, n=names(param_comb))
       param_comb_str <- paste0(unlist(param_comb_str), collapse=", ")
       message(paste0("Trying parameter combination ", counter_num_comb, 
-                     " of ", length(try_param_combs), ": ", param_comb_str))
+                     " of ", length(try_param_combs), ": ", param_comb_str, " ..."))
     }
     cvbst <- gpb.cv(params = params
                     , data = data

@@ -1010,7 +1010,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
             params[param] = param_comb[param]
         if verbose_eval >= 1:
             print("Trying parameter combination " + str(counter_num_comb) +
-                  " of " + str(len(try_param_combs)) + ": " + str(param_comb))
+                  " of " + str(len(try_param_combs)) + ": " + str(param_comb) + " ...")
         cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round,
                    gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
                    train_gp_model_cov_pars=train_gp_model_cov_pars,
@@ -1018,7 +1018,8 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                    metrics=metrics, fobj=fobj, feval=feval, init_model=init_model,
                    feature_name=feature_name, categorical_feature=categorical_feature,
                    early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
-                   verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks)
+                   verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks,
+                   eval_train_metric=False, return_cvbooster=False)
         current_score_is_better = False
         if higher_better:
             current_score = np.max(cvbst[next(iter(cvbst))])

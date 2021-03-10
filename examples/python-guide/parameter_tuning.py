@@ -35,7 +35,7 @@ y = np.random.uniform(size=n) < probs
 y = y.astype(np.float64)
 
 # --------------------Parameter tuning using cross-validation: deterministic and random grid search----------------
-# Create random effects model and datasets
+# Create random effects model and Dataset
 gp_model = gpb.GPModel(group_data=group, likelihood = "bernoulli_probit")
 gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent"})
 data_train = gpb.Dataset(X, y)
@@ -58,8 +58,7 @@ opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid_small,
                                              metrics='binary_logloss')
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
-print("Best parameters")
-print(opt_params['best_params'])
+print("Best parameters: " + str(opt_params['best_params']))
 
 # larger grid and random grid search
 param_grid_large = {'learning_rate': [0.5,0.1,0.05,0.01], 'min_data_in_leaf': [5,10,20,50,100,200],
@@ -78,8 +77,7 @@ opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid_large,
                                              metrics='binary_logloss')
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
-print("Best parameters")
-print(opt_params['best_params'])
+print("Best parameters: " + str(opt_params['best_params']))
 
 # Other metric
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid_small,
@@ -96,8 +94,7 @@ opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid_small,
                                              metrics='auc')
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
-print("Best parameters")
-print(opt_params['best_params'])
+print("Best parameters: " + str(opt_params['best_params']))
 
 
 # --------------------Parameter tuning using a validation set----------------
@@ -128,6 +125,5 @@ opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
                                              metrics='binary_logloss')
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
-print("Best parameters")
-print(opt_params['best_params'])
+print("Best parameters: " + str(opt_params['best_params']))
 
