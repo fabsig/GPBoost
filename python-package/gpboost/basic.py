@@ -3374,7 +3374,7 @@ class Booster:
                 num_iteration = self.best_iteration
             else:
                 num_iteration = -1
-        if self.has_gp_model:
+        if self.has_gp_model and not pred_contrib:
             random_effect_mean = None
             pred_var_cov = None
             response_mean = None
@@ -3414,7 +3414,7 @@ class Booster:
                                                            predict_var=predict_var)
                 fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
                                                  num_iteration=num_iteration, raw_score=raw_score, pred_leaf=pred_leaf,
-                                                 pred_contrib=pred_contrib, data_has_header=data_has_header,
+                                                 pred_contrib=False, data_has_header=data_has_header,
                                                  is_reshape=is_reshape)
                 if len(fixed_effect) != len(random_effect_pred['mu']):
                     warnings.warn("Number of data points in fixed effect (tree ensemble) and random effect "
@@ -3486,7 +3486,7 @@ class Booster:
                     "random_effect_cov": pred_var_cov,
                     "response_mean": response_mean,
                     "response_var": response_var}
-        else:  # no gp_model
+        else:  # no gp_model or pred_contrib
             return predictor.predict(data=data, start_iteration=start_iteration, num_iteration=num_iteration,
                                      raw_score=raw_score, pred_leaf=pred_leaf, pred_contrib=pred_contrib,
                                      data_has_header=data_has_header, is_reshape=is_reshape)

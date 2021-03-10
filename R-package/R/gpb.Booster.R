@@ -702,7 +702,7 @@ Booster <- R6::R6Class(
       # Predict on new data
       predictor <- Predictor$new(private$handle, ...)
       
-      if (private$has_gp_model) {
+      if (private$has_gp_model & !predcontrib) {
         
         if (is.null(private$train_set$.__enclos_env__$private$raw_data) & 
             !private$gp_model_prediction_data_loaded_from_file) {
@@ -875,7 +875,7 @@ Booster <- R6::R6Class(
                     response_var = response_var))
         
       }##end GPBoost prediction
-      else {##prediction without random effects
+      else {##no gp_model or predcontrib
         return(
           predictor$predict(
             data = data
