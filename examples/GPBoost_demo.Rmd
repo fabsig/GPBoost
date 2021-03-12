@@ -21,12 +21,12 @@ library(reticulate)
 run_python = FALSE # Not run for publication
 run_cv = FALSE # Not run for publication
 run_python_cv = run_python & run_cv
-run_group_re = TRUE
 export_data_from_R_to_python = TRUE
+run_group_re = TRUE
 cache = FALSE # Set to TRUE to save image files
-small_figures = TRUE
+small_figures = FALSE
 if (small_figures) {
-  # Smaller figures to save space 
+  # Smaller figures to save space
   fig.width = 6.5
   fig.height = 4.5
 } else {
