@@ -564,7 +564,11 @@ rf &lt;- randomForest(y ~ ., data = XC, mtry=2, ntree=1000)
 # plot(rf) # check &quot;convergence&quot;
 pred_rf &lt;- predict(rf, newdata = X_testC) ## predicted labels
 MSE_rf &lt;- mean((pred_rf-y_test)^2)
-print(paste0(&quot;MSE of random forest: &quot;, MSE_rf))# 0.4540364</code></pre>
+print(paste0(&quot;MSE of random forest: &quot;, MSE_rf))# 0.4540364
+
+# Compare root mean square errors
+RMSEs &lt;- sqrt(c(GPBoost=MSE_GPBoost, Lin_GP=MSE_lin, L2Boost=MSE_l2boost, RF=MSE_rf))
+print(RMSEs)</code></pre>
 <pre><code>## [1] &quot;Fitted linear Gaussian process model:&quot;
 ## Error_term     GP_var   GP_range 
 ##  0.8508170  0.4849600  0.0843864 
@@ -573,7 +577,9 @@ print(paste0(&quot;MSE of random forest: &quot;, MSE_rf))# 0.4540364</code></pre
 ## -2.603040  4.644460  0.185934 
 ## [1] &quot;MSE of linear Gaussian process model: 1.17766504518871&quot;
 ## [1] &quot;MSE of plain tree-boosting: 0.360460509931234&quot;
-## [1] &quot;MSE of random forest: 0.454036419429757&quot;</code></pre>
+## [1] &quot;MSE of random forest: 0.454036419429757&quot;
+##   GPBoost    Lin_GP   L2Boost        RF 
+## 0.5175739 1.0852028 0.6003836 0.6738222</code></pre>
 </div>
 </div>
 <div id="combining-tree-boosting-and-grouped-random-effects" class="section level1" number="3">

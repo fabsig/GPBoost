@@ -435,6 +435,9 @@ pred_rf <- predict(rf, newdata = X_testC) ## predicted labels
 MSE_rf <- mean((pred_rf-y_test)^2)
 print(paste0("MSE of random forest: ", MSE_rf))# 0.4540364
 
+# Compare root mean square errors
+RMSEs <- sqrt(c(GPBoost=MSE_GPBoost, Lin_GP=MSE_lin, L2Boost=MSE_l2boost, RF=MSE_rf))
+print(RMSEs)
 ```
 
 # Combining Tree-Boosting and Grouped Random Effects
