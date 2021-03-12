@@ -224,7 +224,7 @@ print("Mean square error (MSE): " + str(np.mean((y_pred-y_test)**2)))
 </div>
 
 ## Model interpretation
-A trained model can be interpreted using various tools. Besides classical feature importance measures and partial dependence plots, SHAP values and dependence plots can be created as follows.
+A trained model can be interpreted using various tools. Besides classical feature importance measures and partial dependence plots, SHAP values and dependence plots can be created as follows. *Note: for the R package, you need version 0.4.3 or latter for creating these SHAP plots.*
 
 ***In R***
 ```{r interpretation, echo=TRUE, warning=FALSE, results='hold', message=F, cache=cache}

@@ -333,8 +333,7 @@ endif(USE_CUDA)
 add_executable(gpboost src/LightGBM/main.cpp src/LightGBM/application/application.cpp ${SOURCES})
 list(APPEND SOURCES "src/LightGBM/c_api.cpp")
 
-# Only build the R part of the library if building for
-# use with the R package
+# Only build the R part of the library if building for use with the R package
 if(__BUILD_FOR_R)
   list(APPEND SOURCES "src/gpboost_R.cpp")
 endif(__BUILD_FOR_R)

@@ -11,7 +11,7 @@ set(OPENCL_LOADER_TAG "98ca71fb9f8484f1cd1999f55224bf9e8d18693b")
 set(BOOST_REPOSITORY "https://github.com/boostorg/boost.git")
 set(BOOST_TAG "boost-${BOOST_VERSION_DOT}.0")
 
-# Build Independent OpenCL library
+# Build independent OpenCL library
 include(FetchContent)
 FetchContent_Declare(OpenCL-Headers GIT_REPOSITORY ${OPENCL_HEADER_REPOSITORY} GIT_TAG ${OPENCL_HEADER_TAG})
 FetchContent_GetProperties(OpenCL-Headers)
@@ -34,7 +34,7 @@ list(APPEND INTEGRATED_OPENCL_INCLUDES ${OPENCL_ICD_LOADER_HEADERS_DIR})
 list(APPEND INTEGRATED_OPENCL_LIBRARIES ${opencl-icd-loader_BINARY_DIR}/Release/OpenCL.lib cfgmgr32.lib runtimeobject.lib)
 list(APPEND INTEGRATED_OPENCL_DEFINITIONS CL_TARGET_OPENCL_VERSION=120)
 
-# Build Independent Boost libraries
+# Build independent Boost libraries
 include(ExternalProject)
 include(ProcessorCount)
 ProcessorCount(J)

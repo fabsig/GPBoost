@@ -206,20 +206,20 @@ def test_add_features_from_different_sources():
     xxs = [X, sparse.csr_matrix(X), pd.DataFrame(X)]
     names = ['col_%d' % i for i in range(n_col)]
     for x_1 in xxs:
-        # test that method works even with free_raw_data=True
+        # Test that method works even with free_raw_data=True
         d1 = lgb.Dataset(x_1, feature_name=names, free_raw_data=True).construct()
         d2 = lgb.Dataset(x_1, feature_name=names, free_raw_data=True).construct()
         d1.add_features_from(d2)
         assert d1.data is None
 
-        # test that method works but sets raw data to None in case of immergeable data types
+        # Test that method works but sets raw data to None in case of immergeable data types
         d1 = lgb.Dataset(x_1, feature_name=names, free_raw_data=False).construct()
         d2 = lgb.Dataset([X[:n_row // 2, :], X[n_row // 2:, :]],
                          feature_name=names, free_raw_data=False).construct()
         d1.add_features_from(d2)
         assert d1.data is None
 
-        # test that method works for different data types
+        # Test that method works for different data types
         d1 = lgb.Dataset(x_1, feature_name=names, free_raw_data=False).construct()
         res_feature_names = [name for name in names]
         for idx, x_2 in enumerate(xxs, 2):

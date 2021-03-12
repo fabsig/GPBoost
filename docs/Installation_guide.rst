@@ -8,7 +8,7 @@ Installation Guide
 
 This is the guide for the build of GPBoost command line interface (CLI) version. For building the Python and R packages, please refer to `Python-package`_ and `R-package`_.
 
-All instructions below are aimed to compile a 64-bit version.
+All instructions below are aimed for compiling a 64-bit version.
 It is worth to compile 32-bit version only in very rare special cases of environmental limitations.
 32-bit version is slow and untested, so use it on your own risk and don't forget to adjust some commands in this guide.
 

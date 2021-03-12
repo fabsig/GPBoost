@@ -297,9 +297,9 @@ result <- file.remove(
 )
 .handle_result(result)
 
-#------------#
-# submodules #
-#------------#
+#---------------#
+# external libs #
+#---------------#
 EXTERNAL_LIBS_R_DIR <- file.path(TEMP_SOURCE_DIR, "external_libs")
 dir.create(EXTERNAL_LIBS_R_DIR)
 for (submodule in list.dirs(
@@ -309,7 +309,6 @@ for (submodule in list.dirs(
 )) {
   # compute/ is a submodule with boost, only needed if
   # building the R package with GPU support;
-  # eigen/ has a special treatment due to licensing aspects
   if ((submodule == "compute" && !USING_GPU) || submodule == "eigen") {
     next
   }

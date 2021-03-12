@@ -1,8 +1,7 @@
 #!/bin/sh
 
 # [description]
-#     Prepare a source distribution of the R package
-#     to be submitted to CRAN.
+#     Prepare a source distribution of the R package to be submitted to CRAN.
 #
 # [usage]
 #     sh build-cran-package.sh
