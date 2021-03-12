@@ -22,6 +22,7 @@ run_python = TRUE
 run_cv = FALSE
 run_python_cv = run_python & run_cv
 run_group_re = TRUE
+export_data_from_R_to_python = TRUE
 cache = FALSE
 ```
 
@@ -57,22 +58,20 @@ The model is trained using the **GPBoost algorithm, where trainings means learni
 In the following, we start with an example where the random part of the model consists of a Gaussian process. After this, we also give a brief example when using grouped random effects instead of a Gaussian process.
 
 ## Data
-First, you need to load your data. For simplicity and illustrational purposes, we use simulated data here. In the following, we simulate data (in R) and illustrate the data in the figure below.
+First, you need to load your data. For simplicity and illustrational purposes, we use simulated data here. In the following, we simulate data and illustrate the data in the figure below.
+
+***In R***
 <div class="fold s">
 ```{r simulate_data, results='hide', message=F, cache=cache}
-# Simulate data
-n <- 200 # number of training samples
 set.seed(5)
+# Simulate Gaussian process: training and test data (the latter on a grid for visualization)
 cov_function <- "exponential"
 sigma2_1 <- 0.5^2 # marginal variance of GP
 rho <- 0.1 # range parameter
 sigma2 <- 0.25^2 # error variance
-# Gaussian process: sample on a dense grid but observe only partially
+n <- 200 # number of training samples
 nx <- 30 # test data: number of grid points on each axis
-x2=x1=rep((1:nx)/nx,nx)
-for(i in 1:nx) x2[((i-1)*nx+1):(i*nx)]=i/nx
-coords_test <- cbind(s_1=x1,s_2=x2)
-# training locations (exlcude upper right rectangle)
+# training locations (exclude upper right rectangle)
 coords <- matrix(runif(2)/2,ncol=2, dimnames=list(NULL,paste0("s_",1:2)))
 while (dim(coords)[1]<n) {
   coord_i <- runif(2) 
@@ -80,8 +79,12 @@ while (dim(coords)[1]<n) {
     coords <- rbind(coords,coord_i)
   }
 }
+# test locations (rectangular grid)
+s_1 <- s_2 <- rep((1:nx)/nx,nx)
+for(i in 1:nx) s_2[((i-1)*nx+1):(i*nx)]=i/nx
+coords_test <- cbind(s_1=s_1,s_2=s_2)
 n_all <- nx^2 + n # total number of data points 
-D <- as.matrix(dist(rbind(coords_test,coords)))
+D <- as.matrix(dist(rbind(coords_test,coords))) # distance matrix
 if(cov_function=="exponential"){
   Sigma <- exp(-D/rho)+diag(1E-10,n_all)
 }else if (cov_function=="gaussian"){
@@ -89,7 +92,7 @@ if(cov_function=="exponential"){
 }
 C <- t(chol(Sigma))
 b_all <- sqrt(sigma2_1)*C%*%rnorm(n_all)
-b <- b_all[(nx^2+1):n_all] # observed GP
+b <- b_all[(nx^2+1):n_all] # training data GP
 # Mean function. Use two predictor variables of which only one has an effect for easy visualization
 f1d <- function(x) sin(3*pi*x) + (1 + 3 * pmax(0,x-0.5)/(x-0.5)) - 3
 X <- matrix(runif(2*n), ncol=2, dimnames=list(NULL,paste0("Var_",1:2)))
@@ -98,12 +101,13 @@ xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- F_X + b + xi # observed data
 # test data
 x <- seq(from=0,to=1,length.out=nx^2)
+x[x==0.5] = 0.5 + 1E-10
 X_test <- cbind(Var_1=x, Var_2=rep(0,nx^2))
 y_test <- f1d(X_test[,1]) + b_all[1:nx^2] + sqrt(sigma2) * rnorm(nx^2)
 ```
 </div>
 
-```{python export_data, include=FALSE}
+```{python export_data, include=FALSE, eval=export_data_from_R_to_python}
 coords = r.coords
 X = r.X
 y = r.y
@@ -112,7 +116,60 @@ X_test = r.X_test
 y_test = r.y_test
 ```
 
-```{r plot_data, echo=F, results='hide', message=F, cache=cache, warning=FALSE, fig.align='center', fig.cap='Illustration of data: Mean function F(X) used for simulation, "true" latent Gaussian process b, and observed data y (bottom plots)'}
+***In Python***
+<div class="fold s o">
+```{python simulate_data_python, collapse=T, message=F, cache=cache, eval=!export_data_from_R_to_python}
+import numpy as np
+np.random.seed(1)
+# Simulate Gaussian process: training and test data (the latter on a grid for visualization)
+sigma2_1 = 0.5 ** 2  # marginal variance of GP
+rho = 0.1  # range parameter
+sigma2 = 0.25 ** 2  # error variance
+n = 200  # number of training samples
+nx = 3 # test data: number of grid points on each axis
+# training locations (exclude upper right rectangle)
+coords = np.column_stack(
+    (np.random.uniform(size=1)/2, np.random.uniform(size=1)/2))
+while coords.shape[0] < n:
+    coord_i = np.random.uniform(size=2)
+    if not (coord_i[0] >= 0.6 and coord_i[1] >= 0.6):
+        coords = np.vstack((coords,coord_i))
+# test locations (rectangular grid)
+s_1 = np.ones(nx * nx)
+s_2 = np.ones(nx * nx)
+for i in range(nx):
+    for j in range(nx):
+        s_1[j * nx + i] = (i + 1) / nx
+        s_2[i * nx + j] = (i + 1) / nx
+coords_test = np.column_stack((s_1, s_2))
+n_all = nx**2 + n # total number of data points 
+coords_all = np.vstack((coords_test,coords))
+D = np.zeros((n_all, n_all))  # distance matrix
+for i in range(0, n_all):
+    for j in range(i + 1, n_all):
+        D[i, j] = np.linalg.norm(coords_all[i, :] - coords_all[j, :])
+        D[j, i] = D[i, j]
+Sigma = sigma2_1 * np.exp(-D / rho) + np.diag(np.zeros(n_all) + 1e-10)
+C = np.linalg.cholesky(Sigma)
+b_all = C.dot(np.random.normal(size=n_all))
+b = b_all[(nx*nx):n_all] # training data GP
+# Mean function. Use two predictor variables of which only one has an effect for easy visualization
+def f1d(x):
+    return np.sin(3*np.pi*x) + (1 + 3 * np.maximum(np.zeros(len(x)),x-0.5)/(x-0.5)) - 3
+X = np.random.rand(n, 2)
+F_X = f1d(X[:, 0]) # mean
+xi = np.sqrt(sigma2) * np.random.normal(size=n)  # simulate error term
+y = F_X + b + xi  # observed data
+# test data
+x = np.linspace(0,1,nx**2)
+x[x==0.5] = 0.5 + 1e-10
+X_test = np.column_stack((x,np.zeros(nx**2)))
+y_test = f1d(X_test[:, 0]) + b_all[0:(nx**2)] + np.sqrt(sigma2) * np.random.normal(size=(nx**2))
+```
+</div>
+
+
+```{r plot_data, echo=F, results='hide', message=F, cache=cache, warning=FALSE, fig.align='center', fig.cap='Illustration of data: mean function F(X) used for simulation, "true" latent Gaussian process b, and observed data y (bottom plots)'}
 library(ggplot2)
 library(viridis)
 library(gridExtra)
@@ -231,7 +288,8 @@ A trained model can be interpreted using various tools. Besides classical featur
 library("SHAPforxgboost")
 shap.plot.summary.wrap1(bst, X = X)
 shap_long <- shap.prep(bst, X_train = X)
-shap.plot.dependence(data_long = shap_long, x = "Var_1")
+shap.plot.dependence(data_long = shap_long, x = "Var_1",
+                     color_feature = "Var_2", smooth = FALSE)
 ```
 
 ***In Python***
@@ -246,7 +304,7 @@ shap.dependence_plot("Feature 0", shap_values, X)
 
 
 ## Parameter tuning
-Boosting with trees as base learners has several tuning parameters. Arguably the most important one is the **number of boosting iterations** (=number of trees). **Other tuning parameters** include the learning rate, the maximal tree depth, the minimal number of samples per leaf, the number of leaves, and others. For instance, these can be chosen using a random or deterministic grid search and k-fold cross-validation as shown in the following. A computationally cheaper alternative to full k-fold cross-validation is to pass a validation data set to the parameter tuning function. See the [**Python parameter tuning demo**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/parameter_tuning.py) and [**R parameter tuning demo**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo/parameter_tuning.R) for more details.
+Boosting with trees as base learners has several tuning parameters. Arguably the most important one is the number of boosting iterations (=number of trees). Other tuning parameters include the learning rate, the maximal tree depth, the minimal number of samples per leaf, the number of leaves, and others. For instance, these can be chosen using a random or deterministic grid search and k-fold cross-validation as shown in the following. A computationally cheaper alternative to full k-fold cross-validation is to pass a validation data set to the parameter tuning function. See the [**Python parameter tuning demo**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/parameter_tuning.py) and [**R parameter tuning demo**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo/parameter_tuning.R) for more details.
 
 ***In R***
 ```{r cv, results='show', message=F, cache=cache, eval=run_cv}
@@ -314,7 +372,7 @@ print("Best parameters: " + str(opt_params['best_params']))
 </div>
 
 ## Comparison to plain tree-boosting and a linear Gaussian process model
-In the following, we compare the GPBoost algorithm to plain gradient tree-boosting with a squared loss, to a linear Gaussian process model, and to random forest. For gradient boosting and random forest, we add the coordinates to the predictor variables (features) for the trees. For the linear Gaussian process, we include the predictor variables in a linear regression term. As the results below show, **plain gradient tree-boosting, random forest, and a linear Gaussian process model result in considerably larger mean square errors (MSE) compared to the GPBoost algorithm**.
+In the following, we compare the GPBoost algorithm to plain gradient tree-boosting with a squared loss, to a linear Gaussian process model, and to random forest. For gradient boosting and random forest, we add the coordinates to the predictor variables for the trees. For the linear Gaussian process, we include the predictor variables in a linear regression term. As the results below show, **plain gradient tree-boosting, random forest, and a linear Gaussian process model result in considerably larger mean square errors (MSE) compared to the GPBoost algorithm**.
 
 ***In R***
 ```{r comparison, results='hold', message=F, cache=cache, eval=T}
@@ -369,9 +427,7 @@ print(paste0("MSE of random forest: ", MSE_rf))# 0.4540364
 ```
 
 # Combining Tree-Boosting and Grouped Random Effects
-In the following, we show how a non-linear mixed effects model can be trained using `gpboost`. We use a random effects model that includes two crossed grouped random effects as well as a random slope. 
-
-We first simulate data and then show how to train a GPBoost model and make predictions.
+In the following, we show how a non-linear mixed effects model can be trained using `gpboost`. We use a random effects model that includes two crossed grouped random effects as well as a random slope. We first simulate data and then show how to train a GPBoost model and make predictions.
 <div class="fold s">
 ```{r simulate_group_data, results='hide', message=F, cache=cache}
 # Simulate data
