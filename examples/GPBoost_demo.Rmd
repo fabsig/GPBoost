@@ -256,7 +256,7 @@ gp_model$set_optim_params(params=list("optimizer_cov" = "gradient_descent"))
 # Use (Nesterov accelerated) gradient descent instead of the default option 
 #   Fisher scoring (aka natural gradient descent) since gradient descent is more
 #   robust for "bad choices" of tuning parameters. In these situations the 
-#   negative likelihood of the GP model can be very flat which can cause problems for Fisher scoring.
+#   negative log-likelihood of the GP model can be very flat which can cause problems for Fisher scoring.
 dtrain <- gpb.Dataset(data = X, label = y)
 # Candidate parameter grid
 param_grid = list("learning_rate" = c(0.1,0.05,0.01),

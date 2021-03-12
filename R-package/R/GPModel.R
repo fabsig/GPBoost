@@ -2337,6 +2337,7 @@ predict.GPModel <- function(object,
 #' @return A \code{GPModel}
 #'
 #' @examples
+#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -2351,7 +2352,7 @@ predict.GPModel <- function(object,
 #' # Check equality
 #' pred$mu - pred_loaded$mu
 #' pred$var - pred_loaded$var
-#' 
+#' }
 #' @rdname saveGPModel
 #' @importFrom RJSONIO toJSON
 #' @author Fabio Sigrist
@@ -2380,6 +2381,7 @@ saveGPModel <- function(gp_model, filename){
 #' @return A \code{GPModel}
 #'
 #' @examples
+#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -2394,7 +2396,7 @@ saveGPModel <- function(gp_model, filename){
 #' # Check equality
 #' pred$mu - pred_loaded$mu
 #' pred$var - pred_loaded$var
-#' 
+#' }
 #' @rdname loadGPModel
 #' @importFrom RJSONIO fromJSON
 #' @author Fabio Sigrist

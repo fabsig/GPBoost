@@ -493,161 +493,157 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
   })
   
-}
-
-
-test_that("GPBoost algorithm with Nesterov acceleration for grouped random effects model ", {
   
-  ntrain <- ntest <- 1000
-  n <- ntrain + ntest
-  # Simulate fixed effects
-  sim_data <- sim_friedman3(n=n, n_irrelevant=5)
-  f <- sim_data$f
-  X <- sim_data$X
-  # Simulate grouped random effects
-  sigma2_1 <- 0.6 # variance of first random effect 
-  sigma2_2 <- 0.4 # variance of second random effect
-  sigma2 <- 0.1^2 # error variance
-  m <- 40 # number of categories / levels for grouping variable
-  # first random effect
-  group <- rep(1,ntrain) # grouping variable
-  for(i in 1:m) group[((i-1)*ntrain/m+1):(i*ntrain/m)] <- i
-  group <- c(group, group)
-  n_new <- 3# number of new random effects in test data
-  group[(length(group)-n_new+1):length(group)] <- rep(99999,n_new)
-  Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
-  b1 <- sqrt(sigma2_1) * qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.542))
-  # Second random effect
-  n_obs_gr <- ntrain/m# number of sampels per group
-  group2 <- rep(1,ntrain) # grouping variable
-  for(i in 1:m) group2[(1:n_obs_gr)+n_obs_gr*(i-1)] <- 1:n_obs_gr
-  group2 <- c(group2,group2)
-  group2[(length(group2)-n_new+1):length(group2)] <- rep(99999,n_new)
-  Z2 <- model.matrix(rep(1,n)~factor(group2)-1)
-  b2 <- sqrt(sigma2_2) * qnorm(sim_rand_unif(n=length(unique(group2)), init_c=0.2354))
-  eps <- Z1 %*% b1 + Z2 %*% b2
-  group_data <- cbind(group,group2)
-  # Error term
-  xi <- sqrt(sigma2) * qnorm(sim_rand_unif(n=n, init_c=0.756))
-  # Observed data
-  y <- f + eps + xi
-  # Signal-to-noise ratio of approx. 1
-  # var(f) / var(eps)
-  # Split in training and test data
-  y_train <- y[1:ntrain]
-  X_train <- X[1:ntrain,]
-  group_data_train <- group_data[1:ntrain,]
-  y_test <- y[1:ntest+ntrain]
-  X_test <- X[1:ntest+ntrain,]
-  f_test <- f[1:ntest+ntrain]
-  group_data_test <- group_data[1:ntest+ntrain,]
-  dtrain <- gpb.Dataset(data = X_train, label = y_train)
-  dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
-  valids <- list(test = dtest)
-  params <- list(learning_rate = 0.01,
-                 max_depth = 6,
-                 min_data_in_leaf = 5,
-                 objective = "regression_l2",
-                 feature_pre_filter = FALSE,
-                 use_nesterov_acc = TRUE)
-  folds <- list()
-  for(i in 1:4) folds[[i]] <- as.integer(1:(ntrain/4) + (ntrain/4) * (i-1))
-  
-  # CV for finding number of boosting iterations with use_gp_model_for_validation = FALSE
-  gp_model <- GPModel(group_data = group_data_train)
-  cvbst <- gpb.cv(params = params,
-                  data = dtrain,
-                  gp_model = gp_model,
-                  nrounds = 100,
-                  nfold = 4,
-                  eval = "l2",
-                  early_stopping_rounds = 5,
-                  use_gp_model_for_validation = FALSE,
-                  fit_GP_cov_pars_OOS = FALSE,
-                  folds = folds,
-                  verbose = 0)
-  expect_equal(cvbst$best_iter, 19)
-  expect_lt(abs(cvbst$best_score-1.040297), TOLERANCE)
-  # CV for finding number of boosting iterations with use_gp_model_for_validation = TRUE
-  cvbst <- gpb.cv(params = params,
-                  data = dtrain,
-                  gp_model = gp_model,
-                  nrounds = 100,
-                  nfold = 4,
-                  eval = "l2",
-                  early_stopping_rounds = 5,
-                  use_gp_model_for_validation = TRUE,
-                  fit_GP_cov_pars_OOS = FALSE,
-                  folds = folds,
-                  verbose = 0)
-  expect_equal(cvbst$best_iter, 19)
-  expect_lt(abs(cvbst$best_score-0.6608819), TOLERANCE)
-  
-  # Create random effects model and train GPBoost model
-  gp_model <- GPModel(group_data = group_data_train)
-  bst <- gpboost(data = X_train,
-                 label = y_train,
-                 gp_model = gp_model,
-                 nrounds = 20,
-                 learning_rate = 0.01,
-                 max_depth = 6,
-                 min_data_in_leaf = 5,
-                 objective = "regression_l2",
-                 verbose = 0,
-                 leaves_newton_update = FALSE,
-                 use_nesterov_acc = TRUE)
-  cov_pars <- c(0.01806612, 0.59318355, 0.39198746)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-  
-  # Prediction
-  pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
-  expect_lt(sqrt(mean((pred$fixed_effect - f_test)^2)),0.271)
-  expect_lt(sqrt(mean((pred$fixed_effect - y_test)^2)),1.018)
-  expect_lt(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2)),0.238)
-  expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.3737357, -0.1906376, -1.2750302,
-                                                    rep(0,n_new)))),TOLERANCE)
-  expect_lt(sum(abs(head(pred$fixed_effect)-c(4.921429, 4.176900, 2.743165,
-                                              4.141866, 5.018322, 4.935220))),TOLERANCE)
-  
-  # Using validation set
-  # Do not include random effect predictions for validation
-  gp_model <- GPModel(group_data = group_data_train)
-  bst <- gpb.train(data = dtrain,
+  test_that("GPBoost algorithm with Nesterov acceleration for grouped random effects model ", {
+    
+    ntrain <- ntest <- 1000
+    n <- ntrain + ntest
+    # Simulate fixed effects
+    sim_data <- sim_friedman3(n=n, n_irrelevant=5)
+    f <- sim_data$f
+    X <- sim_data$X
+    # Simulate grouped random effects
+    sigma2_1 <- 0.6 # variance of first random effect 
+    sigma2_2 <- 0.4 # variance of second random effect
+    sigma2 <- 0.1^2 # error variance
+    m <- 40 # number of categories / levels for grouping variable
+    # first random effect
+    group <- rep(1,ntrain) # grouping variable
+    for(i in 1:m) group[((i-1)*ntrain/m+1):(i*ntrain/m)] <- i
+    group <- c(group, group)
+    n_new <- 3# number of new random effects in test data
+    group[(length(group)-n_new+1):length(group)] <- rep(99999,n_new)
+    Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
+    b1 <- sqrt(sigma2_1) * qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.542))
+    # Second random effect
+    n_obs_gr <- ntrain/m# number of sampels per group
+    group2 <- rep(1,ntrain) # grouping variable
+    for(i in 1:m) group2[(1:n_obs_gr)+n_obs_gr*(i-1)] <- 1:n_obs_gr
+    group2 <- c(group2,group2)
+    group2[(length(group2)-n_new+1):length(group2)] <- rep(99999,n_new)
+    Z2 <- model.matrix(rep(1,n)~factor(group2)-1)
+    b2 <- sqrt(sigma2_2) * qnorm(sim_rand_unif(n=length(unique(group2)), init_c=0.2354))
+    eps <- Z1 %*% b1 + Z2 %*% b2
+    group_data <- cbind(group,group2)
+    # Error term
+    xi <- sqrt(sigma2) * qnorm(sim_rand_unif(n=n, init_c=0.756))
+    # Observed data
+    y <- f + eps + xi
+    # Signal-to-noise ratio of approx. 1
+    # var(f) / var(eps)
+    # Split in training and test data
+    y_train <- y[1:ntrain]
+    X_train <- X[1:ntrain,]
+    group_data_train <- group_data[1:ntrain,]
+    y_test <- y[1:ntest+ntrain]
+    X_test <- X[1:ntest+ntrain,]
+    f_test <- f[1:ntest+ntrain]
+    group_data_test <- group_data[1:ntest+ntrain,]
+    dtrain <- gpb.Dataset(data = X_train, label = y_train)
+    dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+    valids <- list(test = dtest)
+    params <- list(learning_rate = 0.01,
+                   max_depth = 6,
+                   min_data_in_leaf = 5,
+                   objective = "regression_l2",
+                   feature_pre_filter = FALSE,
+                   use_nesterov_acc = TRUE)
+    folds <- list()
+    for(i in 1:4) folds[[i]] <- as.integer(1:(ntrain/4) + (ntrain/4) * (i-1))
+    
+    # CV for finding number of boosting iterations with use_gp_model_for_validation = FALSE
+    gp_model <- GPModel(group_data = group_data_train)
+    cvbst <- gpb.cv(params = params,
+                    data = dtrain,
+                    gp_model = gp_model,
+                    nrounds = 100,
+                    nfold = 4,
+                    eval = "l2",
+                    early_stopping_rounds = 5,
+                    use_gp_model_for_validation = FALSE,
+                    fit_GP_cov_pars_OOS = FALSE,
+                    folds = folds,
+                    verbose = 0)
+    expect_equal(cvbst$best_iter, 19)
+    expect_lt(abs(cvbst$best_score-1.040297), TOLERANCE)
+    # CV for finding number of boosting iterations with use_gp_model_for_validation = TRUE
+    cvbst <- gpb.cv(params = params,
+                    data = dtrain,
+                    gp_model = gp_model,
+                    nrounds = 100,
+                    nfold = 4,
+                    eval = "l2",
+                    early_stopping_rounds = 5,
+                    use_gp_model_for_validation = TRUE,
+                    fit_GP_cov_pars_OOS = FALSE,
+                    folds = folds,
+                    verbose = 0)
+    expect_equal(cvbst$best_iter, 19)
+    expect_lt(abs(cvbst$best_score-0.6608819), TOLERANCE)
+    
+    # Create random effects model and train GPBoost model
+    gp_model <- GPModel(group_data = group_data_train)
+    bst <- gpboost(data = X_train,
+                   label = y_train,
                    gp_model = gp_model,
-                   nrounds = 100,
+                   nrounds = 20,
                    learning_rate = 0.01,
                    max_depth = 6,
                    min_data_in_leaf = 5,
                    objective = "regression_l2",
                    verbose = 0,
-                   valids = valids,
-                   early_stopping_rounds = 5,
-                   use_gp_model_for_validation = FALSE,
+                   leaves_newton_update = FALSE,
                    use_nesterov_acc = TRUE)
-  expect_equal(bst$best_iter, 19)
-  expect_lt(abs(bst$best_score - 1.035405),TOLERANCE)
-  # Include random effect predictions for validation 
-  gp_model <- GPModel(group_data = group_data_train)
-  gp_model$set_prediction_data(group_data_pred = group_data_test)
-  bst <- gpb.train(data = dtrain,
-                   gp_model = gp_model,
-                   nrounds = 100,
-                   learning_rate = 0.01,
-                   max_depth = 6,
-                   min_data_in_leaf = 5,
-                   objective = "regression_l2",
-                   verbose = 0,
-                   valids = valids,
-                   early_stopping_rounds = 5,
-                   use_gp_model_for_validation = TRUE,
-                   use_nesterov_acc = TRUE)
-  expect_equal(bst$best_iter, 19)
-  expect_lt(abs(bst$best_score - 0.05520368),TOLERANCE)
-})
-
-
-# Avoid being tested on CRAN
-if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+    cov_pars <- c(0.01806612, 0.59318355, 0.39198746)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+    
+    # Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
+    expect_lt(sqrt(mean((pred$fixed_effect - f_test)^2)),0.271)
+    expect_lt(sqrt(mean((pred$fixed_effect - y_test)^2)),1.018)
+    expect_lt(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2)),0.238)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.3737357, -0.1906376, -1.2750302,
+                                                      rep(0,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(head(pred$fixed_effect)-c(4.921429, 4.176900, 2.743165,
+                                                4.141866, 5.018322, 4.935220))),TOLERANCE)
+    
+    # Using validation set
+    # Do not include random effect predictions for validation
+    gp_model <- GPModel(group_data = group_data_train)
+    bst <- gpb.train(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 100,
+                     learning_rate = 0.01,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     objective = "regression_l2",
+                     verbose = 0,
+                     valids = valids,
+                     early_stopping_rounds = 5,
+                     use_gp_model_for_validation = FALSE,
+                     use_nesterov_acc = TRUE)
+    expect_equal(bst$best_iter, 19)
+    expect_lt(abs(bst$best_score - 1.035405),TOLERANCE)
+    # Include random effect predictions for validation 
+    gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_prediction_data(group_data_pred = group_data_test)
+    bst <- gpb.train(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 100,
+                     learning_rate = 0.01,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     objective = "regression_l2",
+                     verbose = 0,
+                     valids = valids,
+                     early_stopping_rounds = 5,
+                     use_gp_model_for_validation = TRUE,
+                     use_nesterov_acc = TRUE)
+    expect_equal(bst$best_iter, 19)
+    expect_lt(abs(bst$best_score - 0.05520368),TOLERANCE)
+  })
+  
+  
   test_that("Saving and loading a booster with a gp_model from a file works", {
     ntrain <- ntest <- 1000
     n <- ntrain + ntest
@@ -698,9 +694,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     num_iteration <- 50
     start_iteration <- 0# saving and loading with start_iteration!=0 currently does not work for the LightGBM part
     pred_num_it <- predict(bst, data = X_test, group_data_pred = group_data_test,
-                     predict_var = TRUE, num_iteration = num_iteration, start_iteration = start_iteration)
+                           predict_var = TRUE, num_iteration = num_iteration, start_iteration = start_iteration)
     pred_num_it2 <- predict(bst, data = X_test, group_data_pred = group_data_test,
-                           predict_var = TRUE, num_iteration = 45, start_iteration = 10)
+                            predict_var = TRUE, num_iteration = 45, start_iteration = 10)
     # Save to file
     filename <- tempfile(fileext = ".model")
     gpb.save(bst, filename=filename, save_raw_data = FALSE)
