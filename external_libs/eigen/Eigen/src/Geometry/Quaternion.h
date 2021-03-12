@@ -141,7 +141,7 @@ class QuaternionBase : public RotationBase<Derived, 3>
   template<class OtherDerived> EIGEN_DEVICE_FUNC Scalar angularDistance(const QuaternionBase<OtherDerived>& other) const;
 
   /** \returns an equivalent 3x3 rotation matrix */
-  EIGEN_DEVICE_FUNC Matrix3 toRotationMatrix() const;
+  EIGEN_DEVICE_FUNC inline Matrix3 toRotationMatrix() const;
 
   /** \returns the quaternion which transform \a a into \a b through a rotation */
   template<typename Derived1, typename Derived2>
@@ -560,8 +560,8 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Derived& QuaternionBase<Derived>::operator
 template<class Derived>
 EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Derived& QuaternionBase<Derived>::operator=(const AngleAxisType& aa)
 {
-  EIGEN_USING_STD_MATH(cos)
-  EIGEN_USING_STD_MATH(sin)
+  EIGEN_USING_STD(cos)
+  EIGEN_USING_STD(sin)
   Scalar ha = Scalar(0.5)*aa.angle(); // Scalar(0.5) to suppress precision loss warnings
   this->w() = cos(ha);
   this->vec() = sin(ha) * aa.axis();
@@ -637,7 +637,7 @@ template<class Derived>
 template<typename Derived1, typename Derived2>
 EIGEN_DEVICE_FUNC inline Derived& QuaternionBase<Derived>::setFromTwoVectors(const MatrixBase<Derived1>& a, const MatrixBase<Derived2>& b)
 {
-  EIGEN_USING_STD_MATH(sqrt)
+  EIGEN_USING_STD(sqrt)
   Vector3 v0 = a.normalized();
   Vector3 v1 = b.normalized();
   Scalar c = v1.dot(v0);
@@ -678,9 +678,9 @@ EIGEN_DEVICE_FUNC inline Derived& QuaternionBase<Derived>::setFromTwoVectors(con
 template<typename Scalar, int Options>
 EIGEN_DEVICE_FUNC Quaternion<Scalar,Options> Quaternion<Scalar,Options>::UnitRandom()
 {
-  EIGEN_USING_STD_MATH(sqrt)
-  EIGEN_USING_STD_MATH(sin)
-  EIGEN_USING_STD_MATH(cos)
+  EIGEN_USING_STD(sqrt)
+  EIGEN_USING_STD(sin)
+  EIGEN_USING_STD(cos)
   const Scalar u1 = internal::random<Scalar>(0, 1),
                u2 = internal::random<Scalar>(0, 2*EIGEN_PI),
                u3 = internal::random<Scalar>(0, 2*EIGEN_PI);
@@ -763,7 +763,7 @@ template <class OtherDerived>
 EIGEN_DEVICE_FUNC inline typename internal::traits<Derived>::Scalar
 QuaternionBase<Derived>::angularDistance(const QuaternionBase<OtherDerived>& other) const
 {
-  EIGEN_USING_STD_MATH(atan2)
+  EIGEN_USING_STD(atan2)
   Quaternion<Scalar> d = (*this) * other.conjugate();
   return Scalar(2) * atan2( d.vec().norm(), numext::abs(d.w()) );
 }
@@ -781,8 +781,8 @@ template <class OtherDerived>
 EIGEN_DEVICE_FUNC Quaternion<typename internal::traits<Derived>::Scalar>
 QuaternionBase<Derived>::slerp(const Scalar& t, const QuaternionBase<OtherDerived>& other) const
 {
-  EIGEN_USING_STD_MATH(acos)
-  EIGEN_USING_STD_MATH(sin)
+  EIGEN_USING_STD(acos)
+  EIGEN_USING_STD(sin)
   const Scalar one = Scalar(1) - NumTraits<Scalar>::epsilon();
   Scalar d = this->dot(other);
   Scalar absD = numext::abs(d);
@@ -819,7 +819,7 @@ struct quaternionbase_assign_impl<Other,3,3>
   template<class Derived> EIGEN_DEVICE_FUNC static inline void run(QuaternionBase<Derived>& q, const Other& a_mat)
   {
     const typename internal::nested_eval<Other,2>::type mat(a_mat);
-    EIGEN_USING_STD_MATH(sqrt)
+    EIGEN_USING_STD(sqrt)
     // This algorithm comes from  "Quaternion Calculus and Fast Animation",
     // Ken Shoemake, 1987 SIGGRAPH course notes
     Scalar t = mat.trace();

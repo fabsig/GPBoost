@@ -388,6 +388,7 @@ class Tensor : public TensorBase<Tensor<Scalar_, NumIndices_, Options_, IndexTyp
       resize(TensorEvaluator<const Assign, DefaultDevice>(assign, DefaultDevice()).dimensions());
       internal::TensorExecutor<const Assign, DefaultDevice>::run(assign, DefaultDevice());
     }
+
     template<typename OtherDerived>
     EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE Tensor(const TensorBase<OtherDerived, WriteAccessors>& other)
@@ -401,14 +402,13 @@ class Tensor : public TensorBase<Tensor<Scalar_, NumIndices_, Options_, IndexTyp
     #if EIGEN_HAS_RVALUE_REFERENCES
     EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE Tensor(Self&& other)
-      : Tensor()
+      : m_storage(std::move(other.m_storage))
     {
-      m_storage.swap(other.m_storage);
     }
     EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE Tensor& operator=(Self&& other)
     {
-      m_storage.swap(other.m_storage);
+      m_storage = std::move(other.m_storage);
       return *this;
     }
     #endif

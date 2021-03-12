@@ -1,7 +1,7 @@
 # coding: utf-8
 """Helper script for checking versions in the dynamic symbol table.
 
-This script checks that LightGBM library is linked to the appropriate symbol versions.
+This script checks that the GPBoost library is linked to the appropriate symbol versions.
 """
 import re
 import sys

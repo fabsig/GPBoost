@@ -43,22 +43,6 @@
 #define EIGEN_SFINAE_ENABLE_IF( __condition__ ) \
     typename internal::enable_if< ( __condition__ ) , int >::type = 0
 
-
-#if EIGEN_HAS_CONSTEXPR
-#define EIGEN_CONSTEXPR constexpr
-#else
-#define EIGEN_CONSTEXPR
-#endif
-
-
-#if EIGEN_OS_WIN || EIGEN_OS_WIN64
-#define EIGEN_SLEEP(n) Sleep(n)
-#elif EIGEN_OS_GNULINUX
-#define EIGEN_SLEEP(n) usleep(n * 1000);
-#else
-#define EIGEN_SLEEP(n) sleep(std::max<unsigned>(1, n/1000))
-#endif
-
 // Define a macro to use a reference on the host but a value on the device
 #if defined(SYCL_DEVICE_ONLY)
   #define EIGEN_DEVICE_REF
@@ -89,5 +73,26 @@
 #elif !defined(EIGEN_SYCL_LOCAL_MEM) && defined(EIGEN_SYCL_NO_LOCAL_MEM)
   #define EIGEN_SYCL_LOCAL_MEM_UNSET_OR_OFF 1
 #endif
+
+#if EIGEN_COMP_CLANG // workaround clang bug (see http://forum.kde.org/viewtopic.php?f=74&t=102653)
+  #define EIGEN_TENSOR_INHERIT_ASSIGNMENT_EQUAL_OPERATOR(Derived) \
+    using Base::operator =; \
+    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Derived& operator=(const Derived& other) { Base::operator=(other); return *this; } \
+    template <typename OtherDerived> \
+    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Derived& operator=(const OtherDerived& other) { Base::operator=(other); return *this; }
+#else
+  #define EIGEN_TENSOR_INHERIT_ASSIGNMENT_EQUAL_OPERATOR(Derived) \
+    EIGEN_INHERIT_ASSIGNMENT_EQUAL_OPERATOR(Derived)
+#endif
+
+/** \internal
+ * \brief Macro to manually inherit assignment operators.
+ * This is necessary, because the implicitly defined assignment operator gets deleted when a custom operator= is defined.
+ * This also inherits template<OtherDerived> operator=(const OtherDerived&) assignments.
+ * With C++11 or later this also default-implements the copy-constructor
+ */
+#define EIGEN_TENSOR_INHERIT_ASSIGNMENT_OPERATORS(Derived)  \
+    EIGEN_TENSOR_INHERIT_ASSIGNMENT_EQUAL_OPERATOR(Derived) \
+    EIGEN_DEFAULT_COPY_CONSTRUCTOR(Derived)
 
 #endif

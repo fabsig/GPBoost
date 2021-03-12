@@ -9,9 +9,13 @@
 
 #include "main.h"
 
-#include <Eigen/Core>
-
-using namespace Eigen;
+// Disable "ignoring attributes on template argument"
+// for packet_traits<Packet*>
+// => The only workaround would be to wrap _m128 and the likes
+//    within wrappers.
+#if EIGEN_GNUC_AT_LEAST(6,0)
+    #pragma GCC diagnostic ignored "-Wignored-attributes"
+#endif
 
 #define GET(i,j) (StorageOrder == RowMajor ? (i)*stride + (j) : (i) + (j)*stride)
 #define SCATTER(i,j,k) (StorageOrder == RowMajor ? ((i)+(k))*stride + (j) : (i) + ((j)+(k))*stride)
@@ -186,11 +190,21 @@ EIGEN_DECLARE_TEST(blasutil)
 {
     for(int i = 0; i < g_repeat; i++)
     {
-        CALL_SUBTEST_1(run_test<int8_t>());
-        CALL_SUBTEST_2(run_test<int16_t>());
-        CALL_SUBTEST_3(run_test<int32_t>());
-        CALL_SUBTEST_4(run_test<int64_t>());
+        CALL_SUBTEST_1(run_test<numext::int8_t>());
+        CALL_SUBTEST_2(run_test<numext::int16_t>());
+        CALL_SUBTEST_3(run_test<numext::int32_t>());
+
+// TODO: Replace this by a call to numext::int64_t as soon as we have a way to
+// detect the typedef for int64_t on all platforms
+#if EIGEN_HAS_CXX11
+        CALL_SUBTEST_4(run_test<signed long long>());
+#else
+        CALL_SUBTEST_4(run_test<signed long>());
+#endif
+
         CALL_SUBTEST_5(run_test<float_t>());
         CALL_SUBTEST_6(run_test<double_t>());
+        CALL_SUBTEST_7(run_test<std::complex<float> >());
+        CALL_SUBTEST_8(run_test<std::complex<double> >());
     }
 }

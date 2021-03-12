@@ -414,7 +414,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                          convergence_criterion = "relative_change_in_parameters"))
     cov_pars <- c(0.01829104, 0.07043221, 1.06577048, 0.23037437, 0.11335918, 0.03484927)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 20)
+    expect_equal(gp_model$get_num_optim_iter(), 19)
     
     # Prediction using given paraneters
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,

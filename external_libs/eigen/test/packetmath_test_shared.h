@@ -78,13 +78,18 @@ bool isApproxAbs(const Scalar& a, const Scalar& b, const typename NumTraits<Scal
   return internal::isMuchSmallerThan(a-b, refvalue);
 }
 
+template<typename Scalar>
+inline void print_mismatch(const Scalar* ref, const Scalar* vec, int size) {
+  std::cout << "ref: [" << Map<const Matrix<Scalar,1,Dynamic> >(ref,size) << "]" << " != vec: [" << Map<const Matrix<Scalar,1,Dynamic> >(vec,size) << "]\n";
+}
+
 template<typename Scalar> bool areApproxAbs(const Scalar* a, const Scalar* b, int size, const typename NumTraits<Scalar>::Real& refvalue)
 {
   for (int i=0; i<size; ++i)
   {
     if (!isApproxAbs(a[i],b[i],refvalue))
     {
-      std::cout << "ref: [" << Map<const Matrix<Scalar,1,Dynamic> >(a,size) << "]" << " != vec: [" << Map<const Matrix<Scalar,1,Dynamic> >(b,size) << "]\n";
+      print_mismatch(a, b, size);
       return false;
     }
   }
@@ -95,13 +100,23 @@ template<typename Scalar> bool areApprox(const Scalar* a, const Scalar* b, int s
 {
   for (int i=0; i<size; ++i)
   {
-    if (a[i]!=b[i] && !internal::isApprox(a[i],b[i]))
+    if ( a[i]!=b[i] && !internal::isApprox(a[i],b[i]) 
+         && !((numext::isnan)(a[i]) && (numext::isnan)(b[i])) )
     {
-      if((numext::isnan)(a[i]) && (numext::isnan)(b[i]))
-      {
-        continue;
-      }
-      std::cout << "ref: [" << Map<const Matrix<Scalar,1,Dynamic> >(a,size) << "]" << " != vec: [" << Map<const Matrix<Scalar,1,Dynamic> >(b,size) << "]\n";
+      print_mismatch(a, b, size);
+      return false;
+    }
+  }
+  return true;
+}
+
+template<typename Scalar> bool areEqual(const Scalar* a, const Scalar* b, int size)
+{
+  for (int i=0; i<size; ++i)
+  {
+    if ( (a[i] != b[i]) && !((numext::isnan)(a[i]) && (numext::isnan)(b[i])) )
+    {
+      print_mismatch(a, b, size);
       return false;
     }
   }
@@ -113,6 +128,17 @@ template<typename Scalar> bool areApprox(const Scalar* a, const Scalar* b, int s
     ref[i] = REFOP(data1[i]); \
   internal::pstore(data2, POP(internal::pload<Packet>(data1))); \
   VERIFY(test::areApprox(ref, data2, PacketSize) && #POP); \
+}
+
+// Checks component-wise for input of size N. All of data1, data2, and ref
+// should have size at least ceil(N/PacketSize)*PacketSize to avoid memory
+// access errors.
+#define CHECK_CWISE1_N(REFOP, POP, N) { \
+  for (int i=0; i<N; ++i) \
+    ref[i] = REFOP(data1[i]); \
+  for (int j=0; j<N; j+=PacketSize) \
+    internal::pstore(data2 + j, POP(internal::pload<Packet>(data1 + j))); \
+  VERIFY(test::areApprox(ref, data2, N) && #POP); \
 }
 
 template<bool Cond,typename Packet>
@@ -132,6 +158,9 @@ struct packet_helper
 
   template<typename T>
   inline void store(T* to, const Packet& x, unsigned long long umask) const { internal::pstoreu(to, x, umask); }
+
+  template<typename T>
+  inline Packet& forward_reference(Packet& packet, T& /*scalar*/) const { return packet; }
 };
 
 template<typename Packet>
@@ -151,29 +180,52 @@ struct packet_helper<false,Packet>
 
   template<typename T>
   inline void store(T* to, const T& x, unsigned long long) const { *to = x; }
+
+  template<typename T>
+  inline T& forward_reference(Packet& /*packet*/, T& scalar) const { return scalar; }
 };
 
 #define CHECK_CWISE1_IF(COND, REFOP, POP) if(COND) { \
   test::packet_helper<COND,Packet> h; \
   for (int i=0; i<PacketSize; ++i) \
-    ref[i] = REFOP(data1[i]); \
+    ref[i] = Scalar(REFOP(data1[i])); \
   h.store(data2, POP(h.load(data1))); \
   VERIFY(test::areApprox(ref, data2, PacketSize) && #POP); \
+}
+
+#define CHECK_CWISE1_EXACT_IF(COND, REFOP, POP) if(COND) { \
+  test::packet_helper<COND,Packet> h; \
+  for (int i=0; i<PacketSize; ++i) \
+    ref[i] = Scalar(REFOP(data1[i])); \
+  h.store(data2, POP(h.load(data1))); \
+  VERIFY(test::areEqual(ref, data2, PacketSize) && #POP); \
 }
 
 #define CHECK_CWISE2_IF(COND, REFOP, POP) if(COND) { \
   test::packet_helper<COND,Packet> h; \
   for (int i=0; i<PacketSize; ++i) \
-    ref[i] = REFOP(data1[i], data1[i+PacketSize]); \
+    ref[i] = Scalar(REFOP(data1[i], data1[i+PacketSize]));     \
   h.store(data2, POP(h.load(data1),h.load(data1+PacketSize))); \
   VERIFY(test::areApprox(ref, data2, PacketSize) && #POP); \
+}
+
+// One input, one output by reference.
+#define CHECK_CWISE1_BYREF1_IF(COND, REFOP, POP) if(COND) { \
+  test::packet_helper<COND,Packet> h; \
+  for (int i=0; i<PacketSize; ++i) \
+    ref[i] = Scalar(REFOP(data1[i], ref[i+PacketSize]));     \
+  Packet pout; \
+  Scalar sout; \
+  h.store(data2, POP(h.load(data1), h.forward_reference(pout, sout))); \
+  h.store(data2+PacketSize, h.forward_reference(pout, sout)); \
+  VERIFY(test::areApprox(ref, data2, 2 * PacketSize) && #POP); \
 }
 
 #define CHECK_CWISE3_IF(COND, REFOP, POP) if (COND) {                      \
   test::packet_helper<COND, Packet> h;                                     \
   for (int i = 0; i < PacketSize; ++i)                                     \
-    ref[i] =                                                               \
-        REFOP(data1[i], data1[i + PacketSize], data1[i + 2 * PacketSize]); \
+    ref[i] = Scalar(REFOP(data1[i], data1[i + PacketSize],                 \
+                          data1[i + 2 * PacketSize]));                     \
   h.store(data2, POP(h.load(data1), h.load(data1 + PacketSize),            \
                      h.load(data1 + 2 * PacketSize)));                     \
   VERIFY(test::areApprox(ref, data2, PacketSize) && #POP);                 \
@@ -208,7 +260,6 @@ struct runner<Scalar,PacketType,true,false>
 {
   static void run() {
     runall<Scalar,PacketType>::run();
-    runall<Scalar,Scalar>::run();
   }
 };
 

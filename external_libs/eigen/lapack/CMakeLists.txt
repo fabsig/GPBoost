@@ -1,15 +1,13 @@
 
 project(EigenLapack CXX)
 
-include("../cmake/language_support.cmake")
-
-workaround_9220(Fortran EIGEN_Fortran_COMPILER_WORKS)
-
-if(EIGEN_Fortran_COMPILER_WORKS)
-  enable_language(Fortran OPTIONAL)
-  if(NOT CMAKE_Fortran_COMPILER)
-    set(EIGEN_Fortran_COMPILER_WORKS OFF)
-  endif()
+include(CheckLanguage)
+check_language(Fortran)
+if(CMAKE_Fortran_COMPILER)
+  enable_language(Fortran)
+  set(EIGEN_Fortran_COMPILER_WORKS ON)
+else()
+  set(EIGEN_Fortran_COMPILER_WORKS OFF)
 endif()
 
 add_custom_target(lapack)
@@ -137,16 +135,15 @@ if(EXISTS ${eigen_full_path_to_testing_lapack})
   add_subdirectory(testing/MATGEN)
   add_subdirectory(testing/LIN)
   add_subdirectory(testing/EIG)
-  cmake_policy(SET CMP0026 OLD)
   macro(add_lapack_test output input target)
     set(TEST_INPUT "${LAPACK_SOURCE_DIR}/testing/${input}")
     set(TEST_OUTPUT "${LAPACK_BINARY_DIR}/TESTING/${output}")
-    get_target_property(TEST_LOC ${target} LOCATION)
     string(REPLACE "." "_" input_name ${input})
     set(testName "${target}_${input_name}")
     if(EXISTS "${TEST_INPUT}")
-      add_test(LAPACK-${testName} "${CMAKE_COMMAND}"
-        -DTEST=${TEST_LOC}
+      add_test(NAME LAPACK-${testName}
+        COMMAND "${CMAKE_COMMAND}"
+        -DTEST=$<TARGET_FILE:${target}>
         -DINPUT=${TEST_INPUT} 
         -DOUTPUT=${TEST_OUTPUT} 
         -DINTDIR=${CMAKE_CFG_INTDIR}

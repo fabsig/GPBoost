@@ -131,8 +131,6 @@ protected:
   const T_SrcMat & m_src;
   T_FftIfc & m_ifc;
   Index m_nfft;
-private:
-  fft_fwd_proxy& operator=(const fft_fwd_proxy&);
 };
 
 template<typename T_SrcMat,typename T_FftIfc> 
@@ -151,8 +149,6 @@ protected:
   const T_SrcMat & m_src;
   T_FftIfc & m_ifc;
   Index m_nfft;
-private:
-  fft_inv_proxy& operator=(const fft_inv_proxy&);
 };
 
 
@@ -421,4 +417,3 @@ void fft_inv_proxy<T_SrcMat,T_FftIfc>::evalTo(T_DestMat& dst) const
 #include "../../Eigen/src/Core/util/ReenableStupidWarnings.h"
 
 #endif
-/* vim: set filetype=cpp et sw=2 ts=2 ai: */

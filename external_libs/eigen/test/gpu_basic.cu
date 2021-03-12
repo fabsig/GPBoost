@@ -14,7 +14,6 @@
 #endif
 
 #define EIGEN_TEST_NO_LONGDOUBLE
-#define EIGEN_TEST_NO_COMPLEX
 #define EIGEN_DEFAULT_DENSE_INDEX_TYPE int
 
 #include "main.h"
@@ -55,6 +54,169 @@ struct coeff_wise {
 };
 
 template<typename T>
+struct complex_sqrt {
+  EIGEN_DEVICE_FUNC
+  void operator()(int i, const typename T::Scalar* in, typename T::Scalar* out) const
+  {
+    using namespace Eigen;
+    typedef typename T::Scalar ComplexType;
+    typedef typename T::Scalar::value_type ValueType;
+    const int num_special_inputs = 18;
+    
+    if (i == 0) {
+      const ValueType nan = std::numeric_limits<ValueType>::quiet_NaN();
+      typedef Eigen::Vector<ComplexType, num_special_inputs> SpecialInputs;
+      SpecialInputs special_in;
+      special_in.setZero();
+      int idx = 0;
+      special_in[idx++] = ComplexType(0, 0);
+      special_in[idx++] = ComplexType(-0, 0);
+      special_in[idx++] = ComplexType(0, -0);
+      special_in[idx++] = ComplexType(-0, -0);
+      // GCC's fallback sqrt implementation fails for inf inputs.
+      // It is called when _GLIBCXX_USE_C99_COMPLEX is false or if
+      // clang includes the GCC header (which temporarily disables
+      // _GLIBCXX_USE_C99_COMPLEX)
+      #if !defined(_GLIBCXX_COMPLEX) || \
+        (_GLIBCXX_USE_C99_COMPLEX && !defined(__CLANG_CUDA_WRAPPERS_COMPLEX))
+      const ValueType inf = std::numeric_limits<ValueType>::infinity();
+      special_in[idx++] = ComplexType(1.0, inf);
+      special_in[idx++] = ComplexType(nan, inf);
+      special_in[idx++] = ComplexType(1.0, -inf);
+      special_in[idx++] = ComplexType(nan, -inf);
+      special_in[idx++] = ComplexType(-inf, 1.0);
+      special_in[idx++] = ComplexType(inf, 1.0);
+      special_in[idx++] = ComplexType(-inf, -1.0);
+      special_in[idx++] = ComplexType(inf, -1.0);
+      special_in[idx++] = ComplexType(-inf, nan);
+      special_in[idx++] = ComplexType(inf, nan);
+      #endif
+      special_in[idx++] = ComplexType(1.0, nan);
+      special_in[idx++] = ComplexType(nan, 1.0);
+      special_in[idx++] = ComplexType(nan, -1.0);
+      special_in[idx++] = ComplexType(nan, nan);
+      
+      Map<SpecialInputs> special_out(out);
+      special_out = special_in.cwiseSqrt();
+    }
+    
+    T x1(in + i);
+    Map<T> res(out + num_special_inputs + i*T::MaxSizeAtCompileTime);
+    res = x1.cwiseSqrt();
+  }
+};
+
+template<typename T>
+struct complex_operators {
+  EIGEN_DEVICE_FUNC
+  void operator()(int i, const typename T::Scalar* in, typename T::Scalar* out) const
+  {
+    using namespace Eigen;
+    typedef typename T::Scalar ComplexType;
+    typedef typename T::Scalar::value_type ValueType;
+    const int num_scalar_operators = 24;
+    const int num_vector_operators = 23;  // no unary + operator.
+    int out_idx = i * (num_scalar_operators + num_vector_operators * T::MaxSizeAtCompileTime);
+    
+    // Scalar operators.
+    const ComplexType a = in[i];
+    const ComplexType b = in[i + 1];
+    
+    out[out_idx++] = +a;
+    out[out_idx++] = -a;
+    
+    out[out_idx++] = a + b;
+    out[out_idx++] = a + numext::real(b);
+    out[out_idx++] = numext::real(a) + b;
+    out[out_idx++] = a - b;
+    out[out_idx++] = a - numext::real(b);
+    out[out_idx++] = numext::real(a) - b;
+    out[out_idx++] = a * b;
+    out[out_idx++] = a * numext::real(b);
+    out[out_idx++] = numext::real(a) * b;
+    out[out_idx++] = a / b;
+    out[out_idx++] = a / numext::real(b);
+    out[out_idx++] = numext::real(a) / b;
+    
+    out[out_idx] = a; out[out_idx++] += b;
+    out[out_idx] = a; out[out_idx++] -= b;
+    out[out_idx] = a; out[out_idx++] *= b;
+    out[out_idx] = a; out[out_idx++] /= b;
+    
+    const ComplexType true_value = ComplexType(ValueType(1), ValueType(0));
+    const ComplexType false_value = ComplexType(ValueType(0), ValueType(0));
+    out[out_idx++] = (a == b ? true_value : false_value);
+    out[out_idx++] = (a == numext::real(b) ? true_value : false_value);
+    out[out_idx++] = (numext::real(a) == b ? true_value : false_value);
+    out[out_idx++] = (a != b ? true_value : false_value);
+    out[out_idx++] = (a != numext::real(b) ? true_value : false_value);
+    out[out_idx++] = (numext::real(a) != b ? true_value : false_value);
+    
+    // Vector versions.
+    T x1(in + i);
+    T x2(in + i + 1);
+    const int res_size = T::MaxSizeAtCompileTime * num_scalar_operators;
+    const int size = T::MaxSizeAtCompileTime;
+    int block_idx = 0;
+    
+    Map<VectorX<ComplexType>> res(out + out_idx, res_size);
+    res.segment(block_idx, size) = -x1;
+    block_idx += size;
+    
+    res.segment(block_idx, size) = x1 + x2;
+    block_idx += size;
+    res.segment(block_idx, size) = x1 + x2.real();
+    block_idx += size;
+    res.segment(block_idx, size) = x1.real() + x2;
+    block_idx += size;
+    res.segment(block_idx, size) = x1 - x2;
+    block_idx += size;
+    res.segment(block_idx, size) = x1 - x2.real();
+    block_idx += size;
+    res.segment(block_idx, size) = x1.real() - x2;
+    block_idx += size;
+    res.segment(block_idx, size) = x1.array() * x2.array();
+    block_idx += size;
+    res.segment(block_idx, size) = x1.array() * x2.real().array();
+    block_idx += size;
+    res.segment(block_idx, size) = x1.real().array() * x2.array();
+    block_idx += size;
+    res.segment(block_idx, size) = x1.array() / x2.array();
+    block_idx += size;
+    res.segment(block_idx, size) = x1.array() / x2.real().array();
+    block_idx += size;
+    res.segment(block_idx, size) = x1.real().array() / x2.array();
+    block_idx += size;
+    
+    res.segment(block_idx, size) = x1; res.segment(block_idx, size) += x2;
+    block_idx += size;
+    res.segment(block_idx, size) = x1; res.segment(block_idx, size) -= x2;
+    block_idx += size;
+    res.segment(block_idx, size) = x1; res.segment(block_idx, size).array() *= x2.array();
+    block_idx += size;
+    res.segment(block_idx, size) = x1; res.segment(block_idx, size).array() /= x2.array();
+    block_idx += size;
+
+    // Equality comparisons currently not functional on device
+    //   (std::equal_to<T> is host-only).
+    // const T true_vector = T::Constant(true_value);
+    // const T false_vector = T::Constant(false_value);
+    // res.segment(block_idx, size) = (x1 == x2 ? true_vector : false_vector);
+    // block_idx += size;
+    // res.segment(block_idx, size) = (x1 == x2.real() ? true_vector : false_vector);
+    // block_idx += size;
+    // res.segment(block_idx, size) = (x1.real() == x2 ? true_vector : false_vector);
+    // block_idx += size;
+    // res.segment(block_idx, size) = (x1 != x2 ? true_vector : false_vector);
+    // block_idx += size;
+    // res.segment(block_idx, size) = (x1 != x2.real() ? true_vector : false_vector);
+    // block_idx += size;
+    // res.segment(block_idx, size) = (x1.real() != x2 ? true_vector : false_vector);
+    // block_idx += size;
+  }
+};
+
+template<typename T>
 struct replicate {
   EIGEN_DEVICE_FUNC
   void operator()(int i, const typename T::Scalar* in, typename T::Scalar* out) const
@@ -68,6 +230,26 @@ struct replicate {
     MapType(out+i*stride+0*step, x1.rows()*2, x1.cols()*2) = x1.replicate(2,2);
     MapType(out+i*stride+1*step, x1.rows()*3, x1.cols()) = in[i] * x1.colwise().replicate(3);
     MapType(out+i*stride+2*step, x1.rows(), x1.cols()*3) = in[i] * x1.rowwise().replicate(3);
+  }
+};
+
+template<typename T>
+struct alloc_new_delete {
+  EIGEN_DEVICE_FUNC
+  void operator()(int i, const typename T::Scalar* in, typename T::Scalar* out) const
+  {
+    int offset = 2*i*T::MaxSizeAtCompileTime;
+    T* x = new T(in + offset);
+    Eigen::Map<T> u(out + offset);
+    u = *x;
+    delete x;
+    
+    offset += T::MaxSizeAtCompileTime;
+    T* y = new T[1];
+    y[0] = T(in + offset);
+    Eigen::Map<T> v(out + offset);
+    v = y[0];    
+    delete[] y;
   }
 };
 
@@ -161,17 +343,58 @@ struct matrix_inverse {
   }
 };
 
+template<typename Type1, typename Type2>
+bool verifyIsApproxWithInfsNans(const Type1& a, const Type2& b, typename Type1::Scalar* = 0) // Enabled for Eigen's type only
+{
+  if (a.rows() != b.rows()) {
+    return false;
+  }
+  if (a.cols() != b.cols()) {
+    return false;
+  }
+  for (Index r = 0; r < a.rows(); ++r) {
+    for (Index c = 0; c < a.cols(); ++c) {
+      if (a(r, c) != b(r, c)
+          && !((numext::isnan)(a(r, c)) && (numext::isnan)(b(r, c))) 
+          && !test_isApprox(a(r, c), b(r, c))) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+template<typename Kernel, typename Input, typename Output>
+void test_with_infs_nans(const Kernel& ker, int n, const Input& in, Output& out)
+{
+  Output out_ref, out_gpu;
+  #if !defined(EIGEN_GPU_COMPILE_PHASE)
+  out_ref = out_gpu = out;
+  #else
+  EIGEN_UNUSED_VARIABLE(in);
+  EIGEN_UNUSED_VARIABLE(out);
+  #endif
+  run_on_cpu (ker, n, in,  out_ref);
+  run_on_gpu(ker, n, in, out_gpu);
+  #if !defined(EIGEN_GPU_COMPILE_PHASE)
+  verifyIsApproxWithInfsNans(out_ref, out_gpu);
+  #endif
+}
+
 EIGEN_DECLARE_TEST(gpu_basic)
 {
   ei_test_init_gpu();
   
   int nthreads = 100;
   Eigen::VectorXf in, out;
+  Eigen::VectorXcf cfin, cfout;
   
-  #if !defined(__CUDA_ARCH__) && !defined(__HIP_DEVICE_COMPILE__)
+  #if !defined(EIGEN_GPU_COMPILE_PHASE)
   int data_size = nthreads * 512;
   in.setRandom(data_size);
-  out.setRandom(data_size);
+  out.setConstant(data_size, -1);
+  cfin.setRandom(data_size);
+  cfout.setConstant(data_size, -1);
   #endif
   
   CALL_SUBTEST( run_and_compare_to_gpu(coeff_wise<Vector3f>(), nthreads, in, out) );
@@ -186,6 +409,9 @@ EIGEN_DECLARE_TEST(gpu_basic)
   //           (aka 'ArrayBase<Eigen::Replicate<Eigen::Array<float, 4, 1, 0, 4, 1>, -1, -1> >') has protected default constructor
   CALL_SUBTEST( run_and_compare_to_gpu(replicate<Array4f>(), nthreads, in, out) );
   CALL_SUBTEST( run_and_compare_to_gpu(replicate<Array33f>(), nthreads, in, out) );
+
+  // HIP does not support new/delete on device.
+  CALL_SUBTEST( run_and_compare_to_gpu(alloc_new_delete<Vector3f>(), nthreads, in, out) );
 #endif
   
   CALL_SUBTEST( run_and_compare_to_gpu(redux<Array4f>(), nthreads, in, out) );
@@ -203,6 +429,10 @@ EIGEN_DECLARE_TEST(gpu_basic)
   
   CALL_SUBTEST( run_and_compare_to_gpu(eigenvalues_direct<Matrix3f>(), nthreads, in, out) );
   CALL_SUBTEST( run_and_compare_to_gpu(eigenvalues_direct<Matrix2f>(), nthreads, in, out) );
+
+  // Test std::complex.
+  CALL_SUBTEST( run_and_compare_to_gpu(complex_operators<Vector3cf>(), nthreads, cfin, cfout) );
+  CALL_SUBTEST( test_with_infs_nans(complex_sqrt<Vector3cf>(), nthreads, cfin, cfout) );
 
 #if defined(__NVCC__)
   // FIXME

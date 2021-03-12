@@ -80,8 +80,8 @@ __device__ inline double atomicExchCustom(double* address, double val) {
 }
 
 #ifdef EIGEN_HAS_GPU_FP16
-template <template <typename T> class R>
-__device__ inline void atomicReduce(half2* output, half2 accum, R<half>& reducer) {
+template <typename R>
+__device__ inline void atomicReduce(half2* output, half2 accum, R& reducer) {
   unsigned int oldval = *reinterpret_cast<unsigned int*>(output);
   unsigned int newval = oldval;
   reducer.reducePacket(accum, reinterpret_cast<half2*>(&newval));
@@ -99,9 +99,8 @@ __device__ inline void atomicReduce(half2* output, half2 accum, R<half>& reducer
   }
 }
 // reduction should be associative since reduction is not atomic in wide vector but atomic in half2 operations
-template <template <typename T> class R>
-__device__ inline void atomicReduce(Packet4h2* output, Packet4h2 accum,
-                                    R<half>& reducer) {
+template <typename R>
+__device__ inline void atomicReduce(Packet4h2* output, Packet4h2 accum, R& reducer) {
   half2* houtput=reinterpret_cast<half2*>(output);
   half2* haccum=reinterpret_cast<half2*>(&accum);
   for(int i=0;i<4;++i){
@@ -121,7 +120,7 @@ __device__ inline void atomicReduce(float* output, float accum, SumReducer<float
 
 
 template <typename CoeffType, typename Index>
-__global__ __launch_bounds__(1024) void ReductionInitKernel(const CoeffType val, Index num_preserved_coeffs, CoeffType* output) {
+__global__ EIGEN_HIP_LAUNCH_BOUNDS_1024 void ReductionInitKernel(const CoeffType val, Index num_preserved_coeffs, CoeffType* output) {
   const Index thread_id = blockIdx.x * blockDim.x + threadIdx.x;
   const Index num_threads = blockDim.x * gridDim.x;
   for (Index i = thread_id; i < num_preserved_coeffs; i += num_threads) {
@@ -132,7 +131,7 @@ __global__ __launch_bounds__(1024) void ReductionInitKernel(const CoeffType val,
 
 template <int BlockSize, int NumPerThread, typename Self,
           typename Reducer, typename Index>
-__global__ __launch_bounds__(1024) void FullReductionKernel(Reducer reducer, const Self input, Index num_coeffs,
+__global__ EIGEN_HIP_LAUNCH_BOUNDS_1024 void FullReductionKernel(Reducer reducer, const Self input, Index num_coeffs,
                                     typename Self::CoeffReturnType* output, unsigned int* semaphore) {
 #if (defined(EIGEN_HIP_DEVICE_COMPILE) && defined(__HIP_ARCH_HAS_WARP_SHUFFLE__)) || (EIGEN_CUDA_ARCH >= 300)
   // Initialize the output value
@@ -214,7 +213,7 @@ __global__ __launch_bounds__(1024) void FullReductionKernel(Reducer reducer, con
 #ifdef EIGEN_HAS_GPU_FP16
 template <typename Self,
           typename Reducer, typename Index>
-__global__ __launch_bounds__(1024) void ReductionInitFullReduxKernelHalfFloat(Reducer reducer, const Self input, Index num_coeffs,
+__global__ EIGEN_HIP_LAUNCH_BOUNDS_1024 void ReductionInitFullReduxKernelHalfFloat(Reducer reducer, const Self input, Index num_coeffs,
                                                       packet_traits<Eigen::half>::type* scratch) {
   eigen_assert(blockDim.x == 1);
   eigen_assert(gridDim.x == 1);
@@ -239,7 +238,7 @@ __global__ __launch_bounds__(1024) void ReductionInitFullReduxKernelHalfFloat(Re
 
 template <typename Self,
           typename Reducer, typename Index>
-__global__ __launch_bounds__(1024) void ReductionInitKernelHalfFloat(Reducer reducer, const Self input, Index num_coeffs, half* output) {
+__global__ EIGEN_HIP_LAUNCH_BOUNDS_1024 void ReductionInitKernelHalfFloat(Reducer reducer, const Self input, Index num_coeffs, half* output) {
   const Index thread_id = blockIdx.x * blockDim.x + threadIdx.x;
   const Index num_threads = blockDim.x * gridDim.x;
   typedef typename packet_traits<Eigen::half>::type PacketType;
@@ -259,7 +258,7 @@ __global__ __launch_bounds__(1024) void ReductionInitKernelHalfFloat(Reducer red
 
 template <int BlockSize, int NumPerThread, typename Self,
           typename Reducer, typename Index>
-__global__ __launch_bounds__(1024) void FullReductionKernelHalfFloat(Reducer reducer, const Self input, Index num_coeffs,
+__global__ EIGEN_HIP_LAUNCH_BOUNDS_1024 void FullReductionKernelHalfFloat(Reducer reducer, const Self input, Index num_coeffs,
                                     half* output, packet_traits<Eigen::half>::type* scratch) {
   typedef typename packet_traits<Eigen::half>::type PacketType;
   const int packet_width = unpacket_traits<PacketType>::size;
@@ -358,7 +357,7 @@ __global__ __launch_bounds__(1024) void FullReductionKernelHalfFloat(Reducer red
 }
 
 template <typename Op>
-__global__ __launch_bounds__(1024) void ReductionCleanupKernelHalfFloat(Op reducer, half* output, packet_traits<Eigen::half>::type* scratch) {
+__global__ EIGEN_HIP_LAUNCH_BOUNDS_1024 void ReductionCleanupKernelHalfFloat(Op reducer, half* output, packet_traits<Eigen::half>::type* scratch) {
   eigen_assert(threadIdx.x == 1);
   half2* pscratch = reinterpret_cast<half2*>(scratch);
   half tmp = __float2half(0.f);
@@ -476,7 +475,7 @@ struct FullReducer<Self, Op, GpuDevice, Vectorizable> {
 
 template <int NumPerThread, typename Self,
           typename Reducer, typename Index>
-__global__ __launch_bounds__(1024) void InnerReductionKernel(Reducer reducer, const Self input, Index num_coeffs_to_reduce, Index num_preserved_coeffs,
+__global__ EIGEN_HIP_LAUNCH_BOUNDS_1024 void InnerReductionKernel(Reducer reducer, const Self input, Index num_coeffs_to_reduce, Index num_preserved_coeffs,
                                          typename Self::CoeffReturnType* output) {
 #if (defined(EIGEN_HIP_DEVICE_COMPILE) && defined(__HIP_ARCH_HAS_WARP_SHUFFLE__)) || (EIGEN_CUDA_ARCH >= 300)
   typedef typename Self::CoeffReturnType Type;
@@ -561,7 +560,7 @@ __global__ __launch_bounds__(1024) void InnerReductionKernel(Reducer reducer, co
 
 template <int NumPerThread, typename Self,
           typename Reducer, typename Index>
-__global__ __launch_bounds__(1024) void InnerReductionKernelHalfFloat(Reducer reducer, const Self input, Index num_coeffs_to_reduce, Index num_preserved_coeffs,
+__global__ EIGEN_HIP_LAUNCH_BOUNDS_1024 void InnerReductionKernelHalfFloat(Reducer reducer, const Self input, Index num_coeffs_to_reduce, Index num_preserved_coeffs,
                                               half* output) {
   eigen_assert(blockDim.y == 1);
   eigen_assert(blockDim.z == 1);
@@ -868,7 +867,7 @@ struct InnerReducer<Self, Op, GpuDevice> {
 
 template <int NumPerThread, typename Self,
           typename Reducer, typename Index>
-__global__ __launch_bounds__(1024) void OuterReductionKernel(Reducer reducer, const Self input, Index num_coeffs_to_reduce, Index num_preserved_coeffs,
+__global__ EIGEN_HIP_LAUNCH_BOUNDS_1024 void OuterReductionKernel(Reducer reducer, const Self input, Index num_coeffs_to_reduce, Index num_preserved_coeffs,
                                      typename Self::CoeffReturnType* output) {
   const Index num_threads = blockDim.x * gridDim.x;
   const Index thread_id = blockIdx.x * blockDim.x + threadIdx.x;

@@ -512,7 +512,7 @@ namespace GPBoost {
 
 		}
 
-		data_size_t GetNumUniqueREs() const {
+		data_size_t GetNumUniqueREs() const override {
 			return(num_group_);
 		}
 
@@ -1050,7 +1050,7 @@ namespace GPBoost {
 			}
 		}
 
-		data_size_t GetNumUniqueREs() const {
+		data_size_t GetNumUniqueREs() const override {
 			return(num_random_effects_);
 		}
 

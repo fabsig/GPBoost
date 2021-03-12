@@ -57,11 +57,23 @@ struct lgamma_retval {
 };
 
 #if EIGEN_HAS_C99_MATH
+// Since glibc 2.19
+#if defined(__GLIBC__) && ((__GLIBC__>=2 && __GLIBC_MINOR__ >= 19) || __GLIBC__>2) \
+ && (defined(_DEFAULT_SOURCE) || defined(_BSD_SOURCE) || defined(_SVID_SOURCE))
+#define EIGEN_HAS_LGAMMA_R
+#endif
+
+// Glibc versions before 2.19
+#if defined(__GLIBC__) && ((__GLIBC__==2 && __GLIBC_MINOR__ < 19) || __GLIBC__<2) \
+ && (defined(_BSD_SOURCE) || defined(_SVID_SOURCE))
+#define EIGEN_HAS_LGAMMA_R
+#endif
+
 template <>
 struct lgamma_impl<float> {
   EIGEN_DEVICE_FUNC
   static EIGEN_STRONG_INLINE float run(float x) {
-#if !defined(EIGEN_GPU_COMPILE_PHASE) && (defined(_BSD_SOURCE) || defined(_SVID_SOURCE)) && !defined(__APPLE__)
+#if !defined(EIGEN_GPU_COMPILE_PHASE) && defined (EIGEN_HAS_LGAMMA_R) && !defined(__APPLE__)
     int dummy;
     return ::lgammaf_r(x, &dummy);
 #elif defined(SYCL_DEVICE_ONLY)
@@ -76,7 +88,7 @@ template <>
 struct lgamma_impl<double> {
   EIGEN_DEVICE_FUNC
   static EIGEN_STRONG_INLINE double run(double x) {
-#if !defined(EIGEN_GPU_COMPILE_PHASE) && (defined(_BSD_SOURCE) || defined(_SVID_SOURCE)) && !defined(__APPLE__)
+#if !defined(EIGEN_GPU_COMPILE_PHASE) && defined(EIGEN_HAS_LGAMMA_R) && !defined(__APPLE__)
     int dummy;
     return ::lgamma_r(x, &dummy);
 #elif defined(SYCL_DEVICE_ONLY)
@@ -86,6 +98,8 @@ struct lgamma_impl<double> {
 #endif
   }
 };
+
+#undef EIGEN_HAS_LGAMMA_R
 #endif
 
 /****************************************************************************
@@ -227,7 +241,7 @@ struct digamma_impl {
     Scalar p, q, nz, s, w, y;
     bool negative = false;
 
-    const Scalar maxnum = NumTraits<Scalar>::infinity();
+    const Scalar nan = NumTraits<Scalar>::quiet_NaN();
     const Scalar m_pi = Scalar(EIGEN_PI);
 
     const Scalar zero = Scalar(0);
@@ -240,7 +254,7 @@ struct digamma_impl {
       q = x;
       p = numext::floor(q);
       if (p == q) {
-        return maxnum;
+        return nan;
       }
       /* Remove the zeros of tan(m_pi x)
        * by subtracting the nearest integer from x
@@ -334,7 +348,7 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T generic_fast_erf_float(const T& a_x) {
 template <typename T>
 struct erf_impl {
   EIGEN_DEVICE_FUNC
-  static EIGEN_STRONG_INLINE T run(const T x) {
+  static EIGEN_STRONG_INLINE T run(const T& x) {
     return generic_fast_erf_float(x);
   }
 };
@@ -476,7 +490,8 @@ struct erfc_impl<double> {
 template<typename T>
 EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T flipsign(
     const T& should_flipsign, const T& x) {
-  const T sign_mask = pset1<T>(-0.0);
+  typedef typename unpacket_traits<T>::type Scalar;
+  const T sign_mask = pset1<T>(Scalar(-0.0));
   T sign_bit = pand<T>(should_flipsign, sign_mask);
   return pxor<T>(sign_bit, x);
 }
@@ -1388,7 +1403,12 @@ struct zeta_impl {
         {
             if(q == numext::floor(q))
             {
-                return maxnum;
+                if (x == numext::floor(x) && long(x) % 2 == 0) {
+                    return maxnum;
+                }
+                else {
+                    return nan;
+                }
             }
             p = x;
             r = numext::floor(p);
@@ -1464,11 +1484,11 @@ struct polygamma_impl {
         Scalar nplus = n + one;
         const Scalar nan = NumTraits<Scalar>::quiet_NaN();
 
-        // Check that n is an integer
-        if (numext::floor(n) != n) {
+        // Check that n is a non-negative integer
+        if (numext::floor(n) != n || n < zero) {
             return nan;
         }
-        // Just return the digamma function for n = 1
+        // Just return the digamma function for n = 0
         else if (n == zero) {
             return digamma_impl<Scalar>::run(x);
         }
