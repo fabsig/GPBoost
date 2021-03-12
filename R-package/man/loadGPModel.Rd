@@ -16,6 +16,7 @@ A \code{GPModel}
 Load a \code{GPModel} from a file
 }
 \examples{
+\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -30,7 +31,7 @@ pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], p
 # Check equality
 pred$mu - pred_loaded$mu
 pred$var - pred_loaded$var
-
+}
 }
 \author{
 Fabio Sigrist

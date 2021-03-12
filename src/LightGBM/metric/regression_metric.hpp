@@ -80,7 +80,7 @@ namespace LightGBM {
 				if (weights_ == nullptr) {
 					if (objective->HasGPModel() && objective->UseGPModelForValidation()) {
 						if (metric_for_train_data_) {
-							Log::Fatal("Cannot use the option 'use_gp_model_for_validation = true' for calculating the training data loss");
+							Log::Fatal("Cannot use the option 'use_gp_model_for_validation = true' for calculating a validation metric on the training data");
 						}
 						const REModel* re_model = objective->GetGPModel();
 						if (re_model->GaussLikelihood()) {//Gaussian data

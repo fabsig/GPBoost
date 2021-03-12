@@ -82,7 +82,7 @@ namespace LightGBM {
 					// Add predictions from re_model (if needed)
 					if (objective->HasGPModel() && objective->UseGPModelForValidation()) {
 						if (metric_for_train_data_) {
-							Log::Fatal("Cannot use the option 'use_gp_model_for_validation = true' for calculating the training data loss");
+							Log::Fatal("Cannot use the option 'use_gp_model_for_validation = true' for calculating a validation metric on the training data");
 						}
 						const REModel* re_model = objective->GetGPModel();
 
@@ -123,19 +123,6 @@ namespace LightGBM {
 								sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], gp_pred[i]);
 							}
 						}//end non-Gaussian data
-
-//						std::vector<double> re_prop_pred(num_data_);
-//						re_model->Predict(nullptr, num_data_, re_prop_pred.data(),
-//							false, false, true, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, true,
-//							nullptr, -1, nullptr, score);
-//						//note that the re_model already has the updated training score (= F_t)
-//						//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
-//#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-//						for (data_size_t i = 0; i < num_data_; ++i) {
-//							// add loss
-//							sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], re_prop_pred[i]);
-//						}
-
 					}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
 					else {//re_model inexistent or not used for calculating validation loss
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)

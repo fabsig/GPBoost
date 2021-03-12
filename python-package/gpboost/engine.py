@@ -224,8 +224,6 @@ def train(params, train_set, num_boost_round=100,
     if gp_model is not None:
         # some checks
         if use_gp_model_for_validation and not not valid_sets and not not feval:
-            print(feval)
-            print("DELETE THIS, only for debugging")
             raise ValueError("use_gp_model_for_validation=True is currently "
                              "not supported for custom validation functions. If you need this feature, contact the "
                              "developer of this package or open a GitHub issue.")
