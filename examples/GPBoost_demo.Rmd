@@ -18,12 +18,22 @@ knitr::opts_chunk$set(fig.width=7, fig.height=5)
 library(reticulate)
 # py_install("gpboost",pip=TRUE)
 # py_install("shap",pip=TRUE)
-run_python = TRUE
-run_cv = FALSE
+run_python = FALSE # Not run for publication
+run_cv = FALSE # Not run for publication
 run_python_cv = run_python & run_cv
 run_group_re = TRUE
 export_data_from_R_to_python = TRUE
-cache = FALSE
+cache = FALSE # Set to TRUE to save image files
+small_figures = TRUE
+if (small_figures) {
+  # Smaller figures to save space 
+  fig.width = 6.5
+  fig.height = 4.5
+} else {
+  # Default values
+  fig.width = 7
+  fig.height = 5
+}
 ```
 
 In this document, we illustrate how the GPBoost R and Python packages can be used to train models, make predictions, interpret models, and choose tuning parameters. Further, we also compare the GPBoost algorithm to classical tree-boosting and to plain linear Gaussian process regression.
@@ -42,7 +52,7 @@ Both tree-boosting and Gaussian processes are techniques that achieve **state-of
 * Modeling of dependency which, among other things, can allow for more efficient learning of the fixed effects / regression function
 
 For the GPBoost algorithm, it is assumed that the **response variable (label) $y$ is the sum of a non-linear mean function $F(X)$ and so-called random effects $Zb$**:
- $$ y = F(X) + Zb + \xi,$$
+$$ y = F(X) + Zb + \xi,$$
 where $\xi$ is an independent error term and $X$ are predictor variables (aka covariates or features).
 
 The **random effects** can consists of
@@ -129,33 +139,33 @@ n = 200  # number of training samples
 nx = 3 # test data: number of grid points on each axis
 # training locations (exclude upper right rectangle)
 coords = np.column_stack(
-    (np.random.uniform(size=1)/2, np.random.uniform(size=1)/2))
-while coords.shape[0] < n:
+  (np.random.uniform(size=1)/2, np.random.uniform(size=1)/2))
+  while coords.shape[0] < n:
     coord_i = np.random.uniform(size=2)
     if not (coord_i[0] >= 0.6 and coord_i[1] >= 0.6):
-        coords = np.vstack((coords,coord_i))
+      coords = np.vstack((coords,coord_i))
 # test locations (rectangular grid)
 s_1 = np.ones(nx * nx)
 s_2 = np.ones(nx * nx)
 for i in range(nx):
-    for j in range(nx):
-        s_1[j * nx + i] = (i + 1) / nx
-        s_2[i * nx + j] = (i + 1) / nx
+  for j in range(nx):
+    s_1[j * nx + i] = (i + 1) / nx
+    s_2[i * nx + j] = (i + 1) / nx
 coords_test = np.column_stack((s_1, s_2))
 n_all = nx**2 + n # total number of data points 
 coords_all = np.vstack((coords_test,coords))
 D = np.zeros((n_all, n_all))  # distance matrix
 for i in range(0, n_all):
-    for j in range(i + 1, n_all):
-        D[i, j] = np.linalg.norm(coords_all[i, :] - coords_all[j, :])
-        D[j, i] = D[i, j]
+  for j in range(i + 1, n_all):
+    D[i, j] = np.linalg.norm(coords_all[i, :] - coords_all[j, :])
+    D[j, i] = D[i, j]
 Sigma = sigma2_1 * np.exp(-D / rho) + np.diag(np.zeros(n_all) + 1e-10)
 C = np.linalg.cholesky(Sigma)
 b_all = C.dot(np.random.normal(size=n_all))
 b = b_all[(nx*nx):n_all] # training data GP
 # Mean function. Use two predictor variables of which only one has an effect for easy visualization
 def f1d(x):
-    return np.sin(3*np.pi*x) + (1 + 3 * np.maximum(np.zeros(len(x)),x-0.5)/(x-0.5)) - 3
+  return np.sin(3*np.pi*x) + (1 + 3 * np.maximum(np.zeros(len(x)),x-0.5)/(x-0.5)) - 3
 X = np.random.rand(n, 2)
 F_X = f1d(X[:, 0]) # mean
 xi = np.sqrt(sigma2) * np.random.normal(size=n)  # simulate error term
@@ -169,21 +179,21 @@ y_test = f1d(X_test[:, 0]) + b_all[0:(nx**2)] + np.sqrt(sigma2) * np.random.norm
 </div>
 
 
-```{r plot_data, echo=F, results='hide', message=F, cache=cache, warning=FALSE, fig.align='center', fig.cap='Illustration of data: mean function F(X) used for simulation, "true" latent Gaussian process b, and observed data y (bottom plots)'}
+```{r plot_data, echo=F, results='hide', message=F, cache=cache, warning=FALSE, fig.align='center', fig.cap='Illustration of data: mean function F(X) used for simulation, "true" latent Gaussian process b, and observed data y (bottom plots)', fig.width=0.9*fig.width, fig.height=fig.height}
 library(ggplot2)
 library(viridis)
 library(gridExtra)
 x <- seq(from=0,to=1,length.out=200)
 plot1 <- ggplot(data=data.frame(x=x,f=f1d(x)), aes(x=x,y=f)) + geom_line(size=1.5, color="darkred") +
-  ggtitle("Mean function") + xlab("X_1") + ylab("F(X)")
+ggtitle("Mean function") + xlab("X_1") + ylab("F(X)")
 plot2 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=b_all[1:nx^2]),aes(x=s_1,y=s_2,color=b)) + 
-  geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + ggtitle("\"True\" Gaussian process (GP)")
+geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + ggtitle("\"True\" Gaussian process (GP)")
 plot3 <- ggplot(data=data.frame(x=X[,1],y=y), aes(x=x,y=y)) + geom_point() + 
-  geom_line(data=data.frame(x=x,f=f1d(x)), aes(x=x,y=f), size=1.5, color="darkred") +
-  ggtitle("Observed data vs. predictor variable") + xlab("X_1") + ylab("y")
+geom_line(data=data.frame(x=x,f=f1d(x)), aes(x=x,y=f), size=1.5, color="darkred") +
+ggtitle("Observed data vs. predictor variable") + xlab("X_1") + ylab("y")
 plot4 <- ggplot(data = data.frame(s_1=coords[,1],s_2=coords[,2],y=y),aes(x=s_1,y=s_2,color=y)) + 
-  geom_point(size=3) + scale_color_viridis(option = "B") + ggtitle("Observed data and locations")
-grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
+geom_point(size=3) + scale_color_viridis(option = "B") + ggtitle("Observed data and locations")
+grid.arrange(plot1, plot2, plot3, plot4, ncol=2, widths = c(2.5,3))
 ```
 
 
@@ -220,9 +230,9 @@ import numpy as np
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
 data_train = gpb.Dataset(X, y)
 params = { 'objective': 'regression_l2', 'learning_rate': 0.01,
-            'max_depth': 3, 'min_data_in_leaf': 5, 'num_leaves': 2**10, 'verbose': 0 }
+'max_depth': 3, 'min_data_in_leaf': 5, 'num_leaves': 2**10, 'verbose': 0 }
 bst = gpb.train(params=params, train_set=data_train,
-                gp_model=gp_model, num_boost_round=207)
+gp_model=gp_model, num_boost_round=207)
 print("Estimated covariance parameters:")
 gp_model.summary()
 ```
@@ -247,27 +257,27 @@ Plot predictions
 ```{r plot_prediction, results='hide', fig.keep = "none", message=F, cache=cache}
 # Plot predictions
 plot_data <- data.frame(s_1=coords_test[,1],s_2=coords_test[,2],
-                        pred_mean=pred$random_effect_mean,
-                        pred_sd=sqrt(pred$random_effect_cov),
-                        true_GP=b_all[1:nx^2])
+                        mean=pred$random_effect_mean,
+                        sd=sqrt(pred$random_effect_cov),
+                        b=b_all[1:nx^2])
 plot_data_fixed_effect <- data.frame(rbind(cbind(x=X_test[,1],f=pred$fixed_effect,F=rep("pred",dim(X_test)[1])),
                                            cbind(x=x,f=f1d(x),F=rep("true",length(x)))))
 plot_data_fixed_effect$f <- as.numeric(plot_data_fixed_effect$f)
 plot_data_fixed_effect$x <- as.numeric(plot_data_fixed_effect$x)
-plot5 <- ggplot(data = plot_data, aes(x=s_1,y=s_2,color=pred_mean)) +
+plot5 <- ggplot(data = plot_data, aes(x=s_1,y=s_2,color=mean)) +
   geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + ggtitle("Predicted GP mean")
-plot6 <- ggplot(data = plot_data, aes(x=s_1,y=s_2,color=pred_sd)) +
+plot6 <- ggplot(data = plot_data, aes(x=s_1,y=s_2,color=sd)) +
   geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + 
-  labs(title="Predicted GP standard deviation", subtitle=" = prediction uncertainty")
+  labs(title="Predicted GP standard deviation")
 plot7 <- ggplot(data=plot_data_fixed_effect, aes(x=x,y=f,group=F,color=F)) + geom_line(size=1.5) +
   ggtitle("Learned and true F(X)") + xlab("X_1") + ylab("y") + scale_color_manual(values=c("black","darkred"))
-plot8 <- ggplot(data = plot_data, aes(x=s_1,y=s_2,color=true_GP)) + 
+plot8 <- ggplot(data = plot_data, aes(x=s_1,y=s_2,color=b)) + 
   geom_point(size=2, shape=15) + scale_color_viridis(option = "B") + ggtitle("\"True\" GP and obs. locations") + 
   geom_point(data = data.frame(s_1=coords[,1],s_2=coords[,2],y=y),aes(x=s_1,y=s_2),size=3,col="white", alpha=1, shape=43)
 grid.arrange(plot8, plot5, plot6, plot7, ncol=2)
 ```
 </div>
-```{r show_plot_prediction, echo=FALSE, results='hold', message=F, cache=cache, fig.align='center', fig.cap='Prediction: Predicted (posterior) mean and prediction uncertainty (=standard deviation) of GP as well as predicted mean function F(X).'}
+```{r show_plot_prediction, echo=FALSE, results='hold', message=F, cache=cache, fig.align='center', fig.cap='Prediction: Predicted (posterior) mean and prediction uncertainty (=standard deviation) of GP as well as predicted mean function F(X).', fig.width=fig.width, fig.height=fig.height}
 grid.arrange(plot8, plot5, plot6, plot7, ncol=2)
 ```
 
@@ -284,12 +294,13 @@ print("Mean square error (MSE): " + str(np.mean((y_pred-y_test)**2)))
 A trained model can be interpreted using various tools. Besides classical feature importance measures and partial dependence plots, SHAP values and dependence plots can be created as follows. *Note: for the R package, you need version 0.4.3 or latter for creating these SHAP plots.*
 
 ***In R***
-```{r interpretation, echo=TRUE, warning=FALSE, results='hold', message=F, cache=cache}
+```{r interpretation, echo=TRUE, warning=FALSE, results='hold', message=F, cache=cache, fig.align='center', fig.width=fig.width, fig.height=0.5*fig.width}
 library("SHAPforxgboost")
-shap.plot.summary.wrap1(bst, X = X)
+p1 <- shap.plot.summary.wrap1(bst, X = X)
 shap_long <- shap.prep(bst, X_train = X)
-shap.plot.dependence(data_long = shap_long, x = "Var_1",
-                     color_feature = "Var_2", smooth = FALSE)
+p2 <- shap.plot.dependence(data_long = shap_long, x = "Var_1",
+                           color_feature = "Var_2", smooth = FALSE)
+grid.arrange(p1, p2, ncol=2)
 ```
 
 ***In Python***
@@ -348,23 +359,23 @@ gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent"})
 data_train = gpb.Dataset(X, y)
 # Candidate parameter grid
 param_grid = {'learning_rate': [0.1,0.05,0.01], 'min_data_in_leaf': [5,10,20,50],
-                    'max_depth': [1,3,5,10,20]}
+'max_depth': [1,3,5,10,20]}
 # Other parameters not contained in the grid of tuning parameters
 params = { 'objective': 'regression_l2', 'verbose': 0, 'num_leaves': 2**17 }
 # Use a random grid search. To use a deterministic grid search and try all possible
 #   combinations of parameters, set 'num_try_random=None'
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
-                                             params=params,
-                                             num_try_random=20,
-                                             nfold=4,
-                                             gp_model=gp_model,
-                                             use_gp_model_for_validation=True,
-                                             train_set=data_train,
-                                             verbose_eval=1,
-                                             num_boost_round=1000, 
-                                             early_stopping_rounds=5,
-                                             seed=1,
-                                             metrics='l2')
+params=params,
+num_try_random=20,
+nfold=4,
+gp_model=gp_model,
+use_gp_model_for_validation=True,
+train_set=data_train,
+verbose_eval=1,
+num_boost_round=1000, 
+early_stopping_rounds=5,
+seed=1,
+metrics='l2')
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
 print("Best parameters: " + str(opt_params['best_params']))
@@ -380,7 +391,7 @@ In the following, we compare the GPBoost algorithm to plain gradient tree-boosti
 # Add an intercept term to the model matrix
 X1 <- cbind(rep(1,n),X)
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                        y = y, X = X1)
+                       y = y, X = X1)
 X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 print("Fitted linear Gaussian process model:")
 summary(gp_model)
