@@ -39,6 +39,9 @@ namespace LightGBM {
 		}
 
 		void Init(const Metadata&, data_size_t) override {
+			if (!metric_for_train_data_) {
+				Log::Fatal("The metric 'neg_log_likelihood' cannot be used for validation data, it can only be used for training data");
+			}
 		}
 
 		std::vector<double> Eval(const double* score, const ObjectiveFunction* objective) const override {
@@ -80,9 +83,9 @@ namespace LightGBM {
 		}
 
 		void Init(const Metadata&, data_size_t) override {
-			//if (!metric_for_train_data_) {
-			//	Log::Warning("The metric approx_neg_marginal_log_likelihood cannot be used for validation data");
-			//}
+			if (!metric_for_train_data_) {
+				Log::Fatal("The metric 'neg_log_likelihood' cannot be used for validation data, it can only be used for training data");
+			}
 		}
 
 		std::vector<double> Eval(const double* score, const ObjectiveFunction* objective) const override {

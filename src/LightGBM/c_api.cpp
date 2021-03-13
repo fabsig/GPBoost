@@ -236,8 +236,8 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 				auto metric = std::unique_ptr<Metric>(
 					Metric::CreateMetric(metric_type, config_));
 				if (metric == nullptr) { continue; }
-				metric->Init(train_data_->metadata(), train_data_->num_data());
 				metric->metric_for_train_data_ = true;
+				metric->Init(train_data_->metadata(), train_data_->num_data());
 				train_metric_.push_back(std::move(metric));
 			}
 			train_metric_.shrink_to_fit();
@@ -411,6 +411,7 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 			for (auto metric_type : config_.metric) {
 				auto metric = std::unique_ptr<Metric>(Metric::CreateMetric(metric_type, config_));
 				if (metric == nullptr) { continue; }
+				metric->metric_for_train_data_ = false;
 				metric->Init(valid_data->metadata(), valid_data->num_data());
 				valid_metrics_.back().push_back(std::move(metric));
 			}
