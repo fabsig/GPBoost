@@ -18,7 +18,7 @@ knitr::opts_chunk$set(fig.width=7, fig.height=5)
 library(reticulate)
 # py_install("gpboost",pip=TRUE)
 # py_install("shap",pip=TRUE)
-run_python = FALSE # Not run for publication
+run_python = TRUE # Not run for publication
 run_cv = FALSE # Not run for publication
 run_python_cv = run_python & run_cv
 export_data_from_R_to_python = TRUE
@@ -73,14 +73,14 @@ First, you need to load your data. For simplicity and illustrational purposes, w
 ***In R***
 <div class="fold s">
 ```{r simulate_data, results='hide', message=F, cache=cache}
-set.seed(5)
+set.seed(1)
 # Simulate Gaussian process: training and test data (the latter on a grid for visualization)
 cov_function <- "exponential"
-sigma2_1 <- 0.5^2 # marginal variance of GP
+sigma2_1 <- 0.35 # marginal variance of GP
 rho <- 0.1 # range parameter
-sigma2 <- 0.25^2 # error variance
+sigma2 <- 0.1 # error variance
 n <- 200 # number of training samples
-nx <- 30 # test data: number of grid points on each axis
+nx <- 50 # test data: number of grid points on each axis
 # training locations (exclude upper right rectangle)
 coords <- matrix(runif(2)/2,ncol=2, dimnames=list(NULL,paste0("s_",1:2)))
 while (dim(coords)[1]<n) {
@@ -132,11 +132,11 @@ y_test = r.y_test
 import numpy as np
 np.random.seed(1)
 # Simulate Gaussian process: training and test data (the latter on a grid for visualization)
-sigma2_1 = 0.5 ** 2  # marginal variance of GP
+sigma2_1 = 0.35  # marginal variance of GP
 rho = 0.1  # range parameter
-sigma2 = 0.25 ** 2  # error variance
+sigma2 = 0.1  # error variance
 n = 200  # number of training samples
-nx = 3 # test data: number of grid points on each axis
+nx = 50 # test data: number of grid points on each axis
 # training locations (exclude upper right rectangle)
 coords = np.column_stack(
   (np.random.uniform(size=1)/2, np.random.uniform(size=1)/2))
@@ -211,8 +211,8 @@ gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 # Train model
 bst <- gpboost(data = X, label = y,
                gp_model = gp_model,
-               nrounds = 207, learning_rate = 0.01,
-               max_depth = 3, min_data_in_leaf = 5, num_leaves = 2^10,
+               nrounds = 247, learning_rate = 0.01,
+               max_depth = 3, min_data_in_leaf = 10, num_leaves = 2^10,
                objective = "regression_l2", verbose = 0)
 # Estimated covariance parameters of the GPModel
 print("Estimated covariance parameters:")
@@ -230,9 +230,9 @@ import numpy as np
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
 data_train = gpb.Dataset(X, y)
 params = { 'objective': 'regression_l2', 'learning_rate': 0.01,
-'max_depth': 3, 'min_data_in_leaf': 5, 'num_leaves': 2**10, 'verbose': 0 }
+'max_depth': 3, 'min_data_in_leaf': 10, 'num_leaves': 2**10, 'verbose': 0 }
 bst = gpb.train(params=params, train_set=data_train,
-gp_model=gp_model, num_boost_round=207)
+gp_model=gp_model, num_boost_round=247)
 print("Estimated covariance parameters:")
 gp_model.summary()
 ```
@@ -250,7 +250,7 @@ pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var = 
 y_pred <- pred$fixed_effect + pred$random_effect_mean
 # Calculate mean square error
 MSE_GPBoost <- mean((y_pred-y_test)^2)
-print(paste0("Mean square error: ", MSE_GPBoost))# 0.2678827
+print(paste0("Mean square error: ", MSE_GPBoost)) # 0.3942886
 ```
 Plot predictions
 <div class="fold s o">
@@ -333,21 +333,20 @@ param_grid = list("learning_rate" = c(0.1,0.05,0.01),
                   "max_depth" = c(1,3,5,10))
 # Other parameters not contained in the grid of tuning parameters
 params <- list(objective = "regression_l2", verbose = 0, "num_leaves" = 2^10)
-# Use a random grid search. To use a deterministic grid search and try all possible
-#   combinations of parameters, set 'num_try_random = NULL'
-set.seed(1)
-opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
-                                              params = params,
-                                              num_try_random = 20,
-                                              nfold = 4,
-                                              data = dtrain,
-                                              gp_model = gp_model,
-                                              verbose_eval = 1,
-                                              nrounds = 1000,
-                                              early_stopping_rounds = 5,
-                                              eval = "l2")
-# I obtained the following result on my computer:
-# ***** New best score (0.238948790779722) found for the following parameter combination: learning_rate: 0.01, min_data_in_leaf: 5, max_depth: 3, nrounds: 207
+# Use random grid search and cross-validation. Set 'num_try_random=NULL' to use deterministic grid search
+opt_params <- gpb.grid.search.tune.parameters(
+  param_grid = param_grid,
+  params = params,
+  num_try_random = 20,
+  nfold = 4,
+  data = dtrain,
+  gp_model = gp_model,
+  verbose_eval = 1,
+  nrounds = 1000,
+  early_stopping_rounds = 5,
+  eval = "l2")
+# Found the following parameters:
+# ***** New best score (0.397766105827059) found for the following parameter combination: learning_rate: 0.01, min_data_in_leaf: 10, max_depth: 3, nrounds: 247
 ```
 
 ***In Python***
@@ -362,20 +361,20 @@ param_grid = {'learning_rate': [0.1,0.05,0.01], 'min_data_in_leaf': [5,10,20,50]
 'max_depth': [1,3,5,10,20]}
 # Other parameters not contained in the grid of tuning parameters
 params = { 'objective': 'regression_l2', 'verbose': 0, 'num_leaves': 2**17 }
-# Use a random grid search. To use a deterministic grid search and try all possible
-#   combinations of parameters, set 'num_try_random=None'
-opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
-params=params,
-num_try_random=20,
-nfold=4,
-gp_model=gp_model,
-use_gp_model_for_validation=True,
-train_set=data_train,
-verbose_eval=1,
-num_boost_round=1000, 
-early_stopping_rounds=5,
-seed=1,
-metrics='l2')
+# Use a deterministic grid search and cross-validation. Set 'num_try_random' to use a random grid search
+opt_params = gpb.grid_search_tune_parameters(
+  param_grid=param_grid,
+  params=params,
+  num_try_random=20,
+  nfold=4,
+  gp_model=gp_model,
+  use_gp_model_for_validation=True,
+  train_set=data_train,
+  verbose_eval=1,
+  num_boost_round=1000, 
+  early_stopping_rounds=5,
+  seed=1,
+  metrics='l2')
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
 print("Best parameters: " + str(opt_params['best_params']))
@@ -389,7 +388,7 @@ In the following, we compare the GPBoost algorithm to plain gradient tree-boosti
 ```{r comparison, results='hold', message=F, cache=cache, eval=T}
 # 1. Linear Gaussian process model
 # Add an intercept term to the model matrix
-X1 <- cbind(rep(1,n),X)
+X1 <- cbind(Intercept=rep(1,n),X)
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        y = y, X = X1)
 X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
@@ -397,45 +396,54 @@ print("Fitted linear Gaussian process model:")
 summary(gp_model)
 y_pred_linGP <- predict(gp_model, gp_coords_pred = coords_test,X_pred = X_test1)
 MSE_lin <- mean((y_pred_linGP$mu-y_test)^2)
-print(paste0("MSE of linear Gaussian process model: ", MSE_lin))# 1.177665
+print(paste0("MSE of linear Gaussian process model: ", MSE_lin)) # 1.306599
 
 # 2. Gradient tree-boosting with a squared loss
 # Add the coordinates to the predictor variables
 XC <- cbind(X,coords)
+X_testC <- cbind(X_test,coords_test)
 # # Choose tuning parameters
 # dtrain <- gpb.Dataset(data = XC, label = y)
 # set.seed(1)
-# opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
-#                                               params = params,
-#                                               num_try_random = 20,
-#                                               nfold = 4,
-#                                               data = dtrain,
-#                                               verbose_eval = 1,
-#                                               nrounds = 1000,
-#                                               early_stopping_rounds = 5,
-#                                               eval = "l2")
-# I obtained the following result on my computer:
-# ***** New best score (0.36223140526897) found for the following parameter combination: learning_rate: 0.01, min_data_in_leaf: 10, max_depth: 3, nrounds: 496
+# opt_params <- gpb.grid.search.tune.parameters(
+#   param_grid = param_grid,
+#   params = params,
+#   num_try_random = NULL,
+#   nfold = 4,
+#   data = dtrain,
+#   verbose_eval = 1,
+#   nrounds = 1000,
+#   early_stopping_rounds = 5,
+#   eval = "l2")
+# Found the following parameters:
+# ***** New best score (0.450492863373992) found for the following parameter combination: learning_rate: 0.05, min_data_in_leaf: 20, max_depth: 10, nrounds: 176
 bst <- gpboost(data = XC, label = y,
-               nrounds = 496, learning_rate = 0.01,
-               max_depth = 3, min_data_in_leaf = 10,
+               nrounds = 176, learning_rate = 0.05,
+               max_depth = 10, min_data_in_leaf = 20,
                objective = "regression_l2", verbose = 0)
-X_testC <- cbind(X_test,coords_test)
 pred_l2boost <- predict(bst, data = X_testC)
 MSE_l2boost <- mean((pred_l2boost-y_test)^2)
-print(paste0("MSE of plain tree-boosting: ", MSE_l2boost))# 0.3604605
+print(paste0("MSE of plain gradient tree-boosting: ", MSE_l2boost)) # 0.555046
 
 # 3. Random forest
 library(randomForest)
 colnames(XC) <- colnames(X_testC) <- paste0("V",rep(1:dim(XC)[2]))
+# # Choose tuning parameters
+# library(caret)
+# control <- trainControl(method="cv", number=4, search="grid")
+# tunegrid <- expand.grid(.mtry=c(1:4))
+# set.seed(1)
+# rf_gridsearch <- train(y~., data=data.frame(y=y,XC), method="rf", metric="RMSE", tuneGrid=tunegrid, trControl=control)
+# print(rf_gridsearch)
+# # Found the following parameters: mtry = 3
 set.seed(1)
-rf <- randomForest(y ~ ., data = XC, mtry=2, ntree=1000)
+rf <- randomForest(y ~ ., data = XC, ntree=1000, mtry=3)
 # plot(rf) # check "convergence"
 pred_rf <- predict(rf, newdata = X_testC) ## predicted labels
 MSE_rf <- mean((pred_rf-y_test)^2)
-print(paste0("MSE of random forest: ", MSE_rf))# 0.4540364
+print(paste0("MSE of random forest: ", MSE_rf)) # 0.5730892
 
-# Compare root mean square errors
+# Compare root mean square errors of different methods
 RMSEs <- sqrt(c(GPBoost=MSE_GPBoost, Lin_GP=MSE_lin, L2Boost=MSE_l2boost, RF=MSE_rf))
 print(RMSEs)
 ```
@@ -504,7 +512,7 @@ set.seed(1)
 #                                               nrounds = 1000,
 #                                               early_stopping_rounds = 5,
 #                                               eval = "l2")
-# I obtained the following result on my computer:
+# Found the following parameters:
 # ***** New best score (0.303743116584455) found for the following parameter combination: learning_rate: 0.1, min_data_in_leaf: 10, max_depth: 1, nrounds: 16
 
 # Train model
