@@ -402,7 +402,7 @@ print(paste0("MSE of linear Gaussian process model: ", MSE_lin)) # 1.306599
 # Add the coordinates to the predictor variables
 XC <- cbind(X,coords)
 X_testC <- cbind(X_test,coords_test)
-# # Choose tuning parameters
+# Choose tuning parameters
 # dtrain <- gpb.Dataset(data = XC, label = y)
 # set.seed(1)
 # opt_params <- gpb.grid.search.tune.parameters(
@@ -428,14 +428,14 @@ print(paste0("MSE of plain gradient tree-boosting: ", MSE_l2boost)) # 0.555046
 # 3. Random forest
 library(randomForest)
 colnames(XC) <- colnames(X_testC) <- paste0("V",rep(1:dim(XC)[2]))
-# # Choose tuning parameters
+# Choose tuning parameters
 # library(caret)
 # control <- trainControl(method="cv", number=4, search="grid")
 # tunegrid <- expand.grid(.mtry=c(1:4))
 # set.seed(1)
 # rf_gridsearch <- train(y~., data=data.frame(y=y,XC), method="rf", metric="RMSE", tuneGrid=tunegrid, trControl=control)
 # print(rf_gridsearch)
-# # Found the following parameters: mtry = 3
+# Found the following parameters: mtry = 3
 set.seed(1)
 rf <- randomForest(y ~ ., data = XC, ntree=1000, mtry=3)
 # plot(rf) # check "convergence"
