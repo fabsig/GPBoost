@@ -82,7 +82,7 @@ namespace LightGBM {
 					// Add predictions from re_model (if needed)
 					if (objective->HasGPModel() && objective->UseGPModelForValidation()) {
 						if (metric_for_train_data_) {
-							Log::Fatal("Cannot use the option 'use_gp_model_for_validation = true' for calculating a validation metric on the training data");
+							Log::Fatal("Cannot use the option 'use_gp_model_for_validation = true' for calculating this validation metric on the training data. Either (i) set 'use_gp_model_for_validation = false' or (ii) choose the metric 'neg_log_likelihood' and/or use only the training data as validation data.");
 						}
 						const REModel* re_model = objective->GetGPModel();
 
