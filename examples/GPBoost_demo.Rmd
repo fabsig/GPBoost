@@ -291,7 +291,7 @@ print("Mean square error (MSE): " + str(np.mean((y_pred-y_test)**2)))
 </div>
 
 ## Model interpretation
-A trained model can be interpreted using various tools. Besides classical feature importance measures and partial dependence plots, SHAP values and dependence plots can be created as follows. *Note: for the R package, you need version 0.4.3 or latter for creating these SHAP plots.*
+A trained model can be interpreted using various tools. Besides classical feature importance measures and partial dependence plots, SHAP values and dependence plots can be created as follows. *Note that for the R package, you need version 0.4.3 or latter for creating these SHAP plots.*
 
 ***In R***
 ```{r interpretation, echo=TRUE, warning=FALSE, results='hold', message=F, cache=cache, fig.align='center', fig.width=fig.width, fig.height=0.5*fig.width}
@@ -315,7 +315,7 @@ shap.dependence_plot("Feature 0", shap_values, X)
 
 
 ## Parameter tuning
-Boosting with trees as base learners has several tuning parameters. Arguably the most important one is the number of boosting iterations (=number of trees). Other tuning parameters include the learning rate, the maximal tree depth, the minimal number of samples per leaf, the number of leaves, and others. For instance, these can be chosen using a random or deterministic grid search and k-fold cross-validation as shown in the following. A computationally cheaper alternative to full k-fold cross-validation is to pass a validation data set to the parameter tuning function. See the [**Python parameter tuning demo**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/parameter_tuning.py) and [**R parameter tuning demo**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo/parameter_tuning.R) for more details.
+Boosting with trees as base learners has several tuning parameters. Arguably the most important one is the number of boosting iterations (=number of trees). Other tuning parameters include the learning rate, the maximal tree depth, the minimal number of samples per leaf, the number of leaves, and others. For instance, these can be chosen using a random or deterministic grid search and k-fold cross-validation as shown in the following. A computationally cheaper alternative to full k-fold cross-validation is to pass a validation data set to the parameter tuning function. See the [**Python parameter tuning demo**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/parameter_tuning.py) and [**R parameter tuning demo**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo/parameter_tuning.R) for more details. *Note that you need GPBoost version 0.4.3 or latter for using the `grid.search.tune.parameters` function.*
 
 ***In R***
 ```{r cv, results='show', message=F, cache=cache, eval=run_cv}
