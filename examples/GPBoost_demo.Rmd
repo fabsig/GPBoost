@@ -17,6 +17,10 @@ output:
 <!-- See https://stackoverflow.com/questions/37755037/how-to-add-code-folding-to-output-chunks-in-rmarkdown-html-documents -->
 
 ```{r setup, include=FALSE}
+# require(devtools)
+# install_version("rmarkdown", version = "2.0") # does not work with Rstudio
+# library(rmarkdown)
+# sessionInfo()
 # Sys.setenv(PATH=paste0(Sys.getenv("PATH"),";C:\\Program Files\\Pandoc\\"))
 # rmarkdown::find_pandoc(version = "2.12")
 rmarkdown::find_pandoc(dir = "C:/Program Files/Pandoc")
