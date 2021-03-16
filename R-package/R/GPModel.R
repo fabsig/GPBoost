@@ -2226,7 +2226,6 @@ summary.GPModel <- function(object, ...){
   print(signif(cov_pars,6))
   if (object$.__enclos_env__$private$has_covariates) {
     coef <- object$get_coef()
-    cat("\n")
     message("Linear regression coefficients:")
     print(signif(coef,6))
   }

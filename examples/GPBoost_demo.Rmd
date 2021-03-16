@@ -3,13 +3,14 @@ title: "GPBoost Demo"
 author: "Fabio Sigrist"
 output:
   html_document:
-    # code_folding: hide
+    code_folding: hide
     css: buttonstyle.css
     number_sections: true
     toc: true
 ---
 
-<script src="hideOutput.js"></script>
+<!-- The following java script option works, but htmlpreview.github.io does not correctly display it on github-->
+<!-- <script src="hideOutput.js"></script> -->
 <!-- See https://stackoverflow.com/questions/37755037/how-to-add-code-folding-to-output-chunks-in-rmarkdown-html-documents -->
 
 ```{r setup, include=FALSE}
@@ -38,7 +39,7 @@ if (small_figures) {
 
 In this document, we illustrate how the GPBoost R and Python packages can be used to train models, make predictions, interpret models, and choose tuning parameters. Further, we also compare the GPBoost algorithm to classical tree-boosting and to plain linear Gaussian process regression.
 
-# Modeling Background
+# Methodology Background
 Both tree-boosting and Gaussian processes are techniques that achieve **state-of-the-art predictive accuracy**. Besides this, **tree-boosting** has the following advantages: 
 
 * Automatic modeling of non-linearities, discontinuities, and complex high-order interactions
@@ -105,14 +106,14 @@ b_all <- sqrt(sigma2_1)*C%*%rnorm(n_all)
 b <- b_all[(nx^2+1):n_all] # training data GP
 # Mean function. Use two predictor variables of which only one has an effect for easy visualization
 f1d <- function(x) sin(3*pi*x) + (1 + 3 * pmax(0,x-0.5)/(x-0.5)) - 3
-X <- matrix(runif(2*n), ncol=2, dimnames=list(NULL,paste0("Var_",1:2)))
+X <- matrix(runif(2*n), ncol=2, dimnames=list(NULL,paste0("Covariate_",1:2)))
 F_X <- f1d(X[,1]) # mean
 xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- F_X + b + xi # observed data
 # test data
 x <- seq(from=0,to=1,length.out=nx^2)
 x[x==0.5] = 0.5 + 1E-10
-X_test <- cbind(Var_1=x, Var_2=rep(0,nx^2))
+X_test <- cbind(Covariate_1=x, Covariate_2=rep(0,nx^2))
 y_test <- f1d(X_test[,1]) + b_all[1:nx^2] + sqrt(sigma2) * rnorm(nx^2)
 ```
 </div>
@@ -298,8 +299,8 @@ A trained model can be interpreted using various tools. Besides classical featur
 library("SHAPforxgboost")
 p1 <- shap.plot.summary.wrap1(bst, X = X)
 shap_long <- shap.prep(bst, X_train = X)
-p2 <- shap.plot.dependence(data_long = shap_long, x = "Var_1",
-                           color_feature = "Var_2", smooth = FALSE)
+p2 <- shap.plot.dependence(data_long = shap_long, x = "Covariate_1",
+                           color_feature = "Covariate_2", smooth = FALSE)
 grid.arrange(p1, p2, ncol=2)
 ```
 
@@ -443,7 +444,7 @@ pred_rf <- predict(rf, newdata = X_testC) ## predicted labels
 MSE_rf <- mean((pred_rf-y_test)^2)
 print(paste0("MSE of random forest: ", MSE_rf)) # 0.5730892
 
-# Compare root mean square errors of different methods
+print("Compare root mean square errors of different methods:")
 RMSEs <- sqrt(c(GPBoost=MSE_GPBoost, Lin_GP=MSE_lin, L2Boost=MSE_l2boost, RF=MSE_rf))
 print(RMSEs)
 ```
