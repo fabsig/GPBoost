@@ -1,12 +1,15 @@
 ---
-title: "GPBoost Demo"
+title: "GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models"
+subtitle: "Examples on how to use the GPBoost library from R and Python"
 author: "Fabio Sigrist"
 output:
   html_document:
     code_folding: hide
-    css: buttonstyle.css
+    # css: buttonstyle.css # htmlpreview.github.io does not correctly display this on github
     number_sections: true
     toc: true
+    toc_float: true
+    theme: flatly
 ---
 
 <!-- The following java script option works, but htmlpreview.github.io does not correctly display it on github-->
@@ -451,6 +454,7 @@ print(RMSEs)
 
 # Combining Tree-Boosting and Grouped Random Effects
 In the following, we show how a non-linear mixed effects model can be trained using `gpboost`. We use a random effects model that includes two crossed grouped random effects as well as a random slope. We first simulate data and then show how to train a GPBoost model and make predictions.
+***In R***
 <div class="fold s">
 ```{r simulate_group_data, results='hide', message=F, cache=cache}
 # Simulate data
