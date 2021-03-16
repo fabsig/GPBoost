@@ -4,8 +4,8 @@ subtitle: "Examples on how to use the GPBoost library from R and Python"
 author: "Fabio Sigrist"
 output:
   html_document:
-    code_folding: hide
-    # css: buttonstyle.css # htmlpreview.github.io does not correctly display this on github
+    # code_folding: hide
+    css: buttonstyle.css # htmlpreview.github.io does not correctly display this on github, also not the code_folding option
     number_sections: true
     toc: true
     toc_float: true
@@ -13,7 +13,7 @@ output:
 ---
 
 <!-- The following java script option works, but htmlpreview.github.io does not correctly display it on github-->
-<!-- <script src="hideOutput.js"></script> -->
+<script src="hideOutput.js"></script>
 <!-- See https://stackoverflow.com/questions/37755037/how-to-add-code-folding-to-output-chunks-in-rmarkdown-html-documents -->
 
 ```{r setup, include=FALSE}
