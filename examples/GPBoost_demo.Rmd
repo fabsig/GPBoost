@@ -4,7 +4,7 @@ subtitle: "Examples on how to use the GPBoost library from R and Python"
 author: "Fabio Sigrist"
 output:
   html_document:
-    code_folding: hide
+    # code_folding: hide
     css: buttonstyle.css # htmlpreview.github.io does not correctly display this on github, also not the code_folding option
     number_sections: true
     toc: true
