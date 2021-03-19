@@ -231,7 +231,9 @@ def train(params, train_set, num_boost_round=100,
             raise ValueError("Can use only one validation set when use_gp_model_for_validation = True")
         if not is_valid_contain_train and use_gp_model_for_validation and len(
                 reduced_valid_sets) > 0 and not gp_model.prediction_data_is_set:
-            raise ValueError("Prediction data for gp_model has not been set. Call gp_model.set_prediction_data() first")
+            raise ValueError("Prediction data for 'gp_model' has not been set. "
+                             "This needs to be set prior to trainig when having a validation set and 'use_gp_model_for_validation=True'. "
+                             "Either call 'gp_model.set_prediction_data(...)' first or use 'use_gp_model_for_validation=False'.")
         # update gp_model related parameters
         params['use_gp_model_for_validation'] = use_gp_model_for_validation
         params['train_gp_model_cov_pars'] = train_gp_model_cov_pars

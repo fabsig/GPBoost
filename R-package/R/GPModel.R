@@ -120,7 +120,7 @@ gpb.GPModel <- R6::R6Class(
                           free_raw_data = FALSE,
                           modelfile = NULL,
                           model_list = NULL) {
-
+      
       if (!is.null(modelfile) | !is.null(model_list)){
         # Load model from file or list
         
@@ -147,8 +147,8 @@ gpb.GPModel <- R6::R6Class(
           if (!is.null(model_list[[feature]])) {
             if (is.list(model_list[[feature]])) {
               model_list[[feature]] <- matrix(unlist(model_list[[feature]]),
-                                             nrow = length(model_list[[feature]]),
-                                             byrow = TRUE)
+                                              nrow = length(model_list[[feature]]),
+                                              byrow = TRUE)
               if (dim(model_list[[feature]])[2]==1) {
                 model_list[[feature]] <- as.vector(model_list[[feature]])
               }
@@ -417,7 +417,7 @@ gpb.GPModel <- R6::R6Class(
             
             private$cluster_ids_map_to_int <- structure(1:length(unique(cluster_ids)),names=c(unique(cluster_ids)))
             cluster_ids = private$cluster_ids_map_to_int[cluster_ids]
-
+            
           }
           
         } else {
@@ -1512,7 +1512,7 @@ gpb.GPModel <- R6::R6Class(
                 }
               }
               cluster_ids_pred <- cluster_ids_pred_map_to_int[cluster_ids_pred]
-                
+              
             }
             
           } else {
@@ -2357,7 +2357,7 @@ predict.GPModel <- function(object,
 #' @author Fabio Sigrist
 #' @export
 #' 
-saveGPModel <- function(gp_model, filename){
+saveGPModel <- function(gp_model, filename) {
   
   if (!gpb.check.r6.class(gp_model, "GPModel")) {
     stop("saveGPModel: gp_model needs to be a ", sQuote("GPModel"))
@@ -2412,3 +2412,86 @@ loadGPModel <- function(filename){
   return(invisible(gpb.GPModel$new(modelfile = filename)))
   
 }
+
+#' Generic 'set_prediction_data' method for a \code{GPModel}
+#'
+#' Generic 'set_prediction_data' method for a \code{GPModel}
+#' 
+#' @param gp_model A \code{GPModel}
+#' @param group_data_pred A \code{vector} or \code{matrix} with labels of group levels for which predictions are made (if there are grouped random effects in the \code{GPModel})
+#' @param group_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data for grouped random coefficients (if there are some in the \code{GPModel})
+#' @param gp_coords_pred A \code{matrix} with prediction coordinates (features) for Gaussian process (if there is a GP in the \code{GPModel})
+#' @param gp_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data for Gaussian process random coefficients (if there are some in the \code{GPModel})
+#' @param cluster_ids_pred A \code{vector} with IDs / labels indicating the realizations of random effects / Gaussian processes for which predictions are made (set to NULL if you have not specified this when creating the \code{GPModel})
+#' @param X_pred A \code{matrix} with covariate data for the linear regression term (if there is one in the \code{GPModel})
+#'
+#' @examples
+#' \donttest{
+#' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
+#' set.seed(1)
+#' train_ind <- sample.int(length(y),size=250)
+#' gp_model <- GPModel(group_data = group_data[train_ind,1], likelihood="gaussian")
+#' set_prediction_data(gp_model, group_data_pred = group_data[-train_ind,1])
+#' }
+#' 
+#' @author Fabio Sigrist
+#' @export 
+#' 
+set_prediction_data <- function(gp_model,
+                                group_data_pred = NULL,
+                                group_rand_coef_data_pred = NULL,
+                                gp_coords_pred = NULL,
+                                gp_rand_coef_data_pred = NULL,
+                                cluster_ids_pred = NULL,
+                                X_pred = NULL) UseMethod("set_prediction_data")
+
+#' Set prediction data for a \code{GPModel}
+#' 
+#' Set the data required for making predictions with a \code{GPModel} 
+#' 
+#' @param gp_model A \code{GPModel}
+#' @param group_data_pred A \code{vector} or \code{matrix} with labels of group levels for which predictions are made (if there are grouped random effects in the \code{GPModel})
+#' @param group_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data for grouped random coefficients (if there are some in the \code{GPModel})
+#' @param gp_coords_pred A \code{matrix} with prediction coordinates (features) for Gaussian process (if there is a GP in the \code{GPModel})
+#' @param gp_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data for Gaussian process random coefficients (if there are some in the \code{GPModel})
+#' @param cluster_ids_pred A \code{vector} with IDs / labels indicating the realizations of random effects / Gaussian processes for which predictions are made (set to NULL if you have not specified this when creating the \code{GPModel})
+#' @param X_pred A \code{matrix} with covariate data for the linear regression term (if there is one in the \code{GPModel})
+#'
+#' @return A \code{GPModel}
+#'
+#' @examples
+#' \donttest{
+#' library(gpboost)
+#' data(GPBoost_data, package = "gpboost")
+#' set.seed(1)
+#' train_ind <- sample.int(length(y),size=250)
+#' gp_model <- GPModel(group_data = group_data[train_ind,1], likelihood="gaussian")
+#' set_prediction_data(gp_model, group_data_pred = group_data[-train_ind,1])
+#' }
+#' @method set_prediction_data GPModel 
+#' @rdname set_prediction_data.GPModel
+#' @author Fabio Sigrist
+#' @export 
+#' 
+set_prediction_data.GPModel <- function(gp_model,
+                                        group_data_pred = NULL,
+                                        group_rand_coef_data_pred = NULL,
+                                        gp_coords_pred = NULL,
+                                        gp_rand_coef_data_pred = NULL,
+                                        cluster_ids_pred = NULL,
+                                        X_pred = NULL) {
+  
+  if (!gpb.check.r6.class(gp_model, "GPModel")) {
+    stop("set_prediction_data.GPModel: gp_model needs to be a ", sQuote("GPModel"))
+  }
+  
+  invisible(gp_model$set_prediction_data(group_data_pred = group_data_pred,
+                                         group_rand_coef_data_pred = group_rand_coef_data_pred,
+                                         gp_coords_pred = gp_coords_pred,
+                                         gp_rand_coef_data_pred = gp_rand_coef_data_pred,
+                                         cluster_ids_pred = cluster_ids_pred,
+                                         X_pred = X_pred))
+}
+
+

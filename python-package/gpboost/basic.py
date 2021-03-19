@@ -4875,7 +4875,7 @@ class GPModel(object):
                             gp_rand_coef_data_pred=None,
                             cluster_ids_pred=None,
                             X_pred=None):
-        """(Pre-)set data for making predictions (not directly used by users).
+        """Set the data required for making predictions with a GPModel
 
         Parameters
         ----------

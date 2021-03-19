@@ -342,7 +342,9 @@ gpb.train <- function(params = list(),
       stop("Can use only one validation set when use_gp_model_for_validation = TRUE")
     }
     if (!valid_contain_train & use_gp_model_for_validation & length(reduced_valid_sets)>0 && is.null(gp_model$.__enclos_env__$private$num_data_pred)) {
-      stop("Prediction data for gp_model has not been set. Call gp_model$set_prediction_data() first")
+      stop(paste0("Prediction data for ", sQuote("gp_model"), " has not been set. 
+       This needs to be set prior to trainig when having a validation set and ", sQuote("use_gp_model_for_validation=TRUE"), ". 
+       Either call ", sQuote("set_prediction_data(gp_model, ...)"), " first or use ", sQuote("use_gp_model_for_validation=FALSE"),"."))
     }
     # Set the default metric to the (approximate marginal) negative log-likelihood if only the training loss should be calculated
     if (valid_contain_train & length(reduced_valid_sets) == 0 & length(params$metric)==0) {

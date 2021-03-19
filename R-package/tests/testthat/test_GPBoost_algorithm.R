@@ -300,6 +300,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      use_gp_model_for_validation = TRUE)
     expect_equal(bst$best_iter, 59)
     expect_lt(abs(bst$best_score - 0.04753591),TOLERANCE)
+    # Same thing using the S3 set_prediction_data method 
+    gp_model <- GPModel(group_data = group_data_train)
+    set_prediction_data(gp_model, group_data_pred = group_data_test)
+    bst <- gpb.train(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 100,
+                     learning_rate = 0.01,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     objective = "regression_l2",
+                     verbose = 0,
+                     valids = valids,
+                     early_stopping_rounds = 5,
+                     use_gp_model_for_validation = TRUE)
+    expect_equal(bst$best_iter, 59)
+    expect_lt(abs(bst$best_score - 0.04753591),TOLERANCE)
     
     # Use of validation data and cross-validation with custom metric
     l4_loss <- function(preds, dtrain) {
