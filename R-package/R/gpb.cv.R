@@ -37,7 +37,7 @@ CVBooster <- R6::R6Class(
 #'              (each element must be a vector of test fold's indices). When folds are supplied,
 #'              the \code{nfold} and \code{stratified} parameters are ignored.
 #' @param fit_GP_cov_pars_OOS Boolean (default = FALSE). If TRUE, the covariance parameters of the 
-#'            gp_model model are estimated using the out-of-sample (OOS) predictions 
+#'            \code{gp_model} model are estimated using the out-of-sample (OOS) predictions 
 #'            on the validation data using the optimal number of iterations (after performing the CV). 
 #'            This corresponds to the GPBoostOOS algorithm.
 #' @param colnames feature names, if not null, will use this to overwrite the names in dataset

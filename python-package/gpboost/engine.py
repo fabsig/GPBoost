@@ -38,13 +38,14 @@ def train(params, train_set, num_boost_round=100,
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
     use_gp_model_for_validation : bool, optional (default=True)
-        If True, the gp_model (Gaussian process and/or random effects) is also used (in addition to the tree model)
-        for calculating predictions on the validation data
+        If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
+        for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
+        for making predictions and only the tree ensemble is used for making predictions for calculating the validation / test error.
     train_gp_model_cov_pars : bool, optional (default=True)
-        If True, the covariance parameters of the gp_model (Gaussian process and/or random effects) are estimated
-        in every boosting iterations, otherwise the gp_model parameters are not estimated. In the latter case, you
+        If True, the covariance parameters of the 'gp_model' (Gaussian process and/or random effects) are estimated
+        in every boosting iterations, otherwise the 'gp_model' parameters are not estimated. In the latter case, you
         need to either estimate them beforehand or provide the values via the 'init_cov_pars' parameter when creating
-        the gp_model
+        the 'gp_model'
     valid_sets : list of Datasets or None, optional (default=None)
         List of data to be evaluated on during training.
     valid_names : list of strings or None, optional (default=None)
@@ -531,17 +532,18 @@ def cv(params, train_set, num_boost_round=100,
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
     use_gp_model_for_validation : bool, optional (default=True)
-        If True, the gp_model (Gaussian process and/or random effects) is also used (in addition to the tree model)
-        for calculating predictions on the validation data
+        If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
+        for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
+        for making predictions and only the tree ensemble is used for making predictions for calculating the validation / test error.
     fit_GP_cov_pars_OOS : bool, optional (default=False)
-        If TRUE, the covariance parameters of the gp_model model are estimated using the out-of-sample (OOS) predictions
+        If TRUE, the covariance parameters of the 'gp_model' model are estimated using the out-of-sample (OOS) predictions
         on the validation data using the optimal number of iterations (after performing the CV).
         This corresponds to the GPBoostOOS algorithm.
     train_gp_model_cov_pars : bool, optional (default=True)
-        If True, the covariance parameters of the gp_model (Gaussian process and/or random effects) are estimated
-        in every boosting iterations, otherwise the gp_model parameters are not estimated. In the latter case, you
+        If True, the covariance parameters of the 'gp_model' (Gaussian process and/or random effects) are estimated
+        in every boosting iterations, otherwise the 'gp_model' parameters are not estimated. In the latter case, you
         need to either estimate them beforehand or provide the values via the 'init_cov_pars' parameter when creating
-        the gp_model
+        the 'gp_model'
     folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
         If generator or iterator, it should yield the train and test indices for each fold.
         If object, it should be one of the scikit-learn splitter classes
@@ -844,13 +846,14 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
     use_gp_model_for_validation : bool, optional (default=True)
-        If True, the gp_model (Gaussian process and/or random effects) is also used (in addition to the tree model)
-        for calculating predictions on the validation data
+        If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
+        for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
+        for making predictions and only the tree ensemble is used for making predictions for calculating the validation / test error.
     train_gp_model_cov_pars : bool, optional (default=True)
-        If True, the covariance parameters of the gp_model (Gaussian process and/or random effects) are estimated
-        in every boosting iterations, otherwise the gp_model parameters are not estimated. In the latter case, you
+        If True, the covariance parameters of the 'gp_model' (Gaussian process and/or random effects) are estimated
+        in every boosting iterations, otherwise the 'gp_model' parameters are not estimated. In the latter case, you
         need to either estimate them beforehand or provide the values via the 'init_cov_pars' parameter when creating
-        the gp_model
+        the 'gp_model'
     folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
         If generator or iterator, it should yield the train and test indices for each fold.
         If object, it should be one of the scikit-learn splitter classes
