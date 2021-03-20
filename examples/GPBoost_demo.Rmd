@@ -49,39 +49,14 @@ if (small_figures) {
 }
 ```
 
-In this document, we illustrate how the GPBoost R and Python packages can be used to train models, make predictions, interpret models, and choose tuning parameters. Further, we also compare the GPBoost algorithm to classical tree-boosting and to plain linear Gaussian process regression.
-
-# Methodology Background
-Both tree-boosting and Gaussian processes are techniques that achieve **state-of-the-art predictive accuracy**. Besides this, **tree-boosting** has the following advantages: 
-
-* Automatic modeling of non-linearities, discontinuities, and complex high-order interactions
-* Robust to outliers in and multicollinearity among predictor variables
-* Scale-invariance to monotone transformations of the predictor variables
-* Automatic handling of missing values in predictor variables
-
-**Gaussian process** models have the following advantage:
-
-* Probabilistic predictions which allows for uncertainty quantification
-* Modeling of dependency which, among other things, can allow for more efficient learning of the fixed effects / regression function
-
-For the GPBoost algorithm, it is assumed that the **response variable (label) $y$ is the sum of a non-linear mean function $F(X)$ and so-called random effects $Zb$**:
-$$ y = F(X) + Zb + \xi,$$
-where $\xi$ is an independent error term and $X$ are predictor variables (aka covariates or features).
-
-The **random effects** can consists of
-
-- Gaussian processes (including random coefficient processes)
-- Grouped random effects (including nested, crossed, and random coefficient effects)
-- A sum of the above
-
-The model is trained using the **GPBoost algorithm, where trainings means learning the covariance parameters** of the random effects and the **mean function F(X) using a tree ensemble**. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a gradient and/or a Newton boosting step. In the GPBoost library, covariance parameters can be learned using (accelerated) gradient descent or Fisher scoring. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) for more details.
+In this document, we illustrate how the GPBoost [R](https://github.com/fabsig/GPBoost/tree/master/R-package) and [Python](https://github.com/fabsig/GPBoost/tree/master/python-package) packages can be used to train models, make predictions, interpret models, and choose tuning parameters. Further, we also compare the GPBoost algorithm to plain tree-boosting, random forest, and to classical Gaussian process regression. See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) for more details on the methodology and this [GitHub page](https://github.com/fabsig/GPBoost) for more information on the software implementation.
 
 
 # Combining Tree-Boosting and Gaussian Process Models 
-In the following, we start with an example where the random part of the model consists of a Gaussian process. After this, we also give a brief example when using grouped random effects instead of a Gaussian process.
+In the following, we consider an example where the random effects part consists of a Gaussian process. Below, we also provide an example when using grouped random effects instead of a Gaussian process.
 
 ## Data
-First, you need to load your data. For simplicity and illustrational purposes, we use simulated data here. In the following, we simulate data and illustrate the data in the figure below.
+First, wee need to load our data. For simplicity and illustrational purposes, we use simulated data here. In the following, we simulate data and illustrate the data in the figure below.
 
 ***In R***
 <div class="fold s">
