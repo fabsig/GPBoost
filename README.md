@@ -43,7 +43,7 @@ Both tree-boosting and Gaussian processes are techniques that achieve **state-of
 * Probabilistic predictions which allows for uncertainty quantification
 * Modeling of dependency which, among other things, can allow for more efficient learning of the fixed effects / regression function
 
-For the GPBoost algorithm, it is assumed that the **response variable (label) y is the sum of a potentially non-linear mean function F(X) and random effects Zb**:
+For the GPBoost algorithm, it is assumed that the **response variable (aka label) y is the sum of a potentially non-linear mean function F(X) and random effects Zb**:
 ```
 y = F(X) + Zb + xi
 ```
