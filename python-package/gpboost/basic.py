@@ -4763,7 +4763,7 @@ class GPModel(object):
                 cluster_ids_pred = _format_check_1D_data(cluster_ids_pred, data_name="cluster_ids_pred",
                                                          check_data_type=False, check_must_be_int=False,
                                                          convert_to_type=None)
-                if self.cluster_ids_pred.shape[0] != num_data_pred:
+                if cluster_ids_pred.shape[0] != num_data_pred:
                     raise ValueError("Incorrect number of data points in cluster_ids_pred")
                 if self.cluster_ids_map_to_int is None and not cluster_ids_pred.dtype == np.dtype(int):
                     raise ValueError("cluster_ids_pred needs to be of type int as the data provided in cluster_ids"
