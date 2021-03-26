@@ -145,6 +145,8 @@ bst <- gpb.cv(data = dataset,
 print(paste0("Optimal number of iterations: ", bst$best_iter))
 
 #--------------------Model interpretation----------------
+# Note: for the SHAPforxgboost package, the data matrix X needs to have column names
+# We add them first:
 X <- matrix(as.vector(X), ncol=ncol(X), dimnames=list(NULL,paste0("Covariate_",1:2)))
 gp_model <- GPModel(group_data = group, likelihood = "gaussian")
 bst <- gpboost(data = X,
