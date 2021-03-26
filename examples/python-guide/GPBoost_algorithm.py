@@ -49,7 +49,6 @@ params = { 'objective': 'regression_l2',
             'max_depth': 6,
             'min_data_in_leaf': 5,
             'verbose': 0 }
-
 # Train GPBoost model
 bst = gpb.train(params=params,
                 train_set=data_train,
@@ -132,6 +131,21 @@ cvbst = gpb.cv(params=params, train_set=data_train,
                num_boost_round=100, early_stopping_rounds=5,
                nfold=2, verbose_eval=True, show_stdv=False, seed=1)
 print("Best number of iterations: " + str(np.argmin(cvbst['l2-mean'])))
+
+#--------------------Model interpretation----------------
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+data_train = gpb.Dataset(X, y)
+bst = gpb.train(params=params, train_set=data_train,
+                gp_model=gp_model, num_boost_round=15)
+# Calculate and plot feature importances
+feature_importances = bst.feature_importance(importance_type='gain')
+plt = gpb.plot_importance(bst, importance_type='gain')
+# SHAP values and dependence plots
+# Note: you need shap version>=0.36.0
+import shap
+shap_values = shap.TreeExplainer(bst).shap_values(X)
+shap.summary_plot(shap_values, X)
+shap.dependence_plot("Feature 0", shap_values, X)
 
 #--------------------Saving a booster with a gp_model and loading it from a file----------------
 # Train model and make prediction

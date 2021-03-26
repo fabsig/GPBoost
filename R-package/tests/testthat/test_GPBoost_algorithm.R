@@ -390,7 +390,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coords_test <- coords[1:ntest+ntrain,]
     dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
     valids <- list(test = dtest)
-    
+
     # Train model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
     gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))

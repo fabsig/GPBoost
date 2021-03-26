@@ -45,7 +45,6 @@ b_multiple <- qnorm(sim_rand_unif(n=n, init_c=0.8))
 eps_multiple <- as.vector(C_multiple %*% b_multiple)
 
 
-
 # Avoid that long tests get executed on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   

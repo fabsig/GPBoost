@@ -6,6 +6,7 @@ library(gpboost)
 
 #--------------------Combine tree-boosting and grouped random effects model----------------
 # --------------------Simulate data----------------
+set.seed(10)
 n <- 5000 # number of samples
 m <- 500  # number of groups
 # Simulate grouped random effects
@@ -130,15 +131,40 @@ plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
 gp_model <- GPModel(group_data = group)
 dataset <- gpb.Dataset(data = X, label = y)
 print("Running cross validation for GPBoost model and use_gp_model_for_validation = TRUE")
-bst <- gpb.cv(params = params,
-              data = dataset,
+bst <- gpb.cv(data = dataset,
               gp_model = gp_model,
               use_gp_model_for_validation = TRUE,
+              learning_rate = 0.05,
+              max_depth = 6,
+              min_data_in_leaf = 5,
+              objective = "regression_l2",
               nrounds = 100,
               nfold = 10,
               eval = "l2",
               early_stopping_rounds = 5)
 print(paste0("Optimal number of iterations: ", bst$best_iter))
+
+#--------------------Model interpretation----------------
+X <- matrix(as.vector(X), ncol=ncol(X), dimnames=list(NULL,paste0("Covariate_",1:2)))
+gp_model <- GPModel(group_data = group, likelihood = "gaussian")
+bst <- gpboost(data = X,
+               label = y,
+               gp_model = gp_model,
+               nrounds = 15,
+               learning_rate = 0.05,
+               max_depth = 6,
+               min_data_in_leaf = 5,
+               objective = "regression_l2",
+               verbose = 0)
+# Calculate and plot feature importances
+feature_importances <- gpb.importance(bst, percentage = TRUE)
+gpb.plot.importance(feature_importances, top_n = 5L, measure = "Gain")
+# SHAP values and dependence plots
+library("SHAPforxgboost")
+shap.plot.summary.wrap1(bst, X = X)
+shap_long <- shap.prep(bst, X_train = X)
+shap.plot.dependence(data_long = shap_long, x = "Covariate_1",
+                     color_feature = "Covariate_2", smooth = FALSE)
 
 #--------------------Saving a booster with a gp_model and loading it from a file----------------
 # Train model and make predictions

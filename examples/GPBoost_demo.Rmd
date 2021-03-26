@@ -289,6 +289,10 @@ shap_long <- shap.prep(bst, X_train = X)
 p2 <- shap.plot.dependence(data_long = shap_long, x = "Covariate_1",
                            color_feature = "Covariate_2", smooth = FALSE)
 grid.arrange(p1, p2, ncol=2)
+# Note: for the SHAPforxgboost package, the data matrix X needs to have column names
+# If this is not the case, add them prior to training the booster using the following code: 
+# your_colnames <- paste0("Covariate_",1:2)
+# X <- matrix(as.vector(X), ncol=ncol(X), dimnames=list(NULL,your_colnames))
 ```
 
 ***In Python***

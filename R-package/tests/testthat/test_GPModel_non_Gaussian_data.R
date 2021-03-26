@@ -477,7 +477,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     probs <- pnorm(L %*% b_1)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.2341) < probs)
-    
     # Estimation using gradient descent
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                         likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=n-1)
@@ -487,7 +486,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars <- c(0.9419234, 0.1866877)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
     expect_equal(gp_model$get_num_optim_iter(), 40)
-    
     # Prediction
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=n-1,

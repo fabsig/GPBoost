@@ -77,9 +77,9 @@ def copy_files(integrated_opencl=False, use_gpu=False):
         # copy_file(os.path.join(CURRENT_DIR, os.path.pardir, "windows", "GPBoost.vcxproj"),
         #           os.path.join(CURRENT_DIR, "compile", "windows", "GPBoost.vcxproj"),
         #           verbose=0)
-        # copy_file(os.path.join(CURRENT_DIR, os.path.pardir, "LICENSE"),
-        #           os.path.join(CURRENT_DIR, "LICENSE"),
-        #           verbose=0)
+        copy_file(os.path.join(CURRENT_DIR, os.path.pardir, "LICENSE"),
+                  os.path.join(CURRENT_DIR, "LICENSE"),
+                  verbose=0)
         copy_file(os.path.join(CURRENT_DIR, os.path.pardir, "CMakeLists.txt"),
                   os.path.join(CURRENT_DIR, "compile", "CMakeLists.txt"),
                   verbose=0)

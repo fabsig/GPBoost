@@ -1630,7 +1630,10 @@ class Dataset:
             ret.used_indices = sorted(used_indices)
         else:
             used_indices_sorted = sorted(used_indices)
-            data_subset = self.data[used_indices_sorted]
+            if isinstance(self.data, pd_DataFrame) or isinstance(self.data, pd_Series):
+                data_subset = self.data.iloc[used_indices_sorted]
+            else:
+                data_subset = self.data[used_indices_sorted]
             label_subset = self.label[used_indices_sorted]
             weight_subset = None
             if self.weight is not None:

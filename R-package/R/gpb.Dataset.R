@@ -72,6 +72,9 @@ Dataset <- R6::R6Class(
         if (storage.mode(data) != "double") {
           storage.mode(data) <- "double"
         }
+        # Make sure that data set is stored correctly
+        # This is to avoid problems when dimnames / colnames are changed after initilization 
+        data <- matrix(as.vector(data), ncol=ncol(data), dimnames=dimnames(data))
       }
 
       # Setup private attributes
