@@ -3870,12 +3870,6 @@ class GPModel(object):
         Fabio Sigrist
     """
 
-    _SUPPORTED_COV_FUNCTIONS = ("exponential", "gaussian", "powered_exponential", "matern")
-    _SUPPORTED_VECCHIA_ORDERING = ("none", "random")
-    _VECCHIA_PRED_TYPES = ("order_obs_first_cond_obs_only",
-                           "order_obs_first_cond_all", "order_pred_first",
-                           "latent_order_obs_first_cond_obs_only", "latent_order_obs_first_cond_all")
-
     def __init__(self, likelihood="gaussian",
                  group_data=None,
                  group_rand_coef_data=None,
@@ -3884,6 +3878,7 @@ class GPModel(object):
                  gp_rand_coef_data=None,
                  cov_function="exponential",
                  cov_fct_shape=0.,
+                 cov_fct_taper_range=1.,
                  vecchia_approx=False,
                  num_neighbors=30,
                  vecchia_ordering="none",
@@ -3915,8 +3910,11 @@ class GPModel(object):
                 parametrization of Diggle and Ribeiro (2007) except for the Matern covariance where we follow
                 Rassmusen and Williams (2006)
             cov_fct_shape : float, optional (default=0.)
-                Shape parameter of covariance function (=smoothness parameter for Matern covariance,
-                irrelevant for some covariance functions such as the exponential or Gaussian)
+                Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance.
+                For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2018)).
+                This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
+            cov_fct_taper_range : float, optional (default=1.)
+                Range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)
             vecchia_approx : bool, optional (default=False)
                 If true, the Vecchia approximation is used
             num_neighbors : integer, optional (default=30)
@@ -3965,6 +3963,7 @@ class GPModel(object):
         self.gp_rand_coef_data = None
         self.cov_function = "exponential"
         self.cov_fct_shape = 0.
+        self.cov_fct_taper_range = 1.
         self.vecchia_approx = False
         self.num_neighbors = 30
         self.vecchia_ordering = "none"
@@ -4016,6 +4015,7 @@ class GPModel(object):
                 gp_rand_coef_data = np.array(model_dict.get("gp_rand_coef_data"))
             cov_function = model_dict.get("cov_function")
             cov_fct_shape = model_dict.get("cov_fct_shape")
+            cov_fct_taper_range = model_dict.get("cov_fct_taper_range")
             vecchia_approx = model_dict.get("vecchia_approx")
             num_neighbors = model_dict.get("num_neighbors")
             vecchia_ordering = model_dict.get("vecchia_ordering")
@@ -4124,12 +4124,16 @@ class GPModel(object):
             self.dim_coords = gp_coords.shape[1]
             self.cov_function = cov_function
             self.cov_fct_shape = cov_fct_shape
+            self.cov_fct_taper_range = cov_fct_taper_range
             self.vecchia_approx = vecchia_approx
             self.vecchia_ordering = vecchia_ordering
             self.vecchia_pred_type = vecchia_pred_type
             self.num_neighbors = num_neighbors
             self.num_neighbors_pred = num_neighbors_pred
-            self.cov_par_names.extend(["GP_var", "GP_range"])
+            if self.cov_function == "wendland":
+                self.cov_par_names.extend(["GP_var"])
+            else:
+                self.cov_par_names.extend(["GP_var", "GP_range"])
             gp_coords_c, _, _ = c_float_array(self.gp_coords.flatten(order='F'))
             # Set data for GP random coefficients
             if gp_rand_coef_data is not None:
@@ -4145,12 +4149,18 @@ class GPModel(object):
                 gp_rand_coef_data_c, _, _ = c_float_array(self.gp_rand_coef_data.flatten(order='F'))
                 for ii in range(self.num_gp_rand_coef):
                     if gp_rand_coef_data_names is None:
-                        self.cov_par_names.extend(
-                            ["GP_rand_coef_nb_" + str(ii + 1) + "_var", "GP_rand_coef_nb_" + str(ii + 1) + "_range"])
+                        if self.cov_function == "wendland":
+                            self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + "_var"])
+                        else:
+                            self.cov_par_names.extend(
+                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var", "GP_rand_coef_nb_" + str(ii + 1) + "_range"])
                     else:
-                        self.cov_par_names.extend(
-                            ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
-                             "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range"])
+                        if self.cov_function == "wendland":
+                            self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"])
+                        else:
+                            self.cov_par_names.extend(
+                                ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
+                                 "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range"])
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids is not None:
             cluster_ids = _format_check_1D_data(cluster_ids, data_name="cluster_ids", check_data_type=False,
@@ -4165,7 +4175,6 @@ class GPModel(object):
                 cluster_ids = np.array([self.cluster_ids_map_to_int[cl_name] for cl_name in cluster_ids])
             cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
 
-        self.__check_params()
         self.__determine_num_cov_pars(likelihood=likelihood)
 
         _safe_call(_LIB.GPB_CreateREModel(
@@ -4183,6 +4192,7 @@ class GPModel(object):
             ctypes.c_int(self.num_gp_rand_coef),
             c_str(self.cov_function),
             ctypes.c_double(self.cov_fct_shape),
+            ctypes.c_double(self.cov_fct_taper_range),
             ctypes.c_bool(self.vecchia_approx),
             ctypes.c_int(self.num_neighbors),
             c_str(self.vecchia_ordering),
@@ -4207,23 +4217,13 @@ class GPModel(object):
             self.set_optim_params(params=model_dict["params"])
             self.set_optim_coef_params(params=model_dict["params"])
 
-    def __check_params(self):
-        if (self.cov_function not in self._SUPPORTED_COV_FUNCTIONS):
-            raise ValueError("cov_function '{0:s}' not supported. ".format(self.cov_function))
-        if self.cov_function == "powered_exponential":
-            if self.cov_fct_shape <= 0. or self.cov_fct_shape > 2.:
-                raise ValueError("cov_fct_shape needs to be larger than 0 and smaller or equal than 2 for "
-                                 "cov_function=powered_exponential")
-        if self.cov_function == "matern":
-            if not (self.cov_fct_shape == 0.5 or self.cov_fct_shape == 1.5 or self.cov_fct_shape == 2.5):
-                raise ValueError("cov_fct_shape needs to be 0.5, 1.5, or 2.5 for cov_function=matern")
-        if (self.vecchia_ordering not in self._SUPPORTED_VECCHIA_ORDERING):
-            raise ValueError("vecchia_ordering '{0:s}' not supported. ".format(self.vecchia_ordering))
-        if (self.vecchia_pred_type not in self._VECCHIA_PRED_TYPES):
-            raise ValueError("vecchia_pred_type '{0:s}' not supported. ".format(self.vecchia_pred_type))
-
     def __determine_num_cov_pars(self, likelihood):
-        self.num_cov_pars = self.num_group_re + self.num_group_rand_coef + 2 * (self.num_gp + self.num_gp_rand_coef)
+        if self.cov_function == "wendland":
+            num_par_per_GP = 1
+        else:
+            num_par_per_GP =2
+        self.num_cov_pars = self.num_group_re + self.num_group_rand_coef + \
+                            num_par_per_GP * (self.num_gp + self.num_gp_rand_coef)
         if likelihood == "gaussian":
             self.num_cov_pars = self.num_cov_pars + 1
 
@@ -4683,8 +4683,6 @@ class GPModel(object):
             predict_cov_mat = True
             predict_var = False
         if vecchia_pred_type is not None:
-            if (vecchia_pred_type not in self._VECCHIA_PRED_TYPES):
-                raise ValueError("vecchia_pred_type '{0:s}' not supported. ".format(vecchia_pred_type))
             self.vecchia_pred_type = vecchia_pred_type
         if num_neighbors_pred is not None:
             self.num_neighbors_pred = num_neighbors_pred
@@ -5070,6 +5068,7 @@ class GPModel(object):
         model_dict["num_neighbors_pred"] = self.num_neighbors_pred
         model_dict["cov_function"] = self.cov_function
         model_dict["cov_fct_shape"] = self.cov_fct_shape
+        model_dict["cov_fct_taper_range"] = self.cov_fct_taper_range
         # Covariate data
         model_dict["has_covariates"] = self.has_covariates
         if self.has_covariates:

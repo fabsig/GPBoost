@@ -668,7 +668,8 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterDumpModel_R(
 * \param gp_rand_coef_data Covariate data for Gaussian process random coefficients
 * \param num_gp_rand_coef Number of Gaussian process random coefficients
 * \param cov_fct Type of covariance (kernel) function for Gaussian processes. We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance where we follow Rassmusen and Williams (2006)
-* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
+* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2018)). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
+* \param cov_fct_taper_range Range parameter of Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)
 * \param vecchia_approx If true, the Veccia approximation is used for the Gaussian process
 * \param num_neighbors The number of neighbors used in the Vecchia approximation
 * \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
@@ -693,6 +694,7 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_CreateREModel_R(
 	LGBM_SE num_gp_rand_coef,
 	LGBM_SE cov_fct,
 	LGBM_SE cov_fct_shape,
+	LGBM_SE cov_fct_taper_range,
 	LGBM_SE vecchia_approx,
 	LGBM_SE num_neighbors,
 	LGBM_SE vecchia_ordering,

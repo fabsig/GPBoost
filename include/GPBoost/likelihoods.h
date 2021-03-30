@@ -41,13 +41,12 @@ using LightGBM::Log;
 #define M_2_SQRTPI      1.12837916709551257390
 #endif
 
-//#include <chrono>  // only needed for debugging
-//#include <thread> // only needed for debugging
-
-//std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();//DELETE
-//std::chrono::steady_clock::time_point begin, end;//DELETE
+#include <chrono>  // only for debugging
+#include <thread> // only for debugging
+//std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();// only for debugging
+//std::chrono::steady_clock::time_point begin, end;// only for debugging
 //double el_time;
-//end = std::chrono::steady_clock::now();//DELETE
+//end = std::chrono::steady_clock::now();// only for debugging
 //el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - beginall).count()) / 1000000.;// Only for debugging
 //Log::REInfo("TOTAL TIME for mode calculation: %g", el_time);// Only for debugging
 
@@ -80,6 +79,7 @@ namespace GPBoost {
 			if (likelihood_type_ == "gamma") {
 				aux_pars_ = { 1. };//shape parameter, TODO: also estimate this parameter
 			}
+			chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_ = false;
 		}
 
 		/*!
@@ -123,6 +123,7 @@ namespace GPBoost {
 				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
 			}
 			likelihood_type_ = likelihood;
+			chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_ = false;
 		}
 
 		/*!
@@ -652,7 +653,7 @@ namespace GPBoost {
 						}
 					}//end omp critical
 				}//end omp parallel
-				//Old non-parallel version
+				//Non-parallel version
 				//for (data_size_t i = 0; i < num_data; ++i) {
 				//	diag_sqrt_ZtWZ[random_effects_indices_of_data[i]] += second_deriv_neg_ll_[i];
 				//}
@@ -794,8 +795,13 @@ namespace GPBoost {
 				// Calculate Cholesky factor and update mode
 				rhs = Zt * first_deriv_ll_ - SigmaI * mode_;//right hand side for updating mode
 				SigmaI_plus_ZtWZ = SigmaI + Zt * second_deriv_neg_ll_.asDiagonal() * Z;
-				chol_fact_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_ZtWZ);
-				mode_ += chol_fact_SigmaI_plus_ZtWZ_.solve(rhs);
+				SigmaI_plus_ZtWZ.makeCompressed();
+				if (!chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_) {
+					chol_fact_SigmaI_plus_ZtWZ_grouped_.analyzePattern(SigmaI_plus_ZtWZ);
+					chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_ = true;
+				}
+				chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
+				mode_ += chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(rhs);
 				// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 				location_par = Z * mode_;
 				if (fixed_effects != nullptr) {
@@ -820,8 +826,9 @@ namespace GPBoost {
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 			SigmaI_plus_ZtWZ = SigmaI + Zt * second_deriv_neg_ll_.asDiagonal() * Z;
-			chol_fact_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_ZtWZ);
-			approx_marginal_ll += -((den_mat_t)chol_fact_SigmaI_plus_ZtWZ_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
+			SigmaI_plus_ZtWZ.makeCompressed();
+			chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
+			approx_marginal_ll += -((den_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 			////Only for debugging
 			//Log::REInfo("FindModePostRandEffCalcMLLGroupedRE");
@@ -1043,9 +1050,16 @@ namespace GPBoost {
 				rhs = second_deriv_neg_ll_.asDiagonal() * mode_ + first_deriv_ll_;//right hand side for updating mode
 				SigmaI_plus_W = SigmaI;
 				SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
-				//Log::REInfo("Number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging, can be deleted
-				chol_fact_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_W);//This is usually the bottleneck
-				mode_ = chol_fact_SigmaI_plus_ZtWZ_.solve(rhs);
+				SigmaI_plus_W.makeCompressed();
+				//Calculation of the Cholesky factor is the bottleneck
+				if (!chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_) {
+					chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
+					chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_ = true;
+				}
+				chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
+				//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
+				//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
+				mode_ = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
 				// Calculate new objective function
 				B_mode = B * mode_;
 				if (no_fixed_effects) {
@@ -1080,10 +1094,12 @@ namespace GPBoost {
 			}
 			SigmaI_plus_W = SigmaI;
 			SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
-			chol_fact_SigmaI_plus_ZtWZ_.compute(SigmaI_plus_W);
-			approx_marginal_ll += -((den_mat_t)chol_fact_SigmaI_plus_ZtWZ_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
+			SigmaI_plus_W.makeCompressed();
+			chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
+			approx_marginal_ll += -((den_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 			////Only for debugging
+			//Log::REInfo("FindModePostRandEffCalcMLLVecchia");
 			//Log::REInfo("Number of iterations: %d", it);
 			//Log::REInfo("approx_marginal_ll: %g", approx_marginal_ll);
 			//Log::REInfo("Mode");
@@ -1193,8 +1209,6 @@ namespace GPBoost {
 				T_mat ZSigmaZtI_plus_W_inv = (*ZSigmaZt) - (T_mat)(C.transpose() * C);// = (ZSigmaZt^-1 + W) ^ -1
 				// calculate gradient of approx. marginal likeligood wrt the mode
 				vec_t d_mll_d_mode = (-0.5 * ZSigmaZtI_plus_W_inv.diagonal().array() * third_deriv.array()).matrix();//Note: d_mll_d_mode = d_detmll_d_F
-				//T_mat ZSigmaZtI_plus_W_inv_W = ZSigmaZtI_plus_W_inv * second_deriv_neg_ll_.asDiagonal();//DELETE
-				//fixed_effect_grad = -first_deriv_ll_ + d_mll_d_mode - d_mll_d_mode.transpose() * ZSigmaZtI_plus_W_inv_W;//DELETE
 				vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = d_mll_d_mode.transpose() * ZSigmaZtI_plus_W_inv * second_deriv_neg_ll_.asDiagonal();
 				fixed_effect_grad = -first_deriv_ll_ + d_mll_d_mode - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
 			}//end calc_F_grad
@@ -1415,7 +1429,13 @@ namespace GPBoost {
 			// Calculate (Sigma^-1 + Zt*W*Z)^-1
 			sp_mat_t Id(num_REs, num_REs);
 			Id.setIdentity();
-			sp_mat_t SigmaI_plus_ZtWZ_inv = chol_fact_SigmaI_plus_ZtWZ_.solve(Id);
+			sp_mat_t chol_fact_SigmaI_plus_ZtWZ_grouped_L = chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL();
+			//sp_mat_t P_Id = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * Id;//Permutation is only used when having an ordering
+			sp_mat_t L_inv;
+			CalcLInvH(chol_fact_SigmaI_plus_ZtWZ_grouped_L, Id, L_inv, true);
+			//eigen_sp_Lower_sp_RHS_cs_solve(chol_fact_SigmaI_plus_ZtWZ_vecchia_L, P_Id, L_inv, true);//slower when using cs_solve
+			sp_mat_t SigmaI_plus_ZtWZ_inv = L_inv.transpose() * L_inv;
+
 			// calculate gradient of approx. marginal likeligood wrt the mode
 			//Note: the calculation of d_mll_d_mode is the bottleneck of this function (corresponding lines below are indicated with * and, in particular, **)
 			vec_t d_mll_d_mode(num_REs);
@@ -1701,7 +1721,12 @@ namespace GPBoost {
 			// Calculate (Sigma^-1 + W)^-1
 			sp_mat_t Id(num_data, num_data);
 			Id.setIdentity();
-			sp_mat_t SigmaI_plus_W_inv = chol_fact_SigmaI_plus_ZtWZ_.solve(Id);
+			sp_mat_t chol_fact_SigmaI_plus_ZtWZ_vecchia_L = chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL();
+			//sp_mat_t P_Id = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * Id;//Permutation is only used when having an ordering
+			sp_mat_t L_inv;
+			CalcLInvH(chol_fact_SigmaI_plus_ZtWZ_vecchia_L, Id, L_inv, true);
+			//eigen_sp_Lower_sp_RHS_cs_solve(chol_fact_SigmaI_plus_ZtWZ_vecchia_L, P_Id, L_inv, true);//slower when using cs_solve
+			sp_mat_t SigmaI_plus_W_inv = L_inv.transpose() * L_inv;//Note: this is the computational bottleneck for large data
 			// calculate gradient of approx. marginal likeligood wrt the mode
 			vec_t d_mll_d_mode = -0.5 * (SigmaI_plus_W_inv.diagonal().array() * third_deriv.array()).matrix();
 			// calculate gradient wrt covariance parameters
@@ -1980,9 +2005,10 @@ namespace GPBoost {
 			pred_mean = Cross_Cov * first_deriv_ll_;
 			if (calc_pred_cov || calc_pred_var) {
 				T_mat Maux, Maux2;
-				Maux = Zt * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose();
 				// calculate Maux2 = L\(Z^T * second_deriv_neg_ll_.asDiagonal() * Cross_Cov^T)
-				T_mat L = chol_fact_SigmaI_plus_ZtWZ_.matrixL();
+				Maux = Zt * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose();
+				//Maux = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * Zt * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose();//Permutation is only used when having an ordering
+				T_mat L = chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL();
 				CalcLInvH(L, Maux, Maux2, true);
 				if (calc_pred_cov) {
 					pred_cov += Maux2.transpose() * Maux2 - (T_mat)(Cross_Cov * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose());
@@ -2159,9 +2185,10 @@ namespace GPBoost {
 			pred_mean = Cross_Cov * first_deriv_ll_;
 			if (calc_pred_cov || calc_pred_var) {
 				T_mat SigmaI_CrossCovT = B.transpose() * D_inv * B * Cross_Cov.transpose();
+				//T_mat P_SigmaI_CrossCovT = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * SigmaI_CrossCovT;//Permutation is only used when having an ordering
 				// calculate Maux = L\(Sigma^-1 * Cross_Cov^T), L = Chol(Sigma^-1 + W)
 				T_mat Maux;
-				sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_.matrixL();
+				sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL();
 				CalcLInvH(L, SigmaI_CrossCovT, Maux, true);
 				if (calc_pred_cov) {
 					pred_cov += -Cross_Cov * SigmaI_CrossCovT + Maux.transpose() * Maux;
@@ -2304,8 +2331,13 @@ namespace GPBoost {
 		vec_t second_deriv_neg_ll_;
 		/*! \brief Diagonal of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'GroupedRE' when there is only one random effect and ZtWZ is diagonal. Otherwise 'diag_SigmaI_plus_ZtWZ_' is used for grouped REs) */
 		vec_t diag_SigmaI_plus_ZtWZ_;
-		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in versions 'Vecchia' and 'GroupedRE'. For grouped REs, this is used if there is more than one random effect) */
-		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_;
+		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version'GroupedRE' if there is more than one random effect). Note using another ordering such as 'COLAMDOrdering' is overall slower */
+		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_grouped_;
+		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'Vecchia') */
+		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_vecchia_;
+		//Note chol_sp_mat_t (i.e. no permuation matrix) is faster than chol_sp_mat_COLAMDOrder_t for both grouped random effects and the Vecchia approximation
+		/*! \brief If true, the pattern of chol_fact_SigmaI_plus_ZtWZ_grouped_ or chol_fact_SigmaI_plus_ZtWZ_vecchia_ has been analyzed */
+		bool chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_ = false;
 		/*! 
 		* \brief Cholesky factors of matrix B = I + Wsqrt *  Z * Sigma * Zt * Wsqrt in Laplace approximation (for version 'Stable') 
 		*		or of matrix B = Id + ZtWZsqrt * Sigma * ZtWZsqrt (for version 'OnlyOneGPCalculationsOnREScale')

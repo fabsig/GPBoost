@@ -175,6 +175,12 @@ gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential",
 gp_model.fit(y=y)
 gp_model.summary()
 
+#--------------------Gaussian process model with Wendland covariance function----------------
+gp_model = gpb.GPModel(gp_coords=coords, cov_function="wendland",
+                       cov_fct_shape=1, cov_fct_taper_range=0.1)
+gp_model.fit(y=y)
+gp_model.summary()
+
 # --------------------Gaussian process model with random coefficents----------------
 # Define and train model
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential", gp_rand_coef_data=X_SVC)

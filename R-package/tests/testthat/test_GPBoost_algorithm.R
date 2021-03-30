@@ -52,7 +52,6 @@ plot(x,f1d(x),type="l",lwd=3,col=2,main="True and fitted function")
 lines(X_test_plot[,1],pred$fixed_effect,col=4,lwd=3)
 
 
-
 # Avoid that long tests get executed on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
@@ -115,8 +114,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Validation metrics for training data
     # Default metric is "Negative log-likelihood" if there is only one training set
     gp_model <- GPModel(group_data = group_data_train)
-    bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
-                   objective = "regression_l2", train_gp_model_cov_pars=FALSE, nrounds=1)
+    capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
+                   objective = "regression_l2", train_gp_model_cov_pars=FALSE, nrounds=1), file='NUL')
     record_results <- gpb.get.eval.result(bst, "train", "Negative log-likelihood")
     expect_lt(abs(record_results[1]-1573.9417522), TOLERANCE)
     
@@ -169,7 +168,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    leaves_newton_update = FALSE)
     cov_pars <- c(0.005087137, 0.590527753, 0.390570179)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-    
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
     expect_lt(sqrt(mean((pred$fixed_effect - f_test)^2)),0.262)
@@ -448,7 +446,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   
-  test_that("Combine tree-boosting and Gaussian process model with Vecchia approximation", {
+  test_that("GPBoost algorithm with Vecchia approximation and Wendland covariance", {
     ntrain <- ntest <- 100
     n <- ntrain + ntest
     
@@ -494,9 +492,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.7819426),TOLERANCE)
     expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.345712),TOLERANCE)
     expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-1.23809),TOLERANCE)
+    
     # Same thing with Vecchia approximation
-    gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                        vecchia_approx =TRUE, num_neighbors = ntrain-1)
+    capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                        vecchia_approx =TRUE, num_neighbors = ntrain-1), file='NUL')
     gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                      learning_rate = 0.05, max_depth = 6,
@@ -507,6 +506,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.345712),TOLERANCE)
     expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-1.23809),TOLERANCE)
     
+    # Same thing with Wendland covariance function
+    capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
+                        cov_fct_shape=1, cov_fct_taper_range=0.2), file='NUL')
+    gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
+                     learning_rate = 0.05, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(.3493528, 0.7810089))),TOLERANCE)
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
+    expect_lt(sum(abs(tail(pred$fixed_effect)-c(4.569245, 4.833311, 4.565894, 4.644225, 4.616655, 4.409673))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.01965535, -0.01853082, -0.53218816, -0.98668655, -0.60581078, -0.03390602))),TOLERANCE)
   })
   
   

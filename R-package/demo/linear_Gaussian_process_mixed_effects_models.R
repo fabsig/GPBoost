@@ -220,7 +220,12 @@ gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        vecchia_approx = TRUE, num_neighbors = 30, y = y)
 summary(gp_model)
 
-#--------------------Gaussian process model with random coefficents----------------
+#--------------------Gaussian process model with Wendland covariance function----------------
+gp_model <- fitGPModel(gp_coords = coords, cov_function = "wendland", 
+                       cov_fct_shape=1, cov_fct_taper_range=0.1, y = y)
+summary(gp_model)
+
+#--------------------Gaussian process model with random coefficients----------------
 # Estimate model
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        gp_rand_coef_data = Z_SVC,
@@ -228,7 +233,6 @@ gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
 summary(gp_model)
 # Note: this is a small sample size for this type of model
 #   -> covariance parameters estimates can have high variance
-
 
 #--------------------GP model with two independent observations of the GP----------------
 # Simulate data

@@ -2678,6 +2678,7 @@ int GPB_CreateREModel(int num_data,
 	int num_gp_rand_coef,
 	const char* cov_fct,
 	double cov_fct_shape,
+	double cov_fct_taper_range,
 	bool vecchia_approx,
 	int num_neighbors,
 	const char* vecchia_ordering,
@@ -2687,10 +2688,27 @@ int GPB_CreateREModel(int num_data,
 	REModelHandle* out) {
 	API_BEGIN();
 	std::unique_ptr<REModel> ret;
-	ret.reset(new REModel(num_data, cluster_ids_data, re_group_data, num_re_group,
-		re_group_rand_coef_data, ind_effect_group_rand_coef, num_re_group_rand_coef,
-		num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape,
-		vecchia_approx, num_neighbors, vecchia_ordering, vecchia_pred_type, num_neighbors_pred, likelihood));
+	ret.reset(new REModel(num_data,
+		cluster_ids_data,
+		re_group_data,
+		num_re_group,
+		re_group_rand_coef_data,
+		ind_effect_group_rand_coef,
+		num_re_group_rand_coef,
+		num_gp,
+		gp_coords_data,
+		dim_gp_coords,
+		gp_rand_coef_data,
+		num_gp_rand_coef,
+		cov_fct,
+		cov_fct_shape,
+		cov_fct_taper_range,
+		vecchia_approx,
+		num_neighbors,
+		vecchia_ordering,
+		vecchia_pred_type,
+		num_neighbors_pred,
+		likelihood));
 	*out = ret.release();
 	API_END();
 }

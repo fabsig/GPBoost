@@ -7,8 +7,8 @@
 fitGPModel(group_data = NULL, group_rand_coef_data = NULL,
   ind_effect_group_rand_coef = NULL, gp_coords = NULL,
   gp_rand_coef_data = NULL, cov_function = "exponential",
-  cov_fct_shape = 0, vecchia_approx = FALSE, num_neighbors = 30L,
-  vecchia_ordering = "none",
+  cov_fct_shape = 0, cov_fct_taper_range = 1, vecchia_approx = FALSE,
+  num_neighbors = 30L, vecchia_ordering = "none",
   vecchia_pred_type = "order_obs_first_cond_obs_only",
   num_neighbors_pred = num_neighbors, cluster_ids = NULL,
   free_raw_data = FALSE, likelihood = "gaussian", y, X = NULL,
@@ -31,9 +31,12 @@ The following covariance functions are available: "exponential", "gaussian", "ma
 We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance 
 where we follow Rassmusen and Williams (2006)}
 
-\item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of a covariance function 
-(=smoothness parameter for Matern covariance, irrelevant for some covariance functions 
-such as the exponential or Gaussian)}
+\item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
+(=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, 
+we follow the notation of Bevilacqua et al. (2018)). 
+This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.}
+
+\item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)}
 
 \item{vecchia_approx}{A \code{boolean}. If true, the Vecchia approximation is used}
 

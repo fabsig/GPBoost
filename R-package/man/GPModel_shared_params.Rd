@@ -23,9 +23,12 @@ The following covariance functions are available: "exponential", "gaussian", "ma
 We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance 
 where we follow Rassmusen and Williams (2006)}
 
-\item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of a covariance function 
-(=smoothness parameter for Matern covariance, irrelevant for some covariance functions 
-such as the exponential or Gaussian)}
+\item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
+(=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, 
+we follow the notation of Bevilacqua et al. (2018)). 
+This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.}
+
+\item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)}
 
 \item{vecchia_approx}{A \code{boolean}. If true, the Vecchia approximation is used}
 

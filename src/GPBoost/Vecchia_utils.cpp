@@ -90,7 +90,6 @@ namespace GPBoost {
       num_neighbors = end_search_at + 1;
     }
     int dim_coords = (int)coords.cols();
-    
     //Sort along the sum of the coordinates
     std::vector<double> coords_sum(num_data);
     #pragma omp parallel for schedule(static)
@@ -104,7 +103,6 @@ namespace GPBoost {
     for (int i = 0; i < num_data; ++i) {
       sort_inv_sum[sort_sum[i]] = i;
     }
-
     //Intialize nearest neighbor vectors
     for (int i = start_at; i < num_data; ++i) {
       if (i > 0 && i <= num_neighbors) {
@@ -119,34 +117,27 @@ namespace GPBoost {
         nearest_neighbors[i - start_at].resize(num_neighbors);
       }
     }
-
     //Find nearest neighbor vectors for those points where the conditioning set (=potential nearest neighbors) is larger than 'num_neighbors'
     if (num_data > num_neighbors) {
-
       int first_i = (start_at <= num_neighbors) ? (num_neighbors + 1) : start_at;//The first pint (first_i) for which the search is done is the point with index (num_neighbors + 1) or start_at
       #pragma omp parallel for schedule(static)
       for (int i = first_i; i < num_data; ++i) {
-
         std::vector<double> nn_square_dist(num_neighbors);
         for (int j = 0; j < num_neighbors; ++j) {
           nn_square_dist[j] = std::numeric_limits<double>::infinity();
         }
-
         bool down = true;
         bool up = true;
         int up_i = sort_sum[i];
         int down_i = sort_sum[i];
         double smd, sed;
-
         while (up || down) {
-
           if (down_i == 0) {
             down = false;
           }
           if (up_i == (num_data - 1)) {
             up = false;
           }
-
           if (down) {
             down_i--;
             //counting is done on the sorted scale, but the index on the orignal scale needs to be (i) smaller than 'i' in order to be a neighbor (ii) and also below or equal the largest potential neighbor 'end_search_at'
@@ -165,7 +156,6 @@ namespace GPBoost {
               }
             }
           }//end down
-
           if (up) {
             up_i++;
             //counting is done on the sorted scale, but the index on the orignal scale needs to be (i) smaller than 'i' in order to be a neighbor (ii) and also below or equal the largest potential neighbor 'end_search_at'
@@ -184,17 +174,13 @@ namespace GPBoost {
               }
             }
           }//end up
-
         }
-
         //Save distances
         for (int j = 0; j < num_neighbors; ++j) {
           dist_obs_neighbors[i - start_at].resize(1,num_neighbors);
           dist_obs_neighbors[i - start_at](0, j) = sqrt(nn_square_dist[j]);
         }
-
       }//end parallel for loop
-
     }
 
     int first_i = (start_at == 0) ? 1 : start_at;
@@ -210,29 +196,6 @@ namespace GPBoost {
       }
       dist_between_neighbors[i - start_at].triangularView<Eigen::StrictlyLower>() = dist_between_neighbors[i - start_at].triangularView<Eigen::StrictlyUpper>().transpose();
     }
-
-    //for (int i = first_i; i < num_data; ++i) {
-    //  for (int j = 0; j < nearest_neighbors[i - start_at].size(); ++j) {
-    //    Log::REInfo("nearest_neighbors[%d][%d]: %d", i - start_at, j, nearest_neighbors[i - start_at][j]);
-    //  }
-    //}
-    //Log::REInfo(" ");
-    //for (int i = first_i; i < num_data; ++i) {
-    //  for (int j = 0; j < nearest_neighbors[i - start_at].size(); ++j) {
-    //    Log::REInfo("dist_obs_neighbors[%d](0,%d): %f", i, j, dist_obs_neighbors[i- start_at](0,j));
-    //  }
-    //}
-    //Log::REInfo(" ");
-    //for (int i = first_i; i < num_data; ++i) {
-    //  for (int j = 0; j < nearest_neighbors[i- start_at].size(); ++j) {
-    //    for (int k = 0; k < nearest_neighbors[i- start_at].size(); ++k) {
-    //      Log::REInfo("dist_between_neighbors[%d](%d,%d): %f", i, j, k, dist_between_neighbors[i- start_at](j, k));
-    //    }
-    //  }
-    //}
-    //Log::REInfo(" ");
-    //Log::REInfo(" ");
-
   }
 
 }  // namespace GPBoost

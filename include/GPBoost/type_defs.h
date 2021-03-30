@@ -34,7 +34,8 @@ namespace GPBoost {
 	typedef Eigen::Triplet<double> Triplet_t;
 	typedef Eigen::SparseVector<double> sp_vec_t;
 	typedef Eigen::LLT<Eigen::MatrixXd, Eigen::Lower> chol_den_mat_t;
-	typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::NaturalOrdering<int>> chol_sp_mat_t; // sparse Cholesky factor. TODO Maybe use other ordering?
+	typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::NaturalOrdering<int>> chol_sp_mat_t; // sparse Cholesky factor. Maybe try using an ordering / permutaiton for grouped random effects models for Gaussian data. But for non-Gaussian data, this does not result in a spped-up.
+	typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::COLAMDOrdering<int>> chol_sp_mat_COLAMDOrder_t; // sparse Cholesky factor with ordering
 
 	typedef std::string string_t;
 
