@@ -62,7 +62,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(dim(gp_model$get_cov_pars())[2], 3)
     expect_equal(dim(gp_model$get_cov_pars())[1], 2)
     expect_equal(gp_model$get_num_optim_iter(), 382)
-    
     # Gradient descent without Nesterov acceleration
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y, params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
@@ -70,7 +69,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                 delta_rel_conv=1E-6, convergence_criterion = "relative_change_in_parameters"))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),5E-6)
     expect_equal(gp_model$get_num_optim_iter(), 723)
-    
     # Using a too large learning rate
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y, params = list(optimizer_cov = "gradient_descent", std_dev = TRUE, maxit=1500,
@@ -78,7 +76,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                 delta_rel_conv=1E-6, convergence_criterion = "relative_change_in_parameters"))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),2E-5)
     expect_equal(gp_model$get_num_optim_iter(), 587)
-    
     # Different terminations criterion and a too large learning rate
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y, params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
@@ -89,7 +86,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 277)
     ll <- gp_model$neg_log_likelihood(y=y,cov_pars=gp_model$get_cov_pars()[1,])
     expect_lt(abs(ll-122.7752703),1E-6)
-    
     # Fisher scoring
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y,
@@ -101,8 +97,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(class(cov_pars_est), "numeric")
     expect_equal(length(cov_pars_est), 3)
     expect_equal(gp_model$get_num_optim_iter(), 16)
-    
-    # Different termination criterion
+    # Fisher scoring & different termination criterion
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y,
                            params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
@@ -111,7 +106,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_other_crit <- c(0.03300593, 0.07725225, 1.07584118, 0.25180563, 0.11357012, 0.03773325)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other_crit)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 8)
-    
+    # Gradient descent & different termination criterion
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y, params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
                                                 lr_cov = 0.1, use_nesterov_acc = TRUE,
@@ -119,6 +114,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_other_crit <- c(0.03958167, 0.08007032, 1.07078222, 0.25358067, 0.11486063, 0.03865198)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other_crit)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 83)
+    # Nelder-mead
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                           y = y, params = list(optimizer_cov = "nelder_mead"))
+    cov_pars_est <- as.vector(gp_model$get_cov_pars())
+    expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3,5)])),1E-3)
+    expect_equal(class(cov_pars_est), "numeric")
+    expect_equal(length(cov_pars_est), 3)
+    expect_equal(gp_model$get_num_optim_iter(), 40)
     
     # Prediction from fitted model
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -181,7 +184,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_lt(sum(abs( as.vector(gp_model$get_coef())-coef)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 11)
-    
     # Prediction 
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
@@ -192,6 +194,28 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                       3.469270e-01, 2.686334e-07, 8.317903e-08, 2.686334e-07, 4.255400e-01)
     expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+    
+    # Gradient descent
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                           y = y, X=X,
+                           params = list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent",
+                                         delta_rel_conv=1E-6, use_nesterov_acc = TRUE, std_dev = FALSE))
+    cov_pars <- c(0.01632592, 0.99743757, 0.09625354)
+    coef <- c(2.301436, 1.899027)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 106)
+
+    # Nelder-Mead
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                           y = y, X=X, params = list(optimizer_cov = "nelder_mead",
+                                                     optimizer_coef = "gradient_descent", maxit=1000))
+    cov_pars <- c(0.007253618, 1.004320456, 0.094662117)
+    coef <- c(2.305755, 1.899809)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 247)
+    
   })
   
 }

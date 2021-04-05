@@ -292,7 +292,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    verbose = 0)
     cov_pars <- c(0.4578269, 0.3456968)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-    
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
@@ -409,6 +408,28 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     eval = bin_cust_error, metric = "bin_cust_error")
     expect_equal(cvbst$best_iter, 7)
     expect_lt(abs(cvbst$best_score-0.365), TOLERANCE)
+    
+    # Training using Nelder-Mead
+    gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
+    bst <- gpboost(data = X_train,
+                   label = y_train,
+                   gp_model = gp_model,
+                   nrounds = 30,
+                   learning_rate = 0.1,
+                   max_depth = 6,
+                   min_data_in_leaf = 5,
+                   objective = "binary",
+                   verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4643149, 0.3556794))),TOLERANCE)
+    # Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = TRUE)
+    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.53598662, -0.03654598, 0.98171542, 0.83375088, -0.58210645, 0.64199625))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.110494, -1.051195, -1.248300,
+                                                      rep(0,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1295433, 0.1291980, 0.1289975,
+                                                     rep(0.8199944,n_new)))),TOLERANCE)
   })
   
   test_that("GPBoost algorithm for binary classification when having only one grouping variable", {
@@ -1101,6 +1122,25 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var = TRUE, rawscore = FALSE)
     expect_lt(sum(abs(tail(pred$response_mean,n=4)-c(0.6804841, 0.8504438, 0.4955158, 0.8534489))),TOLERANCE)
     expect_lt(sum(abs(tail(pred$response_var,n=4)-c(0.2174255, 0.1271891, 0.2499799, 0.1250739))),TOLERANCE)
+    
+    # Wendland covariance and Nelder-Mead
+    capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
+                                        cov_fct_shape=1, cov_fct_taper_range=0.2,
+                                        likelihood = "bernoulli_probit"), file='NUL')
+    gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", maxit=5))
+    bst <- gpb.train(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 1,
+                     learning_rate = 0.5,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     objective = "binary",
+                     verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.121461)),TOLERANCE)
+    # Prediction
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, rawscore = TRUE)
+    expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(-0.1583916, 0.1949641, -0.3607492, 0.3615253))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(0.126999585, -0.094635900, 0.040756960, 0.003967734))),TOLERANCE)
   })
   
   test_that("GPBoost algorithm with Gaussian process model for binary classification with logit link", {

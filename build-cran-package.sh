@@ -40,8 +40,7 @@ cp \
 cp external_libs/CSparse/Include/*.h ${TEMP_R_DIR}/src/include/
 cp external_libs/CSparse/Source/*.c ${TEMP_R_DIR}/src/
 
-mkdir -p ${CSPARSE_R_DIR}/src/
-cp -R external_libs/CSparse/Source/*.c ${CSPARSE_R_DIR}/src/
+cp -R external_libs/OptimLib/* ${TEMP_R_DIR}/src/include/
 
 # including only specific files from Eigen, to keep the R package
 # small and avoid redistributing code with licenses incompatible with

@@ -87,6 +87,12 @@ test_that("Binary classification with Gaussian process model ", {
   cov_pars2 <- c(0.9646422, 0.1844797)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars2)),TOLERANCE2)
   expect_equal(gp_model$get_num_optim_iter(), 26)
+  # Estimation using Nelder-Mead
+  gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit")
+  fit(gp_model, y = y, params = list(optimizer_cov = "nelder_mead"))
+  cov_pars3 <- c(0.9998047, 0.1855072)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars3)),TOLERANCE2)
+  expect_equal(gp_model$get_num_optim_iter(), 6)
   
   # Prediction
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
@@ -663,7 +669,18 @@ test_that("Binary classification with linear predictor and grouped random effect
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
   expect_equal(gp_model$get_num_optim_iter(), 80)
   
-  # # Defaul choices
+  ##TODO
+  # Estimation using Nelder-Mead
+  gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                         y = y, X=X, params = list(optimizer_cov = "nelder_mead",
+                                                   optimizer_coef = "gradient_descent"))
+  cov_pars <- c(0.3860747)
+  coef <- c(-0.1102633, 1.5081012)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
+  expect_equal(gp_model$get_num_optim_iter(), 88)
+  
+  # # Default choices
   # gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit", y = y, X=X)
   # # summary(gp_model)
   # cov_pars <- c(0.4142176)
@@ -719,6 +736,7 @@ test_that("Binary classification with linear predictor and Gaussian process mode
   expected_var <- c(1.557348, 1.563401, 1.381139)
   expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
   expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+
 })
 
 

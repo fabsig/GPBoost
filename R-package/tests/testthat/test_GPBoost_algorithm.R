@@ -350,6 +350,27 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     eval = l4_loss, metric = "l4")
     expect_equal(cvbst$best_iter, 52)
     expect_lt(abs(cvbst$best_score - 2.932338),TOLERANCE)
+    
+    # Use Nelder-Mead for training
+    gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params = list(optimizer_cov="nelder_mead"))
+    bst <- gpboost(data = X_train,
+                   label = y_train,
+                   gp_model = gp_model,
+                   nrounds = 62,
+                   learning_rate = 0.01,
+                   max_depth = 6,
+                   min_data_in_leaf = 5,
+                   objective = "regression_l2",
+                   verbose = 0,
+                   leaves_newton_update = FALSE)
+    cov_pars <- c(0.004823767, 0.592422707, 0.394167937)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+    # Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.4157265, -0.1696440, -1.2674184,
+                                                      rep(0,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(head(pred$fixed_effect)-c(4.818977, 4.174924, 3.269181, 4.222688, 4.997808, 4.947587))),TOLERANCE)
   })
   
   
@@ -517,6 +538,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
     expect_lt(sum(abs(tail(pred$fixed_effect)-c(4.569245, 4.833311, 4.565894, 4.644225, 4.616655, 4.409673))),TOLERANCE)
     expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.01965535, -0.01853082, -0.53218816, -0.98668655, -0.60581078, -0.03390602))),TOLERANCE)
+    # Wendland covairance and Nelder-Mead
+    capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
+                                        cov_fct_shape=1, cov_fct_taper_range=0.2), file='NUL')
+    gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
+                     learning_rate = 0.05, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3489301, 0.7817690))),TOLERANCE)
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
+    expect_lt(sum(abs(tail(pred$fixed_effect)-c(4.569268, 4.833340, 4.565855, 4.644194, 4.616647, 4.409668))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.01963911, -0.01852577, -0.53242988, -0.98747505, -0.60616534, -0.03392700))),TOLERANCE)
   })
   
   
