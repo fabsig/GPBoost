@@ -61,12 +61,12 @@ is freed in R after initialization}
 \item{params}{A \code{list} with parameters for the model fitting / optimization
  \itemize{
     \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
-    Options: "gradient_descent" or "fisher_scoring". Default="fisher_scoring" for Gaussian data
+    Options: "gradient_descent", "fisher_scoring", or "nelder_mead". Default="fisher_scoring" for Gaussian data
     and "gradient_descent" for other likelihoods.}
     \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
     (for the GPBoost algorithm there are usually none). 
     Options: "gradient_descent" or "wls". Gradient descent steps are done simultaneously 
-    with gradient descent steps for the covariance paramters. 
+    with gradient descent steps for the covariance parameters. 
     "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
     Default="wls" for Gaussian data and "gradient_descent" for other likelihoods.}
     \item{maxit}{ Maximal number of iterations for optimization algorithm. Default=1000.}

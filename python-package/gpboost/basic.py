@@ -4274,7 +4274,7 @@ class GPModel(object):
             Parameters for fitting / optimization:
                 optimizer_cov : string, optional (default = "fisher_scoring" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent" or "fisher_scoring"
+                    Options: "gradient_descent", "fisher_scoring", or "nelder_mead"
                 optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually no).
@@ -4417,7 +4417,7 @@ class GPModel(object):
             Parameters for fitting / optimization:
                 optimizer_cov : string, optional (default = "fisher_scoring" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent" or "fisher_scoring"
+                    Options: "gradient_descent", "fisher_scoring", or "nelder_mead"
                 maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
                 delta_rel_conv : double, optional (default = 1e-6)
