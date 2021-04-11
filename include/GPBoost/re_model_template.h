@@ -464,6 +464,9 @@ namespace GPBoost {
 			string_t convergence_criterion = "relative_change_in_log_likelihood",
 			const double* fixed_effects = nullptr,
 			bool learn_covariance_parameters = true) {
+
+			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// DELETE
+
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
 				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov.c_str());
@@ -734,6 +737,11 @@ namespace GPBoost {
 					}
 				}
 			}
+
+			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// DELETE
+			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+			//Log::REInfo("Time for optimization: %g", el_time);// Only for debugging
+
 		}//end OptimLinRegrCoefCovPar
 
 		/*!
@@ -2178,6 +2186,9 @@ namespace GPBoost {
 		* \param fixed_effects Fixed effects component of location parameter
 		*/
 		void CalcGradFLaplace(double* grad_F, const double* fixed_effects = nullptr) {
+
+			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// DELETE
+
 			const double* fixed_effects_cluster_i_ptr = nullptr;
 			vec_t fixed_effects_cluster_i;
 			for (const auto& cluster_i : unique_clusters_) {
@@ -2279,6 +2290,11 @@ namespace GPBoost {
 					}
 				} // end more than one cluster
 			}//end loop over cluster
+
+			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// DELETE
+			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+			//Log::REInfo("Time for CalcGradFLaplace: %g", el_time);// Only for debug
+
 		}//end CalcGradFLaplace
 
 		/*!
@@ -4451,146 +4467,14 @@ namespace GPBoost {
 					pars_init.segment(num_cov_par_, num_covariates) = beta;//regresion coefficients
 				}
 			}
-
-
-			//Old version using cppoptlib//DELETE
-			//class EvalLLforOptim : public cppoptlib::Problem<double> {
-			//public:
-			//	using typename cppoptlib::Problem<double>::Scalar;
-			//	using typename cppoptlib::Problem<double>::TVector;
-			//	//Constructor
-			//	EvalLLforOptim(REModelTemplate<T_mat, T_chol>* re_model_templ,
-			//		const double* fixed_effects) {
-			//		re_model_templ_ = re_model_templ;
-			//		fixed_effects_ = fixed_effects;
-			//	}
-			//	/*!
-			//	* \brief Find minimum for paramters using an external optimization library (cppoptlib)
-			//	* \param cov_par Covariance parameter on log-scale (for Gaussian data, the nugget variance must not be included)
-			//	* \return Value of the negative log-likelihood (Gaussian data) or the negative approx. marginal log-likelihood (non-Gaussian data)
-			//	*/
-			//	double value(const TVector& pars) {
-			//		vec_t cov_pars, beta, fixed_effects_vec;
-			//		const double* fixed_effects_ptr;
-			//		if (re_model_templ_->has_covariates_) {
-			//			if (re_model_templ_->gauss_likelihood_) {
-			//				cov_pars = pars.segment(0, re_model_templ_->num_cov_par_ - 1);
-			//				beta = pars.segment(re_model_templ_->num_cov_par_ - 1, pars.size() - re_model_templ_->num_cov_par_ + 1);
-			//			}
-			//			else {
-			//				cov_pars = pars.segment(0, re_model_templ_->num_cov_par_);
-			//				beta = pars.segment(re_model_templ_->num_cov_par_, pars.size() - re_model_templ_->num_cov_par_);
-			//			}
-			//			//CONTINUE HERE: Correct? Then implement more tests (also for GPBoost) and then look at example with large data
-			//			re_model_templ_->UpdateFixedEffects(beta, fixed_effects_, fixed_effects_vec);
-			//			fixed_effects_ptr = fixed_effects_vec.data();
-			//		}//end has_covariates_
-			//		else {//no covariates
-			//			cov_pars = pars;
-			//			fixed_effects_ptr = fixed_effects_;
-			//		}
-			//		if (re_model_templ_->gauss_likelihood_) {
-			//			TVector cov_pars_tr(cov_pars.size() + 1);
-			//			cov_pars_tr[0] = 1.;//nugget effect
-			//			cov_pars_tr.segment(1, re_model_templ_->num_cov_par_ - 1) = cov_pars.array().exp().matrix();//back-transform to original scale
-			//			re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars_tr, fixed_effects_ptr);
-			//			cov_pars_tr[0] = re_model_templ_->yTPsiInvy_ / re_model_templ_->num_data_;
-			//			re_model_templ_->sigma2_ = cov_pars_tr[0];
-			//			re_model_templ_->EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_pars_tr[0], re_model_templ_->neg_log_likelihood_);
-			//		}//end gauss_likelihood_
-			//		else {//non-Gaussian data
-			//			const TVector cov_pars_tr = cov_pars.array().exp().matrix();//back-transform to original scale
-			//			re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars_tr, fixed_effects_ptr);
-			//		}
-			//		return re_model_templ_->neg_log_likelihood_;
-			//	}
-			//private:
-			//	REModelTemplate<T_mat, T_chol>* re_model_templ_;
-			//	const double* fixed_effects_;//Externally provided fixed effects component of location parameter (only used for non-Gaussian data)
-			//};//end EvalLLforOptim class definition
-
-			//// Initialization of solver
-			//EvalLLforOptim fopt = EvalLLforOptim(this, fixed_effects);
-			//cppoptlib::NelderMeadSolver<EvalLLforOptim> solver;
-			//typename EvalLLforOptim::TCriteria crit = EvalLLforOptim::TCriteria::defaults();
-			//crit.iterations = max_iter;
-			////crit.fDelta = 1e-6;//DELETE
-			//solver.setStopCriteria(crit);
-			//// Run solver
-			//solver.minimize(fopt, pars_init);
-			//num_it = (int)(solver.criteria().iterations);
-
-
-
-			//Old version using cppoptlib//DELETE
-			////DELETE (no profiling out of sigma2 for Gaussian data)
-			//double value(const TVector& pars) {
-			//	vec_t cov_pars, beta, fixed_effects_vec;
-			//	const double* fixed_effects_ptr;
-			//	if (re_model_templ_->has_covariates_) {
-			//		cov_pars = pars.segment(0, re_model_templ_->num_cov_par_);
-			//		beta = pars.segment(re_model_templ_->num_cov_par_, pars.size() - re_model_templ_->num_cov_par_);
-			//		re_model_templ_->UpdateFixedEffects(beta, fixed_effects_, fixed_effects_vec);
-			//		fixed_effects_ptr = fixed_effects_vec.data();
-			//	}//end has_covariates_
-			//	else {//no covariates
-			//		cov_pars = pars;
-			//		fixed_effects_ptr = fixed_effects_;
-			//	}
-			//	const TVector cov_pars_tr = cov_pars.array().exp().matrix();//back-transform to original scale
-			//	re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars_tr, fixed_effects_ptr);
-			//	return re_model_templ_->neg_log_likelihood_;
-			//}
-			//private:
-			//	REModelTemplate<T_mat, T_chol>* re_model_templ_;
-			//	const double* fixed_effects_;//Externally provided fixed effects component of location parameter (only used for non-Gaussian data)
-			//};//end EvalLLforOptim class definition
-			//// Some checks
-			//CHECK(num_cov_par_ == (int)cov_pars.size());
-			//if (has_covariates_) {
-			//	CHECK(beta.size() == X_.cols());
-			//}
-			//// Initialization of solver
-			//EvalLLforOptim fopt = EvalLLforOptim(this, fixed_effects);
-			//cppoptlib::NelderMeadSolver<EvalLLforOptim> solver;
-			//typename EvalLLforOptim::TCriteria crit = EvalLLforOptim::TCriteria::defaults();
-			//crit.iterations = max_iter;
-			//solver.setStopCriteria(crit);
-			//// Initialization of parameters
-			//vec_t pars_init;
-			//int num_covariates = 0;
-			//if (has_covariates_) {
-			//	num_covariates = (int)beta.size();
-			//}
-			//pars_init = vec_t(num_cov_par_ + num_covariates);
-			//pars_init.segment(0, num_cov_par_) = cov_pars.array().log().matrix();//transform to log-scale
-			//if (has_covariates_) {
-			//	pars_init.segment(num_cov_par_, num_covariates) = beta;//regresion coefficients
-			//}
-			//// Run solver
-			//solver.minimize(fopt, pars_init);
-			//// Transform parameters back
-			//cov_pars = pars_init.segment(0, num_cov_par_).array().exp().matrix();//back-transform to original scale
-			//if (has_covariates_) {
-			//	beta = pars_init.segment(num_cov_par_, num_covariates);
-			//}
-			//num_it = (int)(solver.criteria().iterations);
-
-
+			//Do optimization
 			OptDataOptimLib<T_mat, T_chol> opt_data = OptDataOptimLib<T_mat, T_chol>(this, fixed_effects);
 			optim::algo_settings_t settings;
 			settings.iter_max = max_iter;
 			settings.rel_objfn_change_tol = delta_rel_conv;
-			//if (LightGBM::LogLevelRE::Debug <= Log::GetLevelRE()) {
-			//	settings.print_level = 1;
-			//}
-			//else {
-			//	settings.print_level = 0;
-			//}
 			optim::nm(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 			num_it = (int)settings.opt_iter;
 			neg_log_likelihood_ = settings.opt_fn_value;
-
 			// Transform parameters back for export
 			if (gauss_likelihood_) {
 				cov_pars[0] = sigma2_;

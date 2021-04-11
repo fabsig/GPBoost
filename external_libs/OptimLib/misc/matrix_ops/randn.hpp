@@ -36,7 +36,9 @@
         static std::mt19937 gen{ std::random_device{}() };
         static std::normal_distribution<> dist;
 
-        return Eigen::VectorXd{ nr }.unaryExpr([&](double x) { return dist(gen); });
+        //ChangedForGPBoost
+        return Eigen::VectorXd{ nr }.unaryExpr([&](double) { return dist(gen); });
+        //return Eigen::VectorXd{ nr }.unaryExpr([&](double x) { return dist(gen); });
     }
 
     inline
@@ -46,7 +48,8 @@
         static std::mt19937 gen{ std::random_device{}() };
         static std::normal_distribution<> dist;
 
-        return Eigen::MatrixXd{ nr, nc }.unaryExpr([&](double x) { return dist(gen); });
+        //ChangedForGPBoost
+        return Eigen::MatrixXd{ nr, nc }.unaryExpr([&](double) { return dist(gen); });
     }
 
     #define OPTIM_MATOPS_RANDN_VEC(j) optim::eigen_randn_vec(j)

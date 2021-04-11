@@ -227,19 +227,20 @@ namespace GPBoost {
 			}
 		}
 
-		//Crash can occurr here on Linux (gcc 7.5.0 on Ubuntu 18.04) when row_idx is not increasing for all columns. This seems to be a bug of Eigen
+		//Crash can occur here on Linux (gcc 7.5.0 on Ubuntu 18.04) when row_idx is not increasing for all columns. This seems to be a bug of Eigen
 		//Update 23.04.2020: Problems can also occur on Windows
-		//Bug report filed: https://gitlab.com/libeigen/eigen/-/issues/1852
+		//Bug report filed: https://gitlab.com/libeigen/eigen/-/issues/1852 and https://gitlab.com/libeigen/eigen/-/issues/2210 
 		A_inv_B = Eigen::Map<sp_mat_t>(A->n, B->n, val.size(), col_ptr.data(), row_idx.data(), val.data());
 	}
 
 	void eigen_sp_Lower_sp_RHS_cs_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower) {
-		//Convert Eigen matrices to correct format
-		A.makeCompressed();
-		B.makeCompressed();
 
 		 //Prepocessor flag: Workaround since problems can occurr when calling 'sp_Lower_sp_RHS_cs_solve' from certain gcc versions (e.g. gcc 7.5.0 on Ubuntu 18.04); see comment above in sp_Lower_sp_RHS_cs_solve.
 #if defined(_WIN32) && !defined(__GNUC__)
+
+		//Convert Eigen matrices to correct format
+		A.makeCompressed();
+		B.makeCompressed();
 
 		//This is faster than the version below (in particular if B is very sparse) but it can crash on Linux. Update 23.04.2020: Problems can also occur on Windows
 		//Prepare LHS
@@ -300,7 +301,8 @@ namespace GPBoost {
 
 	void CalcLInvH(sp_mat_t& L, sp_mat_t& H, sp_mat_t& LInvH, bool lower) {
 		eigen_sp_Lower_sp_RHS_solve(L, H, LInvH, lower);
-		//TODO: use eigen_sp_Lower_sp_RHS_cs_solve -> faster? (currently this crashes due to Eigen bug, see the definition of sp_Lower_sp_RHS_cs_solve for more details)
+		//TODO: use eigen_sp_Lower_sp_RHS_cs_solve -> faster (currently this crashes due to Eigen bug, see the definition of sp_Lower_sp_RHS_cs_solve for more details)
+		//eigen_sp_Lower_sp_RHS_cs_solve(L, H, LInvH, lower);
 	}
 
 	void CalcLInvH(sp_mat_t& L, den_mat_t& H, den_mat_t& LInvH, bool lower) {

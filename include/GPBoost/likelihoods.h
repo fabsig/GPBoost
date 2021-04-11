@@ -528,7 +528,7 @@ namespace GPBoost {
 				Id_plus_Wsqrt_ZSigmaZt_Wsqrt = Id + Wsqrt * (*ZSigmaZt) * Wsqrt;
 				chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.compute(Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
 				// Update mode and a_vec_
-				rhs = second_deriv_neg_ll_.asDiagonal() * mode_ + first_deriv_ll_;
+				rhs.array() = second_deriv_neg_ll_.array() * mode_.array() + first_deriv_ll_.array();
 				v_aux = Wsqrt * (*ZSigmaZt) * rhs;
 				a_vec_ = rhs - Wsqrt * (chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(v_aux));
 				mode_ = (*ZSigmaZt) * a_vec_;
@@ -566,7 +566,7 @@ namespace GPBoost {
 			Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
 			Id_plus_Wsqrt_ZSigmaZt_Wsqrt = Id + Wsqrt * (*ZSigmaZt) * Wsqrt;
 			chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.compute(Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
-			approx_marginal_ll -= ((den_mat_t)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
+			approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 			////Only for debugging
 			//Log::REInfo("FindModePostRandEffCalcMLLStable");
@@ -680,9 +680,20 @@ namespace GPBoost {
 				diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
 				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
 				chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.compute(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
+
+				//den_mat_t Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt_aux = den_mat_t(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);//only for debugging
+				//sp_mat_t Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt_aux2 = Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt_aux.sparseView();
+				//Log::REInfo("Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt: number non zeros = %d", Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt_aux2.nonZeros());
+				//den_mat_t chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_aux = den_mat_t(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL());
+				//sp_mat_t chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_aux2 = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_aux.sparseView();
+				//Log::REInfo("chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_: number non zeros = %d", chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_aux2.nonZeros());//only for debugging
+
 				// Update mode and a_vec_
-				v_aux = diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * rhs;
-				a_vec_ = rhs - diag_sqrt_ZtWZ.asDiagonal() * (chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(v_aux));
+				v_aux = (*Sigma) * rhs;
+				v_aux.array() *= diag_sqrt_ZtWZ.array();
+				a_vec_ = -chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(v_aux);
+				a_vec_.array() *= diag_sqrt_ZtWZ.array();
+				a_vec_.array() += rhs.array();
 				mode_ = (*Sigma) * a_vec_;
 				// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 				if (fixed_effects == nullptr) {
@@ -730,7 +741,7 @@ namespace GPBoost {
 			diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
 			Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
 			chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.compute(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
-			approx_marginal_ll -= ((den_mat_t)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
+			approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 			////Only for debugging
 			//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale");
@@ -828,7 +839,7 @@ namespace GPBoost {
 			SigmaI_plus_ZtWZ = SigmaI + Zt * second_deriv_neg_ll_.asDiagonal() * Z;
 			SigmaI_plus_ZtWZ.makeCompressed();
 			chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
-			approx_marginal_ll += -((den_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
+			approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 			////Only for debugging
 			//Log::REInfo("FindModePostRandEffCalcMLLGroupedRE");
@@ -1047,7 +1058,7 @@ namespace GPBoost {
 					CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 				}
 				// Calculate Cholesky factor and update mode
-				rhs = second_deriv_neg_ll_.asDiagonal() * mode_ + first_deriv_ll_;//right hand side for updating mode
+				rhs.array() = second_deriv_neg_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
 				SigmaI_plus_W = SigmaI;
 				SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
 				SigmaI_plus_W.makeCompressed();
@@ -1096,7 +1107,7 @@ namespace GPBoost {
 			SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
 			SigmaI_plus_W.makeCompressed();
 			chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
-			approx_marginal_ll += -((den_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
+			approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 			////Only for debugging
 			//Log::REInfo("FindModePostRandEffCalcMLLVecchia");
@@ -1169,8 +1180,6 @@ namespace GPBoost {
 			C = L_inv_Wsqrt * (*ZSigmaZt);
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
-				//CalcLInvH(L, L_inv_Wsqrt, WI_plus_Sigma_inv, false);//WI_plus_Sigma_inv = Wsqrt * L^T\(L\Wsqrt) = (W^-1 + Sigma)^-1
-				//WI_plus_Sigma_inv = Wsqrt * WI_plus_Sigma_inv;
 				WI_plus_Sigma_inv = L_inv_Wsqrt.transpose() * L_inv_Wsqrt;//WI_plus_Sigma_inv = Wsqrt * L^T\(L\Wsqrt) = (W^-1 + Sigma)^-1
 				// calculate gradient of approx. marginal log-likelihood wrt the mode
 				// note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = ZSigmaZt - C^T*C and (ii) "Z=Id"
@@ -1307,8 +1316,8 @@ namespace GPBoost {
 				}//end omp critical
 			}//end omp parallel
 			T_mat L = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();
-			T_mat L_inv_ZtWZsqrt, ZtWZI_Sigma_inv, C;
-			CalcLInvH(L, ZtWZsqrt, L_inv_ZtWZsqrt, true);//L_inv_ZtWZsqrt = L\ZtWZsqrt
+			T_mat L_inv_ZtWZsqrt, C;
+			CalcLInvH(L, ZtWZsqrt, L_inv_ZtWZsqrt, true);//L_inv_ZtWZsqrt = L\ZtWZsqrt //This is the bottleneck for large data when using sparse matrices
 			C = L_inv_ZtWZsqrt * (*Sigma);
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
@@ -1328,7 +1337,7 @@ namespace GPBoost {
 						}
 					}//end omp critical
 				}//end omp parallel
-				ZtWZI_Sigma_inv = L_inv_ZtWZsqrt.transpose() * L_inv_ZtWZsqrt;//ZtWZI_Sigma_inv = ZtWZsqrt * L^T\(L\ZtWZsqrt) = ((ZtWZ)^-1 + Sigma)^-1
+				T_mat ZtWZI_Sigma_inv = L_inv_ZtWZsqrt.transpose() * L_inv_ZtWZsqrt;//ZtWZI_Sigma_inv = ZtWZsqrt * L^T\(L\ZtWZsqrt) = ((ZtWZ)^-1 + Sigma)^-1
 				// calculate gradient of approx. marginal log-likelihood wrt the mode
 				// note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = ZSigmaZt - C^T*C
 				vec_t d_mll_d_mode = (-0.5 * ((*Sigma).diagonal() - ((T_mat)(C.transpose() * C)).diagonal()).array() * diag_ZtThirdDerivZ.array()).matrix();
@@ -1646,7 +1655,6 @@ namespace GPBoost {
 				//}
 				//Log::REInfo("cov_grad[0]: %g", cov_grad[0]);
 			}//end calc_cov_grad
-
 			// calculate gradient wrt fixed effects
 			if (calc_F_grad) {
 #pragma omp parallel for schedule(static)

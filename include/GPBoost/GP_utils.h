@@ -66,7 +66,7 @@ namespace GPBoost {
 		sp_mat_t& dist);
 
 	/*!
-	* \brief Calculate distance matrix (sparse matrix)
+	* \brief Calculate distance matrix (sparse matrix) when applying tapering (i.e. covariance is zero after a ceartain distances and thus the distance is not saved)
 	* \param coords1 First set of points
 	* \param coords2 Second set of points
 	* \param only_one_set_of_coords If true, coords1=coords1 and dist is a symmetric square matrix

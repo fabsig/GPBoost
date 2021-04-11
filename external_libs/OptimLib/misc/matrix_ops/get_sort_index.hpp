@@ -33,7 +33,9 @@ get_sort_index(const Vec_t& vec_in)
     VecInt_t out_vec(n);
 
     for (size_t i = 0; i < n; ++i) {
-        out_vec(i) = idx[i];
+        //ChangedForGPBoost
+        out_vec(i) = (int)idx[i];
+        //out_vec(i) = idx[i];
     }
 
     return out_vec;

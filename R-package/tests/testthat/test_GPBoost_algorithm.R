@@ -462,7 +462,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      early_stopping_rounds = 5,
                      use_gp_model_for_validation = TRUE)
     expect_equal(bst$best_iter, 27)
-    # print(bst$best_score)
     expect_lt(abs(bst$best_score - 0.550003),TOLERANCE)
   })
   

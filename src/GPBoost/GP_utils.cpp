@@ -118,10 +118,10 @@ namespace GPBoost {
 		std::vector<Triplet_t> triplets;
 		int n_max_entry;
 		if (only_one_set_of_coords) {
-			n_max_entry = (int)(coords1.rows() - 1) * (int)coords2.rows();
+			n_max_entry = 30 * (int)coords1.rows();
 		}
 		else {
-			n_max_entry = (int)coords1.rows() * (int)coords2.rows();
+			n_max_entry = 10 * (int)coords1.rows() + 10 * (int)coords2.rows();
 		}
 		triplets.reserve(n_max_entry);
 		int non_zeros = 0;

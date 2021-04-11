@@ -42,7 +42,7 @@ test_that("gpb.Dataset: slice, dim", {
   dtest <- gpb.Dataset(test_data, label = test_label)
   gpb.Dataset.construct(dtest)
   expect_equal(dim(dtest), dim(test_data))
-  dsub1 <- slice(dtest, seq_len(42L))
+  dsub1 <- gpboost::slice(dtest, seq_len(42L))
   gpb.Dataset.construct(dsub1)
   expect_equal(nrow(dsub1), 42L)
   expect_equal(ncol(dsub1), ncol(test_data))
