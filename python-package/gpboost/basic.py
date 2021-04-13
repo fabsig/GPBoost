@@ -4370,6 +4370,7 @@ class GPModel(object):
         if self.params["trace"]:
             num_it = self.get_num_optim_iter()
             print("Number of iterations until convergence: " + str(num_it))
+        return self
 
     def neg_log_likelihood(self, cov_pars, y):
         """Evaluate the negative log-likelihood.
@@ -4467,6 +4468,7 @@ class GPModel(object):
             ctypes.c_int(self.params["momentum_offset"]),
             c_str(self.params["convergence_criterion"]),
             ctypes.c_bool(self.params["std_dev"])))
+        return self
 
     def get_optim_params(self):
         params = self.params
@@ -4531,6 +4533,7 @@ class GPModel(object):
             ctypes.c_double(self.params["lr_coef"]),
             ctypes.c_double(self.params["acc_rate_coef"]),
             optimizer_coef_c))
+        return self
 
     def get_cov_pars(self):
         """Get (estimated) covariance parameters.
@@ -4602,6 +4605,7 @@ class GPModel(object):
             print(coef)
         if self.params["maxit"] == self.get_num_optim_iter():
             print("Note: no convergence after the maximal number of iterations")
+        return self
 
     def predict(self,
                 y=None,
@@ -4999,6 +5003,7 @@ class GPModel(object):
             gp_coords_pred_c,
             gp_rand_coef_data_pred_c,
             X_pred_c))
+        return self
 
     def get_response_data(self):
         """Get response variable data.
@@ -5096,6 +5101,7 @@ class GPModel(object):
         model_dict = self.model_to_dict()
         with open(filename, 'w+') as f:
             json.dump(model_dict, f, default=json_default_with_numpy)
+        return self
 
     def get_likelihood_name(self):
         buffer_len = 1 << 20

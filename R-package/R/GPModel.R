@@ -635,6 +635,8 @@ gpb.GPModel <- R6::R6Class(
         message(paste0("GPModel: Number of iterations until convergence: ", self$get_num_optim_iter()))
       }
       
+      return(invisible(self))
+      
     },
     
     # Evaluate the negative log-ligelihood
@@ -815,7 +817,7 @@ gpb.GPModel <- R6::R6Class(
                convergence_criterion,
                std_dev)
       
-      return(invisible(NULL))
+      return(invisible(self))
       
     },
     
@@ -904,7 +906,7 @@ gpb.GPModel <- R6::R6Class(
                acc_rate_coef,
                optimizer_coef_c_str)
       
-      return(invisible(NULL))
+      return(invisible(self))
       
     },
     
@@ -1191,7 +1193,7 @@ gpb.GPModel <- R6::R6Class(
                gp_rand_coef_data_pred,
                X_pred)
       
-      return(invisible(NULL))
+      return(invisible(self))
       
     },
     
@@ -1756,7 +1758,7 @@ gpb.GPModel <- R6::R6Class(
                private$handle,
                likelihood_c_str)
       
-      return(invisible(NULL))
+      return(invisible(self))
     },
     
     model_to_list = function(include_response_data=TRUE) {
@@ -1825,8 +1827,11 @@ gpb.GPModel <- R6::R6Class(
       # Use RJSONIO R package since jsonlite and rjson omit the last digit of a double
       save_data_json <- RJSONIO::toJSON(self$model_to_list(include_response_data=TRUE), digits=17)
       write(save_data_json, file=filename)
+      
+      return(invisible(self))
+      
     }
-    
+
   ),
   
   private = list(
@@ -2235,6 +2240,7 @@ summary.GPModel <- function(object, ...){
     cat("\n")
     message("Note: no convergence after the maximal number of iterations")
   }
+  return(invisible(object))
 }
 
 #' Make predictions for a \code{GPModel}
