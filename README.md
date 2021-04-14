@@ -71,6 +71,7 @@ The model is trained using the **GPBoost algorithm, where training means learnin
 
 #### Computational issues
 - Add GPU support for Gaussian processes
+- Add [CHOLMOD](https://github.com/DrTimothyAldenDavis/SuiteSparse) support
 
 #### Methodological issues
 - Implement an approach such that computations scale well (memory and time) for Gaussian process models for non-Gaussian data
