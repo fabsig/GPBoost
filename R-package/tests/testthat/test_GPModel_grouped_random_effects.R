@@ -180,7 +180,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 3437)
     
-    # ##TODO
     # Fit model using Nelder-Mead
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
@@ -236,12 +235,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            group_rand_coef_data = x,
                            ind_effect_group_rand_coef = 1,
                            y = y,
-                           params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
-                                         lr_cov = 0.1, use_nesterov_acc= FALSE, maxit=5))
-    expected_values <- c(0.6435813, 0.9308820, 1.0414605, 1.0717530,
-                         0.6866298, 1.0360369, 0.5270886, 1.2441796)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 5)
+                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.0002845659, 2.4833741395, 1.2376189948, 0.0428108436 ))),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(),1000)
+    
+    # Nelder-Mead
+    gp_model <- fitGPModel(group_data = cbind(group,group2),
+                           group_rand_coef_data = x,
+                           ind_effect_group_rand_coef = 1,
+                           y = y,
+                           params = list(optimizer_cov = "nelder_mead", std_dev = FALSE))
+
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.0522126336, 2.4287341933, 1.2126494963, 0.0001102573))),1E-6)
     
     # Evaluate negative log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.1,1,2,1.5),y=y)

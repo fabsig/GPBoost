@@ -218,7 +218,7 @@ test_that("Binary classification with Gaussian process model with multiple obser
   expect_lt(sum(abs(pred$mu-c(-0.2633282, rep(0,2)))),TOLERANCE2)
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
   pred_resp <- gp_model$predict(y = y, gp_coords_pred = coord_test, cluster_ids_pred = cluster_ids_pred,
-                           cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = TRUE)
+                                cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = TRUE)
   expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.5000000, 0.5000000))),TOLERANCE2)
   expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2500000, 0.2500000))),TOLERANCE2)
 })
@@ -226,7 +226,7 @@ test_that("Binary classification with Gaussian process model with multiple obser
 # Avoid that long tests get executed on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
-  test_that("Binary classification with grouped random effects model ", {
+  test_that("Binary classification with only one grouped random effects model ", {
     
     probs <- pnorm(Z1 %*% b_gr_1)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.823431) < probs)
@@ -294,6 +294,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_response = TRUE)
     expect_lt(sum(abs(pred$mu-rep(0.5,4))),TOLERANCE2)
     
+    # Estimation using Nelder-Mead
+    gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
+    fit(gp_model, y = y, params = list(optimizer_cov = "nelder_mead"))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.4027452)),TOLERANCE2)
+    # Prediction
+    group_test <- c(1,3,3,9999)
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, predict_var = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-c(0.0000000, -0.7935873, -0.7935873, 0.0000000))),TOLERANCE2)
+    expect_lt(sum(abs(as.vector(pred$var)-c(0.1130051, 0.1401125, 0.1401125, 0.4027452))),TOLERANCE2)
+    
     # Evaluate approximate negative marginal log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y)
     expect_lt(abs(nll-65.8590638),TOLERANCE2)
@@ -304,8 +314,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars <- c(0.40255)
     expect_lt(sum(abs(opt$par-cov_pars)),TOLERANCE)
     expect_lt(abs(opt$value-(65.2599674)),TOLERANCE)
-    
-    # Multiple random effects
+  })
+  
+  test_that("Binary classification with multiple grouped random effects model ", {
+
     probs <- pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.57341) < probs)
     gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
@@ -332,6 +344,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                              cov_pars = c(0.9,0.8,1.2), predict_var = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE2)
+    
+    # Multiple random effects: training with Nelder-Mead
+    gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                           y = y, likelihood = "bernoulli_probit",
+                           params = list(optimizer_cov = "nelder_mead"))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3055487, 0.9300562, 0.3048811))),TOLERANCE2)
     
     # Evaluate negative log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.8,1.2),y=y)
@@ -394,6 +412,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, group_data_pred = group_test, predict_response = TRUE)
     expected_mu <- c(0.5336859, 0.2492699, 0.4252731)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
+    
+    # Estimation using Nelder-Mead
+    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                        group_data = group, likelihood = "bernoulli_probit")
+    fit(gp_model, y = y, params = list(optimizer_cov = "nelder_mead", delta_rel_conv=1E-8))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3181320, 1.2795124, 0.1218866))),TOLERANCE2)
     
     # Evaluate approximate negative marginal log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(1.1,0.9,0.2),y=y)
@@ -485,7 +509,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.2341) < probs)
     # Estimation using gradient descent
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                        likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=n-1), file='NUL')
+                                        likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=n-1), file='NUL')
     fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", 
                                        lr_cov = 0.1, use_nesterov_acc = FALSE,
                                        convergence_criterion = "relative_change_in_parameters"))
@@ -494,8 +518,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 40)
     # Prediction
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                           likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=n-1,
-                           y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = FALSE, lr_cov=0.01)), file='NUL')
+                                           likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=n-1,
+                                           y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = FALSE, lr_cov=0.01)), file='NUL')
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(-0.6595663, -0.6638940, 0.4997690)
@@ -514,13 +538,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Evaluate approximate negative marginal log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
     expect_lt(abs(nll-63.6205917),TOLERANCE2)
-
+    
     
     #######################
     ## Less neighbours than observations
     #######################
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                        likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=30), file='NUL')
+                                        likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=30), file='NUL')
     fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", 
                                        lr_cov = 0.1, use_nesterov_acc = FALSE,
                                        convergence_criterion = "relative_change_in_parameters"))
@@ -529,8 +553,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 41)
     # Prediction
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                           likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=30,
-                           y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = FALSE, lr_cov=0.01)), file='NUL')
+                                           likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=30,
+                                           y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = FALSE, lr_cov=0.01)), file='NUL')
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(-0.6849454, -0.6911604, 0.5437782)
@@ -557,16 +581,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.543) < probs)
     # Fit model
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC,
-                           y = y, likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=n-1,
-                           params = list(optimizer_cov = "gradient_descent",
-                                         lr_cov = 1, use_nesterov_acc = TRUE, acc_rate_cov=0.5, maxit=1000)), file='NUL')
+                                           y = y, likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=n-1,
+                                           params = list(optimizer_cov = "gradient_descent",
+                                                         lr_cov = 1, use_nesterov_acc = TRUE, acc_rate_cov=0.5, maxit=1000)), file='NUL')
     expected_values <- c(0.3701097, 0.2846740, 2.1160323, 0.3305266, 0.1241462, 0.1846456)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE2)
     expect_equal(gp_model$get_num_optim_iter(), 39)
     # Prediction
     capture.output( gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC,
-                        cov_function = "exponential", likelihood = "bernoulli_probit",
-                        vecchia_approx=TRUE, num_neighbors=n-1), file='NUL')
+                                        cov_function = "exponential", likelihood = "bernoulli_probit",
+                                        vecchia_approx=TRUE, num_neighbors=n-1), file='NUL')
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
     Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
     pred <- gp_model$predict(y = y, gp_coords_pred = coord_test, gp_rand_coef_data_pred=Z_SVC_test,
@@ -586,9 +610,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     probs <- pnorm(L %*% b_1)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.2978341) < probs)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                           y = y, cluster_ids = cluster_ids,likelihood = "bernoulli_probit",
-                           vecchia_approx=TRUE, num_neighbors=n-1,
-                           params = list(optimizer_cov = "gradient_descent", lr_cov=0.2, use_nesterov_acc = FALSE)), file='NUL')
+                                           y = y, cluster_ids = cluster_ids,likelihood = "bernoulli_probit",
+                                           vecchia_approx=TRUE, num_neighbors=n-1,
+                                           params = list(optimizer_cov = "gradient_descent", lr_cov=0.2, use_nesterov_acc = FALSE)), file='NUL')
     cov_pars <- c(0.5085134, 0.2011667)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
     expect_equal(gp_model$get_num_optim_iter(), 20)
@@ -596,7 +620,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
     cluster_ids_pred = c(1,3,1)
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                        cluster_ids = cluster_ids,likelihood = "bernoulli_probit"), file='NUL')
+                                        cluster_ids = cluster_ids,likelihood = "bernoulli_probit"), file='NUL')
     pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                              cluster_ids_pred = cluster_ids_pred,
                              cov_pars = c(1.5,0.15), predict_cov_mat = TRUE)
@@ -613,11 +637,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.2341) < probs)
     # Estimation using gradient descent
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "wendland", 
-                           cov_fct_shape=0, cov_fct_taper_range=0.1,
-                           y = y, likelihood = "bernoulli_probit",
-                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
-                                         lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                         acc_rate_cov = 0.5)), file='NUL')
+                                           cov_fct_shape=0, cov_fct_taper_range=0.1,
+                                           y = y, likelihood = "bernoulli_probit",
+                                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
+                                                         lr_cov = 0.1, use_nesterov_acc = TRUE,
+                                                         acc_rate_cov = 0.5)), file='NUL')
     cov_pars <- c(0.5748213)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
     expect_equal(gp_model$get_num_optim_iter(), 17)
@@ -669,7 +693,6 @@ test_that("Binary classification with linear predictor and grouped random effect
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
   expect_equal(gp_model$get_num_optim_iter(), 80)
   
-  ##TODO
   # Estimation using Nelder-Mead
   gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
                          y = y, X=X, params = list(optimizer_cov = "nelder_mead",
@@ -736,7 +759,14 @@ test_that("Binary classification with linear predictor and Gaussian process mode
   expected_var <- c(1.557348, 1.563401, 1.381139)
   expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
   expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
-
+  
+  # Estimation using Nelder-Mead
+  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                         y = y, X=X, params = list(optimizer_cov = "nelder_mead",
+                                                   optimizer_coef = "gradient_descent", maxit=10))
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.0003067, 0.3553517))),TOLERANCE)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.0006371053, 0.0007169813))),TOLERANCE)
+  
 })
 
 

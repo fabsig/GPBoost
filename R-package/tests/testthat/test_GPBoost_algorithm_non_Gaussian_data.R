@@ -614,6 +614,29 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_var = TRUE, rawscore = FALSE)
     expect_lt(sum(abs(tail(pred$response_mean)-c(0.049208897, 0.034971804, 0.003212806, 0.582992755, 0.263110688, 0.403178220))),TOLERANCE)
     expect_lt(sum(abs(tail(pred$response_var)-c(0.046787381, 0.033748777, 0.003202484, 0.243112203, 0.193883454, 0.240625543))),TOLERANCE)
+    
+    # Training using Nelder-Mead
+    gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
+    bst <- gpboost(data = X_train,
+                   label = y_train,
+                   gp_model = gp_model,
+                   nrounds = 30,
+                   learning_rate = 0.1,
+                   max_depth = 6,
+                   min_data_in_leaf = 5,
+                   objective = "binary",
+                   verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9895254 )),0.9901214)
+    # Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = TRUE)
+    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.3619819, 0.4815186, 0.5797267, 0.5307275, -1.1649423, 0.3270136))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(rep(-2.001206,3),
+                                                      rep(0,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(rep(0.2162719,3),
+                                                     rep(0.9901214,n_new)))),TOLERANCE)
+    
   })
   
   # This is a slow test
@@ -1029,6 +1052,26 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_var = TRUE, rawscore = FALSE)
     expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.7599903, 0.5543497, 0.1063479, 0.5439268))),TOLERANCE)
     expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.1824051, 0.2470461, 0.0950380, 0.2480704))),TOLERANCE)
+    # Train model using Nelder-Mead
+    gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                        group_data = group_data_train, likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=list(optimizer_cov = "nelder_mead"))
+    bst <- gpb.train(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 5,
+                     learning_rate = 0.5,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     objective = "binary",
+                     verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.2365393, 0.2953749, 0.3388935))),TOLERANCE)
+    # Prediction
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                    group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = TRUE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.32986840, 0.03803726, -0.42457912, -0.15289338))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2230886, 0.3430426, 0.3516477, 0.3406102))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4409069, 0.3524174, -0.9711414, 0.2790272))),TOLERANCE)
     
     # Use validation set to determine number of boosting iteration
     dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
@@ -1147,7 +1190,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-P_RE_mean)),TOLERANCE)
     expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-P_RE_cov)),TOLERANCE)
     expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-P_F)),TOLERANCE)
-
+    
     # Same thing with Vecchia approximation
     capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                         likelihood = "bernoulli_probit", vecchia_approx =TRUE, num_neighbors = ntrain-1), file='NUL')

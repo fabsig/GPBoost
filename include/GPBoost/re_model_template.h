@@ -465,7 +465,7 @@ namespace GPBoost {
 			const double* fixed_effects = nullptr,
 			bool learn_covariance_parameters = true) {
 
-			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// DELETE
+			std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// DELETE
 
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
@@ -738,8 +738,8 @@ namespace GPBoost {
 				}
 			}
 
-			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// DELETE
-			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+			std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// DELETE
+			double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
 			//Log::REInfo("Time for optimization: %g", el_time);// Only for debugging
 
 		}//end OptimLinRegrCoefCovPar
@@ -2187,7 +2187,7 @@ namespace GPBoost {
 		*/
 		void CalcGradFLaplace(double* grad_F, const double* fixed_effects = nullptr) {
 
-			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// DELETE
+			std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// DELETE
 
 			const double* fixed_effects_cluster_i_ptr = nullptr;
 			vec_t fixed_effects_cluster_i;
@@ -2291,8 +2291,8 @@ namespace GPBoost {
 				} // end more than one cluster
 			}//end loop over cluster
 
-			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// DELETE
-			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+			std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// DELETE
+			double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
 			//Log::REInfo("Time for CalcGradFLaplace: %g", el_time);// Only for debug
 
 		}//end CalcGradFLaplace

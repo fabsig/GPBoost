@@ -10,10 +10,6 @@
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
 
-//#include <typeinfo> // Only needed for debugging
-//#include <chrono>  // Only needed for debugging
-//#include <thread> // Only needed for debugging
-
 namespace GPBoost {
 
 	void L_solve(const double* val, const int ncol, double* x) {
@@ -213,6 +209,21 @@ namespace GPBoost {
 			int nz = A->n - top;
 
 			col_ptr[k + 1] = nz + col_ptr[k];
+
+
+			////start to implement sorting of indices to avoid crash but currently not fully implemented (14.04.2021)
+			//// see here for more info: https://stackoverflow.com/questions/33406432/how-to-sort-one-array-and-get-corresponding-second-array-in-c and https://stackoverflow.com/questions/1380463/sorting-a-vector-of-custom-objects
+			//bool ComnparePairs(std::pair<int, double> p1, std::pair<int, double> p2)
+			//{
+			//	return (p1.first < p2.first);
+			//}
+			//std::vector<std::pair<int,double>> aux_vec_sort(nz);
+			//for (int p = top; p < A->n; p++) {
+			//	aux_vec_sort[p - top] = std::make_pair(xi[p], x[xi[p]]);
+			//}
+			//std::sort(aux_vec_sort.begin(), aux_vec_sort.end(), ComnparePairs);
+
+
 			if (lo) {			/* increasing row order */
 				for (int p = top; p < A->n; p++) {
 					row_idx.push_back(xi[p]);
@@ -229,8 +240,9 @@ namespace GPBoost {
 
 		//Crash can occur here on Linux (gcc 7.5.0 on Ubuntu 18.04) when row_idx is not increasing for all columns. This seems to be a bug of Eigen
 		//Update 23.04.2020: Problems can also occur on Windows
-		//Bug report filed: https://gitlab.com/libeigen/eigen/-/issues/1852 and https://gitlab.com/libeigen/eigen/-/issues/2210 
+		//Bug report filed: https://gitlab.com/libeigen/eigen/-/issues/1852 and https://gitlab.com/libeigen/eigen/-/issues/2210
 		A_inv_B = Eigen::Map<sp_mat_t>(A->n, B->n, val.size(), col_ptr.data(), row_idx.data(), val.data());
+
 	}
 
 	void eigen_sp_Lower_sp_RHS_cs_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower) {
