@@ -356,18 +356,4 @@ namespace GPBoost {
 		}
 	}
 
-	void CalcLInvH(den_mat_t& L, sp_mat_t& H, den_mat_t& LInvH, bool lower) {
-		LInvH = den_mat_t(H);
-		int ncols = (int)L.cols();
-#pragma omp parallel for schedule(static)
-		for (int j = 0; j < (int)H.cols(); ++j) {
-			if (lower) {
-				L_solve(L.data(), ncols, LInvH.data() + j * ncols);
-			}
-			else {
-				L_t_solve(L.data(), ncols, LInvH.data() + j * ncols);
-			}
-		}
-	}
-
 }  // namespace GPBoost

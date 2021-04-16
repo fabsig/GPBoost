@@ -245,7 +245,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            ind_effect_group_rand_coef = 1,
                            y = y,
                            params = list(optimizer_cov = "nelder_mead", std_dev = FALSE))
-
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.0522126336, 2.4287341933, 1.2126494963, 0.0001102573))),1E-6)
     
     # Evaluate negative log-likelihood

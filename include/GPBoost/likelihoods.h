@@ -54,9 +54,9 @@ namespace GPBoost {
 
 	/*!
 	* \brief This class implements the likelihoods for the Gaussian proceses
-	* The template parameter <T_chol> can be either <chol_den_mat_t> or <chol_sp_mat_t>
+	* The template parameters <T_mat, T_chol> can be either <den_mat_t, chol_den_mat_t> or <sp_mat_t, chol_sp_mat_t>
 	*/
-	template<typename T_chol>//
+	template<typename T_mat, typename T_chol>
 	class Likelihood {
 	public:
 		/*! \brief Constructor */
@@ -79,7 +79,7 @@ namespace GPBoost {
 			if (likelihood_type_ == "gamma") {
 				aux_pars_ = { 1. };//shape parameter, TODO: also estimate this parameter
 			}
-			chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_ = false;
+			chol_fact_pattern_analyzed_ = false;
 		}
 
 		/*!
@@ -123,7 +123,7 @@ namespace GPBoost {
 				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
 			}
 			likelihood_type_ = likelihood;
-			chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_ = false;
+			chol_fact_pattern_analyzed_ = false;
 		}
 
 		/*!
@@ -465,6 +465,39 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Do Cholesky decomposition
+		* \param[out] chol_fact Cholesky factor
+		* \param psi Matrix for which the Cholesky decomposition should be done
+		*/
+		template <class T_mat_1,  typename std::enable_if< std::is_same<sp_mat_t, T_mat_1>::value>::type * = nullptr  >
+		void CalcChol(T_chol& chol_fact, const T_mat_1& psi) {
+			if (!chol_fact_pattern_analyzed_) {
+				chol_fact.analyzePattern(psi);
+				chol_fact_pattern_analyzed_ = true;
+			}
+			chol_fact.factorize(psi);
+		}
+		template <class T_mat_1, typename std::enable_if< std::is_same<den_mat_t, T_mat_1>::value>::type * = nullptr  >
+		void CalcChol(T_chol& chol_fact, const T_mat_1& psi) {
+			chol_fact.compute(psi);
+		}
+
+		/*!
+		* \brief Apply permutation matrix of Cholesky factor (if it exists)
+		* \param chol_fact Cholesky factor
+		* \param M[out] Matrix to which the permutation is applied to
+		*/
+		template <class T_mat_1, typename std::enable_if< std::is_same<sp_mat_t, T_mat_1>::value>::type * = nullptr  >
+		void ApplyPermutationCholeskyFactor(const T_chol& chol_fact, T_mat_1& M) {
+			if (chol_fact.permutationP().size() > 0) {//Apply permutation if an ordering is used
+				M = chol_fact.permutationP() * M;
+			}
+		}
+		template <class T_mat_1, typename std::enable_if< std::is_same<den_mat_t, T_mat_1>::value>::type * = nullptr  >
+		void ApplyPermutationCholeskyFactor(const T_chol&, T_mat_1&) {
+		}
+
+		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood..
 		*		Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
 		*		In the notation of the paper: "Sigma = Z*Sigma*Z^T" and "Z = Id".
@@ -476,7 +509,6 @@ namespace GPBoost {
 		* \param ZSigmaZt Covariance matrix of latent random effect (can be den_mat_t or sp_mat_t)
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
-		template <typename T_mat>//T_mat can be either den_mat_t or sp_mat_t
 		void FindModePostRandEffCalcMLLStable(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
@@ -526,7 +558,7 @@ namespace GPBoost {
 				// Calculate Cholesky factor of matrix B = Id + Wsqrt * Z*Sigma*Zt * Wsqrt
 				Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
 				Id_plus_Wsqrt_ZSigmaZt_Wsqrt = Id + Wsqrt * (*ZSigmaZt) * Wsqrt;
-				chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.compute(Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
+				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
 				// Update mode and a_vec_
 				rhs.array() = second_deriv_neg_ll_.array() * mode_.array() + first_deriv_ll_.array();
 				v_aux = Wsqrt * (*ZSigmaZt) * rhs;
@@ -565,7 +597,7 @@ namespace GPBoost {
 			}
 			Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
 			Id_plus_Wsqrt_ZSigmaZt_Wsqrt = Id + Wsqrt * (*ZSigmaZt) * Wsqrt;
-			chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.compute(Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
+			CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
 			approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 			////Only for debugging
@@ -596,7 +628,6 @@ namespace GPBoost {
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
-		template <typename T_mat>//T_mat can be either den_mat_t or sp_mat_t
 		void FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
@@ -687,13 +718,7 @@ namespace GPBoost {
 				//Log::REInfo("Time until Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt: %g", el_time);// Only for debugging
 				//begin = std::chrono::steady_clock::now();// DELETE
 
-				////DELETE
-				//if (it == 0) {
-				//	chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.analyzePattern(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
-				//}
-				//chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.factorize(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
-
-				chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.compute(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);//this is the bottleneck (for large data and sparse matrices)
+				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);//this is the bottleneck (for large data and sparse matrices)
 
 				//end = std::chrono::steady_clock::now();// DELETE
 				//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
@@ -766,7 +791,7 @@ namespace GPBoost {
 			}//end omp parallel
 			diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
 			Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
-			chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.compute(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
+			CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
 			approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
 			////Only for debugging
@@ -836,9 +861,9 @@ namespace GPBoost {
 				rhs = Zt * first_deriv_ll_ - SigmaI * mode_;//right hand side for updating mode
 				SigmaI_plus_ZtWZ = SigmaI + Zt * second_deriv_neg_ll_.asDiagonal() * Z;
 				SigmaI_plus_ZtWZ.makeCompressed();
-				if (!chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_) {
+				if (!chol_fact_pattern_analyzed_) {
 					chol_fact_SigmaI_plus_ZtWZ_grouped_.analyzePattern(SigmaI_plus_ZtWZ);
-					chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_ = true;
+					chol_fact_pattern_analyzed_ = true;
 				}
 				chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
 				mode_ += chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(rhs);
@@ -1092,9 +1117,9 @@ namespace GPBoost {
 				SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
 				SigmaI_plus_W.makeCompressed();
 				//Calculation of the Cholesky factor is the bottleneck
-				if (!chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_) {
+				if (!chol_fact_pattern_analyzed_) {
 					chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
-					chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_ = true;
+					chol_fact_pattern_analyzed_ = true;
 				}
 				chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
 				//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
@@ -1166,7 +1191,6 @@ namespace GPBoost {
 		* \param[out] fixed_effect_grad Gradient of approximate marginal log-likelihood wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		template <typename T_mat>//T_mat can be either den_mat_t or sp_mat_t
 		void CalcGradNegMargLikelihoodLAApproxStable(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
@@ -1180,7 +1204,7 @@ namespace GPBoost {
 			bool calc_mode = false) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLStable<T_mat>(y_data, y_data_int, fixed_effects, num_data, ZSigmaZt, mll);
+				FindModePostRandEffCalcMLLStable(y_data, y_data_int, fixed_effects, num_data, ZSigmaZt, mll);
 			}
 			else {
 				CHECK(mode_has_been_calculated_);
@@ -1188,7 +1212,7 @@ namespace GPBoost {
 			// Initialize variables
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
-			sp_mat_t Wsqrt(num_data, num_data);//diagonal matrix with square root of negative second derivatives on the diagonal (sqrt of negative Hessian of log-likelihood)
+			T_mat Wsqrt(num_data, num_data);//diagonal matrix with square root of negative second derivatives on the diagonal (sqrt of negative Hessian of log-likelihood)
 			Wsqrt.setIdentity();
 			vec_t third_deriv(num_data);//vector of third derivatives of log-likelihood
 			if (no_fixed_effects) {
@@ -1205,6 +1229,7 @@ namespace GPBoost {
 			Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
 			T_mat L = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();
 			T_mat L_inv_Wsqrt, WI_plus_Sigma_inv, L_inv_Wsqrt_ZSigmaZt;
+			ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Wsqrt);
 			CalcLInvH(L, Wsqrt, L_inv_Wsqrt, true);//L_inv_Wsqrt = L\Wsqrt		
 			L_inv_Wsqrt_ZSigmaZt = L_inv_Wsqrt * (*ZSigmaZt);
 			// calculate gradient wrt covariance parameters
@@ -1273,7 +1298,6 @@ namespace GPBoost {
 		* \param[out] fixed_effect_grad Gradient of approximate marginal log-likelihood wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		template <typename T_mat>//T_mat can be either den_mat_t or sp_mat_t
 		void CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
@@ -1292,7 +1316,7 @@ namespace GPBoost {
 			CHECK(re_comps_cluster_i.size() == 1);
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale<T_mat>(y_data, y_data_int, fixed_effects, num_data,
+				FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale(y_data, y_data_int, fixed_effects, num_data,
 					Sigma, random_effects_indices_of_data, mll);
 			}
 			else {
@@ -1328,7 +1352,7 @@ namespace GPBoost {
 					}
 				}//end omp critical
 			}//end omp parallel
-			sp_mat_t ZtWZsqrt(num_re_, num_re_);//diagonal matrix with square root of diagonal of ZtWZ
+			T_mat ZtWZsqrt(num_re_, num_re_);//diagonal matrix with square root of diagonal of ZtWZ
 			ZtWZsqrt.setIdentity();
 			ZtWZsqrt.diagonal().array() = diag_ZtWZ.array().sqrt();
 			vec_t third_deriv(num_data);//vector of third derivatives of log-likelihood
@@ -1351,6 +1375,7 @@ namespace GPBoost {
 			}//end omp parallel
 			T_mat L = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();
 			T_mat L_inv_ZtWZsqrt, L_inv_ZtWZsqrt_Sigma;
+			ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, ZtWZsqrt);
 
 			begin = std::chrono::steady_clock::now();// DELETE
 
@@ -1459,7 +1484,6 @@ namespace GPBoost {
 		* \param[out] fixed_effect_grad Gradient wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		template <typename T_mat>//T_mat can be either den_mat_t or sp_mat_t
 		void CalcGradNegMargLikelihoodLAApproxGroupedRE(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
@@ -1856,7 +1880,6 @@ namespace GPBoost {
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		template <typename T_mat>//T_mat can be either den_mat_t or sp_mat_t
 		void PredictLAApproxStable(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
@@ -1871,7 +1894,7 @@ namespace GPBoost {
 			bool calc_mode = false) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLStable<T_mat>(y_data, y_data_int, fixed_effects, num_data, ZSigmaZt, mll);
+				FindModePostRandEffCalcMLLStable(y_data, y_data_int, fixed_effects, num_data, ZSigmaZt, mll);
 			}
 			else {
 				CHECK(mode_has_been_calculated_);
@@ -1884,6 +1907,7 @@ namespace GPBoost {
 				T_mat L = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();
 				T_mat Maux, Maux2;
 				Maux = Wsqrt * Cross_Cov.transpose();
+				ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux);
 				CalcLInvH(L, Maux, Maux2, true);//Maux2 = L\(Wsqrt * Cross_Cov^T)
 				if (calc_pred_cov) {
 					pred_cov -= Maux2.transpose() * Maux2;
@@ -1933,7 +1957,6 @@ namespace GPBoost {
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		template <typename T_mat>//T_mat can be either den_mat_t or sp_mat_t
 		void PredictLAApproxOnlyOneGPCalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
@@ -1949,7 +1972,7 @@ namespace GPBoost {
 			bool calc_mode = false) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale<T_mat>(y_data, y_data_int, fixed_effects,
+				FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale(y_data, y_data_int, fixed_effects,
 					num_data, Sigma, random_effects_indices_of_data, mll);
 			}
 			else {
@@ -1993,6 +2016,7 @@ namespace GPBoost {
 				T_mat L = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();
 				T_mat Maux, Maux2;
 				Maux = ZtWZsqrt * Cross_Cov.transpose();
+				ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux);
 				CalcLInvH(L, Maux, Maux2, true);//Maux2 = L\(ZtWZsqrt * Cross_Cov^T)
 				if (calc_pred_cov) {
 					pred_cov -= Maux2.transpose() * Maux2;
@@ -2047,7 +2071,6 @@ namespace GPBoost {
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		template <typename T_mat>//T_mat can be either den_mat_t or sp_mat_t
 		void PredictLAApproxGroupedRE(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
@@ -2131,7 +2154,6 @@ namespace GPBoost {
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		template <typename T_mat>//T_mat can be either den_mat_t or sp_mat_t
 		void PredictLAApproxOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
@@ -2229,7 +2251,6 @@ namespace GPBoost {
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		template <typename T_mat>//T_mat can be either den_mat_t or sp_mat_t
 		void PredictLAApproxVecchia(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
@@ -2256,9 +2277,12 @@ namespace GPBoost {
 				sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL();
 				T_mat SigmaI_CrossCovT = B.transpose() * D_inv * B * Cross_Cov.transpose();
 				if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().size() > 0) {//Permutation is only used when having an ordering
-					SigmaI_CrossCovT = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * SigmaI_CrossCovT;
+					T_mat PSigmaI_CrossCovT = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * SigmaI_CrossCovT;
+					CalcLInvH(L, PSigmaI_CrossCovT, Maux, true);
 				}
-				CalcLInvH(L, SigmaI_CrossCovT, Maux, true);
+				else {
+					CalcLInvH(L, SigmaI_CrossCovT, Maux, true);
+				}
 				if (calc_pred_cov) {
 					pred_cov += -Cross_Cov * SigmaI_CrossCovT + Maux.transpose() * Maux;
 				}
@@ -2406,13 +2430,13 @@ namespace GPBoost {
 		chol_sp_mat_AMDOrder_t chol_fact_SigmaI_plus_ZtWZ_vecchia_;
 		//Note: chol_sp_mat_AMDOrder_t (AMD permutation) is faster than chol_sp_mat_t (no permutation) for the Vecchia approcimation but for the grouped random effects the difference is small.
 		//			chol_sp_mat_COLAMDOrder_t is slower than no ordering or chol_sp_mat_AMDOrder_t for both grouped random effects and the Vecchia approximation
-		/*! \brief If true, the pattern of chol_fact_SigmaI_plus_ZtWZ_grouped_ or chol_fact_SigmaI_plus_ZtWZ_vecchia_ has been analyzed */
-		bool chol_fact_SigmaI_plus_ZtWZ_pattern_analyzed_ = false;
 		/*! 
 		* \brief Cholesky factors of matrix B = I + Wsqrt *  Z * Sigma * Zt * Wsqrt in Laplace approximation (for version 'Stable') 
 		*		or of matrix B = Id + ZtWZsqrt * Sigma * ZtWZsqrt (for version 'OnlyOneGPCalculationsOnREScale')
 		*/
 		T_chol chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_;
+		/*! \brief If true, the pattern for the Cholesky factor (chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, chol_fact_SigmaI_plus_ZtWZ_grouped_, or chol_fact_SigmaI_plus_ZtWZ_vecchia_) has been analyzed */
+		bool chol_fact_pattern_analyzed_ = false;
 		/*! \brief If true, the mode has been initialized to 0 */
 		bool mode_initialized_ = false;
 		/*! \brief If true, the mode has been determined */
