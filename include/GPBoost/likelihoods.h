@@ -635,9 +635,9 @@ namespace GPBoost {
 			const std::shared_ptr<T_mat> Sigma,
 			const data_size_t * const random_effects_indices_of_data,
 			double& approx_marginal_ll) {
-			std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();// only for debugging
-			std::chrono::steady_clock::time_point begin, end;// only for debugging
-			double el_time;
+			//std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();// only for debugging
+			//std::chrono::steady_clock::time_point begin, end;// only for debugging
+			//double el_time;
 			// Initialize variables
 			if (!mode_initialized_) {
 				InitializeModeAvec();
@@ -668,9 +668,6 @@ namespace GPBoost {
 			vec_t rhs, v_aux;
 			int it;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
-
-				begin = std::chrono::steady_clock::now();// DELETE
-
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -712,18 +709,7 @@ namespace GPBoost {
 				// Calculate Cholesky factor of matrix B = Id + ZtWZsqrt * Sigma * ZtWZsqrt
 				diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
 				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
-				
-				//end = std::chrono::steady_clock::now();// DELETE
-				//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
-				//Log::REInfo("Time until Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt: %g", el_time);// Only for debugging
-				//begin = std::chrono::steady_clock::now();// DELETE
-
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);//this is the bottleneck (for large data and sparse matrices)
-
-				//end = std::chrono::steady_clock::now();// DELETE
-				//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
-				//Log::REInfo("Time for Cholesky factor: %g", el_time);// Only for debugging
-				//begin = std::chrono::steady_clock::now();// DELETE
 
 				//only for debugging
 				//den_mat_t Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt_aux = den_mat_t(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
@@ -737,12 +723,6 @@ namespace GPBoost {
 				v_aux = (*Sigma) * rhs;
 				v_aux.array() *= diag_sqrt_ZtWZ.array();
 				a_vec_ = -chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(v_aux);
-
-				//end = std::chrono::steady_clock::now();// DELETE
-				//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
-				//Log::REInfo("Time for solving for a_vec: %g", el_time);// Only for debugging
-				//begin = std::chrono::steady_clock::now();// DELETE
-
 				a_vec_.array() *= diag_sqrt_ZtWZ.array();
 				a_vec_.array() += rhs.array();
 				mode_ = (*Sigma) * a_vec_;
@@ -1310,9 +1290,6 @@ namespace GPBoost {
 			double* cov_grad,
 			vec_t & fixed_effect_grad,
 			bool calc_mode = false) {
-			std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();// only for debugging
-			std::chrono::steady_clock::time_point begin, end;// only for debugging
-			double el_time;
 			CHECK(re_comps_cluster_i.size() == 1);
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
@@ -1376,23 +1353,8 @@ namespace GPBoost {
 			T_mat L = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();
 			T_mat L_inv_ZtWZsqrt, L_inv_ZtWZsqrt_Sigma;
 			ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, ZtWZsqrt);
-
-			begin = std::chrono::steady_clock::now();// DELETE
-
 			CalcLInvH(L, ZtWZsqrt, L_inv_ZtWZsqrt, true);//L_inv_ZtWZsqrt = L\ZtWZsqrt//This is the bottleneck (in this first part) for large data when using sparse matrices
-			
-			//end = std::chrono::steady_clock::now();// DELETE
-			//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
-			//Log::REInfo("Time for CalcLInvH: %g", el_time);// Only for debugging
-			//begin = std::chrono::steady_clock::now();// DELETE
-		
 			L_inv_ZtWZsqrt_Sigma = L_inv_ZtWZsqrt * (*Sigma);
-
-			//end = std::chrono::steady_clock::now();// DELETE
-			//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
-			//Log::REInfo("Time for L_inv_ZtWZsqrt_Sigma: %g", el_time);// Only for debugging
-			//begin = std::chrono::steady_clock::now();// DELETE
-
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
 				vec_t ZtFirstDeriv(num_re_);//sqrt of diagonal matrix ZtWZ
@@ -1458,12 +1420,6 @@ namespace GPBoost {
 					fixed_effect_grad[i] += -0.5 * third_deriv[i] * SigmaI_plus_ZtWZ_inv_diag[random_effects_indices_of_data[i]] -
 						second_deriv_neg_ll_[i] * SigmaI_plus_ZtWZ_inv_d_mll_d_mode[random_effects_indices_of_data[i]];
 				}
-
-				//end = std::chrono::steady_clock::now();// DELETE
-				//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
-				//Log::REInfo("Time for rest calc_F_grad: %g", el_time);// Only for debugging
-				//begin = std::chrono::steady_clock::now();// DELETE
-
 			}//end calc_F_grad
 		}//end CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale
 

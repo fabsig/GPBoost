@@ -468,7 +468,7 @@ namespace GPBoost {
 			const double* fixed_effects = nullptr,
 			bool learn_covariance_parameters = true) {
 
-			std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// DELETE
+			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// only for debugging
 
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
@@ -741,8 +741,8 @@ namespace GPBoost {
 				}
 			}
 
-			std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// DELETE
-			double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
+			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
 			//Log::REInfo("Time for optimization: %g", el_time);// Only for debugging
 
 		}//end OptimLinRegrCoefCovPar
@@ -1739,8 +1739,14 @@ namespace GPBoost {
 							MInvSqrtZtH = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * ZtH_cluster_i;
 						}
 						else {
-							sp_mat_t P_ZtH_cluster_i = P_Zt_[cluster_i] * H_cluster_i;
-							CalcPsiInvSqrtH(P_ZtH_cluster_i, MInvSqrtZtH, cluster_i, true, false);
+							sp_mat_t ZtH_cluster_i;
+							if (chol_fact_has_permutation_) {
+								ZtH_cluster_i = P_Zt_[cluster_i] * H_cluster_i;
+							}
+							else {
+								ZtH_cluster_i = Zt_[cluster_i] * H_cluster_i;
+							}
+							CalcPsiInvSqrtH(ZtH_cluster_i, MInvSqrtZtH, cluster_i, true, false);
 						}
 						HTPsiInvH_cluster_i = H_cluster_i.transpose() * H_cluster_i - MInvSqrtZtH.transpose() * MInvSqrtZtH;
 					}
@@ -1860,6 +1866,8 @@ namespace GPBoost {
 		std::map<gp_id_t, T_mat> P_Id_;
 		/*! \brief Indicates whether a symbolic decomposition for calculating the Cholesky factor of the covariance matrix has been done or not (only for sparse matrices) */
 		bool chol_fact_pattern_analyzed_ = false;
+		/*! \brief Indicates whether the Cholesky factor has an associated permutation matrix (only for sparse matrices) */
+		bool chol_fact_has_permutation_ = false;
 		/*! \brief Collects inverse covariance matrices Psi^{-1} (usually not saved, but used e.g. in Fisher scoring without the Vecchia approximation) */
 		std::map<gp_id_t, T_mat> psi_inv_;
 		/*! \brief Inverse covariance matrices Sigma^-1 of random effects. This is only used if only_grouped_REs_use_woodbury_identity_==true (if there are only grouped REs) */
@@ -2206,7 +2214,7 @@ namespace GPBoost {
 		*/
 		void CalcGradFLaplace(double* grad_F, const double* fixed_effects = nullptr) {
 
-			std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// DELETE
+			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// only for debugging
 
 			const double* fixed_effects_cluster_i_ptr = nullptr;
 			vec_t fixed_effects_cluster_i;
@@ -2310,9 +2318,9 @@ namespace GPBoost {
 				} // end more than one cluster
 			}//end loop over cluster
 
-			std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// DELETE
-			double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
-			//Log::REInfo("Time for CalcGradFLaplace: %g", el_time);// Only for debug
+			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
+			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+			//Log::REInfo("Time for CalcGradFLaplace: %g", el_time);// Only for debugging
 
 		}//end CalcGradFLaplace
 
@@ -2327,6 +2335,7 @@ namespace GPBoost {
 				chol_facts_solve_[cluster_i].analyzePattern(psi);
 				chol_fact_pattern_analyzed_ = true;
 				if (chol_facts_solve_[cluster_i].permutationP().size() > 0) {//Apply permutation if an ordering is used
+					chol_fact_has_permutation_ = true;
 					P_Id_[cluster_i] = chol_facts_solve_[cluster_i].permutationP() * Id_[cluster_i];
 					if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 						P_Zt_[cluster_i] = chol_facts_solve_[cluster_i].permutationP() * Zt_[cluster_i];
@@ -2338,12 +2347,15 @@ namespace GPBoost {
 					}
 				}
 				else {
-					if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
-						P_Id_[cluster_i] = Id_[cluster_i];//TODO: avoid double saving
-						P_Zt_[cluster_i] = Zt_[cluster_i];
-						P_ZtZj_[cluster_i] = ZtZj_[cluster_i];
-					}
+					chol_fact_has_permutation_ = false;
 				}
+				//else {//DELETE
+				//	P_Id_[cluster_i] = Id_[cluster_i];
+				//	if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+				//		P_Zt_[cluster_i] = Zt_[cluster_i];
+				//		P_ZtZj_[cluster_i] = ZtZj_[cluster_i];
+				//	}
+				//}
 			}
 			chol_facts_solve_[cluster_i].factorize(psi);
 			chol_facts_[cluster_i] = chol_facts_solve_[cluster_i].matrixL();
@@ -2359,6 +2371,7 @@ namespace GPBoost {
 		void CalcChol(T3& psi, gp_id_t cluster_i) {
 			chol_facts_solve_[cluster_i].compute(psi);
 			chol_facts_[cluster_i] = chol_facts_solve_[cluster_i].matrixL();
+			chol_fact_has_permutation_ = false;
 		}
 
 		/*!
@@ -2390,7 +2403,12 @@ namespace GPBoost {
 				}
 				else {
 					sp_mat_t L_inv;
-					eigen_sp_Lower_sp_RHS_cs_solve(chol_facts_[cluster_i], P_Id_[cluster_i], L_inv, true);
+					if (chol_fact_has_permutation_) {
+						eigen_sp_Lower_sp_RHS_cs_solve(chol_facts_[cluster_i], P_Id_[cluster_i], L_inv, true);
+					}
+					else {
+						eigen_sp_Lower_sp_RHS_cs_solve(chol_facts_[cluster_i], Id_[cluster_i], L_inv, true);
+					}
 					MInvSqrtZt = L_inv * Zt_[cluster_i];
 				}
 				psi_inv = -MInvSqrtZt.transpose() * MInvSqrtZt;//this is slow since n can be large (O(n^2*m))
@@ -2414,7 +2432,12 @@ namespace GPBoost {
 
 				// Alternative version that avoids the use of CSparse function 'cs_spsolve' on OS's (e.g. Linux) on which this can cause problems
 				sp_mat_t L_inv;
-				eigen_sp_Lower_sp_RHS_solve(chol_facts_[cluster_i], P_Id_[cluster_i], L_inv, true);
+				if (chol_fact_has_permutation_) {
+					eigen_sp_Lower_sp_RHS_solve(chol_facts_[cluster_i], P_Id_[cluster_i], L_inv, true);
+				}
+				else {
+					eigen_sp_Lower_sp_RHS_solve(chol_facts_[cluster_i], Id_[cluster_i], L_inv, true);
+				}
 				psi_inv = L_inv.transpose() * L_inv;//Note: this is the computational bottleneck for large data when psi=ZSigmaZt and its Cholesky factor is sparse e.g. when having a Wendland covariance function
 
 				////Version 2: doing sparse solving "by hand" but ignoring sparse RHS
@@ -2490,7 +2513,7 @@ namespace GPBoost {
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
 		void CalcPsiInvSqrtH(sp_mat_t& H, T3& PsiInvSqrtH, gp_id_t cluster_i, bool lower, bool permute_H) {
 			if (permute_H) {
-				if (chol_facts_solve_[cluster_i].permutationP().size() > 0) {//Apply permutation if an ordering is used
+				if (chol_fact_has_permutation_) {
 					H = chol_facts_solve_[cluster_i].permutationP() * H;
 				}
 			}
@@ -3801,7 +3824,7 @@ namespace GPBoost {
 				}
 				else {
 					y_tilde_[cluster_i] = Zty_[cluster_i];
-					if (chol_facts_solve_[cluster_i].permutationP().size() > 0) {//Apply permutation if an ordering is used
+					if (chol_fact_has_permutation_) {//Apply permutation if an ordering is used
 						y_tilde_[cluster_i] = chol_facts_solve_[cluster_i].permutationP() * y_tilde_[cluster_i];
 					}
 					const double* val = chol_facts_[cluster_i].valuePtr();
@@ -3811,7 +3834,7 @@ namespace GPBoost {
 					if (also_calculate_ytilde2) {
 						vec_t ytilde_aux = y_tilde_[cluster_i];
 						sp_L_t_solve(val, row_idx, col_ptr, cum_num_rand_eff_[cluster_i][num_comps_total_], ytilde_aux.data());
-						if (chol_facts_solve_[cluster_i].permutationP().size() > 0) {//Apply permutation if an ordering is used
+						if (chol_fact_has_permutation_) {//Apply permutation if an ordering is used
 							ytilde_aux = chol_facts_solve_[cluster_i].permutationP().transpose() * ytilde_aux;
 						}
 						y_tilde2_[cluster_i] = Zt_[cluster_i].transpose() * ytilde_aux;
@@ -3900,7 +3923,7 @@ namespace GPBoost {
 						}
 						else {
 							vec_t y_aux_sqrt = y_[cluster_i];
-							if (chol_facts_solve_[cluster_i].permutationP().size() > 0) {//Apply permutation if an ordering is used
+							if (chol_fact_has_permutation_) {//Apply permutation if an ordering is used
 								y_aux_sqrt = chol_facts_solve_[cluster_i].permutationP() * y_aux_sqrt;
 							}
 							const double* val = chol_facts_[cluster_i].valuePtr();
@@ -4038,7 +4061,12 @@ namespace GPBoost {
 									LInvZtZj.diagonal().array() /= sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array();
 								}
 								else {
-									CalcPsiInvSqrtH(P_ZtZj_[cluster_i][j], LInvZtZj, cluster_i, true, false);
+									if (chol_fact_has_permutation_) {
+										CalcPsiInvSqrtH(P_ZtZj_[cluster_i][j], LInvZtZj, cluster_i, true, false);
+									}
+									else {
+										CalcPsiInvSqrtH(ZtZj_[cluster_i][j], LInvZtZj, cluster_i, true, false);
+									}
 								}
 								if (save_psi_inv) {//save for latter use when e.g. calculating the Fisher information
 									LInvZtZj_cluster_i[j] = LInvZtZj;
@@ -4322,7 +4350,12 @@ namespace GPBoost {
 							}
 							else {
 								for (int j = 0; j < num_comps_total_; ++j) {
-									CalcPsiInvSqrtH(P_ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], cluster_i, true, false);
+									if (chol_fact_has_permutation_) {
+										CalcPsiInvSqrtH(P_ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], cluster_i, true, false);
+									}
+									else {
+										CalcPsiInvSqrtH(ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], cluster_i, true, false);
+									}
 								}
 							}
 						}
