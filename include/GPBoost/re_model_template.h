@@ -2349,13 +2349,6 @@ namespace GPBoost {
 				else {
 					chol_fact_has_permutation_ = false;
 				}
-				//else {//DELETE
-				//	P_Id_[cluster_i] = Id_[cluster_i];
-				//	if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
-				//		P_Zt_[cluster_i] = Zt_[cluster_i];
-				//		P_ZtZj_[cluster_i] = ZtZj_[cluster_i];
-				//	}
-				//}
 			}
 			chol_facts_solve_[cluster_i].factorize(psi);
 			chol_facts_[cluster_i] = chol_facts_solve_[cluster_i].matrixL();
