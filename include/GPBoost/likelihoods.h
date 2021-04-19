@@ -710,15 +710,10 @@ namespace GPBoost {
 				diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
 				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);//this is the bottleneck (for large data and sparse matrices)
-
-				//only for debugging
-				//den_mat_t Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt_aux = den_mat_t(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
-				//sp_mat_t Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt_aux2 = Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt_aux.sparseView();
-				//Log::REInfo("Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt: number non zeros = %d", Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt_aux2.nonZeros());
-				//den_mat_t chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_aux = den_mat_t(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL());
-				//sp_mat_t chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_aux2 = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_aux.sparseView();
-				//Log::REInfo("chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_: number non zeros = %d", chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_aux2.nonZeros());//only for debugging
-
+				////only for debugging
+				//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale: Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt));//only for debugging
+				//T_mat chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();//only for debugging
+				//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale: chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_: number non zeros = %d", GetNumberNonZeros<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt));//only for debugging
 				// Update mode and a_vec_
 				v_aux = (*Sigma) * rhs;
 				v_aux.array() *= diag_sqrt_ZtWZ.array();
@@ -1192,8 +1187,9 @@ namespace GPBoost {
 			// Initialize variables
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
-			T_mat Wsqrt(num_data, num_data);//diagonal matrix with square root of negative second derivatives on the diagonal (sqrt of negative Hessian of log-likelihood)
-			Wsqrt.setIdentity();
+			T_mat L_inv_Wsqrt(num_data, num_data);//diagonal matrix with square root of negative second derivatives on the diagonal (sqrt of negative Hessian of log-likelihood)
+			L_inv_Wsqrt.setIdentity();
+			L_inv_Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
 			vec_t third_deriv(num_data);//vector of third derivatives of log-likelihood
 			if (no_fixed_effects) {
 				CalcThirdDerivLogLik(y_data, y_data_int, mode_.data(), num_data, third_deriv.data());
@@ -1206,15 +1202,12 @@ namespace GPBoost {
 				}
 				CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
 			}
-			Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
-			T_mat L = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();
-			T_mat L_inv_Wsqrt, WI_plus_Sigma_inv, L_inv_Wsqrt_ZSigmaZt;
-			ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Wsqrt);
-			CalcLInvH(L, Wsqrt, L_inv_Wsqrt, true);//L_inv_Wsqrt = L\Wsqrt		
-			L_inv_Wsqrt_ZSigmaZt = L_inv_Wsqrt * (*ZSigmaZt);
+			ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt);
+			chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL().solveInPlace(L_inv_Wsqrt);//L_inv_Wsqrt = L\Wsqrt
+			T_mat L_inv_Wsqrt_ZSigmaZt = L_inv_Wsqrt * (*ZSigmaZt);
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
-				WI_plus_Sigma_inv = L_inv_Wsqrt.transpose() * L_inv_Wsqrt;//WI_plus_Sigma_inv = Wsqrt * L^T\(L\Wsqrt) = (W^-1 + Sigma)^-1
+				T_mat WI_plus_Sigma_inv = L_inv_Wsqrt.transpose() * L_inv_Wsqrt;//WI_plus_Sigma_inv = Wsqrt * L^T\(L\Wsqrt) = (W^-1 + Sigma)^-1
 				// calculate gradient of approx. marginal log-likelihood wrt the mode
 				// note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = ZSigmaZt - L_inv_Wsqrt_ZSigmaZt^T*L_inv_Wsqrt_ZSigmaZt and (ii) "Z=Id"
 				vec_t d_mll_d_mode = (-0.5 * ((*ZSigmaZt).diagonal() - ((T_mat)(L_inv_Wsqrt_ZSigmaZt.transpose() * L_inv_Wsqrt_ZSigmaZt)).diagonal()).array() * third_deriv.array()).matrix();
@@ -1290,6 +1283,9 @@ namespace GPBoost {
 			double* cov_grad,
 			vec_t & fixed_effect_grad,
 			bool calc_mode = false) {
+			//std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();// only for debugging
+			//std::chrono::steady_clock::time_point begin, end;// only for debugging
+			//double el_time;
 			CHECK(re_comps_cluster_i.size() == 1);
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
@@ -1329,9 +1325,9 @@ namespace GPBoost {
 					}
 				}//end omp critical
 			}//end omp parallel
-			T_mat ZtWZsqrt(num_re_, num_re_);//diagonal matrix with square root of diagonal of ZtWZ
-			ZtWZsqrt.setIdentity();
-			ZtWZsqrt.diagonal().array() = diag_ZtWZ.array().sqrt();
+			T_mat L_inv_ZtWZsqrt(num_re_, num_re_);//diagonal matrix with square root of diagonal of ZtWZ
+			L_inv_ZtWZsqrt.setIdentity();
+			L_inv_ZtWZsqrt.diagonal().array() = diag_ZtWZ.array().sqrt();
 			vec_t third_deriv(num_data);//vector of third derivatives of log-likelihood
 			CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
 			vec_t diag_ZtThirdDerivZ(num_re_);//sqrt of diagonal matrix ZtWZ
@@ -1350,11 +1346,12 @@ namespace GPBoost {
 					}
 				}//end omp critical
 			}//end omp parallel
-			T_mat L = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();
-			T_mat L_inv_ZtWZsqrt, L_inv_ZtWZsqrt_Sigma;
-			ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, ZtWZsqrt);
-			CalcLInvH(L, ZtWZsqrt, L_inv_ZtWZsqrt, true);//L_inv_ZtWZsqrt = L\ZtWZsqrt//This is the bottleneck (in this first part) for large data when using sparse matrices
-			L_inv_ZtWZsqrt_Sigma = L_inv_ZtWZsqrt * (*Sigma);
+			ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZsqrt);
+			chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL().solveInPlace(L_inv_ZtWZsqrt);//L_inv_ZtWZsqrt = L\ZtWZsqrt //This is the bottleneck (in this first part) for large data when using sparse matrices
+			T_mat L_inv_ZtWZsqrt_Sigma = L_inv_ZtWZsqrt * (*Sigma);
+			////Only for debugging
+			//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale: L_inv_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt));//Only for debugging
+			//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale: L_inv_ZtWZsqrt_Sigma: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt_Sigma));//Only for debugging
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
 				vec_t ZtFirstDeriv(num_re_);//sqrt of diagonal matrix ZtWZ
@@ -1420,7 +1417,13 @@ namespace GPBoost {
 					fixed_effect_grad[i] += -0.5 * third_deriv[i] * SigmaI_plus_ZtWZ_inv_diag[random_effects_indices_of_data[i]] -
 						second_deriv_neg_ll_[i] * SigmaI_plus_ZtWZ_inv_d_mll_d_mode[random_effects_indices_of_data[i]];
 				}
+
+				//std::this_thread::sleep_for(std::chrono::milliseconds(5000));//DELETE
+
 			}//end calc_F_grad
+			//end = std::chrono::steady_clock::now();// only for debugging
+			//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - beginall).count()) / 1000000.;// Only for debugging
+			//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale: TOTAL TIME: %g", el_time);// Only for debugging
 		}//end CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale
 
 		/*!
@@ -1473,16 +1476,13 @@ namespace GPBoost {
 			vec_t third_deriv(num_data);//vector of third derivatives of log-likelihood
 			CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
 			// Calculate (Sigma^-1 + Zt*W*Z)^-1
-			sp_mat_t Id(num_REs, num_REs);
-			Id.setIdentity();
-			sp_mat_t chol_fact_SigmaI_plus_ZtWZ_grouped_L = chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL();
+			sp_mat_t L_inv(num_REs, num_REs);
+			L_inv.setIdentity();
 			if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
-				Id = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * Id;
+				L_inv = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * L_inv;
 			}
-			sp_mat_t L_inv;
-			CalcLInvH(chol_fact_SigmaI_plus_ZtWZ_grouped_L, Id, L_inv, true);
+			chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL().solveInPlace(L_inv);
 			sp_mat_t SigmaI_plus_ZtWZ_inv = L_inv.transpose() * L_inv;
-
 			// calculate gradient of approx. marginal likeligood wrt the mode
 			//Note: the calculation of d_mll_d_mode is the bottleneck of this function (corresponding lines below are indicated with * and, in particular, **)
 			vec_t d_mll_d_mode(num_REs);
@@ -1501,7 +1501,6 @@ namespace GPBoost {
 				//sp_mat_t Zt_d_W_d_mode_i_Z = Zt * diag_d_W_d_mode_i.asDiagonal() * Z;//= Z^T * diag(diag_d_W_d_mode_i) * Z
 				d_mll_d_mode[i] = -0.5 * (Zt_d_W_d_mode_i_Z.cwiseProduct(SigmaI_plus_ZtWZ_inv)).sum();
 			}
-
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
 				sp_mat_t ZtWZ = Zt * second_deriv_neg_ll_.asDiagonal() * Z;
@@ -1760,15 +1759,12 @@ namespace GPBoost {
 				CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
 			}
 			// Calculate (Sigma^-1 + W)^-1
-			sp_mat_t Id(num_data, num_data);
-			Id.setIdentity();
-			sp_mat_t chol_fact_SigmaI_plus_ZtWZ_vecchia_L = chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL();
+			sp_mat_t L_inv(num_data, num_data);
+			L_inv.setIdentity();
 			if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().size() > 0) {//Permutation is only used when having an ordering
-				Id = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * Id;
+				L_inv = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * L_inv;
 			}
-			sp_mat_t L_inv;
-			CalcLInvH(chol_fact_SigmaI_plus_ZtWZ_vecchia_L, Id, L_inv, true);
-			//eigen_sp_Lower_sp_RHS_cs_solve(chol_fact_SigmaI_plus_ZtWZ_vecchia_L, P_Id, L_inv, true);//slower when using cs_solve
+			chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL().solveInPlace(L_inv);
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
 				sp_mat_t SigmaI_plus_W_inv = L_inv.transpose() * L_inv;//Note: this is the computational bottleneck for large data
@@ -1860,19 +1856,17 @@ namespace GPBoost {
 				sp_mat_t Wsqrt(num_data, num_data);//diagonal matrix with square root of negative second derivatives on the diagonal (sqrt of negative Hessian of log-likelihood)
 				Wsqrt.setIdentity();
 				Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
-				T_mat L = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();
-				T_mat Maux, Maux2;
-				Maux = Wsqrt * Cross_Cov.transpose();
+				T_mat Maux = Wsqrt * Cross_Cov.transpose();
 				ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux);
-				CalcLInvH(L, Maux, Maux2, true);//Maux2 = L\(Wsqrt * Cross_Cov^T)
+				chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL().solveInPlace(Maux);
 				if (calc_pred_cov) {
-					pred_cov -= Maux2.transpose() * Maux2;
+					pred_cov -= Maux.transpose() * Maux;
 				}
 				if (calc_pred_var) {
-					Maux2 = Maux2.cwiseProduct(Maux2);
+					Maux = Maux.cwiseProduct(Maux);
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < (int)pred_mean.size(); ++i) {
-						pred_var[i] -= Maux2.col(i).sum();
+						pred_var[i] -= Maux.col(i).sum();
 					}
 				}
 			}
@@ -1969,19 +1963,17 @@ namespace GPBoost {
 				sp_mat_t ZtWZsqrt(num_re_, num_re_);//diagonal matrix with square root of diagonal of ZtWZ
 				ZtWZsqrt.setIdentity();
 				ZtWZsqrt.diagonal().array() = diag_ZtWZ.array().sqrt();
-				T_mat L = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();
-				T_mat Maux, Maux2;
-				Maux = ZtWZsqrt * Cross_Cov.transpose();
+				T_mat Maux = ZtWZsqrt * Cross_Cov.transpose();
 				ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux);
-				CalcLInvH(L, Maux, Maux2, true);//Maux2 = L\(ZtWZsqrt * Cross_Cov^T)
+				chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL().solveInPlace(Maux);//Maux = L\(ZtWZsqrt * Cross_Cov^T)
 				if (calc_pred_cov) {
-					pred_cov -= Maux2.transpose() * Maux2;
+					pred_cov -= Maux.transpose() * Maux;
 				}
 				if (calc_pred_var) {
-					Maux2 = Maux2.cwiseProduct(Maux2);
+					Maux = Maux.cwiseProduct(Maux);
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < (int)pred_mean.size(); ++i) {
-						pred_var[i] -= Maux2.col(i).sum();
+						pred_var[i] -= Maux.col(i).sum();
 					}
 				}
 			}
@@ -2049,23 +2041,21 @@ namespace GPBoost {
 			}
 			pred_mean = Cross_Cov * first_deriv_ll_;
 			if (calc_pred_cov || calc_pred_var) {
-				T_mat Maux, Maux2, Maux_permut;
-				// calculate Maux2 = L\(Z^T * second_deriv_neg_ll_.asDiagonal() * Cross_Cov^T)
-				Maux = Zt * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose();
+				// calculate Maux = L\(Z^T * second_deriv_neg_ll_.asDiagonal() * Cross_Cov^T)
+				T_mat Maux = Zt * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose();
 				if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
 					Maux = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * Maux;
 				}
-				T_mat L = chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL();
-				CalcLInvH(L, Maux, Maux2, true);
+				chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL().solveInPlace(Maux);
 				if (calc_pred_cov) {
-					pred_cov += Maux2.transpose() * Maux2 - (T_mat)(Cross_Cov * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose());
+					pred_cov += Maux.transpose() * Maux - (T_mat)(Cross_Cov * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose());
 				}
 				if (calc_pred_var) {
 					T_mat Maux3 = Cross_Cov.cwiseProduct(Cross_Cov * second_deriv_neg_ll_.asDiagonal());
-					Maux2 = Maux2.cwiseProduct(Maux2);
+					Maux = Maux.cwiseProduct(Maux);
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < (int)pred_mean.size(); ++i) {
-						pred_var[i] += Maux2.col(i).sum() - Maux3.row(i).sum();
+						pred_var[i] += Maux.col(i).sum() - Maux3.row(i).sum();
 					}
 				}
 			}
@@ -2229,16 +2219,12 @@ namespace GPBoost {
 			}
 			pred_mean = Cross_Cov * first_deriv_ll_;
 			if (calc_pred_cov || calc_pred_var) {
-				T_mat Maux; //Maux = L\(Sigma^-1 * Cross_Cov^T), L = Chol(Sigma^-1 + W)
-				sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL();
 				T_mat SigmaI_CrossCovT = B.transpose() * D_inv * B * Cross_Cov.transpose();
+				T_mat Maux = SigmaI_CrossCovT; //Maux = L\(Sigma^-1 * Cross_Cov^T), L = Chol(Sigma^-1 + W)
 				if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().size() > 0) {//Permutation is only used when having an ordering
-					T_mat PSigmaI_CrossCovT = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * SigmaI_CrossCovT;
-					CalcLInvH(L, PSigmaI_CrossCovT, Maux, true);
+					Maux = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * Maux;
 				}
-				else {
-					CalcLInvH(L, SigmaI_CrossCovT, Maux, true);
-				}
+				chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL().solveInPlace(Maux);
 				if (calc_pred_cov) {
 					pred_cov += -Cross_Cov * SigmaI_CrossCovT + Maux.transpose() * Maux;
 				}
@@ -2525,7 +2511,18 @@ namespace GPBoost {
 										0.56940269194964050397,
 										0.64909798155426670071,
 										0.83424747101276179534 };
-	};
+
+		/*! \brief Get number of non-zero entries in matrix */
+		template <class T_mat1, typename std::enable_if< std::is_same<sp_mat_t, T_mat1>::value>::type * = nullptr  >
+		int GetNumberNonZeros(T_mat1 M) {
+			return((int)M.nonZeros());
+		};
+		template <class T_mat1, typename std::enable_if< std::is_same<den_mat_t, T_mat1>::value>::type * = nullptr  >
+		int GetNumberNonZeros(T_mat1 M) {
+			return((int)M.cols() * M.rows());
+		};
+
+	};//end class Likelihood
 
 }  // namespace GPBoost
 
