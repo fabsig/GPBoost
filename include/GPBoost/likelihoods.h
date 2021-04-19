@@ -1417,9 +1417,6 @@ namespace GPBoost {
 					fixed_effect_grad[i] += -0.5 * third_deriv[i] * SigmaI_plus_ZtWZ_inv_diag[random_effects_indices_of_data[i]] -
 						second_deriv_neg_ll_[i] * SigmaI_plus_ZtWZ_inv_d_mll_d_mode[random_effects_indices_of_data[i]];
 				}
-
-				//std::this_thread::sleep_for(std::chrono::milliseconds(5000));//DELETE
-
 			}//end calc_F_grad
 			//end = std::chrono::steady_clock::now();// only for debugging
 			//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - beginall).count()) / 1000000.;// Only for debugging
