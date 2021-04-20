@@ -337,6 +337,9 @@ namespace GPBoost {
 		string_t convergence_criterion_ = "relative_change_in_log_likelihood";//"relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
 		bool cov_pars_optimizer_hase_been_set_ = false;//true if the function 'SetOptimConfig' has been called and optimizer_cov_pars_ has been set
 		bool calc_std_dev_ = false;
+		/*! \brief List of covariance functions wtih compact support */
+		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland",
+			"exponential_tapered" };
 	};
 
 }  // namespace GPBoost

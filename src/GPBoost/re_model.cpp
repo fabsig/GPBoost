@@ -41,7 +41,7 @@ namespace GPBoost {
 		if (cov_fct != nullptr) {
 			cov_fct_str = std::string(cov_fct);
 		}
-		bool use_sparse_matrices = (num_gp + num_gp_rand_coef) == 0 || cov_fct_str == "wendland";
+		bool use_sparse_matrices = (num_gp + num_gp_rand_coef) == 0 || (COMPACT_SUPPORT_COVS_.find(cov_fct_str) != COMPACT_SUPPORT_COVS_.end());
 		if (use_sparse_matrices) {
 			sparse_ = true;
 			re_model_sp_ = std::unique_ptr<REModelTemplate<sp_mat_t, chol_sp_mat_t>>(new REModelTemplate<sp_mat_t, chol_sp_mat_t>(

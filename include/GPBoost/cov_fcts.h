@@ -56,13 +56,13 @@ namespace GPBoost {
 				if (!(AreSame(shape, 0.5) || AreSame(shape, 1.5) || AreSame(shape, 2.5))) {
 					Log::REFatal("Only shape / smoothness parameters 0.5, 1.5, and 2.5 supported for the Matern covariance function");
 				}
-			}		
-			if (cov_fct_type == "powered_exponential") {
+			}
+			else if (cov_fct_type == "powered_exponential") {
 				if (shape <= 0. || shape > 2.) {
 					Log::REFatal("Shape needs to be larger than 0 and smaller or equal than 2 for the 'powered_exponential' covariance function");
 				}
 			}
-			if (cov_fct_type == "wendland") {
+			else if (cov_fct_type == "wendland") {
 				if (!(AreSame(shape, 0.0) || AreSame(shape, 1.0) || AreSame(shape, 2.0))) {
 					Log::REFatal("Only shape / smoothness parameters 0, 1, and 2 supported for the Wendland covariance function");
 				}
@@ -71,6 +71,16 @@ namespace GPBoost {
 				taper_range_ = taper_range;
 				taper_mu_ = taper_mu;
 				num_cov_par_ = 1;
+			}
+			else if (cov_fct_type == "exponential_tapered") {
+				if (!(AreSame(shape, 0.0) || AreSame(shape, 1.0) || AreSame(shape, 2.0))) {
+					Log::REFatal("Only shape / smoothness parameters 0, 1, and 2 supported for the Wendland-tapered exponential covariance function");
+				}
+				CHECK(taper_range > 0.);
+				CHECK(taper_mu >= 1.);
+				taper_range_ = taper_range;
+				taper_mu_ = taper_mu;
+				num_cov_par_ = 2;
 			}
 			cov_fct_type_ = cov_fct_type;
 			shape_ = shape;
@@ -86,10 +96,12 @@ namespace GPBoost {
 		* \param pars Vector with covariance parameters on orignal scale
 		* \param[out] pars_trans Transformed covariance parameters
 		*/
-		void TransformCovPars(const double sigma2, const vec_t& pars, vec_t& pars_trans) {
+		void TransformCovPars(const double sigma2, const vec_t& pars, vec_t& pars_trans) const {
 			pars_trans = pars;
 			pars_trans[0] = pars[0] / sigma2;
-			if (cov_fct_type_ == "exponential" || (cov_fct_type_ == "matern" && AreSame(shape_, 0.5))) {
+			if (cov_fct_type_ == "exponential" ||
+				(cov_fct_type_ == "matern" && AreSame(shape_, 0.5)) ||
+				cov_fct_type_ == "exponential_tapered") {
 				pars_trans[1] = 1. / pars[1];
 			}
 			else if (cov_fct_type_ == "matern" && AreSame(shape_, 1.5)) {
@@ -112,10 +124,12 @@ namespace GPBoost {
 		* \param pars Vector with covariance parameters
 		* \param[out] pars_orig Back-transformed, original covariance parameters
 		*/
-		void TransformBackCovPars(const double sigma2, const vec_t& pars, vec_t& pars_orig) {
+		void TransformBackCovPars(const double sigma2, const vec_t& pars, vec_t& pars_orig) const {
 			pars_orig = pars;
 			pars_orig[0] = sigma2 * pars[0];
-			if (cov_fct_type_ == "exponential" || (cov_fct_type_ == "matern" && AreSame(shape_, 0.5))) {
+			if (cov_fct_type_ == "exponential" ||
+				(cov_fct_type_ == "matern" && AreSame(shape_, 0.5)) ||
+				cov_fct_type_ == "exponential_tapered") {
 				pars_orig[1] = 1. / pars[1];
 			}
 			else if (cov_fct_type_ == "matern" && AreSame(shape_, 1.5)) {
@@ -140,7 +154,9 @@ namespace GPBoost {
 		* \param pars Vector with covariance parameters
 		* \param[out] sigma Covariance matrix
 		*/
-		void GetCovMat(const den_mat_t& dist, const vec_t& pars, den_mat_t& sigma) {
+		void GetCovMat(const den_mat_t& dist,
+			const vec_t& pars,
+			den_mat_t& sigma) const {
 			CHECK(pars.size() == num_cov_par_);
 			if (cov_fct_type_ == "exponential" || (cov_fct_type_ == "matern" && AreSame(shape_, 0.5))) {
 				//den_mat_t sigma(dist.rows(),dist.cols());//TODO: this is not working, check whether this can be done using triangularView? If it works, make dist_ (see re_comp.h) an upper triangular matrix as lower part is not used
@@ -155,51 +171,35 @@ namespace GPBoost {
 				sigma = (pars[0] * (1. + pars[1] * dist.array() + pars[1] * pars[1] * dist.array().square() / 3.) * ((-pars[1] * dist.array()).exp())).matrix();
 			}
 			else if (cov_fct_type_ == "gaussian") {
-
 				sigma = (pars[0] * ((-pars[1] * dist.array().square()).exp())).matrix();
 			}
 			else if (cov_fct_type_ == "powered_exponential") {
 				sigma = (pars[0] * ((-pars[1] * dist.array().pow(shape_)).exp())).matrix();
 			}
-			else if (cov_fct_type_ == "wendland" && AreSame(shape_, 0.)) {
-				sigma = dist / taper_range_;
+			else if (cov_fct_type_ == "wendland") {
+				sigma = den_mat_t(dist.rows(), dist.cols());
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)dist.rows(); ++i) {
 					for (int j = 0; j < (int)dist.cols(); ++j) {
-						if (sigma(i, j) >= 1.) {
+						if (dist(i, j) >= taper_range_) {
 							sigma(i, j) = 0.;
 						}
 						else {
-							sigma(i, j) = pars[0] * std::pow((1. - sigma(i, j)), taper_mu_);
+							sigma(i, j) = pars[0] * WendlandCorrelation(dist(i, j));
 						}
 					}
 				}
 			}
-			else if (cov_fct_type_ == "wendland" && AreSame(shape_, 1.)) {
-				sigma = dist / taper_range_;
+			else if (cov_fct_type_ == "exponential_tapered") {
+				sigma = den_mat_t(dist.rows(), dist.cols());
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)dist.rows(); ++i) {
 					for (int j = 0; j < (int)dist.cols(); ++j) {
-						if (sigma(i, j) >= 1.) {
+						if (dist(i, j) >= taper_range_) {
 							sigma(i, j) = 0.;
 						}
 						else {
-							sigma(i, j) = pars[0] * std::pow((1. - sigma(i, j)), taper_mu_ + 1.) * (1. + sigma(i, j) * (taper_mu_ + 1.));
-						}
-					}
-				}
-			}
-			else if (cov_fct_type_ == "wendland" && AreSame(shape_, 2.)) {
-				sigma = dist / taper_range_;
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < (int)dist.rows(); ++i) {
-					for (int j = 0; j < (int)dist.cols(); ++j) {
-						if (sigma(i, j) >= 1.) {
-							sigma(i, j) = 0.;
-						}
-						else {
-							sigma(i, j) = pars[0] * std::pow((1. - sigma(i, j)), taper_mu_ + 2.) *
-								(1. + sigma(i, j) * (taper_mu_ + 2.) + std::pow(sigma(i, j), 2) * (taper_mu_ * taper_mu_ + 4 * taper_mu_ + 3.) / 3.);
+							sigma(i, j) = pars[0] * WendlandCorrelation(dist(i, j)) * std::exp(-pars[1] * dist(i, j));
 						}
 					}
 				}
@@ -211,41 +211,64 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculates covariance matrix
-		*		Note: this is the version for dense matrixes
+		*		Note: this is the version for sparse matrixes
 		* \param dist Distance matrix
 		* \param pars Vector with covariance parameters
 		* \param[out] sigma Covariance matrix
 		*/
-		void GetCovMat(const sp_mat_t& dist, const vec_t& pars, sp_mat_t& sigma) {
+		void GetCovMat(const sp_mat_t& dist,
+			const vec_t& pars,
+			sp_mat_t& sigma) const {
 			CHECK(pars.size() == num_cov_par_);
 			sigma = dist;
 			if (cov_fct_type_ == "exponential" || (cov_fct_type_ == "matern" && AreSame(shape_, 0.5))) {
-				sigma.coeffs() = pars[0] * ((-pars[1] * sigma.coeffs()).exp());
+				sigma.coeffs() = pars[0] * ((-pars[1] * dist.coeffs()).exp());
 			}
 			else if (cov_fct_type_ == "matern" && AreSame(shape_, 1.5)) {
-				sigma.coeffs() = pars[0] * (1. + pars[1] * sigma.coeffs()) * ((-pars[1] * sigma.coeffs()).exp());
+				sigma.coeffs() = pars[0] * (1. + pars[1] * dist.coeffs()) * ((-pars[1] * dist.coeffs()).exp());
 			}
 			else if (cov_fct_type_ == "matern" && AreSame(shape_, 2.5)) {
-				sigma.coeffs() = pars[0] * (1. + pars[1] * sigma.coeffs() + pars[1] * pars[1] * sigma.coeffs().square() / 3.) * ((-pars[1] * sigma.coeffs()).exp());
+				sigma.coeffs() = pars[0] * (1. + pars[1] * dist.coeffs() + 
+					pars[1] * pars[1] * dist.coeffs().square() / 3.) * ((-pars[1] * dist.coeffs()).exp());
 			}
 			else if (cov_fct_type_ == "gaussian") {
-				sigma.coeffs() = pars[0] * ((-pars[1] * sigma.coeffs().square()).exp());
+				sigma.coeffs() = pars[0] * ((-pars[1] * dist.coeffs().square()).exp());
 			}
 			else if (cov_fct_type_ == "powered_exponential") {
-				sigma.coeffs() = pars[0] * ((-pars[1] * sigma.coeffs().pow(shape_)).exp());
+				sigma.coeffs() = pars[0] * ((-pars[1] * dist.coeffs().pow(shape_)).exp());
 			}
-			else if (cov_fct_type_ == "wendland" && AreSame(shape_, 0.)) {
-				sigma.coeffs() = pars[0] * (1. - sigma.coeffs() / taper_range_).pow(taper_mu_);
+			else if (cov_fct_type_ == "wendland") {
+				sigma.coeffs() = pars[0];
+				AddWendlandCorrelation(sigma, dist);
 			}
-			else if (cov_fct_type_ == "wendland" && AreSame(shape_, 1.)) {
-				sigma.coeffs() = sigma.coeffs() / taper_range_;
-				sigma.coeffs() = pars[0] * (1. - sigma.coeffs()).pow(taper_mu_ + 1.) * (1. + sigma.coeffs() * (taper_mu_ + 1.));
+			else if (cov_fct_type_ == "exponential_tapered") {
+				sigma.coeffs() = pars[0] * ((-pars[1] * dist.coeffs()).exp());
+				AddWendlandCorrelation(sigma, dist);
 			}
-			else if (cov_fct_type_ == "wendland" && AreSame(shape_, 2.)) {
-				sigma.coeffs() = sigma.coeffs() / taper_range_;
-				sigma.coeffs() = pars[0] * (1. - sigma.coeffs()).pow(taper_mu_ + 2.) *
-					(1. + sigma.coeffs() * (taper_mu_ + 2.) + sigma.coeffs().pow(2) * (taper_mu_ * taper_mu_ + 4 * taper_mu_ + 3.) / 3.);
-			}
+			//else if (cov_fct_type_ == "wendland" && AreSame(shape_, 0.)) {
+			//	sigma.coeffs() = pars[0] * (1. - sigma.coeffs() / taper_range_).pow(taper_mu_);
+			//}
+			//else if (cov_fct_type_ == "wendland" && AreSame(shape_, 1.)) {
+			//	sigma.coeffs() = pars[0] * (1. - sigma.coeffs() / taper_range_).pow(taper_mu_ + 1.) *
+			//		(1. + sigma.coeffs() / taper_range_ * (taper_mu_ + 1.));
+			//}
+			//else if (cov_fct_type_ == "wendland" && AreSame(shape_, 2.)) {
+			//	sigma.coeffs() = pars[0] * (1. - sigma.coeffs() / taper_range_).pow(taper_mu_ + 2.) *
+			//		(1. + sigma.coeffs() / taper_range_ * (taper_mu_ + 2.) + (sigma.coeffs() / taper_range_).pow(2) * (taper_mu_ * taper_mu_ + 4 * taper_mu_ + 3.) / 3.);
+			//}
+			//else if (cov_fct_type_ == "exponential_tapered" && AreSame(shape_, 0.)) {
+			//	sigma.coeffs() = pars[0] * (1. - sigma.coeffs() / taper_range_).pow(taper_mu_) * ((-pars[1] * sigma.coeffs()).exp());
+			//}
+			//else if (cov_fct_type_ == "exponential_tapered" && AreSame(shape_, 1.)) {
+			//	sigma.coeffs() = pars[0] * (1. - sigma.coeffs() / taper_range_).pow(taper_mu_ + 1.) *
+			//		(1. + sigma.coeffs() / taper_range_ * (taper_mu_ + 1.)) *
+			//		((-pars[1] * sigma.coeffs()).exp());
+			//}
+			//else if (cov_fct_type_ == "exponential_tapered" && AreSame(shape_, 2.)) {
+			//	sigma.coeffs() = pars[0] * (1. - sigma.coeffs() / taper_range_).pow(taper_mu_ + 2.) *
+			//		(1. + sigma.coeffs() / taper_range_ * (taper_mu_ + 2.) + (sigma.coeffs() / taper_range_).pow(2) * (taper_mu_ * taper_mu_ + 4 * taper_mu_ + 3.) / 3.) *
+			//		((-pars[1] * sigma.coeffs()).exp());
+			//}
 			else {
 				Log::REFatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
@@ -261,10 +284,16 @@ namespace GPBoost {
 		* \param transf_scale If true, the derivative is taken on the transformed scale otherwise with respect to the original range parameter (the parameters values pars are always given on the transformed scale). Optimiziation is done using transf_scale=true. transf_scale=false is needed, for instance, for calcualting the Fisher information on the original scale.
 		* \param marg_var Marginal variance parameters sigma^2 (used only if transf_scale = false to transform back)
 		*/
-		void GetCovMatGradRange(const den_mat_t& dist, const den_mat_t& sigma, const vec_t& pars, den_mat_t& sigma_grad,
-			bool transf_scale = true, double marg_var = 1.) {
+		void GetCovMatGradRange(const den_mat_t& dist,
+			const den_mat_t& sigma,
+			const vec_t& pars,
+			den_mat_t& sigma_grad,
+			bool transf_scale,
+			double marg_var) const {
 			CHECK(pars.size() == num_cov_par_);
-			if (cov_fct_type_ == "exponential" || (cov_fct_type_ == "matern" && AreSame(shape_, 0.5))) {
+			if (cov_fct_type_ == "exponential" ||
+				(cov_fct_type_ == "matern" && AreSame(shape_, 0.5)) ||
+				cov_fct_type_ == "exponential_tapered") {
 				double cm = transf_scale ? (-1. * pars[1]) : (marg_var * pars[1] * pars[1]);
 				sigma_grad = cm * sigma.cwiseProduct(dist);
 			}
@@ -300,10 +329,16 @@ namespace GPBoost {
 		* \param transf_scale If true, the derivative is taken on the transformed scale otherwise with respect to the original range parameter (the parameters values pars are always given on the transformed scale). Optimiziation is done using transf_scale=true. transf_scale=false is needed, for instance, for calcualting the Fisher information on the original scale.
 		* \param marg_var Marginal variance parameters sigma^2 (used only if transf_scale = false to transform back)
 		*/
-		void GetCovMatGradRange(const sp_mat_t& dist, const sp_mat_t& sigma, const vec_t& pars, sp_mat_t& sigma_grad,
-			bool transf_scale = true, double marg_var = 1.) {
+		void GetCovMatGradRange(const sp_mat_t& dist,
+			const sp_mat_t& sigma,
+			const vec_t& pars,
+			sp_mat_t& sigma_grad,
+			bool transf_scale,
+			double marg_var) const {
 			CHECK(pars.size() == num_cov_par_);
-			if (cov_fct_type_ == "exponential" || (cov_fct_type_ == "matern" && AreSame(shape_, 0.5))) {
+			if (cov_fct_type_ == "exponential" ||
+				(cov_fct_type_ == "matern" && AreSame(shape_, 0.5)) ||
+				cov_fct_type_ == "exponential_tapered") {
 				double cm = transf_scale ? (-1. * pars[1]) : (marg_var * pars[1] * pars[1]);
 				sigma_grad = cm * sigma.cwiseProduct(dist);
 			}
@@ -339,18 +374,6 @@ namespace GPBoost {
 			}
 		}
 
-		bool AreSame(double a, double b) {
-			const double epsilon = 0.00000001;
-			bool are_same = false;
-			if (fabs(a) < epsilon) {
-				are_same = fabs(b) < epsilon;
-			}
-			else {
-				are_same = fabs(a - b) < a * epsilon;
-			}
-			return are_same;
-		}
-
 	private:
 		/*! \brief Type of covariance function  */
 		string_t cov_fct_type_;
@@ -362,9 +385,66 @@ namespace GPBoost {
 		double taper_mu_;
 		/*! \brief Number of covariance parameters*/
 		int num_cov_par_;
-
 		/*! \brief List of supported covariance functions */
-		const std::set<string_t> SUPPORTED_COV_TYPES_{ "exponential", "gaussian", "powered_exponential", "matern", "wendland" };
+		const std::set<string_t> SUPPORTED_COV_TYPES_{ "exponential",
+			"gaussian",
+			"powered_exponential",
+			"matern",
+			"wendland",
+			"exponential_tapered" };
+
+		inline bool AreSame(const double a, const double b) const {
+			const double epsilon = 0.00000001;
+			bool are_same = false;
+			if (fabs(a) < epsilon) {
+				are_same = fabs(b) < epsilon;
+			}
+			else {
+				are_same = fabs(a - b) < a * epsilon;
+			}
+			return are_same;
+		}
+
+		/*!
+		* \brief Calculates Wendland correlation function (function used for dense matrices)
+		* \param dist Distance
+		* \return Wendland correlation 
+		*/
+		inline double WendlandCorrelation(const double dist) const {
+			if (AreSame(shape_, 0.)) {
+				return(std::pow((1. - dist / taper_range_), taper_mu_));
+			}
+			else if (AreSame(shape_, 1.)) {
+				return(std::pow((1. - dist / taper_range_), taper_mu_ + 1.) * (1. + dist / taper_range_ * (taper_mu_ + 1.)));
+			}
+			else if (AreSame(shape_, 2.)) {
+				return(std::pow((1. - dist / taper_range_), taper_mu_ + 2.) *
+					(1. + dist / taper_range_ * (taper_mu_ + 2.) + std::pow(dist / taper_range_, 2) * (taper_mu_ * taper_mu_ + 4 * taper_mu_ + 3.) / 3.));
+			}
+			else {
+				return 0.;
+			}
+		}
+
+		/*!
+		* \brief Calculates Wendland correlation function (function used for sparse matrices)
+		* \param[out] sigma (Covariance) matrix to which the Wendland correlation is "added" (multiplied with)
+		* \param dist Distance matrix
+		*/
+		inline void AddWendlandCorrelation(sp_mat_t& sigma, const sp_mat_t& dist) const {
+			if (AreSame(shape_, 0.)) {
+				sigma.coeffs() *= (1. - dist.coeffs() / taper_range_).pow(taper_mu_);
+			}
+			else if (AreSame(shape_, 1.)) {
+				sigma.coeffs() *= (1. - dist.coeffs() / taper_range_).pow(taper_mu_ + 1.) *
+					(1. + dist.coeffs() / taper_range_ * (taper_mu_ + 1.));
+
+			}
+			else if (AreSame(shape_, 2.)) {
+				sigma.coeffs() *= (1. - dist.coeffs() / taper_range_).pow(taper_mu_ + 2.) *
+					(1. + dist.coeffs() / taper_range_ * (taper_mu_ + 2.) + (dist.coeffs() / taper_range_).pow(2) * (taper_mu_ * taper_mu_ + 4 * taper_mu_ + 3.) / 3.);
+			}
+		}
 
 		template<typename>
 		friend class RECompGP;

@@ -796,6 +796,26 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.26011800, -0.04415981, 0.19263073, 0.15299565))),TOLERANCE)
     expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.1362976, 0.1207445, 0.1169245, 0.1249608))),TOLERANCE)
     expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4499996, -0.6171624, -0.5852803, 0.4785638))),TOLERANCE)
+    
+    # Tapering
+    capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential_tapered",
+                        likelihood = "bernoulli_probit", cov_fct_shape=1, cov_fct_taper_range=10) )
+    bst <- gpb.train(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 9,
+                     learning_rate = 0.2,
+                     max_depth = 10,
+                     min_data_in_leaf = 5,
+                     objective = "binary",
+                     verbose = 0)
+    cov_pars_est <- c(0.1777562, 0.1898083)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
+    # Prediction
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                    predict_var = TRUE, rawscore = TRUE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.25264933, 0.07306853, 0.19296519, 0.04058235))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.09654161, 0.10422011, 0.09149145, 0.09198057))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4089283, -0.5569100, -0.7903136, 0.5057746))),TOLERANCE)
   })
   
   

@@ -205,7 +205,7 @@ namespace GPBoost {
 			for (int i = 0; i < this->num_data_; ++i) {
 				this->random_effects_indices_of_data_[i] = map_group_label_index[group_data[i]];
 			}
-			if(save_Z){
+			if (save_Z) {
 				CreateZ();// Create incidence matrix Z
 			}
 			has_ZZt_ = calculateZZt;
@@ -293,7 +293,7 @@ namespace GPBoost {
 			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
 			this->Z_ = sp_mat_t(this->num_data_, num_group_);
 			std::vector<Triplet_t> triplets(this->num_data_);
-	#pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
 			for (int i = 0; i < this->num_data_; ++i) {
 				triplets[i] = Triplet_t(i, this->random_effects_indices_of_data_[i], 1);
 			}
@@ -398,7 +398,7 @@ namespace GPBoost {
 		/*!
 		* \brief Calculate and add covariance matrices from this component for prediction
 		* \param group_data_pred Group data for predictions
-		* \param[out] cross_cov Cross covariance between prediction and observation points 
+		* \param[out] cross_cov Cross covariance between prediction and observation points
 		* \param[out] uncond_pred_cov Unconditional covariance for prediction points (used only if predict_cov_mat==true)
 		* \param predict_cov_mat If true, all matrices are calculated. If false only Ztilde*Sigma*Z^T required for the conditional mean is calculated
 		* \param dont_add_but_overwrite If true, the matrices are not added but overwritten. If false, the matrices are added to cross_cov and uncond_pred_cov
@@ -613,7 +613,7 @@ namespace GPBoost {
 			this->is_rand_coef_ = false;
 			this->has_Z_ = false;
 			double taper_mu = 2.;
-			if (cov_fct == "wendland") {
+			if (cov_fct == "wendland" || cov_fct == "exponential_tapered") {
 				taper_mu = (1. + coords.cols()) / 2. + shape + 0.5;
 				// taper_mu is chosen such that for coords.cols() = 2, the Wendland covariance functions coincide with the ones from Furrer et al. (2006) (Table 1)
 			}
@@ -647,7 +647,7 @@ namespace GPBoost {
 				}
 				//Calculate distances
 				T_mat dist;
-				if (cov_function_->cov_fct_type_ == "wendland") {
+				if (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) {//compactly suported covariance
 					CalculateDistances(coords_, coords_, true, cov_function_->taper_range_, true, dist);
 				}
 				else {
@@ -867,7 +867,8 @@ namespace GPBoost {
 				}
 				mean_dist /= (num_data_find_init * (num_data_find_init - 1) / 2.);
 				//Set the range parameter such that the correlation is down to 0.05 at the mean distance
-				if (cov_function_->cov_fct_type_ == "exponential" || cov_function_->cov_fct_type_ == "matern") {//TODO: find better intial values for matern covariance for shape = 1.5 and shape = 2.5
+				if (cov_function_->cov_fct_type_ == "exponential" || cov_function_->cov_fct_type_ == "matern" ||
+					cov_function_->cov_fct_type_ == "exponential_tapered") {//TODO: find better intial values for matern covariance for shape = 1.5 and shape = 2.5
 					pars[1] = 3. / mean_dist;//pars[1] = 1/range
 				}
 				else if (cov_function_->cov_fct_type_ == "gaussian") {
@@ -1040,7 +1041,7 @@ namespace GPBoost {
 			//Calculate cross distances between "existing" and "new" points
 			T_mat cross_dist;
 			if (has_duplicates) {
-				if (cov_function_->cov_fct_type_ == "wendland") {
+				if (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) {//compactly suported covariance
 					CalculateDistances(coords, coords_pred_unique, false, cov_function_->taper_range_, false, cross_dist);
 				}
 				else {
@@ -1048,7 +1049,7 @@ namespace GPBoost {
 				}
 			}
 			else {
-				if (cov_function_->cov_fct_type_ == "wendland") {
+				if (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) {//compactly suported covariance
 					CalculateDistances(coords, coords_pred, false, cov_function_->taper_range_, false, cross_dist);
 				}
 				else {
@@ -1062,7 +1063,7 @@ namespace GPBoost {
 				if (has_Zstar && this->has_Z_) {
 					ZstarSigmatildeTZT = Zstar * Sigmatilde * this->Z_.transpose();
 				}
-				else if (has_Zstar && !(this->has_Z_)){
+				else if (has_Zstar && !(this->has_Z_)) {
 					ZstarSigmatildeTZT = Zstar * Sigmatilde;
 				}
 				else if (!has_Zstar && this->has_Z_) {
@@ -1080,7 +1081,7 @@ namespace GPBoost {
 			}
 			if (predict_cov_mat) {
 				T_mat dist;
-				if (cov_function_->cov_fct_type_ == "wendland") {
+				if (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) {//compactly suported covariance
 					CalculateDistances(coords_pred, coords_pred, true, cov_function_->taper_range_, false, dist);
 				}
 				else {
@@ -1124,6 +1125,9 @@ namespace GPBoost {
 		bool sigma_defined_ = false;
 		/*! \brief Number of random effects (usually, number of unique random effects except for the Vecchia approximation where unique locations are not separately modelled) */
 		data_size_t num_random_effects_;
+		/*! \brief List of covariance functions wtih compact support */
+		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland",
+			"exponential_tapered" };
 
 		template<typename T_mat_aux, typename T_chol_aux>
 		friend class REModelTemplate;

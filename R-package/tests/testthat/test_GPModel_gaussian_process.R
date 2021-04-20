@@ -771,5 +771,47 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
   })
   
+  test_that("Tapering ", {
+
+    y <- eps + xi
+    # Estimation: large taper range
+    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential_tapered",
+                                        cov_fct_shape=0, cov_fct_taper_range=10) )
+    fit(gp_model, y = y, params = list(optimizer_cov = "nelder_mead", std_dev = TRUE))
+    cov_pars <- c(0.03273474, 0.07718108, 1.07546705, 0.25147762, 0.11602226, 0.03941366)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 48)
+    # Prediction
+    coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE)
+    expected_mu <- c(0.06956388, 1.61286103, 0.44047689)
+    expected_cov <- c(6.220207e-01, 2.020366e-05, 2.264985e-07, 2.020366e-05, 3.536331e-01, 8.450109e-07, 2.264985e-07, 8.450109e-07, 4.203457e-01)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+
+    # With regression term
+    y <- eps + X%*%beta + xi
+    # Fit model
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential_tapered",
+                           y = y, X=X, cov_fct_shape=0, cov_fct_taper_range=10,
+                           params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls",
+                                         delta_rel_conv=1E-6, use_nesterov_acc = FALSE, std_dev = TRUE)) )
+    cov_pars <- c(0.008487178, 0.069981873, 1.001585339, 0.214371248, 0.096500576, 0.030554379)
+    coef <- c(2.30777062, 0.21365165, 1.89948870, 0.09484872)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_lt(sum(abs( as.vector(gp_model$get_coef())-coef)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 8)
+    # Prediction 
+    coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_cov_mat = TRUE)
+    expected_mu <- c(1.196989, 4.063352, 3.156397)
+    expected_cov <- c(6.305291e-01, 1.361678e-05, 8.316878e-08, 1.361678e-05, 3.469265e-01, 2.688201e-07, 8.316878e-08, 2.688201e-07, 4.255276e-01)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+
+  })
+  
 }
 
