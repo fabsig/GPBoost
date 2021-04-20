@@ -608,7 +608,25 @@ namespace GPBoost {
 				Log::REDebug("Initial linear regression coefficients");
 				for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
 			}
-
+			// Initialize optimizer:
+			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian data)
+			// - calculate initial value of objective function
+			CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
+			// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
+			if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
+				if (gauss_likelihood_) {
+					Log::REFatal("NaN or Inf occurred in negative log-likelihood for intial parameters. Please provide better initial values.");
+				}
+				else {
+					Log::REFatal("NaN or Inf occurred in approximate negative marginal log-likelihood for intial parameters. Please provide better initial values.");
+				}
+			}
+			if (gauss_likelihood_) {
+				Log::REDebug("Initial negative log-likelihood: %g", neg_log_likelihood_);
+			}
+			else {
+				Log::REDebug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
+			}
 			if (optimizer_cov == "nelder_mead") {
 				OptimExternal(cov_pars,
 					beta,
@@ -619,17 +637,6 @@ namespace GPBoost {
 					learn_covariance_parameters);
 			}
 			else {
-				// Initialize optimizer:
-				// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian data)
-				// - calculate initial value of objective function
-				CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
-				// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
-				if (gauss_likelihood_) {
-					Log::REDebug("Initial negative log-likelihood: %g", neg_log_likelihood_);
-				}
-				else {
-					Log::REDebug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
-				}
 				// Start optimization
 				for (int it = 0; it < max_iter; ++it) {
 					neg_log_likelihood_lag1_ = neg_log_likelihood_;

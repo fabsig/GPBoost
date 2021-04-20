@@ -571,7 +571,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
     expect_lt(sum(abs(tail(pred$fixed_effect)-c(4.569245, 4.833311, 4.565894, 4.644225, 4.616655, 4.409673))),TOLERANCE)
     expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.01965535, -0.01853082, -0.53218816, -0.98668655, -0.60581078, -0.03390602))),TOLERANCE)
-    # Wendland covairance and Nelder-Mead
+    # Wendland covariance and Nelder-Mead
     capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
                                         cov_fct_shape=1, cov_fct_taper_range=0.2), file='NUL')
     gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
@@ -582,6 +582,32 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test)
     expect_lt(sum(abs(tail(pred$fixed_effect)-c(4.569268, 4.833340, 4.565855, 4.644194, 4.616647, 4.409668))),TOLERANCE)
     expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.01963911, -0.01852577, -0.53242988, -0.98747505, -0.60616534, -0.03392700))),TOLERANCE)
+    
+    ##CONTINUE HERE
+    # Tapering
+    capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential_tapered",
+                                        cov_fct_shape=1, cov_fct_taper_range=20), file='NUL')
+    gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
+                     learning_rate = 0.05, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.24807538, 0.89147953, 0.08303885))),TOLERANCE)
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4983809, -0.7873952, -0.5955610, -0.2461420))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.7247893, 0.8430221, 0.8695055, 1.0858578))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(4.683095, 4.534749, 4.602275, 4.457237))),TOLERANCE)
+    # Tapering and Nelder-Mead
+    capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential_tapered",
+                                        cov_fct_shape=1, cov_fct_taper_range=10), file='NUL')
+    gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
+                     learning_rate = 0.05, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.2386092, 0.9050819, 0.0835053 ))),TOLERANCE)
+    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4893557, -0.7984212, -0.5994199, -0.2511335))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.7180491, 0.8385577, 0.8656088, 1.0878621))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(4.650092, 4.574518, 4.618443, 4.409184))),TOLERANCE)
   })
   
   
