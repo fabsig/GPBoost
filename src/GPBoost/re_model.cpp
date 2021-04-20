@@ -405,7 +405,7 @@ namespace GPBoost {
 				false,
 				convergence_criterion_,
 				nullptr,
-				false);
+				false);//learn_covariance_parameters=false
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(nullptr,
@@ -432,7 +432,7 @@ namespace GPBoost {
 				false,
 				convergence_criterion_,
 				nullptr,
-				false);
+				false);//learn_covariance_parameters=false
 		}
 	}
 

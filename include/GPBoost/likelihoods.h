@@ -1096,7 +1096,7 @@ namespace GPBoost {
 					chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
 					chol_fact_pattern_analyzed_ = true;
 				}
-				chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
+				chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
 				//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
 				//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
 				mode_ = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
@@ -1120,7 +1120,7 @@ namespace GPBoost {
 				else {
 					approx_marginal_ll = approx_marginal_ll_new;
 				}
-			}
+			} // end loop for mode finding
 			if (it == MAXIT_MODE_NEWTON_) {
 				Log::REDebug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
 			}

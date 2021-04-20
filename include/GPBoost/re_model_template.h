@@ -58,12 +58,18 @@ namespace GPBoost {
 	public:
 		//Constructor
 		OptDataOptimLib(REModelTemplate<T_mat, T_chol>* re_model_templ,
-			const double* fixed_effects) {
+			const double* fixed_effects,
+			bool learn_covariance_parameters,
+			vec_t& cov_pars) {
 			re_model_templ_ = re_model_templ;
 			fixed_effects_ = fixed_effects;
+			learn_covariance_parameters_ = learn_covariance_parameters;
+			cov_pars_ = cov_pars;
 		}
 		REModelTemplate<T_mat, T_chol>* re_model_templ_;
 		const double* fixed_effects_;//Externally provided fixed effects component of location parameter (only used for non-Gaussian data)
+		bool learn_covariance_parameters_;//Indicates whether covariance parameters are optimized or not
+		vec_t cov_pars_;//vector of covariance paramters (only used in case the covariance paramters are not estimated)
 
 	};//end EvalLLforOptim class definition
 
@@ -73,41 +79,66 @@ namespace GPBoost {
 	{
 		OptDataOptimLib<T_mat, T_chol>* objfn_data = reinterpret_cast<OptDataOptimLib<T_mat, T_chol>*>(opt_data);
 		REModelTemplate<T_mat, T_chol>* re_model_templ_ = objfn_data->re_model_templ_;
-		const double* fixed_effects_ = objfn_data->fixed_effects_;
-
+		double neg_log_likelihood;
 		vec_t cov_pars, beta, fixed_effects_vec;
 		const double* fixed_effects_ptr;
 		bool gauss_likelihood = re_model_templ_->GetLikelihood() == "gaussian";
-		int num_cov_par = re_model_templ_->GetNumCovPar();
 		bool has_covariates = re_model_templ_->HasCovariates();
-		double neg_log_likelihood;
-		if (has_covariates) {
+		// Determine number of covariance and linear regression coefficient paramters
+		int num_cov_pars_optim, num_covariates;
+		if (objfn_data->learn_covariance_parameters_) {
 			if (gauss_likelihood) {
-				cov_pars = pars.segment(0, num_cov_par - 1);
-				beta = pars.segment(num_cov_par - 1, pars.size() - num_cov_par + 1);
+				num_cov_pars_optim = re_model_templ_->GetNumCovPar() - 1;
 			}
 			else {
-				cov_pars = pars.segment(0, num_cov_par);
-				beta = pars.segment(num_cov_par, pars.size() - num_cov_par);
+				num_cov_pars_optim = re_model_templ_->GetNumCovPar();
 			}
-			re_model_templ_->UpdateFixedEffects(beta, fixed_effects_, fixed_effects_vec);
+		}
+		else {
+			num_cov_pars_optim = 0;
+		}
+		if (has_covariates) {
+			num_covariates = (int)pars.size() - num_cov_pars_optim;
+		}
+		else {
+			num_covariates = 0;
+		}
+		// Extract covariance paramters and regression coefficients from pars vector
+		if (has_covariates) {
+			beta = pars.segment(num_cov_pars_optim, num_covariates);
+			re_model_templ_->UpdateFixedEffects(beta, objfn_data->fixed_effects_, fixed_effects_vec);
 			fixed_effects_ptr = fixed_effects_vec.data();
 		}//end has_covariates_
 		else {//no covariates
-			cov_pars = pars;
-			fixed_effects_ptr = fixed_effects_;
+			//cov_pars = pars;
+			fixed_effects_ptr = objfn_data->fixed_effects_;
 		}
+		if (objfn_data->learn_covariance_parameters_) {
+			if (gauss_likelihood) {
+				cov_pars = vec_t(num_cov_pars_optim + 1);
+				cov_pars[0] = 1.;//nugget effect
+				cov_pars.segment(1, num_cov_pars_optim) = pars.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
+			}
+			else {
+				cov_pars = pars.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
+			}
+		}
+		else {
+			cov_pars = objfn_data->cov_pars_;
+		}
+		// Calculate objective function
 		if (gauss_likelihood) {
-			vec_t cov_pars_tr(cov_pars.size() + 1);
-			cov_pars_tr[0] = 1.;//nugget effect
-			cov_pars_tr.segment(1, num_cov_par - 1) = cov_pars.array().exp().matrix();//back-transform to original scale
-			re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars_tr, fixed_effects_ptr);
-			cov_pars_tr[0] = re_model_templ_->ProfileOutSigma2();
-			re_model_templ_->EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_pars_tr[0], neg_log_likelihood);
+			if (objfn_data->learn_covariance_parameters_) {
+				re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
+				cov_pars[0] = re_model_templ_->ProfileOutSigma2();
+				re_model_templ_->EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_pars[0], neg_log_likelihood);
+			}
+			else {
+				re_model_templ_->EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_pars.data(), neg_log_likelihood);
+			}
 		}//end gauss_likelihood_
 		else {//non-Gaussian data
-			const vec_t cov_pars_tr = cov_pars.array().exp().matrix();//back-transform to original scale
-			re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars_tr, fixed_effects_ptr);
+			re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
 			neg_log_likelihood = re_model_templ_->GetNegLogLikelihood();
 		}
 		return neg_log_likelihood;
@@ -468,7 +499,7 @@ namespace GPBoost {
 			const double* fixed_effects = nullptr,
 			bool learn_covariance_parameters = true) {
 
-			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// only for debugging
+			std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
@@ -579,7 +610,13 @@ namespace GPBoost {
 			}
 
 			if (optimizer_cov == "nelder_mead") {
-				OptimExternal(cov_pars, beta, fixed_effects, max_iter, delta_rel_conv, num_it);
+				OptimExternal(cov_pars,
+					beta,
+					fixed_effects,
+					max_iter,
+					delta_rel_conv,
+					num_it,
+					learn_covariance_parameters);
 			}
 			else {
 				// Initialize optimizer:
@@ -617,16 +654,9 @@ namespace GPBoost {
 							// Set resid for updating covariance parameters
 							vec_t resid = y_vec_ - (X_ * beta);
 							SetY(resid.data());
-							// Calculate y_aux = Psi^-1 * y (if not only_grouped_REs_use_woodbury_identity_) or y_tilde and y_tilde2 (if only_grouped_REs_use_woodbury_identity_) for covariance parameter update (only for Gaussian data)
-							if (only_grouped_REs_use_woodbury_identity_) {
-								CalcYtilde<T_mat>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
-							}
-							else {
-								CalcYAux();//y_aux = Psi^-1 * y
-							}
-							EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_likelihood_after_lin_coef_update_, true, true, true);
+							EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_pars.data(), neg_log_likelihood_after_lin_coef_update_);
 						}
-					}
+					}//end has_covariates_
 					else {
 						neg_log_likelihood_after_lin_coef_update_ = neg_log_likelihood_lag1_;
 					}
@@ -741,8 +771,8 @@ namespace GPBoost {
 				}
 			}
 
-			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
-			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+			std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
+			double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
 			//Log::REInfo("Time for optimization: %g", el_time);// Only for debugging
 
 		}//end OptimLinRegrCoefCovPar
@@ -898,6 +928,26 @@ namespace GPBoost {
 			double& negll) {
 			negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::log(sigma2) + std::log(2 * M_PI));
 		}//end EvalNegLogLikelihoodOnlyUpdateNuggetVariance
+
+		/*!
+		* \brief Calculate the value of the negative log-likelihood when only the fixed effects part has changed and the covariance matrix has not changed
+		*	Note: It is assuzmed that y_ has been set before by calling 'SetY' with the residuals = y - fixed_effcts
+		* \param cov_pars Values for covariance parameters of RE components
+		* \param[out] negll Negative log-likelihood
+		*/
+		void EvalNegLogLikelihoodOnlyUpdateFixedEffects(const double* cov_pars,
+			double& negll) {
+			// Calculate y_aux = Psi^-1 * y (if not only_grouped_REs_use_woodbury_identity_) or y_tilde and y_tilde2 (if only_grouped_REs_use_woodbury_identity_) for covariance parameter update (only for Gaussian data)
+			if (only_grouped_REs_use_woodbury_identity_) {
+				CalcYtilde<T_mat>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
+			}
+			else {
+				CalcYAux();//y_aux = Psi^-1 * y
+			}
+			//Calculate quadratic form y^T Psi^-1 y
+			CalcYTPsiIInvY<T_mat>(yTPsiInvy_, true, 1, false, false);
+			negll = yTPsiInvy_ / 2. / cov_pars[0] + log_det_Psi_ / 2. + num_data_ / 2. * (std::log(cov_pars[0]) + std::log(2 * M_PI));
+		}
 
 		/*!
 		* \brief Calculate the value of the approximate negative marginal log-likelihood obtained when using the Laplace approximation
@@ -2214,7 +2264,7 @@ namespace GPBoost {
 		*/
 		void CalcGradFLaplace(double* grad_F, const double* fixed_effects = nullptr) {
 
-			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// only for debugging
+			std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 
 			const double* fixed_effects_cluster_i_ptr = nullptr;
 			vec_t fixed_effects_cluster_i;
@@ -2318,8 +2368,8 @@ namespace GPBoost {
 				} // end more than one cluster
 			}//end loop over cluster
 
-			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
-			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+			std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
+			double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
 			//Log::REInfo("Time for CalcGradFLaplace: %g", el_time);// Only for debugging
 
 		}//end CalcGradFLaplace
@@ -3362,14 +3412,7 @@ namespace GPBoost {
 				}
 				UpdateFixedEffects(beta_new, fixed_effects, fixed_effects_vec);
 				if (gauss_likelihood_) {
-					// Calculate y_aux = Psi^-1 * y (if not only_grouped_REs_use_woodbury_identity_) or y_tilde and y_tilde2 (if only_grouped_REs_use_woodbury_identity_) for covariance parameter update (only for Gaussian data)
-					if (only_grouped_REs_use_woodbury_identity_) {
-						CalcYtilde<T_mat>(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
-					}
-					else {
-						CalcYAux();//y_aux = Psi^-1 * y
-					}
-					EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_likelihood_after_lin_coef_update_, true, true, true);
+					EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_pars.data(), neg_log_likelihood_after_lin_coef_update_);
 				}//end if gauss_likelihood_
 				else {//non-Gaussian data
 					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEff(fixed_effects_vec.data());//calculate mode and approximate marginal likelihood
@@ -3873,8 +3916,11 @@ namespace GPBoost {
 		* \param CalcYtilde_already_done If true, it is assumed that y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z), has already been calculated (only relevant for only_grouped_REs_use_woodbury_identity_)
 		*/
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
-		void CalcYTPsiIInvY(double& yTPsiInvy, bool all_clusters = true,
-			gp_id_t cluster_ind = 1, bool CalcYAux_already_done = false, bool CalcYtilde_already_done = false) {
+		void CalcYTPsiIInvY(double& yTPsiInvy,
+			bool all_clusters,
+			gp_id_t cluster_ind,
+			bool CalcYAux_already_done,
+			bool CalcYtilde_already_done) {
 			yTPsiInvy = 0;
 			std::vector<gp_id_t> clusters_iterate;
 			if (all_clusters) {
@@ -3939,8 +3985,11 @@ namespace GPBoost {
 		* \param CalcYtilde_already_done If true, it is assumed that y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z), has already been calculated (only relevant for only_grouped_REs_use_woodbury_identity_)
 		*/
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
-		void CalcYTPsiIInvY(double& yTPsiInvy, bool all_clusters = true,
-			gp_id_t cluster_ind = 1, bool CalcYAux_already_done = false, bool CalcYtilde_already_done = false) {
+		void CalcYTPsiIInvY(double& yTPsiInvy,
+			bool all_clusters,
+			gp_id_t cluster_ind,
+			bool CalcYAux_already_done,
+			bool CalcYtilde_already_done) {
 			yTPsiInvy = 0;
 			std::vector<gp_id_t> clusters_iterate;
 			if (all_clusters) {
@@ -4512,41 +4561,61 @@ namespace GPBoost {
 		* \param max_iter Maximal number of iterations
 		* \param delta_rel_conv Convergence criterion: stop iteration if relative change in in parameters is below this value
 		* \param num_it[out] Number of iterations
+		* \param learn_covariance_parameters If true, covariance parameters are estimated
 		*/
 		void OptimExternal(vec_t& cov_pars,
 			vec_t& beta,
 			const double* fixed_effects,
 			int max_iter,
 			double delta_rel_conv,
-			int& num_it) {
-
+			int& num_it,
+			bool learn_covariance_parameters) {
 			// Some checks
 			CHECK(num_cov_par_ == (int)cov_pars.size());
 			if (has_covariates_) {
 				CHECK(beta.size() == X_.cols());
 			}
-			// Initialization of parameters
-			vec_t pars_init;
-			int num_covariates = 0;
+			// Determine number of covariance and linear regression coefficient paramters
+			int num_cov_pars_optim, num_covariates;
+			if (learn_covariance_parameters) {
+				if (gauss_likelihood_) {
+					num_cov_pars_optim = num_cov_par_ - 1;
+				}
+				else {
+					num_cov_pars_optim = num_cov_par_;
+				}
+			}
+			else {
+				num_cov_pars_optim = 0;
+			}
 			if (has_covariates_) {
 				num_covariates = (int)beta.size();
 			}
+			else {
+				num_covariates = 0;
+			}
+			// Initialization of parameters
+			vec_t pars_init;
 			if (gauss_likelihood_) {
-				pars_init = vec_t(num_cov_par_ - 1 + num_covariates);
-				pars_init.segment(0, num_cov_par_ - 1) = cov_pars.segment(1, num_cov_par_ - 1).array().log().matrix();//exclude nugget and transform to log-scale
+				pars_init = vec_t(num_cov_pars_optim + num_covariates);
+				if (learn_covariance_parameters) {
+					pars_init.segment(0, num_cov_pars_optim) = cov_pars.segment(1, num_cov_pars_optim).array().log().matrix();//exclude nugget and transform to log-scale
+				}
 				if (has_covariates_) {
-					pars_init.segment(num_cov_par_ - 1, num_covariates) = beta;//regresion coefficients
+					pars_init.segment(num_cov_pars_optim, num_covariates) = beta;//regresion coefficients
 				}
 			}//end gauss_likelihood_
 			else {//non-Gaussian data
-				pars_init = vec_t(num_cov_par_ + num_covariates);
-				pars_init.segment(0, num_cov_par_) = cov_pars.array().log().matrix();//transform to log-scale
+				pars_init = vec_t(num_cov_pars_optim + num_covariates);
+				if (learn_covariance_parameters) {
+					pars_init.segment(0, num_cov_pars_optim) = cov_pars.array().log().matrix();//transform to log-scale
+				}
 				if (has_covariates_) {
-					pars_init.segment(num_cov_par_, num_covariates) = beta;//regresion coefficients
+					pars_init.segment(num_cov_pars_optim, num_covariates) = beta;//regresion coefficients
 				}
 			}
 			//Do optimization
-			OptDataOptimLib<T_mat, T_chol> opt_data = OptDataOptimLib<T_mat, T_chol>(this, fixed_effects);
+			OptDataOptimLib<T_mat, T_chol> opt_data = OptDataOptimLib<T_mat, T_chol>(this, fixed_effects, learn_covariance_parameters, cov_pars);
 			optim::algo_settings_t settings;
 			settings.iter_max = max_iter;
 			settings.rel_objfn_change_tol = delta_rel_conv;
@@ -4555,19 +4624,22 @@ namespace GPBoost {
 			neg_log_likelihood_ = settings.opt_fn_value;
 			// Transform parameters back for export
 			if (gauss_likelihood_) {
-				cov_pars[0] = sigma2_;
-				cov_pars.segment(1, num_cov_par_ - 1) = pars_init.segment(0, num_cov_par_ - 1).array().exp().matrix();//back-transform to original scale
+				if (learn_covariance_parameters) {
+					cov_pars[0] = sigma2_;
+					cov_pars.segment(1, num_cov_pars_optim) = pars_init.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
+				}
 				if (has_covariates_) {
-					beta = pars_init.segment(num_cov_par_ - 1, num_covariates);
+					beta = pars_init.segment(num_cov_pars_optim, num_covariates);
 				}
 			}//end gauss_likelihood_
 			else {//non-Gaussian data
-				cov_pars = pars_init.segment(0, num_cov_par_).array().exp().matrix();//back-transform to original scale
+				if (learn_covariance_parameters) {
+					cov_pars = pars_init.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
+				}
 				if (has_covariates_) {
-					beta = pars_init.segment(num_cov_par_, num_covariates);
+					beta = pars_init.segment(num_cov_pars_optim, num_covariates);
 				}
 			}
-
 		}//end OptimExternal
 
 		/*!

@@ -421,15 +421,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    min_data_in_leaf = 5,
                    objective = "binary",
                    verbose = 0)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4643149, 0.3556794))),TOLERANCE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4682746, 0.3544995))),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.53598662, -0.03654598, 0.98171542, 0.83375088, -0.58210645, 0.64199625))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.110494, -1.051195, -1.248300,
+    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.53899584, -0.09207871, 0.97135394, 0.82693065, -0.57499653, 0.61848314))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.120990, -1.057176, -1.243158,
                                                       rep(0,n_new)))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1295433, 0.1291980, 0.1289975,
-                                                     rep(0.8199944,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1294617, 0.1286434, 0.1289687,
+                                                     rep(0.8227741,n_new)))),TOLERANCE)
   })
   
   test_that("GPBoost algorithm for binary classification when having only one grouping variable", {
@@ -627,15 +627,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    min_data_in_leaf = 5,
                    objective = "binary",
                    verbose = 0)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9895254 )),0.9901214)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9823337 )),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.3619819, 0.4815186, 0.5797267, 0.5307275, -1.1649423, 0.3270136))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(rep(-2.001206,3),
+    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.3668229, 0.5218973, 0.6283960, 0.5446420, -1.1381589, 0.3394119))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(rep(-2.003468,3),
                                                       rep(0,n_new)))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(rep(0.2162719,3),
-                                                     rep(0.9901214,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(rep(0.2149298,3),
+                                                     rep(0.9823337,n_new)))),TOLERANCE)
     
   })
   
@@ -789,13 +789,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      min_data_in_leaf = 5,
                      objective = "binary",
                      verbose = 0)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.1631764)),TOLERANCE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.1633442)),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.26011800, -0.04415981, 0.19263073, 0.15299565))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.1362976, 0.1207445, 0.1169245, 0.1249608))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4499996, -0.6171624, -0.5852803, 0.4785638))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.26069987, -0.04457552, 0.19229076, 0.15268263))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.1364151, 0.1208361, 0.1170151, 0.1250687))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4510624, -0.6160705, -0.5842803, 0.4796462))),TOLERANCE)
     
     # Tapering
     capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential_tapered",
@@ -1072,10 +1072,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_var = TRUE, rawscore = FALSE)
     expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.7599903, 0.5543497, 0.1063479, 0.5439268))),TOLERANCE)
     expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.1824051, 0.2470461, 0.0950380, 0.2480704))),TOLERANCE)
+    
+    # The following is very slow
     # Train model using Nelder-Mead
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(optimizer_cov = "nelder_mead"))
+    gp_model$set_optim_params(params=list(optimizer_cov = "nelder_mead", delta_rel_conv=1E-8))
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 5,
@@ -1084,14 +1086,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      min_data_in_leaf = 5,
                      objective = "binary",
                      verbose = 0)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.2365393, 0.2953749, 0.3388935))),TOLERANCE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.2393602, 0.2966351, 0.350636))),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                     group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.32986840, 0.03803726, -0.42457912, -0.15289338))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2230886, 0.3430426, 0.3516477, 0.3406102))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4409069, 0.3524174, -0.9711414, 0.2790272))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.289869345, -0.005528924, -0.477569315, -0.202396296))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2219169, 0.3440730, 0.3523430, 0.3414794))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4913889, 0.1638588, -0.9722384, 0.3293834))),TOLERANCE)
     
     # Use validation set to determine number of boosting iteration
     dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
