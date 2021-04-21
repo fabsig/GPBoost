@@ -30,16 +30,16 @@ The following covariance functions are available:
 "exponential", "gaussian", "matern", "powered_exponential", "wendland", "exponential_tapered"
 For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization of Diggle and Ribeiro (2007).
 For "matern", we follow the notation of Rassmusen and Williams (2006).
-For "wendland", we follow the notation of Bevilacqua et al. (2018).
+For "wendland", we follow the notation of Bevilacqua et al. (2019).
 A covariance function with the suffix "_tapered" refers to a covariance function that is multiplied by 
 a compactly supported Wendland covariance function (= tapering)}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
 (=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, 
-we follow the notation of Bevilacqua et al. (2018)). 
+we follow the notation of Bevilacqua et al. (2019)). 
 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.}
 
-\item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)}
+\item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019)}
 
 \item{vecchia_approx}{A \code{boolean}. If true, the Vecchia approximation is used}
 

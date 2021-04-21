@@ -128,11 +128,6 @@ namespace GPBoost {
 			bool calc_std_dev = false);
 
 		/*!
-		* \brief Reset cov_pars_ (to their initial values).
-		*/
-		void ResetCovPars();
-
-		/*!
 		* \brief Set configuration parameters for the optimizer for linear regression coefficients
 		* \param num_covariates Number of coefficients / covariates
 		* \param init_coef Initial values for the regression coefficients
@@ -142,6 +137,11 @@ namespace GPBoost {
 		*/
 		void SetOptimCoefConfig(int num_covariates = 0, double* init_coef = nullptr,
 			double lr_coef = 0.1, double acc_rate_coef = 0.5, const char* optimizer = nullptr);
+
+		/*!
+		* \brief Reset cov_pars_ (to their initial values).
+		*/
+		void ResetCovPars();
 
 		/*!
 		* \brief Find parameters that minimize the negative log-ligelihood (=MLE) using (Nesterov accelerated) gradient descent
@@ -326,7 +326,7 @@ namespace GPBoost {
 		bool use_nesterov_acc_ = true;//only used for "gradient_descent"
 		int nesterov_schedule_version_ = 0;
 		bool optim_trace_ = false;
-		string_t optimizer_cov_pars_ = "fisher_scoring";//"gradient_descent" or "fisher_scoring" (The default = "fisher_scoring" is changed to "gradient_descent" for non-Gaussian data upon initialization)
+		string_t optimizer_cov_pars_ = "gradient_descent";//"gradient_descent", "fisher_scoring", or "nelder_mead" (The default = "fisher_scoring" is changed to "gradient_descent" for non-Gaussian data upon initialization)
 		vec_t coef_;//linear regression coefficients for fixed effects (in case there are any)
 		bool has_covariates_ = false;
 		bool coef_initialized_ = false;
@@ -336,6 +336,7 @@ namespace GPBoost {
 		string_t optimizer_coef_ = "wls";//"gradient_descent" or "wls" (The default = "wls" is changed to "gradient_descent" for non-Gaussian data upon initialization)
 		string_t convergence_criterion_ = "relative_change_in_log_likelihood";//"relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
 		bool cov_pars_optimizer_hase_been_set_ = false;//true if the function 'SetOptimConfig' has been called and optimizer_cov_pars_ has been set
+		bool coef_optimizer_hase_been_set_ = false;//true if the function 'SetOptimCoefConfig' has been called and optimizer_coef_ has been set
 		bool calc_std_dev_ = false;
 		/*! \brief List of covariance functions wtih compact support */
 		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland",

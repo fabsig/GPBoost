@@ -95,7 +95,7 @@ namespace GPBoost {
 			num_cov_pars_ = re_model_den_->num_cov_par_;
 		}
 		if (!GaussLikelihood()) {
-			optimizer_cov_pars_ = "gradient_descent";
+			//optimizer_cov_pars_ = "gradient_descent";
 			optimizer_coef_ = "gradient_descent";
 		}
 	}
@@ -133,6 +133,8 @@ namespace GPBoost {
 		}
 		if (!GaussLikelihood() && !cov_pars_optimizer_hase_been_set_) {
 			optimizer_cov_pars_ = "gradient_descent";
+		}
+		if (!GaussLikelihood() && !coef_optimizer_hase_been_set_) {
 			optimizer_coef_ = "gradient_descent";
 		}
 	}
@@ -185,31 +187,6 @@ namespace GPBoost {
 		calc_std_dev_ = calc_std_dev;
 	}
 
-	void REModel::InitializeCovParsIfNotDefined(const double* y_data) {
-		if (!cov_pars_initialized_) {
-			if (init_cov_pars_provided_) {
-				cov_pars_ = init_cov_pars_;
-			}
-			else {
-				cov_pars_ = vec_t(num_cov_pars_);
-				if (sparse_) {
-					re_model_sp_->FindInitCovPar(y_data, cov_pars_.data());
-				}
-				else {
-					re_model_den_->FindInitCovPar(y_data, cov_pars_.data());
-				}
-				covariance_matrix_has_been_factorized_ = false;
-				init_cov_pars_ = cov_pars_;
-			}
-			cov_pars_initialized_ = true;
-		}
-	}
-
-	void REModel::ResetCovPars() {
-		cov_pars_ = vec_t(num_cov_pars_);
-		cov_pars_initialized_ = false;
-	}
-
 	void REModel::SetOptimCoefConfig(int num_covariates, double* init_coef,
 		double lr_coef, double acc_rate_coef, const char* optimizer) {
 		if (init_coef != nullptr) {
@@ -223,7 +200,13 @@ namespace GPBoost {
 		acc_rate_coef_ = acc_rate_coef;
 		if (optimizer != nullptr) {
 			optimizer_coef_ = std::string(optimizer);
+			coef_optimizer_hase_been_set_ = true;
 		}
+	}
+
+	void REModel::ResetCovPars() {
+		cov_pars_ = vec_t(num_cov_pars_);
+		cov_pars_initialized_ = false;
 	}
 
 	void REModel::OptimCovPar(const double* y_data, const double* fixed_effects) {
@@ -737,6 +720,26 @@ namespace GPBoost {
 		}
 		else {
 			re_model_den_->NewtonUpdateLeafValues(data_leaf_index, num_leaves, leaf_values, cov_pars_[0]);
+		}
+	}
+
+	void REModel::InitializeCovParsIfNotDefined(const double* y_data) {
+		if (!cov_pars_initialized_) {
+			if (init_cov_pars_provided_) {
+				cov_pars_ = init_cov_pars_;
+			}
+			else {
+				cov_pars_ = vec_t(num_cov_pars_);
+				if (sparse_) {
+					re_model_sp_->FindInitCovPar(y_data, cov_pars_.data());
+				}
+				else {
+					re_model_den_->FindInitCovPar(y_data, cov_pars_.data());
+				}
+				covariance_matrix_has_been_factorized_ = false;
+				init_cov_pars_ = cov_pars_;
+			}
+			cov_pars_initialized_ = true;
 		}
 	}
 

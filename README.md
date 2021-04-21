@@ -15,19 +15,18 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 6. [License](#license)
 
 ## Get started
-**GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.** It also allows for independently doing tree-boosting as well as inference and prediction for Gaussian process and mixed effects models. 
-
-The GPBoost library is written in C++ and it has a C API. There exist both a [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and an [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package).
+**GPBoost is a software library for combining tree-boosting with Gaussian process and mixed effects models.** It also allows for independently doing tree-boosting as well as inference and prediction for Gaussian process and mixed effects models. The GPBoost library is predominantly written in C++, and there exist both a [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and an [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package).
 
 **For more information**, you may want to have a look at:
 
 * The [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrating how GPBoost can be used in R and Python
 * The [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package) with installation instructions for the Python and R packages
-* The companion article [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) or this [**blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb)  on how to combine tree-boosting with mixed effects models
+* The companion article [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) or this [**blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) on how to combine tree-boosting with mixed effects models
 * Detailed [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
-* [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) presenting the most important parameters / settings for using the GPBoost library
+* [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) presenting the most important parameters / settings for the GPBoost library
 * [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst) an exhaustive list of all possible parametes and customizations for the tree-boosting part
 * The [**CLI installation guide**](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst) explaining how to install the command line interface (CLI) version
+* Comments on [**computational efficiency and large data**](https://github.com/fabsig/GPBoost/blob/master/docs/Computational_efficiency.md)
 
 
 ## Modeling Background

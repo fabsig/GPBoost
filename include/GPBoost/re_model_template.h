@@ -510,7 +510,7 @@ namespace GPBoost {
 			}
 			if (!gauss_likelihood_) {
 				if (optimizer_cov == "fisher_scoring") {
-					Log::REFatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian data. Only 'gradient_descent' is supported.", optimizer_cov.c_str());
+					Log::REFatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian data. ", optimizer_cov.c_str());
 				}
 				if (calc_std_dev) {
 					Log::REFatal("Calculation of standard deviations is not supported for non-Gaussian data.");
@@ -520,8 +520,8 @@ namespace GPBoost {
 				if (SUPPORTED_OPTIM_COEF_.find(optimizer_coef) == SUPPORTED_OPTIM_COEF_.end()) {
 					Log::REFatal("Optimizer option '%s' is not supported for regression coefficients.", optimizer_coef.c_str());
 				}
-				if (!gauss_likelihood_ && optimizer_coef != "gradient_descent") {
-					Log::REFatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian data. Only 'gradient_descent' is supported.", optimizer_coef.c_str());
+				if (!gauss_likelihood_ && optimizer_coef == "wls") {
+					Log::REFatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian data.", optimizer_coef.c_str());
 				}
 			}
 			if (gauss_likelihood_ && fixed_effects != nullptr) {
@@ -1944,7 +1944,7 @@ namespace GPBoost {
 		/*! \brief List of supported optimizers for covariance parameters */
 		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring", "nelder_mead" };
 		/*! \brief List of supported optimizers for regression coefficients */
-		const std::set<string_t> SUPPORTED_OPTIM_COEF_{ "gradient_descent", "wls" };
+		const std::set<string_t> SUPPORTED_OPTIM_COEF_{ "gradient_descent", "wls", "nelder_mead" };
 		/*! \brief List of supported convergence criteria used for terminating the optimization algorithm */
 		const std::set<string_t> SUPPORTED_CONV_CRIT_{ "relative_change_in_parameters", "relative_change_in_log_likelihood" };
 		/*! \brief Maximal number of steps for which step halving for the learning rate is done */

@@ -18,14 +18,14 @@
 #' "exponential", "gaussian", "matern", "powered_exponential", "wendland", "exponential_tapered"
 #' For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization of Diggle and Ribeiro (2007).
 #' For "matern", we follow the notation of Rassmusen and Williams (2006).
-#' For "wendland", we follow the notation of Bevilacqua et al. (2018).
+#' For "wendland", we follow the notation of Bevilacqua et al. (2019).
 #' A covariance function with the suffix "_tapered" refers to a covariance function that is multiplied by 
 #' a compactly supported Wendland covariance function (= tapering)
 #' @param cov_fct_shape A \code{numeric} specifying the shape parameter of the covariance function 
 #' (=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, 
-#' we follow the notation of Bevilacqua et al. (2018)). 
+#' we follow the notation of Bevilacqua et al. (2019)). 
 #' This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
-#' @param cov_fct_taper_range A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)
+#' @param cov_fct_taper_range A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019)
 #' @param vecchia_approx A \code{boolean}. If true, the Vecchia approximation is used 
 #' @param num_neighbors An \code{integer} specifying the number of neighbors for the Vecchia approximation
 #' @param vecchia_ordering A \code{string} specifying the ordering used in the Vecchia approximation. 
@@ -822,6 +822,7 @@ gpb.GPModel <- R6::R6Class(
                std_dev)
       
       return(invisible(self))
+     
       
     },
     
@@ -847,7 +848,7 @@ gpb.GPModel <- R6::R6Class(
     
     # Set configuration parameters for the optimizer
     set_optim_coef_params = function(params = list()) {
-      num_coef=NULL
+      num_coef <- NULL
       
       if (gpb.is.null.handle(private$handle)) {
         stop("GPModel: Gaussian process model has not been initialized")

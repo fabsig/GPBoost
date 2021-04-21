@@ -1,6 +1,7 @@
 context("GPBoost_combined_boosting_GP_random_effects")
 
 TOLERANCE <- 1E-3
+DEFAULT_OPTIM_PARAMS <- list(optimizer_cov="fisher_scoring", delta_rel_conv=1E-6)
 
 # Function that simulates uniform random variables
 sim_rand_unif <- function(n, init_c=0.1){
@@ -126,6 +127,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # CV for finding number of boosting iterations with use_gp_model_for_validation = FALSE
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -156,6 +158,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Create random effects model and train GPBoost model
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpboost(data = X_train,
                    label = y_train,
                    gp_model = gp_model,
@@ -185,6 +188,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     for(i in 1:m) group_1[((i-1)*ntrain/m+1):(i*ntrain/m)] <- i
     y_1 <- f[1:ntrain] + b1[group_1] + xi[1:ntrain]
     gp_model <- GPModel(group_data = group_1)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpboost(data = X_train,
                    label = y_1,
                    gp_model = gp_model,
@@ -202,6 +206,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # GPBoostOOS algorithm: fit parameters on out-of-sample data
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -231,6 +236,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # GPBoostOOS algorithm: fit parameters on out-of-sample data with random folds
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -251,6 +257,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    objective = "regression_l2",
                    leaves_newton_update = TRUE)
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -269,6 +276,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Using validation set
     # Do not include random effect predictions for validation
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 100,
@@ -284,6 +292,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(bst$best_score - 1.0326),TOLERANCE)
     # Include random effect predictions for validation 
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     gp_model$set_prediction_data(group_data_pred = group_data_test)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
@@ -300,6 +309,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(bst$best_score - 0.04753591),TOLERANCE)
     # Same thing using the S3 set_prediction_data method 
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     set_prediction_data(gp_model, group_data_pred = group_data_test)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
@@ -321,6 +331,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       return(list(name="l4",value=mean((preds-labels)^4),higher_better=FALSE))
     }
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 100,
@@ -337,6 +348,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(bst$best_score - 3.058637),TOLERANCE)
     # CV
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -670,6 +682,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # CV for finding number of boosting iterations with use_gp_model_for_validation = FALSE
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -700,6 +713,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Create random effects model and train GPBoost model
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpboost(data = X_train,
                    label = y_train,
                    gp_model = gp_model,
@@ -727,6 +741,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Using validation set
     # Do not include random effect predictions for validation
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 100,
@@ -743,6 +758,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(bst$best_score - 1.035405),TOLERANCE)
     # Include random effect predictions for validation 
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     gp_model$set_prediction_data(group_data_pred = group_data_test)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
@@ -798,6 +814,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    feature_pre_filter = FALSE)
     # Train model and make predictions
     gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpboost(data = X_train,
                    label = y_train,
                    gp_model = gp_model,

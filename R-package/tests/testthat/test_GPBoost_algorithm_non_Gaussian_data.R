@@ -1,6 +1,17 @@
 context("generalized_GPBoost_combined_boosting_GP_random_effects")
 
 TOLERANCE <- 1E-3
+DEFAULT_OPTIM_PARAMS <- list(optimizer_cov="gradient_descent", use_nesterov_acc=TRUE,
+                             delta_rel_conv=1E-6, lr_cov=0.1)
+DEFAULT_OPTIM_PARAMS_V2 <- list(optimizer_cov="gradient_descent", use_nesterov_acc=TRUE,
+                                delta_rel_conv=1E-6, lr_cov=0.01)
+DEFAULT_OPTIM_PARAMS_NO_NESTEROV <- list(optimizer_cov="gradient_descent", use_nesterov_acc=FALSE,
+                                         delta_rel_conv=1E-6, lr_cov=0.01)
+DEFAULT_OPTIM_PARAMS_EARLY_STOP <- list(maxit=10, lr_cov=0.1, optimizer_cov="gradient_descent")
+DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV <- list(maxit=20, lr_cov=0.01, use_nesterov_acc=FALSE,
+                                                    optimizer_cov="gradient_descent" )
+
+# , optimizer_coef="gradient_descent"##DELETTE
 
 # Function that simulates uniform random variables
 sim_rand_unif <- function(n, init_c=0.1){
@@ -175,7 +186,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Find number of iterations using validation data with use_gp_model_for_validation=FALSE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
     capture.output( bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                                      learning_rate=0.1, objective = "binary", verbose = 0,
                                      use_gp_model_for_validation=FALSE, eval = "binary_error",
@@ -186,7 +197,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Find number of iterations using validation data with use_gp_model_for_validation=TRUE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
     gp_model$set_prediction_data(group_data_pred = group_data_test)
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                      learning_rate=0.1, objective = "binary", verbose = 0,
@@ -203,7 +214,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Other metrics / losses
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
     gp_model$set_prediction_data(group_data_pred = group_data_test)
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                      learning_rate=0.5, objective = "binary", verbose = 0,
@@ -227,7 +238,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # CV for finding number of boosting iterations when use_gp_model_for_validation = FALSE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model=gp_model,
@@ -245,7 +256,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(cvbst$best_score-expect_score), TOLERANCE)
     # same thing but "wrong" likelihood given in gp_model
     gp_model <- GPModel(group_data = group_data_train, likelihood="gaussian")
-    gp_model$set_optim_params(params=list(lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
     capture.output( cvbst <- gpb.cv(params = params,
                                     data = dtrain,
                                     gp_model=gp_model,
@@ -261,7 +272,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(cvbst$best_score-expect_score), TOLERANCE)
     # CV for finding number of boosting iterations when use_gp_model_for_validation = TRUE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE, lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -280,7 +291,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Create random effects model and train GPBoost model
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE, lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
     bst <- gpboost(data = X_train,
                    label = y_train,
                    gp_model = gp_model,
@@ -312,7 +323,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     probs_1 <- pnorm(f[1:ntrain] + b1[group_1])
     y_1 <- as.numeric(sim_rand_unif(n=ntrain, init_c=0.574) < probs_1)
     gp_model <- GPModel(group_data = group_1, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE, lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
     bst <- gpboost(data = X_train,
                    label = y_1,
                    gp_model = gp_model,
@@ -361,7 +372,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1, 1))),TOLERANCE)
     # GPBoostOOS algorithm: fit parameters on out-of-sample data
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE, lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -385,7 +396,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       return(list(name="bin_cust_error",value=error,higher_better=FALSE))
     }
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                      learning_rate=0.1, objective = "binary", verbose = 0,
                      use_gp_model_for_validation=FALSE,
@@ -394,7 +405,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(bst$best_score - 0.358),TOLERANCE)
     # CV
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model=gp_model,
@@ -481,7 +492,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Find number of iterations using validation data with use_gp_model_for_validation=FALSE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                      learning_rate=0.1, objective = "binary", verbose = 0,
                      use_gp_model_for_validation=FALSE, eval = "binary_error",
@@ -491,7 +502,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(which.min(record_results), 17)
     # Find number of iterations using validation data with use_gp_model_for_validation=TRUE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     gp_model$set_prediction_data(group_data_pred = group_data_test)
     bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                      learning_rate=0.1, objective = "binary", verbose = 0,
@@ -502,7 +513,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(which.min(record_results), 31)
     # Find number of iterations using validation when specifying "wrong" likelihood in gp_model
     gp_model <- GPModel(group_data = group_data_train, likelihood = "gaussian")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     gp_model$set_prediction_data(group_data_pred = group_data_test)
     capture.output( bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                                      learning_rate=0.1, objective = "binary", verbose = 0,
@@ -513,7 +524,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(which.min(record_results), 31)
     # Find number of iterations using validation when specifying "wrong" objective in gpb.train
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     gp_model$set_prediction_data(group_data_pred = group_data_test)
     capture.output( bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                                      learning_rate=0.1, objective = "regression_l2", verbose = 0,
@@ -525,7 +536,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # CV for finding number of boosting iterations when use_gp_model_for_validation = FALSE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model=gp_model,
@@ -541,7 +552,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(cvbst$best_score-0.374), TOLERANCE)
     # CV for finding number of boosting iterations when use_gp_model_for_validation = TRUE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     cvbst <- gpb.cv(params = params,
                     data = dtrain,
                     gp_model = gp_model,
@@ -556,7 +567,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(cvbst$best_score-0.259), TOLERANCE)
     # same thing but "wrong" likelihood in gp_model
     gp_model <- GPModel(group_data = group_data_train, likelihood = "gaussian")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     capture.output( cvbst <- gpb.cv(params = params,
                                     data = dtrain,
                                     gp_model = gp_model,
@@ -573,7 +584,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params_w <- params
     params_w[["objective"]] <- "regression_l2"
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     capture.output( cvbst <- gpb.cv(params = params_w,
                                     data = dtrain,
                                     gp_model = gp_model,
@@ -589,7 +600,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Create random effects model and train GPBoost model
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpboost(data = X_train,
                    label = y_train,
                    gp_model = gp_model,
@@ -677,6 +688,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Train model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 9,
@@ -704,6 +716,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     valids <- list(test = dtest)
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 20,
@@ -720,6 +733,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Also use GPModel for calculating validation error
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     gp_model$set_prediction_data(gp_coords_pred = coords_test)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
@@ -739,6 +753,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                         likelihood = "bernoulli_probit", vecchia_approx =TRUE, num_neighbors = 30),
                     file='NUL')
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 9,
@@ -760,6 +775,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
                                         cov_fct_shape=1, cov_fct_taper_range=0.2,
                                         likelihood = "bernoulli_probit"), file='NUL')
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 9,
@@ -799,7 +815,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Tapering
     capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential_tapered",
-                        likelihood = "bernoulli_probit", cov_fct_shape=1, cov_fct_taper_range=10) )
+                                        likelihood = "bernoulli_probit", cov_fct_shape=1, cov_fct_taper_range=10) )
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 9,
@@ -861,7 +878,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Train model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01))
+    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01, optimizer_cov="gradient_descent"))
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 2,
@@ -888,7 +905,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     valids <- list(test = dtest)
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
     gp_model$set_prediction_data(gp_coords_pred = coords_test)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
@@ -906,7 +923,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # same thing but "wrong" likelihood in gp_model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "gaussian")
-    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
     gp_model$set_prediction_data(gp_coords_pred = coords_test)
     capture.output( bst <- gpb.train(data = dtrain,
                                      gp_model = gp_model,
@@ -924,7 +941,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # same thing but "wrong" objective in gpb.train
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
     gp_model$set_prediction_data(gp_coords_pred = coords_test)
     capture.output( bst <- gpb.train(data = dtrain,
                                      gp_model = gp_model,
@@ -943,7 +960,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # CV for finding number of boosting iterations when use_gp_model_for_validation = TRUE
     gp_model <- GPModel(gp_coords = coords_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
     cvbst <- gpb.cv(data = dtrain,
                     gp_model = gp_model,
                     nrounds = 10,
@@ -962,7 +979,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(cvbst$best_score-expcet_score), TOLERANCE)
     # same thing but "wrong" likelihood in gp_model
     gp_model <- GPModel(gp_coords = coords_train, likelihood = "gaussian")
-    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
     capture.output( cvbst <- gpb.cv(data = dtrain,
                                     gp_model = gp_model,
                                     nrounds = 10,
@@ -979,7 +996,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(cvbst$best_score-expcet_score), TOLERANCE)
     # same thing but "wrong" objective in gpb.cv
     gp_model <- GPModel(gp_coords = coords_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
     capture.output( cvbst <- gpb.cv(data = dtrain,
                                     gp_model = gp_model,
                                     nrounds = 10,
@@ -1049,7 +1066,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Train model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 5,
@@ -1100,7 +1117,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     valids <- list(test = dtest)
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     gp_model$set_prediction_data(gp_coords_pred = coords_test, group_data_pred = group_data_test)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
@@ -1118,7 +1135,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # same thing but "wrong" likelihood given in gp_model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         group_data = group_data_train, likelihood = "gaussian")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     gp_model$set_prediction_data(gp_coords_pred = coords_test, group_data_pred = group_data_test)
     capture.output( bst <- gpb.train(data = dtrain,
                                      gp_model = gp_model,
@@ -1136,7 +1153,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # same thing but "wrong" objective given in gpb.train
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(lr_cov=0.1))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     gp_model$set_prediction_data(gp_coords_pred = coords_test, group_data_pred = group_data_test)
     capture.output( bst <- gpb.train(data = dtrain,
                                      gp_model = gp_model,
@@ -1192,7 +1209,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Train model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(maxit=20, lr_cov=0.01, use_nesterov_acc=FALSE))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 5,
@@ -1216,7 +1233,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Same thing with Vecchia approximation
     capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                         likelihood = "bernoulli_probit", vecchia_approx =TRUE, num_neighbors = ntrain-1), file='NUL')
-    gp_model$set_optim_params(params=list(maxit=20, lr_cov=0.01, use_nesterov_acc=FALSE))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 5,
@@ -1270,7 +1287,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Train model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_logit")
-    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01))
+    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01, optimizer_cov="gradient_descent"))
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 2,
@@ -1343,7 +1360,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Train model
     gp_model <- GPModel(group_data = group_data_train, likelihood = "poisson")
-    gp_model$set_optim_params(params=list(lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
     bst <- gpboost(data = dtrain,
                    gp_model = gp_model,
                    nrounds = 30,
@@ -1416,7 +1433,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Train model
     gp_model <- GPModel(group_data = group_data_train, likelihood = "gamma")
-    gp_model$set_optim_params(params=list(lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
     bst <- gpboost(data = dtrain,
                    gp_model = gp_model,
                    nrounds = 30,
@@ -1487,7 +1504,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Train model and make predictions
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(use_nesterov_acc=FALSE, lr_cov=0.01))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
     bst <- gpboost(data = X_train,
                    label = y_train,
                    gp_model = gp_model,
@@ -1636,7 +1653,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     #Parameter tuning using cross-validation: deterministic and random grid search
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list("optimizer_cov" = "gradient_descent"))
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     dtrain <- gpb.Dataset(data = X, label = y)
     params <- list(objective = "binary", verbose = 0)
     param_grid = list("learning_rate" = c(0.5,0.11), "min_data_in_leaf" = c(20),
