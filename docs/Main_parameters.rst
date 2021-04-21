@@ -1,8 +1,8 @@
 .. role:: raw-html(raw)
     :format: html
 
-GPBoost: Summary of Most Important Parameters
-=============================================
+Summary of most important parameters for GPBoost
+================================================
 
 This page contains a summary of the most important parameters. We distinguish between (i) tuning and other parameters for the tree-boosting
 part and (ii) modeling specifications and optimization parameters for the Gaussian process and random effects part. Currently, the GPBoost library
@@ -20,7 +20,7 @@ Tree-boosting parameters
 
 Tree-boosting tuning parameters
 -------------------------------
-Below is a list of important tuning parameters for tree-boosting.
+Below is a list of important tuning parameters for the tree learning part.
 
 -  ``num_iterations`` :raw-html:`<a id="num_iterations" title="Permalink to this parameter" href="#num_iterations">&#x1F517;&#xFE0E;</a>`, default = ``100``, type = int, aliases: ``num_iteration``, ``n_iter``, ``num_tree``, ``num_trees``, ``num_round``, ``num_rounds``, ``num_boost_round``, ``n_estimators``, constraints: ``num_iterations >= 0``
 
@@ -67,7 +67,7 @@ Note that GPBoost uses the LightGBM tree growing algorithm which grows trees usi
 the information gain until the maximal number of leaves ``num_leaves`` or the maximal depth of a tree ``max_depth`` is
 attained, even when this leads to unbalanced trees. This in contrast to a depth-wise growth strategy of other boosting
 implementations which builds more balanced trees. For shallow trees, small ``max_depth``, there is likely no difference between these two tree growing strategies.
-If you only want to tune the maximal depth of a tree ``max_depth`` parameter and not the ``num_leaves`` parameter, it is recommended that you set the ``num_leaves`` parameter to a large value such as 131072.
+If you only want to tune the maximal depth of a tree ``max_depth`` parameter and not the ``num_leaves`` parameter, it is recommended that you set the ``num_leaves`` parameter to a large value.
 
 Other regularization parameters
 -------------------------------
@@ -141,11 +141,15 @@ Model specification parameters
 
 -  ``cov_function`` : string, (default="exponential")
 
-   -  Covariance function for the Gaussian process. The following covariance functions are available: "exponential", "gaussian", "matern", and "powered_exponential". We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance where we follow Rassmusen and Williams (2006)
+   -  Covariance function for the Gaussian process. The following covariance functions are available: "exponential", "gaussian", "matern", "powered_exponential", "wendland", and "exponential_tapered". For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization of Diggle and Ribeiro (2007). For "matern", we follow the notation of Rassmusen and Williams (2006). For "wendland", we follow the notation of Bevilacqua et al. (2019). A covariance function with the suffix "_tapered" refers to a covariance function that is multiplied by a compactly supported Wendland covariance function (= tapering)
 
 -  ``cov_fct_shape`` : double, (default=0.)
 
-   -  Shape parameter of covariance function (=smoothness parameter for Matern covariance, irrelevant for some covariance functions such as the exponential or Gaussian)
+   -  Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance). For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2019). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
+
+-  ``cov_fct_taper_range`` : double, (default=1.)
+
+   -  Range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019).
 
 -  ``vecchia_approx`` : bool, (default=False)
 
@@ -182,17 +186,17 @@ which contain Gaussian process and/or grouped random effects models. These param
 function of a ``gp_model`` object in Python and R or to the ``set_optim_params`` (and ``set_optim_coef_params``) function
 prior to running the GPBoost algorithm.
 
--  ``optimizer_cov`` : string, optional (default = "fisher_scoring" for Gaussian data and "gradient_descent" for other likelihoods)
+-  ``optimizer_cov`` : string, optional (default = "gradient_descent")
 
    -  Optimizer used for estimating covariance parameters.
 
-   -  Options: "gradient_descent" or "fisher_scoring"
+   -  Options: "gradient_descent", "fisher_scoring", and "nelder_mead"
 
 -  ``optimizer_coef`` : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
 
-   -  Optimizer used for estimating linear regression coefficients, if there are any (for the GPBoost algorithm there are usually no).
+   -  Optimizer used for estimating linear regression coefficients, if there are any (for the GPBoost algorithm there are usually none).
 
-   -  Options: "gradient_descent" or "wls". Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares
+   -  Options: "gradient_descent", "wls", and "nelder_mead". Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares
 
 -  ``maxit`` : integer, optional (default = 1000)
 
@@ -202,33 +206,33 @@ prior to running the GPBoost algorithm.
 
    -  Convergence criterion: stop optimization if relative change in parameters is below this value
 
--  ``init_coef`` : numeric vector / array of doubles, optional (default = Null)
-
-   -  Initial values for the regression coefficients (if there are any, can be Null)
-
 -  ``init_cov_pars`` : numeric vector / array of doubles, optional (default = Null)
 
    -  Initial values for covariance parameters of Gaussian process and random effects (can be Null)
 
--  ``lr_coef`` : double, optional (default = 0.01)
+-  ``init_coef`` : numeric vector / array of doubles, optional (default = Null)
 
-   -  Learning rate for fixed effect regression coefficients
+   -  Initial values for the regression coefficients (if there are any, can be Null)
 
 -  ``lr_cov`` : double, optional (default = 0.01)
 
    -  Learning rate for covariance parameters
 
+-  ``lr_coef`` : double, optional (default = 0.01)
+
+   -  Learning rate for fixed effect regression coefficients
+
 -  ``use_nesterov_acc`` : bool, optional (default = True)
 
    -  If True Nesterov acceleration is used (only for gradient descent)
 
--  ``acc_rate_coef`` : double, optional (default = 0.5)
-
-   -  Acceleration rate for coefficients for Nesterov acceleration
-
 -  ``acc_rate_cov`` : double, optional (default = 0.5)
 
    -  Acceleration rate for covariance parameters for Nesterov acceleration
+
+-  ``acc_rate_coef`` : double, optional (default = 0.5)
+
+   -  Acceleration rate for coefficients for Nesterov acceleration
 
 -  ``momentum_offset`` : integer, optional (default = 2)
 
@@ -236,7 +240,7 @@ prior to running the GPBoost algorithm.
 
 -  ``trace`` : bool, optional (default = False)
 
-   -  If True, the value of the gradient is printed for some iterations. Useful for finding good learning rates.
+   -  If True, information on the progress of the parameter optimization is printed.
 
 -  ``std_dev`` : bool, optional (default = False)
 

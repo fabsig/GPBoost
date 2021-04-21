@@ -20,7 +20,7 @@ to a "base" intercept grouped random effect. Counting starts at 1.}
 
 \item{cov_function}{A \code{string} specifying the covariance function for the Gaussian process. 
 The following covariance functions are available:
-"exponential", "gaussian", "matern", "powered_exponential", "wendland", "exponential_tapered"
+"exponential", "gaussian", "matern", "powered_exponential", "wendland", and "exponential_tapered".
 For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization of Diggle and Ribeiro (2007).
 For "matern", we follow the notation of Rassmusen and Williams (2006).
 For "wendland", we follow the notation of Bevilacqua et al. (2019).
@@ -28,7 +28,7 @@ A covariance function with the suffix "_tapered" refers to a covariance function
 a compactly supported Wendland covariance function (= tapering)}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
-(=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, 
+(=smoothness parameter for Matern and Wendland covariance). For the Wendland covariance function, 
 we follow the notation of Bevilacqua et al. (2019)). 
 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.}
 
@@ -65,11 +65,10 @@ is freed in R after initialization}
 \item{params}{A \code{list} with parameters for the model fitting / optimization
  \itemize{
     \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
-    Options: "gradient_descent", "fisher_scoring", or "nelder_mead". Default="fisher_scoring" for Gaussian data
-    and "gradient_descent" for other likelihoods.}
+    Options: "gradient_descent", "fisher_scoring", and "nelder_mead". Default = "gradient_descent"}
     \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
     (for the GPBoost algorithm there are usually none). 
-    Options: "gradient_descent" or "wls". Gradient descent steps are done simultaneously 
+    Options: "gradient_descent", "wls", and "nelder_mead". Gradient descent steps are done simultaneously 
     with gradient descent steps for the covariance parameters. 
     "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
     Default="wls" for Gaussian data and "gradient_descent" for other likelihoods.}
@@ -92,8 +91,7 @@ is freed in R after initialization}
     Default=0.5.}
     \item{momentum_offset}{ Number of iterations for which no mometum is applied in the beginning.
     Default=2.}
-    \item{trace}{ If TRUE, the value of the gradient is printed for some iterations.
-    Useful for finding good learning rates. Default=FALSE.}
+    \item{trace}{ If TRUE, information on the progress of the parameter optimization is printed. Default=FALSE.}
     \item{convergence_criterion}{ The convergence criterion used for terminating the optimization algorithm.
     Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters".}
     \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}

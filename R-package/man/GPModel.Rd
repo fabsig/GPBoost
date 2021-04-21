@@ -27,7 +27,7 @@ to a "base" intercept grouped random effect. Counting starts at 1.}
 
 \item{cov_function}{A \code{string} specifying the covariance function for the Gaussian process. 
 The following covariance functions are available:
-"exponential", "gaussian", "matern", "powered_exponential", "wendland", "exponential_tapered"
+"exponential", "gaussian", "matern", "powered_exponential", "wendland", and "exponential_tapered".
 For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization of Diggle and Ribeiro (2007).
 For "matern", we follow the notation of Rassmusen and Williams (2006).
 For "wendland", we follow the notation of Bevilacqua et al. (2019).
@@ -35,7 +35,7 @@ A covariance function with the suffix "_tapered" refers to a covariance function
 a compactly supported Wendland covariance function (= tapering)}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
-(=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, 
+(=smoothness parameter for Matern and Wendland covariance). For the Wendland covariance function, 
 we follow the notation of Bevilacqua et al. (2019)). 
 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.}
 

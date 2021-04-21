@@ -3906,14 +3906,14 @@ class GPModel(object):
                 Covariate data for Gaussian process random coefficients
             cov_function : string, optional (default="exponential")
                 Covariance function for the Gaussian process. The following covariance functions are available:
-                "exponential", "gaussian", "matern", "powered_exponential", "wendland", "exponential_tapered"
+                "exponential", "gaussian", "matern", "powered_exponential", "wendland", and "exponential_tapered".
                 For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization of Diggle and Ribeiro (2007).
                 For "matern", we follow the notation of Rassmusen and Williams (2006).
                 For "wendland", we follow the notation of Bevilacqua et al. (2019).
                 A covariance function with the suffix "_tapered" refers to a covariance function that is multiplied by
                 a compactly supported Wendland covariance function (= tapering)
             cov_fct_shape : float, optional (default=0.)
-                Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance.
+                Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance).
                 For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2019).
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
             cov_fct_taper_range : float, optional (default=1.)
@@ -4275,38 +4275,38 @@ class GPModel(object):
             Covariate data for fixed effects ( = linear regression term)
         params : dict or None, optional (default=None)
             Parameters for fitting / optimization:
-                optimizer_cov : string, optional (default = "fisher_scoring" for Gaussian data and "gradient_descent" for other likelihoods)
+                optimizer_cov : string, optional (default = "gradient_descent")
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "fisher_scoring", or "nelder_mead"
+                    Options: "gradient_descent", "fisher_scoring", and "nelder_mead"
                 optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
-                    (for the GPBoost algorithm there are usually no).
-                    Options: "gradient_descent" or "wls". Gradient descent steps are done simultaneously with
+                    (for the GPBoost algorithm there are usually none).
+                    Options: "gradient_descent", "wls", and "nelder_mead". Gradient descent steps are done simultaneously with
                     gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
                     for the regression coefficients using weighted least squares
                 maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
                 delta_rel_conv : double, optional (default = 1e-6)
                     Convergence criterion: stop optimization if relative change in parameters is below this value
-                init_coef : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for the regression coefficients (if there are any, can be None)
                 init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for covariance parameters of Gaussian process and random effects (can be None)
-                lr_coef : double, optional (default = 0.1)
-                    Learning rate for fixed effect regression coefficients
+                init_coef : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for the regression coefficients (if there are any, can be None)
                 lr_cov : double, optional (default = -1.)
                     If <= 0, internal default values are used.
                     Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
+                lr_coef : double, optional (default = 0.1)
+                    Learning rate for fixed effect regression coefficients
                 use_nesterov_acc : bool, optional (default = True)
                     If True, Nesterov acceleration is used for gradient descent
-                acc_rate_coef : double, optional (default = 0.5)
-                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
                 acc_rate_cov : double, optional (default = 0.5)
                     Acceleration rate for covariance parameters for Nesterov acceleration
+                acc_rate_coef : double, optional (default = 0.5)
+                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
                 momentum_offset : integer, optional (default = 2)
                     Number of iterations for which no mometum is applied in the beginning
                 trace : bool, optional (default = False)
-                    If True, the value of the gradient is printed for some iterations. Useful for finding good learning rates.
+                    If True, information on the progress of the parameter optimization is printed.
                 convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
@@ -4413,15 +4413,15 @@ class GPModel(object):
         return negll.value
 
     def set_optim_params(self, params):
-        """Set parameters for estimation of the covariance paramters.
+        """Set parameters for estimation of the covariance parameters.
 
           Parameters
           ----------
           params : dict
             Parameters for fitting / optimization:
-                optimizer_cov : string, optional (default = "fisher_scoring" for Gaussian data and "gradient_descent" for other likelihoods)
+                optimizer_cov : string, optional (default = "gradient_descent")
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "fisher_scoring", or "nelder_mead"
+                    Options: "gradient_descent", "fisher_scoring", and "nelder_mead"
                 maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
                 delta_rel_conv : double, optional (default = 1e-6)
@@ -4430,20 +4430,20 @@ class GPModel(object):
                     Initial values for covariance parameters of Gaussian process and random effects (can be None)
                 lr_cov : double, optional (default = -1.)
                     If <= 0, internal default values are used.
-                    Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
+                    Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
                 use_nesterov_acc : bool, optional (default = True)
                     If True, Nesterov acceleration is used for gradient descent
                 acc_rate_cov : double, optional (default = 0.5)
-                    Acceleration rate for coefficients for Nesterov acceleration
+                    Acceleration rate for covariance parameters for Nesterov acceleration
                 momentum_offset : integer, optional (default = 2)
                     Number of iterations for which no mometum is applied in the beginning
                 trace : bool, optional (default = False)
-                    If True, the value of the gradient is printed for some iterations. Useful for finding good learning rates.
+                    If True, information on the progress of the parameter optimization is printed.
                 convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
                 std_dev : bool (default=False)
-                    If True (asymptotic) standard deviations are calculated for all parameters
+                    If True, (asymptotic) standard deviations are calculated for the covariance parameters
         """
         if self.handle is None:
             raise ValueError("Gaussian process model has not been initialized")
@@ -4506,16 +4506,17 @@ class GPModel(object):
           params : dict
             Parameters for fitting / optimization:
                 optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
-                    Optimizer used for estimating regression coefficients.
-                    Options: "gradient_descent" or "wls". Gradient descent steps are done simultaneously with
+                    Optimizer used for estimating linear regression coefficients, if there are any
+                    (for the GPBoost algorithm there are usually none).
+                    Options: "gradient_descent", "wls", and "nelder_mead". Gradient descent steps are done simultaneously with
                     gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
                     for the regression coefficients using weighted least squares
                 init_coef : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for the regression coefficients (can be None)
+                    Initial values for the regression coefficients (if there are any, can be None)
                 lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
                 acc_rate_coef : double, optional (default = 0.5)
-                    Acceleration rate for covariance parameters for Nesterov acceleration
+                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
         """
         if self.handle is None:
             raise ValueError("Gaussian process model has not been initialized")
