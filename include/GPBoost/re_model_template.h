@@ -2123,7 +2123,7 @@ namespace GPBoost {
 						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 							y_int_[cluster_i][j] = static_cast<int>(y_data[data_indices_per_cluster_[cluster_i][j]]);
 						}
-						likelihood_[cluster_i]->CalculateNormalizingConstant<int>(y_int_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
+						(*likelihood_[cluster_i]).template CalculateNormalizingConstant<int>(y_int_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
 					}
 				}
 				else if (likelihood_[unique_clusters_[0]]->label_type() == "double") {
@@ -2132,7 +2132,7 @@ namespace GPBoost {
 						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 							y_[cluster_i][j] = y_data[data_indices_per_cluster_[cluster_i][j]];
 						}
-						likelihood_[cluster_i]->CalculateNormalizingConstant<double>(y_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
+						(*likelihood_[cluster_i]).template CalculateNormalizingConstant<double>(y_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
 					}
 				}
 			}//end not gauss_likelihood_
@@ -2155,7 +2155,7 @@ namespace GPBoost {
 						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 							y_int_[cluster_i][j] = static_cast<int>(y_data[data_indices_per_cluster_[cluster_i][j]]);
 						}
-						likelihood_[cluster_i]->CalculateNormalizingConstant<int>(y_int_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
+						(*likelihood_[cluster_i]).template CalculateNormalizingConstant<int>(y_int_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
 					}
 				}
 				else if (likelihood_[unique_clusters_[0]]->label_type() == "double") {
@@ -2164,7 +2164,7 @@ namespace GPBoost {
 						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 							y_[cluster_i][j] = static_cast<double>(y_data[data_indices_per_cluster_[cluster_i][j]]);
 						}
-						likelihood_[cluster_i]->CalculateNormalizingConstant<double>(y_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
+						(*likelihood_[cluster_i]).template CalculateNormalizingConstant<double>(y_[cluster_i].data(), num_data_per_cluster_[cluster_i]);
 					}
 				}
 			}
