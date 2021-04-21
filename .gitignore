@@ -14,6 +14,7 @@ bld/
 [Ll]og/
 [Bb]uild/
 **/README.html
+**/Computational_efficiency.html
 
 # Compiled Object files
 *.slo
