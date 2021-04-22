@@ -548,7 +548,9 @@ Dataset <- R6::R6Class(
 
     },
 
-    # Update parameters
+    # [description] Update Dataset parameters. If it has not been constructed yet,
+    #               this operation just happens on the R side (updating private$params).
+    #               If it has been constructed, parameters will be updated on the C++ side
     update_params = function(params) {
       if (length(params) == 0L) {
         return(invisible(self))
