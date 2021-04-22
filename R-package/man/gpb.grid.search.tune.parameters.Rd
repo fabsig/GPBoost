@@ -23,7 +23,7 @@ may allow you to pass other types of data like \code{matrix} and then separately
 
 \item{num_try_random}{\code{integer} with number of random trial on parameter grid. If NULL, a deterministic search is done}
 
-\item{nrounds}{nNumber of boosting iterations (= number of trees). This is the most important tuning parameter for boosting. Default = 100}
+\item{nrounds}{number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting. Default = 100}
 
 \item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
 
@@ -59,8 +59,8 @@ the \code{nfold} and \code{stratified} parameters are ignored.}
                 \item{\bold{a. character vector}:
                     If you provide a character vector to this argument, it should contain strings with valid
                     evaluation metrics.
-                    See \href{https://lightgbm.readthedocs.io/en/latest/Parameters.html#metric}{
-                    The "metric" section of the documentation}
+                    See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}{
+                    The "metric" section}
                     for a list of valid metrics.
                 }
                 \item{\bold{b. function}:
@@ -103,9 +103,11 @@ names or an integer vector with the indices of the features (e.g.
 \code{c(1L, 10L)} to say "the first and tenth columns").}
 
 \item{early_stopping_rounds}{int. Activates early stopping. Requires at least one validation data
-and one metric. If there's more than one, will check all of them
-except the training data. Returns the model with (best_iter + early_stopping_rounds).
-If early stopping occurs, the model will have 'best_iter' field.}
+and one metric. When this parameter is non-null,
+training will stop if the evaluation of any metric on any validation set
+fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
+If training stops early, the returned model will have attribute \code{best_iter}
+set to the iteration number of the best iteration.}
 
 \item{callbacks}{List of callback functions that are applied at each iteration.}
 

@@ -733,11 +733,20 @@ Dataset <- R6::R6Class(
 #' @description Construct \code{gpb.Dataset} object from dense matrix, sparse matrix
 #'              or local file (that was created previously by saving an \code{gpb.Dataset}).
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
-#' @param params a list of parameters
-#' @param reference reference dataset
+#' @param params a list of parameters. See
+#'               \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#dataset-parameters}{
+#'               The "Dataset Parameters" section} for a list of parameters
+#'               and valid values.
+#' @param reference reference dataset. When GPBoost creates a Dataset, it does some preprocessing like binning
+#'                  continuous features into histograms. If you want to apply the same bin boundaries from an existing
+#'                  dataset to new \code{data}, pass that existing Dataset to this argument.
 #' @param colnames names of columns
-#' @param categorical_feature categorical features
-#' @param free_raw_data TRUE for need to free raw data after construct
+#' @param categorical_feature categorical features. This can either be a character vector of feature
+#'                            names or an integer vector with the indices of the features (e.g.
+#'                            \code{c(1L, 10L)} to say "the first and tenth columns").
+#' @param free_raw_data GPBoost constructs its data format, called a "Dataset", from tabular data.
+#'                      By default, this Dataset object on the R side does keep a copy of the raw data.
+#'                      If you set \code{free_raw_data = TRUE}, no copy of the raw data is kept (this reduces memory usage)
 #' @param info a list of information of the \code{gpb.Dataset} object
 #' @param ... other information to pass to \code{info} or parameters pass to \code{params}
 #'

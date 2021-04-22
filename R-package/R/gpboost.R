@@ -10,9 +10,11 @@
 #'             may allow you to pass other types of data like \code{matrix} and then separately supply
 #'             \code{label} as a keyword argument.
 #' @param early_stopping_rounds int. Activates early stopping. Requires at least one validation data
-#'                              and one metric. If there's more than one, will check all of them
-#'                              except the training data. Returns the model with (best_iter + early_stopping_rounds).
-#'                              If early stopping occurs, the model will have 'best_iter' field.
+#'                              and one metric. When this parameter is non-null,
+#'                              training will stop if the evaluation of any metric on any validation set
+#'                              fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
+#'                              If training stops early, the returned model will have attribute \code{best_iter}
+#'                              set to the iteration number of the best iteration.
 #' @param eval evaluation function(s). This can be a character vector, function, or list with a mixture of
 #'             strings and functions.
 #'
@@ -20,8 +22,8 @@
 #'                 \item{\bold{a. character vector}:
 #'                     If you provide a character vector to this argument, it should contain strings with valid
 #'                     evaluation metrics.
-#'                     See \href{https://lightgbm.readthedocs.io/en/latest/Parameters.html#metric}{
-#'                     The "metric" section of the documentation}
+#'                     See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}{
+#'                     The "metric" section}
 #'                     for a list of valid metrics.
 #'                 }
 #'                 \item{\bold{b. function}:
@@ -50,15 +52,17 @@
 #' @param valids a list of \code{gpb.Dataset} objects, used for validation
 #' @param record Boolean, TRUE will record iteration message to \code{booster$record_evals}
 #' @param colnames feature names, if not null, will use this to overwrite the names in dataset
-#' @param categorical_feature list of str or int
-#'                            type int represents index,
-#'                            type str represents feature names
+#' @param categorical_feature categorical features. This can either be a character vector of feature
+#'                            names or an integer vector with the indices of the features (e.g.
+#'                            \code{c(1L, 10L)} to say "the first and tenth columns").
 #' @param init_model path of model file of \code{gpb.Booster} object, will continue training from this model
-#' @param nrounds nNumber of boosting iterations (= number of trees). This is the most important tuning parameter for boosting. Default = 100
+#' @param nrounds number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting. Default = 100
 #' @param obj objective function, can be character or custom objective function. Examples include
 #'            \code{regression}, \code{regression_l1}, \code{huber},
 #'            \code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}
-#' @param params List of parameters (many of them tuning paramters), see Parameters.rst for more information. A few key parameters:
+#' @param params list of ("tuning") parameters. 
+#' See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst} for more information. 
+#' A few key parameters:
 #'            \itemize{
 #'                \item{\code{learning_rate}}{ The learning rate, also called shrinkage or damping parameter 
 #'                (default = 0.1). An important tuning parameter for boosting. Lower values usually 

@@ -11,7 +11,7 @@
 #' @param reset_data Boolean, setting it to TRUE (not the default value) will transform the
 #'                   booster model into a predictor model which frees up memory and the
 #'                   original datasets
-#' @param ... other parameters, see Parameters.rst for more information. 
+#' @param ... other parameters, see \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst} for more information. 
 #' @inheritSection gpb_shared_params Early Stopping
 #' @return a trained booster model \code{gpb.Booster}.
 #'

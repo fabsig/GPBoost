@@ -14,42 +14,44 @@ gpb.cv(params = list(), data, nrounds = 100L, gp_model = NULL,
   delete_boosters_folds = FALSE, ...)
 }
 \arguments{
-\item{params}{List of parameters (many of them tuning paramters), see Parameters.rst for more information. A few key parameters:
-\itemize{
-    \item{\code{learning_rate}}{ The learning rate, also called shrinkage or damping parameter 
-    (default = 0.1). An important tuning parameter for boosting. Lower values usually 
-    lead to higher predictive accuracy but more boosting iterations are needed }
-    \item{\code{num_leaves}}{ Number of leaves in a tree. Tuning parameter for 
-    tree-boosting (default = 31)}
-    \item{\code{min_data_in_leaf}}{ Minimal number of samples per leaf. Tuning parameter for 
-    tree-boosting (default = 20)}
-    \item{\code{max_depth}}{ Maximal depth of a tree. Tuning parameter for tree-boosting (default = no limit)}
-    \item{\code{leaves_newton_update}}{ Set this to TRUE to do a Newton update step for the tree leaves 
-    after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
-    \item{\code{train_gp_model_cov_pars}}{ If TRUE, the covariance parameters of the Gaussian process 
-    are stimated in every boosting iterations, 
-    otherwise the gp_model parameters are not estimated. In the latter case, you need to 
-    either esimate them beforehand or provide the values via 
-    the 'init_cov_pars' parameter when creating the gp_model (default = TRUE).}
-    \item{\code{use_gp_model_for_validation}}{ If TRUE, the Gaussian process is also used 
-    (in addition to the tree model) for calculating predictions on the validation data 
-    (default = TRUE)}
-    \item{\code{use_nesterov_acc}}{ Set this to TRUE to do boosting with Nesterov acceleration (default = FALSE). 
-    Can currently only be used for tree_learner = "serial" (default option)}
-    \item{\code{nesterov_acc_rate}}{ Acceleration rate for momentum step in case Nesterov accelerated 
-    boosting is used (default = 0.5)}
-    \item{\code{oosting}}{ Boosting type. \code{"gbdt"}, \code{"rf"}, \code{"dart"} or \code{"goss"}.
-    Only \code{"gbdt"} allows for doing Gaussian process boosting.}
-    \item{num_threads}{ Number of threads. For the best speed, set this to
-                       the number of real CPU cores, not the number of threads (most
-                       CPU using hyper-threading to generate 2 threads per CPU core).}
-}}
+\item{params}{list of ("tuning") parameters. 
+See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst} for more information. 
+A few key parameters:
+           \itemize{
+               \item{\code{learning_rate}}{ The learning rate, also called shrinkage or damping parameter 
+               (default = 0.1). An important tuning parameter for boosting. Lower values usually 
+               lead to higher predictive accuracy but more boosting iterations are needed }
+               \item{\code{num_leaves}}{ Number of leaves in a tree. Tuning parameter for 
+               tree-boosting (default = 31)}
+               \item{\code{min_data_in_leaf}}{ Minimal number of samples per leaf. Tuning parameter for 
+               tree-boosting (default = 20)}
+               \item{\code{max_depth}}{ Maximal depth of a tree. Tuning parameter for tree-boosting (default = no limit)}
+               \item{\code{leaves_newton_update}}{ Set this to TRUE to do a Newton update step for the tree leaves 
+               after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
+               \item{\code{train_gp_model_cov_pars}}{ If TRUE, the covariance parameters of the Gaussian process 
+               are stimated in every boosting iterations, 
+               otherwise the gp_model parameters are not estimated. In the latter case, you need to 
+               either esimate them beforehand or provide the values via 
+               the 'init_cov_pars' parameter when creating the gp_model (default = TRUE).}
+               \item{\code{use_gp_model_for_validation}}{ If TRUE, the Gaussian process is also used 
+               (in addition to the tree model) for calculating predictions on the validation data 
+               (default = TRUE)}
+               \item{\code{use_nesterov_acc}}{ Set this to TRUE to do boosting with Nesterov acceleration (default = FALSE). 
+               Can currently only be used for tree_learner = "serial" (default option)}
+               \item{\code{nesterov_acc_rate}}{ Acceleration rate for momentum step in case Nesterov accelerated 
+               boosting is used (default = 0.5)}
+               \item{\code{oosting}}{ Boosting type. \code{"gbdt"}, \code{"rf"}, \code{"dart"} or \code{"goss"}.
+               Only \code{"gbdt"} allows for doing Gaussian process boosting.}
+               \item{num_threads}{ Number of threads. For the best speed, set this to
+                                  the number of real CPU cores, not the number of threads (most
+                                  CPU using hyper-threading to generate 2 threads per CPU core).}
+           }}
 
 \item{data}{a \code{gpb.Dataset} object, used for training. Some functions, such as \code{\link{gpb.cv}},
 may allow you to pass other types of data like \code{matrix} and then separately supply
 \code{label} as a keyword argument.}
 
-\item{nrounds}{nNumber of boosting iterations (= number of trees). This is the most important tuning parameter for boosting. Default = 100}
+\item{nrounds}{number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting. Default = 100}
 
 \item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
 
@@ -90,8 +92,8 @@ the \code{nfold} and \code{stratified} parameters are ignored.}
                 \item{\bold{a. character vector}:
                     If you provide a character vector to this argument, it should contain strings with valid
                     evaluation metrics.
-                    See \href{https://lightgbm.readthedocs.io/en/latest/Parameters.html#metric}{
-                    The "metric" section of the documentation}
+                    See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}{
+                    The "metric" section}
                     for a list of valid metrics.
                 }
                 \item{\bold{b. function}:
@@ -137,9 +139,11 @@ names or an integer vector with the indices of the features (e.g.
 \code{c(1L, 10L)} to say "the first and tenth columns").}
 
 \item{early_stopping_rounds}{int. Activates early stopping. Requires at least one validation data
-and one metric. If there's more than one, will check all of them
-except the training data. Returns the model with (best_iter + early_stopping_rounds).
-If early stopping occurs, the model will have 'best_iter' field.}
+and one metric. When this parameter is non-null,
+training will stop if the evaluation of any metric on any validation set
+fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
+If training stops early, the returned model will have attribute \code{best_iter}
+set to the iteration number of the best iteration.}
 
 \item{callbacks}{List of callback functions that are applied at each iteration.}
 
