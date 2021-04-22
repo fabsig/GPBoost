@@ -13,6 +13,10 @@
 
 #include <R_ext/Rdynload.h>
 
+#define R_NO_REMAP
+#define R_USE_C99_IN_CXX
+#include <R_ext/Error.h>
+
 #include <string>
 #include <cstdio>
 #include <cstring>
@@ -32,7 +36,7 @@
 
 #define CHECK_CALL(x) \
   if ((x) != 0) { \
-    R_INT_PTR(call_state)[0] = -1;\
+    Rf_error(LGBM_GetLastError()); \
     return call_state;\
   }
 

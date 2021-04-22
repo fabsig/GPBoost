@@ -88,6 +88,19 @@ test_that("gpb.Dataset: Dataset should be able to construct from matrix and retu
   handle <- NULL
 })
 
+test_that("cpp errors should be raised as proper R errors", {
+  data(agaricus.train, package = "gpboost")
+  train <- agaricus.train
+  dtrain <- gpb.Dataset(
+    train$data
+    , label = train$label
+    , init_score = seq_len(10L)
+  )
+  expect_error({
+    dtrain$construct()
+  }, regexp = "Initial score size doesn't match data size")
+})
+
 test_that("gpb.Dataset$setinfo() should convert 'group' to integer", {
   ds <- gpb.Dataset(
     data = matrix(rnorm(100L), nrow = 50L, ncol = 2L)

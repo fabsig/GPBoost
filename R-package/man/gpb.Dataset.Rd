@@ -12,7 +12,7 @@ gpb.Dataset(data, params = list(), reference = NULL, colnames = NULL,
 
 \item{params}{a list of parameters. See
 \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#dataset-parameters}{
-The "Dataset Parameters" section} for a list of parameters
+the "Dataset Parameters" section of the parameter documentation} for a list of parameters
 and valid values.}
 
 \item{reference}{reference dataset. When GPBoost creates a Dataset, it does some preprocessing like binning

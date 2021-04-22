@@ -558,26 +558,27 @@ Dataset <- R6::R6Class(
       if (gpb.is.null.handle(x = private$handle)) {
         private$params <- modifyList(private$params, params)
       } else {
-        call_state <- 0L
-        call_state <- .Call(
-          "LGBM_DatasetUpdateParamChecking_R"
-          , gpb.params2str(params = private$params)
-          , gpb.params2str(params = params)
-          , call_state
-          , PACKAGE = "lib_gpboost"
-        )
-        call_state <- as.integer(call_state)
-        if (call_state != 0L) {
-
-          # raise error if raw data is freed
+        tryCatch({
+          call_state <- 0L
+          .Call(
+            "LGBM_DatasetUpdateParamChecking_R"
+            , gpb.params2str(params = private$params)
+            , gpb.params2str(params = params)
+            , call_state
+            , PACKAGE = "lib_gpboost"
+          )
+        }, error = function(e) {
+          # If updating failed but raw data is not available, raise an error because
+          # achieving what the user asked for is not possible
           if (is.null(private$raw_data)) {
-            gpb.last_error()
+            stop(e)
           }
-
-          # Overwrite paramms
+          
+          # If updating failed but raw data is available, modify the params
+          # on the R side and re-set ("deconstruct") the Dataset
           private$params <- modifyList(private$params, params)
           self$finalize()
-        }
+        })
       }
       return(invisible(self))
 
@@ -737,7 +738,7 @@ Dataset <- R6::R6Class(
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
 #' @param params a list of parameters. See
 #'               \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#dataset-parameters}{
-#'               The "Dataset Parameters" section} for a list of parameters
+#'               the "Dataset Parameters" section of the parameter documentation} for a list of parameters
 #'               and valid values.
 #' @param reference reference dataset. When GPBoost creates a Dataset, it does some preprocessing like binning
 #'                  continuous features into histograms. If you want to apply the same bin boundaries from an existing

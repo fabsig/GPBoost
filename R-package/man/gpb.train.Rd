@@ -13,7 +13,7 @@ gpb.train(params = list(), data, nrounds = 100L, gp_model = NULL,
 }
 \arguments{
 \item{params}{list of ("tuning") parameters. 
-See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst} for more information. 
+See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst}{the parameter documentation} for more information. 
 A few key parameters:
            \itemize{
                \item{\code{learning_rate}}{ The learning rate, also called shrinkage or damping parameter 
@@ -79,7 +79,7 @@ the \code{init_cov_pars} parameter when creating the \code{gp_model}}
                     If you provide a character vector to this argument, it should contain strings with valid
                     evaluation metrics.
                     See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}{
-                    The "metric" section}
+                    the "metric" section of the parameter documentation}
                     for a list of valid metrics.
                 }
                 \item{\bold{b. function}:
@@ -132,7 +132,7 @@ set to the iteration number of the best iteration.}
 booster model into a predictor model which frees up memory and the
 original datasets}
 
-\item{...}{other parameters, see \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst} for more information.}
+\item{...}{other parameters, see \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst}{the parameter documentation} for more information.}
 }
 \value{
 a trained booster model \code{gpb.Booster}.

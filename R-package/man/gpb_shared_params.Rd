@@ -25,7 +25,7 @@ set to the iteration number of the best iteration.}
                     If you provide a character vector to this argument, it should contain strings with valid
                     evaluation metrics.
                     See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}{
-                    The "metric" section}
+                    the "metric" section of the parameter documentation}
                     for a list of valid metrics.
                 }
                 \item{\bold{b. function}:
@@ -72,7 +72,7 @@ names or an integer vector with the indices of the features (e.g.
 \code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}}
 
 \item{params}{list of ("tuning") parameters. 
-See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst} for more information. 
+See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst}{the parameter documentation} for more information. 
 A few key parameters:
            \itemize{
                \item{\code{learning_rate}}{ The learning rate, also called shrinkage or damping parameter 

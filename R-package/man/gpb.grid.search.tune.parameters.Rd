@@ -60,7 +60,7 @@ the \code{nfold} and \code{stratified} parameters are ignored.}
                     If you provide a character vector to this argument, it should contain strings with valid
                     evaluation metrics.
                     See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}{
-                    The "metric" section}
+                    the "metric" section of the parameter documentation}
                     for a list of valid metrics.
                 }
                 \item{\bold{b. function}:
