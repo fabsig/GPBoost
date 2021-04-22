@@ -43,8 +43,9 @@ A few key parameters:
                \item{\code{oosting}}{ Boosting type. \code{"gbdt"}, \code{"rf"}, \code{"dart"} or \code{"goss"}.
                Only \code{"gbdt"} allows for doing Gaussian process boosting.}
                \item{num_threads}{ Number of threads. For the best speed, set this to
-                                  the number of real CPU cores, not the number of threads (most
-                                  CPU using hyper-threading to generate 2 threads per CPU core).}
+                            the number of real CPU cores(\code{parallel::detectCores(logical = FALSE)}),
+                            not the number of threads (most CPU using hyper-threading to generate 2 threads
+                            per CPU core).}
            }}
 
 \item{data}{a \code{gpb.Dataset} object, used for training. Some functions, such as \code{\link{gpb.cv}},

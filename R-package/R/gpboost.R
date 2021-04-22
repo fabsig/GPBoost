@@ -89,8 +89,9 @@
 #'                \item{\code{oosting}}{ Boosting type. \code{"gbdt"}, \code{"rf"}, \code{"dart"} or \code{"goss"}.
 #'                Only \code{"gbdt"} allows for doing Gaussian process boosting.}
 #'                \item{num_threads}{ Number of threads. For the best speed, set this to
-#'                                   the number of real CPU cores, not the number of threads (most
-#'                                   CPU using hyper-threading to generate 2 threads per CPU core).}
+#'                             the number of real CPU cores(\code{parallel::detectCores(logical = FALSE)}),
+#'                             not the number of threads (most CPU using hyper-threading to generate 2 threads
+#'                             per CPU core).}
 #'            }
 #' @param verbose verbosity for output, if <= 0, also will disable the print of evaluation during training
 #' @param gp_model A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model
