@@ -29,15 +29,15 @@
 #define R_API_BEGIN() \
   try {
 #define R_API_END() } \
-  catch(std::exception& ex) { R_INT_PTR(call_state)[0] = -1; LGBM_SetLastError(ex.what()); return call_state;} \
-  catch(std::string& ex) { R_INT_PTR(call_state)[0] = -1; LGBM_SetLastError(ex.c_str()); return call_state; } \
-  catch(...) { R_INT_PTR(call_state)[0] = -1; LGBM_SetLastError("unknown exception"); return call_state;} \
-  return call_state;
+  catch(std::exception& ex) { LGBM_SetLastError(ex.what()); return R_NilValue;} \
+  catch(std::string& ex) { LGBM_SetLastError(ex.c_str()); return R_NilValue; } \
+  catch(...) { LGBM_SetLastError("unknown exception"); return R_NilValue;} \
+  return R_NilValue;
 
 #define CHECK_CALL(x) \
   if ((x) != 0) { \
     Rf_error(LGBM_GetLastError()); \
-    return call_state;\
+    return R_NilValue;\
   }
 
 using LightGBM::Common::Join;
@@ -57,15 +57,18 @@ LGBM_SE EncodeChar(LGBM_SE dest, const char* src, LGBM_SE buf_len, LGBM_SE actua
 	return dest;
 }
 
-LGBM_SE LGBM_GetLastError_R(LGBM_SE buf_len, LGBM_SE actual_len, LGBM_SE err_msg) {
-	return EncodeChar(err_msg, LGBM_GetLastError(), buf_len, actual_len, std::strlen(LGBM_GetLastError()) + 1);
+SEXP LGBM_GetLastError_R() {
+	SEXP out;
+	out = PROTECT(Rf_allocVector(STRSXP, 1));
+	SET_STRING_ELT(out, 0, Rf_mkChar(LGBM_GetLastError()));
+	UNPROTECT(1);
+	return out;
 }
 
-LGBM_SE LGBM_DatasetCreateFromFile_R(LGBM_SE filename,
+SEXP LGBM_DatasetCreateFromFile_R(LGBM_SE filename,
 	LGBM_SE parameters,
 	LGBM_SE reference,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+	LGBM_SE out) {
 	R_API_BEGIN();
 	DatasetHandle handle = nullptr;
 	CHECK_CALL(LGBM_DatasetCreateFromFile(R_CHAR_PTR(filename), R_CHAR_PTR(parameters),
@@ -74,7 +77,7 @@ LGBM_SE LGBM_DatasetCreateFromFile_R(LGBM_SE filename,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetCreateFromCSC_R(LGBM_SE indptr,
+SEXP LGBM_DatasetCreateFromCSC_R(LGBM_SE indptr,
 	LGBM_SE indices,
 	LGBM_SE data,
 	LGBM_SE num_indptr,
@@ -82,8 +85,7 @@ LGBM_SE LGBM_DatasetCreateFromCSC_R(LGBM_SE indptr,
 	LGBM_SE num_row,
 	LGBM_SE parameters,
 	LGBM_SE reference,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+	LGBM_SE out) {
 	R_API_BEGIN();
 	const int* p_indptr = R_INT_PTR(indptr);
 	const int* p_indices = R_INT_PTR(indices);
@@ -100,13 +102,12 @@ LGBM_SE LGBM_DatasetCreateFromCSC_R(LGBM_SE indptr,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetCreateFromMat_R(LGBM_SE data,
+SEXP LGBM_DatasetCreateFromMat_R(LGBM_SE data,
 	LGBM_SE num_row,
 	LGBM_SE num_col,
 	LGBM_SE parameters,
 	LGBM_SE reference,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+	LGBM_SE out) {
 	R_API_BEGIN();
 	int32_t nrow = static_cast<int32_t>(R_AS_INT(num_row));
 	int32_t ncol = static_cast<int32_t>(R_AS_INT(num_col));
@@ -118,12 +119,11 @@ LGBM_SE LGBM_DatasetCreateFromMat_R(LGBM_SE data,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetGetSubset_R(LGBM_SE handle,
+SEXP LGBM_DatasetGetSubset_R(LGBM_SE handle,
 	LGBM_SE used_row_indices,
 	LGBM_SE len_used_row_indices,
 	LGBM_SE parameters,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+	LGBM_SE out) {
 	R_API_BEGIN();
 	int len = R_AS_INT(len_used_row_indices);
 	std::vector<int> idxvec(len);
@@ -140,9 +140,8 @@ LGBM_SE LGBM_DatasetGetSubset_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetSetFeatureNames_R(LGBM_SE handle,
-	LGBM_SE feature_names,
-	LGBM_SE call_state) {
+SEXP LGBM_DatasetSetFeatureNames_R(LGBM_SE handle,
+	LGBM_SE feature_names) {
 	R_API_BEGIN();
 	auto vec_names = Split(R_CHAR_PTR(feature_names), '\t');
 	std::vector<const char*> vec_sptr;
@@ -155,11 +154,10 @@ LGBM_SE LGBM_DatasetSetFeatureNames_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetGetFeatureNames_R(LGBM_SE handle,
+SEXP LGBM_DatasetGetFeatureNames_R(LGBM_SE handle,
 	LGBM_SE buf_len,
 	LGBM_SE actual_len,
-	LGBM_SE feature_names,
-	LGBM_SE call_state) {
+	LGBM_SE feature_names) {
 	R_API_BEGIN();
 	int len = 0;
 	CHECK_CALL(LGBM_DatasetGetNumFeature(R_GET_PTR(handle), &len));
@@ -185,17 +183,15 @@ LGBM_SE LGBM_DatasetGetFeatureNames_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetSaveBinary_R(LGBM_SE handle,
-	LGBM_SE filename,
-	LGBM_SE call_state) {
+SEXP LGBM_DatasetSaveBinary_R(LGBM_SE handle,
+	LGBM_SE filename) {
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_DatasetSaveBinary(R_GET_PTR(handle),
 		R_CHAR_PTR(filename)));
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetFree_R(LGBM_SE handle,
-	LGBM_SE call_state) {
+SEXP LGBM_DatasetFree_R(LGBM_SE handle) {
 	R_API_BEGIN();
 	if (R_GET_PTR(handle) != nullptr) {
 		CHECK_CALL(LGBM_DatasetFree(R_GET_PTR(handle)));
@@ -204,11 +200,10 @@ LGBM_SE LGBM_DatasetFree_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetSetField_R(LGBM_SE handle,
+SEXP LGBM_DatasetSetField_R(LGBM_SE handle,
 	LGBM_SE field_name,
 	LGBM_SE field_data,
-	LGBM_SE num_element,
-	LGBM_SE call_state) {
+	LGBM_SE num_element) {
 	R_API_BEGIN();
 	int len = static_cast<int>(R_AS_INT(num_element));
 	const char* name = R_CHAR_PTR(field_name);
@@ -234,10 +229,9 @@ LGBM_SE LGBM_DatasetSetField_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetGetField_R(LGBM_SE handle,
+SEXP LGBM_DatasetGetField_R(LGBM_SE handle,
 	LGBM_SE field_name,
-	LGBM_SE field_data,
-	LGBM_SE call_state) {
+	LGBM_SE field_data) {
 	R_API_BEGIN();
 	const char* name = R_CHAR_PTR(field_name);
 	int out_len = 0;
@@ -270,10 +264,9 @@ LGBM_SE LGBM_DatasetGetField_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetGetFieldSize_R(LGBM_SE handle,
+SEXP LGBM_DatasetGetFieldSize_R(LGBM_SE handle,
 	LGBM_SE field_name,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+	LGBM_SE out) {
 	R_API_BEGIN();
 	const char* name = R_CHAR_PTR(field_name);
 	int out_len = 0;
@@ -287,16 +280,14 @@ LGBM_SE LGBM_DatasetGetFieldSize_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetUpdateParamChecking_R(LGBM_SE old_params,
-	LGBM_SE new_params,
-	LGBM_SE call_state) {
+SEXP LGBM_DatasetUpdateParamChecking_R(LGBM_SE old_params,
+	LGBM_SE new_params) {
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_DatasetUpdateParamChecking(R_CHAR_PTR(old_params), R_CHAR_PTR(new_params)));
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetGetNumData_R(LGBM_SE handle, LGBM_SE out,
-	LGBM_SE call_state) {
+SEXP LGBM_DatasetGetNumData_R(LGBM_SE handle, LGBM_SE out) {
 	int nrow;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_DatasetGetNumData(R_GET_PTR(handle), &nrow));
@@ -304,9 +295,8 @@ LGBM_SE LGBM_DatasetGetNumData_R(LGBM_SE handle, LGBM_SE out,
 	R_API_END();
 }
 
-LGBM_SE LGBM_DatasetGetNumFeature_R(LGBM_SE handle,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+SEXP LGBM_DatasetGetNumFeature_R(LGBM_SE handle,
+	LGBM_SE out) {
 	int nfeature;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_DatasetGetNumFeature(R_GET_PTR(handle), &nfeature));
@@ -316,8 +306,7 @@ LGBM_SE LGBM_DatasetGetNumFeature_R(LGBM_SE handle,
 
 // --- start Booster interfaces
 
-LGBM_SE LGBM_BoosterFree_R(LGBM_SE handle,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterFree_R(LGBM_SE handle) {
 	R_API_BEGIN();
 	if (R_GET_PTR(handle) != nullptr) {
 		CHECK_CALL(LGBM_BoosterFree(R_GET_PTR(handle)));
@@ -326,10 +315,9 @@ LGBM_SE LGBM_BoosterFree_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterCreate_R(LGBM_SE train_data,
+SEXP LGBM_BoosterCreate_R(LGBM_SE train_data,
 	LGBM_SE parameters,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+	LGBM_SE out) {
 	R_API_BEGIN();
 	BoosterHandle handle = nullptr;
 	CHECK_CALL(LGBM_BoosterCreate(R_GET_PTR(train_data), R_CHAR_PTR(parameters), &handle));
@@ -337,11 +325,10 @@ LGBM_SE LGBM_BoosterCreate_R(LGBM_SE train_data,
 	R_API_END();
 }
 
-LGBM_SE LGBM_GPBoosterCreate_R(LGBM_SE train_data,
+SEXP LGBM_GPBoosterCreate_R(LGBM_SE train_data,
 	LGBM_SE parameters,
 	LGBM_SE re_model,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+	LGBM_SE out) {
 	R_API_BEGIN();
 	BoosterHandle handle = nullptr;
 	CHECK_CALL(LGBM_GPBoosterCreate(R_GET_PTR(train_data), R_CHAR_PTR(parameters), R_GET_PTR(re_model), &handle));
@@ -349,9 +336,8 @@ LGBM_SE LGBM_GPBoosterCreate_R(LGBM_SE train_data,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterCreateFromModelfile_R(LGBM_SE filename,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterCreateFromModelfile_R(LGBM_SE filename,
+	LGBM_SE out) {
 	R_API_BEGIN();
 	int out_num_iterations = 0;
 	BoosterHandle handle = nullptr;
@@ -360,9 +346,8 @@ LGBM_SE LGBM_BoosterCreateFromModelfile_R(LGBM_SE filename,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterLoadModelFromString_R(LGBM_SE model_str,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterLoadModelFromString_R(LGBM_SE model_str,
+	LGBM_SE out) {
 	R_API_BEGIN();
 	int out_num_iterations = 0;
 	BoosterHandle handle = nullptr;
@@ -371,41 +356,36 @@ LGBM_SE LGBM_BoosterLoadModelFromString_R(LGBM_SE model_str,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterMerge_R(LGBM_SE handle,
-	LGBM_SE other_handle,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterMerge_R(LGBM_SE handle,
+	LGBM_SE other_handle) {
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterMerge(R_GET_PTR(handle), R_GET_PTR(other_handle)));
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterAddValidData_R(LGBM_SE handle,
-	LGBM_SE valid_data,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterAddValidData_R(LGBM_SE handle,
+	LGBM_SE valid_data) {
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterAddValidData(R_GET_PTR(handle), R_GET_PTR(valid_data)));
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterResetTrainingData_R(LGBM_SE handle,
-	LGBM_SE train_data,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterResetTrainingData_R(LGBM_SE handle,
+	LGBM_SE train_data) {
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterResetTrainingData(R_GET_PTR(handle), R_GET_PTR(train_data)));
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterResetParameter_R(LGBM_SE handle,
-	LGBM_SE parameters,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterResetParameter_R(LGBM_SE handle,
+	LGBM_SE parameters) {
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterResetParameter(R_GET_PTR(handle), R_CHAR_PTR(parameters)));
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterGetNumClasses_R(LGBM_SE handle,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterGetNumClasses_R(LGBM_SE handle,
+	LGBM_SE out) {
 	int num_class;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterGetNumClasses(R_GET_PTR(handle), &num_class));
@@ -413,19 +393,17 @@ LGBM_SE LGBM_BoosterGetNumClasses_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterUpdateOneIter_R(LGBM_SE handle,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterUpdateOneIter_R(LGBM_SE handle) {
 	int is_finished = 0;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterUpdateOneIter(R_GET_PTR(handle), &is_finished));
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterUpdateOneIterCustom_R(LGBM_SE handle,
+SEXP LGBM_BoosterUpdateOneIterCustom_R(LGBM_SE handle,
 	LGBM_SE grad,
 	LGBM_SE hess,
-	LGBM_SE len,
-	LGBM_SE call_state) {
+	LGBM_SE len) {
 	int is_finished = 0;
 	R_API_BEGIN();
 	int int_len = R_AS_INT(len);
@@ -439,16 +417,14 @@ LGBM_SE LGBM_BoosterUpdateOneIterCustom_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterRollbackOneIter_R(LGBM_SE handle,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterRollbackOneIter_R(LGBM_SE handle) {
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterRollbackOneIter(R_GET_PTR(handle)));
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterGetCurrentIteration_R(LGBM_SE handle,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterGetCurrentIteration_R(LGBM_SE handle,
+	LGBM_SE out) {
 	int out_iteration;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterGetCurrentIteration(R_GET_PTR(handle), &out_iteration));
@@ -456,29 +432,26 @@ LGBM_SE LGBM_BoosterGetCurrentIteration_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterGetUpperBoundValue_R(LGBM_SE handle,
-	LGBM_SE out_result,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterGetUpperBoundValue_R(LGBM_SE handle,
+	LGBM_SE out_result) {
 	R_API_BEGIN();
 	double* ptr_ret = R_REAL_PTR(out_result);
 	CHECK_CALL(LGBM_BoosterGetUpperBoundValue(R_GET_PTR(handle), ptr_ret));
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterGetLowerBoundValue_R(LGBM_SE handle,
-	LGBM_SE out_result,
-	LGBM_SE call_state) {
+SEXP LGBM_BoosterGetLowerBoundValue_R(LGBM_SE handle,
+	LGBM_SE out_result) {
 	R_API_BEGIN();
 	double* ptr_ret = R_REAL_PTR(out_result);
 	CHECK_CALL(LGBM_BoosterGetLowerBoundValue(R_GET_PTR(handle), ptr_ret));
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterGetEvalNames_R(LGBM_SE handle,
+SEXP LGBM_BoosterGetEvalNames_R(LGBM_SE handle,
 	LGBM_SE buf_len,
 	LGBM_SE actual_len,
-	LGBM_SE eval_names,
-	LGBM_SE call_state) {
+	LGBM_SE eval_names) {
 	R_API_BEGIN();
 	int len;
 	CHECK_CALL(LGBM_BoosterGetEvalCounts(R_GET_PTR(handle), &len));
@@ -506,10 +479,9 @@ LGBM_SE LGBM_BoosterGetEvalNames_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterGetEval_R(LGBM_SE handle,
+SEXP LGBM_BoosterGetEval_R(LGBM_SE handle,
 	LGBM_SE data_idx,
-	LGBM_SE out_result,
-	LGBM_SE call_state) {
+	LGBM_SE out_result) {
 	R_API_BEGIN();
 	int len;
 	CHECK_CALL(LGBM_BoosterGetEvalCounts(R_GET_PTR(handle), &len));
@@ -520,10 +492,9 @@ LGBM_SE LGBM_BoosterGetEval_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterGetNumPredict_R(LGBM_SE handle,
+SEXP LGBM_BoosterGetNumPredict_R(LGBM_SE handle,
 	LGBM_SE data_idx,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+	LGBM_SE out) {
 	R_API_BEGIN();
 	int64_t len;
 	CHECK_CALL(LGBM_BoosterGetNumPredict(R_GET_PTR(handle), R_AS_INT(data_idx), &len));
@@ -531,10 +502,9 @@ LGBM_SE LGBM_BoosterGetNumPredict_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterGetPredict_R(LGBM_SE handle,
+SEXP LGBM_BoosterGetPredict_R(LGBM_SE handle,
 	LGBM_SE data_idx,
-	LGBM_SE out_result,
-	LGBM_SE call_state) {
+	LGBM_SE out_result) {
 	R_API_BEGIN();
 	double* ptr_ret = R_REAL_PTR(out_result);
 	int64_t out_len;
@@ -556,7 +526,7 @@ int GetPredictType(LGBM_SE is_rawscore, LGBM_SE is_leafidx, LGBM_SE is_predcontr
 	return pred_type;
 }
 
-LGBM_SE LGBM_BoosterPredictForFile_R(LGBM_SE handle,
+SEXP LGBM_BoosterPredictForFile_R(LGBM_SE handle,
 	LGBM_SE data_filename,
 	LGBM_SE data_has_header,
 	LGBM_SE is_rawscore,
@@ -565,8 +535,7 @@ LGBM_SE LGBM_BoosterPredictForFile_R(LGBM_SE handle,
 	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
 	LGBM_SE parameter,
-	LGBM_SE result_filename,
-	LGBM_SE call_state) {
+	LGBM_SE result_filename) {
 	R_API_BEGIN();
 	int pred_type = GetPredictType(is_rawscore, is_leafidx, is_predcontrib);
 	CHECK_CALL(LGBM_BoosterPredictForFile(R_GET_PTR(handle), R_CHAR_PTR(data_filename),
@@ -575,15 +544,14 @@ LGBM_SE LGBM_BoosterPredictForFile_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterCalcNumPredict_R(LGBM_SE handle,
+SEXP LGBM_BoosterCalcNumPredict_R(LGBM_SE handle,
 	LGBM_SE num_row,
 	LGBM_SE is_rawscore,
 	LGBM_SE is_leafidx,
 	LGBM_SE is_predcontrib,
 	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
-	LGBM_SE out_len,
-	LGBM_SE call_state) {
+	LGBM_SE out_len) {
 	R_API_BEGIN();
 	int pred_type = GetPredictType(is_rawscore, is_leafidx, is_predcontrib);
 	int64_t len = 0;
@@ -593,7 +561,7 @@ LGBM_SE LGBM_BoosterCalcNumPredict_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterPredictForCSC_R(LGBM_SE handle,
+SEXP LGBM_BoosterPredictForCSC_R(LGBM_SE handle,
 	LGBM_SE indptr,
 	LGBM_SE indices,
 	LGBM_SE data,
@@ -606,8 +574,7 @@ LGBM_SE LGBM_BoosterPredictForCSC_R(LGBM_SE handle,
 	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
 	LGBM_SE parameter,
-	LGBM_SE out_result,
-	LGBM_SE call_state) {
+	LGBM_SE out_result) {
 	R_API_BEGIN();
 	int pred_type = GetPredictType(is_rawscore, is_leafidx, is_predcontrib);
 
@@ -627,7 +594,7 @@ LGBM_SE LGBM_BoosterPredictForCSC_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterPredictForMat_R(LGBM_SE handle,
+SEXP LGBM_BoosterPredictForMat_R(LGBM_SE handle,
 	LGBM_SE data,
 	LGBM_SE num_row,
 	LGBM_SE num_col,
@@ -637,8 +604,7 @@ LGBM_SE LGBM_BoosterPredictForMat_R(LGBM_SE handle,
 	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
 	LGBM_SE parameter,
-	LGBM_SE out_result,
-	LGBM_SE call_state) {
+	LGBM_SE out_result) {
 	R_API_BEGIN();
 	int pred_type = GetPredictType(is_rawscore, is_leafidx, is_predcontrib);
 
@@ -655,24 +621,22 @@ LGBM_SE LGBM_BoosterPredictForMat_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterSaveModel_R(LGBM_SE handle,
+SEXP LGBM_BoosterSaveModel_R(LGBM_SE handle,
 	LGBM_SE num_iteration,
 	LGBM_SE feature_importance_type,
-	LGBM_SE filename,
-	LGBM_SE call_state) {
+	LGBM_SE filename) {
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterSaveModel(R_GET_PTR(handle), 0, R_AS_INT(num_iteration), R_AS_INT(feature_importance_type), R_CHAR_PTR(filename)));
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterSaveModelToString_R(LGBM_SE handle,
+SEXP LGBM_BoosterSaveModelToString_R(LGBM_SE handle,
 	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
 	LGBM_SE feature_importance_type,
 	LGBM_SE buffer_len,
 	LGBM_SE actual_len,
-	LGBM_SE out_str,
-	LGBM_SE call_state) {
+	LGBM_SE out_str) {
 	R_API_BEGIN();
 	int64_t out_len = 0;
 	std::vector<char> inner_char_buf(R_AS_INT(buffer_len));
@@ -681,13 +645,12 @@ LGBM_SE LGBM_BoosterSaveModelToString_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE LGBM_BoosterDumpModel_R(LGBM_SE handle,
+SEXP LGBM_BoosterDumpModel_R(LGBM_SE handle,
 	LGBM_SE num_iteration,
 	LGBM_SE feature_importance_type,
 	LGBM_SE buffer_len,
 	LGBM_SE actual_len,
-	LGBM_SE out_str,
-	LGBM_SE call_state) {
+	LGBM_SE out_str) {
 	R_API_BEGIN();
 	int64_t out_len = 0;
 	std::vector<char> inner_char_buf(R_AS_INT(buffer_len));
@@ -698,7 +661,7 @@ LGBM_SE LGBM_BoosterDumpModel_R(LGBM_SE handle,
 
 // Below here are REModel / GPModel related functions
 
-LGBM_SE GPB_CreateREModel_R(LGBM_SE ndata,
+SEXP GPB_CreateREModel_R(LGBM_SE ndata,
 	LGBM_SE cluster_ids_data,
 	LGBM_SE re_group_data,
 	LGBM_SE num_re_group,
@@ -719,8 +682,7 @@ LGBM_SE GPB_CreateREModel_R(LGBM_SE ndata,
 	LGBM_SE vecchia_pred_type,
 	LGBM_SE num_neighbors_pred,
 	LGBM_SE likelihood,
-	LGBM_SE out,
-	LGBM_SE call_state) {
+	LGBM_SE out) {
 	R_API_BEGIN();
 	REModelHandle handle = nullptr;
 	CHECK_CALL(GPB_CreateREModel(R_AS_INT(ndata),
@@ -748,8 +710,7 @@ LGBM_SE GPB_CreateREModel_R(LGBM_SE ndata,
 	R_API_END();
 }
 
-LGBM_SE GPB_REModelFree_R(LGBM_SE handle,
-	LGBM_SE call_state) {
+SEXP GPB_REModelFree_R(LGBM_SE handle) {
 	R_API_BEGIN();
 	if (R_GET_PTR(handle) != nullptr) {
 		CHECK_CALL(GPB_REModelFree(R_GET_PTR(handle)));
@@ -758,7 +719,7 @@ LGBM_SE GPB_REModelFree_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE GPB_SetOptimConfig_R(LGBM_SE handle,
+SEXP GPB_SetOptimConfig_R(LGBM_SE handle,
 	LGBM_SE init_cov_pars,
 	LGBM_SE lr,
 	LGBM_SE acc_rate_cov,
@@ -770,8 +731,7 @@ LGBM_SE GPB_SetOptimConfig_R(LGBM_SE handle,
 	LGBM_SE optimizer,
 	LGBM_SE momentum_offset,
 	LGBM_SE convergence_criterion,
-	LGBM_SE calc_std_dev,
-	LGBM_SE call_state) {
+	LGBM_SE calc_std_dev) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetOptimConfig(R_GET_PTR(handle), R_REAL_PTR(init_cov_pars),
 		R_AS_DOUBLE(lr), R_AS_DOUBLE(acc_rate_cov), R_AS_INT(max_iter),
@@ -781,93 +741,84 @@ LGBM_SE GPB_SetOptimConfig_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE GPB_SetOptimCoefConfig_R(LGBM_SE handle,
+SEXP GPB_SetOptimCoefConfig_R(LGBM_SE handle,
 	LGBM_SE num_covariates,
 	LGBM_SE init_coef,
 	LGBM_SE lr_coef,
 	LGBM_SE acc_rate_coef,
-	LGBM_SE optimizer,
-	LGBM_SE call_state) {
+	LGBM_SE optimizer) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetOptimCoefConfig(R_GET_PTR(handle), R_AS_INT(num_covariates),
 		R_REAL_PTR(init_coef), R_AS_DOUBLE(lr_coef), R_AS_DOUBLE(acc_rate_coef), R_CHAR_PTR(optimizer)));
 	R_API_END();
 }
 
-LGBM_SE GPB_OptimCovPar_R(LGBM_SE handle,
+SEXP GPB_OptimCovPar_R(LGBM_SE handle,
 	LGBM_SE y_data,
-	LGBM_SE fixed_effects,
-	LGBM_SE call_state) {
+	LGBM_SE fixed_effects) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_OptimCovPar(R_GET_PTR(handle), R_REAL_PTR(y_data),
 		R_REAL_PTR(fixed_effects)));
 	R_API_END();
 }
 
-LGBM_SE GPB_OptimLinRegrCoefCovPar_R(LGBM_SE handle,
+SEXP GPB_OptimLinRegrCoefCovPar_R(LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE covariate_data,
-	LGBM_SE num_covariates,
-	LGBM_SE call_state) {
+	LGBM_SE num_covariates) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_OptimLinRegrCoefCovPar(R_GET_PTR(handle), R_REAL_PTR(y_data), R_REAL_PTR(covariate_data),
 		R_AS_INT(num_covariates)));
 	R_API_END();
 }
 
-LGBM_SE GPB_EvalNegLogLikelihood_R(LGBM_SE handle,
+SEXP GPB_EvalNegLogLikelihood_R(LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE cov_pars,
-	LGBM_SE negll,
-	LGBM_SE call_state) {
+	LGBM_SE negll) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_EvalNegLogLikelihood(R_GET_PTR(handle), R_REAL_PTR(y_data), R_REAL_PTR(cov_pars), R_REAL_PTR(negll)));
 	R_API_END();
 }
 
-LGBM_SE GPB_GetCovPar_R(LGBM_SE handle,
+SEXP GPB_GetCovPar_R(LGBM_SE handle,
 	LGBM_SE calc_std_dev,
-	LGBM_SE optim_cov_pars,
-	LGBM_SE call_state) {
+	LGBM_SE optim_cov_pars) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetCovPar(R_GET_PTR(handle), R_REAL_PTR(optim_cov_pars), R_AS_BOOL(calc_std_dev)));
 	R_API_END();
 }
 
-LGBM_SE GPB_GetInitCovPar_R(LGBM_SE handle,
-	LGBM_SE init_cov_pars,
-	LGBM_SE call_state) {
+SEXP GPB_GetInitCovPar_R(LGBM_SE handle,
+	LGBM_SE init_cov_pars) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetInitCovPar(R_GET_PTR(handle), R_REAL_PTR(init_cov_pars)));
 	R_API_END();
 }
 
-LGBM_SE GPB_GetCoef_R(LGBM_SE handle,
+SEXP GPB_GetCoef_R(LGBM_SE handle,
 	LGBM_SE calc_std_dev,
-	LGBM_SE optim_coef,
-	LGBM_SE call_state) {
+	LGBM_SE optim_coef) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetCoef(R_GET_PTR(handle), R_REAL_PTR(optim_coef), R_AS_BOOL(calc_std_dev)));
 	R_API_END();
 }
 
-LGBM_SE GPB_GetNumIt_R(LGBM_SE handle,
-	LGBM_SE num_it,
-	LGBM_SE call_state) {
+SEXP GPB_GetNumIt_R(LGBM_SE handle,
+	LGBM_SE num_it) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetNumIt(R_GET_PTR(handle), R_INT_PTR(num_it)));
 	R_API_END();
 }
 
-LGBM_SE GPB_SetPredictionData_R(LGBM_SE handle,
+SEXP GPB_SetPredictionData_R(LGBM_SE handle,
 	LGBM_SE num_data_pred,
 	LGBM_SE cluster_ids_data_pred,
 	LGBM_SE re_group_data_pred,
 	LGBM_SE re_group_rand_coef_data_pred,
 	LGBM_SE gp_coords_data_pred,
 	LGBM_SE gp_rand_coef_data_pred,
-	LGBM_SE covariate_data_pred,
-	LGBM_SE call_state) {
+	LGBM_SE covariate_data_pred) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetPredictionData(R_GET_PTR(handle),
 		R_AS_INT(num_data_pred), R_INT_PTR(cluster_ids_data_pred),
@@ -876,7 +827,7 @@ LGBM_SE GPB_SetPredictionData_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE GPB_PredictREModel_R(LGBM_SE handle,
+SEXP GPB_PredictREModel_R(LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE num_data_pred,
 	LGBM_SE predict_cov_mat,
@@ -894,8 +845,7 @@ LGBM_SE GPB_PredictREModel_R(LGBM_SE handle,
 	LGBM_SE num_neighbors_pred,
 	LGBM_SE fixed_effects,
 	LGBM_SE fixed_effects_pred,
-	LGBM_SE out_predict,
-	LGBM_SE call_state) {
+	LGBM_SE out_predict) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_PredictREModel(R_GET_PTR(handle), R_REAL_PTR(y_data),
 		R_AS_INT(num_data_pred), R_REAL_PTR(out_predict),
@@ -908,11 +858,10 @@ LGBM_SE GPB_PredictREModel_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE GPB_GetLikelihoodName_R(LGBM_SE handle,
+SEXP GPB_GetLikelihoodName_R(LGBM_SE handle,
 	LGBM_SE buf_len,
 	LGBM_SE actual_len,
-	LGBM_SE ll_name,
-	LGBM_SE call_state) {
+	LGBM_SE ll_name) {
 	R_API_BEGIN();
 	std::vector<char> name(128);
 	int num_char;
@@ -921,11 +870,10 @@ LGBM_SE GPB_GetLikelihoodName_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE GPB_GetOptimizerCovPars_R(LGBM_SE handle,
+SEXP GPB_GetOptimizerCovPars_R(LGBM_SE handle,
 	LGBM_SE buf_len,
 	LGBM_SE actual_len,
-	LGBM_SE opt_name,
-	LGBM_SE call_state) {
+	LGBM_SE opt_name) {
 	R_API_BEGIN();
 	std::vector<char> name(128);
 	int num_char;
@@ -934,11 +882,10 @@ LGBM_SE GPB_GetOptimizerCovPars_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE GPB_GetOptimizerCoef_R(LGBM_SE handle,
+SEXP GPB_GetOptimizerCoef_R(LGBM_SE handle,
 	LGBM_SE buf_len,
 	LGBM_SE actual_len,
-	LGBM_SE opt_name,
-	LGBM_SE call_state) {
+	LGBM_SE opt_name) {
 	R_API_BEGIN();
 	std::vector<char> name(128);
 	int num_char;
@@ -947,25 +894,22 @@ LGBM_SE GPB_GetOptimizerCoef_R(LGBM_SE handle,
 	R_API_END();
 }
 
-LGBM_SE GPB_SetLikelihood_R(LGBM_SE handle,
-	LGBM_SE likelihood,
-	LGBM_SE call_state) {
+SEXP GPB_SetLikelihood_R(LGBM_SE handle,
+	LGBM_SE likelihood) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetLikelihood(R_GET_PTR(handle), R_CHAR_PTR(likelihood)));
 	R_API_END();
 }
 
-LGBM_SE GPB_GetResponseData_R(LGBM_SE handle,
-	LGBM_SE response_data,
-	LGBM_SE call_state) {
+SEXP GPB_GetResponseData_R(LGBM_SE handle,
+	LGBM_SE response_data) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetResponseData(R_GET_PTR(handle), R_REAL_PTR(response_data)));
 	R_API_END();
 }
 
-LGBM_SE GPB_GetCovariateData_R(LGBM_SE handle,
-	LGBM_SE covariate_data,
-	LGBM_SE call_state) {
+SEXP GPB_GetCovariateData_R(LGBM_SE handle,
+	LGBM_SE covariate_data) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetCovariateData(R_GET_PTR(handle), R_REAL_PTR(covariate_data)));
 	R_API_END();
@@ -973,71 +917,73 @@ LGBM_SE GPB_GetCovariateData_R(LGBM_SE handle,
 
 // .Call() calls
 static const R_CallMethodDef CallEntries[] = {
-  {"LGBM_GetLastError_R"              , (DL_FUNC)&LGBM_GetLastError_R              , 3},
-  {"LGBM_DatasetCreateFromFile_R"     , (DL_FUNC)&LGBM_DatasetCreateFromFile_R     , 5},
-  {"LGBM_DatasetCreateFromCSC_R"      , (DL_FUNC)&LGBM_DatasetCreateFromCSC_R      , 10},
-  {"LGBM_DatasetCreateFromMat_R"      , (DL_FUNC)&LGBM_DatasetCreateFromMat_R      , 7},
-  {"LGBM_DatasetGetSubset_R"          , (DL_FUNC)&LGBM_DatasetGetSubset_R          , 6},
-  {"LGBM_DatasetSetFeatureNames_R"    , (DL_FUNC)&LGBM_DatasetSetFeatureNames_R    , 3},
-  {"LGBM_DatasetGetFeatureNames_R"    , (DL_FUNC)&LGBM_DatasetGetFeatureNames_R    , 5},
-  {"LGBM_DatasetSaveBinary_R"         , (DL_FUNC)&LGBM_DatasetSaveBinary_R         , 3},
-  {"LGBM_DatasetFree_R"               , (DL_FUNC)&LGBM_DatasetFree_R               , 2},
-  {"LGBM_DatasetSetField_R"           , (DL_FUNC)&LGBM_DatasetSetField_R           , 5},
-  {"LGBM_DatasetGetFieldSize_R"       , (DL_FUNC)&LGBM_DatasetGetFieldSize_R       , 4},
-  {"LGBM_DatasetGetField_R"           , (DL_FUNC)&LGBM_DatasetGetField_R           , 4},
-  {"LGBM_DatasetUpdateParamChecking_R", (DL_FUNC)&LGBM_DatasetUpdateParamChecking_R, 3},
-  {"LGBM_DatasetGetNumData_R"         , (DL_FUNC)&LGBM_DatasetGetNumData_R         , 3},
-  {"LGBM_DatasetGetNumFeature_R"      , (DL_FUNC)&LGBM_DatasetGetNumFeature_R      , 3},
-  {"LGBM_BoosterCreate_R"             , (DL_FUNC)&LGBM_BoosterCreate_R             , 4},
-  {"LGBM_GPBoosterCreate_R"           , (DL_FUNC)&LGBM_GPBoosterCreate_R           , 5},
-  {"LGBM_BoosterFree_R"               , (DL_FUNC)&LGBM_BoosterFree_R               , 2},
-  {"LGBM_BoosterCreateFromModelfile_R", (DL_FUNC)&LGBM_BoosterCreateFromModelfile_R, 3},
-  {"LGBM_BoosterLoadModelFromString_R", (DL_FUNC)&LGBM_BoosterLoadModelFromString_R, 3},
-  {"LGBM_BoosterMerge_R"              , (DL_FUNC)&LGBM_BoosterMerge_R              , 3},
-  {"LGBM_BoosterAddValidData_R"       , (DL_FUNC)&LGBM_BoosterAddValidData_R       , 3},
-  {"LGBM_BoosterResetTrainingData_R"  , (DL_FUNC)&LGBM_BoosterResetTrainingData_R  , 3},
-  {"LGBM_BoosterResetParameter_R"     , (DL_FUNC)&LGBM_BoosterResetParameter_R     , 3},
-  {"LGBM_BoosterGetNumClasses_R"      , (DL_FUNC)&LGBM_BoosterGetNumClasses_R      , 3},
-  {"LGBM_BoosterUpdateOneIter_R"      , (DL_FUNC)&LGBM_BoosterUpdateOneIter_R      , 2},
-  {"LGBM_BoosterUpdateOneIterCustom_R", (DL_FUNC)&LGBM_BoosterUpdateOneIterCustom_R, 5},
-  {"LGBM_BoosterRollbackOneIter_R"    , (DL_FUNC)&LGBM_BoosterRollbackOneIter_R    , 2},
-  {"LGBM_BoosterGetCurrentIteration_R", (DL_FUNC)&LGBM_BoosterGetCurrentIteration_R, 3},
-  {"LGBM_BoosterGetUpperBoundValue_R" , (DL_FUNC)&LGBM_BoosterGetUpperBoundValue_R , 3},
-  {"LGBM_BoosterGetLowerBoundValue_R" , (DL_FUNC)&LGBM_BoosterGetLowerBoundValue_R , 3},
-  {"LGBM_BoosterGetEvalNames_R"       , (DL_FUNC)&LGBM_BoosterGetEvalNames_R       , 5},
-  {"LGBM_BoosterGetEval_R"            , (DL_FUNC)&LGBM_BoosterGetEval_R            , 4},
-  {"LGBM_BoosterGetNumPredict_R"      , (DL_FUNC)&LGBM_BoosterGetNumPredict_R      , 4},
-  {"LGBM_BoosterGetPredict_R"         , (DL_FUNC)&LGBM_BoosterGetPredict_R         , 4},
-  {"LGBM_BoosterPredictForFile_R"     , (DL_FUNC)&LGBM_BoosterPredictForFile_R     , 11},
-  {"LGBM_BoosterCalcNumPredict_R"     , (DL_FUNC)&LGBM_BoosterCalcNumPredict_R     , 9},
-  {"LGBM_BoosterPredictForCSC_R"      , (DL_FUNC)&LGBM_BoosterPredictForCSC_R      , 15},
-  {"LGBM_BoosterPredictForMat_R"      , (DL_FUNC)&LGBM_BoosterPredictForMat_R      , 12},
-  {"LGBM_BoosterSaveModel_R"          , (DL_FUNC)&LGBM_BoosterSaveModel_R          , 5},
-  {"LGBM_BoosterSaveModelToString_R"  , (DL_FUNC)&LGBM_BoosterSaveModelToString_R  , 8},
-  {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 7},
+  {"LGBM_GetLastError_R"              , (DL_FUNC)&LGBM_GetLastError_R              , 0},
+  {"LGBM_DatasetCreateFromFile_R"     , (DL_FUNC)&LGBM_DatasetCreateFromFile_R     , 4},
+  {"LGBM_DatasetCreateFromCSC_R"      , (DL_FUNC)&LGBM_DatasetCreateFromCSC_R      , 9},
+  {"LGBM_DatasetCreateFromMat_R"      , (DL_FUNC)&LGBM_DatasetCreateFromMat_R      , 6},
+  {"LGBM_DatasetGetSubset_R"          , (DL_FUNC)&LGBM_DatasetGetSubset_R          , 5},
+  {"LGBM_DatasetSetFeatureNames_R"    , (DL_FUNC)&LGBM_DatasetSetFeatureNames_R    , 2},
+  {"LGBM_DatasetGetFeatureNames_R"    , (DL_FUNC)&LGBM_DatasetGetFeatureNames_R    , 4},
+  {"LGBM_DatasetSaveBinary_R"         , (DL_FUNC)&LGBM_DatasetSaveBinary_R         , 2},
+  {"LGBM_DatasetFree_R"               , (DL_FUNC)&LGBM_DatasetFree_R               , 1},
+  {"LGBM_DatasetSetField_R"           , (DL_FUNC)&LGBM_DatasetSetField_R           , 4},
+  {"LGBM_DatasetGetFieldSize_R"       , (DL_FUNC)&LGBM_DatasetGetFieldSize_R       , 3},
+  {"LGBM_DatasetGetField_R"           , (DL_FUNC)&LGBM_DatasetGetField_R           , 3},
+  {"LGBM_DatasetUpdateParamChecking_R", (DL_FUNC)&LGBM_DatasetUpdateParamChecking_R, 2},
+  {"LGBM_DatasetGetNumData_R"         , (DL_FUNC)&LGBM_DatasetGetNumData_R         , 2},
+  {"LGBM_DatasetGetNumFeature_R"      , (DL_FUNC)&LGBM_DatasetGetNumFeature_R      , 2},
+  {"LGBM_BoosterCreate_R"             , (DL_FUNC)&LGBM_BoosterCreate_R             , 3},
+  {"LGBM_GPBoosterCreate_R"           , (DL_FUNC)&LGBM_GPBoosterCreate_R           , 4},
+  {"LGBM_BoosterFree_R"               , (DL_FUNC)&LGBM_BoosterFree_R               , 1},
+  {"LGBM_BoosterCreateFromModelfile_R", (DL_FUNC)&LGBM_BoosterCreateFromModelfile_R, 2},
+  {"LGBM_BoosterLoadModelFromString_R", (DL_FUNC)&LGBM_BoosterLoadModelFromString_R, 2},
+  {"LGBM_BoosterMerge_R"              , (DL_FUNC)&LGBM_BoosterMerge_R              , 2},
+  {"LGBM_BoosterAddValidData_R"       , (DL_FUNC)&LGBM_BoosterAddValidData_R       , 2},
+  {"LGBM_BoosterResetTrainingData_R"  , (DL_FUNC)&LGBM_BoosterResetTrainingData_R  , 2},
+  {"LGBM_BoosterResetParameter_R"     , (DL_FUNC)&LGBM_BoosterResetParameter_R     , 2},
+  {"LGBM_BoosterGetNumClasses_R"      , (DL_FUNC)&LGBM_BoosterGetNumClasses_R      , 2},
+  {"LGBM_BoosterUpdateOneIter_R"      , (DL_FUNC)&LGBM_BoosterUpdateOneIter_R      , 1},
+  {"LGBM_BoosterUpdateOneIterCustom_R", (DL_FUNC)&LGBM_BoosterUpdateOneIterCustom_R, 4},
+  {"LGBM_BoosterRollbackOneIter_R"    , (DL_FUNC)&LGBM_BoosterRollbackOneIter_R    , 1},
+  {"LGBM_BoosterGetCurrentIteration_R", (DL_FUNC)&LGBM_BoosterGetCurrentIteration_R, 2},
+  {"LGBM_BoosterGetUpperBoundValue_R" , (DL_FUNC)&LGBM_BoosterGetUpperBoundValue_R , 2},
+  {"LGBM_BoosterGetLowerBoundValue_R" , (DL_FUNC)&LGBM_BoosterGetLowerBoundValue_R , 2},
+  {"LGBM_BoosterGetEvalNames_R"       , (DL_FUNC)&LGBM_BoosterGetEvalNames_R       , 4},
+  {"LGBM_BoosterGetEval_R"            , (DL_FUNC)&LGBM_BoosterGetEval_R            , 3},
+  {"LGBM_BoosterGetNumPredict_R"      , (DL_FUNC)&LGBM_BoosterGetNumPredict_R      , 3},
+  {"LGBM_BoosterGetPredict_R"         , (DL_FUNC)&LGBM_BoosterGetPredict_R         , 3},
+  {"LGBM_BoosterPredictForFile_R"     , (DL_FUNC)&LGBM_BoosterPredictForFile_R     , 10},
+  {"LGBM_BoosterCalcNumPredict_R"     , (DL_FUNC)&LGBM_BoosterCalcNumPredict_R     , 8},
+  {"LGBM_BoosterPredictForCSC_R"      , (DL_FUNC)&LGBM_BoosterPredictForCSC_R      , 14},
+  {"LGBM_BoosterPredictForMat_R"      , (DL_FUNC)&LGBM_BoosterPredictForMat_R      , 11},
+  {"LGBM_BoosterSaveModel_R"          , (DL_FUNC)&LGBM_BoosterSaveModel_R          , 4},
+  {"LGBM_BoosterSaveModelToString_R"  , (DL_FUNC)&LGBM_BoosterSaveModelToString_R  , 7},
+  {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 6},
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 22},
-  {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 2},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 14},
-  {"GPB_SetOptimCoefConfig_R"         , (DL_FUNC)&GPB_SetOptimCoefConfig_R         , 7},
-  {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 4},
-  {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 5},
-  {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},
-  {"GPB_GetCovPar_R"                  , (DL_FUNC)&GPB_GetCovPar_R                  , 4},
-  {"GPB_GetInitCovPar_R"              , (DL_FUNC)&GPB_GetInitCovPar_R              , 3},
-  {"GPB_GetCoef_R"                    , (DL_FUNC)&GPB_GetCoef_R                    , 4},
-  {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 3},
-  {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 9},
-  {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 20},
-  {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 5},
-  {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC)&GPB_GetOptimizerCovPars_R        , 5},
-  {"GPB_GetOptimizerCoef_R"           , (DL_FUNC)&GPB_GetOptimizerCoef_R           , 5},
-  {"GPB_SetLikelihood_R"              , (DL_FUNC)&GPB_SetLikelihood_R              , 3},
-  {"GPB_GetResponseData_R"            , (DL_FUNC)&GPB_GetResponseData_R            , 3},
-  {"GPB_GetCovariateData_R"           , (DL_FUNC)&GPB_GetCovariateData_R           , 3},
+  {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 13},
+  {"GPB_SetOptimCoefConfig_R"         , (DL_FUNC)&GPB_SetOptimCoefConfig_R         , 6},
+  {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
+  {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 4},
+  {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 4},
+  {"GPB_GetCovPar_R"                  , (DL_FUNC)&GPB_GetCovPar_R                  , 3},
+  {"GPB_GetInitCovPar_R"              , (DL_FUNC)&GPB_GetInitCovPar_R              , 2},
+  {"GPB_GetCoef_R"                    , (DL_FUNC)&GPB_GetCoef_R                    , 3},
+  {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 2},
+  {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 8},
+  {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 19},
+  {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 4},
+  {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC)&GPB_GetOptimizerCovPars_R        , 4},
+  {"GPB_GetOptimizerCoef_R"           , (DL_FUNC)&GPB_GetOptimizerCoef_R           , 4},
+  {"GPB_SetLikelihood_R"              , (DL_FUNC)&GPB_SetLikelihood_R              , 2},
+  {"GPB_GetResponseData_R"            , (DL_FUNC)&GPB_GetResponseData_R            , 2},
+  {"GPB_GetCovariateData_R"           , (DL_FUNC)&GPB_GetCovariateData_R           , 2},
   {NULL, NULL, 0}
 };
 
-void R_init_lightgbm(DllInfo* dll) {
+LIGHTGBM_C_EXPORT void R_init_gpboost(DllInfo* dll);
+
+void R_init_gpboost(DllInfo* dll) {
 	R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
 	R_useDynamicSymbols(dll, FALSE);
 }

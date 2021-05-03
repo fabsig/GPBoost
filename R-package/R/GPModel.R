@@ -99,7 +99,10 @@ gpb.GPModel <- R6::R6Class(
       if (!gpb.is.null.handle(private$handle)) {
         
         # Freeing up handle
-        gpb.call("GPB_REModelFree_R", ret = NULL, private$handle)
+        .Call(
+          GPB_REModelFree_R
+          , private$handle
+        )
         private$handle <- NULL
         
       }
@@ -439,29 +442,31 @@ gpb.GPModel <- R6::R6Class(
       # try({
       
       # Store handle
-      handle <- gpb.call("GPB_CreateREModel_R",
-                         ret = handle,
-                         private$num_data,
-                         cluster_ids,
-                         group_data_c_str,
-                         private$num_group_re,
-                         group_rand_coef_data,
-                         ind_effect_group_rand_coef,
-                         private$num_group_rand_coef,
-                         private$num_gp,
-                         gp_coords,
-                         private$dim_coords,
-                         gp_rand_coef_data,
-                         private$num_gp_rand_coef,
-                         cov_function_c_str,
-                         private$cov_fct_shape,
-                         private$cov_fct_taper_range,
-                         private$vecchia_approx,
-                         private$num_neighbors,
-                         vecchia_ordering,
-                         vecchia_pred_type_c_str,
-                         private$num_neighbors_pred,
-                         likelihood_c_str)
+      .Call(
+        GPB_CreateREModel_R
+        , private$num_data
+        , cluster_ids
+        , group_data_c_str
+        , private$num_group_re
+        , group_rand_coef_data
+        , ind_effect_group_rand_coef
+        , private$num_group_rand_coef
+        , private$num_gp
+        , gp_coords
+        , private$dim_coords
+        , gp_rand_coef_data
+        , private$num_gp_rand_coef
+        , cov_function_c_str
+        , private$cov_fct_shape
+        , private$cov_fct_taper_range
+        , private$vecchia_approx
+        , private$num_neighbors
+        , vecchia_ordering
+        , vecchia_pred_type_c_str
+        , private$num_neighbors_pred
+        , likelihood_c_str
+        , handle
+      )
       # })
       
       # Check whether the handle was created properly if it was not stopped earlier by a stop call
@@ -616,20 +621,22 @@ gpb.GPModel <- R6::R6Class(
       
       if (is.null(X)) {
         
-        gpb.call("GPB_OptimCovPar_R",
-                 ret = NULL,
-                 private$handle,
-                 y,
-                 fixed_effects)
+        .Call(
+          GPB_OptimCovPar_R
+          , private$handle
+          , y
+          , fixed_effects
+        )
         
       } else {
         
-        gpb.call("GPB_OptimLinRegrCoefCovPar_R",
-                 ret = NULL,
-                 private$handle,
-                 y,
-                 X,
-                 private$num_coef)
+        .Call(
+          GPB_OptimLinRegrCoefCovPar_R
+          , private$handle
+          , y
+          , X
+          , private$num_coef
+        )
         
       }
       
@@ -700,11 +707,13 @@ gpb.GPModel <- R6::R6Class(
       }
       
       negll = 0.
-      gpb.call("GPB_EvalNegLogLikelihood_R",
-               ret = negll,
-               private$handle,
-               y,
-               cov_pars)
+      .Call(
+        GPB_EvalNegLogLikelihood_R
+        , private$handle
+        , y
+        , cov_pars
+        , negll
+      )
       
       return(negll)
       
@@ -803,21 +812,22 @@ gpb.GPModel <- R6::R6Class(
       }
       std_dev <- private$params[["std_dev"]]
       
-      gpb.call("GPB_SetOptimConfig_R",
-               ret = NULL,
-               private$handle,
-               init_cov_pars,
-               lr_cov,
-               acc_rate_cov,
-               maxit,
-               delta_rel_conv,
-               use_nesterov_acc,
-               nesterov_schedule_version,
-               trace,
-               optimizer_cov_c_str,
-               momentum_offset,
-               convergence_criterion,
-               std_dev)
+      .Call(
+        GPB_SetOptimConfig_R
+        , private$handle
+        , init_cov_pars
+        , lr_cov
+        , acc_rate_cov
+        , maxit
+        , delta_rel_conv
+        , use_nesterov_acc
+        , nesterov_schedule_version
+        , trace
+        , optimizer_cov_c_str
+        , momentum_offset
+        , convergence_criterion
+        , std_dev
+      )
       
       return(invisible(self))
      
@@ -825,15 +835,61 @@ gpb.GPModel <- R6::R6Class(
     },
     
     get_optim_params = function() {
+      
       params <- private$params
-      params$optimizer_cov <- gpb.call.return.str("GPB_GetOptimizerCovPars_R",
-                                                  private$handle)
-      params$optimizer_coef <- gpb.call.return.str("GPB_GetOptimizerCoef_R",
-                                                   private$handle)
+      # Get covariance parameters optimizer
+      buf_len <- as.integer(1024L * 1024L)
+      act_len <- 0L
+      buf <- raw(buf_len)
+      .Call(
+        GPB_GetOptimizerCovPars_R
+        , private$handle
+        , buf_len
+        , act_len
+        , buf
+      )
+      if (act_len > buf_len) {
+        buf_len <- act_len
+        buf <- raw(buf_len)
+        .Call(
+          GPB_GetOptimizerCovPars_R
+          , private$handle
+          , buf_len
+          , act_len
+          , buf
+        )
+      }
+      params$optimizer_cov <- gpb.encode.char(arr = buf, len = act_len)
+      # Get linear regression coefficients optimizer
+      buf_len <- as.integer(1024L * 1024L)
+      act_len <- 0L
+      buf <- raw(buf_len)
+      .Call(
+        GPB_GetOptimizerCoef_R
+        , private$handle
+        , buf_len
+        , act_len
+        , buf
+      )
+      if (act_len > buf_len) {
+        buf_len <- act_len
+        buf <- raw(buf_len)
+        .Call(
+          GPB_GetOptimizerCoef_R
+          , private$handle
+          , buf_len
+          , act_len
+          , buf
+        )
+      }
+      params$optimizer_coef <- gpb.encode.char(arr = buf, len = act_len)
+
       init_cov_pars <- numeric(private$num_cov_pars)
-      init_cov_pars <- gpb.call("GPB_GetInitCovPar_R",
-                                ret = init_cov_pars,
-                                private$handle)
+      .Call(
+        GPB_GetInitCovPar_R
+        , private$handle
+        , init_cov_pars
+      )
       if (sum(abs(init_cov_pars - rep(-1,private$num_cov_pars))) < 1E-6) {
         params["init_cov_pars"] <- list(NULL)
       }
@@ -900,14 +956,15 @@ gpb.GPModel <- R6::R6Class(
         optimizer_coef_c_str <- gpb.c_str(params[["optimizer_coef"]])
       }
       
-      gpb.call("GPB_SetOptimCoefConfig_R",
-               ret = NULL,
-               private$handle,
-               num_coef,
-               init_coef,
-               lr_coef,
-               acc_rate_coef,
-               optimizer_coef_c_str)
+      .Call(
+        GPB_SetOptimCoefConfig_R
+        , private$handle
+        , num_coef
+        , init_coef
+        , lr_coef
+        , acc_rate_coef
+        , optimizer_coef_c_str
+      )
       
       return(invisible(self))
       
@@ -921,10 +978,12 @@ gpb.GPModel <- R6::R6Class(
         optim_pars <- numeric(private$num_cov_pars)
       }
       
-      optim_pars <- gpb.call("GPB_GetCovPar_R",
-                             ret = optim_pars,
-                             private$handle,
-                             private$params[["std_dev"]])
+      .Call(
+        GPB_GetCovPar_R
+        , private$handle
+        , private$params[["std_dev"]]
+        , optim_pars
+      )
       
       cov_pars <- optim_pars[1:private$num_cov_pars]
       names(cov_pars) <- private$cov_par_names
@@ -949,11 +1008,13 @@ gpb.GPModel <- R6::R6Class(
       } else {
         optim_pars <- numeric(private$num_coef)
       }
-      
-      optim_pars <- gpb.call("GPB_GetCoef_R",
-                             ret = optim_pars,
-                             private$handle,
-                             private$params[["std_dev"]])
+
+      .Call(
+        GPB_GetCoef_R
+        , private$handle
+        , private$params[["std_dev"]]
+        , optim_pars
+      )
       
       coef <- optim_pars[1:private$num_coef]
       names(coef) <- private$coef_names
@@ -1185,16 +1246,17 @@ gpb.GPModel <- R6::R6Class(
       
       private$num_data_pred <- num_data_pred
       
-      gpb.call("GPB_SetPredictionData_R",
-               ret=NULL,
-               private$handle,
-               num_data_pred,
-               cluster_ids_pred,
-               group_data_pred,
-               group_rand_coef_data_pred,
-               gp_coords_pred,
-               gp_rand_coef_data_pred,
-               X_pred)
+      .Call(
+        GPB_SetPredictionData_R
+        , private$handle
+        , num_data_pred
+        , cluster_ids_pred
+        , group_data_pred
+        , group_rand_coef_data_pred
+        , gp_coords_pred
+        , gp_rand_coef_data_pred
+        , X_pred
+      )
       
       return(invisible(self))
       
@@ -1607,26 +1669,28 @@ gpb.GPModel <- R6::R6Class(
         preds <- numeric(num_data_pred)
       }
       
-      preds <- gpb.call("GPB_PredictREModel_R",
-                        ret=preds,
-                        private$handle,
-                        y,
-                        num_data_pred,
-                        predict_cov_mat,
-                        predict_var,
-                        predict_response,
-                        cluster_ids_pred,
-                        group_data_pred_c_str,
-                        group_rand_coef_data_pred,
-                        gp_coords_pred,
-                        gp_rand_coef_data_pred,
-                        cov_pars,
-                        X_pred,
-                        use_saved_data,
-                        vecchia_pred_type_c_str,
-                        private$num_neighbors_pred,
-                        fixed_effects,
-                        fixed_effects_pred)
+      .Call(
+        GPB_PredictREModel_R
+        , private$handle
+        , y
+        , num_data_pred
+        , predict_cov_mat
+        , predict_var
+        , predict_response
+        , cluster_ids_pred
+        , group_data_pred_c_str
+        , group_rand_coef_data_pred
+        , gp_coords_pred
+        , gp_rand_coef_data_pred
+        , cov_pars
+        , X_pred
+        , use_saved_data
+        , vecchia_pred_type_c_str
+        , private$num_neighbors_pred
+        , fixed_effects
+        , fixed_effects_pred
+        , preds
+      )
       
       pred_mean <- preds[1:num_data_pred]
       pred_cov_mat <- NA
@@ -1689,9 +1753,11 @@ gpb.GPModel <- R6::R6Class(
     get_response_data = function() {
       
       response_data <- numeric(private$num_data)
-      response_data <- gpb.call("GPB_GetResponseData_R",
-                                ret=response_data,
-                                private$handle)
+      .Call(
+        GPB_GetResponseData_R
+        , private$handle
+        , response_data
+      )
       
       return(response_data)
     },
@@ -1702,9 +1768,11 @@ gpb.GPModel <- R6::R6Class(
         stop("GPModel: Model has no covariate data for linear predictor")
       }
       covariate_data <- numeric(private$num_data * private$num_coef)
-      covariate_data <- gpb.call("GPB_GetCovariateData_R",
-                                 ret=covariate_data,
-                                 private$handle)
+      .Call(
+        GPB_GetCovariateData_R
+        , private$handle
+        , covariate_data
+      )
       covariate_data <- matrix(covariate_data,ncol=private$num_coef)
       
       return(covariate_data)
@@ -1732,15 +1800,37 @@ gpb.GPModel <- R6::R6Class(
     
     get_num_optim_iter = function() {
       num_it <- integer(1)
-      num_it <- gpb.call("GPB_GetNumIt_R",
-                         ret = num_it,
-                         private$handle)
+      .Call(
+        GPB_GetNumIt_R
+        , private$handle
+        , num_it
+      )
       return(num_it)
     },
     
     get_likelihood_name = function() {
-      ll_name <- gpb.call.return.str("GPB_GetLikelihoodName_R",
-                                     private$handle)
+      buf_len <- as.integer(1024L * 1024L)
+      act_len <- 0L
+      buf <- raw(buf_len)
+      .Call(
+        GPB_GetLikelihoodName_R
+        , private$handle
+        , buf_len
+        , act_len
+        , buf
+      )
+      if (act_len > buf_len) {
+        buf_len <- act_len
+        buf <- raw(buf_len)
+        .Call(
+          GPB_GetLikelihoodName_R
+          , private$handle
+          , buf_len
+          , act_len
+          , buf
+        )
+      }
+      ll_name <- gpb.encode.char(arr = buf, len = act_len)
       return(ll_name)
     },
     
@@ -1756,10 +1846,11 @@ gpb.GPModel <- R6::R6Class(
         private$cov_par_names <- c("Error_term",private$cov_par_names)
       }
       likelihood_c_str <- gpb.c_str(likelihood)
-      gpb.call("GPB_SetLikelihood_R",
-               ret = NULL,
-               private$handle,
-               likelihood_c_str)
+      .Call(
+        GPB_SetLikelihood_R
+        , private$handle
+        , likelihood_c_str
+      )
       
       return(invisible(self))
     },

@@ -25,115 +25,15 @@ gpb.encode.char <- function(arr, len) {
   return(rawToChar(arr[seq_len(len)]))
 }
 
-# [description] Raise an error. Before raising that error, check for any error message
-#               stored in a buffer on the C++ side.
+# [description] Get the most recent error stored on the C++ side and raise it
+#               as an R error.
 gpb.last_error <- function() {
-  # Perform text error buffering
-  buf_len <- 200L
-  act_len <- 0L
-  err_msg <- raw(buf_len)
+ 
   err_msg <- .Call(
-    "LGBM_GetLastError_R"
-    , buf_len
-    , act_len
-    , err_msg
-    , PACKAGE = "lib_gpboost"
+    LGBM_GetLastError_R
   )
-
-  # Check error buffer
-  if (act_len > buf_len) {
-    buf_len <- act_len
-    err_msg <- raw(buf_len)
-    err_msg <- .Call(
-      "LGBM_GetLastError_R"
-      , buf_len
-      , act_len
-      , err_msg
-      , PACKAGE = "lib_gpboost"
-    )
-  }
-
-  stop("api error: ", gpb.encode.char(arr = err_msg, len = act_len))
-
+  stop("api error: ", err_msg)
   return(invisible(NULL))
-
-}
-
-gpb.call <- function(fun_name, ret, ...) {
-  # Set call state to a zero value
-  call_state <- 0L
-
-  # Check for a ret call
-  if (!is.null(ret)) {
-    call_state <- .Call(
-      fun_name
-      , ...
-      , ret
-      , call_state
-      , PACKAGE = "lib_gpboost"
-    )
-  } else {
-    call_state <- .Call(
-      fun_name
-      , ...
-      , call_state
-      , PACKAGE = "lib_gpboost"
-    )
-  }
-
-  return(ret)
-
-}
-
-gpb.call <- function(fun_name, ret, ...) {
-  # Set call state to a zero value
-  call_state <- 0L
-  
-  # Check for a ret call
-  if (!is.null(ret)) {
-    call_state <- .Call(
-      fun_name
-      , ...
-      , ret
-      , call_state
-      , PACKAGE = "lib_gpboost"
-    )
-  } else {
-    call_state <- .Call(
-      fun_name
-      , ...
-      , call_state
-      , PACKAGE = "lib_gpboost"
-    )
-  }
-  call_state <- as.integer(call_state)
-  # Check for call state value post call
-  if (call_state != 0L) {
-    gpb.last_error()
-  }
-  
-  return(ret)
-  
-}
-
-gpb.call.return.str <- function(fun_name, ...) {
-
-  # Create buffer
-  buf_len <- as.integer(1024L * 1024L)
-  act_len <- 0L
-  buf <- raw(buf_len)
-
-  # Call buffer
-  buf <- gpb.call(fun_name = fun_name, ret = buf, ..., buf_len, act_len)
-
-  # Check for buffer content
-  if (act_len > buf_len) {
-    buf_len <- act_len
-    buf <- raw(buf_len)
-    buf <- gpb.call(fun_name = fun_name, ret = buf, ..., buf_len, act_len)
-  }
-
-  return(gpb.encode.char(arr = buf, len = act_len))
 
 }
 

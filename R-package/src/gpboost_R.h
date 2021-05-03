@@ -7,6 +7,11 @@
 #define GPBOOST_R_H_
 
 #include <LightGBM/c_api.h>
+
+#define R_NO_REMAP
+#define R_USE_C99_IN_CXX
+#include <Rinternals.h>
+
 #include "R_object_helper.h"
 
 /*!
@@ -16,11 +21,7 @@
 * \return err_msg error information
 * \return error information
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_GetLastError_R(
-	LGBM_SE buf_len,
-	LGBM_SE actual_len,
-	LGBM_SE err_msg
-);
+LIGHTGBM_C_EXPORT SEXP LGBM_GetLastError_R();
 
 // --- start Dataset interface
 
@@ -32,12 +33,11 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_GetLastError_R(
 * \param out created dataset
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetCreateFromFile_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetCreateFromFile_R(
 	LGBM_SE filename,
 	LGBM_SE parameters,
 	LGBM_SE reference,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -53,7 +53,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetCreateFromFile_R(
 * \param out created dataset
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetCreateFromCSC_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetCreateFromCSC_R(
 	LGBM_SE indptr,
 	LGBM_SE indices,
 	LGBM_SE data,
@@ -62,8 +62,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetCreateFromCSC_R(
 	LGBM_SE num_row,
 	LGBM_SE parameters,
 	LGBM_SE reference,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -76,14 +75,13 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetCreateFromCSC_R(
 * \param out created dataset
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetCreateFromMat_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetCreateFromMat_R(
 	LGBM_SE data,
 	LGBM_SE nrow,
 	LGBM_SE ncol,
 	LGBM_SE parameters,
 	LGBM_SE reference,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -95,13 +93,12 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetCreateFromMat_R(
 * \param out created dataset
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetSubset_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetSubset_R(
 	LGBM_SE handle,
 	LGBM_SE used_row_indices,
 	LGBM_SE len_used_row_indices,
 	LGBM_SE parameters,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -110,10 +107,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetSubset_R(
 * \param feature_names feature names
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetSetFeatureNames_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetSetFeatureNames_R(
 	LGBM_SE handle,
-	LGBM_SE feature_names,
-	LGBM_SE call_state
+	LGBM_SE feature_names
 );
 
 /*!
@@ -122,12 +118,11 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetSetFeatureNames_R(
 * \param feature_names feature names
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetFeatureNames_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetFeatureNames_R(
 	LGBM_SE handle,
 	LGBM_SE buf_len,
 	LGBM_SE actual_len,
-	LGBM_SE feature_names,
-	LGBM_SE call_state
+	LGBM_SE feature_names
 );
 
 /*!
@@ -136,10 +131,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetFeatureNames_R(
 * \param filename file name
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetSaveBinary_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetSaveBinary_R(
 	LGBM_SE handle,
-	LGBM_SE filename,
-	LGBM_SE call_state
+	LGBM_SE filename
 );
 
 /*!
@@ -147,9 +141,8 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetSaveBinary_R(
 * \param handle an instance of dataset
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetFree_R(
-	LGBM_SE handle,
-	LGBM_SE call_state
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetFree_R(
+	LGBM_SE handle
 );
 
 /*!
@@ -162,12 +155,11 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetFree_R(
 * \param num_element number of element in field_data
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetSetField_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetSetField_R(
 	LGBM_SE handle,
 	LGBM_SE field_name,
 	LGBM_SE field_data,
-	LGBM_SE num_element,
-	LGBM_SE call_state
+	LGBM_SE num_element
 );
 
 /*!
@@ -177,11 +169,10 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetSetField_R(
 * \param out size of info vector from dataset
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetFieldSize_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetFieldSize_R(
 	LGBM_SE handle,
 	LGBM_SE field_name,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -191,11 +182,10 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetFieldSize_R(
 * \param field_data pointer to vector
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetField_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetField_R(
 	LGBM_SE handle,
 	LGBM_SE field_name,
-	LGBM_SE field_data,
-	LGBM_SE call_state
+	LGBM_SE field_data
 );
 
 /*!
@@ -204,10 +194,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetField_R(
  * \param new_params New dataset parameters
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetUpdateParamChecking_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetUpdateParamChecking_R(
 	LGBM_SE old_params,
-	LGBM_SE new_params,
-	LGBM_SE call_state
+	LGBM_SE new_params
 );
 
 /*!
@@ -216,10 +205,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetUpdateParamChecking_R(
 * \param out The address to hold number of data
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetNumData_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetNumData_R(
 	LGBM_SE handle,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -228,10 +216,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetNumData_R(
 * \param out The output of number of features
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetNumFeature_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetNumFeature_R(
 	LGBM_SE handle,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 // --- start Booster interfaces
@@ -243,11 +230,10 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_DatasetGetNumFeature_R(
 * \param out handle of created Booster
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterCreate_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterCreate_R(
 	LGBM_SE train_data,
 	LGBM_SE parameters,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -258,21 +244,20 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterCreate_R(
 * \param out handle of created Booster
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_GPBoosterCreate_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_GPBoosterCreate_R(
 	LGBM_SE train_data,
 	LGBM_SE parameters,
 	LGBM_SE re_model,
-	LGBM_SE out,
-	LGBM_SE call_state);
+	LGBM_SE out
+);
 
 /*!
 * \brief free obj in handle
 * \param handle handle to be freed
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterFree_R(
-	LGBM_SE handle,
-	LGBM_SE call_state
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterFree_R(
+	LGBM_SE handle
 );
 
 /*!
@@ -281,10 +266,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterFree_R(
 * \param out handle of created Booster
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterCreateFromModelfile_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterCreateFromModelfile_R(
 	LGBM_SE filename,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -293,10 +277,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterCreateFromModelfile_R(
 * \param out handle of created Booster
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterLoadModelFromString_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterLoadModelFromString_R(
 	LGBM_SE model_str,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -305,10 +288,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterLoadModelFromString_R(
 * \param other_handle
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterMerge_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterMerge_R(
 	LGBM_SE handle,
-	LGBM_SE other_handle,
-	LGBM_SE call_state
+	LGBM_SE other_handle
 );
 
 /*!
@@ -317,10 +299,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterMerge_R(
 * \param valid_data validation data set
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterAddValidData_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterAddValidData_R(
 	LGBM_SE handle,
-	LGBM_SE valid_data,
-	LGBM_SE call_state
+	LGBM_SE valid_data
 );
 
 /*!
@@ -329,10 +310,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterAddValidData_R(
 * \param train_data training data set
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterResetTrainingData_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterResetTrainingData_R(
 	LGBM_SE handle,
-	LGBM_SE train_data,
-	LGBM_SE call_state
+	LGBM_SE train_data
 );
 
 /*!
@@ -341,10 +321,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterResetTrainingData_R(
 * \param parameters format: 'key1=value1 key2=value2'
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterResetParameter_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterResetParameter_R(
 	LGBM_SE handle,
-	LGBM_SE parameters,
-	LGBM_SE call_state
+	LGBM_SE parameters
 );
 
 /*!
@@ -353,10 +332,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterResetParameter_R(
 * \param out number of classes
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetNumClasses_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetNumClasses_R(
 	LGBM_SE handle,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -364,9 +342,8 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetNumClasses_R(
 * \param handle handle
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterUpdateOneIter_R(
-	LGBM_SE handle,
-	LGBM_SE call_state
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterUpdateOneIter_R(
+	LGBM_SE handle
 );
 
 /*!
@@ -378,12 +355,11 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterUpdateOneIter_R(
 * \param len length of grad/hess
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterUpdateOneIterCustom_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterUpdateOneIterCustom_R(
 	LGBM_SE handle,
 	LGBM_SE grad,
 	LGBM_SE hess,
-	LGBM_SE len,
-	LGBM_SE call_state
+	LGBM_SE len
 );
 
 /*!
@@ -391,9 +367,8 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterUpdateOneIterCustom_R(
 * \param handle handle
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterRollbackOneIter_R(
-	LGBM_SE handle,
-	LGBM_SE call_state
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterRollbackOneIter_R(
+	LGBM_SE handle
 );
 
 /*!
@@ -401,10 +376,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterRollbackOneIter_R(
 * \param out iteration of boosting rounds
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetCurrentIteration_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetCurrentIteration_R(
 	LGBM_SE handle,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -413,10 +387,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetCurrentIteration_R(
 * \param[out] out_results Result pointing to max value
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetUpperBoundValue_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetUpperBoundValue_R(
 	LGBM_SE handle,
-	LGBM_SE out_result,
-	LGBM_SE call_state
+	LGBM_SE out_result
 );
 
 /*!
@@ -425,10 +398,9 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetUpperBoundValue_R(
 * \param[out] out_results Result pointing to min value
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetLowerBoundValue_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetLowerBoundValue_R(
 	LGBM_SE handle,
-	LGBM_SE out_result,
-	LGBM_SE call_state
+	LGBM_SE out_result
 );
 
 /*!
@@ -436,12 +408,11 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetLowerBoundValue_R(
 * \param eval_names eval names
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetEvalNames_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetEvalNames_R(
 	LGBM_SE handle,
 	LGBM_SE buf_len,
 	LGBM_SE actual_len,
-	LGBM_SE eval_names,
-	LGBM_SE call_state
+	LGBM_SE eval_names
 );
 
 /*!
@@ -451,11 +422,10 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetEvalNames_R(
 * \param out_result float array contains result
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetEval_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetEval_R(
 	LGBM_SE handle,
 	LGBM_SE data_idx,
-	LGBM_SE out_result,
-	LGBM_SE call_state
+	LGBM_SE out_result
 );
 
 /*!
@@ -465,11 +435,10 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetEval_R(
 * \param out size of predict
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetNumPredict_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetNumPredict_R(
 	LGBM_SE handle,
 	LGBM_SE data_idx,
-	LGBM_SE out,
-	LGBM_SE call_state
+	LGBM_SE out
 );
 
 /*!
@@ -480,11 +449,10 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetNumPredict_R(
 * \param out_result, used to store predict result, should pre-allocate memory
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetPredict_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetPredict_R(
 	LGBM_SE handle,
 	LGBM_SE data_idx,
-	LGBM_SE out_result,
-	LGBM_SE call_state
+	LGBM_SE out_result
 );
 
 /*!
@@ -498,7 +466,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterGetPredict_R(
 * \return 0 when succeed, -1 when failure happens
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterPredictForFile_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterPredictForFile_R(
 	LGBM_SE handle,
 	LGBM_SE data_filename,
 	LGBM_SE data_has_header,
@@ -508,8 +476,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterPredictForFile_R(
 	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
 	LGBM_SE parameter,
-	LGBM_SE result_filename,
-	LGBM_SE call_state
+	LGBM_SE result_filename
 );
 
 /*!
@@ -522,7 +489,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterPredictForFile_R(
 * \param out_len length of prediction
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterCalcNumPredict_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterCalcNumPredict_R(
 	LGBM_SE handle,
 	LGBM_SE num_row,
 	LGBM_SE is_rawscore,
@@ -530,8 +497,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterCalcNumPredict_R(
 	LGBM_SE is_predcontrib,
 	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
-	LGBM_SE out_len,
-	LGBM_SE call_state
+	LGBM_SE out_len
 );
 
 /*!
@@ -552,7 +518,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterCalcNumPredict_R(
 * \param out prediction result
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterPredictForCSC_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterPredictForCSC_R(
 	LGBM_SE handle,
 	LGBM_SE indptr,
 	LGBM_SE indices,
@@ -566,8 +532,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterPredictForCSC_R(
 	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
 	LGBM_SE parameter,
-	LGBM_SE out_result,
-	LGBM_SE call_state
+	LGBM_SE out_result
 );
 
 /*!
@@ -585,7 +550,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterPredictForCSC_R(
 * \param out prediction result
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterPredictForMat_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterPredictForMat_R(
 	LGBM_SE handle,
 	LGBM_SE data,
 	LGBM_SE nrow,
@@ -596,8 +561,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterPredictForMat_R(
 	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
 	LGBM_SE parameter,
-	LGBM_SE out_result,
-	LGBM_SE call_state
+	LGBM_SE out_result
 );
 
 /*!
@@ -607,12 +571,11 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterPredictForMat_R(
 * \param filename file name
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterSaveModel_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterSaveModel_R(
 	LGBM_SE handle,
 	LGBM_SE num_iteration,
 	LGBM_SE feature_importance_type,
-	LGBM_SE filename,
-	LGBM_SE call_state
+	LGBM_SE filename
 );
 
 /*!
@@ -623,15 +586,14 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterSaveModel_R(
 * \param out_str string of model
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterSaveModelToString_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterSaveModelToString_R(
 	LGBM_SE handle,
 	LGBM_SE start_iteration,
 	LGBM_SE num_iteration,
 	LGBM_SE feature_importance_type,
 	LGBM_SE buffer_len,
 	LGBM_SE actual_len,
-	LGBM_SE out_str,
-	LGBM_SE call_state
+	LGBM_SE out_str
 );
 
 /*!
@@ -641,14 +603,13 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterSaveModelToString_R(
 * \param out_str json format string of model
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterDumpModel_R(
+LIGHTGBM_C_EXPORT SEXP LGBM_BoosterDumpModel_R(
 	LGBM_SE handle,
 	LGBM_SE num_iteration,
 	LGBM_SE feature_importance_type,
 	LGBM_SE buffer_len,
 	LGBM_SE actual_len,
-	LGBM_SE out_str,
-	LGBM_SE call_state
+	LGBM_SE out_str
 );
 
 // Below here are REModel / GPModel related functions
@@ -679,7 +640,7 @@ LIGHTGBM_C_EXPORT LGBM_SE LGBM_BoosterDumpModel_R(
 * \param out Created REModel
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_CreateREModel_R(
+LIGHTGBM_C_EXPORT SEXP GPB_CreateREModel_R(
 	LGBM_SE ndata,
 	LGBM_SE cluster_ids_data,
 	LGBM_SE re_group_data,
@@ -701,17 +662,17 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_CreateREModel_R(
 	LGBM_SE vecchia_pred_type,
 	LGBM_SE num_neighbors_pred,
 	LGBM_SE likelihood,
-	LGBM_SE out,
-	LGBM_SE call_state);
+	LGBM_SE out
+);
 
 /*!
 * \brief free obj in handle
 * \param handle handle of REModel
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_REModelFree_R(
-	LGBM_SE handle,
-	LGBM_SE call_state);
+LIGHTGBM_C_EXPORT SEXP GPB_REModelFree_R(
+	LGBM_SE handle
+);
 
 /*!
 * \brief Set configuration parameters for the optimizer
@@ -730,7 +691,7 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_REModelFree_R(
 * \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_SetOptimConfig_R(
+LIGHTGBM_C_EXPORT SEXP GPB_SetOptimConfig_R(
 	LGBM_SE handle,
 	LGBM_SE init_cov_pars,
 	LGBM_SE lr,
@@ -743,8 +704,8 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_SetOptimConfig_R(
 	LGBM_SE optimizer,
 	LGBM_SE momentum_offset,
 	LGBM_SE convergence_criterion,
-	LGBM_SE calc_std_dev,
-	LGBM_SE call_state);
+	LGBM_SE calc_std_dev
+);
 
 /*!
 * \brief Set configuration parameters for the optimizer for linear regression coefficients
@@ -756,14 +717,14 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_SetOptimConfig_R(
 * \param optimizer Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares)
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_SetOptimCoefConfig_R(
+LIGHTGBM_C_EXPORT SEXP GPB_SetOptimCoefConfig_R(
 	LGBM_SE handle,
 	LGBM_SE num_covariates,
 	LGBM_SE init_coef,
 	LGBM_SE lr_coef,
 	LGBM_SE acc_rate_coef,
-	LGBM_SE optimizer,
-	LGBM_SE call_state);
+	LGBM_SE optimizer
+);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)
@@ -772,11 +733,11 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_SetOptimCoefConfig_R(
 * \param fixed_effects Fixed effects component F of location parameter (only used for non-Gaussian data). For Gaussian data, this is ignored
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_OptimCovPar_R(
+LIGHTGBM_C_EXPORT SEXP GPB_OptimCovPar_R(
 	LGBM_SE handle,
 	LGBM_SE y_data,
-	LGBM_SE fixed_effects,
-	LGBM_SE call_state);
+	LGBM_SE fixed_effects
+);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)
@@ -787,12 +748,12 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_OptimCovPar_R(
 * \param num_covariates Number of covariates
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_OptimLinRegrCoefCovPar_R(
+LIGHTGBM_C_EXPORT SEXP GPB_OptimLinRegrCoefCovPar_R(
 	LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE covariate_data,
-	LGBM_SE num_covariates,
-	LGBM_SE call_state);
+	LGBM_SE num_covariates
+);
 
 /*!
 * \brief Calculate the value of the negative log-likelihood
@@ -802,12 +763,12 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_OptimLinRegrCoefCovPar_R(
 * \param[out] negll Negative log-likelihood
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_EvalNegLogLikelihood_R(
+LIGHTGBM_C_EXPORT SEXP GPB_EvalNegLogLikelihood_R(
 	LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE cov_pars,
-	LGBM_SE negll,
-	LGBM_SE call_state);
+	LGBM_SE negll
+);
 
 /*!
 * \brief Get covariance paramters
@@ -817,11 +778,11 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_EvalNegLogLikelihood_R(
 * \param[out] optim_cov_pars Optimal covariance parameters
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_GetCovPar_R(
+LIGHTGBM_C_EXPORT SEXP GPB_GetCovPar_R(
 	LGBM_SE handle,
 	LGBM_SE calc_std_dev,
-	LGBM_SE optim_cov_pars,
-	LGBM_SE call_state);
+	LGBM_SE optim_cov_pars
+);
 
 /*!
 * \brief Get initial values for covariance paramters
@@ -830,10 +791,10 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_GetCovPar_R(
 * \param[out] init_cov_pars Initial covariance parameters
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_GetInitCovPar_R(
+LIGHTGBM_C_EXPORT SEXP GPB_GetInitCovPar_R(
 	LGBM_SE handle,
-	LGBM_SE init_cov_pars,
-	LGBM_SE call_state);
+	LGBM_SE init_cov_pars
+);
 
 /*!
 * \brief Get / export regression coefficients
@@ -843,11 +804,11 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_GetInitCovPar_R(
 * \param[out] optim_coef Optimal regression coefficients
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_GetCoef_R(
+LIGHTGBM_C_EXPORT SEXP GPB_GetCoef_R(
 	LGBM_SE handle,
 	LGBM_SE calc_std_dev,
-	LGBM_SE optim_coef,
-	LGBM_SE call_state);
+	LGBM_SE optim_coef
+);
 
 /*!
 * \brief Get / export the number of iterations until convergence
@@ -856,10 +817,10 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_GetCoef_R(
 * \param[out] num_it Number of iterations for convergence
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_GetNumIt_R(
+LIGHTGBM_C_EXPORT SEXP GPB_GetNumIt_R(
 	LGBM_SE handle,
-	LGBM_SE num_it,
-	LGBM_SE call_state);
+	LGBM_SE num_it
+);
 
 /*!
 * \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
@@ -873,7 +834,7 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_GetNumIt_R(
 * \param covariate_data_pred Covariate data (=independent variables, features) for prediction
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_SetPredictionData_R(
+LIGHTGBM_C_EXPORT SEXP GPB_SetPredictionData_R(
 	LGBM_SE handle,
 	LGBM_SE num_data_pred,
 	LGBM_SE cluster_ids_data_pred,
@@ -881,8 +842,8 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_SetPredictionData_R(
 	LGBM_SE re_group_rand_coef_data_pred,
 	LGBM_SE gp_coords_data_pred,
 	LGBM_SE gp_rand_coef_data_pred,
-	LGBM_SE covariate_data_pred,
-	LGBM_SE call_state);
+	LGBM_SE covariate_data_pred
+);
 
 /*!
 * \brief Make predictions: calculate conditional mean and variances or covariance matrix
@@ -911,7 +872,7 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_SetPredictionData_R(
 * \param[out] out_predict Predictive/conditional mean at prediciton points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_PredictREModel_R(
+LIGHTGBM_C_EXPORT SEXP GPB_PredictREModel_R(
 	LGBM_SE handle,
 	LGBM_SE y_data,
 	LGBM_SE num_data_pred,
@@ -930,54 +891,54 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_PredictREModel_R(
 	LGBM_SE num_neighbors_pred,
 	LGBM_SE fixed_effects,
 	LGBM_SE fixed_effects_pred,
-	LGBM_SE out_predict,
-	LGBM_SE call_state);
+	LGBM_SE out_predict
+);
 
 /*!
 * \brief Get name of likelihood
 * \param ll_name Likelihood name
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_GetLikelihoodName_R(
+LIGHTGBM_C_EXPORT SEXP GPB_GetLikelihoodName_R(
 	LGBM_SE handle,
 	LGBM_SE buf_len,
 	LGBM_SE actual_len,
-	LGBM_SE ll_name,
-	LGBM_SE call_state);
+	LGBM_SE ll_name
+);
 
 /*!
 * \brief Get name of covariance parameter optimizer
 * \param name Optimizer name
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_GetOptimizerCovPars_R(
+LIGHTGBM_C_EXPORT SEXP GPB_GetOptimizerCovPars_R(
 	LGBM_SE handle,
 	LGBM_SE buf_len,
 	LGBM_SE actual_len,
-	LGBM_SE name,
-	LGBM_SE call_state);
+	LGBM_SE name
+);
 
 /*!
 * \brief Get name of linear regression coefficients optimizer
 * \param name Optimizer name
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_GetOptimizerCoef_R(
+LIGHTGBM_C_EXPORT SEXP GPB_GetOptimizerCoef_R(
 	LGBM_SE handle,
 	LGBM_SE buf_len,
 	LGBM_SE actual_len,
-	LGBM_SE name,
-	LGBM_SE call_state);
+	LGBM_SE name
+);
 
 /*!
 * \brief Set the type of likelihood
 * \param likelihood Likelihood name
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_SetLikelihood_R(
+LIGHTGBM_C_EXPORT SEXP GPB_SetLikelihood_R(
 	LGBM_SE handle,
-	LGBM_SE likelihood,
-	LGBM_SE call_state);
+	LGBM_SE likelihood
+);
 
 /*!
 * \brief Return (last used) response variable data
@@ -985,10 +946,10 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_SetLikelihood_R(
 * \param[out] response_data Response variable data (memory needs to be preallocated)
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_GetResponseData_R(
+LIGHTGBM_C_EXPORT SEXP GPB_GetResponseData_R(
 	LGBM_SE handle,
-	LGBM_SE response_data,
-	LGBM_SE call_state);
+	LGBM_SE response_data
+);
 
 /*!
 * \brief Return covariate data
@@ -996,9 +957,9 @@ LIGHTGBM_C_EXPORT LGBM_SE GPB_GetResponseData_R(
 * \param[out] covariate_data covariate data
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT LGBM_SE GPB_GetCovariateData_R(
+LIGHTGBM_C_EXPORT SEXP GPB_GetCovariateData_R(
 	LGBM_SE handle,
-	LGBM_SE covariate_data,
-	LGBM_SE call_state);
+	LGBM_SE covariate_data
+);
 
 #endif  // GPBOOST_R_H_

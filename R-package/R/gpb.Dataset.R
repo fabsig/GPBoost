@@ -13,7 +13,10 @@ Dataset <- R6::R6Class(
       if (!gpb.is.null.handle(x = private$handle)) {
 
         # Freeing up handle
-        gpb.call(fun_name = "LGBM_DatasetFree_R", ret = NULL, private$handle)
+        .Call(
+          LGBM_DatasetFree_R
+          , private$handle
+        )
         private$handle <- NULL
 
       }
@@ -200,26 +203,26 @@ Dataset <- R6::R6Class(
         # Are we using a data file?
         if (is.character(private$raw_data)) {
 
-          handle <- gpb.call(
-            fun_name = "LGBM_DatasetCreateFromFile_R"
-            , ret = handle
+          .Call(
+            LGBM_DatasetCreateFromFile_R
             , gpb.c_str(x = private$raw_data)
             , params_str
             , ref_handle
+            , handle
           )
           private$free_raw_data <- TRUE
 
         } else if (is.matrix(private$raw_data)) {
 
           # Are we using a matrix?
-          handle <- gpb.call(
-            fun_name = "LGBM_DatasetCreateFromMat_R"
-            , ret = handle
+          .Call(
+            LGBM_DatasetCreateFromMat_R
             , private$raw_data
             , nrow(private$raw_data)
             , ncol(private$raw_data)
             , params_str
             , ref_handle
+            , handle
           )
 
         } else if (methods::is(private$raw_data, "dgCMatrix")) {
@@ -227,9 +230,8 @@ Dataset <- R6::R6Class(
             stop("Cannot support large CSC matrix")
           }
           # Are we using a dgCMatrix (sparsed matrix column compressed)
-          handle <- gpb.call(
-            fun_name = "LGBM_DatasetCreateFromCSC_R"
-            , ret = handle
+          .Call(
+            LGBM_DatasetCreateFromCSC_R
             , private$raw_data@p
             , private$raw_data@i
             , private$raw_data@x
@@ -238,6 +240,7 @@ Dataset <- R6::R6Class(
             , nrow(private$raw_data)
             , params_str
             , ref_handle
+            , handle
           )
 
         } else {
@@ -258,13 +261,13 @@ Dataset <- R6::R6Class(
         }
 
         # Construct subset
-        handle <- gpb.call(
-          fun_name = "LGBM_DatasetGetSubset_R"
-          , ret = handle
+        .Call(
+          LGBM_DatasetGetSubset_R
           , ref_handle
           , c(private$used_indices) # Adding c() fixes issue in R v3.5
           , length(private$used_indices)
           , params_str
+          , handle
         )
 
       }
@@ -333,20 +336,17 @@ Dataset <- R6::R6Class(
         num_col <- 0L
 
         # Get numeric data and numeric features
-        return(
-          c(
-            gpb.call(
-              fun_name = "LGBM_DatasetGetNumData_R"
-              , ret = num_row
-              , private$handle
-            ),
-            gpb.call(
-              fun_name = "LGBM_DatasetGetNumFeature_R"
-              , ret = num_col
-              , private$handle
-            )
-          )
+        .Call(
+          LGBM_DatasetGetNumData_R
+          , private$handle
+          , num_row
         )
+        .Call(
+          LGBM_DatasetGetNumFeature_R
+          , private$handle
+          , num_col
+        )
+        return(c(num_row, num_col))
 
       } else if (is.matrix(private$raw_data) || methods::is(private$raw_data, "dgCMatrix")) {
 
@@ -373,10 +373,28 @@ Dataset <- R6::R6Class(
       if (!gpb.is.null.handle(x = private$handle)) {
 
         # Get feature names and write them
-        cnames <- gpb.call.return.str(
-            fun_name = "LGBM_DatasetGetFeatureNames_R"
-            , private$handle
+        buf_len <- as.integer(1024L * 1024L)
+        act_len <- 0L
+        buf <- raw(buf_len)
+        .Call(
+          LGBM_DatasetGetFeatureNames_R
+          , private$handle
+          , buf_len
+          , act_len
+          , buf
         )
+        if (act_len > buf_len) {
+          buf_len <- act_len
+          buf <- raw(buf_len)
+          .Call(
+            LGBM_DatasetGetFeatureNames_R
+            , private$handle
+            , buf_len
+            , act_len
+            , buf
+          )
+        }
+        cnames <- gpb.encode.char(arr = buf, len = act_len)
         private$colnames <- as.character(base::strsplit(cnames, "\t")[[1L]])
         return(private$colnames)
 
@@ -416,9 +434,8 @@ Dataset <- R6::R6Class(
 
         # Merge names with tab separation
         merged_name <- paste0(as.list(private$colnames), collapse = "\t")
-        gpb.call(
-          fun_name = "LGBM_DatasetSetFeatureNames_R"
-          , ret = NULL
+        .Call(
+          LGBM_DatasetSetFeatureNames_R
           , private$handle
           , gpb.c_str(x = merged_name)
         )
@@ -449,11 +466,11 @@ Dataset <- R6::R6Class(
 
         # Get field size of info
         info_len <- 0L
-        info_len <- gpb.call(
-          fun_name = "LGBM_DatasetGetFieldSize_R"
-          , ret = info_len
+        .Call(
+          LGBM_DatasetGetFieldSize_R
           , private$handle
           , gpb.c_str(x = name)
+          , info_len
         )
 
         # Check if info is not empty
@@ -467,11 +484,11 @@ Dataset <- R6::R6Class(
             numeric(info_len) # Numeric
           }
 
-          ret <- gpb.call(
-            fun_name = "LGBM_DatasetGetField_R"
-            , ret = ret
+          .Call(
+            LGBM_DatasetGetField_R
             , private$handle
             , gpb.c_str(x = name)
+            , ret
           )
 
           private$info[[name]] <- ret
@@ -508,9 +525,8 @@ Dataset <- R6::R6Class(
 
         if (length(info) > 0L) {
 
-          gpb.call(
-            fun_name = "LGBM_DatasetSetField_R"
-            , ret = NULL
+          .Call(
+            LGBM_DatasetSetField_R
             , private$handle
             , gpb.c_str(x = name)
             , info
@@ -559,13 +575,10 @@ Dataset <- R6::R6Class(
         private$params <- modifyList(private$params, params)
       } else {
         tryCatch({
-          call_state <- 0L
           .Call(
-            "LGBM_DatasetUpdateParamChecking_R"
+            LGBM_DatasetUpdateParamChecking_R
             , gpb.params2str(params = private$params)
             , gpb.params2str(params = params)
-            , call_state
-            , PACKAGE = "lib_gpboost"
           )
         }, error = function(e) {
           # If updating failed but raw data is not available, raise an error because
@@ -663,9 +676,8 @@ Dataset <- R6::R6Class(
 
       # Store binary data
       self$construct()
-      gpb.call(
-        fun_name = "LGBM_DatasetSaveBinary_R"
-        , ret = NULL
+      .Call(
+        LGBM_DatasetSaveBinary_R
         , private$handle
         , gpb.c_str(x = fname)
       )

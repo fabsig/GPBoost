@@ -22,7 +22,10 @@ Booster <- R6::R6Class(
       if (!gpb.is.null.handle(x = private$handle)) {
         
         # Freeing up handle
-        gpb.call(fun_name = "LGBM_BoosterFree_R", ret = NULL, private$handle)
+        .Call(
+          LGBM_BoosterFree_R
+          , private$handle
+        )
         private$handle <- NULL
         
       }
@@ -80,19 +83,21 @@ Booster <- R6::R6Class(
           private$has_gp_model <- TRUE
           private$gp_model <- gp_model
           # Store booster handle
-          handle <- gpb.call("LGBM_GPBoosterCreate_R", 
-                             ret = handle, 
-                             train_set_handle, 
-                             params_str,
-                             gp_model$.__enclos_env__$private$get_handle())
+          .Call(
+            LGBM_GPBoosterCreate_R
+            , train_set_handle
+            , params_str
+            , gp_model$.__enclos_env__$private$get_handle()
+            , handle
+          )
           
         } else { # No gp_model
           # Store booster handle
-          handle <- gpb.call(
-            fun_name = "LGBM_BoosterCreate_R"
-            , ret = handle
+          .Call(
+            LGBM_BoosterCreate_R
             , train_set_handle
             , params_str
+            , handle
           )
         }
         
@@ -106,9 +111,8 @@ Booster <- R6::R6Class(
         if (!is.null(private$init_predictor)) {
           
           # Merge booster
-          gpb.call(
-            fun_name = "LGBM_BoosterMerge_R"
-            , ret = NULL
+          .Call(
+            LGBM_BoosterMerge_R
             , handle
             , private$init_predictor$.__enclos_env__$private$handle
           )
@@ -137,10 +141,10 @@ Booster <- R6::R6Class(
             stop("gpb.Booster: Can only use a string as booster_str in modelfile")
           }
           # Create booster from string
-          handle <- gpb.call(
-            fun_name = "LGBM_BoosterLoadModelFromString_R"
-            , ret = handle
+          .Call(
+            LGBM_BoosterLoadModelFromString_R
             , gpb.c_str(x = save_data[["booster_str"]])
+            , handle
           )
           # create gp_model from list
           private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
@@ -168,10 +172,10 @@ Booster <- R6::R6Class(
         } else { # has no gp_model
           
           # Create booster from model
-          handle <- gpb.call(
-            fun_name = "LGBM_BoosterCreateFromModelfile_R"
-            , ret = handle
+          .Call(
+            LGBM_BoosterCreateFromModelfile_R
             , gpb.c_str(x = modelfile)
+            , handle
           )
           
         }
@@ -184,10 +188,10 @@ Booster <- R6::R6Class(
         }
         
         # Create booster from string
-        handle <- gpb.call(
-          fun_name = "LGBM_BoosterLoadModelFromString_R"
-          , ret = handle
+        .Call(
+          LGBM_BoosterLoadModelFromString_R
           , gpb.c_str(x = model_str)
+          , handle
         )
         
       } else {
@@ -211,10 +215,10 @@ Booster <- R6::R6Class(
         class(handle) <- "gpb.Booster.handle"
         private$handle <- handle
         private$num_class <- 1L
-        private$num_class <- gpb.call(
-          fun_name = "LGBM_BoosterGetNumClasses_R"
-          , ret = private$num_class
+        .Call(
+          LGBM_BoosterGetNumClasses_R
           , private$handle
+          , private$num_class
         )
         
       }
@@ -256,9 +260,8 @@ Booster <- R6::R6Class(
       }
       
       # Add validation data to booster
-      gpb.call(
-        fun_name = "LGBM_BoosterAddValidData_R"
-        , ret = NULL
+      .Call(
+        LGBM_BoosterAddValidData_R
         , private$handle
         , data$.__enclos_env__$private$get_handle()
       )
@@ -303,10 +306,8 @@ Booster <- R6::R6Class(
       
       params <- modifyList(params, list(...))
       params_str <- gpb.params2str(params = params)
-      
-      gpb.call(
-        fun_name = "LGBM_BoosterResetParameter_R"
-        , ret = NULL
+      .Call(
+        LGBM_BoosterResetParameter_R
         , private$handle
         , params_str
       )
@@ -339,9 +340,8 @@ Booster <- R6::R6Class(
         }
         
         # Reset training data on booster
-        gpb.call(
-          fun_name = "LGBM_BoosterResetTrainingData_R"
-          , ret = NULL
+        .Call(
+          LGBM_BoosterResetTrainingData_R
           , private$handle
           , train_set$.__enclos_env__$private$get_handle()
         )
@@ -358,9 +358,8 @@ Booster <- R6::R6Class(
           stop("gpb.Booster.update: cannot update due to null objective function")
         }
         # Boost iteration from known objective
-        ret <- gpb.call(
-          fun_name = "LGBM_BoosterUpdateOneIter_R"
-          , ret = NULL
+        .Call(
+          LGBM_BoosterUpdateOneIter_R
           , private$handle
         )
         
@@ -384,9 +383,8 @@ Booster <- R6::R6Class(
         }
         
         # Return custom boosting gradient/hessian
-        ret <- gpb.call(
-          fun_name = "LGBM_BoosterUpdateOneIterCustom_R"
-          , ret = NULL
+        .Call(
+          LGBM_BoosterUpdateOneIterCustom_R
           , private$handle
           , gpair$grad
           , gpair$hess
@@ -400,7 +398,7 @@ Booster <- R6::R6Class(
         private$is_predicted_cur_iter[[i]] <- FALSE
       }
       
-      return(ret)
+      return(invisible(self))
       
     },
     
@@ -408,9 +406,8 @@ Booster <- R6::R6Class(
     rollback_one_iter = function() {
       
       # Return one iteration behind
-      gpb.call(
-        fun_name = "LGBM_BoosterRollbackOneIter_R"
-        , ret = NULL
+      .Call(
+        LGBM_BoosterRollbackOneIter_R
         , private$handle
       )
       
@@ -427,13 +424,12 @@ Booster <- R6::R6Class(
     current_iter = function() {
       
       cur_iter <- 0L
-      return(
-        gpb.call(
-          fun_name = "LGBM_BoosterGetCurrentIteration_R"
-          , ret = cur_iter
-          , private$handle
-        )
+      .Call(
+        LGBM_BoosterGetCurrentIteration_R
+        , private$handle
+        , cur_iter
       )
+      return(cur_iter)
       
     },
     
@@ -441,13 +437,12 @@ Booster <- R6::R6Class(
     upper_bound = function() {
       
       upper_bound <- 0.0
-      return(
-        gpb.call(
-          fun_name = "LGBM_BoosterGetUpperBoundValue_R"
-          , ret = upper_bound
-          , private$handle
-        )
+      .Call(
+        LGBM_BoosterGetUpperBoundValue_R
+        , private$handle
+        , upper_bound
       )
+      return(upper_bound)
       
     },
     
@@ -455,13 +450,12 @@ Booster <- R6::R6Class(
     lower_bound = function() {
       
       lower_bound <- 0.0
-      return(
-        gpb.call(
-          fun_name = "LGBM_BoosterGetLowerBoundValue_R"
-          , ret = lower_bound
-          , private$handle
-        )
+      .Call(
+        LGBM_BoosterGetLowerBoundValue_R
+        , private$handle
+        , lower_bound
       )
+      return(lower_bound)
       
     },
     
@@ -571,8 +565,8 @@ Booster <- R6::R6Class(
         save_data <- list()
         save_data[["has_gp_model"]] <- 1L
         save_data[["booster_str"]] <- self$save_model_to_string(num_iteration = num_iteration,
-                                                                feature_importance_type=feature_importance_type)
-        save_data[["gp_model_str"]] <- private$gp_model$model_to_list(include_response_data=FALSE)
+                                                                feature_importance_type = feature_importance_type)
+        save_data[["gp_model_str"]] <- private$gp_model$model_to_list(include_response_data = FALSE)
         
         if (save_raw_data) {
           
@@ -612,15 +606,13 @@ Booster <- R6::R6Class(
       } else {# has no gp_model
         
         # Save booster model
-        gpb.call(
-          fun_name = "LGBM_BoosterSaveModel_R"
-          , ret = NULL
+        .Call(
+          LGBM_BoosterSaveModel_R
           , private$handle
           , as.integer(num_iteration)
           , as.integer(feature_importance_type)
           , gpb.c_str(x = filename)
         )
-        
       }
       
       return(invisible(self))
@@ -640,14 +632,41 @@ Booster <- R6::R6Class(
       }
       
       # Return model string
-      return(
-        gpb.call.return.str(
-          fun_name = "LGBM_BoosterSaveModelToString_R"
+      # Create buffer
+      buf_len <- as.integer(1024L * 1024L)
+      act_len <- 0L
+      buf <- raw(buf_len)
+      
+      # Call buffer
+      .Call(
+        LGBM_BoosterSaveModelToString_R
+        , private$handle
+        , as.integer(start_iteration)
+        , as.integer(num_iteration)
+        , as.integer(feature_importance_type)
+        , buf_len
+        , act_len
+        , buf
+      )
+      
+      # Check for buffer content
+      if (act_len > buf_len) {
+        buf_len <- act_len
+        buf <- raw(buf_len)
+        .Call(
+          LGBM_BoosterSaveModelToString_R
           , private$handle
           , as.integer(start_iteration)
           , as.integer(num_iteration)
           , as.integer(feature_importance_type)
+          , buf_len
+          , act_len
+          , buf
         )
+      }
+      
+      return(
+        gpb.encode.char(arr = buf, len = act_len)
       )
       
     },
@@ -660,13 +679,35 @@ Booster <- R6::R6Class(
         num_iteration <- self$best_iter
       }
       
-      return(
-        gpb.call.return.str(
-          fun_name = "LGBM_BoosterDumpModel_R"
+      buf_len <- as.integer(1024L * 1024L)
+      act_len <- 0L
+      buf <- raw(buf_len)
+      .Call(
+        LGBM_BoosterDumpModel_R
+        , private$handle
+        , as.integer(num_iteration)
+        , as.integer(feature_importance_type)
+        , buf_len
+        , act_len
+        , buf
+      )
+      
+      if (act_len > buf_len) {
+        buf_len <- act_len
+        buf <- raw(buf_len)
+        .Call(
+          LGBM_BoosterDumpModel_R
           , private$handle
           , as.integer(num_iteration)
           , as.integer(feature_importance_type)
+          , buf_len
+          , act_len
+          , buf
         )
+      }
+      
+      return(
+        gpb.encode.char(arr = buf, len = act_len)
       )
       
     },
@@ -709,7 +750,7 @@ Booster <- R6::R6Class(
           stop("predict: cannot make predictions for random effects.
                 Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
         } else if (is.null(private$train_set$.__enclos_env__$private$raw_data) & 
-                      private$gp_model_prediction_data_loaded_from_file) {
+                   private$gp_model_prediction_data_loaded_from_file) {
           if (start_iteration != 0L) {
             stop("predict: cannot use the option ", sQuote("start_iteration")," after loading 
                  from file without raw data. Set ", sQuote("save_raw_data = TRUE"), " when you save the model")
@@ -954,11 +995,11 @@ Booster <- R6::R6Class(
         
         # Store predictions
         npred <- 0L
-        npred <- gpb.call(
-          fun_name = "LGBM_BoosterGetNumPredict_R"
-          , ret = npred
+        .Call(
+          LGBM_BoosterGetNumPredict_R
           , private$handle
           , as.integer(idx - 1L)
+          , npred
         )
         private$predict_buffer[[data_name]] <- numeric(npred)
         
@@ -968,11 +1009,11 @@ Booster <- R6::R6Class(
       if (!private$is_predicted_cur_iter[[idx]]) {
         
         # Use buffer
-        private$predict_buffer[[data_name]] <- gpb.call(
-          fun_name = "LGBM_BoosterGetPredict_R"
-          , ret = private$predict_buffer[[data_name]]
+        .Call(
+          LGBM_BoosterGetPredict_R
           , private$handle
           , as.integer(idx - 1L)
+          , private$predict_buffer[[data_name]]
         )
         private$is_predicted_cur_iter[[idx]] <- TRUE
       }
@@ -987,10 +1028,28 @@ Booster <- R6::R6Class(
       if (is.null(private$eval_names)) {
         
         # Get evaluation names
-        names <- gpb.call.return.str(
-          fun_name = "LGBM_BoosterGetEvalNames_R"
+        buf_len <- as.integer(1024L * 1024L)
+        act_len <- 0L
+        buf <- raw(buf_len)
+        .Call(
+          LGBM_BoosterGetEvalNames_R
           , private$handle
+          , buf_len
+          , act_len
+          , buf
         )
+        if (act_len > buf_len) {
+          buf_len <- act_len
+          buf <- raw(buf_len)
+          .Call(
+            LGBM_BoosterGetEvalNames_R
+            , private$handle
+            , buf_len
+            , act_len
+            , buf
+          )
+        }
+        names <- gpb.encode.char(arr = buf, len = act_len)
         
         # Check names' length
         if (nchar(names) > 0L) {
@@ -1031,11 +1090,11 @@ Booster <- R6::R6Class(
         
         # Create evaluation values
         tmp_vals <- numeric(length(private$eval_names))
-        tmp_vals <- gpb.call(
-          fun_name = "LGBM_BoosterGetEval_R"
-          , ret = tmp_vals
+        .Call(
+          LGBM_BoosterGetEval_R
           , private$handle
           , as.integer(data_idx - 1L)
+          , tmp_vals
         )
         
         # Loop through all evaluation names

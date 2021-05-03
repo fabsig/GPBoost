@@ -74,17 +74,17 @@ test_that("gpb.Dataset: Dataset should be able to construct from matrix and retu
   rawData <- matrix(runif(1000L), ncol = 10L)
   handle <- gpboost:::gpb.null.handle()
   ref_handle <- NULL
-  handle <- gpboost:::gpb.call(
-    "LGBM_DatasetCreateFromMat_R"
-    , ret = handle
+  .Call(
+    gpboost:::LGBM_DatasetCreateFromMat_R
     , rawData
     , nrow(rawData)
     , ncol(rawData)
     , gpboost:::gpb.params2str(params = list())
     , ref_handle
+    , handle
   )
   expect_false(is.na(handle))
-  gpboost:::gpb.call("LGBM_DatasetFree_R", ret = NULL, handle)
+  .Call(gpboost:::LGBM_DatasetFree_R, handle)
   handle <- NULL
 })
 
