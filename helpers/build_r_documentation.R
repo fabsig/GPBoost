@@ -15,9 +15,8 @@
 
 setwd("R-package")
 
-
 library(roxygen2)
-roxygen2::roxygenize()##roclets="rd"
+roxygen2::roxygenize() ## roclets="rd"
 
 
 
