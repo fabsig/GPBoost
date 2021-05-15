@@ -72,18 +72,16 @@ test_that("gpb.Dataset: nrow is correct for a very sparse matrix", {
 
 test_that("gpb.Dataset: Dataset should be able to construct from matrix and return non-null handle", {
   rawData <- matrix(runif(1000L), ncol = 10L)
-  handle <- gpboost:::gpb.null.handle()
   ref_handle <- NULL
-  .Call(
+  handle <- .Call(
     gpboost:::LGBM_DatasetCreateFromMat_R
     , rawData
     , nrow(rawData)
     , ncol(rawData)
     , gpboost:::gpb.params2str(params = list())
     , ref_handle
-    , handle
   )
-  expect_false(is.na(handle))
+  expect_false(is.null(handle))
   .Call(gpboost:::LGBM_DatasetFree_R, handle)
   handle <- NULL
 })

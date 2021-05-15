@@ -243,10 +243,7 @@ gpb.cv <- function(params = list()
   # Check for folds
   if (!is.null(folds)) {
     
-    # Check for list of folds or for single value
-    # if (!identical(class(folds), "list") || length(folds) < 2L) {##DELETE
-    #   stop(sQuote("folds"), " must be a list with 2 or more elements that are vectors of indices for each CV-fold")
-    # }
+    # Check for list of folds
     if (!identical(class(folds), "list")) {
       stop(sQuote("folds"), " must be a list with vectors of indices for each CV-fold")
     }
@@ -487,22 +484,22 @@ gpb.cv <- function(params = list()
         cov_fct_taper_range <- gp_model$get_cov_fct_taper_range()
         ind_effect_group_rand_coef <- gp_model$get_ind_effect_group_rand_coef()
         
-        gp_model_train <- gpb.GPModel$new(group_data=group_data,
-                                          group_rand_coef_data=group_rand_coef_data,
-                                          ind_effect_group_rand_coef=ind_effect_group_rand_coef,
-                                          gp_coords=gp_coords,
-                                          gp_rand_coef_data=gp_rand_coef_data,
-                                          cov_function=cov_function,
-                                          cov_fct_shape=cov_fct_shape,
-                                          cov_fct_taper_range=cov_fct_taper_range,
-                                          vecchia_approx=vecchia_approx,
-                                          num_neighbors=num_neighbors,
-                                          vecchia_ordering=vecchia_ordering,
-                                          vecchia_pred_type=vecchia_pred_type,
-                                          num_neighbors_pred=num_neighbors_pred,
-                                          cluster_ids=cluster_ids,
-                                          likelihood=gp_model$get_likelihood_name(),
-                                          free_raw_data=TRUE)
+        gp_model_train <- gpb.GPModel$new(group_data = group_data,
+                                          group_rand_coef_data = group_rand_coef_data,
+                                          ind_effect_group_rand_coef = ind_effect_group_rand_coef,
+                                          gp_coords = gp_coords,
+                                          gp_rand_coef_data = gp_rand_coef_data,
+                                          cov_function = cov_function,
+                                          cov_fct_shape = cov_fct_shape,
+                                          cov_fct_taper_range = cov_fct_taper_range,
+                                          vecchia_approx = vecchia_approx,
+                                          num_neighbors = num_neighbors,
+                                          vecchia_ordering = vecchia_ordering,
+                                          vecchia_pred_type = vecchia_pred_type,
+                                          num_neighbors_pred = num_neighbors_pred,
+                                          cluster_ids = cluster_ids,
+                                          likelihood = gp_model$get_likelihood_name(),
+                                          free_raw_data = TRUE)
         valid_set_gp <- NULL
         if (use_gp_model_for_validation) {
           gp_model_train$set_prediction_data(group_data_pred = group_data_pred,
@@ -522,7 +519,7 @@ gpb.cv <- function(params = list()
           
         }
         booster <- Booster$new(params = params, train_set = dtrain, gp_model = gp_model_train)
-        gp_model$set_likelihood(gp_model_train$get_likelihood_name())##potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
+        gp_model$set_likelihood(gp_model_train$get_likelihood_name()) ## potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
         gp_model_train$set_optim_params(params = gp_model$get_optim_params())
         gp_model_train$set_optim_coef_params(params = gp_model$get_optim_params())
         

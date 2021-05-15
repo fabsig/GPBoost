@@ -499,7 +499,7 @@ namespace GPBoost {
 			const double* fixed_effects = nullptr,
 			bool learn_covariance_parameters = true) {
 
-			std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
+			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
@@ -778,8 +778,8 @@ namespace GPBoost {
 				}
 			}
 
-			std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
-			double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
+			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
 			//Log::REInfo("Time for optimization: %g", el_time);// Only for debugging
 
 		}//end OptimLinRegrCoefCovPar
@@ -2271,7 +2271,7 @@ namespace GPBoost {
 		*/
 		void CalcGradFLaplace(double* grad_F, const double* fixed_effects = nullptr) {
 
-			std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
+			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 
 			const double* fixed_effects_cluster_i_ptr = nullptr;
 			vec_t fixed_effects_cluster_i;
@@ -2375,8 +2375,8 @@ namespace GPBoost {
 				} // end more than one cluster
 			}//end loop over cluster
 
-			std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
-			double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
+			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
+			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
 			//Log::REInfo("Time for CalcGradFLaplace: %g", el_time);// Only for debugging
 
 		}//end CalcGradFLaplace
@@ -2781,10 +2781,12 @@ namespace GPBoost {
 		* \param re_group_data Labels of group levels for the grouped random effects in column-major format (i.e. first the levels for the first effect, then for the second, etc.). Every group label needs to end with the null character '\0'
 		* \param[out] Matrix of dimension num_re_group x num_data with strings of group labels for levels of grouped random effects
 		*/
-		void ConvertCharToStringGroupLevels(data_size_t num_data, data_size_t num_re_group,
-			const char* re_group_data, std::vector<std::vector<string_t>>& re_group_levels) {
+		void ConvertCharToStringGroupLevels(data_size_t num_data,
+			data_size_t num_re_group,
+			const char* re_group_data,
+			std::vector<std::vector<string_t>>& re_group_levels) {
 			int char_start = 0;
-			for (int ire = 0; ire < num_re_group; ++ire) {//TODO: catch / report potential error if format of re_group_data is not correct
+			for (int ire = 0; ire < num_re_group; ++ire) {
 				for (int id = 0; id < num_data; ++id) {
 					int number_chars = 0;
 					while (re_group_data[char_start + number_chars] != '\0') {

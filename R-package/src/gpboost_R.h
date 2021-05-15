@@ -12,7 +12,41 @@
 #define R_USE_C99_IN_CXX
 #include <Rinternals.h>
 
-#include "R_object_helper.h"
+inline double* R_REAL_PTR(SEXP x) {
+	if (Rf_isNull(x)) {
+		return nullptr;
+	}
+	else {
+		return REAL(x);
+	}
+}
+
+inline int* R_INT_PTR(SEXP x) {
+	if (Rf_isNull(x)) {
+		return nullptr;
+	}
+	else {
+		return INTEGER(x);
+	}
+}
+
+inline const char* R_CHAR_PTR_FROM_RAW(SEXP x) {
+	if (Rf_isNull(x)) {
+		return nullptr;
+	}
+	else {
+		return (reinterpret_cast<const char*>(RAW(x)));
+	}
+}
+
+inline const char* R_CHAR_PTR(SEXP x) {
+	if (Rf_isNull(x)) {
+		return nullptr;
+	}
+	else {
+		return CHAR(Rf_asChar(x));
+	}
+}
 
 /*!
 * \brief get string message of the last error
@@ -23,6 +57,15 @@
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_GetLastError_R();
 
+/*!
+* \brief check if an R external pointer (like a Booster or Dataset handle) is a null pointer
+* \param handle handle for a Booster, Dataset, or Predictor
+* \return R logical, TRUE if the handle is a null pointer
+*/
+LIGHTGBM_C_EXPORT SEXP LGBM_HandleIsNull_R(
+	SEXP handle
+);
+
 // --- start Dataset interface
 
 /*!
@@ -30,14 +73,12 @@ LIGHTGBM_C_EXPORT SEXP LGBM_GetLastError_R();
 * \param filename the name of the file
 * \param parameters additional parameters
 * \param reference used to align bin mapper with other dataset, nullptr means not used
-* \param out created dataset
-* \return 0 when succeed, -1 when failure happens
+* \return Dataset handle
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetCreateFromFile_R(
-	LGBM_SE filename,
-	LGBM_SE parameters,
-	LGBM_SE reference,
-	LGBM_SE out
+	SEXP filename,
+	SEXP parameters,
+	SEXP reference
 );
 
 /*!
@@ -45,43 +86,39 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetCreateFromFile_R(
 * \param indptr pointer to row headers
 * \param indices findex
 * \param data fvalue
-* \param nindptr number of cols in the matrix + 1
+* \param num_indptr number of cols in the matrix + 1
 * \param nelem number of nonzero elements in the matrix
 * \param num_row number of rows
 * \param parameters additional parameters
 * \param reference used to align bin mapper with other dataset, nullptr means not used
-* \param out created dataset
-* \return 0 when succeed, -1 when failure happens
+* \return Dataset handle
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetCreateFromCSC_R(
-	LGBM_SE indptr,
-	LGBM_SE indices,
-	LGBM_SE data,
-	LGBM_SE nindptr,
-	LGBM_SE nelem,
-	LGBM_SE num_row,
-	LGBM_SE parameters,
-	LGBM_SE reference,
-	LGBM_SE out
+	SEXP indptr,
+	SEXP indices,
+	SEXP data,
+	SEXP num_indptr,
+	SEXP nelem,
+	SEXP num_row,
+	SEXP parameters,
+	SEXP reference
 );
 
 /*!
 * \brief create dataset from dense matrix
 * \param data matric data
-* \param nrow number of rows
+* \param num_row number of rows
 * \param ncol number columns
 * \param parameters additional parameters
 * \param reference used to align bin mapper with other dataset, nullptr means not used
-* \param out created dataset
-* \return 0 when succeed, -1 when failure happens
+* \return Dataset handle
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetCreateFromMat_R(
-	LGBM_SE data,
-	LGBM_SE nrow,
-	LGBM_SE ncol,
-	LGBM_SE parameters,
-	LGBM_SE reference,
-	LGBM_SE out
+	SEXP data,
+	SEXP num_row,
+	SEXP ncol,
+	SEXP parameters,
+	SEXP reference
 );
 
 /*!
@@ -90,39 +127,33 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetCreateFromMat_R(
 * \param used_row_indices Indices used in subset
 * \param len_used_row_indices length of Indices used in subset
 * \param parameters additional parameters
-* \param out created dataset
-* \return 0 when succeed, -1 when failure happens
+* \return Dataset handle
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetSubset_R(
-	LGBM_SE handle,
-	LGBM_SE used_row_indices,
-	LGBM_SE len_used_row_indices,
-	LGBM_SE parameters,
-	LGBM_SE out
+	SEXP handle,
+	SEXP used_row_indices,
+	SEXP len_used_row_indices,
+	SEXP parameters
 );
 
 /*!
 * \brief save feature names to Dataset
 * \param handle handle
 * \param feature_names feature names
-* \return 0 when succeed, -1 when failure happens
+* \return R character vector of feature names
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetSetFeatureNames_R(
-	LGBM_SE handle,
-	LGBM_SE feature_names
+	SEXP handle,
+	SEXP feature_names
 );
 
 /*!
-* \brief save feature names to Dataset
-* \param handle handle
-* \param feature_names feature names
-* \return 0 when succeed, -1 when failure happens
+* \brief get feature names from Dataset
+* \param handle Dataset handle
+* \return an R character vector with feature names from the Dataset or NULL if no feature names
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetFeatureNames_R(
-	LGBM_SE handle,
-	LGBM_SE buf_len,
-	LGBM_SE actual_len,
-	LGBM_SE feature_names
+	SEXP handle
 );
 
 /*!
@@ -132,8 +163,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetFeatureNames_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetSaveBinary_R(
-	LGBM_SE handle,
-	LGBM_SE filename
+	SEXP handle,
+	SEXP filename
 );
 
 /*!
@@ -142,7 +173,7 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetSaveBinary_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetFree_R(
-	LGBM_SE handle
+	SEXP handle
 );
 
 /*!
@@ -156,10 +187,10 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetFree_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetSetField_R(
-	LGBM_SE handle,
-	LGBM_SE field_name,
-	LGBM_SE field_data,
-	LGBM_SE num_element
+	SEXP handle,
+	SEXP field_name,
+	SEXP field_data,
+	SEXP num_element
 );
 
 /*!
@@ -170,9 +201,9 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetSetField_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetFieldSize_R(
-	LGBM_SE handle,
-	LGBM_SE field_name,
-	LGBM_SE out
+	SEXP handle,
+	SEXP field_name,
+	SEXP out
 );
 
 /*!
@@ -183,9 +214,9 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetFieldSize_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetField_R(
-	LGBM_SE handle,
-	LGBM_SE field_name,
-	LGBM_SE field_data
+	SEXP handle,
+	SEXP field_name,
+	SEXP field_data
 );
 
 /*!
@@ -195,8 +226,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetField_R(
  * \return 0 when succeed, -1 when failure happens
  */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetUpdateParamChecking_R(
-	LGBM_SE old_params,
-	LGBM_SE new_params
+	SEXP old_params,
+	SEXP new_params
 );
 
 /*!
@@ -206,8 +237,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetUpdateParamChecking_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetNumData_R(
-	LGBM_SE handle,
-	LGBM_SE out
+	SEXP handle,
+	SEXP out
 );
 
 /*!
@@ -217,8 +248,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetNumData_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetNumFeature_R(
-	LGBM_SE handle,
-	LGBM_SE out
+	SEXP handle,
+	SEXP out
 );
 
 // --- start Booster interfaces
@@ -227,13 +258,11 @@ LIGHTGBM_C_EXPORT SEXP LGBM_DatasetGetNumFeature_R(
 * \brief create a new boosting learner
 * \param train_data training data set
 * \param parameters format: 'key1=value1 key2=value2'
-* \param out handle of created Booster
-* \return 0 when succeed, -1 when failure happens
+* \return Booster handle
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterCreate_R(
-	LGBM_SE train_data,
-	LGBM_SE parameters,
-	LGBM_SE out
+	SEXP train_data,
+	SEXP parameters
 );
 
 /*!
@@ -241,14 +270,12 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterCreate_R(
 * \param train_data training data set
 * \param parameters format: 'key1=value1 key2=value2'
 * \param re_model Gaussian process model
-* \param out handle of created Booster
-* \return 0 when succeed, -1 when failure happens
+* \return Booster handle
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_GPBoosterCreate_R(
-	LGBM_SE train_data,
-	LGBM_SE parameters,
-	LGBM_SE re_model,
-	LGBM_SE out
+	SEXP train_data,
+	SEXP parameters,
+	SEXP re_model
 );
 
 /*!
@@ -257,29 +284,25 @@ LIGHTGBM_C_EXPORT SEXP LGBM_GPBoosterCreate_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterFree_R(
-	LGBM_SE handle
+	SEXP handle
 );
 
 /*!
 * \brief load an existing boosting from model file
 * \param filename filename of model
-* \param out handle of created Booster
-* \return 0 when succeed, -1 when failure happens
+* \return Booster handle
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterCreateFromModelfile_R(
-	LGBM_SE filename,
-	LGBM_SE out
+	SEXP filename
 );
 
 /*!
 * \brief load an existing boosting from model_str
 * \param model_str string containing the model
-* \param out handle of created Booster
-* \return 0 when succeed, -1 when failure happens
+* \return Booster handle
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterLoadModelFromString_R(
-	LGBM_SE model_str,
-	LGBM_SE out
+	SEXP model_str
 );
 
 /*!
@@ -289,8 +312,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterLoadModelFromString_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterMerge_R(
-	LGBM_SE handle,
-	LGBM_SE other_handle
+	SEXP handle,
+	SEXP other_handle
 );
 
 /*!
@@ -300,8 +323,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterMerge_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterAddValidData_R(
-	LGBM_SE handle,
-	LGBM_SE valid_data
+	SEXP handle,
+	SEXP valid_data
 );
 
 /*!
@@ -311,8 +334,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterAddValidData_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterResetTrainingData_R(
-	LGBM_SE handle,
-	LGBM_SE train_data
+	SEXP handle,
+	SEXP train_data
 );
 
 /*!
@@ -322,8 +345,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterResetTrainingData_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterResetParameter_R(
-	LGBM_SE handle,
-	LGBM_SE parameters
+	SEXP handle,
+	SEXP parameters
 );
 
 /*!
@@ -333,8 +356,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterResetParameter_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetNumClasses_R(
-	LGBM_SE handle,
-	LGBM_SE out
+	SEXP handle,
+	SEXP out
 );
 
 /*!
@@ -343,7 +366,7 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetNumClasses_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterUpdateOneIter_R(
-	LGBM_SE handle
+	SEXP handle
 );
 
 /*!
@@ -356,10 +379,10 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterUpdateOneIter_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterUpdateOneIterCustom_R(
-	LGBM_SE handle,
-	LGBM_SE grad,
-	LGBM_SE hess,
-	LGBM_SE len
+	SEXP handle,
+	SEXP grad,
+	SEXP hess,
+	SEXP len
 );
 
 /*!
@@ -368,7 +391,7 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterUpdateOneIterCustom_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterRollbackOneIter_R(
-	LGBM_SE handle
+	SEXP handle
 );
 
 /*!
@@ -377,8 +400,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterRollbackOneIter_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetCurrentIteration_R(
-	LGBM_SE handle,
-	LGBM_SE out
+	SEXP handle,
+	SEXP out
 );
 
 /*!
@@ -388,8 +411,8 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetCurrentIteration_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetUpperBoundValue_R(
-	LGBM_SE handle,
-	LGBM_SE out_result
+	SEXP handle,
+	SEXP out_result
 );
 
 /*!
@@ -399,20 +422,17 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetUpperBoundValue_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetLowerBoundValue_R(
-	LGBM_SE handle,
-	LGBM_SE out_result
+	SEXP handle,
+	SEXP out_result
 );
 
 /*!
-* \brief Get Name of eval
-* \param eval_names eval names
-* \return 0 when succeed, -1 when failure happens
+* \brief Get names of eval metrics
+* \param handle Handle of booster
+* \return R character vector with names of eval metrics
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetEvalNames_R(
-	LGBM_SE handle,
-	LGBM_SE buf_len,
-	LGBM_SE actual_len,
-	LGBM_SE eval_names
+	SEXP handle
 );
 
 /*!
@@ -423,9 +443,9 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetEvalNames_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetEval_R(
-	LGBM_SE handle,
-	LGBM_SE data_idx,
-	LGBM_SE out_result
+	SEXP handle,
+	SEXP data_idx,
+	SEXP out_result
 );
 
 /*!
@@ -436,9 +456,9 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetEval_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetNumPredict_R(
-	LGBM_SE handle,
-	LGBM_SE data_idx,
-	LGBM_SE out
+	SEXP handle,
+	SEXP data_idx,
+	SEXP out
 );
 
 /*!
@@ -450,9 +470,9 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetNumPredict_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetPredict_R(
-	LGBM_SE handle,
-	LGBM_SE data_idx,
-	LGBM_SE out_result
+	SEXP handle,
+	SEXP data_idx,
+	SEXP out_result
 );
 
 /*!
@@ -467,16 +487,16 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterGetPredict_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterPredictForFile_R(
-	LGBM_SE handle,
-	LGBM_SE data_filename,
-	LGBM_SE data_has_header,
-	LGBM_SE is_rawscore,
-	LGBM_SE is_leafidx,
-	LGBM_SE is_predcontrib,
-	LGBM_SE start_iteration,
-	LGBM_SE num_iteration,
-	LGBM_SE parameter,
-	LGBM_SE result_filename
+	SEXP handle,
+	SEXP data_filename,
+	SEXP data_has_header,
+	SEXP is_rawscore,
+	SEXP is_leafidx,
+	SEXP is_predcontrib,
+	SEXP start_iteration,
+	SEXP num_iteration,
+	SEXP parameter,
+	SEXP result_filename
 );
 
 /*!
@@ -490,14 +510,14 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterPredictForFile_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterCalcNumPredict_R(
-	LGBM_SE handle,
-	LGBM_SE num_row,
-	LGBM_SE is_rawscore,
-	LGBM_SE is_leafidx,
-	LGBM_SE is_predcontrib,
-	LGBM_SE start_iteration,
-	LGBM_SE num_iteration,
-	LGBM_SE out_len
+	SEXP handle,
+	SEXP num_row,
+	SEXP is_rawscore,
+	SEXP is_leafidx,
+	SEXP is_predcontrib,
+	SEXP start_iteration,
+	SEXP num_iteration,
+	SEXP out_len
 );
 
 /*!
@@ -509,7 +529,7 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterCalcNumPredict_R(
 * \param indptr pointer to row headers
 * \param indices findex
 * \param data fvalue
-* \param nindptr number of cols in the matrix + 1
+* \param num_indptr number of cols in the matrix + 1
 * \param nelem number of non-zero elements in the matrix
 * \param num_row number of rows
 * \param is_rawscore
@@ -519,20 +539,20 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterCalcNumPredict_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterPredictForCSC_R(
-	LGBM_SE handle,
-	LGBM_SE indptr,
-	LGBM_SE indices,
-	LGBM_SE data,
-	LGBM_SE nindptr,
-	LGBM_SE nelem,
-	LGBM_SE num_row,
-	LGBM_SE is_rawscore,
-	LGBM_SE is_leafidx,
-	LGBM_SE is_predcontrib,
-	LGBM_SE start_iteration,
-	LGBM_SE num_iteration,
-	LGBM_SE parameter,
-	LGBM_SE out_result
+	SEXP handle,
+	SEXP indptr,
+	SEXP indices,
+	SEXP data,
+	SEXP num_indptr,
+	SEXP nelem,
+	SEXP num_row,
+	SEXP is_rawscore,
+	SEXP is_leafidx,
+	SEXP is_predcontrib,
+	SEXP start_iteration,
+	SEXP num_iteration,
+	SEXP parameter,
+	SEXP out_result
 );
 
 /*!
@@ -542,7 +562,7 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterPredictForCSC_R(
 *               for leaf index, its length is equal to num_class * num_data * num_iteration
 * \param handle handle
 * \param data pointer to the data space
-* \param nrow number of rows
+* \param num_row number of rows
 * \param ncol number columns
 * \param is_rawscore
 * \param is_leafidx
@@ -551,17 +571,17 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterPredictForCSC_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterPredictForMat_R(
-	LGBM_SE handle,
-	LGBM_SE data,
-	LGBM_SE nrow,
-	LGBM_SE ncol,
-	LGBM_SE is_rawscore,
-	LGBM_SE is_leafidx,
-	LGBM_SE is_predcontrib,
-	LGBM_SE start_iteration,
-	LGBM_SE num_iteration,
-	LGBM_SE parameter,
-	LGBM_SE out_result
+	SEXP handle,
+	SEXP data,
+	SEXP num_row,
+	SEXP ncol,
+	SEXP is_rawscore,
+	SEXP is_leafidx,
+	SEXP is_predcontrib,
+	SEXP start_iteration,
+	SEXP num_iteration,
+	SEXP parameter,
+	SEXP out_result
 );
 
 /*!
@@ -572,44 +592,38 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterPredictForMat_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterSaveModel_R(
-	LGBM_SE handle,
-	LGBM_SE num_iteration,
-	LGBM_SE feature_importance_type,
-	LGBM_SE filename
+	SEXP handle,
+	SEXP num_iteration,
+	SEXP feature_importance_type,
+	SEXP filename
 );
 
 /*!
 * \brief create string containing model
-* \param handle handle
+* \param handle Booster handle
 * \param start_iteration Start index of the iteration that should be saved
 * \param num_iteration, <= 0 means save all
-* \param out_str string of model
-* \return 0 when succeed, -1 when failure happens
+* \param feature_importance_type type of feature importance, 0: split, 1: gain
+* \return R character vector (length=1) with model string
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterSaveModelToString_R(
-	LGBM_SE handle,
-	LGBM_SE start_iteration,
-	LGBM_SE num_iteration,
-	LGBM_SE feature_importance_type,
-	LGBM_SE buffer_len,
-	LGBM_SE actual_len,
-	LGBM_SE out_str
+	SEXP handle,
+	SEXP start_iteration,
+	SEXP num_iteration,
+	SEXP feature_importance_type
 );
 
 /*!
-* \brief dump model to json
-* \param handle handle
+* \brief dump model to JSON
+* \param handle Booster handle
 * \param num_iteration, <= 0 means save all
-* \param out_str json format string of model
-* \return 0 when succeed, -1 when failure happens
+* \param feature_importance_type type of feature importance, 0: split, 1: gain
+* \return R character vector (length=1) with model JSON
 */
 LIGHTGBM_C_EXPORT SEXP LGBM_BoosterDumpModel_R(
-	LGBM_SE handle,
-	LGBM_SE num_iteration,
-	LGBM_SE feature_importance_type,
-	LGBM_SE buffer_len,
-	LGBM_SE actual_len,
-	LGBM_SE out_str
+	SEXP handle,
+	SEXP num_iteration,
+	SEXP feature_importance_type
 );
 
 // Below here are REModel / GPModel related functions
@@ -637,32 +651,30 @@ LIGHTGBM_C_EXPORT SEXP LGBM_BoosterDumpModel_R(
 * \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 * \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions
 * \param likelihood Likelihood function for the observed response variable. Default = "gaussian"
-* \param out Created REModel
-* \return 0 when succeed, -1 when failure happens
+* \return REModel handle
 */
 LIGHTGBM_C_EXPORT SEXP GPB_CreateREModel_R(
-	LGBM_SE ndata,
-	LGBM_SE cluster_ids_data,
-	LGBM_SE re_group_data,
-	LGBM_SE num_re_group,
-	LGBM_SE re_group_rand_coef_data,
-	LGBM_SE ind_effect_group_rand_coef,
-	LGBM_SE num_re_group_rand_coef,
-	LGBM_SE num_gp,
-	LGBM_SE gp_coords_data,
-	LGBM_SE dim_gp_coords,
-	LGBM_SE gp_rand_coef_data,
-	LGBM_SE num_gp_rand_coef,
-	LGBM_SE cov_fct,
-	LGBM_SE cov_fct_shape,
-	LGBM_SE cov_fct_taper_range,
-	LGBM_SE vecchia_approx,
-	LGBM_SE num_neighbors,
-	LGBM_SE vecchia_ordering,
-	LGBM_SE vecchia_pred_type,
-	LGBM_SE num_neighbors_pred,
-	LGBM_SE likelihood,
-	LGBM_SE out
+	SEXP ndata,
+	SEXP cluster_ids_data,
+	SEXP re_group_data,
+	SEXP num_re_group,
+	SEXP re_group_rand_coef_data,
+	SEXP ind_effect_group_rand_coef,
+	SEXP num_re_group_rand_coef,
+	SEXP num_gp,
+	SEXP gp_coords_data,
+	SEXP dim_gp_coords,
+	SEXP gp_rand_coef_data,
+	SEXP num_gp_rand_coef,
+	SEXP cov_fct,
+	SEXP cov_fct_shape,
+	SEXP cov_fct_taper_range,
+	SEXP vecchia_approx,
+	SEXP num_neighbors,
+	SEXP vecchia_ordering,
+	SEXP vecchia_pred_type,
+	SEXP num_neighbors_pred,
+	SEXP likelihood
 );
 
 /*!
@@ -671,7 +683,7 @@ LIGHTGBM_C_EXPORT SEXP GPB_CreateREModel_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_REModelFree_R(
-	LGBM_SE handle
+	SEXP handle
 );
 
 /*!
@@ -692,19 +704,19 @@ LIGHTGBM_C_EXPORT SEXP GPB_REModelFree_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_SetOptimConfig_R(
-	LGBM_SE handle,
-	LGBM_SE init_cov_pars,
-	LGBM_SE lr,
-	LGBM_SE acc_rate_cov,
-	LGBM_SE max_iter,
-	LGBM_SE delta_rel_conv,
-	LGBM_SE use_nesterov_acc,
-	LGBM_SE nesterov_schedule_version,
-	LGBM_SE trace,
-	LGBM_SE optimizer,
-	LGBM_SE momentum_offset,
-	LGBM_SE convergence_criterion,
-	LGBM_SE calc_std_dev
+	SEXP handle,
+	SEXP init_cov_pars,
+	SEXP lr,
+	SEXP acc_rate_cov,
+	SEXP max_iter,
+	SEXP delta_rel_conv,
+	SEXP use_nesterov_acc,
+	SEXP nesterov_schedule_version,
+	SEXP trace,
+	SEXP optimizer,
+	SEXP momentum_offset,
+	SEXP convergence_criterion,
+	SEXP calc_std_dev
 );
 
 /*!
@@ -718,12 +730,12 @@ LIGHTGBM_C_EXPORT SEXP GPB_SetOptimConfig_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_SetOptimCoefConfig_R(
-	LGBM_SE handle,
-	LGBM_SE num_covariates,
-	LGBM_SE init_coef,
-	LGBM_SE lr_coef,
-	LGBM_SE acc_rate_coef,
-	LGBM_SE optimizer
+	SEXP handle,
+	SEXP num_covariates,
+	SEXP init_coef,
+	SEXP lr_coef,
+	SEXP acc_rate_coef,
+	SEXP optimizer
 );
 
 /*!
@@ -734,9 +746,9 @@ LIGHTGBM_C_EXPORT SEXP GPB_SetOptimCoefConfig_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_OptimCovPar_R(
-	LGBM_SE handle,
-	LGBM_SE y_data,
-	LGBM_SE fixed_effects
+	SEXP handle,
+	SEXP y_data,
+	SEXP fixed_effects
 );
 
 /*!
@@ -749,10 +761,10 @@ LIGHTGBM_C_EXPORT SEXP GPB_OptimCovPar_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_OptimLinRegrCoefCovPar_R(
-	LGBM_SE handle,
-	LGBM_SE y_data,
-	LGBM_SE covariate_data,
-	LGBM_SE num_covariates
+	SEXP handle,
+	SEXP y_data,
+	SEXP covariate_data,
+	SEXP num_covariates
 );
 
 /*!
@@ -764,10 +776,10 @@ LIGHTGBM_C_EXPORT SEXP GPB_OptimLinRegrCoefCovPar_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_EvalNegLogLikelihood_R(
-	LGBM_SE handle,
-	LGBM_SE y_data,
-	LGBM_SE cov_pars,
-	LGBM_SE negll
+	SEXP handle,
+	SEXP y_data,
+	SEXP cov_pars,
+	SEXP negll
 );
 
 /*!
@@ -779,9 +791,9 @@ LIGHTGBM_C_EXPORT SEXP GPB_EvalNegLogLikelihood_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_GetCovPar_R(
-	LGBM_SE handle,
-	LGBM_SE calc_std_dev,
-	LGBM_SE optim_cov_pars
+	SEXP handle,
+	SEXP calc_std_dev,
+	SEXP optim_cov_pars
 );
 
 /*!
@@ -792,8 +804,8 @@ LIGHTGBM_C_EXPORT SEXP GPB_GetCovPar_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_GetInitCovPar_R(
-	LGBM_SE handle,
-	LGBM_SE init_cov_pars
+	SEXP handle,
+	SEXP init_cov_pars
 );
 
 /*!
@@ -805,9 +817,9 @@ LIGHTGBM_C_EXPORT SEXP GPB_GetInitCovPar_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_GetCoef_R(
-	LGBM_SE handle,
-	LGBM_SE calc_std_dev,
-	LGBM_SE optim_coef
+	SEXP handle,
+	SEXP calc_std_dev,
+	SEXP optim_coef
 );
 
 /*!
@@ -818,8 +830,8 @@ LIGHTGBM_C_EXPORT SEXP GPB_GetCoef_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_GetNumIt_R(
-	LGBM_SE handle,
-	LGBM_SE num_it
+	SEXP handle,
+	SEXP num_it
 );
 
 /*!
@@ -835,14 +847,14 @@ LIGHTGBM_C_EXPORT SEXP GPB_GetNumIt_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_SetPredictionData_R(
-	LGBM_SE handle,
-	LGBM_SE num_data_pred,
-	LGBM_SE cluster_ids_data_pred,
-	LGBM_SE re_group_data_pred,
-	LGBM_SE re_group_rand_coef_data_pred,
-	LGBM_SE gp_coords_data_pred,
-	LGBM_SE gp_rand_coef_data_pred,
-	LGBM_SE covariate_data_pred
+	SEXP handle,
+	SEXP num_data_pred,
+	SEXP cluster_ids_data_pred,
+	SEXP re_group_data_pred,
+	SEXP re_group_rand_coef_data_pred,
+	SEXP gp_coords_data_pred,
+	SEXP gp_rand_coef_data_pred,
+	SEXP covariate_data_pred
 );
 
 /*!
@@ -873,61 +885,49 @@ LIGHTGBM_C_EXPORT SEXP GPB_SetPredictionData_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_PredictREModel_R(
-	LGBM_SE handle,
-	LGBM_SE y_data,
-	LGBM_SE num_data_pred,
-	LGBM_SE predict_cov_mat,
-	LGBM_SE predict_var,
-	LGBM_SE predict_response,
-	LGBM_SE cluster_ids_data_pred,
-	LGBM_SE re_group_data_pred,
-	LGBM_SE re_group_rand_coef_data_pred,
-	LGBM_SE gp_coords_pred,
-	LGBM_SE gp_rand_coef_data_pred,
-	LGBM_SE cov_pars,
-	LGBM_SE covariate_data_pred,
-	LGBM_SE use_saved_data,
-	LGBM_SE vecchia_pred_type,
-	LGBM_SE num_neighbors_pred,
-	LGBM_SE fixed_effects,
-	LGBM_SE fixed_effects_pred,
-	LGBM_SE out_predict
+	SEXP handle,
+	SEXP y_data,
+	SEXP num_data_pred,
+	SEXP predict_cov_mat,
+	SEXP predict_var,
+	SEXP predict_response,
+	SEXP cluster_ids_data_pred,
+	SEXP re_group_data_pred,
+	SEXP re_group_rand_coef_data_pred,
+	SEXP gp_coords_pred,
+	SEXP gp_rand_coef_data_pred,
+	SEXP cov_pars,
+	SEXP covariate_data_pred,
+	SEXP use_saved_data,
+	SEXP vecchia_pred_type,
+	SEXP num_neighbors_pred,
+	SEXP fixed_effects,
+	SEXP fixed_effects_pred,
+	SEXP out_predict
 );
 
 /*!
 * \brief Get name of likelihood
-* \param ll_name Likelihood name
-* \return 0 when succeed, -1 when failure happens
+* \return R character vector (length=1) with likelihood name
 */
 LIGHTGBM_C_EXPORT SEXP GPB_GetLikelihoodName_R(
-	LGBM_SE handle,
-	LGBM_SE buf_len,
-	LGBM_SE actual_len,
-	LGBM_SE ll_name
+	SEXP handle
 );
 
 /*!
 * \brief Get name of covariance parameter optimizer
-* \param name Optimizer name
-* \return 0 when succeed, -1 when failure happens
+* \return R character vector (length=1) with optimizer name
 */
 LIGHTGBM_C_EXPORT SEXP GPB_GetOptimizerCovPars_R(
-	LGBM_SE handle,
-	LGBM_SE buf_len,
-	LGBM_SE actual_len,
-	LGBM_SE name
+	SEXP handle
 );
 
 /*!
 * \brief Get name of linear regression coefficients optimizer
-* \param name Optimizer name
-* \return 0 when succeed, -1 when failure happens
+* \return R character vector (length=1) with optimizer name
 */
 LIGHTGBM_C_EXPORT SEXP GPB_GetOptimizerCoef_R(
-	LGBM_SE handle,
-	LGBM_SE buf_len,
-	LGBM_SE actual_len,
-	LGBM_SE name
+	SEXP handle
 );
 
 /*!
@@ -936,8 +936,8 @@ LIGHTGBM_C_EXPORT SEXP GPB_GetOptimizerCoef_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_SetLikelihood_R(
-	LGBM_SE handle,
-	LGBM_SE likelihood
+	SEXP handle,
+	SEXP likelihood
 );
 
 /*!
@@ -947,8 +947,8 @@ LIGHTGBM_C_EXPORT SEXP GPB_SetLikelihood_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_GetResponseData_R(
-	LGBM_SE handle,
-	LGBM_SE response_data
+	SEXP handle,
+	SEXP response_data
 );
 
 /*!
@@ -958,8 +958,8 @@ LIGHTGBM_C_EXPORT SEXP GPB_GetResponseData_R(
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT SEXP GPB_GetCovariateData_R(
-	LGBM_SE handle,
-	LGBM_SE covariate_data
+	SEXP handle,
+	SEXP covariate_data
 );
 
 #endif  // GPBOOST_R_H_

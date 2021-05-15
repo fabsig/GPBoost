@@ -31,16 +31,15 @@ Predictor <- R6::R6Class(
       params <- list(...)
       private$params <- gpb.params2str(params = params)
       # Create new lgb handle
-      handle <- gpb.null.handle()
+      handle <- NULL
 
       # Check if handle is a character
       if (is.character(modelfile)) {
 
         # Create handle on it
-        .Call(
+        handle <- .Call(
           LGBM_BoosterCreateFromModelfile_R
-          , gpb.c_str(x = modelfile)
-          , handle
+          , modelfile
         )
         private$need_free_handle <- TRUE
 
@@ -117,7 +116,7 @@ Predictor <- R6::R6Class(
           , as.integer(start_iteration)
           , as.integer(num_iteration)
           , private$params
-          , gpb.c_str(x = tmp_filename)
+          , tmp_filename
         )
 
         # Get predictions from file

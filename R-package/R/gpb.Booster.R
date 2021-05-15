@@ -44,7 +44,7 @@ Booster <- R6::R6Class(
       
       # Create parameters and handle
       params <- append(params, list(...))
-      handle <- gpb.null.handle()
+      handle <- NULL
       
       if (!is.null(gp_model)) { # has gp_model
         # Check if gp_model is gpb.Dataset or not
@@ -83,21 +83,19 @@ Booster <- R6::R6Class(
           private$has_gp_model <- TRUE
           private$gp_model <- gp_model
           # Store booster handle
-          .Call(
+          handle <- .Call(
             LGBM_GPBoosterCreate_R
             , train_set_handle
             , params_str
             , gp_model$.__enclos_env__$private$get_handle()
-            , handle
           )
           
         } else { # No gp_model
           # Store booster handle
-          .Call(
+          handle <- .Call(
             LGBM_BoosterCreate_R
             , train_set_handle
             , params_str
-            , handle
           )
         }
         
@@ -141,10 +139,9 @@ Booster <- R6::R6Class(
             stop("gpb.Booster: Can only use a string as booster_str in modelfile")
           }
           # Create booster from string
-          .Call(
+          handle <- .Call(
             LGBM_BoosterLoadModelFromString_R
-            , gpb.c_str(x = save_data[["booster_str"]])
-            , handle
+            , save_data[["booster_str"]]
           )
           # create gp_model from list
           private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
@@ -172,10 +169,9 @@ Booster <- R6::R6Class(
         } else { # has no gp_model
           
           # Create booster from model
-          .Call(
+          handle <- .Call(
             LGBM_BoosterCreateFromModelfile_R
-            , gpb.c_str(x = modelfile)
-            , handle
+            , modelfile
           )
           
         }
@@ -188,10 +184,9 @@ Booster <- R6::R6Class(
         }
         
         # Create booster from string
-        .Call(
+        handle <- .Call(
           LGBM_BoosterLoadModelFromString_R
-          , gpb.c_str(x = model_str)
-          , handle
+          , model_str
         )
         
       } else {
@@ -611,7 +606,7 @@ Booster <- R6::R6Class(
           , private$handle
           , as.integer(num_iteration)
           , as.integer(feature_importance_type)
-          , gpb.c_str(x = filename)
+          , filename
         )
       }
       
@@ -630,44 +625,16 @@ Booster <- R6::R6Class(
       if (is.null(start_iteration)) {
         start_iteration <- 0L
       }
-      
-      # Return model string
-      # Create buffer
-      buf_len <- as.integer(1024L * 1024L)
-      act_len <- 0L
-      buf <- raw(buf_len)
-      
-      # Call buffer
-      .Call(
+
+      model_str <- .Call(
         LGBM_BoosterSaveModelToString_R
         , private$handle
         , as.integer(start_iteration)
         , as.integer(num_iteration)
         , as.integer(feature_importance_type)
-        , buf_len
-        , act_len
-        , buf
       )
       
-      # Check for buffer content
-      if (act_len > buf_len) {
-        buf_len <- act_len
-        buf <- raw(buf_len)
-        .Call(
-          LGBM_BoosterSaveModelToString_R
-          , private$handle
-          , as.integer(start_iteration)
-          , as.integer(num_iteration)
-          , as.integer(feature_importance_type)
-          , buf_len
-          , act_len
-          , buf
-        )
-      }
-      
-      return(
-        gpb.encode.char(arr = buf, len = act_len)
-      )
+      return(model_str)
       
     },
     
@@ -679,36 +646,14 @@ Booster <- R6::R6Class(
         num_iteration <- self$best_iter
       }
       
-      buf_len <- as.integer(1024L * 1024L)
-      act_len <- 0L
-      buf <- raw(buf_len)
-      .Call(
+      model_str <- .Call(
         LGBM_BoosterDumpModel_R
         , private$handle
         , as.integer(num_iteration)
         , as.integer(feature_importance_type)
-        , buf_len
-        , act_len
-        , buf
       )
       
-      if (act_len > buf_len) {
-        buf_len <- act_len
-        buf <- raw(buf_len)
-        .Call(
-          LGBM_BoosterDumpModel_R
-          , private$handle
-          , as.integer(num_iteration)
-          , as.integer(feature_importance_type)
-          , buf_len
-          , act_len
-          , buf
-        )
-      }
-      
-      return(
-        gpb.encode.char(arr = buf, len = act_len)
-      )
+      return(model_str)
       
     },
     
@@ -1028,39 +973,20 @@ Booster <- R6::R6Class(
       if (is.null(private$eval_names)) {
         
         # Get evaluation names
-        buf_len <- as.integer(1024L * 1024L)
-        act_len <- 0L
-        buf <- raw(buf_len)
-        .Call(
+        eval_names <- .Call(
           LGBM_BoosterGetEvalNames_R
           , private$handle
-          , buf_len
-          , act_len
-          , buf
         )
-        if (act_len > buf_len) {
-          buf_len <- act_len
-          buf <- raw(buf_len)
-          .Call(
-            LGBM_BoosterGetEvalNames_R
-            , private$handle
-            , buf_len
-            , act_len
-            , buf
-          )
-        }
-        names <- gpb.encode.char(arr = buf, len = act_len)
         
         # Check names' length
-        if (nchar(names) > 0L) {
+        if (length(eval_names) > 0L) {
           
           # Parse and store privately names
-          names <- strsplit(names, "\t")[[1L]]
-          private$eval_names <- names
+          private$eval_names <- eval_names
           
           # some metrics don't map cleanly to metric names, for example "ndcg@1" is just the
           # ndcg metric evaluated at the first "query result" in learning-to-rank
-          metric_names <- gsub("@.*", "", names)
+          metric_names <- gsub("@.*", "", eval_names)
           private$higher_better_inner_eval <- .METRICS_HIGHER_BETTER()[metric_names]
           
         }

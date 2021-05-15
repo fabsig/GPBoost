@@ -6,23 +6,13 @@ gpb.is.Dataset <- function(x) {
   return(gpb.check.r6.class(object = x, name = "gpb.Dataset"))
 }
 
-gpb.null.handle <- function() {
-  if (.Machine$sizeof.pointer == 8L) {
-    return(NA_real_)
-  } else {
-    return(NA_integer_)
-  }
-}
-
 gpb.is.null.handle <- function(x) {
-  return(is.null(x) || is.na(x))
-}
-
-gpb.encode.char <- function(arr, len) {
-  if (!is.raw(arr)) {
-    stop("gpb.encode.char: Can only encode from raw type")
+  if (is.null(x)) {
+    return(TRUE)
   }
-  return(rawToChar(arr[seq_len(len)]))
+  return(
+    isTRUE(.Call(LGBM_HandleIsNull_R, x))
+  )
 }
 
 # [description] Get the most recent error stored on the C++ side and raise it
@@ -92,10 +82,10 @@ gpb.params2str <- function(params, ...) {
 
   # Check ret length
   if (length(ret) == 0L) {
-    return(gpb.c_str(x = ""))
+    return("")
   }
 
-  return(gpb.c_str(x = paste0(ret, collapse = " ")))
+  return(paste0(ret, collapse = " "))
 
 }
 
@@ -158,11 +148,11 @@ gpb.check_interaction_constraints <- function(params, column_names) {
 }
 
 gpb.c_str <- function(x) {
-
+  
   ret <- charToRaw(as.character(x))
   ret <- c(ret, as.raw(0L))
   return(ret)
-
+  
 }
 
 gpb.check.r6.class <- function(object, name) {

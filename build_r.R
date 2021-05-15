@@ -322,7 +322,7 @@ for (submodule in list.dirs(
 }
 
 # copy files into the place CMake expects
-for (src_file in c("gpboost_R.cpp", "gpboost_R.h", "R_object_helper.h")) {
+for (src_file in c("gpboost_R.cpp", "gpboost_R.h")) {
   result <- file.copy(
     from = file.path(TEMP_SOURCE_DIR, src_file)
     , to = file.path(TEMP_SOURCE_DIR, "src", src_file)
@@ -384,11 +384,6 @@ dynlib_line <- grep(
 
 c_api_contents <- readLines(file.path(TEMP_SOURCE_DIR, "src", "gpboost_R.h"))
 c_api_contents <- c_api_contents[grepl("^LIGHTGBM_C_EXPORT", c_api_contents)]
-c_api_contents <- gsub(
-  pattern = "LIGHTGBM_C_EXPORT LGBM_SE "
-  , replacement = ""
-  , x = c_api_contents
-)
 c_api_contents <- gsub(
   pattern = "LIGHTGBM_C_EXPORT SEXP "
   , replacement = ""
