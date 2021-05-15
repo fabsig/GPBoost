@@ -186,7 +186,6 @@ bst = gpb.train(params=params,
                 evals_result=evals_result)
 # plot validation scores
 gpb.plot_metric(evals_result, figsize=(10, 5))
-plt.show()
 
 
 # --------------------Combine tree-boosting and Gaussian process model----------------
