@@ -941,11 +941,21 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
                 cluster_ids_pred=None, vecchia_pred_type=None,
                 num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False, **kwargs):
         """Docstring is inherited from the GPBoostModel."""
-        result = self.predict_proba(X, raw_score, start_iteration, num_iteration,
-                                    pred_leaf, pred_contrib, **kwargs)
+        result = self.predict_proba(X=X, raw_score=raw_score, start_iteration=start_iteration, num_iteration=num_iteration,
+                                    pred_leaf=pred_leaf, pred_contrib=pred_contrib,
+                                    group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
+                                    gp_coords_pred=gp_coords_pred, gp_rand_coef_data_pred=gp_rand_coef_data_pred,
+                                    cluster_ids_pred=cluster_ids_pred, vecchia_pred_type=vecchia_pred_type,
+                                    num_neighbors_pred=num_neighbors_pred, predict_cov_mat=predict_cov_mat, predict_var=predict_var,
+                                    **kwargs)
         if callable(self._objective) or raw_score or pred_leaf or pred_contrib:
             return result
         else:
+            if self._Booster.has_gp_model:
+                if self._n_classes > 2:
+                    result = result['response_mean']
+                else:
+                    result = np.vstack((1. - result['response_mean'], result['response_mean'])).transpose()
             class_index = np.argmax(result, axis=1)
             return self._le.inverse_transform(class_index)
 
@@ -1026,7 +1036,8 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
         X_SHAP_values : array-like of shape = [n_samples, (n_features + 1) * n_classes] or list with n_classes length of such objects
             If ``pred_contrib=True``, the feature contributions for each sample.
         """
-        result = super().predict(X, raw_score, start_iteration, num_iteration, pred_leaf, pred_contrib,
+        result = super().predict(X=X, raw_score=raw_score, start_iteration=start_iteration, num_iteration=num_iteration,
+                                 pred_leaf=pred_leaf, pred_contrib=pred_contrib,
                                  group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
                                  gp_coords_pred=gp_coords_pred, gp_rand_coef_data_pred=gp_rand_coef_data_pred,
                                  cluster_ids_pred=cluster_ids_pred, vecchia_pred_type=vecchia_pred_type,
@@ -1037,7 +1048,7 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
                          "due to the usage of customized objective function.\n"
                          "Returning raw scores instead.")
             return result
-        elif self._n_classes > 2 or raw_score or pred_leaf or pred_contrib:
+        elif self._n_classes > 2 or raw_score or pred_leaf or pred_contrib or self._Booster.has_gp_model:
             return result
         else:
             return np.vstack((1. - result, result)).transpose()
