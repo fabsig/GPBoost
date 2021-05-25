@@ -21,7 +21,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 
 * The [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrating how GPBoost can be used in R and Python
 * The [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package) with installation instructions for the Python and R packages
-* The companion article [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) or this [**blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) on how to combine tree-boosting with mixed effects models
+* The companion articles [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) and [**Sigrist (2021)**](https://arxiv.org/abs/2105.08966) or this [**blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) on how to combine tree-boosting with mixed effects models
 * Detailed [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) presenting the most important parameters / settings for the GPBoost library
 * [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst) an exhaustive list of all possible parametes and customizations for the tree-boosting part
@@ -55,7 +55,7 @@ The **random effects** can consists of
 - Grouped random effects (including nested, crossed, and random coefficient effects)
 - A sum of the above
 
-The model is trained using the **GPBoost algorithm, where training means learning the covariance parameters** (aka hyperparameters) of the random effects and the **predictor function F(X)** using a tree ensemble. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a [gradient and/or a Newton boosting](https://www.sciencedirect.com/science/article/abs/pii/S0957417420308381) step. In the GPBoost library, covariance parameters can be learned using (Nesterov accelerated) gradient descent or Fisher scoring (aka natural gradient descent). Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) for more details.
+The model is trained using the **GPBoost algorithm, where training means learning the covariance parameters** (aka hyperparameters) of the random effects and the **predictor function F(X)** using a tree ensemble. In brief, the GPBoost algorithm is a boosting algorithm that iteratively learns the covariance parameters and adds a tree to the ensemble of trees using a [gradient and/or a Newton boosting](https://www.sciencedirect.com/science/article/abs/pii/S0957417420308381) step. In the GPBoost library, covariance parameters can be learned using (Nesterov accelerated) gradient descent or Fisher scoring (aka natural gradient descent). Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) and [Sigrist (2021)](https://arxiv.org/abs/2105.08966) for more details.
 
 ## News
 
@@ -79,9 +79,9 @@ The model is trained using the **GPBoost algorithm, where training means learnin
 
 ## References
 
-Sigrist Fabio. "[Gaussian Process Boosting](http://arxiv.org/abs/2004.02653)". Preprint (2020).
-
-Guolin Ke, Qi Meng, Thomas Finley, Taifeng Wang, Wei Chen, Weidong Ma, Qiwei Ye, Tie-Yan Liu. "[LightGBM: A Highly Efficient Gradient Boosting Decision Tree](https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree)". Advances in Neural Information Processing Systems 30 (NIPS 2017), pp. 3149-3157.
+- Sigrist Fabio. "[Gaussian Process Boosting](http://arxiv.org/abs/2004.02653)". Preprint (2020).
+- Sigrist Fabio. "[Latent Gaussian Model Boosting](https://arxiv.org/abs/2105.08966)". Preprint (2021).
+- Guolin Ke, Qi Meng, Thomas Finley, Taifeng Wang, Wei Chen, Weidong Ma, Qiwei Ye, Tie-Yan Liu. "[LightGBM: A Highly Efficient Gradient Boosting Decision Tree](https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree)". Advances in Neural Information Processing Systems 30 (NIPS 2017), pp. 3149-3157.
 
 ## License
 
