@@ -73,9 +73,9 @@ The model is trained using the **GPBoost algorithm, where training means learnin
 - Add [CHOLMOD](https://github.com/DrTimothyAldenDavis/SuiteSparse) support
 
 #### Methodological issues
-- Implement an approach such that computations scale well (memory and time) for Gaussian process models for non-Gaussian data
 - Add a spatio-temporal Gaussian process model (e.g. a separable one)
 - Add possibility to predict latent Gaussian processes and random effects (e.g. random coefficients)
+- Implement more approaches such that computations scale well (memory and time) for Gaussian process models and mixed effects models with more than one grouping variable for non-Gaussian data
 
 ## References
 
