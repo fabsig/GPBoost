@@ -12,6 +12,7 @@ OPTION(__INTEGRATE_OPENCL "Set to ON if building LightGBM with the OpenCL ICD Lo
 
 if(APPLE)
   OPTION(APPLE_OUTPUT_DYLIB "Output dylib shared library" OFF)
+  ADD_DEFINITIONS(-mmacosx-version-min=10.10)
 endif(APPLE)
 
 if(__INTEGRATE_OPENCL)
