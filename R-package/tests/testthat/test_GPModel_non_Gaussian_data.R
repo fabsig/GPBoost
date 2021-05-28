@@ -703,19 +703,6 @@ test_that("Binary classification with linear predictor and grouped random effect
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
   expect_equal(gp_model$get_num_optim_iter(), 88)
   
-  # # Default choices
-  # gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit", y = y, X=X)
-  # # summary(gp_model)
-  # cov_pars <- c(0.4142176)
-  # coef <- c(-0.111881, 1.5211917)
-  # expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
-  # expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
-  # expect_equal(gp_model$get_num_optim_iter(), 104)
-  # # Compare to lme4
-  # library(lme4)
-  # mod <- glmer(y~X.2 + (1|group),data=data.frame(y=y,X=X,group=group),family=binomial(link = "probit"))
-  # summary(mod)
-  
   # Prediction
   gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
                          y = y, X=X, params = list(optimizer_cov = "gradient_descent",
