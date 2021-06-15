@@ -53,8 +53,16 @@ pred$var[1:5] # Predicted latent variance
 pred_resp <- predict(gp_model, X_pred = X_test, group_data_pred = group_test,
                          predict_var = TRUE, predict_response = TRUE)
 pred_resp$mu[1:5] # Predicted response variable (label)
-pred_resp$var[1:5] # Predicted varianec of response
+pred_resp$var[1:5] # Predicted variance of response variable
 
+# Approximate p-values for regression coefficients
+gp_model <- fitGPModel(group_data = group, likelihood = likelihood, y = y, X = X,
+                       params = list(std_dev = TRUE))
+coefs <- gp_model$get_coef()
+z_values <- coefs[1,] / coefs[2,]
+p_values <- 2 * exp(pnorm(-abs(z_values), log.p = TRUE))
+coefs_summary <- rbind(coefs,z_values,p_values)
+print(signif(coefs_summary, digits=4))
 
 #--------------------Gaussian process model----------------
 # Simulate data

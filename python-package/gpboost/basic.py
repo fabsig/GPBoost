@@ -4556,7 +4556,7 @@ class GPModel(object):
             self.handle,
             optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
             ctypes.c_bool(self.params["std_dev"])))
-        if self.params["std_dev"]:
+        if self.params["std_dev"] and self.get_likelihood_name() == "gaussian":
             cov_pars = np.row_stack((optim_pars[0:self.num_cov_pars],
                                      optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
         else:

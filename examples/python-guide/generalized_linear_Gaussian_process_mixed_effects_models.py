@@ -51,7 +51,7 @@ plt.hist(y, bins=50)  # visualize response variable
 
 # --------------------Train model----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-gp_model.fit(y=y, X=X)  # use option params={"trace": True} for monitoring convergence
+gp_model.fit(y=y, X=X)  # use params={"trace": True} for monitoring convergence
 gp_model.summary()
 
 # --------------------Make predictions----------------
@@ -68,7 +68,15 @@ pred_resp = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
 print(pred_resp['mu'][0:5])  # Predicted response variable (label)
 print(pred_resp['var'][0:5])  # # Predicted varianec of response
 
-#--------------------Saving a booster with a gp_model and loading it from a file----------------
+# --------------------Approximate p-values for regression coefficients----------------
+gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+gp_model.fit(y=y, X=X, params={"std_dev": True})
+coefs = gp_model.get_coef()
+z_values = coefs[0] / coefs[1]
+p_values = 2 * stats.norm.cdf(-np.abs(z_values))
+print(p_values)
+
+#--------------------Saving a GPModel and loading it from a file----------------
 # Save trained model
 gp_model.save_model('gp_model.json')
 # Load from file and make predictions again

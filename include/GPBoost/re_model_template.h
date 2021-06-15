@@ -512,9 +512,6 @@ namespace GPBoost {
 				if (optimizer_cov == "fisher_scoring") {
 					Log::REFatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian data. ", optimizer_cov.c_str());
 				}
-				if (calc_std_dev) {
-					Log::REFatal("Calculation of standard deviations is not supported for non-Gaussian data.");
-				}
 			}
 			if (covariate_data != nullptr) {
 				if (SUPPORTED_OPTIM_COEF_.find(optimizer_coef) == SUPPORTED_OPTIM_COEF_.end()) {
@@ -758,20 +755,34 @@ namespace GPBoost {
 			for (int i = 0; i < num_cov_par_; ++i) {
 				optim_cov_pars[i] = cov_pars[i];
 			}
-			if (calc_std_dev) {
-				vec_t std_dev_cov(num_cov_par_);
-				CalcStdDevCovPar(cov_pars, std_dev_cov);//TODO: maybe another call to CalcCovFactor can be avoided in CalcStdDevCovPar (need to take care of cov_pars[0])
-				for (int i = 0; i < num_cov_par_; ++i) {
-					std_dev_cov_par[i] = std_dev_cov[i];
-				}
-			}
 			if (has_covariates_) {
 				for (int i = 0; i < num_covariates; ++i) {
 					optim_coef[i] = beta[i];
 				}
-				if (calc_std_dev) {
+			}
+			if (calc_std_dev) {
+				vec_t std_dev_cov(num_cov_par_);
+				if (gauss_likelihood_) {
+					CalcStdDevCovPar(cov_pars, std_dev_cov);//TODO: maybe another call to CalcCovFactor can be avoided in CalcStdDevCovPar (need to take care of cov_pars[0])
+					for (int i = 0; i < num_cov_par_; ++i) {
+						std_dev_cov_par[i] = std_dev_cov[i];
+					}
+				}
+				else {
+					std_dev_cov.setZero();// Calculation of standard deviations for covariance paramters is not supported for non-Gaussian data
+					if (!has_covariates_) {
+						Log::REWarning("Calculation of standard deviations of covariance parameters for non-Gaussian data is (currently) not supported.");
+					}
+				}
+				if (has_covariates_) {
 					vec_t std_dev_beta(num_covariates);
-					CalcStdDevCoef(cov_pars, X_, std_dev_beta);
+					if (gauss_likelihood_) {
+						CalcStdDevCoef(cov_pars, X_, std_dev_beta);
+					}
+					else {
+						Log::REWarning("Standard deviations of linear regression coefficients for non-Gaussian data can be very approximative. The only reason for reporting them is that other software packages for generalized linear mixed effects are also doing this.");
+						CalcStdDevCoefNonGaussian(num_covariates, beta, cov_pars, fixed_effects, std_dev_beta);
+					}
 					for (int i = 0; i < num_covariates; ++i) {
 						std_dev_coef[i] = std_dev_beta[i];
 					}
@@ -4286,7 +4297,10 @@ namespace GPBoost {
 		* \param[out] grad_beta Gradient for linear regression coefficients
 		 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
 		*/
-		void CalcLinCoefGrad(double marg_var, const vec_t beta, vec_t& grad_beta, const double* fixed_effects = nullptr) {
+		void CalcLinCoefGrad(double marg_var,
+			const vec_t beta,
+			vec_t& grad_beta,
+			const double* fixed_effects = nullptr) {
 			if (gauss_likelihood_) {
 				const vec_t resid = y_vec_ - (X_ * beta);
 				SetY(resid.data());
@@ -4308,7 +4322,8 @@ namespace GPBoost {
 		* \param X Covariate data for linear fixed-effect
 		* \param[out] beta Linear regression coefficients
 		*/
-		void UpdateCoefGLS(den_mat_t& X, vec_t& beta) {
+		void UpdateCoefGLS(den_mat_t& X,
+			vec_t& beta) {
 			vec_t y_aux(num_data_);
 			GetYAux(y_aux);
 			den_mat_t XT_psi_inv_X;
@@ -4324,8 +4339,11 @@ namespace GPBoost {
 		* \param include_error_var If true, the marginal variance parameter is also included, otherwise not
 		* \param use_saved_psi_inv If false, the inverse covariance matrix Psi^-1 is calculated, otherwise a saved version is used
 		*/
-		void CalcFisherInformation(const vec_t& cov_pars, den_mat_t& FI, bool transf_scale = true,
-			bool include_error_var = false, bool use_saved_psi_inv = false) {
+		void CalcFisherInformation(const vec_t& cov_pars,
+			den_mat_t& FI,
+			bool transf_scale = true,
+			bool include_error_var = false,
+			bool use_saved_psi_inv = false) {
 			if (include_error_var) {
 				FI = den_mat_t(num_cov_par_, num_cov_par_);
 			}
@@ -4527,11 +4545,12 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate the standard deviations for the MLE of the covariance parameters as the diagonal of the inverse Fisher information (on the orignal scale and not the transformed scale used in the optimization)
+		* \brief Calculate the standard deviations for the MLE of the covariance parameters as the diagonal of the inverse Fisher information (on the orignal scale and not the transformed scale used in the optimization, for Gaussian data only)
 		* \param cov_pars MLE of covariance parameters
 		* \param[out] std_dev Standard deviations
 		*/
-		void CalcStdDevCovPar(const vec_t& cov_pars, vec_t& std_dev) {
+		void CalcStdDevCovPar(const vec_t& cov_pars,
+			vec_t& std_dev) {
 			SetCovParsComps(cov_pars);
 			CalcCovFactor(true, false, cov_pars[0], true);
 			den_mat_t FI;
@@ -4540,12 +4559,14 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate the standard deviations for the MLE of the regression coefficients as the diagonal of the inverse Fisher information
+		* \brief Calculate standard deviations for the MLE of the regression coefficients as the diagonal of the inverse Fisher information (for Gaussian data only)
 		* \param cov_pars MLE of covariance parameters
 		* \param X Covariate data for linear fixed-effect
 		* \param[out] std_dev Standard deviations
 		*/
-		void CalcStdDevCoef(vec_t& cov_pars, const den_mat_t& X, vec_t& std_dev) {
+		void CalcStdDevCoef(vec_t& cov_pars,
+			const den_mat_t& X,
+			vec_t& std_dev) {
 			if ((int)std_dev.size() >= num_data_) {
 				Log::REWarning("Sample size too small to calculate standard deviations for coefficients");
 				for (int i = 0; i < (int)std_dev.size(); ++i) {
@@ -4560,6 +4581,44 @@ namespace GPBoost {
 				FI /= cov_pars[0];
 				std_dev = FI.inverse().diagonal().array().sqrt().matrix();
 			}
+		}
+
+		/*!
+		* \brief Calculate standard deviations for the MLE of the regression coefficients as the diagonal of the inverse Fisher information
+		* \param num_covariates Number of covariates / coefficients
+		* \param beta Regression coefficients
+		* \param cov_pars Covariance parameters
+		* \param fixed_effects Externally provided fixed effects component of location parameter
+		* \param[out] std_dev_beta Standard deviations
+		*/
+		void CalcStdDevCoefNonGaussian(int num_covariates, 
+			const vec_t& beta,
+			const vec_t& cov_pars,
+			const double* fixed_effects,
+			vec_t& std_dev_beta) {
+			den_mat_t H(num_covariates, num_covariates);// Aproximate Hessian calculated as the Jacobian of the gradient
+			const double mach_eps = std::numeric_limits<double>::epsilon();
+			vec_t delta_step = beta * std::pow(mach_eps, 1.0 / 3.0);// based on https://math.stackexchange.com/questions/1039428/finite-difference-method
+			vec_t fixed_effects_vec, beta_change1, beta_change2, grad_beta_change1, grad_beta_change2;
+			for (int i = 0; i < num_covariates; ++i) {
+				// Beta plus / minus delta
+				beta_change1 = beta;
+				beta_change2 = beta;
+				beta_change1[i] += delta_step[i];
+				beta_change2[i] -= delta_step[i];
+				// Gradient vector at beta plus / minus delta
+				UpdateFixedEffects(beta_change1, fixed_effects, fixed_effects_vec);
+				CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_vec.data());
+				CalcLinCoefGrad(1., beta_change1, grad_beta_change1, fixed_effects_vec.data());
+				UpdateFixedEffects(beta_change2, fixed_effects, fixed_effects_vec);
+				CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_vec.data());
+				CalcLinCoefGrad(1., beta_change2, grad_beta_change2, fixed_effects_vec.data());
+				// Approximate gradient of gradient
+				H.row(i) = (grad_beta_change1 - grad_beta_change2) / (2. * delta_step[i]);
+			}
+			den_mat_t Hsym = (H + H.transpose()) / 2.;
+			// (Very) approximate standard deviations as square root of diagonal of inverse Hessian
+			std_dev_beta = Hsym.inverse().diagonal().array().sqrt().matrix();
 		}
 
 		/*!

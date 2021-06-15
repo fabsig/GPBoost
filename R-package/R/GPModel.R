@@ -947,7 +947,8 @@ gpb.GPModel <- R6::R6Class(
       
       cov_pars <- optim_pars[1:private$num_cov_pars]
       names(cov_pars) <- private$cov_par_names
-      if (private$params[["std_dev"]]) {
+      
+      if (private$params[["std_dev"]] & self$get_likelihood_name() == "gaussian") {
         cov_pars_std_dev <- optim_pars[1:private$num_cov_pars+private$num_cov_pars]
         cov_pars <- rbind(cov_pars,cov_pars_std_dev)
         rownames(cov_pars) <- c("Param.", "Std. dev.")
@@ -978,6 +979,7 @@ gpb.GPModel <- R6::R6Class(
       
       coef <- optim_pars[1:private$num_coef]
       names(coef) <- private$coef_names
+      
       if (private$params[["std_dev"]]) {
         coef_std_dev <- optim_pars[1:private$num_coef+private$num_coef]
         coef <- rbind(coef,coef_std_dev)

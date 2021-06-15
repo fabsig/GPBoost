@@ -226,7 +226,7 @@ test_that("Binary classification with Gaussian process model with multiple obser
 # Avoid that long tests get executed on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
-  test_that("Binary classification with only one grouped random effects model ", {
+  test_that("Binary classification with one grouped random effects ", {
     
     probs <- pnorm(Z1 %*% b_gr_1)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.823431) < probs)
@@ -316,7 +316,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(opt$value-(65.2599674)),TOLERANCE)
   })
   
-  test_that("Binary classification with multiple grouped random effects model ", {
+  test_that("Binary classification with multiple grouped random effects ", {
 
     probs <- pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.57341) < probs)
@@ -377,7 +377,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   
-  test_that("Binary classification for combined Gaussian process and grouped random effects model ", {
+  test_that("Binary classification for combined Gaussian process and grouped random effects ", {
     
     probs <- pnorm(L %*% b_1 + Z1 %*% b_gr_1)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.67341) < probs)
@@ -722,6 +722,18 @@ test_that("Binary classification with linear predictor and grouped random effect
   pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, predict_response = TRUE)
   expected_mu <- c(0.2234889, 0.4683865, 0.5797755, 0.8821780)
   expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
+  
+  # Standard deviations
+  capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit", 
+                         y = y, X=X, params = list(std_dev = TRUE, optimizer_cov = "gradient_descent",
+                                                   optimizer_coef = "gradient_descent", 
+                                                   use_nesterov_acc = TRUE, lr_cov = 0.1, lr_coef = 0.1)),
+                  file='NUL')
+  cov_pars <- c(0.4003719)
+  coef <- c(-0.1111257, 0.2565608, 1.5153952, 0.2636284)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
+  expect_equal(gp_model$get_num_optim_iter(), 13)
 })
 
 
@@ -753,6 +765,17 @@ test_that("Binary classification with linear predictor and Gaussian process mode
                                                    optimizer_coef = "gradient_descent", maxit=10))
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.0003067, 0.3553517))),TOLERANCE)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.0006371053, 0.0007169813))),TOLERANCE)
+  
+  # Standard deviations
+  capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit", 
+                         y = y, X=X, params = list(std_dev = TRUE, optimizer_cov = "gradient_descent",
+                                                   optimizer_coef = "gradient_descent", 
+                                                   use_nesterov_acc = TRUE, lr_cov = 0.1, lr_coef = 0.1, maxit=10)),
+                  file='NUL')
+  cov_pars <- c(1.57183630, 0.03950405)
+  coef <- c(0.4944061, 0.2773261, 2.6655779, 0.4213292)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
   
 })
 
