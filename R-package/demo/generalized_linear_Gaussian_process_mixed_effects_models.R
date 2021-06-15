@@ -55,7 +55,7 @@ pred_resp <- predict(gp_model, X_pred = X_test, group_data_pred = group_test,
 pred_resp$mu[1:5] # Predicted response variable (label)
 pred_resp$var[1:5] # Predicted variance of response variable
 
-# Approximate p-values for regression coefficients
+# Approximate p-values for fixed effects coefficients
 gp_model <- fitGPModel(group_data = group, likelihood = likelihood, y = y, X = X,
                        params = list(std_dev = TRUE))
 coefs <- gp_model$get_coef()

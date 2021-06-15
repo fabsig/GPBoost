@@ -68,7 +68,7 @@ pred_resp = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
 print(pred_resp['mu'][0:5])  # Predicted response variable (label)
 print(pred_resp['var'][0:5])  # # Predicted varianec of response
 
-# --------------------Approximate p-values for regression coefficients----------------
+# --------------------Approximate p-values for fixed effects coefficients----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 gp_model.fit(y=y, X=X, params={"std_dev": True})
 coefs = gp_model.get_coef()
