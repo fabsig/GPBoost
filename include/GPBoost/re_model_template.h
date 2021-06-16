@@ -716,8 +716,8 @@ namespace GPBoost {
 						}
 					}
 					// Output for debugging
-					if (it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) ||
-						((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0) && it != (max_iter - 1)) {
+					if ((it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) ||
+						((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) && (it != (max_iter - 1))) {
 						Log::REDebug("GPModel parameter optimization iteration number %d", it + 1);
 						for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars[i]); }
 						for (int i = 0; i < std::min((int)beta.size(), 5); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }

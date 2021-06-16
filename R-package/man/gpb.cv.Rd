@@ -126,7 +126,8 @@ the \code{nfold} and \code{stratified} parameters are ignored.}
 
 \item{eval_freq}{evaluation output frequency, only effect when verbose > 0}
 
-\item{showsd}{\code{boolean}, whether to show standard deviation of cross validation}
+\item{showsd}{\code{boolean}, whether to show standard deviation of cross validation.
+This parameter defaults to \code{TRUE}.}
 
 \item{stratified}{a \code{boolean} indicating whether sampling of folds should be stratified
 by the values of outcome labels.}

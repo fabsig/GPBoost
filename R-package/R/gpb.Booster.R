@@ -674,7 +674,8 @@ Booster <- R6::R6Class(
                        vecchia_pred_type = NULL,
                        num_neighbors_pred = -1,
                        predict_cov_mat = FALSE,
-                       predict_var = FALSE, ...) {
+                       predict_var = FALSE,
+                       ...) {
       
       # Check if number of iteration is non existent
       if (is.null(num_iteration)) {
@@ -686,7 +687,11 @@ Booster <- R6::R6Class(
       }
       
       # Predict on new data
-      predictor <- Predictor$new(private$handle, ...)
+      params <- list(...)
+      predictor <- Predictor$new(
+        modelfile = private$handle
+        , params = params
+      )
       
       if (private$has_gp_model & !predcontrib) {
         
@@ -879,7 +884,7 @@ Booster <- R6::R6Class(
     
     # Transform into predictor
     to_predictor = function() {
-      return(Predictor$new(private$handle))
+      return(Predictor$new(modelfile = private$handle))
     },
     
     # Used for save

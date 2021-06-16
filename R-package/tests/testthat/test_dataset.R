@@ -1,4 +1,3 @@
-library(Matrix)
 
 context("testing gpb.Dataset functionality")
 
@@ -81,6 +80,7 @@ test_that("gpb.Dataset: Dataset should be able to construct from matrix and retu
     , gpboost:::gpb.params2str(params = list())
     , ref_handle
   )
+  expect_is(handle, "externalptr")
   expect_false(is.null(handle))
   .Call(gpboost:::LGBM_DatasetFree_R, handle)
   handle <- NULL

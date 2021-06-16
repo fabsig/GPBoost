@@ -15,19 +15,7 @@ gpb.is.null.handle <- function(x) {
   )
 }
 
-# [description] Get the most recent error stored on the C++ side and raise it
-#               as an R error.
-gpb.last_error <- function() {
- 
-  err_msg <- .Call(
-    LGBM_GetLastError_R
-  )
-  stop("api error: ", err_msg)
-  return(invisible(NULL))
-
-}
-
-gpb.params2str <- function(params, ...) {
+gpb.params2str <- function(params) {
 
   # Check for a list as input
   if (!identical(class(params), "list")) {
@@ -36,24 +24,6 @@ gpb.params2str <- function(params, ...) {
 
   # Split parameter names
   names(params) <- gsub("\\.", "_", names(params))
-
-  # Merge parameters from the params and the dots-expansion
-  dot_params <- list(...)
-  names(dot_params) <- gsub("\\.", "_", names(dot_params))
-
-  # Check for identical parameters
-  if (length(intersect(names(params), names(dot_params))) > 0L) {
-    stop(
-      "Same parameters in "
-      , sQuote("params")
-      , " and in the call are not allowed. Please check your "
-      , sQuote("params")
-      , " list"
-    )
-  }
-
-  # Merge parameters
-  params <- c(params, dot_params)
 
   # Setup temporary variable
   ret <- list()

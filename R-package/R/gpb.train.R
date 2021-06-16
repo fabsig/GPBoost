@@ -259,7 +259,7 @@ gpb.train <- function(params = list(),
 
   # Check for boosting from a trained model
   if (is.character(init_model)) {
-    predictor <- Predictor$new(init_model)
+    predictor <- Predictor$new(modelfile = init_model)
   } else if (gpb.is.Booster(x = init_model)) {
     predictor <- init_model$to_predictor()
   }

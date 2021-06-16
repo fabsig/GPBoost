@@ -49,15 +49,6 @@ inline const char* R_CHAR_PTR(SEXP x) {
 }
 
 /*!
-* \brief get string message of the last error
-*  all functions in this file will return 0 on success
-*  and -1 when an error occurred
-* \return err_msg error information
-* \return error information
-*/
-LIGHTGBM_C_EXPORT SEXP LGBM_GetLastError_R();
-
-/*!
 * \brief check if an R external pointer (like a Booster or Dataset handle) is a null pointer
 * \param handle handle for a Booster, Dataset, or Predictor
 * \return R logical, TRUE if the handle is a null pointer
