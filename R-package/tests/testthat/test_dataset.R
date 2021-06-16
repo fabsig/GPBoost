@@ -203,6 +203,24 @@ test_that("Dataset$update_params() works correctly for recognized Dataset parame
   }
 })
 
+test_that("Dataset$finalize() should not fail on an already-finalized Dataset", {
+  dtest <- gpb.Dataset(
+    data = test_data
+    , label = test_label
+  )
+  expect_true(gpboost:::gpb.is.null.handle(dtest$.__enclos_env__$private$handle))
+  
+  dtest$construct()
+  expect_false(gpboost:::gpb.is.null.handle(dtest$.__enclos_env__$private$handle))
+  
+  dtest$finalize()
+  expect_true(gpboost:::gpb.is.null.handle(dtest$.__enclos_env__$private$handle))
+  
+  # calling finalize() a second time shouldn't cause any issues
+  dtest$finalize()
+  expect_true(gpboost:::gpb.is.null.handle(dtest$.__enclos_env__$private$handle))
+})
+
 test_that("gpb.Dataset: should be able to run gpb.train() immediately after using gpb.Dataset() on a file", {
   dtest <- gpb.Dataset(
     data = test_data

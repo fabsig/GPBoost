@@ -94,19 +94,12 @@ gpb.GPModel <- R6::R6Class(
     
     # Finalize will free up the handles
     finalize = function() {
-      
-      # Check the need for freeing handle
-      if (!gpb.is.null.handle(private$handle)) {
-        
-        # Freeing up handle
-        .Call(
-          GPB_REModelFree_R
-          , private$handle
-        )
-        private$handle <- NULL
-        
-      }
-      
+      .Call(
+        GPB_REModelFree_R
+        , private$handle
+      )
+      private$handle <- NULL
+      return(invisible(NULL))
     },
     
     # Initialize will create a GPModel

@@ -1,5 +1,29 @@
 context("Predictor")
 
+test_that("Predictor$finalize() should not fail", {
+    X <- as.matrix(as.integer(iris[, "Species"]), ncol = 1L)
+    y <- iris[["Sepal.Length"]]
+    dtrain <- gpb.Dataset(X, label = y)
+    bst <- gpb.train(
+        data = dtrain
+        , objective = "regression"
+        , verbose = -1L
+        , nrounds = 3L
+    )
+    model_file <- tempfile(fileext = ".model")
+    bst$save_model(filename = model_file)
+    predictor <- gpboost:::Predictor$new(modelfile = model_file)
+    
+    expect_false(gpboost:::gpb.is.null.handle(predictor$.__enclos_env__$private$handle))
+    
+    predictor$finalize()
+    expect_true(gpboost:::gpb.is.null.handle(predictor$.__enclos_env__$private$handle))
+    
+    # calling finalize() a second time shouldn't cause any issues
+    predictor$finalize()
+    expect_true(gpboost:::gpb.is.null.handle(predictor$.__enclos_env__$private$handle))
+})
+
 test_that("predictions do not fail for integer input", {
     X <- as.matrix(as.integer(iris[, "Species"]), ncol = 1L)
     y <- iris[["Sepal.Length"]]

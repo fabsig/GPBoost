@@ -1,3 +1,27 @@
+context("Booster")
+
+test_that("Booster$finalize() should not fail", {
+    X <- as.matrix(as.integer(iris[, "Species"]), ncol = 1L)
+    y <- iris[["Sepal.Length"]]
+    dtrain <- gpb.Dataset(X, label = y)
+    bst <- gpb.train(
+        data = dtrain
+        , objective = "regression"
+        , verbose = -1L
+        , nrounds = 3L
+    )
+    expect_true(gpboost:::gpb.is.Booster(bst))
+    
+    expect_false(gpboost:::gpb.is.null.handle(bst$.__enclos_env__$private$handle))
+    
+    bst$finalize()
+    expect_true(gpboost:::gpb.is.null.handle(bst$.__enclos_env__$private$handle))
+    
+    # calling finalize() a second time shouldn't cause any issues
+    bst$finalize()
+    expect_true(gpboost:::gpb.is.null.handle(bst$.__enclos_env__$private$handle))
+})
+
 context("gpb.get.eval.result")
 
 test_that("gpb.get.eval.result() should throw an informative error if booster is not an gpb.Booster", {
