@@ -843,8 +843,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     bst$finalize()
     expect_null(bst$.__enclos_env__$private$handle)
     rm(bst)
-    gp_model$finalize()
-    expect_null(gp_model$.__enclos_env__$private$handle)
     rm(gp_model)
     # Load from file and make predictions again with save_raw_data = FALSE option
     bst_loaded <- gpb.load(filename = filename)

@@ -249,8 +249,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     filename <- tempfile(fileext = ".json")
     saveGPModel(gp_model,filename = filename)
     # Delete model
-    gp_model$finalize()
-    expect_null(gp_model$.__enclos_env__$private$handle)
     rm(gp_model)
     # Load from file and make predictions again
     gp_model_loaded <- loadGPModel(filename = filename)
