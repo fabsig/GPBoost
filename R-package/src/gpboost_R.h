@@ -39,15 +39,6 @@ inline const char* R_CHAR_PTR_FROM_RAW(SEXP x) {
 	}
 }
 
-inline const char* R_CHAR_PTR(SEXP x) {
-	if (Rf_isNull(x)) {
-		return nullptr;
-	}
-	else {
-		return CHAR(Rf_asChar(x));
-	}
-}
-
 /*!
 * \brief check if an R external pointer (like a Booster or Dataset handle) is a null pointer
 * \param handle handle for a Booster, Dataset, or Predictor
