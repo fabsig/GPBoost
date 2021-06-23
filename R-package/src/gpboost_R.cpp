@@ -52,7 +52,6 @@ void _DatasetFinalizer(SEXP handle) {
 SEXP LGBM_DatasetCreateFromFile_R(SEXP filename,
 	SEXP parameters,
 	SEXP reference) {
-	int n_protected = 0;
 	SEXP ret;
 	DatasetHandle handle = nullptr;
 	DatasetHandle ref = nullptr;
@@ -60,16 +59,13 @@ SEXP LGBM_DatasetCreateFromFile_R(SEXP filename,
 		ref = R_ExternalPtrAddr(reference);
 	}
 	const char* filename_ptr = CHAR(PROTECT(Rf_asChar(filename)));
-	n_protected++;
 	const char* parameters_ptr = CHAR(PROTECT(Rf_asChar(parameters)));
-	n_protected++;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_DatasetCreateFromFile(filename_ptr, parameters_ptr, ref, &handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
-	n_protected++;
 	R_RegisterCFinalizerEx(ret, _DatasetFinalizer, TRUE);
-	UNPROTECT(n_protected);
+	UNPROTECT(3);
 	return ret;
 }
 
@@ -81,7 +77,6 @@ SEXP LGBM_DatasetCreateFromCSC_R(SEXP indptr,
 	SEXP num_row,
 	SEXP parameters,
 	SEXP reference) {
-	int n_protected = 0;
 	SEXP ret;
 	const int* p_indptr = INTEGER(indptr);
 	const int* p_indices = INTEGER(indices);
@@ -90,7 +85,6 @@ SEXP LGBM_DatasetCreateFromCSC_R(SEXP indptr,
 	int64_t ndata = static_cast<int64_t>(Rf_asInteger(nelem));
 	int64_t nrow = static_cast<int64_t>(Rf_asInteger(num_row));
 	const char* parameters_ptr = CHAR(PROTECT(Rf_asChar(parameters)));
-	n_protected++;
 	DatasetHandle handle = nullptr;
 	DatasetHandle ref = nullptr;
 	if (!Rf_isNull(reference)) {
@@ -102,9 +96,8 @@ SEXP LGBM_DatasetCreateFromCSC_R(SEXP indptr,
 		nrow, parameters_ptr, ref, &handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
-	n_protected++;
 	R_RegisterCFinalizerEx(ret, _DatasetFinalizer, TRUE);
-	UNPROTECT(n_protected);
+	UNPROTECT(2);
 	return ret;
 }
 
@@ -113,13 +106,11 @@ SEXP LGBM_DatasetCreateFromMat_R(SEXP data,
 	SEXP num_col,
 	SEXP parameters,
 	SEXP reference) {
-	int n_protected = 0;
 	SEXP ret;
 	int32_t nrow = static_cast<int32_t>(Rf_asInteger(num_row));
 	int32_t ncol = static_cast<int32_t>(Rf_asInteger(num_col));
 	double* p_mat = REAL(data);
 	const char* parameters_ptr = CHAR(PROTECT(Rf_asChar(parameters)));
-	n_protected++;
 	DatasetHandle handle = nullptr;
 	DatasetHandle ref = nullptr;
 	if (!Rf_isNull(reference)) {
@@ -130,9 +121,8 @@ SEXP LGBM_DatasetCreateFromMat_R(SEXP data,
 		parameters_ptr, ref, &handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
-	n_protected++;
 	R_RegisterCFinalizerEx(ret, _DatasetFinalizer, TRUE);
-	UNPROTECT(n_protected);
+	UNPROTECT(2);
 	return ret;
 }
 
@@ -140,7 +130,6 @@ SEXP LGBM_DatasetGetSubset_R(SEXP handle,
 	SEXP used_row_indices,
 	SEXP len_used_row_indices,
 	SEXP parameters) {
-	int n_protected = 0;
 	SEXP ret;
 	int32_t len = static_cast<int32_t>(Rf_asInteger(len_used_row_indices));
 	std::vector<int32_t> idxvec(len);
@@ -150,7 +139,6 @@ SEXP LGBM_DatasetGetSubset_R(SEXP handle,
 		idxvec[i] = static_cast<int32_t>(INTEGER(used_row_indices)[i] - 1);
 	}
 	const char* parameters_ptr = CHAR(PROTECT(Rf_asChar(parameters)));
-	n_protected++;
 	DatasetHandle res = nullptr;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_DatasetGetSubset(R_ExternalPtrAddr(handle),
@@ -158,9 +146,8 @@ SEXP LGBM_DatasetGetSubset_R(SEXP handle,
 		&res));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(res, R_NilValue, R_NilValue));
-	n_protected++;
 	R_RegisterCFinalizerEx(ret, _DatasetFinalizer, TRUE);
-	UNPROTECT(n_protected);
+	UNPROTECT(2);
 	return ret;
 }
 
@@ -384,70 +371,58 @@ SEXP LGBM_BoosterFree_R(SEXP handle) {
 
 SEXP LGBM_BoosterCreate_R(SEXP train_data,
 	SEXP parameters) {
-	int n_protected = 0;
 	SEXP ret;
 	const char* parameters_ptr = CHAR(PROTECT(Rf_asChar(parameters)));
-	n_protected++;
 	BoosterHandle handle = nullptr;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterCreate(R_ExternalPtrAddr(train_data), parameters_ptr, &handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
-	n_protected++;
 	R_RegisterCFinalizerEx(ret, _BoosterFinalizer, TRUE);
-	UNPROTECT(n_protected);
+	UNPROTECT(2);
 	return ret;
 }
 
 SEXP LGBM_GPBoosterCreate_R(SEXP train_data,
 	SEXP parameters,
 	SEXP re_model) {
-	int n_protected = 0;
 	SEXP ret;
 	const char* parameters_ptr = CHAR(PROTECT(Rf_asChar(parameters)));
-	n_protected++;
 	BoosterHandle handle = nullptr;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_GPBoosterCreate(R_ExternalPtrAddr(train_data), parameters_ptr, R_ExternalPtrAddr(re_model), &handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
-	n_protected++;
 	R_RegisterCFinalizerEx(ret, _BoosterFinalizer, TRUE);
-	UNPROTECT(n_protected);
+	UNPROTECT(2);
 	return ret;
 }
 
 SEXP LGBM_BoosterCreateFromModelfile_R(SEXP filename) {
-	int n_protected = 0;
 	SEXP ret;
 	int out_num_iterations = 0;
 	const char* filename_ptr = CHAR(PROTECT(Rf_asChar(filename)));
-	n_protected++;
 	BoosterHandle handle = nullptr;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterCreateFromModelfile(filename_ptr, &out_num_iterations, &handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
-	n_protected++;
 	R_RegisterCFinalizerEx(ret, _BoosterFinalizer, TRUE);
-	UNPROTECT(n_protected);
+	UNPROTECT(2);
 	return ret;
 }
 
 SEXP LGBM_BoosterLoadModelFromString_R(SEXP model_str) {
-	int n_protected = 0;
 	SEXP ret;
 	int out_num_iterations = 0;
 	const char* model_str_ptr = CHAR(PROTECT(Rf_asChar(model_str)));
-	n_protected++;
 	BoosterHandle handle = nullptr;
 	R_API_BEGIN();
 	CHECK_CALL(LGBM_BoosterLoadModelFromString(model_str_ptr, &out_num_iterations, &handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
-	n_protected++;
 	R_RegisterCFinalizerEx(ret, _BoosterFinalizer, TRUE);
-	UNPROTECT(n_protected);
+	UNPROTECT(2);
 	return ret;
 }
 
@@ -850,14 +825,12 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	SEXP vecchia_pred_type,
 	SEXP num_neighbors_pred,
 	SEXP likelihood) {
-	int n_protected = 0;
 	SEXP ret;
 	REModelHandle handle = nullptr;
 	SEXP cov_fct_aux = PROTECT(Rf_asChar(cov_fct));
 	SEXP vecchia_ordering_aux = PROTECT(Rf_asChar(vecchia_ordering));
 	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
 	SEXP likelihood_aux = PROTECT(Rf_asChar(likelihood));
-	n_protected = n_protected + 4;
 	const char* cov_fct_ptr = (Rf_isNull(cov_fct)) ? nullptr : CHAR(cov_fct_aux);
 	const char* vecchia_ordering_ptr = (Rf_isNull(vecchia_ordering)) ? nullptr : CHAR(vecchia_ordering_aux);
 	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
@@ -887,9 +860,8 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 		&handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
-	n_protected++;
 	R_RegisterCFinalizerEx(ret, _REModelFinalizer, TRUE);
-	UNPROTECT(n_protected);
+	UNPROTECT(5);
 	return ret;
 }
 
@@ -916,10 +888,8 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP momentum_offset,
 	SEXP convergence_criterion,
 	SEXP calc_std_dev) {
-	int n_protected = 0;
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
 	SEXP convergence_criterion_aux = PROTECT(Rf_asChar(convergence_criterion));
-	n_protected = n_protected + 2;
 	const char* optimizer_ptr = (Rf_isNull(optimizer)) ? nullptr : CHAR(optimizer_aux);
 	const char* convergence_criterion_ptr = (Rf_isNull(convergence_criterion)) ? nullptr : CHAR(convergence_criterion_aux);
 	R_API_BEGIN();
@@ -937,7 +907,7 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		convergence_criterion_ptr,
 		Rf_asLogical(calc_std_dev)));
 	R_API_END();
-	UNPROTECT(n_protected);
+	UNPROTECT(2);
 	return R_NilValue;
 }
 
@@ -947,9 +917,7 @@ SEXP GPB_SetOptimCoefConfig_R(SEXP handle,
 	SEXP lr_coef,
 	SEXP acc_rate_coef,
 	SEXP optimizer) {
-	int n_protected = 0;
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
-	n_protected++;
 	const char* optimizer_ptr = (Rf_isNull(optimizer)) ? nullptr : CHAR(optimizer_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetOptimCoefConfig(R_ExternalPtrAddr(handle),
@@ -959,7 +927,7 @@ SEXP GPB_SetOptimCoefConfig_R(SEXP handle,
 		Rf_asReal(acc_rate_coef),
 		optimizer_ptr));
 	R_API_END();
-	UNPROTECT(n_protected);
+	UNPROTECT(1);
 	return R_NilValue;
 }
 
@@ -1080,9 +1048,7 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 	SEXP fixed_effects,
 	SEXP fixed_effects_pred,
 	SEXP out_predict) {
-	int n_protected = 0;
 	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
-	n_protected++;
 	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_PredictREModel(R_ExternalPtrAddr(handle),
@@ -1105,7 +1071,7 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 		R_REAL_PTR(fixed_effects),
 		R_REAL_PTR(fixed_effects_pred)));
 	R_API_END();
-	UNPROTECT(n_protected);
+	UNPROTECT(1);
 	return R_NilValue;
 }
 
@@ -1156,15 +1122,13 @@ SEXP GPB_GetOptimizerCoef_R(SEXP handle) {
 
 SEXP GPB_SetLikelihood_R(SEXP handle,
 	SEXP likelihood) {
-	int n_protected = 0;
 	SEXP likelihood_aux = PROTECT(Rf_asChar(likelihood));
-	n_protected++;
 	const char* likelihood_ptr = (Rf_isNull(likelihood)) ? nullptr : CHAR(likelihood_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetLikelihood(R_ExternalPtrAddr(handle),
 		likelihood_ptr));
 	R_API_END();
-	UNPROTECT(n_protected);
+	UNPROTECT(1);
 	return R_NilValue;
 }
 
