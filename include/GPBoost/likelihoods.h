@@ -14,31 +14,19 @@
 
 #include <GPBoost/type_defs.h>
 #include <GPBoost/sparse_matrix_utils.h>
+#include <GPBoost/DF_utils.h>
 
 #include <string>
 #include <set>
 #include <string>
 #include <vector>
-#include <cmath>
 
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
 
 //Mathematical constants usually defined in cmath
-#ifndef M_PI
-#define M_PI      3.1415926535897932384626433832795029
-#endif
-//sqrt(2)
 #ifndef M_SQRT2
-#define M_SQRT2      1.41421356237309504880
-#endif
-//1/sqrt(2)
-#ifndef M_SQRT1_2
-#define M_SQRT1_2      0.707106781186547524401
-#endif
-//2/sqrt(pi)
-#ifndef M_2_SQRTPI
-#define M_2_SQRTPI      1.12837916709551257390
+#define M_SQRT2      1.414213562373095048801688724209698079 //sqrt(2)
 #endif
 
 #include <chrono>  // only for debugging
@@ -2321,29 +2309,11 @@ namespace GPBoost {
 			}
 			mean_resp *= sqrt2_sigma_hat * sqrt_sigma2_inv;
 			return mean_resp;
-
-			////non-adaptive GH quadrature
-			//double mean_resp = 0.;
-			//double sigma = std::sqrt(latent_var);
-			//for (int j = 0; j < order_GH_; ++j) {
-			//	mean_resp += GH_weights_[j] * CondMeanLikelihood(M_SQRT2 * sigma * GH_nodes_[j] + latent_mean);
-			//}
-			//pred_mean *=  M_1_SQRTPI_;
 		}
 
 		template <typename T>//T can be double or float
 		bool AreSame(const T a, const T b) const {
 			return fabs(a - b) < a * EPSILON_;
-		}
-
-		// Used for likelihood_type_ == "bernoulli_probit"
-		inline double normalCDF(double value) const {
-			return 0.5 * std::erfc(-value * M_SQRT1_2);
-		}
-
-		inline double normalPDF(double value) const {
-			return std::exp(-value * value / 2) / M_SQRT2PI_;
-			//return std::exp(-value * value / 2) / std::sqrt(2 * M_PI);
 		}
 
 	private:
@@ -2407,12 +2377,6 @@ namespace GPBoost {
 			}
 			return likelihood;
 		}
-
-		//Derived constants not defined in cmath
-		//1/sqrt(2*pi)
-		const double M_SQRT2PI_ = std::sqrt(2. * M_PI);
-		////1/sqrt(pi) (not used anymore, used for non-adaptive GH quadrature)
-		//const double M_1_SQRTPI_ = M_2_SQRTPI / 2.;
 
 		/*! \brief Order of the Gauss-Hermite quadrature */
 		int order_GH_ = 30;

@@ -7,6 +7,7 @@
 #define LIGHTGBM_OBJECTIVE_REGRESSION_OBJECTIVE_HPP_
 
 #include <GPBoost/re_model.h>
+#include <GPBoost/DF_utils.h>
 
 #include <LightGBM/meta.h>
 #include <LightGBM/objective_function.h>
@@ -19,6 +20,9 @@
 #include <cmath>
 #ifndef M_SQRT1_2
 #define M_SQRT1_2      0.707106781186547524401
+#endif
+#ifndef M_PI
+#define s      3.1415926535897932384626433832795029
 #endif
 
 using GPBoost::REModel;
@@ -196,7 +200,7 @@ namespace LightGBM {
 					output[0] = input[0];
 				}
 				else if (likelihood_type_ == std::string("bernoulli_probit")) {
-					output[0] = normalCDF(input[0]);
+					output[0] = GPBoost::normalCDF(input[0]);
 				}
 				else if (likelihood_type_ == std::string("bernoulli_logit")) {
 					output[0] = 1. / (1. + std::exp(-input[0]));
@@ -277,9 +281,14 @@ namespace LightGBM {
 			return initscore;
 		}
 
-		inline double normalCDF(double value) const {
-			return 0.5 * std::erfc(-value * M_SQRT1_2);
-		}
+		//inline double normalCDF(double value) const {
+		//	return 0.5 * std::erfc(-value * M_SQRT1_2);
+		//}
+
+		//// Used for TobitLoss
+		//inline double normalPDF(double value) const {
+		//	return std::exp(-value * value / 2) / M_SQRT2PI_;
+		//}
 
 	protected:
 		bool sqrt_;
@@ -294,6 +303,8 @@ namespace LightGBM {
 		/*! \brief Indicates whether the covariance matrix should also be factorized when calling re_model_->CalcGradient(). Only relevant if has_gp_model_ = true and train_gp_model_cov_pars_ = true */
 		mutable bool calc_cov_factor_ = true;
 		std::function<bool(label_t)> is_pos_ = [](label_t label) { return label > 0; };
+		//Derived constants not defined in cmath
+		const double M_SQRT2PI_ = std::sqrt(2. * M_PI); // 1/sqrt(2*pi)
 	};
 
 	/*!
