@@ -19,8 +19,14 @@ fitGPModel(group_data = NULL, group_rand_coef_data = NULL,
 
 \item{group_rand_coef_data}{A \code{vector} or \code{matrix} with covariate data for grouped random coefficients}
 
-\item{ind_effect_group_rand_coef}{A \code{vector} with indices that relate every random coefficients 
-to a "base" intercept grouped random effect. Counting starts at 1.}
+\item{ind_effect_group_rand_coef}{A \code{vector} with indices that indicate the corresponding random effects 
+(=columns) in 'group_data' for every covariate in 'group_rand_coef_data'.
+For instance, c(1,1,2) means that the first two covariates (=first two columns) in 'group_rand_coef_data'
+have random coefficients corresponding to the first random effect (=first column) in 'group_data',
+and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
+corresponding to the second random  effect (=second column) in 'group_data'.
+The length of this index vector must equal the number of covariates in 'group_rand_coef_data'.
+Counting starts at 1.}
 
 \item{gp_coords}{A \code{matrix} with coordinates (features) for Gaussian process}
 

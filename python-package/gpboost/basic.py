@@ -3898,8 +3898,16 @@ class GPModel(object):
                 Labels of group levels for grouped random effects
             group_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for grouped random coefficients
-            ind_effect_group_rand_coef : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
-                Indices that relate every random coefficients to a "base" intercept grouped random effect. Counting starts at 1.
+            ind_effect_group_rand_coef : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data
+            or None, optional (default=None)
+                Contains indices that indicate the corresponding random effects (=columns) in 'group_data' for every
+                covariate in 'group_rand_coef_data'.
+                For instance, [1,1,2] means that the first two covariates (=first two columns) in 'group_rand_coef_data'
+                have random coefficients corresponding to the first random effect (=first column) in 'group_data',
+                and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
+                corresponding to the second random  effect (=second column) in 'group_data'.
+                The length of this index vector must equal the number of covariates in 'group_rand_coef_data'.
+                Counting starts at 1.
             gp_coords : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Coordinates (features) for Gaussian process
             gp_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
@@ -3907,7 +3915,8 @@ class GPModel(object):
             cov_function : string, optional (default="exponential")
                 Covariance function for the Gaussian process. The following covariance functions are available:
                 "exponential", "gaussian", "matern", "powered_exponential", "wendland", and "exponential_tapered".
-                For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization of Diggle and Ribeiro (2007).
+                For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization
+                of Diggle and Ribeiro (2007).
                 For "matern", we follow the notation of Rassmusen and Williams (2006).
                 For "wendland", we follow the notation of Bevilacqua et al. (2019).
                 A covariance function with the suffix "_tapered" refers to a covariance function that is multiplied by
@@ -3917,7 +3926,8 @@ class GPModel(object):
                 For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2019).
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
             cov_fct_taper_range : float, optional (default=1.)
-                Range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019).
+                Range parameter of the Wendland covariance function / taper. We follow the notation of
+                Bevilacqua et al. (2019).
             vecchia_approx : bool, optional (default=False)
                 If true, the Vecchia approximation is used
             num_neighbors : integer, optional (default=30)
@@ -3936,7 +3946,8 @@ class GPModel(object):
                 is ordered first and neighbors are selected among all points
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
-            cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
+            cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None,
+                optional (default=None)
                 IDs / labels indicating independent realizations of random effects / Gaussian processes
                 (same values = same random effects / GP realization)
             free_raw_data : bool, optional (default=False)
