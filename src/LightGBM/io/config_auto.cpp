@@ -293,6 +293,9 @@ const std::unordered_set<std::string>& Config::parameter_set() {
   "lambdarank_truncation_level",
   "lambdarank_norm",
   "label_gain",
+  "sigma",
+  "yl",
+  "yu",
   "metric",
   "metric_freq",
   "is_provide_training_metric",
@@ -610,6 +613,13 @@ void Config::GetMembersFromString(const std::unordered_map<std::string, std::str
     label_gain = Common::StringToArray<double>(tmp_str, ',');
   }
 
+  GetDouble(params, "sigma", &sigma);
+  CHECK_GT(sigma, 0.0);
+
+  GetDouble(params, "yl", &yl);
+
+  GetDouble(params, "yu", &yu);
+
   GetInt(params, "metric_freq", &metric_freq);
   CHECK_GT(metric_freq, 0);
 
@@ -750,6 +760,9 @@ std::string Config::SaveMembersToString() const {
   str_buf << "[lambdarank_truncation_level: " << lambdarank_truncation_level << "]\n";
   str_buf << "[lambdarank_norm: " << lambdarank_norm << "]\n";
   str_buf << "[label_gain: " << Common::Join(label_gain, ",") << "]\n";
+  str_buf << "[sigma: " << sigma << "]\n";
+  str_buf << "[yl: " << yl << "]\n";
+  str_buf << "[yu: " << yu << "]\n";
   str_buf << "[eval_at: " << Common::Join(eval_at, ",") << "]\n";
   str_buf << "[multi_error_top_k: " << multi_error_top_k << "]\n";
   str_buf << "[auc_mu_weights: " << Common::Join(auc_mu_weights, ",") << "]\n";

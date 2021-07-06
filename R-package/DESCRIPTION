@@ -27,7 +27,8 @@ Authors@R: c(
     person("Daniel", "Lemire", role = c("ctb")),
     person("Victor", "Zverovich", role = c("cph")),
     person("IBM Corporation", role = c("ctb")),
-	person("Keith O'Hara", role = c("cph"))
+	person("Keith O'Hara", role = c("cph")),
+	person("Stephen L. Moshier", role = c("cph"))
     )
 Description: An R package that allows for combining tree-boosting with Gaussian process and mixed effects models. It also allows for independently doing tree-boosting as well as inference and prediction for Gaussian process and mixed effects models. See <https://github.com/fabsig/GPBoost> for more information on the software and Sigrist (2020) <arXiv:2004.02653> and Sigrist (2021) <arXiv:2105.08966> for more information on the methodology.
 Encoding: UTF-8

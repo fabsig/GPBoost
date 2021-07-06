@@ -46,6 +46,8 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return new RegressionGammaLoss(config);
   } else if (type == std::string("tweedie")) {
     return new RegressionTweedieLoss(config);
+  } else if (type == std::string("tobit")) {
+      return new TobitLoss(config);
   } else if (type == std::string("custom")) {
     return nullptr;
   }
@@ -88,6 +90,8 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return new RegressionGammaLoss(strs);
   } else if (type == std::string("tweedie")) {
     return new RegressionTweedieLoss(strs);
+  } else if (type == std::string("tobit")) {
+      return new TobitLoss(strs);
   } else if (type == std::string("custom")) {
     return nullptr;
   }

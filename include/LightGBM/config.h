@@ -16,6 +16,8 @@
 #ifndef LIGHTGBM_CONFIG_H_
 #define LIGHTGBM_CONFIG_H_
 
+#include <limits>       // std::numeric_limits
+
 #include <LightGBM/export.h>
 #include <LightGBM/meta.h>
 #include <LightGBM/utils/common.h>
@@ -124,6 +126,7 @@ namespace LightGBM {
 		// descl2 = ``mape``, `MAPE loss <https://en.wikipedia.org/wiki/Mean_absolute_percentage_error>`__, aliases: ``mean_absolute_percentage_error``
 		// descl2 = ``gamma``, Gamma regression with log-link. It might be useful, e.g., for modeling insurance claims severity, or for any target that might be `gamma-distributed <https://en.wikipedia.org/wiki/Gamma_distribution#Occurrence_and_applications>`__
 		// descl2 = ``tweedie``, Tweedie regression with log-link. It might be useful, e.g., for modeling total loss in insurance, or for any target that might be `tweedie-distributed <https://en.wikipedia.org/wiki/Tweedie_distribution#Occurrence_and_applications>`__
+		// descl2 = ``tobit``, `Grabit model of Sigrist and Hirnschall (2019) <https://www.sciencedirect.com/science/article/pii/S0378426619300573>`__ 
 		// desc = binary classification application
 		// descl2 = ``binary``, binary `log loss <https://en.wikipedia.org/wiki/Cross_entropy>`__ classification (or logistic regression)
 		// descl2 = requires labels in {0, 1}; see ``cross-entropy`` application for general probability labels in [0, 1]
@@ -906,6 +909,19 @@ namespace LightGBM {
 		// desc = separate by ``,``
 		std::vector<double> label_gain;
 
+		// check = >0.0
+		// desc = used only in ``tobit`` applications
+		// desc = standard deviation of latent Gaussian variable in Tobit model
+		double sigma = 1.;
+
+		// desc = used only in ``tobit`` applications
+		// desc = lower censoring threshold in Tobit model
+		double yl = -std::numeric_limits<double>::infinity();
+
+		// desc = used only in ``tobit`` applications
+		// desc = upper censoring threshold in Tobit model
+		double yu = std::numeric_limits<double>::infinity();
+
 #pragma endregion
 
 #pragma region Metric Parameters
@@ -1165,6 +1181,9 @@ namespace LightGBM {
 		else if (type == std::string("regression_l1") || type == std::string("mean_absolute_error")
 			|| type == std::string("l1") || type == std::string("mae")) {
 			return "regression_l1";
+		}
+		else if (type == std::string("tobit") || type == std::string("grabit")) {
+			return "tobit";
 		}
 		else if (type == std::string("multiclass") || type == std::string("softmax")) {
 			return "multiclass";

@@ -63,6 +63,8 @@ Core Parameters
 
       -  ``tweedie``, Tweedie regression with log-link. It might be useful, e.g., for modeling total loss in insurance, or for any target that might be `tweedie-distributed <https://en.wikipedia.org/wiki/Tweedie_distribution#Occurrence_and_applications>`__
 
+      -  ``tobit``, `Grabit model of Sigrist and Hirnschall (2019) <https://www.sciencedirect.com/science/article/pii/S0378426619300573>`__
+
    -  binary classification application
 
       -  ``binary``, binary `log loss <https://en.wikipedia.org/wiki/Cross_entropy>`__ classification (or logistic regression)
@@ -1042,6 +1044,24 @@ Objective Parameters
    -  relevant gain for labels. For example, the gain of label ``2`` is ``3`` in case of default label gains
 
    -  separate by ``,``
+
+-  ``sigma`` :raw-html:`<a id="sigma" title="Permalink to this parameter" href="#sigma">&#x1F517;&#xFE0E;</a>`, default = ``1.``, type = double, constraints: ``sigma > 0.0``
+
+   -  used only in ``tobit`` applications
+
+   -  standard deviation of latent Gaussian variable in Tobit model
+
+-  ``yl`` :raw-html:`<a id="yl" title="Permalink to this parameter" href="#yl">&#x1F517;&#xFE0E;</a>`, default = ``-std::numeric_limits<double>::infinity()``, type = double
+
+   -  used only in ``tobit`` applications
+
+   -  lower censoring threshold in Tobit model
+
+-  ``yu`` :raw-html:`<a id="yu" title="Permalink to this parameter" href="#yu">&#x1F517;&#xFE0E;</a>`, default = ``std::numeric_limits<double>::infinity()``, type = double
+
+   -  used only in ``tobit`` applications
+
+   -  upper censoring threshold in Tobit model
 
 Metric Parameters
 -----------------

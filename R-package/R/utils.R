@@ -171,6 +171,8 @@ gpb.check.obj <- function(params, obj) {
     , "xe_ndcg"
     , "xe_ndcg_mart"
     , "xendcg_mart"
+    , "tobit"
+    , "grabit"
   )
 
   # Check whether the objective is empty or not, and take it from params if needed

@@ -18,11 +18,8 @@
 #include <vector>
 
 #include <cmath>
-#ifndef M_SQRT1_2
-#define M_SQRT1_2      0.707106781186547524401
-#endif
 #ifndef M_PI
-#define s      3.1415926535897932384626433832795029
+#define M_PI      3.141592653589793238462643383279502884 // pi
 #endif
 
 using GPBoost::REModel;
@@ -281,15 +278,6 @@ namespace LightGBM {
 			return initscore;
 		}
 
-		//inline double normalCDF(double value) const {
-		//	return 0.5 * std::erfc(-value * M_SQRT1_2);
-		//}
-
-		//// Used for TobitLoss
-		//inline double normalPDF(double value) const {
-		//	return std::exp(-value * value / 2) / M_SQRT2PI_;
-		//}
-
 	protected:
 		bool sqrt_;
 		/*! \brief Number of data */
@@ -303,8 +291,6 @@ namespace LightGBM {
 		/*! \brief Indicates whether the covariance matrix should also be factorized when calling re_model_->CalcGradient(). Only relevant if has_gp_model_ = true and train_gp_model_cov_pars_ = true */
 		mutable bool calc_cov_factor_ = true;
 		std::function<bool(label_t)> is_pos_ = [](label_t label) { return label > 0; };
-		//Derived constants not defined in cmath
-		const double M_SQRT2PI_ = std::sqrt(2. * M_PI); // 1/sqrt(2*pi)
 	};
 
 	/*!
@@ -873,6 +859,121 @@ namespace LightGBM {
 
 	private:
 		double rho_;
+	};
+
+	/*!
+* \brief Objective function for Tobit model
+*	Reference: Sigrist, F., & Hirnschall, C. (2019). Grabit: Gradient Tree Boosted Tobit Models for Default Prediction. Journal of Banking and Finance
+*/
+	class TobitLoss : public RegressionL2loss {
+	public:
+		explicit TobitLoss(const Config& config) : RegressionL2loss(config) {
+			sigma_ = static_cast<double>(config.sigma);
+			yl_ = static_cast<double>(config.yl);
+			yu_ = static_cast<double>(config.yu);
+			if (sigma_ <= 0.0) {
+				Log::Fatal("'sigma' must be greater than zero but was %f", sigma_);
+			}
+			if (yu_ <= yl_) {
+				Log::Fatal("'yl' must be smaller than 'yu'");
+			}
+		}
+
+		explicit TobitLoss(const std::vector<std::string>& strs) : RegressionL2loss(strs) {
+		}
+
+		~TobitLoss() {}
+
+		void Init(const Metadata& metadata, data_size_t num_data) override {
+			if (sqrt_) {
+				Log::Warning("Cannot use sqrt transform for %s loss, will auto disable it", GetName());
+				sqrt_ = false;
+			}
+			RegressionL2loss::Init(metadata, num_data);
+			const_ = 0.5 * std::log(2 * M_PI) + std::log(sigma_);
+			sigma2_inverse_ = 1. / (sigma_ * sigma_);
+			// Safety check for labels
+#pragma omp parallel for schedule(static)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				if (label_[i] - yl_ < -1e-6 * std::abs(yl_)) {
+					Log::Fatal("Label / response variable (sample nb. =%d, value=%f) must not be smaller than yl (=%f)", i, label_[i], yl_);
+				}
+				else if (label_[i] - yu_ > 1e-6 * std::abs(yu_)) {
+					Log::Fatal("Label / response variable (sample nb. =%d, value=%f) must not be larger than yu (=%f)", i, label_[i], yu_);
+				}
+			}
+		}
+
+		void GetGradients(const double* score, score_t* gradients,
+			score_t* hessians) const override {
+			if (weights_ == nullptr) {
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double diff = (label_[i] - score[i]) / sigma_;
+					if (label_[i] <= yl_) {// lower censoring
+						const double logpdf = GPBoost::normalLogPDF(diff);
+						const double logcdf = GPBoost::normalLogCDF(diff);
+						gradients[i] = static_cast<score_t>(std::exp(logpdf - logcdf) / sigma_);
+						hessians[i] = static_cast<score_t>(std::exp(logpdf - logcdf) * sigma2_inverse_ * diff +
+							std::exp(2 * logpdf - 2 * logcdf) * sigma2_inverse_);
+					}
+					else if (label_[i] >= yu_) {// upper censoring
+						const double logpdf = GPBoost::normalLogPDF(diff);
+						const double logcdf = GPBoost::normalLogCDF(-diff);
+						gradients[i] = static_cast<score_t>(-std::exp(logpdf - logcdf) / sigma_);
+						hessians[i] = static_cast<score_t>(-std::exp(logpdf - logcdf) * sigma2_inverse_ * diff +
+							std::exp(2 * logpdf - 2 * logcdf) * sigma2_inverse_);
+					}
+					else {// not censored observation
+						gradients[i] = static_cast<score_t>(-diff / sigma_);
+						hessians[i] = static_cast<score_t>(sigma2_inverse_);
+					}
+				}
+			}
+			else {
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double diff = (label_[i] - score[i]) / sigma_;
+					if (label_[i] <= yl_) {// lower censoring
+						const double logpdf = GPBoost::normalLogPDF(diff);
+						const double logcdf = GPBoost::normalLogCDF(diff);
+						gradients[i] = static_cast<score_t>(std::exp(logpdf - logcdf) / sigma_ * weights_[i]);
+						hessians[i] = static_cast<score_t>((std::exp(logpdf - logcdf) * sigma2_inverse_ * diff +
+							std::exp(2 * logpdf - 2 * logcdf) * sigma2_inverse_) * weights_[i]);
+					}
+					else if (label_[i] >= yu_) {// upper censoring
+						const double logpdf = GPBoost::normalLogPDF(diff);
+						const double logcdf = GPBoost::normalLogCDF(-diff);
+						gradients[i] = static_cast<score_t>(-std::exp(logpdf - logcdf) / sigma_ * weights_[i]);
+						hessians[i] = static_cast<score_t>((-std::exp(logpdf - logcdf) * sigma2_inverse_ * diff +
+							std::exp(2 * logpdf - 2 * logcdf) * sigma2_inverse_) * weights_[i]);
+					}
+					else {// not censored observation
+						gradients[i] = static_cast<score_t>(-diff / sigma_ * weights_[i]);
+						hessians[i] = static_cast<score_t>(sigma2_inverse_ * weights_[i]);
+					}
+				}
+			}
+		}
+
+		const char* GetName() const override {
+			return "tobit";
+		}
+
+		bool IsConstantHessian() const override {
+			return false;
+		}
+
+	private:
+		/*! \brief Standard deviation of latent Gaussian variable */
+		double sigma_;
+		double sigma2_inverse_;
+		/*! \brief Lower censoring threshold */
+		double yl_;
+		/*! \brief Upper censoring threshold */
+		double yu_;
+		/*! \brief Normalizing constant for (negative) Tobit log-likelihood not depending on data */
+		double const_;
 	};
 
 #undef PercentileFun
