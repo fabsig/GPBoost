@@ -45,7 +45,6 @@ bld/
 *.out
 *.app
 /windows/LightGBM.VC.db
-gpboost
 
 # Created by https://www.gitignore.io/api/python
 
