@@ -58,7 +58,7 @@ namespace GPBoost {
 			const char* re_group_data,
 			data_size_t num_re_group,
 			const double* re_group_rand_coef_data,
-			const int32_t* ind_effect_group_rand_coef,
+			const data_size_t* ind_effect_group_rand_coef,
 			data_size_t num_re_group_rand_coef,
 			data_size_t num_gp,
 			const double* gp_coords_data,

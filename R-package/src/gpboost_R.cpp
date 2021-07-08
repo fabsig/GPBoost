@@ -827,6 +827,12 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	SEXP likelihood) {
 	SEXP ret;
 	REModelHandle handle = nullptr;
+	int32_t num_data = static_cast<int32_t>(Rf_asInteger(ndata));
+	int32_t num_group = static_cast<int32_t>(Rf_asInteger(num_re_group));
+	int32_t* ind_eff_group_rand_coef = static_cast<int32_t*>(R_INT_PTR(ind_effect_group_rand_coef));
+	int32_t num_regroup_rand_coef = static_cast<int32_t>(Rf_asInteger(num_re_group_rand_coef));
+	int32_t numgp = static_cast<int32_t>(Rf_asInteger(num_gp));
+	int32_t num_gprand_coef = static_cast<int32_t>(Rf_asInteger(num_gp_rand_coef));
 	SEXP cov_fct_aux = PROTECT(Rf_asChar(cov_fct));
 	SEXP vecchia_ordering_aux = PROTECT(Rf_asChar(vecchia_ordering));
 	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
@@ -836,18 +842,18 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
 	const char* likelihood_ptr = (Rf_isNull(likelihood)) ? nullptr : CHAR(likelihood_aux);
 	R_API_BEGIN();
-	CHECK_CALL(GPB_CreateREModel(Rf_asInteger(ndata),
+	CHECK_CALL(GPB_CreateREModel(num_data,
 		R_INT_PTR(cluster_ids_data),
 		R_CHAR_PTR_FROM_RAW(re_group_data),
-		Rf_asInteger(num_re_group),
+		num_group,
 		R_REAL_PTR(re_group_rand_coef_data),
-		R_INT_PTR(ind_effect_group_rand_coef),
-		Rf_asInteger(num_re_group_rand_coef),
-		Rf_asInteger(num_gp),
+		ind_eff_group_rand_coef,
+		num_regroup_rand_coef,
+		numgp,
 		R_REAL_PTR(gp_coords_data),
 		Rf_asInteger(dim_gp_coords),
 		R_REAL_PTR(gp_rand_coef_data),
-		Rf_asInteger(num_gp_rand_coef),
+		num_gprand_coef,
 		cov_fct_ptr,
 		Rf_asReal(cov_fct_shape),
 		Rf_asReal(cov_fct_taper_range),
@@ -1016,9 +1022,10 @@ SEXP GPB_SetPredictionData_R(SEXP handle,
 	SEXP gp_coords_data_pred,
 	SEXP gp_rand_coef_data_pred,
 	SEXP covariate_data_pred) {
+	int32_t numdata_pred = static_cast<int32_t>(Rf_asInteger(num_data_pred));
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetPredictionData(R_ExternalPtrAddr(handle),
-		Rf_asInteger(num_data_pred),
+		numdata_pred,
 		R_INT_PTR(cluster_ids_data_pred),
 		R_CHAR_PTR_FROM_RAW(re_group_data_pred),
 		R_REAL_PTR(re_group_rand_coef_data_pred),
@@ -1048,12 +1055,13 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 	SEXP fixed_effects,
 	SEXP fixed_effects_pred,
 	SEXP out_predict) {
+	int32_t numdata_pred = static_cast<int32_t>(Rf_asInteger(num_data_pred));
 	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
 	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_PredictREModel(R_ExternalPtrAddr(handle),
 		R_REAL_PTR(y_data),
-		Rf_asInteger(num_data_pred),
+		numdata_pred,
 		R_REAL_PTR(out_predict),
 		Rf_asLogical(predict_cov_mat),
 		Rf_asLogical(predict_var),
