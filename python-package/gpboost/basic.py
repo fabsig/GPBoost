@@ -633,6 +633,10 @@ def _format_check_1D_data(data, data_name="data", check_data_type=True, check_mu
                 if _get_bad_pandas_dtypes([data.dtypes]):
                     raise ValueError(data_name + ': Series.dtypes must be int, float or bool')
         data = data.values
+    elif isinstance(data, np.ndarray):
+        if check_must_be_int:
+            if not np.issubdtype(data.dtype, np.integer):
+                raise ValueError(data_name + ': must be of integer type')
     elif is_1d_list(data):
         data = np.array(data)
     if convert_to_type is not None:
