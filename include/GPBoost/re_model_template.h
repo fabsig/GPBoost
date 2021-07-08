@@ -689,7 +689,7 @@ namespace GPBoost {
 							cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, acc_rate_cov, nesterov_schedule_version, momentum_offset, fixed_effects_ptr);
 						// Check for NA or Inf
 						if (std::isnan(cov_pars[0]) || std::isinf(cov_pars[0])) {
-							Log::REFatal("NaN or Inf occurred in covariance parameters. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
+							Log::REFatal("NaN or Inf occurred in covariance parameter optimization. If this is a problem, consider doing the following. If you have used Fisher scoring, try using gradient descent. If you have used gradient descent, consider using a smaller learning rate.");
 						}
 					}
 					else {
