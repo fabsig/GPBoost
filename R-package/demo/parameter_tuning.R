@@ -31,7 +31,6 @@ y <- as.numeric(runif(n) < probs)
 # --------------------Parameter tuning using cross-validation: deterministic and random grid search----------------
 # Create random effects model and datasets
 gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
-gp_model$set_optim_params(params=list("optimizer_cov" = "gradient_descent"))
 dtrain <- gpb.Dataset(data = X, label = y)
 params <- list(objective = "binary", verbose = 0, "num_leaves" = 2^10)
 
@@ -95,7 +94,6 @@ test_ind <- sample.int(n,size=as.integer(0.5*n)) # test indices / samples
 folds <- list(test_ind)
 # Create random effects model and datasets
 gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
-gp_model$set_optim_params(params=list("optimizer_cov" = "gradient_descent"))
 dtrain <- gpb.Dataset(data = X, label = y)
 params <- list(objective = "binary", verbose = 0)
 # Parameter tuning using validation data

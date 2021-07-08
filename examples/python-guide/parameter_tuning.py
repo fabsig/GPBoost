@@ -37,7 +37,6 @@ y = y.astype(np.float64)
 # --------------------Parameter tuning using cross-validation: deterministic and random grid search----------------
 # Create random effects model and Dataset
 gp_model = gpb.GPModel(group_data=group, likelihood = "bernoulli_probit")
-gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent"})
 data_train = gpb.Dataset(X, y)
 # Other parameters not contained in the grid of tuning parameters
 params = { 'objective': 'binary', 'verbose': 0, 'num_leaves': 2**10 }
@@ -105,7 +104,6 @@ valid_idx = permut[int(n/2):n]
 folds = [(train_idx, valid_idx)]
 # Create random effects model and datasets
 gp_model = gpb.GPModel(group_data=group, likelihood = "bernoulli_probit")
-gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent"})
 data_train = gpb.Dataset(X, y)
 params = { 'objective': 'binary', 'verbose': 0, 'num_leaves': 2**10 }# Other parameters not contained in the grid of tuning parameters
 # Parameter tuning using validation data
