@@ -180,7 +180,7 @@ namespace GPBoost {
 		* \param likelihood Likelihood function for the observed response variable. Default = "gaussian"
 		*/
 		REModelTemplate(data_size_t num_data,
-			const gp_id_t* cluster_ids_data,
+			const data_size_t* cluster_ids_data,
 			const char* re_group_data,
 			data_size_t num_re_group,
 			const double* re_group_rand_coef_data,
@@ -421,13 +421,13 @@ namespace GPBoost {
 			}
 			else if (!only_grouped_REs_use_woodbury_identity_) {
 				//Delete not required matrices
-				Zt_ = std::map<gp_id_t, sp_mat_t>();
-				P_Zt_ = std::map<gp_id_t, sp_mat_t>();
-				ZtZ_ = std::map<gp_id_t, sp_mat_t>();
-				cum_num_rand_eff_ = std::map<gp_id_t, std::vector<data_size_t>>();
-				Zj_square_sum_ = std::map<gp_id_t, std::vector<double>>();
-				ZtZj_ = std::map<gp_id_t, std::vector<sp_mat_t>>();
-				P_ZtZj_ = std::map<gp_id_t, std::vector<sp_mat_t>>();
+				Zt_ = std::map<data_size_t, sp_mat_t>();
+				P_Zt_ = std::map<data_size_t, sp_mat_t>();
+				ZtZ_ = std::map<data_size_t, sp_mat_t>();
+				cum_num_rand_eff_ = std::map<data_size_t, std::vector<data_size_t>>();
+				Zj_square_sum_ = std::map<data_size_t, std::vector<double>>();
+				ZtZj_ = std::map<data_size_t, std::vector<sp_mat_t>>();
+				P_ZtZj_ = std::map<data_size_t, std::vector<sp_mat_t>>();
 			}
 			//Identity matrices for Gaussian data
 			if (!gauss_likelihood_before && gauss_likelihood_) {
@@ -435,9 +435,9 @@ namespace GPBoost {
 			}
 			else if (gauss_likelihood_before && !gauss_likelihood_) {
 				//Delete not required matrices
-				Id_ = std::map<gp_id_t, T_mat>();
-				P_Id_ = std::map<gp_id_t, T_mat>();
-				//Id_cs_ = std::map<gp_id_t, cs>();//currently not used
+				Id_ = std::map<data_size_t, T_mat>();
+				P_Id_ = std::map<data_size_t, T_mat>();
+				//Id_cs_ = std::map<data_size_t, cs>();//currently not used
 			}
 			InitializeLikelihoods(likelihood);
 			DetermineCovarianceParameterIndicesNumCovPars();
@@ -1023,7 +1023,7 @@ namespace GPBoost {
 		* \param covariate_data_pred Covariate data (=independent variables, features) for prediction
 		*/
 		void SetPredictionData(int num_data_pred,
-			const gp_id_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
+			const data_size_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
 			const double* re_group_rand_coef_data_pred = nullptr, double* gp_coords_data_pred = nullptr,
 			const double* gp_rand_coef_data_pred = nullptr, const double* covariate_data_pred = nullptr) {
 			CHECK(num_data_pred > 0);
@@ -1031,7 +1031,7 @@ namespace GPBoost {
 				cluster_ids_data_pred_.clear();
 			}
 			else {
-				cluster_ids_data_pred_ = std::vector<gp_id_t>(cluster_ids_data_pred, cluster_ids_data_pred + num_data_pred);
+				cluster_ids_data_pred_ = std::vector<data_size_t>(cluster_ids_data_pred, cluster_ids_data_pred + num_data_pred);
 			}
 			if (re_group_data_pred == nullptr) {
 				re_group_levels_pred_.clear();
@@ -1098,7 +1098,7 @@ namespace GPBoost {
 		void Predict(const double* cov_pars_pred, const double* y_obs, data_size_t num_data_pred,
 			double* out_predict, bool calc_cov_factor = true, bool predict_cov_mat = false, bool predict_var = false, bool predict_response = false,
 			const double* covariate_data_pred = nullptr, const double* coef_pred = nullptr,
-			const gp_id_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
+			const data_size_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
 			const double* re_group_rand_coef_data_pred = nullptr, double* gp_coords_data_pred = nullptr,
 			const double* gp_rand_coef_data_pred = nullptr, bool use_saved_data = false,
 			const char* vecchia_pred_type = nullptr, int num_neighbors_pred = -1,
@@ -1211,9 +1211,9 @@ namespace GPBoost {
 			}
 			vec_t cov_pars = Eigen::Map<const vec_t>(cov_pars_pred, num_cov_par_);
 			//Set up cluster IDs
-			std::map<gp_id_t, int> num_data_per_cluster_pred;
-			std::map<gp_id_t, std::vector<int>> data_indices_per_cluster_pred;
-			std::vector<gp_id_t> unique_clusters_pred;
+			std::map<data_size_t, int> num_data_per_cluster_pred;
+			std::map<data_size_t, std::vector<int>> data_indices_per_cluster_pred;
+			std::vector<data_size_t> unique_clusters_pred;
 			data_size_t num_clusters_pred;
 			SetUpGPIds(num_data_pred, cluster_ids_data_pred, num_data_per_cluster_pred,
 				data_indices_per_cluster_pred, unique_clusters_pred, num_clusters_pred);
@@ -1841,7 +1841,7 @@ namespace GPBoost {
 		/*! \brief If true, the response variables have a Gaussian likelihood, otherwise not */
 		data_size_t gauss_likelihood_ = true;
 		/*! \brief Likelihood objects */
-		std::map<gp_id_t, std::unique_ptr<Likelihood<T_mat, T_chol>>> likelihood_;
+		std::map<data_size_t, std::unique_ptr<Likelihood<T_mat, T_chol>>> likelihood_;
 		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian data */
 		double neg_log_likelihood_;
 		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian data of previous iteration in optimization used for convergence checking */
@@ -1849,19 +1849,19 @@ namespace GPBoost {
 		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian data after linear regression coefficients are update (this equals neg_log_likelihood_lag1_ if there are no regression coefficients). This is used for step-size checking for the covariance parameters */
 		double neg_log_likelihood_after_lin_coef_update_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: data y */
-		std::map<gp_id_t, vec_t> y_;
+		std::map<data_size_t, vec_t> y_;
 		/*! \brief Copy of response data (used only for Gaussian data and if there are also linear covariates since then y_ is modified during the optimization algorithm and this contains the original data) */
 		vec_t y_vec_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: data y of integer type (used only for non-Gaussian likelihood) */
-		std::map<gp_id_t, vec_int_t> y_int_;
+		std::map<data_size_t, vec_int_t> y_int_;
 		// Note: the response variable data is saved in y_ / y_int_ (depending on the likelihood type) for Gaussian data with no covariates and for all non-Gaussian data.
 		//			For Gaussian data with covariates, the response variables is saved in y_vec_ and y_ is replaced by y - X * beta during the optimization
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: Psi^-1*y_ (used for various computations) */
-		std::map<gp_id_t, vec_t> y_aux_;
+		std::map<data_size_t, vec_t> y_aux_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when only_grouped_REs_use_woodbury_identity_==true) */
-		std::map<gp_id_t, vec_t> y_tilde_;
+		std::map<data_size_t, vec_t> y_tilde_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: Z * L ^ -T * L ^ -1 * Z ^ T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when only_grouped_REs_use_woodbury_identity_==true) */
-		std::map<gp_id_t, vec_t> y_tilde2_;
+		std::map<data_size_t, vec_t> y_tilde2_;
 		/*! \brief Indicates whether y_aux_ has been calculated */
 		bool y_aux_has_been_calculated_ = false;
 		/*! \brief If true, the response variable data has been set (otherwise y_ is empty) */
@@ -1899,7 +1899,7 @@ namespace GPBoost {
 
 		// RANDOM EFFECT / GP COMPONENTS
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components */
-		std::map<gp_id_t, std::vector<std::shared_ptr<RECompBase<T_mat>>>> re_comps_;
+		std::map<data_size_t, std::vector<std::shared_ptr<RECompBase<T_mat>>>> re_comps_;
 		/*! \brief Indices of parameters of RE components in global parameter vector cov_pars. ind_par_[i] and ind_par_[i+1] -1 are the indices of the first and last parameter of component number i (counting starts at 1) */
 		std::vector<data_size_t> ind_par_;
 		/*! \brief Number of covariance parameters */
@@ -1919,29 +1919,29 @@ namespace GPBoost {
 
 		// COVARIANCE MATRIX AND CHOLESKY FACTORS OF IT
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decomposition solver of covariance matrices Psi (for Gaussian data) */
-		std::map<gp_id_t, T_chol> chol_facts_solve_;
+		std::map<data_size_t, T_chol> chol_facts_solve_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky factors of Psi matrices */ //TODO: above needed or can pattern be saved somewhere else?
-		std::map<gp_id_t, T_mat> chol_facts_;
+		std::map<data_size_t, T_mat> chol_facts_;
 		/*! \brief  Key: labels of independent realizations of REs/GPs, values: Square root of diagonal of matrix Sigma^-1 + Zt * Z  (used only if there is only one grouped random effect and ZtZ is diagonal) */
-		std::map<gp_id_t, vec_t> sqrt_diag_SigmaI_plus_ZtZ_;
+		std::map<data_size_t, vec_t> sqrt_diag_SigmaI_plus_ZtZ_;
 		/*! \brief Indicates whether the covariance matrix has been factorized or not */
 		bool covariance_matrix_has_been_factorized_ = false;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Idendity matrices used for calculation of inverse covariance matrix */
-		std::map<gp_id_t, T_mat> Id_;
+		std::map<data_size_t, T_mat> Id_;
 		///*! \brief Key: labels of independent realizations of REs/GPs, values: Idendity matrices used for calculation of inverse covariance matrix */
-		//std::map<gp_id_t, cs> Id_cs_;//currently not used
+		//std::map<data_size_t, cs> Id_cs_;//currently not used
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Permuted idendity matrices used for calculation of inverse covariance matrix when Cholesky factors have a permutation matrix */
-		std::map<gp_id_t, T_mat> P_Id_;
+		std::map<data_size_t, T_mat> P_Id_;
 		/*! \brief Indicates whether a symbolic decomposition for calculating the Cholesky factor of the covariance matrix has been done or not (only for sparse matrices) */
 		bool chol_fact_pattern_analyzed_ = false;
 		/*! \brief Indicates whether the Cholesky factor has an associated permutation matrix (only for sparse matrices) */
 		bool chol_fact_has_permutation_ = false;
 		/*! \brief Collects inverse covariance matrices Psi^{-1} (usually not saved, but used e.g. in Fisher scoring without the Vecchia approximation) */
-		std::map<gp_id_t, T_mat> psi_inv_;
+		std::map<data_size_t, T_mat> psi_inv_;
 		/*! \brief Inverse covariance matrices Sigma^-1 of random effects. This is only used if only_grouped_REs_use_woodbury_identity_==true (if there are only grouped REs) */
-		std::map<gp_id_t, sp_mat_t> SigmaI_;
+		std::map<data_size_t, sp_mat_t> SigmaI_;
 		/*! \brief Pointer to covariance matrix of the random effects (sum of all components). This is only used for non-Gaussian data and if only_grouped_REs_use_woodbury_identity_==false. In the Gaussian case this needs not be saved */
-		std::map<gp_id_t, std::shared_ptr<T_mat>> ZSigmaZt_;
+		std::map<data_size_t, std::shared_ptr<T_mat>> ZSigmaZt_;
 
 		// COVARIATE DATA FOR LINEAR REGRESSION TERM
 		/*! \brief If true, the model linearly incluses covariates */
@@ -1963,23 +1963,23 @@ namespace GPBoost {
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
 		/*! \brief Collects matrices Z^T (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
-		std::map<gp_id_t, sp_mat_t> Zt_;
+		std::map<data_size_t, sp_mat_t> Zt_;
 		/*! \brief Collects matrices Z^TZ (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
-		std::map<gp_id_t, sp_mat_t> ZtZ_;
+		std::map<data_size_t, sp_mat_t> ZtZ_;
 		/*! \brief Collects vectors Z^Ty (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects) */
-		std::map<gp_id_t, vec_t> Zty_;
+		std::map<data_size_t, vec_t> Zty_;
 		/*! \brief Cumulative number of random effects for components (usually not saved, only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
-		std::map<gp_id_t, std::vector<data_size_t>> cum_num_rand_eff_;//The random effects of component j start at cum_num_rand_eff_[0][j]+1 and end at cum_num_rand_eff_[0][j+1]
+		std::map<data_size_t, std::vector<data_size_t>> cum_num_rand_eff_;//The random effects of component j start at cum_num_rand_eff_[0][j]+1 and end at cum_num_rand_eff_[0][j+1]
 		/*! \brief Sum of squared entries of Z_j for every random effect component (usually not saved, only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects) */
-		std::map<gp_id_t, std::vector<double>> Zj_square_sum_;
+		std::map<data_size_t, std::vector<double>> Zj_square_sum_;
 		/*! \brief Collects matrices Z^T * Z_j for every random effect component (usually not saved, only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects) */
-		std::map<gp_id_t, std::vector<sp_mat_t>> ZtZj_;
+		std::map<data_size_t, std::vector<sp_mat_t>> ZtZj_;
 		/*! \brief Collects matrices L^-1 * Z^T * Z_j for every random effect component (usually not saved, only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects and when Fisher scoring is done) */
-		std::map<gp_id_t, std::vector<T_mat>> LInvZtZj_;
+		std::map<data_size_t, std::vector<T_mat>> LInvZtZj_;
 		/*! \brief Permuted matrices Zt_ when Cholesky factors have a permutation matrix */
-		std::map<gp_id_t, sp_mat_t> P_Zt_;
+		std::map<data_size_t, sp_mat_t> P_Zt_;
 		/*! \brief Permuted matrices ZtZj_ when Cholesky factors have a permutation matrix */
-		std::map<gp_id_t, std::vector<sp_mat_t>> P_ZtZj_;
+		std::map<data_size_t, std::vector<sp_mat_t>> P_ZtZj_;
 
 		// VECCHIA APPROXIMATION for GP
 		/*! \brief If true, the Veccia approximation is used for the Gaussian process */
@@ -2001,35 +2001,35 @@ namespace GPBoost {
 		  "order_obs_first_cond_all", "order_pred_first",
 		  "latent_order_obs_first_cond_obs_only", "latent_order_obs_first_cond_all" };
 		/*! \brief Collects indices of nearest neighbors (used for Vecchia approximation) */
-		std::map<gp_id_t, std::vector<std::vector<int>>> nearest_neighbors_;
+		std::map<data_size_t, std::vector<std::vector<int>>> nearest_neighbors_;
 		/*! \brief Distances between locations and their nearest neighbors (this is used only if the Vecchia approximation is used, otherwise the distances are saved directly in the base GP component) */
-		std::map<gp_id_t, std::vector<den_mat_t>> dist_obs_neighbors_;
+		std::map<data_size_t, std::vector<den_mat_t>> dist_obs_neighbors_;
 		/*! \brief Distances between nearest neighbors for all locations (this is used only if the Vecchia approximation is used, otherwise the distances are saved directly in the base GP component) */
-		std::map<gp_id_t, std::vector<den_mat_t>> dist_between_neighbors_;//TODO: this contains duplicate information (i.e. distances might be saved reduntly several times). But there is a trade-off between storage and computational speed. I currently don't see a way for saving unique distances without copying them when using the^m.
+		std::map<data_size_t, std::vector<den_mat_t>> dist_between_neighbors_;//TODO: this contains duplicate information (i.e. distances might be saved reduntly several times). But there is a trade-off between storage and computational speed. I currently don't see a way for saving unique distances without copying them when using the^m.
 		/*! \brief Outer product of covariate vector at observations and neighbors with itself. First index = cluster, second index = data point i, third index = GP number j (this is used only if the Vecchia approximation is used, this is handled saved directly in the GP component using Z_) */
-		std::map<gp_id_t, std::vector<std::vector<den_mat_t>>> z_outer_z_obs_neighbors_;
+		std::map<data_size_t, std::vector<std::vector<den_mat_t>>> z_outer_z_obs_neighbors_;
 		/*! \brief Collects matrices B = I - A (=Cholesky factor of inverse covariance) for Vecchia approximation */
-		std::map<gp_id_t, sp_mat_t> B_;
+		std::map<data_size_t, sp_mat_t> B_;
 		/*! \brief Collects diagonal matrices D^-1 for Vecchia approximation */
-		std::map<gp_id_t, sp_mat_t> D_inv_;
+		std::map<data_size_t, sp_mat_t> D_inv_;
 		/*! \brief Collects derivatives of matrices B ( = derivative of matrix -A) for Vecchia approximation */
-		std::map<gp_id_t, std::vector<sp_mat_t>> B_grad_;
+		std::map<data_size_t, std::vector<sp_mat_t>> B_grad_;
 		/*! \brief Collects derivatives of matrices D for Vecchia approximation */
-		std::map<gp_id_t, std::vector<sp_mat_t>> D_grad_;
+		std::map<data_size_t, std::vector<sp_mat_t>> D_grad_;
 		/*! \brief Triplets for intializing the matrices B */
-		std::map<gp_id_t, std::vector<Triplet_t>> entries_init_B_;
+		std::map<data_size_t, std::vector<Triplet_t>> entries_init_B_;
 		/*! \brief Triplets for intializing the matrices B_grad */
-		std::map<gp_id_t, std::vector<Triplet_t>> entries_init_B_grad_;
+		std::map<data_size_t, std::vector<Triplet_t>> entries_init_B_grad_;
 
 		// CLUSTERs of INDEPENDENT REALIZATIONS
 		/*! \brief Keys: Labels of independent realizations of REs/GPs, values: vectors with indices for data points */
-		std::map<gp_id_t, std::vector<int>> data_indices_per_cluster_;
+		std::map<data_size_t, std::vector<int>> data_indices_per_cluster_;
 		/*! \brief Keys: Labels of independent realizations of REs/GPs, values: number of data points per independent realization */
-		std::map<gp_id_t, int> num_data_per_cluster_;
+		std::map<data_size_t, int> num_data_per_cluster_;
 		/*! \brief Number of independent realizations of the REs/GPs */
 		data_size_t num_clusters_;
 		/*! \brief Unique labels of independent realizations */
-		std::vector<gp_id_t> unique_clusters_;
+		std::vector<data_size_t> unique_clusters_;
 
 		/*! \brief Variance of idiosyncratic error term (nugget effect) (only used in OptimExternal) */
 		double sigma2_;
@@ -2040,7 +2040,7 @@ namespace GPBoost {
 
 		// PREDICTION
 		/*! \brief Cluster IDs for prediction */
-		std::vector<gp_id_t> cluster_ids_data_pred_;
+		std::vector<data_size_t> cluster_ids_data_pred_;
 		/*! \brief Levels of grouped RE for prediction */
 		std::vector<std::vector<string_t>> re_group_levels_pred_;
 		/*! \brief Covariate data for grouped random RE for prediction */
@@ -2079,7 +2079,7 @@ namespace GPBoost {
 
 		/*! \brief Constructs identity matrices if sparse matrices are used (used for calculating inverse covariance matrix) */
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
-		void ConstructI(gp_id_t cluster_i) {
+		void ConstructI(data_size_t cluster_i) {
 			int dim_I = only_grouped_REs_use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_comps_total_] : num_data_per_cluster_[cluster_i];
 			T3 I(dim_I, dim_I);//identity matrix for calculating precision matrix
 			I.setIdentity();
@@ -2098,7 +2098,7 @@ namespace GPBoost {
 
 		/*! \brief Constructs identity matrices if dense matrices are used (used for calculating inverse covariance matrix) */
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
-		void ConstructI(gp_id_t cluster_i) {
+		void ConstructI(data_size_t cluster_i) {
 			int dim_I = only_grouped_REs_use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_comps_total_] : num_data_per_cluster_[cluster_i];
 			T3 I(dim_I, dim_I);//identity matrix for calculating precision matrix
 			I.setIdentity();
@@ -2398,10 +2398,12 @@ namespace GPBoost {
 		* \param cluster_i Cluster index for which the Cholesky factor is calculated
 		*/
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
-		void CalcChol(T3& psi, gp_id_t cluster_i) {
+		void CalcChol(T3& psi, data_size_t cluster_i) {
 			if (!chol_fact_pattern_analyzed_) {
 				chol_facts_solve_[cluster_i].analyzePattern(psi);
-				chol_fact_pattern_analyzed_ = true;
+				if (cluster_i == unique_clusters_.back()) {
+					chol_fact_pattern_analyzed_ = true;
+				}
 				if (chol_facts_solve_[cluster_i].permutationP().size() > 0) {//Apply permutation if an ordering is used
 					chol_fact_has_permutation_ = true;
 					P_Id_[cluster_i] = chol_facts_solve_[cluster_i].permutationP() * Id_[cluster_i];
@@ -2429,7 +2431,7 @@ namespace GPBoost {
 		* \param cluster_i Cluster index for which the Cholesky factor is calculated
 		*/
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
-		void CalcChol(T3& psi, gp_id_t cluster_i) {
+		void CalcChol(T3& psi, data_size_t cluster_i) {
 			chol_facts_solve_[cluster_i].compute(psi);
 			chol_facts_[cluster_i] = chol_facts_solve_[cluster_i].matrixL();
 			chol_fact_has_permutation_ = false;
@@ -2441,13 +2443,13 @@ namespace GPBoost {
 		* \param cluster_i Cluster index
 		*/
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
-		void ApplyPermutationCholeskyFactor(T3& M, gp_id_t cluster_i) {
+		void ApplyPermutationCholeskyFactor(T3& M, data_size_t cluster_i) {
 			if (chol_facts_solve_[cluster_i].permutationP().size() > 0) {//Apply permutation if an ordering is used
 				M = chol_facts_solve_[cluster_i].permutationP() * M;
 			}
 		}
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
-		void ApplyPermutationCholeskyFactor(T3&, gp_id_t) {
+		void ApplyPermutationCholeskyFactor(T3&, data_size_t) {
 		}
 
 		/*!
@@ -2456,7 +2458,7 @@ namespace GPBoost {
 		* \param cluster_i Cluster index for which Psi^(-1) is calculated
 		*/
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
-		void CalcPsiInv(T3& psi_inv, gp_id_t cluster_i) {
+		void CalcPsiInv(T3& psi_inv, data_size_t cluster_i) {
 			if (only_grouped_REs_use_woodbury_identity_) {
 				sp_mat_t MInvSqrtZt;
 				if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
@@ -2523,7 +2525,7 @@ namespace GPBoost {
 		* \param cluster_i Cluster index for which Psi^(-1) is calculated
 		*/
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
-		void CalcPsiInv(T3& psi_inv, gp_id_t cluster_i) {
+		void CalcPsiInv(T3& psi_inv, data_size_t cluster_i) {
 			if (only_grouped_REs_use_woodbury_identity_) {//typically currently not called as only_grouped_REs_use_woodbury_identity_ is only true for grouped REs only i.e. sparse matrices
 				T3 MInvSqrtZt;
 				if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
@@ -2572,7 +2574,7 @@ namespace GPBoost {
 		* \param permute_H If true, a permutation is applied on H (overwritten) in case the Cholesky factor has a permutation matrix 
 		*/
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
-		void CalcPsiInvSqrtH(sp_mat_t& H, T3& PsiInvSqrtH, gp_id_t cluster_i, bool lower, bool permute_H) {
+		void CalcPsiInvSqrtH(sp_mat_t& H, T3& PsiInvSqrtH, data_size_t cluster_i, bool lower, bool permute_H) {
 			if (permute_H) {
 				if (chol_fact_has_permutation_) {
 					H = chol_facts_solve_[cluster_i].permutationP() * H;
@@ -2591,7 +2593,7 @@ namespace GPBoost {
 		* \param permute_H Not used
 		*/
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
-		void CalcPsiInvSqrtH(sp_mat_t& H, T3& PsiInvSqrtH, gp_id_t cluster_i, bool lower, bool) {
+		void CalcPsiInvSqrtH(sp_mat_t& H, T3& PsiInvSqrtH, data_size_t cluster_i, bool lower, bool) {
 			PsiInvSqrtH = den_mat_t(H);
 #pragma omp parallel for schedule(static)
 			for (int j = 0; j < H.cols(); ++j) {
@@ -2613,7 +2615,7 @@ namespace GPBoost {
 		//  void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
 		//    den_mat_t BX;
 		//    if (num_clusters_ == 1) {
-		//      gp_id_t cluster0 = unique_clusters_[0];
+		//      data_size_t cluster0 = unique_clusters_[0];
 		//      if (vecchia_approx_) {
 		//        BX = B_[cluster0] * X;
 		//        XT_psi_inv_X = BX.transpose() * D_inv_[cluster0] * BX;
@@ -2651,7 +2653,7 @@ namespace GPBoost {
 		//  void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
 		//    den_mat_t BX;
 		//    if (num_clusters_ == 1) {
-		//      gp_id_t cluster0 = unique_clusters_[0];
+		//      data_size_t cluster0 = unique_clusters_[0];
 		//      if (vecchia_approx_) {
 		//        BX = B_[cluster0] * X;
 		//        XT_psi_inv_X = BX.transpose() * D_inv_[cluster0] * BX;
@@ -2754,9 +2756,9 @@ namespace GPBoost {
 		* \param[out] unique_clusters Unique labels of independent realizations
 		* \param[out] num_clusters Number of independent clusters
 		*/
-		void SetUpGPIds(data_size_t num_data, const gp_id_t* cluster_ids_data,
-			std::map<gp_id_t, int>& num_data_per_cluster, std::map<gp_id_t, std::vector<int>>& data_indices_per_cluster,
-			std::vector<gp_id_t>& unique_clusters, data_size_t& num_clusters) {
+		void SetUpGPIds(data_size_t num_data, const data_size_t* cluster_ids_data,
+			std::map<data_size_t, int>& num_data_per_cluster, std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
+			std::vector<data_size_t>& unique_clusters, data_size_t& num_clusters) {
 			if (cluster_ids_data != nullptr) {
 				for (int i = 0; i < num_data; ++i) {
 					if (num_data_per_cluster.find(cluster_ids_data[i]) == num_data_per_cluster.end()) {//first occurrence of cluster_ids_data[i]
@@ -2859,7 +2861,7 @@ namespace GPBoost {
 				ind_par_.push_back(0);
 			}
 			//Add indices of parameters of individual components in joint parameter vector
-			for (int j = 0; j < re_comps_[unique_clusters_[0]].size(); ++j) {
+			for (int j = 0; j < (int)re_comps_[unique_clusters_[0]].size(); ++j) {
 				ind_par_.push_back(ind_par_.back() + re_comps_[unique_clusters_[0]][j]->NumCovPar());//end points of parameter indices of components
 				num_cov_par_ += re_comps_[unique_clusters_[0]][j]->NumCovPar();
 			}
@@ -2891,11 +2893,11 @@ namespace GPBoost {
 		*/
 		void InitializeMatricesForOnlyGroupedREsUseWoodburyIdentity() {
 			CHECK(num_comps_total_ == num_re_group_total_);
-			Zt_ = std::map<gp_id_t, sp_mat_t>();
-			ZtZ_ = std::map<gp_id_t, sp_mat_t>();
-			cum_num_rand_eff_ = std::map<gp_id_t, std::vector<data_size_t>>();
-			Zj_square_sum_ = std::map<gp_id_t, std::vector<double>>();
-			ZtZj_ = std::map<gp_id_t, std::vector<sp_mat_t>>();
+			Zt_ = std::map<data_size_t, sp_mat_t>();
+			ZtZ_ = std::map<data_size_t, sp_mat_t>();
+			cum_num_rand_eff_ = std::map<data_size_t, std::vector<data_size_t>>();
+			Zj_square_sum_ = std::map<data_size_t, std::vector<double>>();
+			ZtZj_ = std::map<data_size_t, std::vector<sp_mat_t>>();
 			for (const auto& cluster_i : unique_clusters_) {
 				std::vector<data_size_t> cum_num_rand_eff_cluster_i(num_comps_total_ + 1);
 				cum_num_rand_eff_cluster_i[0] = 0;
@@ -3032,10 +3034,10 @@ namespace GPBoost {
 		*/
 		void CreateREComponents(data_size_t num_data,
 			data_size_t num_re_group,
-			std::map<gp_id_t, std::vector<int>>& data_indices_per_cluster,
-			gp_id_t cluster_i,
+			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
+			data_size_t cluster_i,
 			std::vector<std::vector<string_t>>& re_group_levels,
-			std::map<gp_id_t, int>& num_data_per_cluster,
+			std::map<data_size_t, int>& num_data_per_cluster,
 			data_size_t num_re_group_rand_coef,
 			const double* re_group_rand_coef_data,
 			std::vector<int>& ind_effect_group_rand_coef,
@@ -3142,9 +3144,9 @@ namespace GPBoost {
 		* \param num_neighbors The number of neighbors used in the Vecchia approximation
 		*/
 		void CreateREComponentsVecchia(data_size_t num_data,
-			std::map<gp_id_t, std::vector<int>>& data_indices_per_cluster,
-			gp_id_t cluster_i,
-			std::map<gp_id_t, int>& num_data_per_cluster,
+			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
+			data_size_t cluster_i,
+			std::map<data_size_t, int>& num_data_per_cluster,
 			const double* gp_coords_data,
 			int dim_gp_coords,
 			const double* gp_rand_coef_data,
@@ -3303,7 +3305,7 @@ namespace GPBoost {
 		* \param[out] SigmaI Inverse covariance matrix of random effects (a diagonal matrix)
 		* \param cluster_i Cluster index for which SigmaI is constructed
 		*/
-		void CalcSigmaIGroupedREsOnly(sp_mat_t& SigmaI, gp_id_t cluster_i) {
+		void CalcSigmaIGroupedREsOnly(sp_mat_t& SigmaI, data_size_t cluster_i) {
 			CHECK(!only_one_grouped_RE_calculations_on_RE_scale_);
 			std::vector<Triplet_t> triplets;
 			triplets.reserve(cum_num_rand_eff_[cluster_i][num_comps_total_]);
@@ -3473,7 +3475,7 @@ namespace GPBoost {
 		* \param[out] ZSigmaZt Covariance matrix ZSigmaZt
 		* \param cluster_i Cluster index for which the covariance matrix is calculated
 		*/
-		void CalcZSigmaZt(T_mat& ZSigmaZt, gp_id_t cluster_i) {
+		void CalcZSigmaZt(T_mat& ZSigmaZt, data_size_t cluster_i) {
 			ZSigmaZt = T_mat(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 			if (gauss_likelihood_) {
 				ZSigmaZt.setIdentity();
@@ -3938,16 +3940,16 @@ namespace GPBoost {
 		template <class T3, typename std::enable_if< std::is_same<sp_mat_t, T3>::value>::type * = nullptr  >
 		void CalcYTPsiIInvY(double& yTPsiInvy,
 			bool all_clusters,
-			gp_id_t cluster_ind,
+			data_size_t cluster_ind,
 			bool CalcYAux_already_done,
 			bool CalcYtilde_already_done) {
 			yTPsiInvy = 0;
-			std::vector<gp_id_t> clusters_iterate;
+			std::vector<data_size_t> clusters_iterate;
 			if (all_clusters) {
 				clusters_iterate = unique_clusters_;
 			}
 			else {
-				clusters_iterate = std::vector<gp_id_t>(1);
+				clusters_iterate = std::vector<data_size_t>(1);
 				clusters_iterate[0] = cluster_ind;
 			}
 			for (const auto& cluster_i : clusters_iterate) {
@@ -4007,16 +4009,16 @@ namespace GPBoost {
 		template <class T3, typename std::enable_if< std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
 		void CalcYTPsiIInvY(double& yTPsiInvy,
 			bool all_clusters,
-			gp_id_t cluster_ind,
+			data_size_t cluster_ind,
 			bool CalcYAux_already_done,
 			bool CalcYtilde_already_done) {
 			yTPsiInvy = 0;
-			std::vector<gp_id_t> clusters_iterate;
+			std::vector<data_size_t> clusters_iterate;
 			if (all_clusters) {
 				clusters_iterate = unique_clusters_;
 			}
 			else {
-				clusters_iterate = std::vector<gp_id_t>(1);
+				clusters_iterate = std::vector<data_size_t>(1);
 				clusters_iterate[0] = cluster_ind;
 			}
 			for (const auto& cluster_i : clusters_iterate) {
@@ -4726,10 +4728,10 @@ namespace GPBoost {
 		 * \param[out] cov_mat_pred_id Predictive covariance matrix
 		 * \param[out] var_pred_id Predictive variances
 		 */
-		void CalcPred(gp_id_t cluster_i,
+		void CalcPred(data_size_t cluster_i,
 			int num_data_pred,
-			std::map<gp_id_t, int>& num_data_per_cluster_pred,
-			std::map<gp_id_t, std::vector<int>>& data_indices_per_cluster_pred,
+			std::map<data_size_t, int>& num_data_per_cluster_pred,
+			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
 			const std::vector<std::vector<string_t>>& re_group_levels_pred,
 			const double* re_group_rand_coef_data_pred,
 			const den_mat_t& gp_coords_mat_pred,
@@ -5045,8 +5047,8 @@ namespace GPBoost {
 		* \param[out] mean_pred_id Predicted mean
 		* \param[out] cov_mat_pred_id Predicted covariance matrix
 		*/
-		void CalcPredVecchiaObservedFirstOrder(bool CondObsOnly, gp_id_t cluster_i, int num_data_pred,
-			std::map<gp_id_t, int>& num_data_per_cluster_pred, std::map<gp_id_t, std::vector<int>>& data_indices_per_cluster_pred,
+		void CalcPredVecchiaObservedFirstOrder(bool CondObsOnly, data_size_t cluster_i, int num_data_pred,
+			std::map<data_size_t, int>& num_data_per_cluster_pred, std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
 			const den_mat_t& gp_coords_mat_obs, const den_mat_t& gp_coords_mat_pred, const double* gp_rand_coef_data_pred,
 			bool predict_cov_mat, vec_t& mean_pred_id, T_mat& cov_mat_pred_id) {
 			int num_data_cli = num_data_per_cluster_[cluster_i];
@@ -5191,8 +5193,8 @@ namespace GPBoost {
 		* \param[out] mean_pred_id Predicted mean
 		* \param[out] cov_mat_pred_id Predicted covariance matrix
 		*/
-		void CalcPredVecchiaPredictedFirstOrder(gp_id_t cluster_i, int num_data_pred,
-			std::map<gp_id_t, int>& num_data_per_cluster_pred, std::map<gp_id_t, std::vector<int>>& data_indices_per_cluster_pred,
+		void CalcPredVecchiaPredictedFirstOrder(data_size_t cluster_i, int num_data_pred,
+			std::map<data_size_t, int>& num_data_per_cluster_pred, std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
 			const den_mat_t& gp_coords_mat_obs, const den_mat_t& gp_coords_mat_pred, const double* gp_rand_coef_data_pred,
 			bool predict_cov_mat, vec_t& mean_pred_id, T_mat& cov_mat_pred_id) {
 			int num_data_cli = num_data_per_cluster_[cluster_i];
@@ -5369,8 +5371,8 @@ namespace GPBoost {
 		 * \param[out] mean_pred_id Predicted mean
 		 * \param[out] cov_mat_pred_id Predicted covariance matrix
 		 */
-		void CalcPredVecchiaLatentObservedFirstOrder(bool CondObsOnly, gp_id_t cluster_i,
-			std::map<gp_id_t, int>& num_data_per_cluster_pred,
+		void CalcPredVecchiaLatentObservedFirstOrder(bool CondObsOnly, data_size_t cluster_i,
+			std::map<data_size_t, int>& num_data_per_cluster_pred,
 			const den_mat_t& gp_coords_mat_obs, const den_mat_t& gp_coords_mat_pred,
 			bool predict_cov_mat, vec_t& mean_pred_id, T_mat& cov_mat_pred_id) {
 			if (num_gp_rand_coef_ > 0) {

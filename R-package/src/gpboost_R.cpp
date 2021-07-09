@@ -828,6 +828,7 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	SEXP ret;
 	REModelHandle handle = nullptr;
 	int32_t num_data = static_cast<int32_t>(Rf_asInteger(ndata));
+	int32_t* cluster_ids = static_cast<int32_t*>(R_INT_PTR(cluster_ids_data));
 	int32_t num_group = static_cast<int32_t>(Rf_asInteger(num_re_group));
 	int32_t* ind_eff_group_rand_coef = static_cast<int32_t*>(R_INT_PTR(ind_effect_group_rand_coef));
 	int32_t num_regroup_rand_coef = static_cast<int32_t>(Rf_asInteger(num_re_group_rand_coef));
@@ -843,7 +844,7 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	const char* likelihood_ptr = (Rf_isNull(likelihood)) ? nullptr : CHAR(likelihood_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_CreateREModel(num_data,
-		R_INT_PTR(cluster_ids_data),
+		cluster_ids,
 		R_CHAR_PTR_FROM_RAW(re_group_data),
 		num_group,
 		R_REAL_PTR(re_group_rand_coef_data),

@@ -44,9 +44,6 @@ namespace GPBoost {
 	/*! \brief Type of labels for group levels for grouped random effects */
 	typedef string_t re_group_t;
 
-	/*! \brief Type of labels indicating independent realizations of the same gaussian process in 'gp_id' */
-	typedef int gp_id_t;
-
 	/*! \brief Type of data size */
 	typedef int32_t data_size_t;
 

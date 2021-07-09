@@ -54,7 +54,7 @@ namespace GPBoost {
 		* \param likelihood Likelihood function for the observed response variable. Default = "gaussian"
 		*/
 		LIGHTGBM_EXPORT REModel(data_size_t num_data,
-			const gp_id_t* cluster_ids_data,
+			const data_size_t* cluster_ids_data,
 			const char* re_group_data,
 			data_size_t num_re_group,
 			const double* re_group_rand_coef_data,
@@ -246,7 +246,7 @@ namespace GPBoost {
 		* \param covariate_data_pred Covariate data (=independent variables, features) for prediction
 		*/
 		void SetPredictionData(data_size_t num_data_pred,
-			const gp_id_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
+			const data_size_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
 			const double* re_group_rand_coef_data_pred = nullptr, double* gp_coords_data_pred = nullptr,
 			const double* gp_rand_coef_data_pred = nullptr, const double* covariate_data_pred = nullptr);
 
@@ -278,7 +278,7 @@ namespace GPBoost {
 		*/
 		void Predict(const double* y_obs, data_size_t num_data_pred, double* out_predict,
 			bool predict_cov_mat = false, bool predict_var = false, bool predict_response = false,
-			const gp_id_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr, const double* re_group_rand_coef_data_pred = nullptr,
+			const data_size_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr, const double* re_group_rand_coef_data_pred = nullptr,
 			double* gp_coords_data_pred = nullptr, const double* gp_rand_coef_data_pred = nullptr,
 			const double* cov_pars_pred = nullptr, const double* covariate_data_pred = nullptr,
 			bool use_saved_data = false, const char* vecchia_pred_type = nullptr, int num_neighbors_pred = -1,

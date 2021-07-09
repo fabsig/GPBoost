@@ -4105,7 +4105,7 @@ class GPModel(object):
                 ind_effect_group_rand_coef = _format_check_1D_data(ind_effect_group_rand_coef,
                                                                    data_name="ind_effect_group_rand_coef",
                                                                    check_data_type=True, check_must_be_int=True,
-                                                                   convert_to_type=np.dtype(int))
+                                                                   convert_to_type=np.dtype(np.int32))
                 self.ind_effect_group_rand_coef = deepcopy(ind_effect_group_rand_coef)
                 if self.ind_effect_group_rand_coef.shape[0] != self.num_group_rand_coef:
                     raise ValueError("Number of random coefficients in group_rand_coef_data does not match number "
@@ -4126,7 +4126,7 @@ class GPModel(object):
                             group_rand_coef_data_names[ii])
                 group_rand_coef_data_c, _, _ = c_float_array(self.group_rand_coef_data.flatten(order='F'))
                 ind_effect_group_rand_coef_c = self.ind_effect_group_rand_coef.ctypes.data_as(
-                    ctypes.POINTER(ctypes.c_int))
+                    ctypes.POINTER(ctypes.c_int32))
         # Set data for Gaussian process
         if gp_coords is not None:
             gp_coords, names_not_used = _format_check_data(data=gp_coords, get_variable_names=False,
@@ -4187,11 +4187,12 @@ class GPModel(object):
             if self.cluster_ids.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in cluster_ids")
             # Convert cluster_ids to int and save conversion map
-            if not cluster_ids.dtype == np.dtype(int):
+            if not np.issubdtype(cluster_ids.dtype, np.integer):
                 self.cluster_ids_map_to_int = dict(
                     [(cl_name, cl_int) for cl_int, cl_name in enumerate(sorted(set(cluster_ids)))])
                 cluster_ids = np.array([self.cluster_ids_map_to_int[cl_name] for cl_name in cluster_ids])
-            cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+            cluster_ids = cluster_ids.astype(np.int32)
+            cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
         self.__determine_num_cov_pars(likelihood=likelihood)
 
@@ -4803,7 +4804,8 @@ class GPModel(object):
                             cluster_ids_pred_map_to_int[key] = cluster_ids_pred_map_to_int[key] + len(
                                 self.cluster_ids_map_to_int)
                     cluster_ids_pred = np.array([cluster_ids_pred_map_to_int[x] for x in cluster_ids_pred])
-                cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+                cluster_ids_pred = cluster_ids_pred.astype(np.int32)
+                cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
             # Set data for linear fixed-effects
             if self.has_covariates:
                 if X_pred is None:
@@ -4995,7 +4997,8 @@ class GPModel(object):
                         cluster_ids_pred_map_to_int[key] = cluster_ids_pred_map_to_int[key] + len(
                             self.cluster_ids_map_to_int)
                 cluster_ids_pred = np.array([cluster_ids_pred_map_to_int[x] for x in cluster_ids_pred])
-            cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+            cluster_ids_pred = cluster_ids_pred.astype(np.int32)
+            cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
         # Set data for linear fixed-effects
         if self.has_covariates:
             if X_pred is None:

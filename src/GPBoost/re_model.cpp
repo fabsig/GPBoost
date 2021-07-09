@@ -17,7 +17,7 @@ namespace GPBoost {
 	}
 
 	REModel::REModel(data_size_t num_data,
-		const gp_id_t* cluster_ids_data,
+		const data_size_t* cluster_ids_data,
 		const char* re_group_data,
 		data_size_t num_re_group,
 		const double* re_group_rand_coef_data,
@@ -619,7 +619,7 @@ namespace GPBoost {
 	}
 
 	void REModel::SetPredictionData(data_size_t num_data_pred,
-		const gp_id_t* cluster_ids_data_pred, const char* re_group_data_pred,
+		const data_size_t* cluster_ids_data_pred, const char* re_group_data_pred,
 		const double* re_group_rand_coef_data_pred, double* gp_coords_data_pred,
 		const double* gp_rand_coef_data_pred, const double* covariate_data_pred) {
 		if (sparse_) {
@@ -636,7 +636,7 @@ namespace GPBoost {
 
 	void REModel::Predict(const double* y_obs, data_size_t num_data_pred, double* out_predict,
 		bool predict_cov_mat, bool predict_var, bool predict_response,
-		const gp_id_t* cluster_ids_data_pred, const char* re_group_data_pred, const double* re_group_rand_coef_data_pred,
+		const data_size_t* cluster_ids_data_pred, const char* re_group_data_pred, const double* re_group_rand_coef_data_pred,
 		double* gp_coords_data_pred, const double* gp_rand_coef_data_pred,
 		const double* cov_pars_pred, const double* covariate_data_pred,
 		bool use_saved_data, const char* vecchia_pred_type, int num_neighbors_pred,
