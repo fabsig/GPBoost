@@ -1,4 +1,4 @@
-## ## Examples on how to use GPBoost for the Grabit model of Sigrist and Hirnschall (2019)
+## Examples on how to use GPBoost for the Grabit model of Sigrist and Hirnschall (2019)
 ## Author: Fabio Sigrist
 
 library(gpboost)

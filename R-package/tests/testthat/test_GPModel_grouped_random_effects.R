@@ -20,7 +20,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
   b1 <- 1:m-3
   # Second random effect
-  n_obs_gr <- n/m # number of sampels per group
+  n_obs_gr <- n/m # number of samples per group
   group2 <- rep(1,n) # grouping variable
   for(i in 1:m) group2[(1:n_obs_gr)+n_obs_gr*(i-1)] <- 1:n_obs_gr
   Z2 <- model.matrix(rep(1,n)~factor(group2)-1)
@@ -32,11 +32,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   # Error term
   xi <- qnorm(sim_rand_unif(n=n, init_c=0.1)) / 50
   # Data for linear mixed effects model
-  X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # desing matrix / covariate data for fixed effect
-  beta <- c(2,2) # regression coefficents
+  X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # design matrix / covariate data for fixed effect
+  beta <- c(2,2) # regression coefficients
   # cluster_ids 
   cluster_ids <- c(rep(1,0.4*n),rep(2,0.6*n))
-  
   
   test_that("single level grouped random effects model ", {
     
@@ -310,6 +309,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                       2.000000, 0.000000, 0.000000, 0.000000, 2.000000)
     expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+
+    # cluster_ids and random coefficients
+    y <- Z1%*%b1 + Z3%*%b3 + xi
+    gp_model <- fitGPModel(group_data = group,
+                           cluster_ids = cluster_ids,
+                           group_rand_coef_data = x,
+                           ind_effect_group_rand_coef = 1,
+                           y = y,
+                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
+                                         lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 1000,
+                                         convergence_criterion = "relative_change_in_parameters"))
+    expected_values <- c(3.431451e-05, 2.075518e+00, 4.309345e-02)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 1000)
     
   })
   

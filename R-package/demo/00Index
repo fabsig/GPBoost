@@ -6,3 +6,4 @@ linear_Gaussian_process_mixed_effects_models           Linear Gaussian process a
 generalized_linear_Gaussian_process_mixed_effects_models           Generalized linear Gaussian process and mixed effects model examples for various likelihoods
 examples_in_R_package_documentation           Examples used in the R package documentation
 cross_validation               Cross validation function for finding the number of boosting iterations
+Grabit               Grabit model of Sigrist and Hirnschall (2019)

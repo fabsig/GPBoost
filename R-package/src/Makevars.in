@@ -57,6 +57,7 @@ OBJECTS = \
     re_model.o \
     sparse_matrix_utils.o \
     GP_utils.o \
+    DF_utils.o \
     Vecchia_utils.o \
     cs_spsolve.o \
     cs_reach.o \
