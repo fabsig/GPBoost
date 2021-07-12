@@ -58,7 +58,6 @@ Sigma_multiple <- sigma2_1*exp(-D_multiple/rho)+diag(1E-10,n)
 L_multiple <- t(chol(Sigma_multiple))
 b_multiple <- qnorm(sim_rand_unif(n=n, init_c=0.8))
 
-
 # print("Ignore [GPBoost] [Fatal]")
 test_that("Binary classification with Gaussian process model ", {
   
@@ -344,17 +343,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                              cov_pars = c(0.9,0.8,1.2), predict_var = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE2)
-    
     # Multiple random effects: training with Nelder-Mead
     gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                            y = y, likelihood = "bernoulli_probit",
                            params = list(optimizer_cov = "nelder_mead"))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3055487, 0.9300562, 0.3048811))),TOLERANCE2)
-    
     # Evaluate negative log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.8,1.2),y=y)
     expect_lt(abs(nll-60.6422359),TOLERANCE)
-    
     # Multiple cluster_ids
     gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                            y = y, cluster_ids = cluster_ids, likelihood = "bernoulli_probit",
@@ -374,6 +370,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                       1.7120000, 0.0000000, 0.0000000, 0.0000000, 1.8080000)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
+    # Only one RE and random coefficient
+    probs <- pnorm(Z1 %*% b_gr_1 + Z3 %*% b_gr_3)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.957341) < probs)
+    gp_model <- fitGPModel(group_data = group, group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                           y = y, likelihood = "bernoulli_probit",
+                           params = list(optimizer_cov = "gradient_descent",
+                                         lr_cov = 0.1, use_nesterov_acc = TRUE, maxit=100))
+    expected_values <- c(1.00742383, 0.02612587)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE2)
+    expect_equal(gp_model$get_num_optim_iter(), 100)
   })
   
   
