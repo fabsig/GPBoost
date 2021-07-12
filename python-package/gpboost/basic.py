@@ -4110,19 +4110,21 @@ class GPModel(object):
                 if self.ind_effect_group_rand_coef.shape[0] != self.num_group_rand_coef:
                     raise ValueError("Number of random coefficients in group_rand_coef_data does not match number "
                                      "in ind_effect_group_rand_coef")
-                counter_re = np.zeros(self.num_group_re)
-                counter_re = counter_re.astype(np.dtype(int))
+                offset = 0
+                if likelihood != "gaussian":
+                    offset = -1
+                counter_re = np.zeros(self.num_group_re, dtype=int)
                 for ii in range(self.num_group_rand_coef):
                     if group_rand_coef_data_names is None:
                         self.cov_par_names.append(
-                            self.cov_par_names[self.ind_effect_group_rand_coef[ii]] + "_rand_coef_nb_" + str(
+                            self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_nb_" + str(
                                 int(counter_re[self.ind_effect_group_rand_coef[ii] - 1] + 1)))
                         counter_re[self.ind_effect_group_rand_coef[ii] - 1] = counter_re[
                                                                                   self.ind_effect_group_rand_coef[
                                                                                       ii] - 1] + 1
                     else:
                         self.cov_par_names.append(
-                            self.cov_par_names[self.ind_effect_group_rand_coef[ii]] + "_rand_coef_" +
+                            self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_" +
                             group_rand_coef_data_names[ii])
                 group_rand_coef_data_c, _, _ = c_float_array(self.group_rand_coef_data.flatten(order='F'))
                 ind_effect_group_rand_coef_c = self.ind_effect_group_rand_coef.ctypes.data_as(
