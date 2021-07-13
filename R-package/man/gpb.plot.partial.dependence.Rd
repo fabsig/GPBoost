@@ -21,9 +21,17 @@ with an index of the column in \code{data} for which a dependence plot is create
 
 \item{which.class}{An \code{integer} indicating the class in multi-class classification (value from 0 to num_class - 1)}
 
-\item{xlab, }{ylab, main, type, ... Parameters passed to \code{plot}}
+\item{xlab}{Parameter passed to \code{plot}}
+
+\item{ylab}{Parameter passed to \code{plot}}
+
+\item{type}{Parameter passed to \code{plot}}
+
+\item{main}{Parameter passed to \code{plot}}
 
 \item{return_plot_data}{A \code{boolean}. If TRUE, the data for creating the partial dependence  plot is returned}
+
+\item{...}{Additional parameters passed to \code{plot}}
 
 \item{x.discrete}{A \code{boolean}. If TRUE, the evaluation grid is set to the unique values of x}
 }

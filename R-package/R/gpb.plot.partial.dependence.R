@@ -9,7 +9,11 @@
 #' @param n.pt Evaluation grid size (used only if x is not discrete)
 #' @param x.discrete A \code{boolean}. If TRUE, the evaluation grid is set to the unique values of x
 #' @param which.class An \code{integer} indicating the class in multi-class classification (value from 0 to num_class - 1)
-#' @param xlab, ylab, main, type, ... Parameters passed to \code{plot}
+#' @param xlab Parameter passed to \code{plot}
+#' @param ylab Parameter passed to \code{plot}
+#' @param main Parameter passed to \code{plot}
+#' @param type Parameter passed to \code{plot}
+#' @param ... Additional parameters passed to \code{plot}
 #' @param return_plot_data A \code{boolean}. If TRUE, the data for creating the partial dependence  plot is returned
 #'
 #' @return A two-dimensional \code{matrix} with data for creating the partial dependence plot.
@@ -49,9 +53,9 @@ gpb.plot.partial.dependence <- function(model, data, variable, n.pt = 100,
     data[, variable] <- x[i]
     
     if (!is.null(which.class)) {
-      preds <- predict(model, data, reshape = TRUE, ignore_gp_model=TRUE)[, which.class + 1] 
+      preds <- model$predict(data = data, reshape = TRUE, ignore_gp_model=TRUE)[, which.class + 1] 
     } else {
-      preds <- predict(model, data, ignore_gp_model=TRUE)
+      preds <- model$predict(data = data, ignore_gp_model=TRUE)
     }
     
     y[i] <- mean(preds)
