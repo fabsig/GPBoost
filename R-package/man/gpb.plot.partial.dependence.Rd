@@ -5,9 +5,10 @@
 \title{Plot partial dependence plots}
 \usage{
 gpb.plot.partial.dependence(model, data, variable, n.pt = 100,
-  discrete.x = FALSE, which.class = NULL,
-  xlab = deparse(substitute(variable)), ylab = "", type = if (discrete.x)
-  "p" else "b", main = "", return_plot_data = FALSE, ...)
+  subsample = pmin(1, n.pt * 100/nrow(pred.data)), discrete.x = FALSE,
+  which.class = NULL, xlab = deparse(substitute(variable)), ylab = "",
+  type = if (discrete.x) "p" else "b", main = "",
+  return_plot_data = FALSE, ...)
 }
 \arguments{
 \item{model}{A \code{gpb.Booster} model object}
@@ -18,6 +19,8 @@ gpb.plot.partial.dependence(model, data, variable, n.pt = 100,
 with an index of the column in \code{data} for which a dependence plot is created}
 
 \item{n.pt}{Evaluation grid size (used only if x is not discrete)}
+
+\item{subsample}{Fraction of random samples in \code{data} to be used for calculating the partial dependence plot}
 
 \item{discrete.x}{A \code{boolean}. If TRUE, the evaluation grid is set to the unique values of x}
 

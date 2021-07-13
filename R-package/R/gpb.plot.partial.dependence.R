@@ -6,6 +6,7 @@
 #' @param data A \code{matrix} with data for creating partial dependence plots
 #' @param variable A \code{string} with a name of the column or an \code{integer} 
 #' with an index of the column in \code{data} for which a dependence plot is created
+#' @param subsample Fraction of random samples in \code{data} to be used for calculating the partial dependence plot
 #' @param n.pt Evaluation grid size (used only if x is not discrete)
 #' @param discrete.x A \code{boolean}. If TRUE, the evaluation grid is set to the unique values of x
 #' @param which.class An \code{integer} indicating the class in multi-class classification (value from 0 to num_class - 1)
@@ -36,11 +37,17 @@
 #' gpb.plot.partial.dependence(gpboost_model, X, variable = 1)
 #' @export
 gpb.plot.partial.dependence <- function(model, data, variable, n.pt = 100,
+                                        subsample = pmin(1, n.pt * 100 / nrow(pred.data)), 
                                         discrete.x = FALSE, which.class = NULL,
                                         xlab = deparse(substitute(variable)), 
                                         ylab = "", type = if (discrete.x) "p" else "b",
                                         main = "", return_plot_data = FALSE, ...) {
   stopifnot(dim(data) >= 1)
+  
+  if (subsample < 1) {
+    n <- nrow(data)
+    data <- data[sample(n, trunc(subsample * n)), , drop = FALSE]
+  }
   
   if (discrete.x) {
     x <- unique(data[, variable])
