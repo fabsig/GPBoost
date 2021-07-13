@@ -7,7 +7,7 @@
 #' @param variable A \code{string} with a name of the column or an \code{integer} 
 #' with an index of the column in \code{data} for which a dependence plot is created
 #' @param n.pt Evaluation grid size (used only if x is not discrete)
-#' @param x.discrete A \code{boolean}. If TRUE, the evaluation grid is set to the unique values of x
+#' @param discrete.x A \code{boolean}. If TRUE, the evaluation grid is set to the unique values of x
 #' @param which.class An \code{integer} indicating the class in multi-class classification (value from 0 to num_class - 1)
 #' @param xlab Parameter passed to \code{plot}
 #' @param ylab Parameter passed to \code{plot}

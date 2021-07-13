@@ -1887,6 +1887,7 @@ summary.GPModel <- function(object, ...){
 #'
 #' @param object a \code{GPModel}
 #' @param y Observed data (can be NULL, e.g. when the model has been estimated already and the same data is used for making predictions)#' @param cov_pars A \code{vector} containing covariance parameters (used if the \code{GPModel} has not been trained or if predictions should be made for other parameters than the estimated ones)
+#' @param cov_pars A \code{vector} containing covariance parameters (used if the \code{GPModel} has not been trained or if predictions should be made for other parameters than the trained ones
 #' @param X_pred A \code{matrix} with covariate data for the linear regression term (if there is one in the \code{GPModel})
 #' @param use_saved_data A \code{boolean}. If TRUE, predictions are done using a priory set data via the function '$set_prediction_data'  (this option is not used by users directly)
 #' @param predict_response A \code{boolean}. If TRUE, the response variable (label) is predicted, otherwise the latent random effects (this is only relevant for non-Gaussian data)

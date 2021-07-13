@@ -30,6 +30,8 @@
 
 \item{predict_var}{A \code{boolean}. If TRUE, the (posterior / conditional) predictive variances are calculated}
 
+\item{cov_pars}{A \code{vector} containing covariance parameters (used if the \code{GPModel} has not been trained or if predictions should be made for other parameters than the trained ones}
+
 \item{X_pred}{A \code{matrix} with covariate data for the linear regression term (if there is one in the \code{GPModel})}
 
 \item{use_saved_data}{A \code{boolean}. If TRUE, predictions are done using a priory set data via the function '$set_prediction_data'  (this option is not used by users directly)}

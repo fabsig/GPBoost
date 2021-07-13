@@ -19,6 +19,8 @@ with an index of the column in \code{data} for which a dependence plot is create
 
 \item{n.pt}{Evaluation grid size (used only if x is not discrete)}
 
+\item{discrete.x}{A \code{boolean}. If TRUE, the evaluation grid is set to the unique values of x}
+
 \item{which.class}{An \code{integer} indicating the class in multi-class classification (value from 0 to num_class - 1)}
 
 \item{xlab}{Parameter passed to \code{plot}}
@@ -32,8 +34,6 @@ with an index of the column in \code{data} for which a dependence plot is create
 \item{return_plot_data}{A \code{boolean}. If TRUE, the data for creating the partial dependence  plot is returned}
 
 \item{...}{Additional parameters passed to \code{plot}}
-
-\item{x.discrete}{A \code{boolean}. If TRUE, the evaluation grid is set to the unique values of x}
 }
 \value{
 A two-dimensional \code{matrix} with data for creating the partial dependence plot.
