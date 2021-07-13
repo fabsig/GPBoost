@@ -14,7 +14,7 @@
 \arguments{
 \item{object}{a \code{GPModel}}
 
-\item{y}{Observed data (can be NULL, e.g. when the model has been estimated already and the same data is used for making predictions)}
+\item{y}{Observed data (can be NULL, e.g. when the model has been estimated already and the same data is used for making predictions)#' @param cov_pars A \code{vector} containing covariance parameters (used if the \code{GPModel} has not been trained or if predictions should be made for other parameters than the estimated ones)}
 
 \item{group_data_pred}{A \code{vector} or \code{matrix} with labels of group levels for which predictions are made (if there are grouped random effects in the \code{GPModel})}
 
@@ -29,8 +29,6 @@
 \item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior / conditional) predictive covariance is calculated in addition to the (posterior / conditional) predictive mean}
 
 \item{predict_var}{A \code{boolean}. If TRUE, the (posterior / conditional) predictive variances are calculated}
-
-\item{cov_pars}{A \code{vector} containing covariance parameters (used if the \code{GPModel} has not been trained or if predictions should be made for other parameters than the estimated ones)}
 
 \item{X_pred}{A \code{matrix} with covariate data for the linear regression term (if there is one in the \code{GPModel})}
 

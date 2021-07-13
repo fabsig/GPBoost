@@ -32,7 +32,7 @@
 #' we follow the notation of Bevilacqua et al. (2019)). 
 #' This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
 #' @param cov_fct_taper_range A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019)
-#' @param vecchia_approx A \code{boolean}. If true, the Vecchia approximation is used 
+#' @param vecchia_approx A \code{boolean}. If TRUE, the Vecchia approximation is used 
 #' @param num_neighbors An \code{integer} specifying the number of neighbors for the Vecchia approximation
 #' @param vecchia_ordering A \code{string} specifying the ordering used in the Vecchia approximation. 
 #' "none" means the default ordering is used, "random" uses a random ordering
@@ -47,7 +47,7 @@
 #' for making predictions
 #' @param cluster_ids A \code{vector} with IDs / labels indicating independent realizations of 
 #' random effects / Gaussian processes (same values = same process realization)
-#' @param free_raw_data If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
+#' @param free_raw_data A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 #' is freed in R after initialization
 #' @param y A \code{vector} with response variable data
 #' @param X A \code{matrix} with covariate data for fixed effects ( = linear regression term)
@@ -86,6 +86,14 @@
 #'                \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}
 #'            }
 #' @param fixed_effects A \code{vector} of optional external fixed effects which are held fixed during training. 
+#' @param group_data_pred A \code{vector} or \code{matrix} with labels of group levels for which predictions are made (if there are grouped random effects in the \code{GPModel})
+#' @param group_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data for grouped random coefficients (if there are some in the \code{GPModel})
+#' @param gp_coords_pred A \code{matrix} with prediction coordinates (features) for Gaussian process (if there is a GP in the \code{GPModel})
+#' @param gp_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data for Gaussian process random coefficients (if there are some in the \code{GPModel})
+#' @param cluster_ids_pred A \code{vector} with IDs / labels indicating the realizations of random effects / Gaussian processes for which predictions are made (set to NULL if you have not specified this when creating the \code{GPModel})
+#' @param predict_cov_mat A \code{boolean}. If TRUE, the (posterior / conditional) predictive covariance is calculated in addition to the (posterior / conditional) predictive mean
+#' @param predict_var A \code{boolean}. If TRUE, the (posterior / conditional) predictive variances are calculated
+
 
 NULL
 
@@ -1878,15 +1886,7 @@ summary.GPModel <- function(object, ...){
 #' Make predictions for a \code{GPModel}
 #'
 #' @param object a \code{GPModel}
-#' @param y Observed data (can be NULL, e.g. when the model has been estimated already and the same data is used for making predictions)
-#' @param group_data_pred A \code{vector} or \code{matrix} with labels of group levels for which predictions are made (if there are grouped random effects in the \code{GPModel})
-#' @param group_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data for grouped random coefficients (if there are some in the \code{GPModel})
-#' @param gp_coords_pred A \code{matrix} with prediction coordinates (features) for Gaussian process (if there is a GP in the \code{GPModel})
-#' @param gp_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data for Gaussian process random coefficients (if there are some in the \code{GPModel})
-#' @param cluster_ids_pred A \code{vector} with IDs / labels indicating the realizations of random effects / Gaussian processes for which predictions are made (set to NULL if you have not specified this when creating the \code{GPModel})
-#' @param predict_cov_mat A \code{boolean}. If TRUE, the (posterior / conditional) predictive covariance is calculated in addition to the (posterior / conditional) predictive mean
-#' @param predict_var A \code{boolean}. If TRUE, the (posterior / conditional) predictive variances are calculated
-#' @param cov_pars A \code{vector} containing covariance parameters (used if the \code{GPModel} has not been trained or if predictions should be made for other parameters than the estimated ones)
+#' @param y Observed data (can be NULL, e.g. when the model has been estimated already and the same data is used for making predictions)#' @param cov_pars A \code{vector} containing covariance parameters (used if the \code{GPModel} has not been trained or if predictions should be made for other parameters than the estimated ones)
 #' @param X_pred A \code{matrix} with covariate data for the linear regression term (if there is one in the \code{GPModel})
 #' @param use_saved_data A \code{boolean}. If TRUE, predictions are done using a priory set data via the function '$set_prediction_data'  (this option is not used by users directly)
 #' @param predict_response A \code{boolean}. If TRUE, the response variable (label) is predicted, otherwise the latent random effects (this is only relevant for non-Gaussian data)

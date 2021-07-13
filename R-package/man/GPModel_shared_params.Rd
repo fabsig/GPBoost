@@ -40,7 +40,7 @@ This parameter is irrelevant for some covariance functions such as the exponenti
 
 \item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019)}
 
-\item{vecchia_approx}{A \code{boolean}. If true, the Vecchia approximation is used}
+\item{vecchia_approx}{A \code{boolean}. If TRUE, the Vecchia approximation is used}
 
 \item{num_neighbors}{An \code{integer} specifying the number of neighbors for the Vecchia approximation}
 
@@ -61,7 +61,7 @@ for making predictions}
 \item{cluster_ids}{A \code{vector} with IDs / labels indicating independent realizations of 
 random effects / Gaussian processes (same values = same process realization)}
 
-\item{free_raw_data}{If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
+\item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 is freed in R after initialization}
 
 \item{y}{A \code{vector} with response variable data}
@@ -104,6 +104,20 @@ is freed in R after initialization}
 }}
 
 \item{fixed_effects}{A \code{vector} of optional external fixed effects which are held fixed during training.}
+
+\item{group_data_pred}{A \code{vector} or \code{matrix} with labels of group levels for which predictions are made (if there are grouped random effects in the \code{GPModel})}
+
+\item{group_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for grouped random coefficients (if there are some in the \code{GPModel})}
+
+\item{gp_coords_pred}{A \code{matrix} with prediction coordinates (features) for Gaussian process (if there is a GP in the \code{GPModel})}
+
+\item{gp_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for Gaussian process random coefficients (if there are some in the \code{GPModel})}
+
+\item{cluster_ids_pred}{A \code{vector} with IDs / labels indicating the realizations of random effects / Gaussian processes for which predictions are made (set to NULL if you have not specified this when creating the \code{GPModel})}
+
+\item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior / conditional) predictive covariance is calculated in addition to the (posterior / conditional) predictive mean}
+
+\item{predict_var}{A \code{boolean}. If TRUE, the (posterior / conditional) predictive variances are calculated}
 }
 \description{
 Parameter docs shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}

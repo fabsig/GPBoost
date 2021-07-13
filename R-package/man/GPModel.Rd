@@ -47,7 +47,7 @@ This parameter is irrelevant for some covariance functions such as the exponenti
 
 \item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019)}
 
-\item{vecchia_approx}{A \code{boolean}. If true, the Vecchia approximation is used}
+\item{vecchia_approx}{A \code{boolean}. If TRUE, the Vecchia approximation is used}
 
 \item{num_neighbors}{An \code{integer} specifying the number of neighbors for the Vecchia approximation}
 
@@ -68,7 +68,7 @@ for making predictions}
 \item{cluster_ids}{A \code{vector} with IDs / labels indicating independent realizations of 
 random effects / Gaussian processes (same values = same process realization)}
 
-\item{free_raw_data}{If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
+\item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 is freed in R after initialization}
 
 \item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable

@@ -3296,7 +3296,8 @@ class Booster:
                 group_data_pred=None, group_rand_coef_data_pred=None,
                 gp_coords_pred=None, gp_rand_coef_data_pred=None,
                 cluster_ids_pred=None, vecchia_pred_type=None,
-                num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False, **kwargs):
+                num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False,
+                ignore_gp_model = False, **kwargs):
         """Make a prediction.
 
         Parameters
@@ -3333,15 +3334,15 @@ class Booster:
         is_reshape : bool, optional (default=True)
             If True, result is reshaped to [nrow, ncol].
         group_data_pred : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
-            Labels of group levels for grouped random effects. Used only if the Booster has a GPModel
+            Labels of group levels for grouped random effects. Used only if the Booster has a gp_model
         group_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-            Covariate data for grouped random coefficients. Used only if the Booster has a GPModel
+            Covariate data for grouped random coefficients. Used only if the Booster has a gp_model
         gp_coords_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-            Coordinates (features) for Gaussian process. Used only if the Booster has a GPModel
+            Coordinates (features) for Gaussian process. Used only if the Booster has a gp_model
         gp_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-            Covariate data for Gaussian process random coefficients. Used only if the Booster has a GPModel
+            Covariate data for Gaussian process random coefficients. Used only if the Booster has a gp_model
         vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
-            Type of Vecchia approximation used for making predictions. Used only if the Booster has a GPModel.
+            Type of Vecchia approximation used for making predictions. Used only if the Booster has a gp_model.
             "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
             points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected
             among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for
@@ -3350,16 +3351,18 @@ class Booster:
             "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is
             ordered first and neighbors are selected among all points
         num_neighbors_pred : integer or None, optional (default=None)
-            Number of neighbors for the Vecchia approximation for making predictions. Used only if the Booster has a GPModel
+            Number of neighbors for the Vecchia approximation for making predictions. Used only if the Booster has a gp_model
         cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
             IDs / labels indicating independent realizations of random effects / Gaussian processes
-            (same values = same process realization). Used only if the Booster has a GPModel
+            (same values = same process realization). Used only if the Booster has a gp_model
         predict_cov_mat : bool, optional (default=False)
             If True, the (posterior / conditional) predictive covariance is calculated in addition to the
-            (posterior / conditional) predictive mean. Used only if the Booster has a GPModel
+            (posterior / conditional) predictive mean. Used only if the Booster has a gp_model
         predict_var : bool, optional (default=False)
             If True, (posterior / conditional) predictive variances are calculated in addition to the
-            (posterior / conditional) predictive mean. Used only if the Booster has a GPModel
+            (posterior / conditional) predictive mean. Used only if the Booster has a gp_model
+        ignore_gp_model : bool, optional (default=False)
+            If True, predictions are only made for the tree ensemble part and the gp_model is ignored
         **kwargs
             Other parameters for the prediction.
 
@@ -3381,7 +3384,7 @@ class Booster:
                 num_iteration = self.best_iteration
             else:
                 num_iteration = -1
-        if self.has_gp_model and not pred_contrib:
+        if self.has_gp_model and not pred_contrib and not ignore_gp_model:
             random_effect_mean = None
             pred_var_cov = None
             response_mean = None
@@ -3493,7 +3496,7 @@ class Booster:
                     "random_effect_cov": pred_var_cov,
                     "response_mean": response_mean,
                     "response_var": response_var}
-        else:  # no gp_model or pred_contrib
+        else:  # no gp_model or pred_contrib or ignore_gp_model
             return predictor.predict(data=data, start_iteration=start_iteration, num_iteration=num_iteration,
                                      raw_score=raw_score, pred_leaf=pred_leaf, pred_contrib=pred_contrib,
                                      data_has_header=data_has_header, is_reshape=is_reshape)

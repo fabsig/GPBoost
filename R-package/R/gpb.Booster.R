@@ -666,6 +666,7 @@ Booster <- R6::R6Class(
                        num_neighbors_pred = -1,
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
+                       ignore_gp_model = FALSE,
                        ...) {
       
       # Check if number of iteration is non existent
@@ -684,7 +685,7 @@ Booster <- R6::R6Class(
         , params = params
       )
       
-      if (private$has_gp_model & !predcontrib) {
+      if (private$has_gp_model & !predcontrib & !ignore_gp_model) {
         
         if (is.null(private$train_set$.__enclos_env__$private$raw_data) & 
             !private$gp_model_prediction_data_loaded_from_file) {
@@ -857,7 +858,7 @@ Booster <- R6::R6Class(
                     response_var = response_var))
         
       }##end GPBoost prediction
-      else {##no gp_model or predcontrib
+      else {##no gp_model or predcontrib or ignore_gp_model
         return(
           predictor$predict(
             data = data
@@ -1102,6 +1103,7 @@ Booster <- R6::R6Class(
 #' @name predict.gpb.Booster
 #' @title Predict method for GPBoost model
 #' @description Predicted values based on class \code{gpb.Booster}
+#' @inheritParams GPModel_shared_params
 #' @param object Object of class \code{gpb.Booster}
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
 #' @param start_iteration int or None, optional (default=None)
@@ -1120,10 +1122,10 @@ Booster <- R6::R6Class(
 #' @param header only used for prediction for text file. True if text file has header
 #' @param reshape whether to reshape the vector of predictions to a matrix form when there are several
 #'                prediction outputs per case.
+#' @param ignore_gp_model A \code{boolean}. If TRUE, predictions are only made for the tree ensemble part
+#' and the \code{gp_model} is ignored
 #' @param ... Additional named arguments passed to the \code{predict()} method of
 #'            the \code{gpb.Booster} object passed to \code{object}. 
-#'            In particular, this includes prediction data for the GPModel (if there is one)
-#'            Set predict_var or predict_cov_mat to TRUE, if you want to obtain predicted variances or covariances
 #' @return For regression or binary classification, it returns a vector of length \code{nrows(data)}.
 #'         For multiclass classification, either a \code{num_class * nrows(data)} vector or
 #'         a \code{(nrows(data), num_class)} dimension matrix is returned, depending on
@@ -1209,6 +1211,16 @@ predict.gpb.Booster <- function(object,
                                 predcontrib = FALSE,
                                 header = FALSE,
                                 reshape = FALSE,
+                                group_data_pred = NULL,
+                                group_rand_coef_data_pred = NULL,
+                                gp_coords_pred = NULL,
+                                gp_rand_coef_data_pred = NULL,
+                                cluster_ids_pred = NULL,
+                                vecchia_pred_type = NULL,
+                                num_neighbors_pred = -1,
+                                predict_cov_mat = FALSE,
+                                predict_var = FALSE,
+                                ignore_gp_model = FALSE,
                                 ...) {
   
   if (!gpb.is.Booster(x = object)) {
@@ -1226,6 +1238,16 @@ predict.gpb.Booster <- function(object,
       , predcontrib =  predcontrib
       , header = header
       , reshape = reshape
+      , group_data_pred = group_data_pred
+      , group_rand_coef_data_pred = group_rand_coef_data_pred
+      , gp_coords_pred = gp_coords_pred
+      , gp_rand_coef_data_pred = gp_rand_coef_data_pred
+      , cluster_ids_pred = cluster_ids_pred
+      , vecchia_pred_type = vecchia_pred_type
+      , num_neighbors_pred = num_neighbors_pred
+      , predict_cov_mat = predict_cov_mat
+      , predict_var = predict_var
+      , ignore_gp_model = ignore_gp_model
       , ...
     )
   )

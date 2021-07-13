@@ -6,7 +6,12 @@
 \usage{
 \method{predict}{gpb.Booster}(object, data, start_iteration = NULL,
   num_iteration = NULL, rawscore = FALSE, predleaf = FALSE,
-  predcontrib = FALSE, header = FALSE, reshape = FALSE, ...)
+  predcontrib = FALSE, header = FALSE, reshape = FALSE,
+  group_data_pred = NULL, group_rand_coef_data_pred = NULL,
+  gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
+  cluster_ids_pred = NULL, vecchia_pred_type = NULL,
+  num_neighbors_pred = -1, predict_cov_mat = FALSE, predict_var = FALSE,
+  ignore_gp_model = FALSE, ...)
 }
 \arguments{
 \item{object}{Object of class \code{gpb.Booster}}
@@ -36,10 +41,36 @@ for logistic regression would result in predictions for log-odds instead of prob
 \item{reshape}{whether to reshape the vector of predictions to a matrix form when there are several
 prediction outputs per case.}
 
+\item{group_data_pred}{A \code{vector} or \code{matrix} with labels of group levels for which predictions are made (if there are grouped random effects in the \code{GPModel})}
+
+\item{group_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for grouped random coefficients (if there are some in the \code{GPModel})}
+
+\item{gp_coords_pred}{A \code{matrix} with prediction coordinates (features) for Gaussian process (if there is a GP in the \code{GPModel})}
+
+\item{gp_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for Gaussian process random coefficients (if there are some in the \code{GPModel})}
+
+\item{cluster_ids_pred}{A \code{vector} with IDs / labels indicating the realizations of random effects / Gaussian processes for which predictions are made (set to NULL if you have not specified this when creating the \code{GPModel})}
+
+\item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions. 
+"order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed points, 
+"order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected among all points 
+(observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, 
+"latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent process and observed data is 
+ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all" = Vecchia approximation 
+for the latent process and observed data is ordered first and neighbors are selected among all points}
+
+\item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
+for making predictions}
+
+\item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior / conditional) predictive covariance is calculated in addition to the (posterior / conditional) predictive mean}
+
+\item{predict_var}{A \code{boolean}. If TRUE, the (posterior / conditional) predictive variances are calculated}
+
+\item{ignore_gp_model}{A \code{boolean}. If TRUE, predictions are only made for the tree ensemble part
+and the \code{gp_model} is ignored}
+
 \item{...}{Additional named arguments passed to the \code{predict()} method of
-the \code{gpb.Booster} object passed to \code{object}. 
-In particular, this includes prediction data for the GPModel (if there is one)
-Set predict_var or predict_cov_mat to TRUE, if you want to obtain predicted variances or covariances}
+the \code{gpb.Booster} object passed to \code{object}.}
 }
 \value{
 For regression or binary classification, it returns a vector of length \code{nrows(data)}.
