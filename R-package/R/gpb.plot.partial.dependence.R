@@ -37,7 +37,7 @@
 #' gpb.plot.partial.dependence(gpboost_model, X, variable = 1)
 #' @export
 gpb.plot.partial.dependence <- function(model, data, variable, n.pt = 100,
-                                        subsample = pmin(1, n.pt * 100 / nrow(pred.data)), 
+                                        subsample = pmin(1, n.pt * 100 / nrow(data)), 
                                         discrete.x = FALSE, which.class = NULL,
                                         xlab = deparse(substitute(variable)), 
                                         ylab = "", type = if (discrete.x) "p" else "b",
