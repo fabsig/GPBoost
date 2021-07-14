@@ -86,13 +86,19 @@ bst = gpb.train(params=params,
 #--------------------Prediction----------------
 nplot = 200  # number of predictions
 X_test_plot = np.column_stack((np.linspace(0, 1, nplot), np.zeros(nplot)))
-group_data_pred = -np.ones(nplot)
-# Predict response variable
+group_data_pred = -np.ones(nplot) # only new / unobserved groups
+# 1. Predict response variable (raw_score=False)
 pred_resp = bst.predict(data=X_test_plot, group_data_pred=group_data_pred,
                         raw_score=False)
-# Predict latent variable and also variance
+# pred_resp['response_mean'] contains the (mean) predictions of the response variable 
+#   which combines predictions from the tree ensemble and the random effects
+# pred_resp['response_var'] contains the predictive variances (if predict_var=True)
+#2. Predict latent variable (raw_score=True) and variance
 pred = bst.predict(data=X_test_plot, group_data_pred=group_data_pred,
                    predict_var=True, raw_score=True)
+# pred_resp['fixed_effect'] contains the predictions for the latent fixed effects / tree ensemble
+# pred_resp['random_effect_mean'] contains the mean predictions for the random effects
+# pred_resp['random_effect_cov'] contains the predictive (co-)variances (if predict_var=True) of the random effects
 
 # Visualize predictions
 fig1, ax1 = plt.subplots()

@@ -70,6 +70,12 @@ summary(gp_model)
 
 #--------------------Prediction--------------
 pred <- predict(bst, data = Xtest, group_data_pred = group_test)
+# pred$fixed_effect contains the predictions for the fixed effects / tree ensemble
+# pred$random_effect_mean contains the mean predictions for the latent random effects
+# pred$random_effect_cov contains the predictive (co-)variances (if predict_var=True) of the random effects
+# To obtain a unique prediction which combines fixed and random effects,
+#   sum the two components up: pred_combined = pred$fixed_effect + pred$random_effect_mean
+
 # Compare fit to truth: random effects
 pred_random_effect <- pred$random_effect_mean
 plot(b1, pred_random_effect, xlab="truth", ylab="predicted",

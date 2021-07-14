@@ -67,12 +67,19 @@ summary(gp_model) # Trained random effects model (true variance = 0.5)
 #--------------------Prediction----------------
 nplot <- 200# number of predictions
 X_test_plot <- cbind(seq(from=0,to=1,length.out=nplot),rep(0.5,nplot))
-group_data_pred <- rep(-9999,dim(X_test_plot)[1])# only new / unobserved levels
-# Predict response variable
-pred_resp <- predict(bst, data = X_test_plot, group_data_pred = group_data_pred, rawscore = FALSE)$response_mean
-# Predict latent variable including variance
+group_data_pred <- rep(-9999,dim(X_test_plot)[1]) # only new / unobserved groups
+# 1. Predict response variable
+pred_resp <- predict(bst, data = X_test_plot, group_data_pred = group_data_pred, rawscore = FALSE)
+# pred_resp$response_mean contains the (mean) predictions of the response variable
+#   which combines predictions from the tree ensemble and the random effects
+# pred_resp$response_var contains the predictive variances (if predict_var=TRUE)
+# 2. Predict latent variable and variance
 pred <- predict(bst, data = X_test_plot, group_data_pred = group_data_pred,
                 predict_var=TRUE, rawscore = TRUE)
+# pred_resp$fixed_effect contains the predictions for the latent fixed effects / tree ensemble
+# pred_resp$random_effect_mean contains the mean predictions for the latent random effects
+# pred_resp$random_effect_cov contains the predictive (co-)variances (if predict_var=TRUE) of the random effects
+
 # Visualize predictions
 x <- seq(from=0,to=1,length.out=200)
 plot(x,f1d(x),type="l",lwd=3,col=2,main="Data, true and predicted latent function F")
@@ -81,7 +88,7 @@ lines(X_test_plot[,1],pred$fixed_effect,col=4,lwd=3)
 legend(legend=c("True F","Pred F"),"bottomright",bty="n",lwd=3,col=c(2,4))
 
 plot(X[,1],y,col=rgb(0,0,0,alpha=0.1),main="Data and predicted response variable")
-lines(X_test_plot[,1],pred_resp,col=3,lwd=3)
+lines(X_test_plot[,1],pred_resp$response_mean,col=3,lwd=3)
 
 #--------------------Cross-validation for finding number of iterations----------------
 dtrain <- gpb.Dataset(data = X, label = y)

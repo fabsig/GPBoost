@@ -70,6 +70,12 @@ group_test = np.arange(m)
 Xtest = np.zeros((m, 2))
 Xtest[:, 0] = np.linspace(0, 1, m)
 pred = bst.predict(data=Xtest, group_data_pred=group_test)
+# pred['fixed_effect'] contains the predictions for the fixed effects / tree ensemble
+# pred['random_effect_mean'] contains the mean predictions for the latent random effects
+# pred['random_effect_cov'] contains the predictive (co-)variances (if predict_var=True) of the random effects
+# To obtain a unique prediction which combines fixed and random effects,
+#   sum the two components up: pred_combined = pred['fixed_effect'] + pred['random_effect_mean']
+
 # Compare true and predicted random effects
 plt.figure("Comparison of true and predicted random effects")
 plt.scatter(b1, pred['random_effect_mean'])
