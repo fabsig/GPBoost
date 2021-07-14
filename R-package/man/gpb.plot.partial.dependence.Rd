@@ -5,7 +5,7 @@
 \title{Plot partial dependence plots}
 \usage{
 gpb.plot.partial.dependence(model, data, variable, n.pt = 100,
-  subsample = pmin(1, n.pt * 100/nrow(pred.data)), discrete.x = FALSE,
+  subsample = pmin(1, n.pt * 100/nrow(data)), discrete.x = FALSE,
   which.class = NULL, xlab = deparse(substitute(variable)), ylab = "",
   type = if (discrete.x) "p" else "b", main = "",
   return_plot_data = FALSE, ...)
