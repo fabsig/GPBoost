@@ -46,7 +46,7 @@ For the GPBoost algorithm, it is assumed that the **response variable (aka label
 ```
 y = F(X) + Zb + xi
 ```
-where where xi is an independent error term and X are predictor variables (aka covariates or features).
+where xi is an independent error term and X are predictor variables (aka covariates or features).
 
 
 The **random effects** can consists of
