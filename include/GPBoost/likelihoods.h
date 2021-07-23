@@ -564,7 +564,11 @@ namespace GPBoost {
 					}
 					approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				}
-				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) / std::abs(approx_marginal_ll) < DELTA_REL_CONV_) {
+				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+					Log::REWarning("NA or Inf in calculation of mode for Laplace approximation");
+					break;
+				}
+				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
 					approx_marginal_ll = approx_marginal_ll_new;
 					break;
 				}
@@ -724,7 +728,11 @@ namespace GPBoost {
 				}
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) / std::abs(approx_marginal_ll) < DELTA_REL_CONV_) {
+				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+					Log::REWarning("NA or Inf in calculation of mode for Laplace approximation");
+					break;
+				}
+				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
 					approx_marginal_ll = approx_marginal_ll_new;
 					break;
 				}
@@ -840,7 +848,11 @@ namespace GPBoost {
 				}
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) / std::abs(approx_marginal_ll) < DELTA_REL_CONV_) {
+				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+					Log::REWarning("NA or Inf in calculation of mode for Laplace approximation");
+					break;
+				}
+				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
 					approx_marginal_ll = approx_marginal_ll_new;
 					break;
 				}
@@ -974,7 +986,11 @@ namespace GPBoost {
 				}
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) / std::abs(approx_marginal_ll) < DELTA_REL_CONV_) {
+				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+					Log::REWarning("NA or Inf in calculation of mode for Laplace approximation");
+					break;
+				}
+				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
 					approx_marginal_ll = approx_marginal_ll_new;
 					break;
 				}
@@ -1101,7 +1117,11 @@ namespace GPBoost {
 					}
 					approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				}
-				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) / std::abs(approx_marginal_ll) < DELTA_REL_CONV_) {
+				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+					Log::REWarning("NA or Inf in calculation of mode for Laplace approximation");
+					break;
+				}
+				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
 					approx_marginal_ll = approx_marginal_ll_new;
 					break;
 				}
