@@ -1012,6 +1012,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   
+  # This is a slow test
   test_that("GPBoost algorithm for binary classification with combined Gaussian process and grouped random effects model", {
     
     ntrain <- ntest <- 500
@@ -1106,9 +1107,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                     group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.289869345, -0.005528924, -0.477569315, -0.202396296))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2219169, 0.3440730, 0.3523430, 0.3414794))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4913889, 0.1638588, -0.9722384, 0.3293834))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.290144339, -0.005138535, -0.477228489, -0.201850869))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2219624, 0.3440523, 0.3523278, 0.3414581))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4909556,0.1634722, -0.9726520, 0.3289525))),TOLERANCE)
     
     # Use validation set to determine number of boosting iteration
     dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
