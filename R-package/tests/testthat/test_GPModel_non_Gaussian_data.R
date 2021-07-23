@@ -288,7 +288,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(gp_model, y=y, group_data_pred = group_test, cluster_ids_pred = cluster_ids_pred,
                     predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-rep(0,4))),TOLERANCE2)
-    expect_lt(sum(abs(pred$var-rep(0.4070775,4))),TOLERANCE2)
+    expect_lt(sum(abs(pred$var-rep(0.4070771,4))),TOLERANCE2)
     pred <- predict(gp_model, y=y, group_data_pred = group_test, cluster_ids_pred = cluster_ids_pred,
                     predict_response = TRUE)
     expect_lt(sum(abs(pred$mu-rep(0.5,4))),TOLERANCE2)
@@ -316,7 +316,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   test_that("Binary classification with multiple grouped random effects ", {
-
+    
     probs <- pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.57341) < probs)
     gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
@@ -432,7 +432,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Do optimization using optim and e.g. Nelder-Mead
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                         group_data = group, likelihood = "bernoulli_probit")
-    opt <- optim(par=c(1.5,1,0.1), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
+    capture.output( opt <- optim(par=c(1.5,1,0.1), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead"), file='NUL')
     cov_pars <- c(0.3181509, 1.2788456, 0.1218680)
     expect_lt(sum(abs(opt$par-cov_pars)),TOLERANCE)
     expect_lt(abs(opt$value-(63.7432077)),TOLERANCE)
@@ -731,9 +731,9 @@ test_that("Binary classification with linear predictor and grouped random effect
   
   # Standard deviations
   capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit", 
-                         y = y, X=X, params = list(std_dev = TRUE, optimizer_cov = "gradient_descent",
-                                                   optimizer_coef = "gradient_descent", 
-                                                   use_nesterov_acc = TRUE, lr_cov = 0.1, lr_coef = 0.1)),
+                                         y = y, X=X, params = list(std_dev = TRUE, optimizer_cov = "gradient_descent",
+                                                                   optimizer_coef = "gradient_descent", 
+                                                                   use_nesterov_acc = TRUE, lr_cov = 0.1, lr_coef = 0.1)),
                   file='NUL')
   cov_pars <- c(0.4003719)
   coef <- c(-0.1111257, 0.2565608, 1.5153952, 0.2636284)
@@ -774,9 +774,9 @@ test_that("Binary classification with linear predictor and Gaussian process mode
   
   # Standard deviations
   capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit", 
-                         y = y, X=X, params = list(std_dev = TRUE, optimizer_cov = "gradient_descent",
-                                                   optimizer_coef = "gradient_descent", 
-                                                   use_nesterov_acc = TRUE, lr_cov = 0.1, lr_coef = 0.1, maxit=10)),
+                                         y = y, X=X, params = list(std_dev = TRUE, optimizer_cov = "gradient_descent",
+                                                                   optimizer_coef = "gradient_descent", 
+                                                                   use_nesterov_acc = TRUE, lr_cov = 0.1, lr_coef = 0.1, maxit=10)),
                   file='NUL')
   cov_pars <- c(1.57183630, 0.03950405)
   coef <- c(0.4944061, 0.2773261, 2.6655779, 0.4213292)
@@ -1001,4 +1001,3 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(pred_resp$var, pred_resp_loaded$var)
   })
 }
-

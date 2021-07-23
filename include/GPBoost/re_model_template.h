@@ -711,7 +711,7 @@ namespace GPBoost {
 						}
 					}
 					else if (convergence_criterion == "relative_change_in_log_likelihood") {
-						if (std::abs(neg_log_likelihood_ - neg_log_likelihood_lag1_) < delta_rel_conv * std::abs(neg_log_likelihood_lag1_)) {
+						if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < delta_rel_conv * std::abs(neg_log_likelihood_lag1_)) {
 							terminate_optim = true;
 						}
 					}
@@ -2817,25 +2817,37 @@ namespace GPBoost {
 		*/
 		void InitializeLikelihoods(const string_t& likelihood) {
 			for (const auto& cluster_i : unique_clusters_) {
-				if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+				if (vecchia_approx_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
 						num_data_per_cluster_[cluster_i],
-						cum_num_rand_eff_[cluster_i][num_comps_total_]));
-				}
-				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
-					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
 						num_data_per_cluster_[cluster_i],
-						re_comps_[cluster_i][0]->GetNumUniqueREs()));
-				}
-				else if (only_one_GP_calculations_on_RE_scale_) {
-					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
-						num_data_per_cluster_[cluster_i],
-						re_comps_[cluster_i][0]->GetNumUniqueREs()));
+						false));
 				}
 				else {
-					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
-						num_data_per_cluster_[cluster_i],
-						num_data_per_cluster_[cluster_i]));
+					if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+						likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
+							num_data_per_cluster_[cluster_i],
+							cum_num_rand_eff_[cluster_i][num_comps_total_],
+							false));
+					}
+					else if (only_one_grouped_RE_calculations_on_RE_scale_) {
+						likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
+							num_data_per_cluster_[cluster_i],
+							re_comps_[cluster_i][0]->GetNumUniqueREs(),
+							false));
+					}
+					else if (only_one_GP_calculations_on_RE_scale_) {
+						likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
+							num_data_per_cluster_[cluster_i],
+							re_comps_[cluster_i][0]->GetNumUniqueREs(),
+							true));
+					}
+					else {
+						likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
+							num_data_per_cluster_[cluster_i],
+							num_data_per_cluster_[cluster_i],
+							true));
+					}
 				}
 				if (!gauss_likelihood_) {
 					likelihood_[cluster_i]->InitializeModeAvec();
@@ -3573,7 +3585,7 @@ namespace GPBoost {
 							ZSigmaZt_[cluster_i], //Note: ZSigmaZt_ contains only Sigma if only_one_GP_calculations_on_RE_scale_==true
 							re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
 							mll_cluster_i);
-						//Note: ZSigmaZt_[cluster_i] contain Sigma=Cov(b) and not Z*Sigma*Zt since has_Z_==false for this random effects component
+						//Note: ZSigmaZt_[cluster_i] contains Sigma=Cov(b) and not Z*Sigma*Zt since has_Z_==false for this random effects component
 					}
 					else {
 						likelihood_[cluster_i]->FindModePostRandEffCalcMLLStable(y_[cluster_i].data(),

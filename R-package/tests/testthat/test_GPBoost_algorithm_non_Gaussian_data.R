@@ -11,8 +11,6 @@ DEFAULT_OPTIM_PARAMS_EARLY_STOP <- list(maxit=10, lr_cov=0.1, optimizer_cov="gra
 DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV <- list(maxit=20, lr_cov=0.01, use_nesterov_acc=FALSE,
                                                     optimizer_cov="gradient_descent" )
 
-# , optimizer_coef="gradient_descent"##DELETTE
-
 # Function that simulates uniform random variables
 sim_rand_unif <- function(n, init_c=0.1){
   mod_lcg <- 134456 # modulus for linear congruential generator (random0 used)
@@ -638,15 +636,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    min_data_in_leaf = 5,
                    objective = "binary",
                    verbose = 0)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9823337 )),TOLERANCE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9927358)),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.3668229, 0.5218973, 0.6283960, 0.5446420, -1.1381589, 0.3394119))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(rep(-2.003468,3),
+    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.3555116, 0.5236091, 0.6358643, 0.5443878, -1.1371436, 0.3320095))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(rep(-2.0045,3),
                                                       rep(0,n_new)))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(rep(0.2149298,3),
-                                                     rep(0.9823337,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(rep(0.2166956 ,3),
+                                                     rep(0.9927358 ,n_new)))),TOLERANCE)
     
   })
   

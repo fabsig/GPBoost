@@ -52,11 +52,15 @@ namespace GPBoost {
 
 		/*!
 		* \brief Constructor
-		* \param likelihood Type of likelihood
+		* \param type Type of likelihood
+		* \param num_data Number of data points
+		* \param num_re Number of random effects
+		* \param Indicates whether the vector a_vec_ / a=ZSigmaZt^-1 is used or not
 		*/
 		Likelihood(string_t type,
 			data_size_t num_data,
-			data_size_t num_re) {
+			data_size_t num_re,
+			bool has_a_vec) {
 			string_t likelihood = ParseLikelihoodAlias(type);
 			if (SUPPORTED_LIKELIHOODS_.find(likelihood) == SUPPORTED_LIKELIHOODS_.end()) {
 				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
@@ -68,6 +72,7 @@ namespace GPBoost {
 				aux_pars_ = { 1. };//shape parameter, TODO: also estimate this parameter
 			}
 			chol_fact_pattern_analyzed_ = false;
+			has_a_vec_ = has_a_vec;
 		}
 
 		/*!
@@ -76,6 +81,10 @@ namespace GPBoost {
 		void InitializeModeAvec() {
 			mode_ = vec_t::Zero(num_re_);
 			mode_previous_value_ = vec_t::Zero(num_re_);
+			if (has_a_vec_) {
+				a_vec_ = vec_t::Zero(num_re_);
+				a_vec_previous_value_ = vec_t::Zero(num_re_);
+			}
 			mode_initialized_ = true;
 			first_deriv_ll_ = vec_t(num_data_);
 			second_deriv_neg_ll_ = vec_t(num_data_);
@@ -88,6 +97,9 @@ namespace GPBoost {
 		void ResetModeToPreviousValue() {
 			CHECK(mode_initialized_);
 			mode_ = mode_previous_value_;
+			if (has_a_vec_) {
+				a_vec_ = a_vec_previous_value_;
+			}
 		}
 
 		/*! \brief Destructor */
@@ -509,12 +521,13 @@ namespace GPBoost {
 			}
 			else {
 				mode_previous_value_ = mode_;
+				a_vec_previous_value_ = a_vec_;
 			}
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			vec_t location_par;
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			if (no_fixed_effects) {
-				approx_marginal_ll = LogLikelihood(y_data, y_data_int, mode_.data(), num_data);
+				approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, mode_.data(), num_data);
 			}
 			else {
 				location_par = vec_t(num_data);
@@ -522,7 +535,7 @@ namespace GPBoost {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					location_par[i] = mode_[i] + fixed_effects[i];
 				}
-				approx_marginal_ll = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+				approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			}
 			double approx_marginal_ll_new;
 			vec_t rhs, v_aux;//auxiliary variables
@@ -533,6 +546,7 @@ namespace GPBoost {
 			T_mat Id_plus_Wsqrt_ZSigmaZt_Wsqrt;
 			// Start finding mode 
 			int it;
+			bool terminate_optim = false;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				if (no_fixed_effects) {
@@ -568,7 +582,17 @@ namespace GPBoost {
 					Log::REWarning("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
 					break;
 				}
-				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+				if (it == 0) {
+					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
+						terminate_optim = true;
+					}
+				}
+				else {
+					if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+						terminate_optim = true;
+					}
+				}
+				if (terminate_optim) {
 					if (approx_marginal_ll_new < approx_marginal_ll) {
 						Log::REDebug("Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.");
 					}
@@ -639,6 +663,7 @@ namespace GPBoost {
 			}
 			else {
 				mode_previous_value_ = mode_;
+				a_vec_previous_value_ = a_vec_;
 			}
 			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
 			if (fixed_effects == nullptr) {
@@ -654,7 +679,7 @@ namespace GPBoost {
 				}
 			}
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			double approx_marginal_ll_new;
 			vec_t diag_sqrt_ZtWZ(num_re_);//sqrt of diagonal matrix ZtWZ
 			T_mat Id(num_re_, num_re_);
@@ -662,6 +687,7 @@ namespace GPBoost {
 			T_mat Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt;
 			vec_t rhs, v_aux;
 			int it;
+			bool terminate_optim = false;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -735,7 +761,18 @@ namespace GPBoost {
 					Log::REWarning("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
 					break;
 				}
-				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g", it, approx_marginal_ll, approx_marginal_ll_new);///Only for debugging
+				if (it == 0) {
+					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
+						terminate_optim = true;
+					}
+				}
+				else {
+					if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+						terminate_optim = true;
+					}
+				}
+				if (terminate_optim) {
 					if (approx_marginal_ll_new < approx_marginal_ll) {
 						Log::REDebug("Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.");
 					}
@@ -824,12 +861,13 @@ namespace GPBoost {
 				}
 			}
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+			approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			double approx_marginal_ll_new;
 			sp_mat_t SigmaI_plus_ZtWZ;
 			vec_t rhs;
 			// Start finding mode 
 			int it;
+			bool terminate_optim = false;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -858,7 +896,17 @@ namespace GPBoost {
 					Log::REWarning("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
 					break;
 				}
-				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+				if (it == 0) {
+					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
+						terminate_optim = true;
+					}
+				}
+				else {
+					if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+						terminate_optim = true;
+					}
+				}
+				if (terminate_optim) {
 					if (approx_marginal_ll_new < approx_marginal_ll) {
 						Log::REDebug("Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.");
 					}
@@ -936,12 +984,13 @@ namespace GPBoost {
 				}
 			}
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+			approx_marginal_ll = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			double approx_marginal_ll_new;
 			vec_t rhs;
 			diag_SigmaI_plus_ZtWZ_ = vec_t(num_re_);
 			// Start finding mode 
 			int it;
+			bool terminate_optim = false;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -999,7 +1048,17 @@ namespace GPBoost {
 					Log::REWarning("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
 					break;
 				}
-				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+				if (it == 0) {
+					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
+						terminate_optim = true;
+					}
+				}
+				else {
+					if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+						terminate_optim = true;
+					}
+				}
+				if (terminate_optim) {
 					if (approx_marginal_ll_new < approx_marginal_ll) {
 						Log::REDebug("Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.");
 					}
@@ -1075,9 +1134,13 @@ namespace GPBoost {
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			sp_mat_t SigmaI = B.transpose() * D_inv * B;
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
+			double approx_marginal_ll_new;
+			sp_mat_t SigmaI_plus_W;
+			vec_t rhs, B_mode;
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
+			B_mode = B * mode_;
 			if (no_fixed_effects) {
-				approx_marginal_ll = LogLikelihood(y_data, y_data_int, mode_.data(), num_data);
+				approx_marginal_ll = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, mode_.data(), num_data);
 			}
 			else {
 				location_par = vec_t(num_data);
@@ -1085,13 +1148,11 @@ namespace GPBoost {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					location_par[i] = mode_[i] + fixed_effects[i];
 				}
-				approx_marginal_ll = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+				approx_marginal_ll = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			}
-			double approx_marginal_ll_new;
-			sp_mat_t SigmaI_plus_W;
-			vec_t rhs, B_mode;
 			// Start finding mode 
 			int it;
+			bool terminate_optim = false;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				if (no_fixed_effects) {
@@ -1133,7 +1194,17 @@ namespace GPBoost {
 					Log::REWarning("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
 					break;
 				}
-				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+				if (it == 0) {
+					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
+						terminate_optim = true;
+					}
+				}
+				else {
+					if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+						terminate_optim = true;
+					}
+				}
+				if (terminate_optim) {
 					if (approx_marginal_ll_new < approx_marginal_ll) {
 						Log::REDebug("Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.");
 					}
@@ -2358,10 +2429,14 @@ namespace GPBoost {
 		data_size_t num_re_;
 		/*! \brief Posterior mode used for Laplace approximation */
 		vec_t mode_;
-		/*! \brief Posterior mode used for Laplace approximation: saving a previously found value allows for reseting the mode when having a too large step size. */
+		/*! \brief Saving a previously found value allows for reseting the mode when having a too large step size. */
 		vec_t mode_previous_value_;
 		/*! \brief Auxiliary variable a=ZSigmaZt^-1 mode_b used for Laplace approximation */
 		vec_t a_vec_;
+		/*! \brief Saving a previously found value allows for reseting the mode when having a too large step size. */
+		vec_t a_vec_previous_value_;
+		/*! \brief Indicates whether the vector a_vec_ / a=ZSigmaZt^-1 is used or not */
+		bool has_a_vec_;
 		/*! \brief First derivatives of the log-likelihood */
 		vec_t first_deriv_ll_;
 		/*! \brief Second derivatives of the negative log-likelihood (diagonal of matrix "W") */
