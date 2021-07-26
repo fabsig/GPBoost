@@ -758,7 +758,7 @@ namespace GPBoost {
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					Log::REWarning("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
+					Log::REDebug("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
 					break;
 				}
 				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g", it, approx_marginal_ll, approx_marginal_ll_new);///Only for debugging
