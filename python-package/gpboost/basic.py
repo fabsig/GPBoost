@@ -4269,9 +4269,9 @@ class GPModel(object):
                         params[param] = _format_check_1D_data(params[param], data_name="params['init_coef']",
                                                               check_data_type=True, check_must_be_int=False,
                                                               convert_to_type=np.float64)
-                        if self.num_coef is None:
-                            self.num_coef = self.params[param].shape[0]
-                        if self.params[param].shape[0] != self.num_coef:
+                        if self.num_coef is None or self.num_coef==0:
+                            self.num_coef = params[param].shape[0]
+                        if params[param].shape[0] != self.num_coef:
                             raise ValueError("params['init_coef'] does not contain the correct number of parameters")
                 if param in self.params:
                     self.params[param] = params[param]

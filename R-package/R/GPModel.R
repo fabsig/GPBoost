@@ -728,7 +728,7 @@ gpb.GPModel <- R6::R6Class(
           }
           params[["init_coef"]] <- as.vector(params[["init_coef"]])
           num_coef <- as.integer(length(params[["init_coef"]]))
-          if (is.null(private$num_coef)) {
+          if (is.null(private$num_coef) | private$num_coef==0) {
             private$num_coef <- num_coef
           }
         } else {
