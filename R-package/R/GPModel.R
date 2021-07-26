@@ -591,64 +591,6 @@ gpb.GPModel <- R6::R6Class(
       if (gpb.is.null.handle(private$handle)) {
         stop("GPModel: Gaussian process model has not been initialized")
       }
-      ##Check format of configuration parameters
-      if (!is.null(params[["init_cov_pars"]])) {
-        if (is.vector(params[["init_cov_pars"]])) {
-          if (storage.mode(params[["init_cov_pars"]]) != "double") {
-            storage.mode(params[["init_cov_pars"]]) <- "double"
-          }
-          params[["init_cov_pars"]] <- as.vector(params[["init_cov_pars"]])
-        } else {
-          stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("params$init_cov_pars"))
-        }
-        if (length(params[["init_cov_pars"]]) != private$num_cov_pars) {
-          stop("GPModel: Number of parameters in ", sQuote("params$init_cov_pars"), " does not correspond to numbers of parameters")
-        }
-      }
-      if (!is.null(params[["use_nesterov_acc"]])) {
-        if (storage.mode(params[["use_nesterov_acc"]]) != "logical") {
-          stop("GPModel: Can only use ", sQuote("logical"), " as ", sQuote("params$use_nesterov_acc"))
-        }
-      }
-      if (!is.null(params[["trace"]])) {
-        if (storage.mode(params[["trace"]]) != "logical") {
-          stop("GPModel: Can only use ", sQuote("logical"), " as ", sQuote("params$trace"))
-        }
-      }
-      if (!is.null(params[["acc_rate_cov"]])) {
-        params[["acc_rate_cov"]] <- as.numeric(params[["acc_rate_cov"]])
-      }
-      if (!is.null(params[["nesterov_schedule_version"]])) {
-        params[["nesterov_schedule_version"]] = as.integer(params[["nesterov_schedule_version"]])
-      }
-      if (!is.null(params[["lr_cov"]])) {
-        params[["lr_cov"]] <- as.numeric(params[["lr_cov"]])
-      }
-      if (!is.null(params[["maxit"]])) {
-        params[["maxit"]] <- as.integer(params[["maxit"]])
-      }
-      if (!is.null(params[["optimizer_cov"]])) {
-        if (!is.character(params[["optimizer_cov"]])) {
-          stop("GPModel: Can only use ", sQuote("character"), " as ", sQuote("optimizer_cov"))
-        }
-      }
-      if (!is.null(params[["convergence_criterion"]])) {
-        if (!is.character(params[["convergence_criterion"]])) {
-          stop("GPModel: Can only use ", sQuote("character"), " as ", sQuote("convergence_criterion"))
-        }
-      }
-      if (!is.null(params[["delta_rel_conv"]])) {
-        params[["delta_rel_conv"]] <- as.numeric(params[["delta_rel_conv"]])
-      }
-      if (!is.null(params[["momentum_offset"]])) {
-        params[["momentum_offset"]] <- as.integer(params[["momentum_offset"]])
-      }
-      if (!is.null(params[["std_dev"]])) {
-        if (storage.mode(params[["std_dev"]]) != "logical") {
-          stop("fit.GPModel: Can only use ", sQuote("logical"), " as ", sQuote("std_dev"))
-        }
-      }
-      # update parameters
       private$update_params(params)
       # prepare for calling C++
       lr_cov <- private$params[["lr_cov"]]
@@ -721,35 +663,6 @@ gpb.GPModel <- R6::R6Class(
       if (gpb.is.null.handle(private$handle)) {
         stop("GPModel: Gaussian process model has not been initialized")
       }
-      if (!is.null(params[["init_coef"]])) {
-        if (is.vector(params[["init_coef"]])) {
-          if (storage.mode(params[["init_coef"]]) != "double") {
-            storage.mode(params[["init_coef"]]) <- "double"
-          }
-          params[["init_coef"]] <- as.vector(params[["init_coef"]])
-          num_coef <- as.integer(length(params[["init_coef"]]))
-          if (is.null(private$num_coef) | private$num_coef==0) {
-            private$num_coef <- num_coef
-          }
-        } else {
-          stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("init_coef"))
-        }
-        if (length(params[["init_coef"]]) != private$num_coef) {
-          stop("GPModel: Number of parameters in ", sQuote("init_coef"), " does not correspond to numbers of covariates in ", sQuote("X"))
-        }
-      }
-      if (!is.null(params[["lr_coef"]])) {
-        params[["lr_coef"]] <- as.numeric(params[["lr_coef"]])
-      }
-      if (!is.null(params[["acc_rate_coef"]])) {
-        params[["acc_rate_coef"]] <- as.numeric(params[["acc_rate_coef"]])
-      }
-      if (!is.null(params[["optimizer_coef"]])) {
-        if (!is.character(params[["optimizer_coef"]])) {
-          stop("GPModel: Can only use ", sQuote("character"), " as ", sQuote("optimizer_coef"))
-        }
-      }
-      # update parameters
       private$update_params(params)
       # prepare for calling C++
       init_coef <- private$params[["init_coef"]]
@@ -1539,7 +1452,59 @@ gpb.GPModel <- R6::R6Class(
     },
     
     update_params = function(params) {
+      ##Check format of parameters
+      numeric_params <- c("lr_cov","acc_rate_cov","delta_rel_conv",
+                          "lr_coef","acc_rate_coef")
+      integer_params <- c("maxit","nesterov_schedule_version","momentum_offset")
+      character_params <- c("optimizer_cov","convergence_criterion","optimizer_coef")
+      logical_params <- c("use_nesterov_acc","trace","std_dev")
+      if (!is.null(params[["init_cov_pars"]])) {
+        if (is.vector(params[["init_cov_pars"]])) {
+          if (storage.mode(params[["init_cov_pars"]]) != "double") {
+            storage.mode(params[["init_cov_pars"]]) <- "double"
+          }
+          params[["init_cov_pars"]] <- as.vector(params[["init_cov_pars"]])
+        } else {
+          stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("params$init_cov_pars"))
+        }
+        if (length(params[["init_cov_pars"]]) != private$num_cov_pars) {
+          stop("GPModel: Number of parameters in ", sQuote("params$init_cov_pars"), " does not correspond to numbers of parameters")
+        }
+      }
+      if (!is.null(params[["init_coef"]])) {
+        if (is.vector(params[["init_coef"]])) {
+          if (storage.mode(params[["init_coef"]]) != "double") {
+            storage.mode(params[["init_coef"]]) <- "double"
+          }
+          params[["init_coef"]] <- as.vector(params[["init_coef"]])
+          num_coef <- as.integer(length(params[["init_coef"]]))
+          if (is.null(private$num_coef) | private$num_coef==0) {
+            private$num_coef <- num_coef
+          }
+        } else {
+          stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("init_coef"))
+        }
+        if (length(params[["init_coef"]]) != private$num_coef) {
+          stop("GPModel: Number of parameters in ", sQuote("init_coef"), " does not correspond to numbers of covariates in ", sQuote("X"))
+        }
+      }
       for (param in names(params)) {
+        if (param %in% numeric_params & !is.null(params[[param]])) {
+          params[[param]] <- as.numeric(params[[param]])
+        }
+        if (param %in% integer_params & !is.null(params[[param]])) {
+          params[[param]] <- as.integer(params[[param]])
+        }
+        if (param %in% character_params & !is.null(params[[param]])) {
+          if (!is.character(params[[param]])) {
+            stop("GPModel: Can only use ", sQuote("character"), " as ", param)
+          }
+        }
+        if (param %in% logical_params & !is.null(params[[param]])) {
+          if (!is.logical(params[[param]])) {
+            stop("GPModel: Can only use ", sQuote("logical"), " as ", param)
+          }
+        }
         if (param %in% names(private$params)) {
           if (is.null(params[[param]])) {
             private$params[param] <- list(NULL)
