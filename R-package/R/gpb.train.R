@@ -24,10 +24,10 @@
 #' #--------------------Combine tree-boosting and grouped random effects model----------------
 #' # Create random effects model
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
-#' # The default optimizer for covariance parameters for Gaussian data is Fisher scoring.
-#' # For non-Gaussian data, gradient descent is used.
-#' # Optimizer properties can be changed as follows:
-#' # re_params <- list(optimizer_cov = "gradient_descent", use_nesterov_acc = TRUE)
+#' # The default optimizer for covariance parameters (hyperparameters) is 
+#' # Nesterov-accelerated gradient descent.
+#' # This can be changed to, e.g., Nelder-Mead as follows:
+#' # re_params <- list(optimizer_cov = "nelder_mead")
 #' # gp_model$set_optim_params(params=re_params)
 #' # Use trace = TRUE to monitor convergence:
 #' # re_params <- list(trace = TRUE)

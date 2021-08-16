@@ -313,11 +313,6 @@ Boosting with trees as base learners has several tuning parameters. Arguably the
 ```{r cv, results='show', message=F, cache=cache, eval=run_cv}
 # Create random effects model and datasets
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-gp_model$set_optim_params(params=list("optimizer_cov" = "gradient_descent"))
-# Use (Nesterov accelerated) gradient descent instead of the default option 
-#   Fisher scoring (aka natural gradient descent) since gradient descent is more
-#   robust for "bad choices" of tuning parameters. In these situations the 
-#   negative log-likelihood of the GP model can be very flat which can cause problems for Fisher scoring.
 dtrain <- gpb.Dataset(data = X, label = y)
 # Candidate parameter grid
 param_grid = list("learning_rate" = c(0.1,0.05,0.01),
@@ -346,7 +341,6 @@ opt_params <- gpb.grid.search.tune.parameters(
 ```{python cv_python, collapse=T, message=F, cache=cache, eval=run_python_cv}
 # Create random effects model and Dataset
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
-gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent"})
 data_train = gpb.Dataset(X, y)
 # Candidate parameter grid
 param_grid = {'learning_rate': [0.1,0.05,0.01], 'min_data_in_leaf': [5,10,20,50],

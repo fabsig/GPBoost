@@ -35,10 +35,10 @@ Xtest <- cbind(x_test,rep(0,length(x_test)))
 #--------------------Training----------------
 # Create random effects model
 gp_model <- GPModel(group_data = group)
-# The default optimizer for covariance parameters is Fisher scoring.
-# This can be changed to e.g. Nesterov accelerated gradient descent as follows:
-# re_params <- list(trace=TRUE,optimizer_cov="gradient_descent",
-#                   lr_cov = 0.05, use_nesterov_acc = TRUE)
+# The default optimizer for covariance parameters (hyperparameters) is 
+# Nesterov-accelerated gradient descent.
+# This can be changed to, e.g., Nelder-Mead as follows:
+# re_params <- list(trace=TRUE, optimizer_cov="nelder_mean")
 # gp_model$set_optim_params(params=re_params)
 
 # Train boosting with random effects model
