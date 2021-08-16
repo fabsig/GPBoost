@@ -98,8 +98,6 @@ include_directories(${OPTIMLIB_DIR})
 
 # See https://gitlab.com/libeigen/eigen/-/blob/master/COPYING.README
 ADD_DEFINITIONS(-DEIGEN_MPL2_ONLY)
-# To avoid problems with finding Eigen. See, e.g., https://github.com/opencv/opencv/issues/14868
-ADD_DEFINITIONS(-DENABLE_PRECOMPILED_HEADERS=OFF)
 
 if(__BUILD_FOR_R)
     list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
