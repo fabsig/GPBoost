@@ -288,11 +288,12 @@ y <- y + eps + xi # add random effects and error to data
 
 # Create Gaussian process model
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-# The default optimizer for covariance parameters is Fisher scoring.
-# This can be changed to e.g. Nesterov accelerated gradient descent as follows:
-# re_params <- list(optimizer_cov = "gradient_descent", lr_cov = 0.05,
-#                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
+# The default optimizer for covariance parameters (hyperparameters) is 
+# Nesterov-accelerated gradient descent.
+# This can be changed to, e.g., Nelder-Mead as follows:
+# re_params <- list(trace=TRUE, optimizer_cov="nelder_mean")
 # gp_model$set_optim_params(params=re_params)
+
 # Train model
 print("Train boosting with Gaussian process model")
 bst <- gpboost(data = X,
