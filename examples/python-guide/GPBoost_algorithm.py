@@ -219,10 +219,9 @@ y = F + eps + xi  # observed data
 
 # define GPModel
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
-# The default optimizer for covariance parameters (hyperparameters) is Fisher scoring.
-# This can be changed as follows:
-# gp_model.set_optim_params(params={"optimizer_cov": "gradient_descent", "lr_cov": 0.05,
-#                                   "use_nesterov_acc": True, "acc_rate_cov": 0.5})
+# The default optimizer for covariance parameters (hyperparameters) is Nesterov-accelerated gradient descent.
+# This can be changed to, e.g., Nelder-Mead as follows:
+# gp_model.set_optim_params(params={"optimizer_cov": "nelder_mead"})
 # Use the option "trace": true to monitor convergence of hyperparameter estimation of the gp_model. E.g.:
 # gp_model.set_optim_params(params={"trace": True})
 # create dataset for gpb.train

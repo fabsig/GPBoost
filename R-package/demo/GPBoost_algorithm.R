@@ -38,7 +38,7 @@ gp_model <- GPModel(group_data = group)
 # The default optimizer for covariance parameters (hyperparameters) is 
 # Nesterov-accelerated gradient descent.
 # This can be changed to, e.g., Nelder-Mead as follows:
-# re_params <- list(trace=TRUE, optimizer_cov="nelder_mean")
+# re_params <- list(trace=TRUE, optimizer_cov="nelder_mead")
 # gp_model$set_optim_params(params=re_params)
 
 # Train boosting with random effects model
@@ -291,7 +291,7 @@ gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 # The default optimizer for covariance parameters (hyperparameters) is 
 # Nesterov-accelerated gradient descent.
 # This can be changed to, e.g., Nelder-Mead as follows:
-# re_params <- list(trace=TRUE, optimizer_cov="nelder_mean")
+# re_params <- list(trace=TRUE, optimizer_cov="nelder_mead")
 # gp_model$set_optim_params(params=re_params)
 
 # Train model
