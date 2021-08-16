@@ -325,7 +325,7 @@ namespace GPBoost {
 		double delta_rel_conv_ = 1.0e-6;
 		bool use_nesterov_acc_ = true;//only used for "gradient_descent"
 		int nesterov_schedule_version_ = 0;
-		string_t optimizer_cov_pars_ = "gradient_descent";//"gradient_descent", "fisher_scoring", or "nelder_mead" (The default = "fisher_scoring" is changed to "gradient_descent" for non-Gaussian data upon initialization)
+		string_t optimizer_cov_pars_ = "gradient_descent";//"gradient_descent", "fisher_scoring", or "nelder_mead"
 		vec_t coef_;//linear regression coefficients for fixed effects (in case there are any)
 		bool has_covariates_ = false;
 		bool coef_initialized_ = false;

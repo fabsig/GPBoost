@@ -95,7 +95,6 @@ namespace GPBoost {
 			num_cov_pars_ = re_model_den_->num_cov_par_;
 		}
 		if (!GaussLikelihood()) {
-			//optimizer_cov_pars_ = "gradient_descent";
 			optimizer_coef_ = "gradient_descent";
 		}
 	}
