@@ -161,7 +161,6 @@ gpboost*.tar.gz
 gpboost*.tgz
 gpboost.Rcheck/
 miktex*.zip
-*.def
 
 # Files created by R and Python examples and tests
 **/lgb-Dataset.data
