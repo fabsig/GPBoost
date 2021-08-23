@@ -75,21 +75,6 @@ print("Best number of iterations: " + str(best_iter))
 # Best number of iterations: 32
 
 # --------------------Model interpretation----------------
-# Plotting feature importances
-gpb.plot_importance(bst)
-
-# Partial dependence plots
-from pdpbox import pdp
-# Single variable plots (takes a few seconds to compute)
-pdp_dist = pdp.pdp_isolate(model=bst, dataset=X_train, model_features=X_train.columns,
-                           feature='variable_2', num_grid_points=50)
-pdp.pdp_plot(pdp_dist, 'variable_2', plot_lines=True)
-# Two variable interaction plot
-inter_rf = pdp.pdp_interact(model=bst, dataset=X_train, model_features=X_train.columns,
-                             features=['variable_1','variable_2'])
-pdp.pdp_interact_plot(inter_rf, ['variable_1','variable_2'], x_quantile=True,
-                      plot_type='contour', plot_pdp=True)# ignore any error message
-
 # SHAP values and dependence plots
 # Note: you need shap version>=0.36.0
 import shap
@@ -97,6 +82,21 @@ shap_values = shap.TreeExplainer(bst).shap_values(X_test)
 shap.summary_plot(shap_values, X_test)
 shap.dependence_plot("variable_2", shap_values, X_test)
 
+# Split-based feature importances
+gpb.plot_importance(bst)
+# Classical partial dependence plots
+from pdpbox import pdp
+# Single variable plots (takes a few seconds to compute)
+pdp_dist = pdp.pdp_isolate(model=bst, dataset=X_train, model_features=X_train.columns,
+                           feature='variable_2', num_grid_points=50,
+                           predict_kwds={"ignore_gp_model": True})
+pdp.pdp_plot(pdp_dist, 'variable_2', plot_lines=True)
+# Two variable interaction plot
+inter_rf = pdp.pdp_interact(model=bst, dataset=X_train, model_features=X_train.columns,
+                             features=['variable_1','variable_2'],
+                             predict_kwds={"ignore_gp_model": True})
+pdp.pdp_interact_plot(inter_rf, ['variable_1','variable_2'], x_quantile=True,
+                      plot_type='contour', plot_pdp=True)# ignore any error message
 
 # --------------------Comparison to alternative approaches----------------
 results = pd.DataFrame(columns = ["RMSE","Time"],
