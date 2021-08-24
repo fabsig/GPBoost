@@ -32,7 +32,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 ## Modeling background
 The GPBoost library allows for combining tree-boosting with Gaussian process and grouped random effects models in order to leverage advantages of both techniques and to remedy drawbacks of these two modeling approaches.
 
-#### Background on Gaussian process and grouped random effects models
+### Background on Gaussian process and grouped random effects models
 
 **Tree-boosting** has the following **advantages and disadvantages**: 
 
@@ -53,7 +53,7 @@ The GPBoost library allows for combining tree-boosting with Gaussian process and
 | - Modeling of dependency which, among other things, can allow for more efficient learning of the fixed effects (predictor) function |  |
 | - Grouped random effects can be used for modeling high-cardinality categorical variables |  |
 
-#### GPBoost and LaGaBoost algorithms
+### GPBoost and LaGaBoost algorithms
 
 The GPBoost library implements two algorithms for combining tree-boosting with Gaussian process and grouped random effects models: the **GPBoost algorithm** [(Sigrist, 2020)](http://arxiv.org/abs/2004.02653) for data with a Gaussian likelihood (conditional distribution of data) and the **LaGaBoost algorithm** [(Sigrist, 2021)](https://arxiv.org/abs/2105.08966) for data with non-Gaussian likelihoods.
 
