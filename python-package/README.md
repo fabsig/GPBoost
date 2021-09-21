@@ -53,13 +53,13 @@ pip install gpboost -U
 
 #### Requirements
 
-- For **Windows** users, [VC runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads) is needed if **Visual Studio** (2015 or newer) is not installed.
+* For **Windows** users, [VC runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads) is needed if **Visual Studio** (2015 or newer) is not installed.
 
-- For **Linux** users, **glibc** >= 2.14 is required. Also, in some rare cases, when you get the ``OSError: libgomp.so.1: cannot open shared object file: No such file or directory`` error when importing GPBoost, you need to install the OpenMP runtime library separately (use your package manager and search for ``lib[g|i]omp`` for doing this).
+* For **Linux** users, **glibc** >= 2.14 is required. Also, in some rare cases, when you get the ``OSError: libgomp.so.1: cannot open shared object file: No such file or directory`` error when importing GPBoost, you need to install the OpenMP runtime library separately (use your package manager and search for ``lib[g|i]omp`` for doing this).
 
-- For **macOS** users:
+* For **macOS** users:
 
-  - The library file in distribution wheels is built by the **Apple Clang** (Xcode version 12.3 is used starting from GPBoost version 0.3.0) compiler. You need to install the **OpenMP** library. You can install the **OpenMP** library by the following command: ``brew install libomp``.
+  * The library file in distribution wheels is built by the **Apple Clang** (Xcode version 12.3 is used starting from GPBoost version 0.3.0) compiler. You need to install the **OpenMP** library. You can install the **OpenMP** library by the following command: ``brew install libomp``.
 
 ### Installation from source
 
@@ -67,15 +67,15 @@ Installation from source can be either done from PyPI or GitHub.
 
 #### Requirements for installation from source
 
-- Installation from source requires that you have installed [**CMake**](https://cmake.org/).
+* Installation from source requires that you have installed [**CMake**](https://cmake.org/).
 
-- For **macOS** users, you can perform installation either with **Apple Clang** or **gcc**.
+* For **macOS** users, you can perform installation either with **Apple Clang** or **gcc**.
 
-  - In case you prefer **Apple Clang**, you should install **OpenMP** (details for installation can be found in the [Installation Guide](https://github.com/microsoft/LightGBM/blob/master/docs/Installation-Guide.rst#apple-clang)) first and **CMake** version 3.16 or higher is required. Only Apple Clang version 8.1 or higher is supported.
+  * In case you prefer **Apple Clang**, you should install **OpenMP** (details for installation can be found in the [Installation Guide](https://github.com/microsoft/LightGBM/blob/master/docs/Installation-Guide.rst#apple-clang)) first and **CMake** version 3.16 or higher is required. Only Apple Clang version 8.1 or higher is supported.
 
-  - In case you prefer **gcc**, you need to install it (details for installation can be found in the [Installation Guide](https://github.com/microsoft/LightGBM/blob/master/docs/Installation-Guide.rst#gcc)) and specify compilers by running ``export CXX=g++-7 CC=gcc-7`` (replace "7" with version of **gcc** installed on your machine) first.
+  * In case you prefer **gcc**, you need to install it (details for installation can be found in the [Installation Guide](https://github.com/microsoft/LightGBM/blob/master/docs/Installation-Guide.rst#gcc)) and specify compilers by running ``export CXX=g++-7 CC=gcc-7`` (replace "7" with version of **gcc** installed on your machine) first.
 
-- For **Windows** users, **Visual Studio** (or [VS Build Tools](https://visualstudio.microsoft.com/downloads/)) is needed. 
+* For **Windows** users, **Visual Studio** (or [VS Build Tools](https://visualstudio.microsoft.com/downloads/)) is needed. 
 
 
 #### Installation from source from PyPI

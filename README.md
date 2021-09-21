@@ -25,7 +25,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
    * [Combine tree-boosting with grouped random effects models](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) 
    * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)
    * [Use GPBoost for generalized linear mixed effects models (GLMMs)](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c) 
-- [This demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
+* [This demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
 * Detailed [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) presenting the most important parameters / settings for the GPBoost library
 * [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst) an exhaustive list of all possible parametes and customizations for the tree-boosting part
