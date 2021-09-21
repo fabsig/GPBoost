@@ -31,7 +31,7 @@ knitr::opts_chunk$set(fig.width=7, fig.height=5)
 library(reticulate)
 # py_install("gpboost",pip=TRUE)
 # py_install("shap",pip=TRUE)
-run_python = TRUE # Not run for publication
+run_python = TRUE
 run_cv = FALSE # Not run for publication
 run_python_cv = run_python & run_cv
 export_data_from_R_to_python = TRUE
@@ -90,18 +90,21 @@ if(cov_function=="exponential"){
 }
 C <- t(chol(Sigma))
 b_all <- sqrt(sigma2_1)*C%*%rnorm(n_all)
-b <- b_all[(nx^2+1):n_all] # training data GP
+b_train <- b_all[(nx^2+1):n_all] # training data GP
 # Mean function. Use two predictor variables of which only one has an effect for easy visualization
 f1d <- function(x) sin(3*pi*x) + (1 + 3 * pmax(0,x-0.5)/(x-0.5)) - 3
 X <- matrix(runif(2*n), ncol=2, dimnames=list(NULL,paste0("Covariate_",1:2)))
-F_X <- f1d(X[,1]) # mean
-xi <- sqrt(sigma2) * rnorm(n) # simulate error term
-y <- F_X + b + xi # observed data
+F_X_train <- f1d(X[,1]) # mean
+xi_train <- sqrt(sigma2) * rnorm(n) # simulate error term
+y <- F_X_train + b_train + xi_train # observed data
 # test data
 x <- seq(from=0,to=1,length.out=nx^2)
 x[x==0.5] = 0.5 + 1E-10
 X_test <- cbind(Covariate_1=x, Covariate_2=rep(0,nx^2))
-y_test <- f1d(X_test[,1]) + b_all[1:nx^2] + sqrt(sigma2) * rnorm(nx^2)
+F_X_test <- f1d(X_test[,1])
+b_test <- b_all[1:nx^2]
+xi_test <- sqrt(sigma2) * rnorm(nx^2)
+y_test <- F_X_test + b_test + xi_test
 ```
 </div>
 
@@ -150,19 +153,22 @@ for i in range(0, n_all):
 Sigma = sigma2_1 * np.exp(-D / rho) + np.diag(np.zeros(n_all) + 1e-10)
 C = np.linalg.cholesky(Sigma)
 b_all = C.dot(np.random.normal(size=n_all))
-b = b_all[(nx*nx):n_all] # training data GP
+b_train = b_all[(nx*nx):n_all] # training data GP
 # Mean function. Use two predictor variables of which only one has an effect for easy visualization
 def f1d(x):
   return np.sin(3*np.pi*x) + (1 + 3 * np.maximum(np.zeros(len(x)),x-0.5)/(x-0.5)) - 3
 X = np.random.rand(n, 2)
-F_X = f1d(X[:, 0]) # mean
-xi = np.sqrt(sigma2) * np.random.normal(size=n)  # simulate error term
-y = F_X + b + xi  # observed data
+F_X_train = f1d(X[:, 0]) # mean
+xi_train = np.sqrt(sigma2) * np.random.normal(size=n)  # simulate error term
+y = F_X_train + b_train + xi_train  # observed data
 # test data
 x = np.linspace(0,1,nx**2)
 x[x==0.5] = 0.5 + 1e-10
 X_test = np.column_stack((x,np.zeros(nx**2)))
-y_test = f1d(X_test[:, 0]) + b_all[0:(nx**2)] + np.sqrt(sigma2) * np.random.normal(size=(nx**2))
+F_X_test = f1d(X_test[:, 0])
+b_test = b_all[0:(nx**2)]
+xi_test = np.sqrt(sigma2) * np.random.normal(size=(nx**2))
+y_test = F_X_test + b_test + xi_test
 ```
 </div>
 
