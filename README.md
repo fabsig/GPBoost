@@ -20,8 +20,12 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 **For more information**, you may want to have a look at:
 
 * The [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package) with installation instructions for the Python and R packages
-* The companion articles [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) and [**Sigrist (2021)**](https://arxiv.org/abs/2105.08966), this [**blog post**](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) on how to combine tree-boosting with mixed effects models, this [**blog post**](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d) on how to combine tree-boosting with Gaussian processes for spatial data, or this [**blog post**](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c) on how to use GPBoost for generalized linear mixed effects models (GLMMs)
-* The [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrating how GPBoost can be used in R and Python
+* The companion articles [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) and [**Sigrist (2021)**](https://arxiv.org/abs/2105.08966)
+* These **blog posts** on how to 
+   * [Combine tree-boosting with grouped random effects models](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) 
+   * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)
+   * [Use GPBoost for generalized linear mixed effects models (GLMMs)](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c) 
+- [This demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
 * Detailed [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) presenting the most important parameters / settings for the GPBoost library
 * [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst) an exhaustive list of all possible parametes and customizations for the tree-boosting part

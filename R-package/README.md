@@ -14,7 +14,8 @@ This is the R package implementation of the GPBoost library. See https://github.
 ### Table of Contents
 * [Examples](#examples)
 * [Installation](#installation)
-* [Installation from source](#installation-from-source)
+  * [Installation from CRAN](#installation-from-cran)
+  * [Installation from source](#installation-from-source)
 * [Testing](#testing)
 
 ## Examples
@@ -25,9 +26,12 @@ This is the R package implementation of the GPBoost library. See https://github.
   * [Parameter tuning](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/parameter_tuning.R) using deterministic or random grid search
   * [Linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/linear_Gaussian_process_mixed_effects_models.R)
   * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/generalized_linear_Gaussian_process_mixed_effects_models.R)
-* [**GPBoost R and Python demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) illustrates how GPBoost can be used in R and Python
+* **Blog posts** on how to 
+   * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)
+   * [Use GPBoost for generalized linear mixed effects models (GLMMs)](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c) 
+* [This demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
 
-The following is also a short example.
+This is also a short example:
 
 ```r
 # Combine tree-boosting and grouped random effects model
@@ -43,13 +47,15 @@ pred$random_effect_mean + pred$fixed_effect
 
 ## Installation
 
+### Installation from CRAN
+
 The `gpboost` package is [available on CRAN](https://cran.r-project.org/package=gpboost) and can be installed as follows:
 
 ```r
 install.packages("gpboost", repos = "https://cran.r-project.org")
 ```
 
-## Installation from source
+### Installation from source
 
 It is much easier to install the package from CRAN. However, the package can also be build from source as described in the following. In short, the **main steps** for installation are the following ones:
 
@@ -98,7 +104,10 @@ The default compiler is Visual Studio (or [VS Build Tools](https://visualstudio.
 
 #### Mac OS Preparation
 
-You can perform installation either with **Apple Clang** or **gcc**. In case you prefer **Apple Clang**, you should install **OpenMP** (details for installation can be found in the [Installation Guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#apple-clang)) first and **CMake** version 3.12 or higher is required. In case you prefer **gcc**, you need to install it (details for installation can be found in the [Installation Guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#gcc)) and set some environment variables to tell R to use `gcc` and `g++`. If you install these from Homebrew, your versions of `g++` and `gcc` are most likely in `/usr/local/bin`, as shown below.
+You can perform installation either with **Apple Clang** or **gcc**. 
+
+* In case you prefer **Apple Clang**, you should install **OpenMP** (details for installation can be found in the [Installation Guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#apple-clang)) first and **CMake** version 3.12 or higher is required. Only Apple Clang version 8.1 or higher is supported. 
+* In case you prefer **gcc**, you need to install it (details for installation can be found in the [Installation Guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#gcc)) and set some environment variables to tell R to use `gcc` and `g++`. If you install these from Homebrew, your versions of `g++` and `gcc` are most likely in `/usr/local/bin`, as shown below.
 
 ```
 # replace 8 with version of gcc installed on your machine
