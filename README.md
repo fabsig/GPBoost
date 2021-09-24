@@ -113,4 +113,4 @@ See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) and [Sigrist (2021)](https
 
 ## License
 
-This project is licensed under the terms of the Apache License 2.0. See [LICENSE](https://github.com/fabsig/GPBoost/blob/master/LICENSE) for additional details.
+This project is licensed under the terms of the Apache License 2.0. See [LICENSE](https://github.com/fabsig/GPBoost/blob/master/LICENSE) for more information.
