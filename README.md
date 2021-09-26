@@ -34,32 +34,14 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 
 
 ## Modeling background
-The GPBoost library allows for combining tree-boosting with Gaussian process and grouped random effects models in order to leverage advantages of both techniques and to remedy drawbacks of these two modeling approaches.
-
-### Background on Gaussian process and grouped random effects models
-
-**Tree-boosting** has the following **advantages and disadvantages**: 
-
-| Advantages of tree-boosting | Disadvantages of tree-boosting |
-|:--- |:--- |
-| - Achieves state-of-the-art predictive accuracy | - Assumes conditional independence of samples |
-| - Automatic modeling of non-linearities, discontinuities, and complex high-order interactions | - Produces discontinuous predictions for, e.g., spatial data |
-| - Robust to outliers in and multicollinearity among predictor variables | - Can have difficulty with high-cardinality categorical variables |
-| - Scale-invariant to monotone transformations of the predictor variables |  |
-| - Automatic handling of missing values in predictor variables |  |
-
-**Gaussian process (GPs) and grouped random effects models** (aka mixed effects models or latent Gaussian models) have the following **advantages and disadvantages**:
-
-| Advantages of GPs / random effects models | Disadvantages of GPs / random effects models |
-|:--- |:--- |
-| - Probabilistic predictions which allows for uncertainty quantification | - Zero or a linear prior mean (predictor, fixed effects) function |
-| - Incorporation of reasonable prior knowledge. E.g. for spatial data: "close samples are more similar to each other than distant samples" and a function should vary contiunuously / smoothly over space |  |
-| - Modeling of dependency which, among other things, can allow for more efficient learning of the fixed effects (predictor) function |  |
-| - Grouped random effects can be used for modeling high-cardinality categorical variables |  |
+The GPBoost library allows for combining tree-boosting with Gaussian process (GP) and grouped random effects models in order to leverage advantages and remedy drawbacks of these two approaches (see [below](#background-on-gaussian-process-and-grouped-random-effects-models) for a list with advantages and disadvnatages of these modeling techniques).
 
 ### GPBoost and LaGaBoost algorithms
 
-The GPBoost library implements two algorithms for combining tree-boosting with Gaussian process and grouped random effects models: the **GPBoost algorithm** [(Sigrist, 2020)](http://arxiv.org/abs/2004.02653) for data with a Gaussian likelihood (conditional distribution of data) and the **LaGaBoost algorithm** [(Sigrist, 2021)](https://arxiv.org/abs/2105.08966) for data with non-Gaussian likelihoods.
+The GPBoost library implements two algorithms for combining tree-boosting with Gaussian process and grouped random effects models: 
+
+* The **GPBoost algorithm** [(Sigrist, 2020)](http://arxiv.org/abs/2004.02653) for data with a Gaussian likelihood (conditional distribution of data)
+* The **LaGaBoost algorithm** [(Sigrist, 2021)](https://arxiv.org/abs/2105.08966) for data with non-Gaussian likelihoods.
 
 **For Gaussian likelihoods (GPBoost algorithm)**, it is assumed that the response variable (aka label) y is the sum of a potentially non-linear mean function F(X) and random effects Zb:
 ```
@@ -74,7 +56,7 @@ m = G(F(X) + Zb)
 ```
 where G() is a so-called link function.
 
-In the GPBoost library, the **random effects** can consists of
+In the GPBoost library, the **random effects** can consist of
 
 - Gaussian processes (including random coefficient processes)
 - Grouped random effects (including nested, crossed, and random coefficient effects)
@@ -83,6 +65,27 @@ In the GPBoost library, the **random effects** can consists of
 Learning the above-mentioned models means **learning both the covariance parameters** (aka hyperparameters) of the random effects and the **predictor function F(X)**. Both the GPBoost and the LaGaBoost algorithms iteratively learn the covariance parameters and add a tree to the ensemble of trees F(X) using a [gradient and/or a Newton boosting](https://www.sciencedirect.com/science/article/abs/pii/S0957417420308381) step. In the GPBoost library, covariance parameters can (currently) be learned using (Nesterov accelerated) gradient descent, Fisher scoring (aka natural gradient descent), and Nelder-Mead. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. 
 
 See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) and [Sigrist (2021)](https://arxiv.org/abs/2105.08966) for more details.
+
+### Background on Gaussian process and grouped random effects models
+
+**Tree-boosting** has the following **advantages and disadvantages**: 
+
+| Advantages of tree-boosting | Disadvantages of tree-boosting |
+|:--- |:--- |
+| - State-of-the-art prediction accuracy | - Assumes conditional independence of samples |
+| - Automatic modeling of non-linearities, discontinuities, and complex high-order interactions | - Produces discontinuous predictions for, e.g., spatial data |
+| - Robust to outliers in and multicollinearity among predictor variables | - Can have difficulty with high-cardinality categorical variables |
+| - Scale-invariant to monotone transformations of predictor variables |  |
+| - Automatic handling of missing values in predictor variables |  |
+
+**Gaussian process (GPs) and grouped random effects models** (aka mixed effects models or latent Gaussian models) have the following **advantages and disadvantages**:
+
+| Advantages of GPs / random effects models | Disadvantages of GPs / random effects models |
+|:--- |:--- |
+| - Probabilistic predictions which allows for uncertainty quantification | - Zero or a linear prior mean (predictor, fixed effects) function |
+| - Incorporation of reasonable prior knowledge. E.g. for spatial data: "close samples are more similar to each other than distant samples" and a function should vary continuously / smoothly over space |  |
+| - Modeling of dependency which, among other things, can allow for more efficient learning of the fixed effects (predictor) function |  |
+| - Grouped random effects can be used for modeling high-cardinality categorical variables |  |
 
 ## News
 
