@@ -41,7 +41,7 @@ The GPBoost library allows for combining tree-boosting with Gaussian process (GP
 The GPBoost library implements two algorithms for combining tree-boosting with Gaussian process and grouped random effects models: 
 
 * The **GPBoost algorithm** [(Sigrist, 2020)](http://arxiv.org/abs/2004.02653) for data with a Gaussian likelihood (conditional distribution of data)
-* The **LaGaBoost algorithm** [(Sigrist, 2021)](https://arxiv.org/abs/2105.08966) for data with non-Gaussian likelihoods.
+* The **LaGaBoost algorithm** [(Sigrist, 2021)](https://arxiv.org/abs/2105.08966) for data with non-Gaussian likelihoods
 
 **For Gaussian likelihoods (GPBoost algorithm)**, it is assumed that the response variable (aka label) y is the sum of a potentially non-linear mean function F(X) and random effects Zb:
 ```
