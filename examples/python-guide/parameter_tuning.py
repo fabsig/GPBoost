@@ -15,7 +15,6 @@ def f1d(x):
     return 1 / (1 + np.exp(-(x - 0.5) * 10)) - 0.5
 print("It is recommended that the examples are run in interactive mode")
 
-
 # --------------------Simulate data grouped random effects data----------------
 n = 1000  # number of samples
 m = 100  # number of groups
@@ -34,7 +33,6 @@ f = f1d(X[:, 0])
 probs = stats.norm.cdf(f + eps)
 y = np.random.uniform(size=n) < probs
 y = y.astype(np.float64)
-
 
 # --------------------Parameter tuning using cross-validation: deterministic and random grid search----------------
 # Create random effects model and Dataset
@@ -105,7 +103,6 @@ print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
 print("Best parameters: " + str(opt_params['best_params']))
 # Note: it is coincidence that the AUC and the log-loss have similar values on this data
-
 
 # --------------------Parameter tuning using a validation set----------------
 # Define training and validation data by setting indices of 'folds'

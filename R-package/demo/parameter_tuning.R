@@ -11,7 +11,6 @@ sim_non_lin_f <- function(n){
   return(list(X=X,f=f))
 }
 
-
 # --------------------Simulate data grouped random effects data----------------
 n <- 1000 # number of samples
 m <- 100 # number of groups
@@ -28,7 +27,6 @@ X <- sim_data$X
 # Simulate response variable
 probs <- pnorm(f+eps)
 y <- as.numeric(runif(n) < probs)
-
 
 # --------------------Parameter tuning using cross-validation: deterministic and random grid search----------------
 # Create random effects model and Dataset
@@ -94,7 +92,6 @@ print(paste0("Best parameters: ", paste0(unlist(lapply(seq_along(opt_params$best
 print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
 # Note: it is coincidence that the AUC and the log-loss have similar values on this data
-
 
 # --------------------Parameter tuning using a validation set----------------
 # Define training and validation data by setting indices of 'folds'
