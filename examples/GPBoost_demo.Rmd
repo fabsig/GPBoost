@@ -321,9 +321,13 @@ Boosting with trees as base learners has several tuning parameters. Arguably the
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 dtrain <- gpb.Dataset(data = X, label = y)
 # Candidate parameter grid
-param_grid = list("learning_rate" = c(0.1,0.05,0.01),
-                  "min_data_in_leaf" = c(5,10,20,50),
+param_grid = list("learning_rate" = c(1,0.1,0.01),
+                  "min_data_in_leaf" = c(1,10,100),
                   "max_depth" = c(1,3,5,10))
+# Note: it is advisable to also try larger learning rates (e.g., 1 or larger) since when using 
+#         gradient boosting the scale of the gradient can depend on the loss function and the data.
+#         This is in contrast to Newton boosting, where learning rates smaller than 0.1 are typically used
+#         since the natural gradient is not scale dependent.
 # Other parameters not contained in the grid of tuning parameters
 params <- list(objective = "regression_l2", verbose = 0, "num_leaves" = 2^10)
 # Use random grid search and cross-validation. Set 'num_try_random=NULL' to use deterministic grid search
@@ -336,7 +340,7 @@ opt_params <- gpb.grid.search.tune.parameters(
   gp_model = gp_model,
   verbose_eval = 1,
   nrounds = 1000,
-  early_stopping_rounds = 5,
+  early_stopping_rounds = 10,
   eval = "l2")
 # Found the following parameters:
 # ***** New best score (0.397766105827059) found for the following parameter combination: learning_rate: 0.01, min_data_in_leaf: 10, max_depth: 3, nrounds: 247
@@ -349,8 +353,12 @@ opt_params <- gpb.grid.search.tune.parameters(
 gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
 data_train = gpb.Dataset(X, y)
 # Candidate parameter grid
-param_grid = {'learning_rate': [0.1,0.05,0.01], 'min_data_in_leaf': [5,10,20,50],
-'max_depth': [1,3,5,10,20]}
+param_grid = {'learning_rate': [1,0.1,0.01], 'min_data_in_leaf': [1,10,100],
+'max_depth': [1,3,5,10]}
+# Note: it is advisable to also try larger learning rates (e.g., 1 or larger) since when using 
+#         gradient boosting the scale of the gradient can depend on the loss function and the data.
+#         This is in contrast to Newton boosting, where learning rates smaller than 0.1 are typically used
+#         since the natural gradient is not scale dependent.
 # Other parameters not contained in the grid of tuning parameters
 params = { 'objective': 'regression_l2', 'verbose': 0, 'num_leaves': 2**17 }
 # Use a deterministic grid search and cross-validation. Set 'num_try_random' to use a random grid search
@@ -364,7 +372,7 @@ opt_params = gpb.grid_search_tune_parameters(
   train_set=data_train,
   verbose_eval=1,
   num_boost_round=1000, 
-  early_stopping_rounds=5,
+  early_stopping_rounds=10,
   seed=1,
   metrics='l2')
 print("Best number of iterations: " + str(opt_params['best_iter']))
