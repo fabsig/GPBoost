@@ -37,10 +37,12 @@ params <- list(objective = "binary", verbose = 0, "num_leaves" = 2^10, "max_bin"
 # Small grid and deterministic search
 param_grid_small = list("learning_rate" = c(1,0.1,0.01), "min_data_in_leaf" = c(20,100),
                         "max_depth" = c(5,10))
-# Note: it is advisable to also try larger learning rates (e.g., 1 or larger) since when using 
-#         gradient boosting the scale of the gradient can depend on the loss function and the data.
-#         This is in contrast to Newton boosting, where learning rates smaller than 0.1 are typically used
-#         since the natural gradient is not scale dependent.
+# Note: Usually smaller learning rates lead to more accurate models. However, it is
+#         advisable to also try larger learning rates (e.g., 1 or larger) since when using 
+#         gradient boosting, the scale of the gradient can depend on the loss function and the data,
+#         and even a larger number of boosting iterations (say 1000) might not be enough for small learning rates.
+#         This is in contrast to Newton boosting, where learning rates smaller than 0.1 are used
+#         since the natural gradient is not scale-dependent.
 set.seed(100)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid_small,
                                               params = params,
