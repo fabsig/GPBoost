@@ -368,7 +368,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    train_gp_model_cov_pars = FALSE,
                    verbose = 0)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1, 1))),TOLERANCE)
-    # GPBoostOOS algorithm: fit parameters on out-of-sample data
+    # LaGaBoostOOS algorithm
+    #   1. Run LaGaBoost algorithm separately on every fold and fit parameters on out-of-sample data
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
     gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
     cvbst <- gpb.cv(params = params,
@@ -385,6 +386,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4255016, 0.3026152))),TOLERANCE)
     expect_equal(cvbst$best_iter, 15)
     expect_lt(abs(cvbst$best_score-0.242), TOLERANCE)
+    #   2. Run LaGaBoost algorithm on entire data while holding covariance parameters fixed
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 15,
+                     params = params, train_gp_model_cov_pars = FALSE, verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4255016, 0.3026152))),TOLERANCE)
+    #   3. Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                    predict_var = TRUE, rawscore = TRUE)
+    expect_lt(sum(abs(head(pred$fixed_effect, n=4)-c(0.4455938, -0.2227164, 0.8109617, 0.6144774))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.050472, -1.025383, -1.187068,
+                                                      rep(0,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1165838, 0.1175573, 0.1174311,
+                                                     rep(0.7282491,n_new)))),TOLERANCE)
     
     # Use of validation data and cross-validation with custom metric
     bin_cust_error <- function(preds, dtrain) {

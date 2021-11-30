@@ -108,9 +108,8 @@ namespace GPBoost {
 			beta = pars.segment(num_cov_pars_optim, num_covariates);
 			re_model_templ_->UpdateFixedEffects(beta, objfn_data->fixed_effects_, fixed_effects_vec);
 			fixed_effects_ptr = fixed_effects_vec.data();
-		}//end has_covariates_
+		}//end has_covariates
 		else {//no covariates
-			//cov_pars = pars;
 			fixed_effects_ptr = objfn_data->fixed_effects_;
 		}
 		if (objfn_data->learn_covariance_parameters_) {
@@ -565,13 +564,14 @@ namespace GPBoost {
 			}
 			// Initialization of linear regression coefficients related variables
 			vec_t beta, beta_lag1, beta_after_grad_aux, beta_after_grad_aux_lag1, fixed_effects_vec;
+			bool has_intercept;
 			if (has_covariates_) {
 				num_coef_ = num_covariates;
 				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_coef_);
 				//Check whether one of the colums contains only 1's and if not, give out warning
 				vec_t vec_ones(num_data_);
 				vec_ones.setOnes();
-				bool has_intercept = false;
+				has_intercept = false;
 				for (int icol = 0; icol < num_coef_; ++icol) {
 					if ((X_.col(icol) - vec_ones).cwiseAbs().sum() < 0.001) {
 						has_intercept = true;
@@ -786,6 +786,16 @@ namespace GPBoost {
 					for (int i = 0; i < num_covariates; ++i) {
 						std_dev_coef[i] = std_dev_beta[i];
 					}
+				}
+			}
+			if (has_covariates_) {
+				if (has_intercept && num_coef_ == 1 && !learn_covariance_parameters) {
+					has_covariates_ = false;
+					// Assume that this function is only called for initialization of the GPBoost algorithm
+					//	when (i) there is only an intercept (and not other covariates) and (ii) the covariance parameters are not estimated.
+					//	We thus set has_covariates_ to false in order to avoid potential problems when making predictions with the GPBoostOOS algorithm,
+					//	since in the second phase of the GPBoostOOS algorithm covariance parameters are not estimated 
+					//	but this function is called for initialization of the GPBoost algorithm.
 				}
 			}
 

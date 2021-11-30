@@ -204,7 +204,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(sqrt(sum((pred$random_effect_mean - b1)^2))-0.643814),TOLERANCE)
     expect_lt(abs(cor(pred$random_effect_mean,b1)-0.9914091),TOLERANCE)
     
-    # GPBoostOOS algorithm: fit parameters on out-of-sample data
+    # GPBoostOOS algorithm
+    #   1. Run GPBoost algorithm separately on every fold and fit parameters on out-of-sample data
     gp_model <- GPModel(group_data = group_data_train)
     gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     cvbst <- gpb.cv(params = params,
@@ -221,18 +222,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(cvbst$best_iter, 59)
     cov_pars_OOS <- c(0.05103639, 0.60775408, 0.38378833)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),TOLERANCE)
-    
-    # Train tree-boosting model while holding the GPModel fix
-    bst <- gpb.train(data = dtrain,
-                     gp_model = gp_model,
-                     nrounds = 62,
-                     learning_rate = 0.05,
-                     max_depth = 6,
-                     min_data_in_leaf = 5,
-                     objective = "regression_l2",
-                     verbose = 0,
-                     train_gp_model_cov_pars = FALSE)
+    #   2. Run LaGaBoost algorithm on entire data while holding covariance parameters fixed
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 59,
+                     params = params, train_gp_model_cov_pars = FALSE, verbose = 0)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),TOLERANCE)# no change in covariance parameters
+    #   3. Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test, predict_var = TRUE)
+    expect_lt(sum(abs(head(pred$fixed_effect, n=4)-c(4.891230, 4.121098, 3.140073, 4.236029))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.3953752, -0.1785115, -1.2413583,
+                                                      rep(0,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.05430065, 0.05430065, 0.05430065,
+                                                     rep(1.04263344,n_new)))),TOLERANCE)
+
     
     # GPBoostOOS algorithm: fit parameters on out-of-sample data with random folds
     gp_model <- GPModel(group_data = group_data_train)
