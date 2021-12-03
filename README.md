@@ -103,8 +103,9 @@ See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) and [Sigrist (2021)](https
 - Add [CHOLMOD](https://github.com/DrTimothyAldenDavis/SuiteSparse) support
 
 #### Methodological issues
-- Add a spatio-temporal Gaussian process model (e.g. a separable one)
-- Add possibility to predict latent Gaussian processes and random effects (e.g. random coefficients)
+- Add multivariate models, e.g., using coregionalization
+- Add spatio-temporal Gaussian process models
+- Add possibility to predict latent Gaussian processes and random effects (e.g., random coefficients)
 - Implement more approaches such that computations scale well (memory and time) for Gaussian process models and mixed effects models with more than one grouping variable for non-Gaussian data
 - Support sample weights
 
