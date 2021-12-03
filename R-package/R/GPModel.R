@@ -659,12 +659,12 @@ gpb.GPModel <- R6::R6Class(
     
     # Set configuration parameters for the optimizer
     set_optim_coef_params = function(params = list()) {
-      num_coef <- NULL
       if (gpb.is.null.handle(private$handle)) {
         stop("GPModel: Gaussian process model has not been initialized")
       }
       private$update_params(params)
       # prepare for calling C++
+      num_coef <- private$num_coef
       init_coef <- private$params[["init_coef"]]
       lr_coef <- private$params[["lr_coef"]]
       acc_rate_coef <- private$params[["acc_rate_coef"]]
