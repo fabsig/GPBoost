@@ -340,7 +340,7 @@ gpb.cv <- function(params = list()
   bst_folds <- lapply(
     X = seq_along(folds)
     , FUN = function(k) {
-
+      
       # For learning-to-rank, each fold is a named list with two elements:
       #   * `fold` = an integer vector of row indices
       #   * `group` = an integer vector describing which groups are in the fold
@@ -1012,13 +1012,17 @@ gpb.grid.search.tune.parameters <- function(param_grid
   grid_size <- get.grid.size(param_grid)
   if (is.null(num_try_random)) {
     try_param_combs <- 0:(grid_size - 1L)
-    message(paste0("gpb.grid.search.tune.parameters: Starting deterministic grid search with ", grid_size, " parameter combinations..."))
+    if (verbose_eval >= 1L) {
+      message(paste0("gpb.grid.search.tune.parameters: Starting deterministic grid search with ", grid_size, " parameter combinations..."))
+    }
   } else {
     if(num_try_random > grid_size){
       stop("gpb.grid.search.tune.parameters: num_try_random is larger than the number of all possible combinations of parameters in param_grid")
     }
     try_param_combs <- sample.int(n = grid_size, size = num_try_random, replace = FALSE) - 1L
-    message(paste0("gpb.grid.search.tune.parameters: Starting random grid search with ", num_try_random, " trials out of ", grid_size, " parameter combinations..."))
+    if (verbose_eval >= 1L) {
+      message(paste0("gpb.grid.search.tune.parameters: Starting random grid search with ", num_try_random, " trials out of ", grid_size, " parameter combinations..."))
+    }
   }
   if (verbose_eval < 2) {
     verbose_cv <- 0L

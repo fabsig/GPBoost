@@ -992,11 +992,13 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         if num_try_random > grid_size:
             raise ValueError("num_try_random is larger than the number of all possible combinations of parameters in param_grid")
         try_param_combs = np.random.RandomState(seed).choice(a=grid_size, size=num_try_random, replace=False)
-        print("Starting random grid search with " + str(num_try_random) + " trials out of " + str(
-            grid_size) + " parameter combinations...")
+        if verbose_eval >= 1:
+            print("Starting random grid search with " + str(num_try_random) + " trials out of " + str(
+                grid_size) + " parameter combinations...")
     else:
         try_param_combs = range(grid_size)
-        print("Starting deterministic grid search with " + str(grid_size) + " parameter combinations...")
+        if verbose_eval >= 1:
+            print("Starting deterministic grid search with " + str(grid_size) + " parameter combinations...")
     if verbose_eval < 2:
         verbose_eval_cv = False
     else:
