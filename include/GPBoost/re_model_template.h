@@ -612,10 +612,10 @@ namespace GPBoost {
 			// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
 			if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
 				if (gauss_likelihood_) {
-					Log::REFatal("NaN or Inf occurred in negative log-likelihood for intial parameters. Please provide better initial values.");
+					Log::REFatal("NaN or Inf occurred in negative log-likelihood for intial parameters. You might try providing other initial values.");
 				}
 				else {
-					Log::REFatal("NaN or Inf occurred in approximate negative marginal log-likelihood for intial parameters. Please provide better initial values.");
+					Log::REFatal("NaN or Inf occurred in approximate negative marginal log-likelihood for intial parameters. You might try providing other initial values.");
 				}
 			}
 			if (gauss_likelihood_) {
