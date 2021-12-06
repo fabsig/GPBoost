@@ -214,11 +214,13 @@ prior to running the GPBoost algorithm.
 
    -  Initial values for the regression coefficients (if there are any, can be Null)
 
--  ``lr_cov`` : double, optional (default = 0.01)
+-  ``lr_cov`` : double, optional (default = -1)
 
    -  Learning rate for covariance parameters
+   
+   - If <= 0, internal default values are used. Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
 
--  ``lr_coef`` : double, optional (default = 0.01)
+-  ``lr_coef`` : double, optional (default = 0.1)
 
    -  Learning rate for fixed effect regression coefficients
 
