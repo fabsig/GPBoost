@@ -1,4 +1,4 @@
-## Examples of generalized linear Gaussian process and random effects models
+## Examples of generalized linear mixed effects models and Gaussian process models
 ##    for several non-Gaussian likelihoods
 ## Author: Fabio Sigrist
 
