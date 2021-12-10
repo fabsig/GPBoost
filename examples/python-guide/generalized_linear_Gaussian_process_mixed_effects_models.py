@@ -66,7 +66,7 @@ print(pred['var'][0:5])  # Predicted latent variance
 pred_resp = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
                              predict_var=True, predict_response=True)
 print(pred_resp['mu'][0:5])  # Predicted response variable (label)
-print(pred_resp['var'][0:5])  # # Predicted varianec of response
+print(pred_resp['var'][0:5])  # # Predicted variance of response
 
 # --------------------Approximate p-values for fixed effects coefficients----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)

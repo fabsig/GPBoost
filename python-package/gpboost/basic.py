@@ -4002,7 +4002,7 @@ class GPModel(object):
         self.params = {"maxit": 1000,
                        "delta_rel_conv": 1e-6,
                        "init_coef": None,
-                       "lr_coef": 0.1,
+                       "lr_coef": 1,
                        "lr_cov": -1.,
                        "use_nesterov_acc": True,
                        "acc_rate_coef": 0.5,
@@ -4316,7 +4316,7 @@ class GPModel(object):
                 lr_cov : double, optional (default = -1.)
                     If <= 0, internal default values are used.
                     Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
-                lr_coef : double, optional (default = 0.1)
+                lr_coef : double, optional (default = 1)
                     Learning rate for fixed effect regression coefficients
                 use_nesterov_acc : bool, optional (default = True)
                     If True, Nesterov acceleration is used for gradient descent
@@ -4492,6 +4492,10 @@ class GPModel(object):
             ctypes.c_int(self.params["momentum_offset"]),
             c_str(self.params["convergence_criterion"]),
             ctypes.c_bool(self.params["std_dev"])))
+        optim_coef_params = ["init_coef", "lr_coef", "acc_rate_coef", "optimizer_coef"]
+        if params is not None:
+            if any(x in optim_coef_params for x in params.keys()):
+                self.set_optim_coef_params(params=params)
         return self
 
     def get_optim_params(self):
@@ -4534,7 +4538,7 @@ class GPModel(object):
                     for the regression coefficients using weighted least squares
                 init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
-                lr_coef : double, optional (default = 0.1)
+                lr_coef : double, optional (default = 1)
                     Learning rate for fixed effect regression coefficients
                 acc_rate_coef : double, optional (default = 0.5)
                     Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration

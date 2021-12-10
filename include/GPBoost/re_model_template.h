@@ -215,7 +215,7 @@ namespace GPBoost {
 			SetUpGPIds(num_data_, cluster_ids_data, num_data_per_cluster_, data_indices_per_cluster_, unique_clusters_, num_clusters_);
 			num_comps_total_ = 0;
 			//Do some checks for grouped RE components and set meta data (number of components etc.)
-			std::vector<std::vector<string_t>> re_group_levels;//Matrix with group levels for the grouped random effects (re_group_levels[j] contains the levels for RE number j)
+			std::vector<std::vector<re_group_t>> re_group_levels;//Matrix with group levels for the grouped random effects (re_group_levels[j] contains the levels for RE number j)
 			if (num_re_group > 0) {
 				if (vecchia_approx) {
 					Log::REFatal("The Veccia approximation cannot be used when there are grouped random effects (in the current implementation).");
@@ -234,7 +234,7 @@ namespace GPBoost {
 				num_re_group_total_ = num_re_group_ + num_re_group_rand_coef_;
 				num_comps_total_ += num_re_group_total_;
 				// Convert characters in 'const char* re_group_data' to matrix (num_re_group_ x num_data_) with strings of group labels
-				re_group_levels = std::vector<std::vector<string_t>>(num_re_group_, std::vector<string_t>(num_data_));
+				re_group_levels = std::vector<std::vector<re_group_t>>(num_re_group_, std::vector<re_group_t>(num_data_));
 				if (num_re_group_ > 0) {
 					ConvertCharToStringGroupLevels(num_data_, num_re_group_, re_group_data, re_group_levels);
 				}
@@ -453,23 +453,23 @@ namespace GPBoost {
 		* \param[out] optim_coef Optimal regression coefficients
 		* \param[out] num_it Number of iterations
 		* \param init_cov_pars Initial values for covariance parameters of RE components
-		* \param init_coef Initial values for the regression coefficients
+		* \param init_coef Initial values for the regression coefficients (can be nullptr)
 		* \param lr_coef Learning rate for fixed-effect linear coefficients
 		* \param lr_cov Learning rate for covariance parameters. If lr<= 0, default values are used. Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
-		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
-		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
-		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
-		* \param max_iter Maximal number of iterations
-		* \param delta_rel_conv Convergence criterion: stop iteration if relative change in in parameters is below this value
+		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0) (default = 0.5)
+		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0) (default = 0.5)
+		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (default = 2)
+		* \param max_iter Maximal number of iterations (default = 1000)
+		* \param delta_rel_conv Convergence criterion: stop iteration if relative change in in parameters is below this value (default = 1.0e-6)
 		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters. Default = true, only used for "gradient_descent"
-		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
-		* \param optimizer_cov Optimizer for covariance parameters. Options: "gradient_descent" or "fisher_scoring" (default)
-		* \param optimizer_coef Optimizer for coefficients. Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares, default)
-		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters
-		* \param[out] std_dev_coef Standard deviations for the coefficients
-		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
+		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (default = 0)
+		* \param optimizer_cov Optimizer for covariance parameters. Options: "gradient_descent" or "fisher_scoring" (=default)
+		* \param optimizer_coef Optimizer for coefficients. Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares, =default)
+		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters (default = nullptr)
+		* \param[out] std_dev_coef Standard deviations for the coefficients (default = nullptr)
+		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information (default = false)
 		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
-		* \param fixed_effects Externally provided fixed effects component of location parameter (only used for non-Gaussian data)
+		* \param fixed_effects Externally provided fixed effects component of location parameter (can be nullptr, only used for non-Gaussian data)
 		* \param learn_covariance_parameters If true, covariance parameters are estimated (default = true)
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data,
@@ -479,27 +479,25 @@ namespace GPBoost {
 			double* optim_coef,
 			int& num_it,
 			double* init_cov_pars,
-			double* init_coef = nullptr,
-			double lr_coef = 0.1,
-			double lr_cov = -1.,
-			double acc_rate_coef = 0.5,
-			double acc_rate_cov = 0.5,
-			int momentum_offset = 2,
-			int max_iter = 1000,
-			double delta_rel_conv = 1.0e-6,
-			bool use_nesterov_acc = true,
-			int nesterov_schedule_version = 0,
-			string_t optimizer_cov = "fisher_scoring",
-			string_t optimizer_coef = "wls",
-			double* std_dev_cov_par = nullptr,
-			double* std_dev_coef = nullptr,
-			bool calc_std_dev = false,
-			string_t convergence_criterion = "relative_change_in_log_likelihood",
-			const double* fixed_effects = nullptr,
-			bool learn_covariance_parameters = true) {
-
+			double* init_coef,
+			double lr_coef,
+			double lr_cov,
+			double acc_rate_coef,
+			double acc_rate_cov,
+			int momentum_offset,
+			int max_iter,
+			double delta_rel_conv,
+			bool use_nesterov_acc,
+			int nesterov_schedule_version ,
+			string_t optimizer_cov,
+			string_t optimizer_coef,
+			double* std_dev_cov_par,
+			double* std_dev_coef,
+			bool calc_std_dev,
+			string_t convergence_criterion,
+			const double* fixed_effects,
+			bool learn_covariance_parameters) {
 			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
-
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
 				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov.c_str());
@@ -540,7 +538,31 @@ namespace GPBoost {
 			bool terminate_optim = false;
 			num_it = max_iter;
 			bool profile_out_marginal_variance = (optimizer_cov == "gradient_descent" && gauss_likelihood_);
-			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
+			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data 
+			//	(the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
+			bool has_intercept = false;
+			bool only_intercept_for_GPBoost_algo = false;
+			int intercept_col = -1;
+			// Check whether one of the columns contains only 1's and if not, make warning
+			if (has_covariates_) {
+				num_coef_ = num_covariates;
+				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_coef_);
+				vec_t vec_ones(num_data_);
+				vec_ones.setOnes();
+				for (int icol = 0; icol < num_coef_; ++icol) {
+					if ((X_.col(icol) - vec_ones).cwiseAbs().sum() < 0.001) {
+						has_intercept = true;
+						intercept_col = icol;
+						break;
+					}
+				}
+				if (!has_intercept) {
+					Log::REWarning("The covariate data contains no column of ones, i.e., no intercept is included.");
+				}
+				only_intercept_for_GPBoost_algo = has_intercept && num_coef_ == 1 && !learn_covariance_parameters;
+			}
+			// Assume that this function is only called for initialization of the GPBoost algorithm
+			//	when (i) there is only an intercept (and not other covariates) and (ii) the covariance parameters are not learned
 			const double* fixed_effects_ptr = fixed_effects;
 			// Initialization of covariance parameters related variables
 			if (lr_cov < 0.) {//a value below 0 indicates that the default values should be used
@@ -562,24 +584,42 @@ namespace GPBoost {
 			if (!has_covariates_ || !gauss_likelihood_) {
 				CHECK(y_has_been_set_);//response variable data needs to have been set at this point for non-Gaussian data and for Gaussian data without covariates
 			}
+			if (gauss_likelihood_) {
+				CHECK(y_data != nullptr);
+				// Copy of response data (used only for Gaussian data and if there are also linear covariates since then y_ is modified during the optimization algorithm and this contains the original data)
+				y_vec_ = Eigen::Map<const vec_t>(y_data, num_data_);
+			}
 			// Initialization of linear regression coefficients related variables
-			vec_t beta, beta_lag1, beta_after_grad_aux, beta_after_grad_aux_lag1, fixed_effects_vec;
-			bool has_intercept;
+			vec_t beta, beta_lag1, beta_after_grad_aux, beta_after_grad_aux_lag1, fixed_effects_vec, loc_transf, scale_transf;
+			bool scale_covariables = false;
 			if (has_covariates_) {
-				num_coef_ = num_covariates;
-				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_coef_);
-				//Check whether one of the colums contains only 1's and if not, give out warning
-				vec_t vec_ones(num_data_);
-				vec_ones.setOnes();
-				has_intercept = false;
-				for (int icol = 0; icol < num_coef_; ++icol) {
-					if ((X_.col(icol) - vec_ones).cwiseAbs().sum() < 0.001) {
-						has_intercept = true;
-						break;
+				scale_covariables = (optimizer_coef == "gradient_descent") && !only_intercept_for_GPBoost_algo;
+				// Scale covariates (in order that the gradient is less sample-size dependent)
+				if (scale_covariables) {
+					X_orig_ = X_;
+					loc_transf = vec_t(num_coef_);
+					scale_transf = vec_t(num_coef_);
+					vec_t col_i_centered;
+					for (int icol = 0; icol < num_coef_; ++icol) {
+						if (!has_intercept || icol != intercept_col) {
+							loc_transf[icol] = X_.col(icol).mean();
+							col_i_centered = X_.col(icol);
+							col_i_centered.array() -= loc_transf[icol];
+							scale_transf[icol] = std::sqrt(col_i_centered.array().square().sum()); 
+							X_.col(icol) = col_i_centered / scale_transf[icol];
+						}
 					}
-				}
-				if (!has_intercept) {
-					Log::REWarning("The covariate data contains no column of ones. This means that there is no intercept included.");
+					if (has_intercept) {
+						if (gauss_likelihood_) {
+							scale_transf[intercept_col] = 1.;
+						}
+						else {
+							// Scale also the intercept in order that the different gradient components are approximately of the same magnitude
+							//	For Gaussian data, this is not done as it seems that this is not advantageous
+							scale_transf[intercept_col] = num_data_;
+							X_.col(intercept_col).array() = 1. / scale_transf[intercept_col];
+						}
+					}
 				}
 				beta = vec_t(num_covariates);
 				if (init_coef == nullptr) {
@@ -589,11 +629,6 @@ namespace GPBoost {
 					beta = Eigen::Map<const vec_t>(init_coef, num_covariates);
 				}
 				beta_after_grad_aux_lag1 = beta;
-				if (gauss_likelihood_) {
-					CHECK(y_data != nullptr);
-					// Copy of response data (used only for Gaussian data and if there are also linear covariates since then y_ is modified during the optimization algorithm and this contains the original data)
-					y_vec_ = Eigen::Map<const vec_t>(y_data, num_data_);
-				}
 				UpdateFixedEffects(beta, fixed_effects, fixed_effects_vec);
 				if (!gauss_likelihood_) {
 					fixed_effects_ptr = fixed_effects_vec.data();
@@ -756,6 +791,21 @@ namespace GPBoost {
 				optim_cov_pars[i] = cov_pars[i];
 			}
 			if (has_covariates_) {
+				if (scale_covariables) {
+					// transform coefficients back to original scale
+					if (has_intercept && !gauss_likelihood_) {
+						beta[intercept_col] /= scale_transf[intercept_col];
+					}
+					for (int icol = 0; icol < num_coef_; ++icol) {
+						if (!has_intercept || icol != intercept_col) {
+							beta[icol] /= scale_transf[icol];
+							if (has_intercept) {
+								beta[intercept_col] -= beta[icol] * loc_transf[icol];
+							}
+						}
+					}
+					X_ = X_orig_;
+				}
 				for (int i = 0; i < num_covariates; ++i) {
 					optim_coef[i] = beta[i];
 				}
@@ -789,12 +839,11 @@ namespace GPBoost {
 				}
 			}
 			if (has_covariates_) {
-				if (has_intercept && num_coef_ == 1 && !learn_covariance_parameters) {
+				if (only_intercept_for_GPBoost_algo) {
 					has_covariates_ = false;
-					// Assume that this function is only called for initialization of the GPBoost algorithm
-					//	when (i) there is only an intercept (and not other covariates) and (ii) the covariance parameters are not estimated.
-					//	We thus set has_covariates_ to false in order to avoid potential problems when making predictions with the GPBoostOOS algorithm,
-					//	since in the second phase of the GPBoostOOS algorithm covariance parameters are not estimated 
+					// When this function is only called for initialization of the GPBoost algorithm, 
+					//	we set has_covariates_ to false in order to avoid potential problems when making predictions with the GPBoostOOS algorithm,
+					//	since in the second phase of the GPBoostOOS algorithm covariance parameters are not estimated (and thus has_covariates_ is not set to false)
 					//	but this function is called for initialization of the GPBoost algorithm.
 				}
 			}
@@ -846,7 +895,7 @@ namespace GPBoost {
 		* \param fixed_effects Fixed effects component of location parameter
 		*/
 		void CalcCovFactorOrModeAndNegLL(const vec_t& cov_pars,
-			const double* fixed_effects = nullptr) {
+			const double* fixed_effects) {
 			SetCovParsComps(cov_pars);
 			if (gauss_likelihood_) {
 				CalcCovFactor(vecchia_approx_, true, 1., false);//Create covariance matrix and factorize it (and also calculate derivatives if Vecchia approximation is used)
@@ -1048,7 +1097,7 @@ namespace GPBoost {
 			}
 			else {
 				//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_re_group_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
-				re_group_levels_pred_ = std::vector<std::vector<string_t>>(num_re_group_, std::vector<string_t>(num_data_pred));
+				re_group_levels_pred_ = std::vector<std::vector<re_group_t>>(num_re_group_, std::vector<re_group_t>(num_data_pred));
 				ConvertCharToStringGroupLevels(num_data_pred, num_re_group_, re_group_data_pred, re_group_levels_pred_);
 			}
 			if (re_group_rand_coef_data_pred == nullptr) {
@@ -1114,7 +1163,9 @@ namespace GPBoost {
 			const char* vecchia_pred_type = nullptr, int num_neighbors_pred = -1,
 			const double* fixed_effects = nullptr, const double* fixed_effects_pred = nullptr) {
 			//First check whether previously set data should be used and load it if required
-			std::vector<std::vector<string_t>> re_group_levels_pred;//Matrix with group levels for the grouped random effects (re_group_levels_pred[j] contains the levels for RE number j)
+			std::vector<std::vector<re_group_t>> re_group_levels_pred, re_group_levels_pred_orig;//Matrix with group levels for the grouped random effects (re_group_levels_pred[j] contains the levels for RE number j)
+			// Note: re_group_levels_pred_orig is only used for the case (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_)
+			//			since then re_group_levels_pred is over-written for every cluster and the original data thus needs to be saved
 			if (use_saved_data) {
 				if (num_data_pred > 0) {
 					CHECK(num_data_pred == num_data_pred_);
@@ -1153,13 +1204,16 @@ namespace GPBoost {
 				else {
 					covariate_data_pred = covariate_data_pred_.data();
 				}
-			}
+			}// end use_saved_data
 			else {
 				if (re_group_data_pred != nullptr) {
-					//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_re_group_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
-					re_group_levels_pred = std::vector<std::vector<string_t>>(num_re_group_, std::vector<string_t>(num_data_pred));
+					//For grouped random effects: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_re_group_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
+					re_group_levels_pred = std::vector<std::vector<re_group_t>>(num_re_group_, std::vector<re_group_t>(num_data_pred));
 					ConvertCharToStringGroupLevels(num_data_pred, num_re_group_, re_group_data_pred, re_group_levels_pred);
 				}
+			}
+			if (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+				re_group_levels_pred_orig = re_group_levels_pred;
 			}
 			//Some checks
 			CHECK(num_data_pred > 0);
@@ -1235,11 +1289,11 @@ namespace GPBoost {
 					break;
 				}
 			}
+
 			//Factorize covariance matrix and calculate Psi^{-1}y_obs or calculate Laplace approximation (if required)
 			const double* fixed_effects_ptr = fixed_effects;
 			vec_t fixed_effects_vec;
-			if (pred_for_observed_data) {//TODO (low prio): this acutally needs to be done only for the GP realizations for which predictions are made (currently it is done for all of them in unique_clusters_pred)
-
+			if (pred_for_observed_data) {
 				// Set response data and fixed effects
 				if (gauss_likelihood_) {
 					if (has_covariates_ || fixed_effects != nullptr) {
@@ -1284,7 +1338,7 @@ namespace GPBoost {
 						SetY(y_obs);
 					}
 				}//end if not gauss_likelihood_
-
+				//TODO (low prio): the factorization needs to be done only for the GP realizations / clusters for which predictions are made (currently it is done for all)
 				SetCovParsComps(cov_pars);
 				if (!(vecchia_approx_ && gauss_likelihood_)) {// no need to call CalcCovFactor here for the Vecchia approximation for Gaussian data, this is done in the prediction steps below
 					if (calc_cov_factor) {
@@ -1334,26 +1388,13 @@ namespace GPBoost {
 							std::vector<Triplet_t> entries_init_B_cluster_i;
 							std::vector<Triplet_t> entries_init_B_grad_cluster_i;
 							std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
-							CreateREComponentsVecchia(num_data_pred,
-								data_indices_per_cluster_pred,
-								cluster_i,
-								num_data_per_cluster_pred,
-								gp_coords_data_pred,
-								dim_gp_coords_,
-								gp_rand_coef_data_pred,
-								num_gp_rand_coef_,
-								cov_fct_,
-								cov_fct_shape_,
-								cov_fct_taper_range_,
-								re_comps_cluster_i,
-								nearest_neighbors_cluster_i,
-								dist_obs_neighbors_cluster_i,
-								dist_between_neighbors_cluster_i,
-								entries_init_B_cluster_i,
-								entries_init_B_grad_cluster_i,
-								z_outer_z_obs_neighbors_cluster_i,
-								"none",
-								num_neighbors_pred_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
+							CreateREComponentsVecchia(num_data_pred, data_indices_per_cluster_pred, cluster_i,
+								num_data_per_cluster_pred, gp_coords_data_pred, dim_gp_coords_,
+								gp_rand_coef_data_pred, num_gp_rand_coef_, cov_fct_,
+								cov_fct_shape_, cov_fct_taper_range_, re_comps_cluster_i,
+								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
+								entries_init_B_cluster_i, entries_init_B_grad_cluster_i, z_outer_z_obs_neighbors_cluster_i,
+								"none", num_neighbors_pred_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_cluster_i[j]->SetCovPars(pars);
@@ -1377,26 +1418,13 @@ namespace GPBoost {
 							psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
 						}//end vecchia_approx_
 						else {//not vecchia_approx_
-							CreateREComponents(num_data_pred,
-								num_re_group_,
-								data_indices_per_cluster_pred,
-								cluster_i,
-								re_group_levels_pred,
-								num_data_per_cluster_pred,
-								num_re_group_rand_coef_,
-								re_group_rand_coef_data_pred,
-								ind_effect_group_rand_coef_,
-								num_gp_,
-								gp_coords_data_pred,
-								dim_gp_coords_,
-								gp_rand_coef_data_pred,
-								num_gp_rand_coef_,
-								cov_fct_,
-								cov_fct_shape_,
-								cov_fct_taper_range_,
-								ind_intercept_gp_,
-								true,
-								re_comps_cluster_i);
+							CreateREComponents(num_data_pred, num_re_group_, data_indices_per_cluster_pred,
+								cluster_i, re_group_levels_pred, num_data_per_cluster_pred,
+								num_re_group_rand_coef_, re_group_rand_coef_data_pred, ind_effect_group_rand_coef_,
+								num_gp_, gp_coords_data_pred, dim_gp_coords_,
+								gp_rand_coef_data_pred, num_gp_rand_coef_, cov_fct_,
+								cov_fct_shape_, cov_fct_taper_range_, ind_intercept_gp_,
+								true, re_comps_cluster_i);
 							if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
 								num_REs_pred = re_comps_cluster_i[0]->GetNumUniqueREs();
 							}
@@ -1429,7 +1457,8 @@ namespace GPBoost {
 							mean_pred_id[i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i]];
 						}
 					}
-					if (has_covariates_) {//add linear regression predictor
+					// Add linear regression predictor
+					if (has_covariates_) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 							mean_pred_id[i] += mu[data_indices_per_cluster_pred[cluster_i][i]];
@@ -1440,7 +1469,7 @@ namespace GPBoost {
 					if (predict_var_or_response) {
 						var_pred_id = psi.diagonal();
 					}
-					//map from predictions from random effects scale b to "data scale" Zb
+					// Map from predictions from random effects scale b to "data scale" Zb
 					if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
 						if (predict_var_or_response) {
 							vec_t var_pred_id_on_RE_scale = var_pred_id;
@@ -1466,12 +1495,12 @@ namespace GPBoost {
 					if (!gauss_likelihood_ && predict_response) {
 						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id, var_pred_id, predict_var);
 					}
-					//write on output
+					// Write on output
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 						out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[i];
 					}
-					//Write covariance / variance on output
+					// Write covariance / variance on output
 					if (!predict_response || gauss_likelihood_) {//this is not done if predict_response==true for non-Gaussian data 
 						if (predict_cov_mat) {
 #pragma omp parallel for schedule(static)
@@ -1500,7 +1529,7 @@ namespace GPBoost {
 				}//end cluster_i with no observed data
 				else {
 
-					//Case 2: there exists observed data for this cluster_i (= typically case)
+					//Case 2: there exists observed data for this cluster_i
 					den_mat_t gp_coords_mat_pred;
 					std::vector<data_size_t> random_effects_indices_of_data_pred;
 					int num_REs_pred = num_data_per_cluster_pred[cluster_i];
@@ -1514,20 +1543,21 @@ namespace GPBoost {
 						gp_coords_mat_pred = Eigen::Map<den_mat_t>(gp_coords_pred.data(), num_data_per_cluster_pred[cluster_i], dim_gp_coords_);
 					}
 					if (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+						// Determine unique group levels per cluster and create map which maps every data point per cluster to a group level
 						random_effects_indices_of_data_pred = std::vector<data_size_t>(num_data_per_cluster_pred[cluster_i]);
-						std::vector<string_t> re_group_levels_pred_unique;
+						std::vector<re_group_t> re_group_levels_pred_unique;
 						std::map<re_group_t, int> map_group_label_index_pred;
 						int num_group_pred = 0;
 						int ii = 0;
 						for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
-							if (map_group_label_index_pred.find(re_group_levels_pred[0][id]) == map_group_label_index_pred.end()) {
-								map_group_label_index_pred.insert({ re_group_levels_pred[0][id], num_group_pred });
-								re_group_levels_pred_unique.push_back(re_group_levels_pred[0][id]);
+							if (map_group_label_index_pred.find(re_group_levels_pred_orig[0][id]) == map_group_label_index_pred.end()) {
+								map_group_label_index_pred.insert({ re_group_levels_pred_orig[0][id], num_group_pred });
+								re_group_levels_pred_unique.push_back(re_group_levels_pred_orig[0][id]);
 								random_effects_indices_of_data_pred[ii] = num_group_pred;
 								num_group_pred += 1;
 							}
 							else {
-								random_effects_indices_of_data_pred[ii] = map_group_label_index_pred[re_group_levels_pred[0][id]];
+								random_effects_indices_of_data_pred[ii] = map_group_label_index_pred[re_group_levels_pred_orig[0][id]];
 							}
 							ii += 1;
 						}
@@ -1559,7 +1589,7 @@ namespace GPBoost {
 					T_mat cov_mat_pred_id;
 					vec_t var_pred_id;
 					// Calculate predictions
-					//Special case: Vecchia aproximation for Gaussian data
+					// Special case: Vecchia aproximation for Gaussian data
 					if (vecchia_approx_ && gauss_likelihood_) {//TODO: move this code to another function for better readability
 						std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][ind_intercept_gp_]);
 						int num_data_tot = num_data_per_cluster_[cluster_i] + num_data_per_cluster_pred[cluster_i];
@@ -1599,11 +1629,10 @@ namespace GPBoost {
 								cov_mat_pred_id.resize(0, 0);
 							}
 						}
-
 					}//end (vecchia_approx_ && gauss_likelihood_)
 					else {// not vecchia_approx_ or not gauss_likelihood_
-						//General case: either non-Gaussian data or Gaussian data without the Vecchia approximation
-						//NOTE: if vecchia_approx_==true and gauss_likelihood_==false, the cross-covariance matrix Sigma_{1,2} = cov(x_pred,x) is not approximated but the exact version is used
+						// General case: either non-Gaussian data or Gaussian data without the Vecchia approximation
+						// NOTE: if vecchia_approx_==true and gauss_likelihood_==false, the cross-covariance matrix Sigma_{1,2} = cov(x_pred,x) is not approximated but the exact version is used
 						bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);//variance needs to be available for resposne prediction for non-Gaussian data 
 						CalcPred(cluster_i,
 							num_data_pred,
@@ -1648,14 +1677,14 @@ namespace GPBoost {
 							}
 						}//end only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
 					}//end not vecchia_approx_ or not gauss_likelihood_
-					//add externaly provided fixed effects
+					// Add externaly provided fixed effects
 					if (fixed_effects_pred != nullptr) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 							mean_pred_id[i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i]];
 						}
 					}
-					//add linear regression predictor
+					// Add linear regression predictor
 					if (has_covariates_) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
@@ -1666,12 +1695,12 @@ namespace GPBoost {
 						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id, var_pred_id, predict_var);
 					}
 
-					//write on output
+					// Write on output
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 						out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[i];
 					}
-					//Write covariance / variance on output
+					// Write covariance / variance on output
 					if (predict_cov_mat) {
 						if (gauss_likelihood_) {
 							cov_mat_pred_id *= cov_pars[0];
@@ -1960,6 +1989,8 @@ namespace GPBoost {
 		int num_coef_;
 		/*! \brief Covariate data */
 		den_mat_t X_;
+		/*! \brief Auxiliary matrix to store original, un-scaled covariate data (used only in case scaling is applied) */
+		den_mat_t X_orig_;
 
 		// OPTIMIZER PROPERTIES
 		/*! \brief List of supported optimizers for covariance parameters */
@@ -2052,7 +2083,7 @@ namespace GPBoost {
 		/*! \brief Cluster IDs for prediction */
 		std::vector<data_size_t> cluster_ids_data_pred_;
 		/*! \brief Levels of grouped RE for prediction */
-		std::vector<std::vector<string_t>> re_group_levels_pred_;
+		std::vector<std::vector<re_group_t>> re_group_levels_pred_;
 		/*! \brief Covariate data for grouped random RE for prediction */
 		std::vector<double> re_group_rand_coef_data_pred_;
 		/*! \brief Coordinates for GP for prediction */
@@ -2291,9 +2322,7 @@ namespace GPBoost {
 		* \param fixed_effects Fixed effects component of location parameter
 		*/
 		void CalcGradFLaplace(double* grad_F, const double* fixed_effects = nullptr) {
-
 			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
-
 			const double* fixed_effects_cluster_i_ptr = nullptr;
 			vec_t fixed_effects_cluster_i;
 			for (const auto& cluster_i : unique_clusters_) {
@@ -2395,11 +2424,9 @@ namespace GPBoost {
 					}
 				} // end more than one cluster
 			}//end loop over cluster
-
 			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
 			//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
 			//Log::REInfo("Time for CalcGradFLaplace: %g", el_time);// Only for debugging
-
 		}//end CalcGradFLaplace
 
 		/*!
@@ -2758,7 +2785,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Initialize data structures for handling independent realizations of the Gaussian processes. Answers written on arguments.
+		* \brief Initialize data structures for handling independent realizations of the Gaussian processes
 		* \param num_data Number of data points
 		* \param cluster_ids_data IDs / labels indicating independent realizations of Gaussian processes (same values = same process realization)
 		* \param[out] num_data_per_cluster Keys: labels of independent clusters, values: number of data points per independent realization
@@ -2807,7 +2834,7 @@ namespace GPBoost {
 		void ConvertCharToStringGroupLevels(data_size_t num_data,
 			data_size_t num_re_group,
 			const char* re_group_data,
-			std::vector<std::vector<string_t>>& re_group_levels) {
+			std::vector<std::vector<re_group_t>>& re_group_levels) {
 			int char_start = 0;
 			for (int ire = 0; ire < num_re_group; ++ire) {
 				for (int id = 0; id < num_data; ++id) {
@@ -3058,7 +3085,7 @@ namespace GPBoost {
 			data_size_t num_re_group,
 			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
 			data_size_t cluster_i,
-			std::vector<std::vector<string_t>>& re_group_levels,
+			std::vector<std::vector<re_group_t>>& re_group_levels,
 			std::map<data_size_t, int>& num_data_per_cluster,
 			data_size_t num_re_group_rand_coef,
 			const double* re_group_rand_coef_data,
@@ -4332,7 +4359,6 @@ namespace GPBoost {
 				vec_t y_aux(num_data_);
 				GetYAux(y_aux);
 				grad_beta = (-1. / marg_var) * (X_.transpose()) * y_aux;
-				//beta += lr * (1. / marg_var) * (X.transpose()) * y_aux;
 			}
 			else {
 				vec_t grad_F(num_data_);
@@ -4754,7 +4780,7 @@ namespace GPBoost {
 			int num_data_pred,
 			std::map<data_size_t, int>& num_data_per_cluster_pred,
 			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
-			const std::vector<std::vector<string_t>>& re_group_levels_pred,
+			const std::vector<std::vector<re_group_t>>& re_group_levels_pred,
 			const double* re_group_rand_coef_data_pred,
 			const den_mat_t& gp_coords_mat_pred,
 			const double* gp_rand_coef_data_pred,
@@ -4897,7 +4923,7 @@ namespace GPBoost {
 				}
 			}
 
-			//Calculate predictive means and covariances
+			// Calculate predictive means and covariances
 			if (gauss_likelihood_) {//Gaussian data
 				if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
 					vec_t Zt_y_aux = vec_t::Zero(num_REs_obs);

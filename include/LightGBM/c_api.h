@@ -1392,18 +1392,18 @@ LIGHTGBM_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
-    double* init_cov_pars = nullptr,
-    double lr = -1.,
-    double acc_rate_cov = 0.5,
-    int max_iter = 1000,
-    double delta_rel_conv = 1.0e-6,
-    bool use_nesterov_acc = true,
-    int nesterov_schedule_version = 0,
-    bool trace = false,
-    const char* optimizer = nullptr,
-    int momentum_offset = 2,
-    const char* convergence_criterion = nullptr,
-    bool calc_std_dev = false);
+    double* init_cov_pars,
+    double lr,
+    double acc_rate_cov,
+    int max_iter,
+    double delta_rel_conv,
+    bool use_nesterov_acc,
+    int nesterov_schedule_version,
+    bool trace,
+    const char* optimizer,
+    int momentum_offset,
+    const char* convergence_criterion,
+    bool calc_std_dev);
 
 /*!
 * \brief Set configuration parameters for the optimizer for linear regression coefficients
@@ -1415,11 +1415,11 @@ LIGHTGBM_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT int GPB_SetOptimCoefConfig(REModelHandle handle,
-    int num_covariates = 0,
-    double* init_coef = nullptr,
-    double lr_coef = 0.001,
-    double acc_rate_coef = 0.5,
-    const char* optimizer = nullptr);
+    int num_covariates,
+    double* init_coef,
+    double lr_coef,
+    double acc_rate_coef,
+    const char* optimizer);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)
@@ -1430,7 +1430,7 @@ LIGHTGBM_C_EXPORT int GPB_SetOptimCoefConfig(REModelHandle handle,
 */
 LIGHTGBM_C_EXPORT int GPB_OptimCovPar(REModelHandle handle,
     const double* y_data,
-    const double* fixed_effects = nullptr);
+    const double* fixed_effects);
 
 /*!
 * \brief Find linear regression coefficients and covariance parameters that minimize the negative log-ligelihood (=MLE)
@@ -1469,7 +1469,7 @@ LIGHTGBM_C_EXPORT int GPB_EvalNegLogLikelihood(REModelHandle handle,
 */
 LIGHTGBM_C_EXPORT int GPB_GetCovPar(REModelHandle handle,
     double* optim_cov_pars,
-    bool calc_std_dev = false);
+    bool calc_std_dev);
 
 /*!
 * \brief Get initial values for covariance paramters
@@ -1491,7 +1491,7 @@ LIGHTGBM_C_EXPORT int GPB_GetInitCovPar(REModelHandle handle,
 */
 LIGHTGBM_C_EXPORT int GPB_GetCoef(REModelHandle handle,
     double* optim_coef,
-    bool calc_std_dev = false);
+    bool calc_std_dev);
 
 /*!
 * \brief Get / export the number of iterations until convergence
@@ -1516,12 +1516,12 @@ LIGHTGBM_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
 */
 LIGHTGBM_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
     int32_t num_data_pred,
-    const int32_t* cluster_ids_data_pred = nullptr,
-    const char* re_group_data_pred = nullptr,
-    const double* re_group_rand_coef_data_pred = nullptr,
-    double* gp_coords_data_pred = nullptr,
-    const double* gp_rand_coef_data_pred = nullptr,
-    const double* covariate_data_pred = nullptr);
+    const int32_t* cluster_ids_data_pred,
+    const char* re_group_data_pred,
+    const double* re_group_rand_coef_data_pred,
+    double* gp_coords_data_pred,
+    const double* gp_rand_coef_data_pred,
+    const double* covariate_data_pred);
 
 /*!
 * \brief Make predictions: calculate conditional mean and variances or covariance matrix

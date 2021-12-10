@@ -121,11 +121,11 @@ namespace GPBoost {
 		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
 		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 		*/
-		void SetOptimConfig(double* init_cov_pars = nullptr, double lr = -1.,
-			double acc_rate_cov = 0.5, int max_iter = 1000, double delta_rel_conv = 1.0e-6,
-			bool use_nesterov_acc = true, int nesterov_schedule_version = 0, bool trace = true,
-			const char* optimizer = nullptr, int momentum_offset = 2, const char* convergence_criterion = nullptr,
-			bool calc_std_dev = false);
+		void SetOptimConfig(double* init_cov_pars, double lr,
+			double acc_rate_cov, int max_iter, double delta_rel_conv,
+			bool use_nesterov_acc, int nesterov_schedule_version, bool trace,
+			const char* optimizer, int momentum_offset, const char* convergence_criterion,
+			bool calc_std_dev);
 
 		/*!
 		* \brief Set configuration parameters for the optimizer for linear regression coefficients
@@ -135,8 +135,8 @@ namespace GPBoost {
 		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param optimizer Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares)
 		*/
-		void SetOptimCoefConfig(int num_covariates = 0, double* init_coef = nullptr,
-			double lr_coef = 0.1, double acc_rate_coef = 0.5, const char* optimizer = nullptr);
+		void SetOptimCoefConfig(int num_covariates, double* init_coef,
+			double lr_coef, double acc_rate_coef, const char* optimizer);
 
 		/*!
 		* \brief Reset cov_pars_ (to their initial values).
@@ -150,7 +150,7 @@ namespace GPBoost {
 		*		For the GPBoost algorithm for non-Gaussian data, this is ignored (and can be nullptr) as the response data has been set before.
 		* \param fixed_effects Fixed effects component F of location parameter (only used for non-Gaussian data). For Gaussian data, this is ignored
 		*/
-		void OptimCovPar(const double* y_data, const double* fixed_effects = nullptr);
+		void OptimCovPar(const double* y_data, const double* fixed_effects);
 
 		/*!
 		* \brief Find linear regression coefficients and covariance parameters that minimize the negative log-ligelihood (=MLE) using (Nesterov accelerated) gradient descent
@@ -177,7 +177,7 @@ namespace GPBoost {
 		* \param CalcModePostRandEff_already_done (only used for non-Gaussian data) If true, it is assumed that the posterior mode of the random effects has already been calculated
 		*/
 		void EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll,
-			const double* fixed_effects = nullptr, bool InitializeModeCovMat = true, bool CalcModePostRandEff_already_done = false);
+			const double* fixed_effects, bool InitializeModeCovMat, bool CalcModePostRandEff_already_done);
 
 		/*!
 		* \brief Calculate gradient and write on input (for Gaussian data, the gradient is Psi^-1*y (=y_aux))
@@ -188,7 +188,7 @@ namespace GPBoost {
 		* \param fixed_effects Fixed effects component F of location parameter (only used for non-Gaussian data). For Gaussian data, this is ignored (and can be set to nullptr)
 		* \param calc_cov_factor If true, the covariance matrix is factorized, otherwise the existing factorization is used
 		*/
-		void CalcGradient(double* y, const double* fixed_effects = nullptr, bool calc_cov_factor = true);
+		void CalcGradient(double* y, const double* fixed_effects, bool calc_cov_factor);
 
 		/*!
 		* \brief Set response data y
@@ -219,7 +219,7 @@ namespace GPBoost {
 		* \param[out] cov_par Covariance paramters stored in cov_pars_. This vector needs to be pre-allocated of length number of covariance paramters or twice this if calc_std_dev = true
 		* \param calc_std_dev If true, standard deviations are also exported
 		*/
-		void GetCovPar(double* cov_par, bool calc_std_dev = false) const;
+		void GetCovPar(double* cov_par, bool calc_std_dev) const;
 
 		/*!
 		* \brief Get initial values for covariance paramters
@@ -233,7 +233,7 @@ namespace GPBoost {
 		* \param[out] coef Regression coefficients stored in coef_. This vector needs to be pre-allocated of length number of covariates or twice this if calc_std_dev = true
 		* \param calc_std_dev If true, standard deviations are also exported
 		*/
-		void GetCoef(double* coef, bool calc_std_dev = false) const;
+		void GetCoef(double* coef, bool calc_std_dev) const;
 
 		/*!
 		* \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
@@ -246,9 +246,9 @@ namespace GPBoost {
 		* \param covariate_data_pred Covariate data (=independent variables, features) for prediction
 		*/
 		void SetPredictionData(data_size_t num_data_pred,
-			const data_size_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
-			const double* re_group_rand_coef_data_pred = nullptr, double* gp_coords_data_pred = nullptr,
-			const double* gp_rand_coef_data_pred = nullptr, const double* covariate_data_pred = nullptr);
+			const data_size_t* cluster_ids_data_pred, const char* re_group_data_pred,
+			const double* re_group_rand_coef_data_pred, double* gp_coords_data_pred,
+			const double* gp_rand_coef_data_pred, const double* covariate_data_pred);
 
 		/*!
 		* \brief Make predictions: calculate conditional mean and variances or covariance matrix
@@ -277,13 +277,13 @@ namespace GPBoost {
 		* \param suppress_calc_cov_factor If true, the covariance matrix of the observed data is not factorized (default=false), otherwise it is dynamically decided whether to factorize or nor
 		*/
 		void Predict(const double* y_obs, data_size_t num_data_pred, double* out_predict,
-			bool predict_cov_mat = false, bool predict_var = false, bool predict_response = false,
-			const data_size_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr, const double* re_group_rand_coef_data_pred = nullptr,
-			double* gp_coords_data_pred = nullptr, const double* gp_rand_coef_data_pred = nullptr,
-			const double* cov_pars_pred = nullptr, const double* covariate_data_pred = nullptr,
-			bool use_saved_data = false, const char* vecchia_pred_type = nullptr, int num_neighbors_pred = -1,
-			const double* fixed_effects = nullptr, const double* fixed_effects_pred = nullptr,
-			bool suppress_calc_cov_factor = false) const;
+			bool predict_cov_mat, bool predict_var, bool predict_response,
+			const data_size_t* cluster_ids_data_pred, const char* re_group_data_pred, const double* re_group_rand_coef_data_pred,
+			double* gp_coords_data_pred, const double* gp_rand_coef_data_pred,
+			const double* cov_pars_pred, const double* covariate_data_pred,
+			bool use_saved_data, const char* vecchia_pred_type, int num_neighbors_pred,
+			const double* fixed_effects, const double* fixed_effects_pred,
+			bool suppress_calc_cov_factor) const;
 
 		int GetNumIt() const;
 
@@ -330,7 +330,7 @@ namespace GPBoost {
 		bool has_covariates_ = false;
 		bool coef_initialized_ = false;
 		vec_t std_dev_coef_;
-		double lr_coef_ = 0.1;
+		double lr_coef_ = 1;
 		double acc_rate_coef_ = 0.5;
 		string_t optimizer_coef_ = "wls";//"gradient_descent" or "wls" (The default = "wls" is changed to "gradient_descent" for non-Gaussian data upon initialization)
 		string_t convergence_criterion_ = "relative_change_in_log_likelihood";//"relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"

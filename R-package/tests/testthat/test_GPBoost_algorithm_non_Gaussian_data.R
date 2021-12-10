@@ -2,14 +2,14 @@ context("generalized_GPBoost_combined_boosting_GP_random_effects")
 
 TOLERANCE <- 1E-3
 DEFAULT_OPTIM_PARAMS <- list(optimizer_cov="gradient_descent", use_nesterov_acc=TRUE,
-                             delta_rel_conv=1E-6, lr_cov=0.1)
+                             delta_rel_conv=1E-6, lr_cov=0.1, lr_coef=0.1)
 DEFAULT_OPTIM_PARAMS_V2 <- list(optimizer_cov="gradient_descent", use_nesterov_acc=TRUE,
-                                delta_rel_conv=1E-6, lr_cov=0.01)
+                                delta_rel_conv=1E-6, lr_cov=0.01, lr_coef=0.1)
 DEFAULT_OPTIM_PARAMS_NO_NESTEROV <- list(optimizer_cov="gradient_descent", use_nesterov_acc=FALSE,
-                                         delta_rel_conv=1E-6, lr_cov=0.01)
-DEFAULT_OPTIM_PARAMS_EARLY_STOP <- list(maxit=10, lr_cov=0.1, optimizer_cov="gradient_descent")
+                                         delta_rel_conv=1E-6, lr_cov=0.01, lr_coef=0.1)
+DEFAULT_OPTIM_PARAMS_EARLY_STOP <- list(maxit=10, lr_cov=0.1, optimizer_cov="gradient_descent", lr_coef=0.1)
 DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV <- list(maxit=20, lr_cov=0.01, use_nesterov_acc=FALSE,
-                                                    optimizer_cov="gradient_descent" )
+                                                    optimizer_cov="gradient_descent", lr_coef=0.1)
 
 # Function that simulates uniform random variables
 sim_rand_unif <- function(n, init_c=0.1){
@@ -889,7 +889,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Train model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_probit")
-    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01, optimizer_cov="gradient_descent"))
+    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01, optimizer_cov="gradient_descent",
+                                          lr_coef=0.1))
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 2,
@@ -1299,7 +1300,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Train model
     gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                         likelihood = "bernoulli_logit")
-    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01, optimizer_cov="gradient_descent"))
+    gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01, optimizer_cov="gradient_descent",
+                                          lr_coef=0.1))
     bst <- gpb.train(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 2,

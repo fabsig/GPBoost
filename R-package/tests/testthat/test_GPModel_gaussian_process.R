@@ -31,7 +31,7 @@ eps_svc <- as.vector(C %*% b_1 + Z_SVC[,1] * C %*% b_2 + Z_SVC[,2] * C %*% b_3)
 # Error term
 xi <- qnorm(sim_rand_unif(n=n, init_c=0.1)) / 5
 # Data for linear mixed effects model
-X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # desing matrix / covariate data for fixed effect
+X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # design matrix / covariate data for fixed effect
 beta <- c(2,2) # regression coefficents
 # cluster_ids 
 cluster_ids <- c(rep(1,0.4*n),rep(2,0.6*n))
@@ -197,19 +197,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Gradient descent
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                           y = y, X=X,
+                           y=y, X=X,
                            params = list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent",
-                                         delta_rel_conv=1E-6, use_nesterov_acc = TRUE, std_dev = FALSE))
-    cov_pars <- c(0.01632592, 0.99743757, 0.09625354)
-    coef <- c(2.301436, 1.899027)
+                                         delta_rel_conv=1E-6, use_nesterov_acc = TRUE, std_dev = FALSE, lr_coef=1))
+    cov_pars <- c(0.02173291, 0.98826111, 0.09716771)
+    coef <- c(2.304117, 1.899065)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 106)
+    expect_equal(gp_model$get_num_optim_iter(), 178)
 
     # Nelder-Mead
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y, X=X, params = list(optimizer_cov = "nelder_mead",
-                                                     optimizer_coef = "gradient_descent", maxit=1000))
+                                                     optimizer_coef = "nelder_mead",
+                                                     maxit=1000))
     cov_pars <- c(0.007253618, 1.004320456, 0.094662117)
     coef <- c(2.305755, 1.899809)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)

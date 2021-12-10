@@ -71,35 +71,37 @@ is freed in R after initialization}
 \item{params}{A \code{list} with parameters for the model fitting / optimization
  \itemize{
     \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
-    Options: "gradient_descent", "fisher_scoring", and "nelder_mead". Default = "gradient_descent"}
+    Options: "gradient_descent", "fisher_scoring", and "nelder_mead".
+    Default= gradient_descent"}
     \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
     (for the GPBoost algorithm there are usually none). 
     Options: "gradient_descent", "wls", and "nelder_mead". Gradient descent steps are done simultaneously 
     with gradient descent steps for the covariance parameters. 
     "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
-    Default="wls" for Gaussian data and "gradient_descent" for other likelihoods.}
-    \item{maxit}{ Maximal number of iterations for optimization algorithm. Default=1000.}
+    Default="wls" for Gaussian data and "gradient_descent" for other likelihoods}
+    \item{maxit}{ Maximal number of iterations for optimization algorithm. Default=1000}
     \item{delta_rel_conv}{ Convergence criterion: stop optimization if relative change 
-    in parameters is below this value. Default=1E-6.}
+    in parameters is below this value. Default=1E-6}
     \item{init_coef}{ Initial values for the regression coefficients (if there are any, can be NULL).
-    Default=NULL.}
+    Default=NULL}
     \item{init_cov_pars}{ Initial values for covariance parameters of Gaussian process and 
-    random effects (can be NULL). Default=NULL.}
+    random effects (can be NULL). Default=NULL}
     \item{lr_coef}{ Learning rate for fixed effect regression coefficients if gradient descent is used.
-    Default=0.1.}
+    Default=1}
     \item{lr_cov}{ Learning rate for covariance parameters. If <= 0, internal default values are used.
     Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"}
     \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used.
     This is used only for gradient descent. Default=TRUE}
     \item{acc_rate_coef}{ Acceleration rate for regression coefficients (if there are any) 
-    for Nesterov acceleration. Default=0.5.}
+    for Nesterov acceleration. Default=0.5}
     \item{acc_rate_cov}{ Acceleration rate for covariance parameters for Nesterov acceleration.
-    Default=0.5.}
-    \item{momentum_offset}{ Number of iterations for which no mometum is applied in the beginning.
-    Default=2.}
-    \item{trace}{ If TRUE, information on the progress of the parameter optimization is printed. Default=FALSE.}
+    Default=0.5}
+    \item{momentum_offset}{ Number of iterations for which no momentum is applied in the beginning.
+    Default=2}
+    \item{trace}{ If TRUE, information on the progress of the parameter
+    optimization is printed. Default=FALSE}
     \item{convergence_criterion}{ The convergence criterion used for terminating the optimization algorithm.
-    Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters".}
+    Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"}
     \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}
 }}
 

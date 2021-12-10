@@ -579,7 +579,7 @@ namespace GPBoost {
 					approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				}
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					Log::REWarning("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
+					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
 				if (it == 0) {
@@ -594,7 +594,7 @@ namespace GPBoost {
 				}
 				if (terminate_optim) {
 					if (approx_marginal_ll_new < approx_marginal_ll) {
-						Log::REDebug("Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.");
+						Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
 					}
 					approx_marginal_ll = approx_marginal_ll_new;
 					break;
@@ -604,7 +604,7 @@ namespace GPBoost {
 				}
 			}
 			if (it == MAXIT_MODE_NEWTON_) {
-				Log::REDebug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
+				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
 			if (no_fixed_effects) {
 				CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
@@ -758,7 +758,7 @@ namespace GPBoost {
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					Log::REDebug("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
+					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
 				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g", it, approx_marginal_ll, approx_marginal_ll_new);///Only for debugging
@@ -774,7 +774,7 @@ namespace GPBoost {
 				}
 				if (terminate_optim) {
 					if (approx_marginal_ll_new < approx_marginal_ll) {
-						Log::REDebug("Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.");
+						Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
 					}
 					approx_marginal_ll = approx_marginal_ll_new;
 					break;
@@ -784,7 +784,7 @@ namespace GPBoost {
 				}
 			}//end loop for finding mode
 			if (it == MAXIT_MODE_NEWTON_) {
-				Log::REDebug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
+				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -893,7 +893,7 @@ namespace GPBoost {
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					Log::REWarning("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
+					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
 				if (it == 0) {
@@ -908,7 +908,7 @@ namespace GPBoost {
 				}
 				if (terminate_optim) {
 					if (approx_marginal_ll_new < approx_marginal_ll) {
-						Log::REDebug("Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.");
+						Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
 					}
 					approx_marginal_ll = approx_marginal_ll_new;
 					break;
@@ -918,7 +918,7 @@ namespace GPBoost {
 				}
 			}//end mode finding algorithm
 			if (it == MAXIT_MODE_NEWTON_) {
-				Log::REDebug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
+				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -1045,7 +1045,7 @@ namespace GPBoost {
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					Log::REWarning("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
+					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
 				if (it == 0) {
@@ -1060,7 +1060,7 @@ namespace GPBoost {
 				}
 				if (terminate_optim) {
 					if (approx_marginal_ll_new < approx_marginal_ll) {
-						Log::REDebug("Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.");
+						Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
 					}
 					approx_marginal_ll = approx_marginal_ll_new;
 					break;
@@ -1070,7 +1070,7 @@ namespace GPBoost {
 				}
 			}//end mode finding algorithm
 			if (it == MAXIT_MODE_NEWTON_) {
-				Log::REDebug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
+				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -1191,7 +1191,7 @@ namespace GPBoost {
 					approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				}
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					Log::REWarning("Mode finding algorithm for Laplace approximation: NA or Inf occurred");
+					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
 				if (it == 0) {
@@ -1206,7 +1206,7 @@ namespace GPBoost {
 				}
 				if (terminate_optim) {
 					if (approx_marginal_ll_new < approx_marginal_ll) {
-						Log::REDebug("Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.");
+						Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
 					}
 					approx_marginal_ll = approx_marginal_ll_new;
 					break;
@@ -1216,7 +1216,7 @@ namespace GPBoost {
 				}
 			} // end loop for mode finding
 			if (it == MAXIT_MODE_NEWTON_) {
-				Log::REDebug("Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations");
+				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
 			if (no_fixed_effects) {
 				CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
@@ -2582,6 +2582,10 @@ namespace GPBoost {
 										0.56940269194964050397,
 										0.64909798155426670071,
 										0.83424747101276179534 };
+
+		const char* NA_OR_INF_WARNING_ = "Mode finding algorithm for Laplace approximation: NA or Inf occurred. This is not necessary a problem as it might have been the cause of a too large learning rate which, consequently, has been decreased by the algorithm";
+		const char* NO_INCREASE_IN_MLL_WARNING_ = "Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.";
+		const char* NO_CONVERGENCE_WARNING_ = "Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations";
 
 		/*! \brief Get number of non-zero entries in matrix */
 		template <class T_mat1, typename std::enable_if< std::is_same<sp_mat_t, T_mat1>::value>::type * = nullptr  >
