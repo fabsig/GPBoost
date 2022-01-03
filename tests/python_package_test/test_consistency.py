@@ -1,7 +1,7 @@
 # coding: utf-8
 import os
 
-import lightgbm as lgb
+import gpboost as gpb
 import numpy as np
 from sklearn.datasets import load_svmlight_file
 
@@ -33,23 +33,23 @@ class FileLoader:
     def load_field(self, suffix):
         return np.loadtxt(os.path.join(self.directory, self.prefix + suffix))
 
-    def load_cpp_result(self, result_file='LightGBM_predict_result.txt'):
+    def load_cpp_result(self, result_file='GPBoost_predict_result.txt'):
         return np.loadtxt(os.path.join(self.directory, result_file))
 
-    def train_predict_check(self, lgb_train, X_test, X_test_fn, sk_pred):
+    def train_predict_check(self, gpb_train, X_test, X_test_fn, sk_pred):
         params = dict(self.params)
         params['force_row_wise'] = True
-        gbm = lgb.train(params, lgb_train)
+        gbm = gpb.train(params, gpb_train)
         y_pred = gbm.predict(X_test)
         cpp_pred = gbm.predict(X_test_fn)
         np.testing.assert_allclose(y_pred, cpp_pred)
         np.testing.assert_allclose(y_pred, sk_pred)
 
-    def file_load_check(self, lgb_train, name):
-        lgb_train_f = lgb.Dataset(self.path(name), params=self.params).construct()
+    def file_load_check(self, gpb_train, name):
+        gpb_train_f = gpb.Dataset(self.path(name), params=self.params).construct()
         for f in ('num_data', 'num_feature', 'get_label', 'get_weight', 'get_init_score', 'get_group'):
-            a = getattr(lgb_train, f)()
-            b = getattr(lgb_train_f, f)()
+            a = getattr(gpb_train, f)()
+            b = getattr(gpb_train_f, f)()
             if a is None and b is None:
                 pass
             elif a is None:
@@ -68,12 +68,12 @@ def test_binary():
     X_train, y_train, _ = fd.load_dataset('.train')
     X_test, _, X_test_fn = fd.load_dataset('.test')
     weight_train = fd.load_field('.train.weight')
-    lgb_train = lgb.Dataset(X_train, y_train, params=fd.params, weight=weight_train)
-    gbm = lgb.LGBMClassifier(**fd.params)
+    gpb_train = gpb.Dataset(X_train, y_train, params=fd.params, weight=weight_train)
+    gbm = gpb.GPBoostClassifier(**fd.params)
     gbm.fit(X_train, y_train, sample_weight=weight_train)
     sk_pred = gbm.predict_proba(X_test)[:, 1]
-    fd.train_predict_check(lgb_train, X_test, X_test_fn, sk_pred)
-    fd.file_load_check(lgb_train, '.train')
+    fd.train_predict_check(gpb_train, X_test, X_test_fn, sk_pred)
+    fd.file_load_check(gpb_train, '.train')
 
 
 def test_binary_linear():
@@ -81,24 +81,24 @@ def test_binary_linear():
     X_train, y_train, _ = fd.load_dataset('.train')
     X_test, _, X_test_fn = fd.load_dataset('.test')
     weight_train = fd.load_field('.train.weight')
-    lgb_train = lgb.Dataset(X_train, y_train, params=fd.params, weight=weight_train)
-    gbm = lgb.LGBMClassifier(**fd.params)
+    gpb_train = gpb.Dataset(X_train, y_train, params=fd.params, weight=weight_train)
+    gbm = gpb.GPBoostClassifier(**fd.params)
     gbm.fit(X_train, y_train, sample_weight=weight_train)
     sk_pred = gbm.predict_proba(X_test)[:, 1]
-    fd.train_predict_check(lgb_train, X_test, X_test_fn, sk_pred)
-    fd.file_load_check(lgb_train, '.train')
+    fd.train_predict_check(gpb_train, X_test, X_test_fn, sk_pred)
+    fd.file_load_check(gpb_train, '.train')
 
 
 def test_multiclass():
     fd = FileLoader('../../examples/multiclass_classification', 'multiclass')
     X_train, y_train, _ = fd.load_dataset('.train')
     X_test, _, X_test_fn = fd.load_dataset('.test')
-    lgb_train = lgb.Dataset(X_train, y_train)
-    gbm = lgb.LGBMClassifier(**fd.params)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gbm = gpb.GPBoostClassifier(**fd.params)
     gbm.fit(X_train, y_train)
     sk_pred = gbm.predict_proba(X_test)
-    fd.train_predict_check(lgb_train, X_test, X_test_fn, sk_pred)
-    fd.file_load_check(lgb_train, '.train')
+    fd.train_predict_check(gpb_train, X_test, X_test_fn, sk_pred)
+    fd.file_load_check(gpb_train, '.train')
 
 
 def test_regression():
@@ -106,12 +106,12 @@ def test_regression():
     X_train, y_train, _ = fd.load_dataset('.train')
     X_test, _, X_test_fn = fd.load_dataset('.test')
     init_score_train = fd.load_field('.train.init')
-    lgb_train = lgb.Dataset(X_train, y_train, init_score=init_score_train)
-    gbm = lgb.LGBMRegressor(**fd.params)
+    gpb_train = gpb.Dataset(X_train, y_train, init_score=init_score_train)
+    gbm = gpb.GPBoostRegressor(**fd.params)
     gbm.fit(X_train, y_train, init_score=init_score_train)
     sk_pred = gbm.predict(X_test)
-    fd.train_predict_check(lgb_train, X_test, X_test_fn, sk_pred)
-    fd.file_load_check(lgb_train, '.train')
+    fd.train_predict_check(gpb_train, X_test, X_test_fn, sk_pred)
+    fd.file_load_check(gpb_train, '.train')
 
 
 def test_lambdarank():
@@ -119,14 +119,14 @@ def test_lambdarank():
     X_train, y_train, _ = fd.load_dataset('.train', is_sparse=True)
     X_test, _, X_test_fn = fd.load_dataset('.test', is_sparse=True)
     group_train = fd.load_field('.train.query')
-    lgb_train = lgb.Dataset(X_train, y_train, group=group_train)
+    gpb_train = gpb.Dataset(X_train, y_train, group=group_train)
     params = dict(fd.params)
     params['force_col_wise'] = True
-    gbm = lgb.LGBMRanker(**params)
+    gbm = gpb.GPBoostRanker(**params)
     gbm.fit(X_train, y_train, group=group_train)
     sk_pred = gbm.predict(X_test)
-    fd.train_predict_check(lgb_train, X_test, X_test_fn, sk_pred)
-    fd.file_load_check(lgb_train, '.train')
+    fd.train_predict_check(gpb_train, X_test, X_test_fn, sk_pred)
+    fd.file_load_check(gpb_train, '.train')
 
 
 def test_xendcg():
@@ -134,9 +134,9 @@ def test_xendcg():
     X_train, y_train, _ = fd.load_dataset('.train', is_sparse=True)
     X_test, _, X_test_fn = fd.load_dataset('.test', is_sparse=True)
     group_train = fd.load_field('.train.query')
-    lgb_train = lgb.Dataset(X_train, y_train, group=group_train)
-    gbm = lgb.LGBMRanker(**fd.params)
+    gpb_train = gpb.Dataset(X_train, y_train, group=group_train)
+    gbm = gpb.GPBoostRanker(**fd.params)
     gbm.fit(X_train, y_train, group=group_train)
     sk_pred = gbm.predict(X_test)
-    fd.train_predict_check(lgb_train, X_test, X_test_fn, sk_pred)
-    fd.file_load_check(lgb_train, '.train')
+    fd.train_predict_check(gpb_train, X_test, X_test_fn, sk_pred)
+    fd.file_load_check(gpb_train, '.train')

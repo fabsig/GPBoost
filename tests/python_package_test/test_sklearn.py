@@ -4,7 +4,7 @@ import joblib
 import math
 import os
 
-import lightgbm as lgb
+import gpboost as gpb
 import numpy as np
 import pytest
 from pkg_resources import parse_version
@@ -82,7 +82,7 @@ def multi_logloss(y_true, y_pred):
 def test_binary():
     X, y = load_breast_cancer(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    gbm = lgb.LGBMClassifier(n_estimators=50, silent=True)
+    gbm = gpb.GPBoostClassifier(n_estimators=50, silent=True)
     gbm.fit(X_train, y_train, eval_set=[(X_test, y_test)], early_stopping_rounds=5, verbose=False)
     ret = log_loss(y_test, gbm.predict_proba(X_test))
     assert ret < 0.12
@@ -92,7 +92,7 @@ def test_binary():
 def test_regression():
     X, y = load_boston(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    gbm = lgb.LGBMRegressor(n_estimators=50, silent=True)
+    gbm = gpb.GPBoostRegressor(n_estimators=50, silent=True)
     gbm.fit(X_train, y_train, eval_set=[(X_test, y_test)], early_stopping_rounds=5, verbose=False)
     ret = mean_squared_error(y_test, gbm.predict(X_test))
     assert ret < 7
@@ -102,7 +102,7 @@ def test_regression():
 def test_multiclass():
     X, y = load_digits(n_class=10, return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    gbm = lgb.LGBMClassifier(n_estimators=50, silent=True)
+    gbm = gpb.GPBoostClassifier(n_estimators=50, silent=True)
     gbm.fit(X_train, y_train, eval_set=[(X_test, y_test)], early_stopping_rounds=5, verbose=False)
     ret = multi_error(y_test, gbm.predict(X_test))
     assert ret < 0.05
@@ -120,10 +120,10 @@ def test_lambdarank():
                                       '../../examples/lambdarank/rank.train.query'))
     q_test = np.loadtxt(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                      '../../examples/lambdarank/rank.test.query'))
-    gbm = lgb.LGBMRanker(n_estimators=50)
+    gbm = gpb.GPBoostRanker(n_estimators=50)
     gbm.fit(X_train, y_train, group=q_train, eval_set=[(X_test, y_test)],
             eval_group=[q_test], eval_at=[1, 3], early_stopping_rounds=10, verbose=False,
-            callbacks=[lgb.reset_parameter(learning_rate=lambda x: max(0.01, 0.1 - 0.01 * x))])
+            callbacks=[gpb.reset_parameter(learning_rate=lambda x: max(0.01, 0.1 - 0.01 * x))])
     assert gbm.best_iteration_ <= 24
     assert gbm.best_score_['valid_0']['ndcg@1'] > 0.5674
     assert gbm.best_score_['valid_0']['ndcg@3'] > 0.578
@@ -135,11 +135,11 @@ def test_xendcg():
     X_test, y_test = load_svmlight_file(os.path.join(dir_path, '../../examples/xendcg/rank.test'))
     q_train = np.loadtxt(os.path.join(dir_path, '../../examples/xendcg/rank.train.query'))
     q_test = np.loadtxt(os.path.join(dir_path, '../../examples/xendcg/rank.test.query'))
-    gbm = lgb.LGBMRanker(n_estimators=50, objective='rank_xendcg', random_state=5, n_jobs=1)
+    gbm = gpb.GPBoostRanker(n_estimators=50, objective='rank_xendcg', random_state=5, n_jobs=1)
     gbm.fit(X_train, y_train, group=q_train, eval_set=[(X_test, y_test)],
             eval_group=[q_test], eval_at=[1, 3], early_stopping_rounds=10, verbose=False,
             eval_metric='ndcg',
-            callbacks=[lgb.reset_parameter(learning_rate=lambda x: max(0.01, 0.1 - 0.01 * x))])
+            callbacks=[gpb.reset_parameter(learning_rate=lambda x: max(0.01, 0.1 - 0.01 * x))])
     assert gbm.best_iteration_ <= 24
     assert gbm.best_score_['valid_0']['ndcg@1'] > 0.6211
     assert gbm.best_score_['valid_0']['ndcg@3'] > 0.6253
@@ -148,7 +148,7 @@ def test_xendcg():
 def test_regression_with_custom_objective():
     X, y = load_boston(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    gbm = lgb.LGBMRegressor(n_estimators=50, silent=True, objective=objective_ls)
+    gbm = gpb.GPBoostRegressor(n_estimators=50, silent=True, objective=objective_ls)
     gbm.fit(X_train, y_train, eval_set=[(X_test, y_test)], early_stopping_rounds=5, verbose=False)
     ret = mean_squared_error(y_test, gbm.predict(X_test))
     assert ret < 7.0
@@ -158,7 +158,7 @@ def test_regression_with_custom_objective():
 def test_binary_classification_with_custom_objective():
     X, y = load_digits(n_class=2, return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    gbm = lgb.LGBMClassifier(n_estimators=50, silent=True, objective=logregobj)
+    gbm = gpb.GPBoostClassifier(n_estimators=50, silent=True, objective=logregobj)
     gbm.fit(X_train, y_train, eval_set=[(X_test, y_test)], early_stopping_rounds=5, verbose=False)
     # prediction result is actually not transformed (is raw) due to custom objective
     y_pred_raw = gbm.predict_proba(X_test)
@@ -171,7 +171,7 @@ def test_binary_classification_with_custom_objective():
 def test_dart():
     X, y = load_boston(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    gbm = lgb.LGBMRegressor(boosting_type='dart', n_estimators=50)
+    gbm = gpb.GPBoostRegressor(boosting_type='dart', n_estimators=50)
     gbm.fit(X_train, y_train)
     score = gbm.score(X_test, y_test)
     assert score >= 0.8
@@ -185,10 +185,10 @@ def test_stacking_classifier():
 
     X, y = load_iris(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
-    classifiers = [('gbm1', lgb.LGBMClassifier(n_estimators=3)),
-                   ('gbm2', lgb.LGBMClassifier(n_estimators=3))]
+    classifiers = [('gbm1', gpb.GPBoostClassifier(n_estimators=3)),
+                   ('gbm2', gpb.GPBoostClassifier(n_estimators=3))]
     clf = StackingClassifier(estimators=classifiers,
-                             final_estimator=lgb.LGBMClassifier(n_estimators=3),
+                             final_estimator=gpb.GPBoostClassifier(n_estimators=3),
                              passthrough=True)
     clf.fit(X_train, y_train)
     score = clf.score(X_test, y_test)
@@ -210,10 +210,10 @@ def test_stacking_regressor():
 
     X, y = load_boston(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
-    regressors = [('gbm1', lgb.LGBMRegressor(n_estimators=3)),
-                  ('gbm2', lgb.LGBMRegressor(n_estimators=3))]
+    regressors = [('gbm1', gpb.GPBoostRegressor(n_estimators=3)),
+                  ('gbm2', gpb.GPBoostRegressor(n_estimators=3))]
     reg = StackingRegressor(estimators=regressors,
-                            final_estimator=lgb.LGBMRegressor(n_estimators=3),
+                            final_estimator=gpb.GPBoostRegressor(n_estimators=3),
                             passthrough=True)
     reg.fit(X_train, y_train)
     score = reg.score(X_test, y_test)
@@ -242,7 +242,7 @@ def test_grid_search():
                       eval_set=[(X_val, y_val)],
                       eval_metric=constant_metric,
                       early_stopping_rounds=2)
-    grid = GridSearchCV(estimator=lgb.LGBMClassifier(**params), param_grid=grid_params,
+    grid = GridSearchCV(estimator=gpb.GPBoostClassifier(**params), param_grid=grid_params,
                         cv=2)
     grid.fit(X_train, y_train, **fit_params)
     score = grid.score(X_test, y_test)  # utilizes GridSearchCV default refit=True
@@ -274,7 +274,7 @@ def test_random_search():
                       eval_set=[(X_val, y_val)],
                       eval_metric=constant_metric,
                       early_stopping_rounds=2)
-    rand = RandomizedSearchCV(estimator=lgb.LGBMClassifier(**params),
+    rand = RandomizedSearchCV(estimator=gpb.GPBoostClassifier(**params),
                               param_distributions=param_dist, cv=2,
                               n_iter=n_iter, random_state=42)
     rand.fit(X_train, y_train, **fit_params)
@@ -299,7 +299,7 @@ def test_multioutput_classifier():
     y = y.astype(str)  # utilize label encoder at it's max power
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1,
                                                         random_state=42)
-    clf = MultiOutputClassifier(estimator=lgb.LGBMClassifier(n_estimators=10))
+    clf = MultiOutputClassifier(estimator=gpb.GPBoostClassifier(n_estimators=10))
     clf.fit(X_train, y_train)
     score = clf.score(X_test, y_test)
     assert score >= 0.2
@@ -307,8 +307,8 @@ def test_multioutput_classifier():
     np.testing.assert_array_equal(np.tile(np.unique(y_train), n_outputs),
                                   np.concatenate(clf.classes_))
     for classifier in clf.estimators_:
-        assert isinstance(classifier, lgb.LGBMClassifier)
-        assert isinstance(classifier.booster_, lgb.Booster)
+        assert isinstance(classifier, gpb.GPBoostClassifier)
+        assert isinstance(classifier.booster_, gpb.Booster)
 
 
 # sklearn < 0.23 does not have as_frame parameter
@@ -318,15 +318,15 @@ def test_multioutput_regressor():
     X, y = bunch['data'], bunch['target']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1,
                                                         random_state=42)
-    reg = MultiOutputRegressor(estimator=lgb.LGBMRegressor(n_estimators=10))
+    reg = MultiOutputRegressor(estimator=gpb.GPBoostRegressor(n_estimators=10))
     reg.fit(X_train, y_train)
     y_pred = reg.predict(X_test)
     _, score, _ = mse(y_test, y_pred)
     assert score >= 0.2
     assert score <= 120.
     for regressor in reg.estimators_:
-        assert isinstance(regressor, lgb.LGBMRegressor)
-        assert isinstance(regressor.booster_, lgb.Booster)
+        assert isinstance(regressor, gpb.GPBoostRegressor)
+        assert isinstance(regressor.booster_, gpb.Booster)
 
 
 # sklearn < 0.22 does not have the post fit attribute: classes_
@@ -338,7 +338,7 @@ def test_classifier_chain():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1,
                                                         random_state=42)
     order = [2, 0, 1]
-    clf = ClassifierChain(base_estimator=lgb.LGBMClassifier(n_estimators=10),
+    clf = ClassifierChain(base_estimator=gpb.GPBoostClassifier(n_estimators=10),
                           order=order, random_state=42)
     clf.fit(X_train, y_train)
     score = clf.score(X_test, y_test)
@@ -348,8 +348,8 @@ def test_classifier_chain():
                                   np.concatenate(clf.classes_))
     assert order == clf.order_
     for classifier in clf.estimators_:
-        assert isinstance(classifier, lgb.LGBMClassifier)
-        assert isinstance(classifier.booster_, lgb.Booster)
+        assert isinstance(classifier, gpb.GPBoostClassifier)
+        assert isinstance(classifier.booster_, gpb.Booster)
 
 
 # sklearn < 0.23 does not have as_frame parameter
@@ -359,7 +359,7 @@ def test_regressor_chain():
     X, y = bunch['data'], bunch['target']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
     order = [2, 0, 1]
-    reg = RegressorChain(base_estimator=lgb.LGBMRegressor(n_estimators=10), order=order,
+    reg = RegressorChain(base_estimator=gpb.GPBoostRegressor(n_estimators=10), order=order,
                          random_state=42)
     reg.fit(X_train, y_train)
     y_pred = reg.predict(X_test)
@@ -368,40 +368,40 @@ def test_regressor_chain():
     assert score <= 120.
     assert order == reg.order_
     for regressor in reg.estimators_:
-        assert isinstance(regressor, lgb.LGBMRegressor)
-        assert isinstance(regressor.booster_, lgb.Booster)
+        assert isinstance(regressor, gpb.GPBoostRegressor)
+        assert isinstance(regressor.booster_, gpb.Booster)
 
 
 def test_clone_and_property():
     X, y = load_boston(return_X_y=True)
-    gbm = lgb.LGBMRegressor(n_estimators=10, silent=True)
+    gbm = gpb.GPBoostRegressor(n_estimators=10, silent=True)
     gbm.fit(X, y, verbose=False)
 
     gbm_clone = clone(gbm)
-    assert isinstance(gbm.booster_, lgb.Booster)
+    assert isinstance(gbm.booster_, gpb.Booster)
     assert isinstance(gbm.feature_importances_, np.ndarray)
 
     X, y = load_digits(n_class=2, return_X_y=True)
-    clf = lgb.LGBMClassifier(n_estimators=10, silent=True)
+    clf = gpb.GPBoostClassifier(n_estimators=10, silent=True)
     clf.fit(X, y, verbose=False)
     assert sorted(clf.classes_) == [0, 1]
     assert clf.n_classes_ == 2
-    assert isinstance(clf.booster_, lgb.Booster)
+    assert isinstance(clf.booster_, gpb.Booster)
     assert isinstance(clf.feature_importances_, np.ndarray)
 
 
 def test_joblib():
     X, y = load_boston(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    gbm = lgb.LGBMRegressor(n_estimators=10, objective=custom_asymmetric_obj,
+    gbm = gpb.GPBoostRegressor(n_estimators=10, objective=custom_asymmetric_obj,
                             silent=True, importance_type='split')
     gbm.fit(X_train, y_train, eval_set=[(X_train, y_train), (X_test, y_test)],
             eval_metric=mse, early_stopping_rounds=5, verbose=False,
-            callbacks=[lgb.reset_parameter(learning_rate=list(np.arange(1, 0, -0.1)))])
+            callbacks=[gpb.reset_parameter(learning_rate=list(np.arange(1, 0, -0.1)))])
 
-    joblib.dump(gbm, 'lgb.pkl')  # test model with custom functions
-    gbm_pickle = joblib.load('lgb.pkl')
-    assert isinstance(gbm_pickle.booster_, lgb.Booster)
+    joblib.dump(gbm, 'gpb.pkl')  # test model with custom functions
+    gbm_pickle = joblib.load('gpb.pkl')
+    assert isinstance(gbm_pickle.booster_, gpb.Booster)
     assert gbm.get_params() == gbm_pickle.get_params()
     np.testing.assert_array_equal(gbm.feature_importances_, gbm_pickle.feature_importances_)
     assert gbm_pickle.learning_rate == pytest.approx(0.1)
@@ -421,8 +421,8 @@ def test_random_state_object():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
     state1 = np.random.RandomState(123)
     state2 = np.random.RandomState(123)
-    clf1 = lgb.LGBMClassifier(n_estimators=10, subsample=0.5, subsample_freq=1, random_state=state1)
-    clf2 = lgb.LGBMClassifier(n_estimators=10, subsample=0.5, subsample_freq=1, random_state=state2)
+    clf1 = gpb.GPBoostClassifier(n_estimators=10, subsample=0.5, subsample_freq=1, random_state=state1)
+    clf2 = gpb.GPBoostClassifier(n_estimators=10, subsample=0.5, subsample_freq=1, random_state=state2)
     # Test if random_state is properly stored
     assert clf1.random_state is state1
     assert clf2.random_state is state2
@@ -449,7 +449,7 @@ def test_random_state_object():
 
 def test_feature_importances_single_leaf():
     data = load_iris(return_X_y=False)
-    clf = lgb.LGBMClassifier(n_estimators=10)
+    clf = gpb.GPBoostClassifier(n_estimators=10)
     clf.fit(data.data, data.target)
     importances = clf.feature_importances_
     assert len(importances) == 4
@@ -457,7 +457,7 @@ def test_feature_importances_single_leaf():
 
 def test_feature_importances_type():
     data = load_iris(return_X_y=False)
-    clf = lgb.LGBMClassifier(n_estimators=10)
+    clf = gpb.GPBoostClassifier(n_estimators=10)
     clf.fit(data.data, data.target)
     clf.set_params(importance_type='split')
     importances_split = clf.feature_importances_
@@ -491,21 +491,21 @@ def test_pandas_categorical():
     X[cat_cols_actual] = X[cat_cols_actual].astype('category')
     X_test[cat_cols_actual] = X_test[cat_cols_actual].astype('category')
     cat_values = [X[col].cat.categories.tolist() for col in cat_cols_to_store]
-    gbm0 = lgb.sklearn.LGBMClassifier(n_estimators=10).fit(X, y)
+    gbm0 = gpb.sklearn.GPBoostClassifier(n_estimators=10).fit(X, y)
     pred0 = gbm0.predict(X_test, raw_score=True)
     pred_prob = gbm0.predict_proba(X_test)[:, 1]
-    gbm1 = lgb.sklearn.LGBMClassifier(n_estimators=10).fit(X, pd.Series(y), categorical_feature=[0])
+    gbm1 = gpb.sklearn.GPBoostClassifier(n_estimators=10).fit(X, pd.Series(y), categorical_feature=[0])
     pred1 = gbm1.predict(X_test, raw_score=True)
-    gbm2 = lgb.sklearn.LGBMClassifier(n_estimators=10).fit(X, y, categorical_feature=['A'])
+    gbm2 = gpb.sklearn.GPBoostClassifier(n_estimators=10).fit(X, y, categorical_feature=['A'])
     pred2 = gbm2.predict(X_test, raw_score=True)
-    gbm3 = lgb.sklearn.LGBMClassifier(n_estimators=10).fit(X, y, categorical_feature=['A', 'B', 'C', 'D'])
+    gbm3 = gpb.sklearn.GPBoostClassifier(n_estimators=10).fit(X, y, categorical_feature=['A', 'B', 'C', 'D'])
     pred3 = gbm3.predict(X_test, raw_score=True)
     gbm3.booster_.save_model('categorical.model')
-    gbm4 = lgb.Booster(model_file='categorical.model')
+    gbm4 = gpb.Booster(model_file='categorical.model')
     pred4 = gbm4.predict(X_test)
-    gbm5 = lgb.sklearn.LGBMClassifier(n_estimators=10).fit(X, y, categorical_feature=['A', 'B', 'C', 'D', 'E'])
+    gbm5 = gpb.sklearn.GPBoostClassifier(n_estimators=10).fit(X, y, categorical_feature=['A', 'B', 'C', 'D', 'E'])
     pred5 = gbm5.predict(X_test, raw_score=True)
-    gbm6 = lgb.sklearn.LGBMClassifier(n_estimators=10).fit(X, y, categorical_feature=[])
+    gbm6 = gpb.sklearn.GPBoostClassifier(n_estimators=10).fit(X, y, categorical_feature=[])
     pred6 = gbm6.predict(X_test, raw_score=True)
     with pytest.raises(AssertionError):
         np.testing.assert_allclose(pred0, pred1)
@@ -543,7 +543,7 @@ def test_pandas_sparse():
     if pd.__version__ >= '0.24.0':
         for dtype in pd.concat([X.dtypes, X_test.dtypes, pd.Series(y.dtypes)]):
             assert pd.api.types.is_sparse(dtype)
-    gbm = lgb.sklearn.LGBMClassifier(n_estimators=10).fit(X, y)
+    gbm = gpb.sklearn.GPBoostClassifier(n_estimators=10).fit(X, y)
     pred_sparse = gbm.predict(X_test, raw_score=True)
     if hasattr(X_test, 'sparse'):
         pred_dense = gbm.predict(X_test.sparse.to_dense(), raw_score=True)
@@ -558,11 +558,11 @@ def test_predict():
     X_train, X_test, y_train, y_test = train_test_split(iris.data, iris.target,
                                                         test_size=0.2, random_state=42)
 
-    gbm = lgb.train({'objective': 'multiclass',
+    gbm = gpb.train({'objective': 'multiclass',
                      'num_class': 3,
                      'verbose': -1},
-                    lgb.Dataset(X_train, y_train))
-    clf = lgb.LGBMClassifier(verbose=-1).fit(X_train, y_train)
+                    gpb.Dataset(X_train, y_train))
+    clf = gpb.GPBoostClassifier(verbose=-1).fit(X_train, y_train)
 
     # Tests same probabilities
     res_engine = gbm.predict(X_test)
@@ -635,7 +635,7 @@ def test_predict():
 def test_evaluate_train_set():
     X, y = load_boston(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    gbm = lgb.LGBMRegressor(n_estimators=10, silent=True)
+    gbm = gpb.GPBoostRegressor(n_estimators=10, silent=True)
     gbm.fit(X_train, y_train, eval_set=[(X_train, y_train), (X_test, y_test)], verbose=False)
     assert len(gbm.evals_result_) == 2
     assert 'training' in gbm.evals_result_
@@ -653,47 +653,47 @@ def test_metrics():
 
     # no custom objective, no custom metric
     # default metric
-    gbm = lgb.LGBMRegressor(**params).fit(**params_fit)
+    gbm = gpb.GPBoostRegressor(**params).fit(**params_fit)
     assert len(gbm.evals_result_['training']) == 1
     assert 'l2' in gbm.evals_result_['training']
 
     # non-default metric
-    gbm = lgb.LGBMRegressor(metric='mape', **params).fit(**params_fit)
+    gbm = gpb.GPBoostRegressor(metric='mape', **params).fit(**params_fit)
     assert len(gbm.evals_result_['training']) == 1
     assert 'mape' in gbm.evals_result_['training']
 
     # no metric
-    gbm = lgb.LGBMRegressor(metric='None', **params).fit(**params_fit)
+    gbm = gpb.GPBoostRegressor(metric='None', **params).fit(**params_fit)
     assert gbm.evals_result_ is None
 
     # non-default metric in eval_metric
-    gbm = lgb.LGBMRegressor(**params).fit(eval_metric='mape', **params_fit)
+    gbm = gpb.GPBoostRegressor(**params).fit(eval_metric='mape', **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'l2' in gbm.evals_result_['training']
     assert 'mape' in gbm.evals_result_['training']
 
     # non-default metric with non-default metric in eval_metric
-    gbm = lgb.LGBMRegressor(metric='gamma', **params).fit(eval_metric='mape', **params_fit)
+    gbm = gpb.GPBoostRegressor(metric='gamma', **params).fit(eval_metric='mape', **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'gamma' in gbm.evals_result_['training']
     assert 'mape' in gbm.evals_result_['training']
 
     # non-default metric with multiple metrics in eval_metric
-    gbm = lgb.LGBMRegressor(metric='gamma',
+    gbm = gpb.GPBoostRegressor(metric='gamma',
                             **params).fit(eval_metric=['l2', 'mape'], **params_fit)
     assert len(gbm.evals_result_['training']) == 3
     assert 'gamma' in gbm.evals_result_['training']
     assert 'l2' in gbm.evals_result_['training']
     assert 'mape' in gbm.evals_result_['training']
 
-    # non-default metric with multiple metrics in eval_metric for LGBMClassifier
+    # non-default metric with multiple metrics in eval_metric for GPBoostClassifier
     X_classification, y_classification = load_breast_cancer(return_X_y=True)
     params_classification = {'n_estimators': 2, 'verbose': -1,
                              'objective': 'binary', 'metric': 'binary_logloss'}
     params_fit_classification = {'X': X_classification, 'y': y_classification,
                                  'eval_set': (X_classification, y_classification),
                                  'verbose': False}
-    gbm = lgb.LGBMClassifier(**params_classification).fit(eval_metric=['fair', 'error'],
+    gbm = gpb.GPBoostClassifier(**params_classification).fit(eval_metric=['fair', 'error'],
                                                           **params_fit_classification)
     assert len(gbm.evals_result_['training']) == 3
     assert 'fair' in gbm.evals_result_['training']
@@ -701,37 +701,37 @@ def test_metrics():
     assert 'binary_logloss' in gbm.evals_result_['training']
 
     # default metric for non-default objective
-    gbm = lgb.LGBMRegressor(objective='regression_l1', **params).fit(**params_fit)
+    gbm = gpb.GPBoostRegressor(objective='regression_l1', **params).fit(**params_fit)
     assert len(gbm.evals_result_['training']) == 1
     assert 'l1' in gbm.evals_result_['training']
 
     # non-default metric for non-default objective
-    gbm = lgb.LGBMRegressor(objective='regression_l1', metric='mape',
+    gbm = gpb.GPBoostRegressor(objective='regression_l1', metric='mape',
                             **params).fit(**params_fit)
     assert len(gbm.evals_result_['training']) == 1
     assert 'mape' in gbm.evals_result_['training']
 
     # no metric
-    gbm = lgb.LGBMRegressor(objective='regression_l1', metric='None',
+    gbm = gpb.GPBoostRegressor(objective='regression_l1', metric='None',
                             **params).fit(**params_fit)
     assert gbm.evals_result_ is None
 
     # non-default metric in eval_metric for non-default objective
-    gbm = lgb.LGBMRegressor(objective='regression_l1',
+    gbm = gpb.GPBoostRegressor(objective='regression_l1',
                             **params).fit(eval_metric='mape', **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'l1' in gbm.evals_result_['training']
     assert 'mape' in gbm.evals_result_['training']
 
     # non-default metric with non-default metric in eval_metric for non-default objective
-    gbm = lgb.LGBMRegressor(objective='regression_l1', metric='gamma',
+    gbm = gpb.GPBoostRegressor(objective='regression_l1', metric='gamma',
                             **params).fit(eval_metric='mape', **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'gamma' in gbm.evals_result_['training']
     assert 'mape' in gbm.evals_result_['training']
 
     # non-default metric with multiple metrics in eval_metric for non-default objective
-    gbm = lgb.LGBMRegressor(objective='regression_l1', metric='gamma',
+    gbm = gpb.GPBoostRegressor(objective='regression_l1', metric='gamma',
                             **params).fit(eval_metric=['l2', 'mape'], **params_fit)
     assert len(gbm.evals_result_['training']) == 3
     assert 'gamma' in gbm.evals_result_['training']
@@ -740,43 +740,43 @@ def test_metrics():
 
     # custom objective, no custom metric
     # default regression metric for custom objective
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj, **params).fit(**params_fit)
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj, **params).fit(**params_fit)
     assert len(gbm.evals_result_['training']) == 1
     assert 'l2' in gbm.evals_result_['training']
 
     # non-default regression metric for custom objective
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj, metric='mape', **params).fit(**params_fit)
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj, metric='mape', **params).fit(**params_fit)
     assert len(gbm.evals_result_['training']) == 1
     assert 'mape' in gbm.evals_result_['training']
 
     # multiple regression metrics for custom objective
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj, metric=['l1', 'gamma'],
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj, metric=['l1', 'gamma'],
                             **params).fit(**params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'l1' in gbm.evals_result_['training']
     assert 'gamma' in gbm.evals_result_['training']
 
     # no metric
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj, metric='None',
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj, metric='None',
                             **params).fit(**params_fit)
     assert gbm.evals_result_ is None
 
     # default regression metric with non-default metric in eval_metric for custom objective
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj,
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj,
                             **params).fit(eval_metric='mape', **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'l2' in gbm.evals_result_['training']
     assert 'mape' in gbm.evals_result_['training']
 
     # non-default regression metric with metric in eval_metric for custom objective
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj, metric='mape',
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj, metric='mape',
                             **params).fit(eval_metric='gamma', **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'mape' in gbm.evals_result_['training']
     assert 'gamma' in gbm.evals_result_['training']
 
     # multiple regression metrics with metric in eval_metric for custom objective
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj, metric=['l1', 'gamma'],
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj, metric=['l1', 'gamma'],
                             **params).fit(eval_metric='l2', **params_fit)
     assert len(gbm.evals_result_['training']) == 3
     assert 'l1' in gbm.evals_result_['training']
@@ -784,7 +784,7 @@ def test_metrics():
     assert 'l2' in gbm.evals_result_['training']
 
     # multiple regression metrics with multiple metrics in eval_metric for custom objective
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj, metric=['l1', 'gamma'],
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj, metric=['l1', 'gamma'],
                             **params).fit(eval_metric=['l2', 'mape'], **params_fit)
     assert len(gbm.evals_result_['training']) == 4
     assert 'l1' in gbm.evals_result_['training']
@@ -794,20 +794,20 @@ def test_metrics():
 
     # no custom objective, custom metric
     # default metric with custom metric
-    gbm = lgb.LGBMRegressor(**params).fit(eval_metric=constant_metric, **params_fit)
+    gbm = gpb.GPBoostRegressor(**params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'l2' in gbm.evals_result_['training']
     assert 'error' in gbm.evals_result_['training']
 
     # non-default metric with custom metric
-    gbm = lgb.LGBMRegressor(metric='mape',
+    gbm = gpb.GPBoostRegressor(metric='mape',
                             **params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'mape' in gbm.evals_result_['training']
     assert 'error' in gbm.evals_result_['training']
 
     # multiple metrics with custom metric
-    gbm = lgb.LGBMRegressor(metric=['l1', 'gamma'],
+    gbm = gpb.GPBoostRegressor(metric=['l1', 'gamma'],
                             **params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 3
     assert 'l1' in gbm.evals_result_['training']
@@ -815,27 +815,27 @@ def test_metrics():
     assert 'error' in gbm.evals_result_['training']
 
     # custom metric (disable default metric)
-    gbm = lgb.LGBMRegressor(metric='None',
+    gbm = gpb.GPBoostRegressor(metric='None',
                             **params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 1
     assert 'error' in gbm.evals_result_['training']
 
     # default metric for non-default objective with custom metric
-    gbm = lgb.LGBMRegressor(objective='regression_l1',
+    gbm = gpb.GPBoostRegressor(objective='regression_l1',
                             **params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'l1' in gbm.evals_result_['training']
     assert 'error' in gbm.evals_result_['training']
 
     # non-default metric for non-default objective with custom metric
-    gbm = lgb.LGBMRegressor(objective='regression_l1', metric='mape',
+    gbm = gpb.GPBoostRegressor(objective='regression_l1', metric='mape',
                             **params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'mape' in gbm.evals_result_['training']
     assert 'error' in gbm.evals_result_['training']
 
     # multiple metrics for non-default objective with custom metric
-    gbm = lgb.LGBMRegressor(objective='regression_l1', metric=['l1', 'gamma'],
+    gbm = gpb.GPBoostRegressor(objective='regression_l1', metric=['l1', 'gamma'],
                             **params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 3
     assert 'l1' in gbm.evals_result_['training']
@@ -843,27 +843,27 @@ def test_metrics():
     assert 'error' in gbm.evals_result_['training']
 
     # custom metric (disable default metric for non-default objective)
-    gbm = lgb.LGBMRegressor(objective='regression_l1', metric='None',
+    gbm = gpb.GPBoostRegressor(objective='regression_l1', metric='None',
                             **params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 1
     assert 'error' in gbm.evals_result_['training']
 
     # custom objective, custom metric
     # custom metric for custom objective
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj,
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj,
                             **params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'error' in gbm.evals_result_['training']
 
     # non-default regression metric with custom metric for custom objective
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj, metric='mape',
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj, metric='mape',
                             **params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'mape' in gbm.evals_result_['training']
     assert 'error' in gbm.evals_result_['training']
 
     # multiple regression metrics with custom metric for custom objective
-    gbm = lgb.LGBMRegressor(objective=custom_dummy_obj, metric=['l2', 'mape'],
+    gbm = gpb.GPBoostRegressor(objective=custom_dummy_obj, metric=['l2', 'mape'],
                             **params).fit(eval_metric=constant_metric, **params_fit)
     assert len(gbm.evals_result_['training']) == 3
     assert 'l2' in gbm.evals_result_['training']
@@ -874,14 +874,14 @@ def test_metrics():
     params_fit = {'X': X, 'y': y, 'eval_set': (X, y), 'verbose': False}
 
     # default metric and invalid binary metric is replaced with multiclass alternative
-    gbm = lgb.LGBMClassifier(**params).fit(eval_metric='binary_error', **params_fit)
+    gbm = gpb.GPBoostClassifier(**params).fit(eval_metric='binary_error', **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'multi_logloss' in gbm.evals_result_['training']
     assert 'multi_error' in gbm.evals_result_['training']
 
     # invalid objective is replaced with default multiclass one
     # and invalid binary metric is replaced with multiclass alternative
-    gbm = lgb.LGBMClassifier(objective='invalid_obj',
+    gbm = gpb.GPBoostClassifier(objective='invalid_obj',
                              **params).fit(eval_metric='binary_error', **params_fit)
     assert gbm.objective_ == 'multiclass'
     assert len(gbm.evals_result_['training']) == 2
@@ -890,7 +890,7 @@ def test_metrics():
 
     # default metric for non-default multiclass objective
     # and invalid binary metric is replaced with multiclass alternative
-    gbm = lgb.LGBMClassifier(objective='ovr',
+    gbm = gpb.GPBoostClassifier(objective='ovr',
                              **params).fit(eval_metric='binary_error', **params_fit)
     assert gbm.objective_ == 'ovr'
     assert len(gbm.evals_result_['training']) == 2
@@ -901,13 +901,13 @@ def test_metrics():
     params_fit = {'X': X, 'y': y, 'eval_set': (X, y), 'verbose': False}
 
     # default metric and invalid multiclass metric is replaced with binary alternative
-    gbm = lgb.LGBMClassifier(**params).fit(eval_metric='multi_error', **params_fit)
+    gbm = gpb.GPBoostClassifier(**params).fit(eval_metric='multi_error', **params_fit)
     assert len(gbm.evals_result_['training']) == 2
     assert 'binary_logloss' in gbm.evals_result_['training']
     assert 'binary_error' in gbm.evals_result_['training']
 
     # invalid multiclass metric is replaced with binary alternative for custom objective
-    gbm = lgb.LGBMClassifier(objective=custom_dummy_obj,
+    gbm = gpb.GPBoostClassifier(objective=custom_dummy_obj,
                              **params).fit(eval_metric='multi_logloss', **params_fit)
     assert len(gbm.evals_result_['training']) == 1
     assert 'binary_logloss' in gbm.evals_result_['training']
@@ -921,14 +921,14 @@ def test_multiple_eval_metrics():
     params_fit = {'X': X, 'y': y, 'eval_set': (X, y), 'verbose': False}
 
     # Verify that can receive a list of metrics, only callable
-    gbm = lgb.LGBMClassifier(**params).fit(eval_metric=[constant_metric, decreasing_metric], **params_fit)
+    gbm = gpb.GPBoostClassifier(**params).fit(eval_metric=[constant_metric, decreasing_metric], **params_fit)
     assert len(gbm.evals_result_['training']) == 3
     assert 'error' in gbm.evals_result_['training']
     assert 'decreasing_metric' in gbm.evals_result_['training']
     assert 'binary_logloss' in gbm.evals_result_['training']
 
     # Verify that can receive a list of custom and built-in metrics
-    gbm = lgb.LGBMClassifier(**params).fit(eval_metric=[constant_metric, decreasing_metric, 'fair'], **params_fit)
+    gbm = gpb.GPBoostClassifier(**params).fit(eval_metric=[constant_metric, decreasing_metric, 'fair'], **params_fit)
     assert len(gbm.evals_result_['training']) == 4
     assert 'error' in gbm.evals_result_['training']
     assert 'decreasing_metric' in gbm.evals_result_['training']
@@ -936,17 +936,17 @@ def test_multiple_eval_metrics():
     assert 'fair' in gbm.evals_result_['training']
 
     # Verify that works as expected when eval_metric is empty
-    gbm = lgb.LGBMClassifier(**params).fit(eval_metric=[], **params_fit)
+    gbm = gpb.GPBoostClassifier(**params).fit(eval_metric=[], **params_fit)
     assert len(gbm.evals_result_['training']) == 1
     assert 'binary_logloss' in gbm.evals_result_['training']
 
     # Verify that can receive a list of metrics, only built-in
-    gbm = lgb.LGBMClassifier(**params).fit(eval_metric=['fair', 'error'], **params_fit)
+    gbm = gpb.GPBoostClassifier(**params).fit(eval_metric=['fair', 'error'], **params_fit)
     assert len(gbm.evals_result_['training']) == 3
     assert 'binary_logloss' in gbm.evals_result_['training']
 
     # Verify that eval_metric is robust to receiving a list with None
-    gbm = lgb.LGBMClassifier(**params).fit(eval_metric=['fair', 'error', None], **params_fit)
+    gbm = gpb.GPBoostClassifier(**params).fit(eval_metric=['fair', 'error', None], **params_fit)
     assert len(gbm.evals_result_['training']) == 3
     assert 'binary_logloss' in gbm.evals_result_['training']
 
@@ -960,7 +960,7 @@ def test_inf_handle():
     params = {'n_estimators': 20, 'verbose': -1}
     params_fit = {'X': X, 'y': y, 'sample_weight': weight, 'eval_set': (X, y),
                   'verbose': False, 'early_stopping_rounds': 5}
-    gbm = lgb.LGBMRegressor(**params).fit(**params_fit)
+    gbm = gpb.GPBoostRegressor(**params).fit(**params_fit)
     np.testing.assert_allclose(gbm.evals_result_['training']['l2'], np.inf)
 
 
@@ -973,7 +973,7 @@ def test_nan_handle():
     params = {'n_estimators': 20, 'verbose': -1}
     params_fit = {'X': X, 'y': y, 'sample_weight': weight, 'eval_set': (X, y),
                   'verbose': False, 'early_stopping_rounds': 5}
-    gbm = lgb.LGBMRegressor(**params).fit(**params_fit)
+    gbm = gpb.GPBoostRegressor(**params).fit(**params_fit)
     np.testing.assert_allclose(gbm.evals_result_['training']['l2'], np.nan)
 
 
@@ -981,7 +981,7 @@ def test_first_metric_only():
 
     def fit_and_check(eval_set_names, metric_names, assumed_iteration, first_metric_only):
         params['first_metric_only'] = first_metric_only
-        gbm = lgb.LGBMRegressor(**params).fit(**params_fit)
+        gbm = gpb.GPBoostRegressor(**params).fit(**params_fit)
         assert len(gbm.evals_result_) == len(eval_set_names)
         for eval_set_name in eval_set_names:
             assert eval_set_name in gbm.evals_result_
@@ -1085,7 +1085,7 @@ def test_class_weight():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     y_train_str = y_train.astype('str')
     y_test_str = y_test.astype('str')
-    gbm = lgb.LGBMClassifier(n_estimators=10, class_weight='balanced', silent=True)
+    gbm = gpb.GPBoostClassifier(n_estimators=10, class_weight='balanced', silent=True)
     gbm.fit(X_train, y_train,
             eval_set=[(X_train, y_train), (X_test, y_test), (X_test, y_test),
                       (X_test, y_test), (X_test, y_test)],
@@ -1097,7 +1097,7 @@ def test_class_weight():
                                      np.testing.assert_allclose,
                                      gbm.evals_result_[eval_set1][metric],
                                      gbm.evals_result_[eval_set2][metric])
-    gbm_str = lgb.LGBMClassifier(n_estimators=10, class_weight='balanced', silent=True)
+    gbm_str = gpb.GPBoostClassifier(n_estimators=10, class_weight='balanced', silent=True)
     gbm_str.fit(X_train, y_train_str,
                 eval_set=[(X_train, y_train_str), (X_test, y_test_str),
                           (X_test, y_test_str), (X_test, y_test_str), (X_test, y_test_str)],
@@ -1118,9 +1118,9 @@ def test_class_weight():
 def test_continue_training_with_model():
     X, y = load_digits(n_class=3, return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    init_gbm = lgb.LGBMClassifier(n_estimators=5).fit(X_train, y_train, eval_set=(X_test, y_test),
+    init_gbm = gpb.GPBoostClassifier(n_estimators=5).fit(X_train, y_train, eval_set=(X_test, y_test),
                                                       verbose=False)
-    gbm = lgb.LGBMClassifier(n_estimators=5).fit(X_train, y_train, eval_set=(X_test, y_test),
+    gbm = gpb.GPBoostClassifier(n_estimators=5).fit(X_train, y_train, eval_set=(X_test, y_test),
                                                  verbose=False, init_model=init_gbm)
     assert len(init_gbm.evals_result_['valid_0']['multi_logloss']) == len(gbm.evals_result_['valid_0']['multi_logloss'])
     assert len(init_gbm.evals_result_['valid_0']['multi_logloss']) == 5
@@ -1131,13 +1131,13 @@ def test_continue_training_with_model():
 @pytest.mark.skipif(sk_version < parse_version('0.22'), reason='scikit-learn version is less than 0.22')
 def test_check_is_fitted():
     X, y = load_digits(n_class=2, return_X_y=True)
-    est = lgb.LGBMModel(n_estimators=5, objective="binary")
-    clf = lgb.LGBMClassifier(n_estimators=5)
-    reg = lgb.LGBMRegressor(n_estimators=5)
-    rnk = lgb.LGBMRanker(n_estimators=5)
+    est = gpb.GPBoostModel(n_estimators=5, objective="binary")
+    clf = gpb.GPBoostClassifier(n_estimators=5)
+    reg = gpb.GPBoostRegressor(n_estimators=5)
+    rnk = gpb.GPBoostRanker(n_estimators=5)
     models = (est, clf, reg, rnk)
     for model in models:
-        with pytest.raises(lgb.compat.LGBMNotFittedError):
+        with pytest.raises(gpb.compat.GPBoostNotFittedError):
             check_is_fitted(model)
     est.fit(X, y)
     clf.fit(X, y)
@@ -1148,7 +1148,7 @@ def test_check_is_fitted():
 
 
 def _tested_estimators():
-    for Estimator in [lgb.sklearn.LGBMClassifier, lgb.sklearn.LGBMRegressor]:
+    for Estimator in [gpb.sklearn.GPBoostClassifier, gpb.sklearn.GPBoostRegressor]:
         yield Estimator()
 
 

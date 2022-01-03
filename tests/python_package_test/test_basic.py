@@ -1,7 +1,7 @@
 # coding: utf-8
 import os
 
-import lightgbm as lgb
+import gpboost as gpb
 import numpy as np
 import pytest
 
@@ -15,7 +15,7 @@ from .utils import load_breast_cancer
 def test_basic(tmp_path):
     X_train, X_test, y_train, y_test = train_test_split(*load_breast_cancer(return_X_y=True),
                                                         test_size=0.1, random_state=2)
-    train_data = lgb.Dataset(X_train, label=y_train)
+    train_data = gpb.Dataset(X_train, label=y_train)
     valid_data = train_data.create_valid(X_test, label=y_test)
 
     params = {
@@ -26,9 +26,10 @@ def test_basic(tmp_path):
         "verbose": -1,
         "num_threads": 1,
         "max_bin": 255,
-        "gpu_use_dp": True
+        "gpu_use_dp": True,
+        "feature_pre_filter": True
     }
-    bst = lgb.Booster(params, train_data)
+    bst = gpb.Booster(params, train_data)
     bst.add_valid(valid_data, "valid_1")
 
     for i in range(20):
@@ -53,7 +54,7 @@ def test_basic(tmp_path):
     np.testing.assert_allclose(pred_from_matr, pred_from_file)
 
     # check saved model persistence
-    bst = lgb.Booster(params, model_file=model_file)
+    bst = gpb.Booster(params, model_file=model_file)
     pred_from_model_file = bst.predict(X_test)
     # we need to check the consistency of model file here, so test for exact equal
     np.testing.assert_array_equal(pred_from_matr, pred_from_model_file)
@@ -67,19 +68,19 @@ def test_basic(tmp_path):
     # test that shape is checked during prediction
     bad_X_test = X_test[:, 1:]
     bad_shape_error_msg = "The number of features in data*"
-    np.testing.assert_raises_regex(lgb.basic.LightGBMError, bad_shape_error_msg,
+    np.testing.assert_raises_regex(gpb.basic.GPBoostError, bad_shape_error_msg,
                                    bst.predict, bad_X_test)
-    np.testing.assert_raises_regex(lgb.basic.LightGBMError, bad_shape_error_msg,
+    np.testing.assert_raises_regex(gpb.basic.GPBoostError, bad_shape_error_msg,
                                    bst.predict, sparse.csr_matrix(bad_X_test))
-    np.testing.assert_raises_regex(lgb.basic.LightGBMError, bad_shape_error_msg,
+    np.testing.assert_raises_regex(gpb.basic.GPBoostError, bad_shape_error_msg,
                                    bst.predict, sparse.csc_matrix(bad_X_test))
     with open(tname, "w+b") as f:
         dump_svmlight_file(bad_X_test, y_test, f)
-    np.testing.assert_raises_regex(lgb.basic.LightGBMError, bad_shape_error_msg,
+    np.testing.assert_raises_regex(gpb.basic.GPBoostError, bad_shape_error_msg,
                                    bst.predict, tname)
     with open(tname, "w+b") as f:
         dump_svmlight_file(X_test, y_test, f, zero_based=False)
-    np.testing.assert_raises_regex(lgb.basic.LightGBMError, bad_shape_error_msg,
+    np.testing.assert_raises_regex(gpb.basic.GPBoostError, bad_shape_error_msg,
                                    bst.predict, tname)
 
 
@@ -91,7 +92,7 @@ def test_chunked_dataset():
     X_train = [X_train[i * chunk_size:(i + 1) * chunk_size, :] for i in range(X_train.shape[0] // chunk_size + 1)]
     X_test = [X_test[i * chunk_size:(i + 1) * chunk_size, :] for i in range(X_test.shape[0] // chunk_size + 1)]
 
-    train_data = lgb.Dataset(X_train, label=y_train, params={"bin_construct_sample_cnt": 100})
+    train_data = gpb.Dataset(X_train, label=y_train, params={"bin_construct_sample_cnt": 100})
     valid_data = train_data.create_valid(X_test, label=y_test, params={"bin_construct_sample_cnt": 100})
     train_data.construct()
     valid_data.construct()
@@ -104,7 +105,7 @@ def test_chunked_dataset_linear():
     X_train = [X_train[i * chunk_size:(i + 1) * chunk_size, :] for i in range(X_train.shape[0] // chunk_size + 1)]
     X_test = [X_test[i * chunk_size:(i + 1) * chunk_size, :] for i in range(X_test.shape[0] // chunk_size + 1)]
     params = {"bin_construct_sample_cnt": 100, 'linear_tree': True}
-    train_data = lgb.Dataset(X_train, label=y_train, params=params)
+    train_data = gpb.Dataset(X_train, label=y_train, params=params)
     valid_data = train_data.create_valid(X_test, label=y_test, params=params)
     train_data.construct()
     valid_data.construct()
@@ -115,9 +116,9 @@ def test_subset_group():
                                                        '../../examples/lambdarank/rank.train'))
     q_train = np.loadtxt(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                       '../../examples/lambdarank/rank.train.query'))
-    lgb_train = lgb.Dataset(X_train, y_train, group=q_train)
-    assert len(lgb_train.get_group()) == 201
-    subset = lgb_train.subset(list(range(10))).construct()
+    gpb_train = gpb.Dataset(X_train, y_train, group=q_train)
+    assert len(gpb_train.get_group()) == 201
+    subset = gpb_train.subset(list(range(10))).construct()
     subset_group = subset.get_group()
     assert len(subset_group) == 2
     assert subset_group[0] == 1
@@ -127,9 +128,9 @@ def test_subset_group():
 def test_add_features_throws_if_num_data_unequal():
     X1 = np.random.random((100, 1))
     X2 = np.random.random((10, 1))
-    d1 = lgb.Dataset(X1).construct()
-    d2 = lgb.Dataset(X2).construct()
-    with pytest.raises(lgb.basic.LightGBMError):
+    d1 = gpb.Dataset(X1).construct()
+    d2 = gpb.Dataset(X2).construct()
+    with pytest.raises(gpb.basic.GPBoostError):
         d1.add_features_from(d2)
 
 
@@ -137,16 +138,16 @@ def test_add_features_throws_if_datasets_unconstructed():
     X1 = np.random.random((100, 1))
     X2 = np.random.random((100, 1))
     with pytest.raises(ValueError):
-        d1 = lgb.Dataset(X1)
-        d2 = lgb.Dataset(X2)
+        d1 = gpb.Dataset(X1)
+        d2 = gpb.Dataset(X2)
         d1.add_features_from(d2)
     with pytest.raises(ValueError):
-        d1 = lgb.Dataset(X1).construct()
-        d2 = lgb.Dataset(X2)
+        d1 = gpb.Dataset(X1).construct()
+        d2 = gpb.Dataset(X2)
         d1.add_features_from(d2)
     with pytest.raises(ValueError):
-        d1 = lgb.Dataset(X1)
-        d2 = lgb.Dataset(X2).construct()
+        d1 = gpb.Dataset(X1)
+        d2 = gpb.Dataset(X2).construct()
         d1.add_features_from(d2)
 
 
@@ -155,12 +156,12 @@ def test_add_features_equal_data_on_alternating_used_unused(tmp_path):
     X[:, [1, 3]] = 0
     names = ['col_%d' % i for i in range(5)]
     for j in range(1, 5):
-        d1 = lgb.Dataset(X[:, :j], feature_name=names[:j]).construct()
-        d2 = lgb.Dataset(X[:, j:], feature_name=names[j:]).construct()
+        d1 = gpb.Dataset(X[:, :j], feature_name=names[:j]).construct()
+        d2 = gpb.Dataset(X[:, j:], feature_name=names[j:]).construct()
         d1.add_features_from(d2)
         d1name = str(tmp_path / "d1.txt")
         d1._dump_text(d1name)
-        d = lgb.Dataset(X, feature_name=names).construct()
+        d = gpb.Dataset(X, feature_name=names).construct()
         dname = str(tmp_path / "d.txt")
         d._dump_text(dname)
         with open(d1name, 'rt') as d1f:
@@ -175,15 +176,15 @@ def test_add_features_same_booster_behaviour(tmp_path):
     X[:, [1, 3]] = 0
     names = ['col_%d' % i for i in range(5)]
     for j in range(1, 5):
-        d1 = lgb.Dataset(X[:, :j], feature_name=names[:j]).construct()
-        d2 = lgb.Dataset(X[:, j:], feature_name=names[j:]).construct()
+        d1 = gpb.Dataset(X[:, :j], feature_name=names[:j]).construct()
+        d2 = gpb.Dataset(X[:, j:], feature_name=names[j:]).construct()
         d1.add_features_from(d2)
-        d = lgb.Dataset(X, feature_name=names).construct()
+        d = gpb.Dataset(X, feature_name=names).construct()
         y = np.random.random(100)
         d1.set_label(y)
         d.set_label(y)
-        b1 = lgb.Booster(train_set=d1)
-        b = lgb.Booster(train_set=d)
+        b1 = gpb.Booster(train_set=d1)
+        b = gpb.Booster(train_set=d)
         for k in range(10):
             b.update()
             b1.update()
@@ -207,24 +208,24 @@ def test_add_features_from_different_sources():
     names = ['col_%d' % i for i in range(n_col)]
     for x_1 in xxs:
         # Test that method works even with free_raw_data=True
-        d1 = lgb.Dataset(x_1, feature_name=names, free_raw_data=True).construct()
-        d2 = lgb.Dataset(x_1, feature_name=names, free_raw_data=True).construct()
+        d1 = gpb.Dataset(x_1, feature_name=names, free_raw_data=True).construct()
+        d2 = gpb.Dataset(x_1, feature_name=names, free_raw_data=True).construct()
         d1.add_features_from(d2)
         assert d1.data is None
 
         # Test that method works but sets raw data to None in case of immergeable data types
-        d1 = lgb.Dataset(x_1, feature_name=names, free_raw_data=False).construct()
-        d2 = lgb.Dataset([X[:n_row // 2, :], X[n_row // 2:, :]],
+        d1 = gpb.Dataset(x_1, feature_name=names, free_raw_data=False).construct()
+        d2 = gpb.Dataset([X[:n_row // 2, :], X[n_row // 2:, :]],
                          feature_name=names, free_raw_data=False).construct()
         d1.add_features_from(d2)
         assert d1.data is None
 
         # Test that method works for different data types
-        d1 = lgb.Dataset(x_1, feature_name=names, free_raw_data=False).construct()
+        d1 = gpb.Dataset(x_1, feature_name=names, free_raw_data=False).construct()
         res_feature_names = [name for name in names]
         for idx, x_2 in enumerate(xxs, 2):
             original_type = type(d1.get_data())
-            d2 = lgb.Dataset(x_2, feature_name=names, free_raw_data=False).construct()
+            d2 = gpb.Dataset(x_2, feature_name=names, free_raw_data=False).construct()
             d1.add_features_from(d2)
             assert isinstance(d1.get_data(), original_type)
             assert d1.get_data().shape == (n_row, n_col * idx)
@@ -237,9 +238,9 @@ def test_cegb_affects_behavior(tmp_path):
     X[:, [1, 3]] = 0
     y = np.random.random(100)
     names = ['col_%d' % i for i in range(5)]
-    ds = lgb.Dataset(X, feature_name=names).construct()
+    ds = gpb.Dataset(X, feature_name=names).construct()
     ds.set_label(y)
-    base = lgb.Booster(train_set=ds)
+    base = gpb.Booster(train_set=ds)
     for k in range(10):
         base.update()
     basename = str(tmp_path / "basename.txt")
@@ -251,7 +252,7 @@ def test_cegb_affects_behavior(tmp_path):
              {'cegb_penalty_feature_lazy': [1, 2, 3, 4, 5]},
              {'cegb_penalty_split': 1}]
     for case in cases:
-        booster = lgb.Booster(train_set=ds, params=case)
+        booster = gpb.Booster(train_set=ds, params=case)
         for k in range(10):
             booster.update()
         casename = str(tmp_path / "casename.txt")
@@ -266,7 +267,7 @@ def test_cegb_scaling_equalities(tmp_path):
     X[:, [1, 3]] = 0
     y = np.random.random(100)
     names = ['col_%d' % i for i in range(5)]
-    ds = lgb.Dataset(X, feature_name=names).construct()
+    ds = gpb.Dataset(X, feature_name=names).construct()
     ds.set_label(y)
     # Compare pairs of penalties, to ensure scaling works as intended
     pairs = [({'cegb_penalty_feature_coupled': [1, 2, 1, 2, 1]},
@@ -276,8 +277,8 @@ def test_cegb_scaling_equalities(tmp_path):
              ({'cegb_penalty_split': 1},
               {'cegb_penalty_split': 2, 'cegb_tradeoff': 0.5})]
     for (p1, p2) in pairs:
-        booster1 = lgb.Booster(train_set=ds, params=p1)
-        booster2 = lgb.Booster(train_set=ds, params=p2)
+        booster1 = gpb.Booster(train_set=ds, params=p1)
+        booster2 = gpb.Booster(train_set=ds, params=p2)
         for k in range(10):
             booster1.update()
             booster2.update()
@@ -319,16 +320,16 @@ def test_consistent_state_for_dataset_fields():
     sequence[0] = np.nan
     sequence[1] = np.inf
     feature_names = ['f{0}'.format(i) for i in range(X.shape[1])]
-    lgb_data = lgb.Dataset(X, sequence,
+    gpb_data = gpb.Dataset(X, sequence,
                            weight=sequence, init_score=sequence,
                            feature_name=feature_names).construct()
-    check_asserts(lgb_data)
-    lgb_data = lgb.Dataset(X, y).construct()
-    lgb_data.set_label(sequence)
-    lgb_data.set_weight(sequence)
-    lgb_data.set_init_score(sequence)
-    lgb_data.set_feature_name(feature_names)
-    check_asserts(lgb_data)
+    check_asserts(gpb_data)
+    gpb_data = gpb.Dataset(X, y).construct()
+    gpb_data.set_label(sequence)
+    gpb_data.set_weight(sequence)
+    gpb_data.set_init_score(sequence)
+    gpb_data.set_feature_name(feature_names)
+    check_asserts(gpb_data)
 
 
 def test_choose_param_value():
@@ -341,7 +342,7 @@ def test_choose_param_value():
     }
 
     # should resolve duplicate aliases, and prefer the main parameter
-    params = lgb.basic._choose_param_value(
+    params = gpb.basic._choose_param_value(
         main_param_name="local_listen_port",
         params=original_params,
         default_value=5555
@@ -351,7 +352,7 @@ def test_choose_param_value():
 
     # should choose a value from an alias and set that value on main param
     # if only an alias is used
-    params = lgb.basic._choose_param_value(
+    params = gpb.basic._choose_param_value(
         main_param_name="num_iterations",
         params=params,
         default_value=17
@@ -360,7 +361,7 @@ def test_choose_param_value():
     assert "num_trees" not in params
 
     # should use the default if main param and aliases are missing
-    params = lgb.basic._choose_param_value(
+    params = gpb.basic._choose_param_value(
         main_param_name="learning_rate",
         params=params,
         default_value=0.789

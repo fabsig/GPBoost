@@ -7,7 +7,7 @@ import pickle
 import psutil
 import random
 
-import lightgbm as lgb
+import gpboost as gpb
 import numpy as np
 from scipy.sparse import csr_matrix, isspmatrix_csr, isspmatrix_csc
 from sklearn.datasets import load_svmlight_file, make_multilabel_classification
@@ -57,12 +57,12 @@ def test_binary():
         'verbose': -1,
         'num_iteration': 50  # test num_iteration in dict here
     }
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_test, y_test, reference=gpb_train)
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=20,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     ret = log_loss(y_test, gbm.predict(X_test))
@@ -84,12 +84,12 @@ def test_rf():
         'metric': 'binary_logloss',
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_test, y_test, reference=gpb_train)
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=50,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     ret = log_loss(y_test, gbm.predict(X_test))
@@ -104,12 +104,12 @@ def test_regression():
         'metric': 'l2',
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_test, y_test, reference=gpb_train)
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=50,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     ret = mean_squared_error(y_test, gbm.predict(X_test))
@@ -124,8 +124,8 @@ def test_missing_value_handle():
     for idx in trues:
         X_train[idx, 0] = np.nan
         y_train[idx] = 1
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_train, y_train)
 
     params = {
         'metric': 'l2',
@@ -133,9 +133,9 @@ def test_missing_value_handle():
         'boost_from_average': False
     }
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=20,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     ret = mean_squared_error(y_train, gbm.predict(X_train))
@@ -150,8 +150,8 @@ def test_missing_value_handle_more_na():
     for idx in trues:
         X_train[idx, 0] = np.nan
         y_train[idx] = 0
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_train, y_train)
 
     params = {
         'metric': 'l2',
@@ -159,9 +159,9 @@ def test_missing_value_handle_more_na():
         'boost_from_average': False
     }
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=20,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     ret = mean_squared_error(y_train, gbm.predict(X_train))
@@ -175,8 +175,8 @@ def test_missing_value_handle_na():
 
     X_train = np.array(x).reshape(len(x), 1)
     y_train = np.array(y)
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_train, y_train)
 
     params = {
         'objective': 'regression',
@@ -190,9 +190,9 @@ def test_missing_value_handle_na():
         'zero_as_missing': False
     }
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=1,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     pred = gbm.predict(X_train)
@@ -208,8 +208,8 @@ def test_missing_value_handle_zero():
 
     X_train = np.array(x).reshape(len(x), 1)
     y_train = np.array(y)
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_train, y_train)
 
     params = {
         'objective': 'regression',
@@ -223,9 +223,9 @@ def test_missing_value_handle_zero():
         'zero_as_missing': True
     }
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=1,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     pred = gbm.predict(X_train)
@@ -241,8 +241,8 @@ def test_missing_value_handle_none():
 
     X_train = np.array(x).reshape(len(x), 1)
     y_train = np.array(y)
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_train, y_train)
 
     params = {
         'objective': 'regression',
@@ -256,9 +256,9 @@ def test_missing_value_handle_none():
         'use_missing': False
     }
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=1,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     pred = gbm.predict(X_train)
@@ -275,8 +275,8 @@ def test_categorical_handle():
 
     X_train = np.array(x).reshape(len(x), 1)
     y_train = np.array(y)
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_train, y_train)
 
     params = {
         'objective': 'regression',
@@ -295,9 +295,9 @@ def test_categorical_handle():
         'categorical_column': 0
     }
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=1,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     pred = gbm.predict(X_train)
@@ -313,8 +313,8 @@ def test_categorical_handle_na():
 
     X_train = np.array(x).reshape(len(x), 1)
     y_train = np.array(y)
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_train, y_train)
 
     params = {
         'objective': 'regression',
@@ -333,9 +333,9 @@ def test_categorical_handle_na():
         'categorical_column': 0
     }
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=1,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     pred = gbm.predict(X_train)
@@ -351,8 +351,8 @@ def test_categorical_non_zero_inputs():
 
     X_train = np.array(x).reshape(len(x), 1)
     y_train = np.array(y)
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_train, y_train)
 
     params = {
         'objective': 'regression',
@@ -371,9 +371,9 @@ def test_categorical_non_zero_inputs():
         'categorical_column': 0
     }
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=1,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     pred = gbm.predict(X_train)
@@ -392,12 +392,12 @@ def test_multiclass():
         'num_class': 10,
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X_train, y_train, params=params)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train, params=params)
+    gpb_train = gpb.Dataset(X_train, y_train, params=params)
+    gpb_eval = gpb.Dataset(X_test, y_test, reference=gpb_train, params=params)
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=50,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     ret = multi_logloss(y_test, gbm.predict(X_test))
@@ -421,12 +421,12 @@ def test_multiclass_rf():
         'verbose': -1,
         'gpu_use_dp': True
     }
-    lgb_train = lgb.Dataset(X_train, y_train, params=params)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train, params=params)
+    gpb_train = gpb.Dataset(X_train, y_train, params=params)
+    gpb_eval = gpb.Dataset(X_test, y_test, reference=gpb_train, params=params)
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=50,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     ret = multi_logloss(y_test, gbm.predict(X_test))
@@ -443,8 +443,8 @@ def test_multiclass_prediction_early_stopping():
         'num_class': 10,
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X_train, y_train, params=params)
-    gbm = lgb.train(params, lgb_train,
+    gpb_train = gpb.Dataset(X_train, y_train, params=params)
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=50)
 
     pred_parameter = {"pred_early_stop": True,
@@ -465,12 +465,12 @@ def test_multi_class_error():
     X, y = load_digits(n_class=10, return_X_y=True)
     params = {'objective': 'multiclass', 'num_classes': 10, 'metric': 'multi_error',
               'num_leaves': 4, 'verbose': -1}
-    lgb_data = lgb.Dataset(X, label=y)
-    est = lgb.train(params, lgb_data, num_boost_round=10)
+    gpb_data = gpb.Dataset(X, label=y)
+    est = gpb.train(params, gpb_data, num_boost_round=10)
     predict_default = est.predict(X)
     results = {}
-    est = lgb.train(dict(params, multi_error_top_k=1), lgb_data, num_boost_round=10,
-                    valid_sets=[lgb_data], evals_result=results, verbose_eval=False)
+    est = gpb.train(dict(params, multi_error_top_k=1), gpb_data, num_boost_round=10,
+                    valid_sets=[gpb_data], evals_result=results, verbose_eval=False)
     predict_1 = est.predict(X)
     # check that default gives same result as k = 1
     np.testing.assert_allclose(predict_1, predict_default)
@@ -479,30 +479,30 @@ def test_multi_class_error():
     assert results['training']['multi_error'][-1] == pytest.approx(err)
     # check against independent calculation for k = 2
     results = {}
-    est = lgb.train(dict(params, multi_error_top_k=2), lgb_data, num_boost_round=10,
-                    valid_sets=[lgb_data], evals_result=results, verbose_eval=False)
+    est = gpb.train(dict(params, multi_error_top_k=2), gpb_data, num_boost_round=10,
+                    valid_sets=[gpb_data], evals_result=results, verbose_eval=False)
     predict_2 = est.predict(X)
     err = top_k_error(y, predict_2, 2)
     assert results['training']['multi_error@2'][-1] == pytest.approx(err)
     # check against independent calculation for k = 10
     results = {}
-    est = lgb.train(dict(params, multi_error_top_k=10), lgb_data, num_boost_round=10,
-                    valid_sets=[lgb_data], evals_result=results, verbose_eval=False)
+    est = gpb.train(dict(params, multi_error_top_k=10), gpb_data, num_boost_round=10,
+                    valid_sets=[gpb_data], evals_result=results, verbose_eval=False)
     predict_3 = est.predict(X)
     err = top_k_error(y, predict_3, 10)
     assert results['training']['multi_error@10'][-1] == pytest.approx(err)
     # check cases where predictions are equal
     X = np.array([[0, 0], [0, 0]])
     y = np.array([0, 1])
-    lgb_data = lgb.Dataset(X, label=y)
+    gpb_data = gpb.Dataset(X, label=y)
     params['num_classes'] = 2
     results = {}
-    lgb.train(params, lgb_data, num_boost_round=10,
-              valid_sets=[lgb_data], evals_result=results, verbose_eval=False)
+    gpb.train(params, gpb_data, num_boost_round=10,
+              valid_sets=[gpb_data], evals_result=results, verbose_eval=False)
     assert results['training']['multi_error'][-1] == pytest.approx(1)
     results = {}
-    lgb.train(dict(params, multi_error_top_k=2), lgb_data, num_boost_round=10,
-              valid_sets=[lgb_data], evals_result=results, verbose_eval=False)
+    gpb.train(dict(params, multi_error_top_k=2), gpb_data, num_boost_round=10,
+              valid_sets=[gpb_data], evals_result=results, verbose_eval=False)
     assert results['training']['multi_error@2'][-1] == pytest.approx(0)
 
 
@@ -511,23 +511,23 @@ def test_auc_mu():
     X, y = load_digits(n_class=10, return_X_y=True)
     y_new = np.zeros((len(y)))
     y_new[y != 0] = 1
-    lgb_X = lgb.Dataset(X, label=y_new)
+    gpb_X = gpb.Dataset(X, label=y_new)
     params = {'objective': 'multiclass',
               'metric': 'auc_mu',
               'verbose': -1,
               'num_classes': 2,
               'seed': 0}
     results_auc_mu = {}
-    lgb.train(params, lgb_X, num_boost_round=10, valid_sets=[lgb_X], evals_result=results_auc_mu)
+    gpb.train(params, gpb_X, num_boost_round=10, valid_sets=[gpb_X], evals_result=results_auc_mu)
     params = {'objective': 'binary',
               'metric': 'auc',
               'verbose': -1,
               'seed': 0}
     results_auc = {}
-    lgb.train(params, lgb_X, num_boost_round=10, valid_sets=[lgb_X], evals_result=results_auc)
+    gpb.train(params, gpb_X, num_boost_round=10, valid_sets=[gpb_X], evals_result=results_auc)
     np.testing.assert_allclose(results_auc_mu['training']['auc_mu'], results_auc['training']['auc'])
     # test the case where all predictions are equal
-    lgb_X = lgb.Dataset(X[:10], label=y_new[:10])
+    gpb_X = gpb.Dataset(X[:10], label=y_new[:10])
     params = {'objective': 'multiclass',
               'metric': 'auc_mu',
               'verbose': -1,
@@ -535,43 +535,43 @@ def test_auc_mu():
               'min_data_in_leaf': 20,
               'seed': 0}
     results_auc_mu = {}
-    lgb.train(params, lgb_X, num_boost_round=10, valid_sets=[lgb_X], evals_result=results_auc_mu)
+    gpb.train(params, gpb_X, num_boost_round=10, valid_sets=[gpb_X], evals_result=results_auc_mu)
     assert results_auc_mu['training']['auc_mu'][-1] == pytest.approx(0.5)
     # test that weighted data gives different auc_mu
-    lgb_X = lgb.Dataset(X, label=y)
-    lgb_X_weighted = lgb.Dataset(X, label=y, weight=np.abs(np.random.normal(size=y.shape)))
+    gpb_X = gpb.Dataset(X, label=y)
+    gpb_X_weighted = gpb.Dataset(X, label=y, weight=np.abs(np.random.normal(size=y.shape)))
     results_unweighted = {}
     results_weighted = {}
     params = dict(params, num_classes=10, num_leaves=5)
-    lgb.train(params, lgb_X, num_boost_round=10, valid_sets=[lgb_X], evals_result=results_unweighted)
-    lgb.train(params, lgb_X_weighted, num_boost_round=10, valid_sets=[lgb_X_weighted],
+    gpb.train(params, gpb_X, num_boost_round=10, valid_sets=[gpb_X], evals_result=results_unweighted)
+    gpb.train(params, gpb_X_weighted, num_boost_round=10, valid_sets=[gpb_X_weighted],
               evals_result=results_weighted)
     assert results_weighted['training']['auc_mu'][-1] < 1
     assert results_unweighted['training']['auc_mu'][-1] != results_weighted['training']['auc_mu'][-1]
     # test that equal data weights give same auc_mu as unweighted data
-    lgb_X_weighted = lgb.Dataset(X, label=y, weight=np.ones(y.shape) * 0.5)
-    lgb.train(params, lgb_X_weighted, num_boost_round=10, valid_sets=[lgb_X_weighted],
+    gpb_X_weighted = gpb.Dataset(X, label=y, weight=np.ones(y.shape) * 0.5)
+    gpb.train(params, gpb_X_weighted, num_boost_round=10, valid_sets=[gpb_X_weighted],
               evals_result=results_weighted)
     assert results_unweighted['training']['auc_mu'][-1] == pytest.approx(
         results_weighted['training']['auc_mu'][-1], abs=1e-5)
     # should give 1 when accuracy = 1
     X = X[:10, :]
     y = y[:10]
-    lgb_X = lgb.Dataset(X, label=y)
+    gpb_X = gpb.Dataset(X, label=y)
     params = {'objective': 'multiclass',
               'metric': 'auc_mu',
               'num_classes': 10,
               'min_data_in_leaf': 1,
               'verbose': -1}
     results = {}
-    lgb.train(params, lgb_X, num_boost_round=100, valid_sets=[lgb_X], evals_result=results)
+    gpb.train(params, gpb_X, num_boost_round=100, valid_sets=[gpb_X], evals_result=results)
     assert results['training']['auc_mu'][-1] == pytest.approx(1)
     # test loading class weights
     Xy = np.loadtxt(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                  '../../examples/multiclass_classification/multiclass.train'))
     y = Xy[:, 0]
     X = Xy[:, 1:]
-    lgb_X = lgb.Dataset(X, label=y)
+    gpb_X = gpb.Dataset(X, label=y)
     params = {'objective': 'multiclass',
               'metric': 'auc_mu',
               'auc_mu_weights': [0, 2, 2, 2, 2, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0],
@@ -579,10 +579,10 @@ def test_auc_mu():
               'verbose': -1,
               'seed': 0}
     results_weight = {}
-    lgb.train(params, lgb_X, num_boost_round=5, valid_sets=[lgb_X], evals_result=results_weight)
+    gpb.train(params, gpb_X, num_boost_round=5, valid_sets=[gpb_X], evals_result=results_weight)
     params['auc_mu_weights'] = []
     results_no_weight = {}
-    lgb.train(params, lgb_X, num_boost_round=5, valid_sets=[lgb_X], evals_result=results_no_weight)
+    gpb.train(params, gpb_X, num_boost_round=5, valid_sets=[gpb_X], evals_result=results_no_weight)
     assert results_weight['training']['auc_mu'][-1] != results_no_weight['training']['auc_mu'][-1]
 
 
@@ -594,13 +594,13 @@ def test_early_stopping():
         'verbose': -1
     }
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_test, y_test, reference=gpb_train)
     valid_set_name = 'valid_set'
     # no early stopping
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=10,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     valid_names=valid_set_name,
                     verbose_eval=False,
                     early_stopping_rounds=5)
@@ -608,9 +608,9 @@ def test_early_stopping():
     assert valid_set_name in gbm.best_score
     assert 'binary_logloss' in gbm.best_score[valid_set_name]
     # early stopping occurs
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=40,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     valid_names=valid_set_name,
                     verbose_eval=False,
                     early_stopping_rounds=5)
@@ -627,15 +627,15 @@ def test_continue_train():
         'metric': 'l1',
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X_train, y_train, free_raw_data=False)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train, free_raw_data=False)
-    init_gbm = lgb.train(params, lgb_train, num_boost_round=20)
+    gpb_train = gpb.Dataset(X_train, y_train, free_raw_data=False)
+    gpb_eval = gpb.Dataset(X_test, y_test, reference=gpb_train, free_raw_data=False)
+    init_gbm = gpb.train(params, gpb_train, num_boost_round=20)
     model_name = 'model.txt'
     init_gbm.save_model(model_name)
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=30,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     # test custom eval metrics
                     feval=(lambda p, d: ('custom_mae', mean_absolute_error(p, d.get_label()), False)),
@@ -654,11 +654,11 @@ def test_continue_train_reused_dataset():
         'objective': 'regression',
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X, y, free_raw_data=False)
-    init_gbm = lgb.train(params, lgb_train, num_boost_round=5)
-    init_gbm_2 = lgb.train(params, lgb_train, num_boost_round=5, init_model=init_gbm)
-    init_gbm_3 = lgb.train(params, lgb_train, num_boost_round=5, init_model=init_gbm_2)
-    gbm = lgb.train(params, lgb_train, num_boost_round=5, init_model=init_gbm_3)
+    gpb_train = gpb.Dataset(X, y, free_raw_data=False)
+    init_gbm = gpb.train(params, gpb_train, num_boost_round=5)
+    init_gbm_2 = gpb.train(params, gpb_train, num_boost_round=5, init_model=init_gbm)
+    init_gbm_3 = gpb.train(params, gpb_train, num_boost_round=5, init_model=init_gbm_2)
+    gbm = gpb.train(params, gpb_train, num_boost_round=5, init_model=init_gbm_3)
     assert gbm.current_iteration() == 20
 
 
@@ -671,13 +671,13 @@ def test_continue_train_dart():
         'metric': 'l1',
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X_train, y_train, free_raw_data=False)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train, free_raw_data=False)
-    init_gbm = lgb.train(params, lgb_train, num_boost_round=50)
+    gpb_train = gpb.Dataset(X_train, y_train, free_raw_data=False)
+    gpb_eval = gpb.Dataset(X_test, y_test, reference=gpb_train, free_raw_data=False)
+    init_gbm = gpb.train(params, gpb_train, num_boost_round=50)
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=50,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result,
                     init_model=init_gbm)
@@ -695,13 +695,13 @@ def test_continue_train_multiclass():
         'num_class': 3,
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X_train, y_train, params=params, free_raw_data=False)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train, params=params, free_raw_data=False)
-    init_gbm = lgb.train(params, lgb_train, num_boost_round=20)
+    gpb_train = gpb.Dataset(X_train, y_train, params=params, free_raw_data=False)
+    gpb_eval = gpb.Dataset(X_test, y_test, reference=gpb_train, params=params, free_raw_data=False)
+    init_gbm = gpb.train(params, gpb_train, num_boost_round=20)
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=30,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result,
                     init_model=init_gbm)
@@ -713,23 +713,23 @@ def test_continue_train_multiclass():
 def test_cv():
     X_train, y_train = load_boston(return_X_y=True)
     params = {'verbose': -1}
-    lgb_train = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
     # shuffle = False, override metric in params
     params_with_metric = {'metric': 'l2', 'verbose': -1}
-    cv_res = lgb.cv(params_with_metric, lgb_train, num_boost_round=10,
+    cv_res = gpb.cv(params_with_metric, gpb_train, num_boost_round=10,
                     nfold=3, stratified=False, shuffle=False,
                     metrics='l1', verbose_eval=False)
     assert 'l1-mean' in cv_res
     assert 'l2-mean' not in cv_res
     assert len(cv_res['l1-mean']) == 10
     # shuffle = True, callbacks
-    cv_res = lgb.cv(params, lgb_train, num_boost_round=10, nfold=3, stratified=False, shuffle=True,
+    cv_res = gpb.cv(params, gpb_train, num_boost_round=10, nfold=3, stratified=False, shuffle=True,
                     metrics='l1', verbose_eval=False,
-                    callbacks=[lgb.reset_parameter(learning_rate=lambda i: 0.1 - 0.001 * i)])
+                    callbacks=[gpb.reset_parameter(learning_rate=lambda i: 0.1 - 0.001 * i)])
     assert 'l1-mean' in cv_res
     assert len(cv_res['l1-mean']) == 10
     # enable display training loss
-    cv_res = lgb.cv(params_with_metric, lgb_train, num_boost_round=10,
+    cv_res = gpb.cv(params_with_metric, gpb_train, num_boost_round=10,
                     nfold=3, stratified=False, shuffle=False,
                     metrics='l1', verbose_eval=False, eval_train_metric=True)
     assert 'train l1-mean' in cv_res
@@ -741,9 +741,9 @@ def test_cv():
     # self defined folds
     tss = TimeSeriesSplit(3)
     folds = tss.split(X_train)
-    cv_res_gen = lgb.cv(params_with_metric, lgb_train, num_boost_round=10, folds=folds,
+    cv_res_gen = gpb.cv(params_with_metric, gpb_train, num_boost_round=10, folds=folds,
                         verbose_eval=False)
-    cv_res_obj = lgb.cv(params_with_metric, lgb_train, num_boost_round=10, folds=tss,
+    cv_res_obj = gpb.cv(params_with_metric, gpb_train, num_boost_round=10, folds=tss,
                         verbose_eval=False)
     np.testing.assert_allclose(cv_res_gen['l2-mean'], cv_res_obj['l2-mean'])
     # lambdarank
@@ -752,19 +752,19 @@ def test_cv():
     q_train = np.loadtxt(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                       '../../examples/lambdarank/rank.train.query'))
     params_lambdarank = {'objective': 'lambdarank', 'verbose': -1, 'eval_at': 3}
-    lgb_train = lgb.Dataset(X_train, y_train, group=q_train)
+    gpb_train = gpb.Dataset(X_train, y_train, group=q_train)
     # ... with l2 metric
-    cv_res_lambda = lgb.cv(params_lambdarank, lgb_train, num_boost_round=10, nfold=3,
+    cv_res_lambda = gpb.cv(params_lambdarank, gpb_train, num_boost_round=10, nfold=3,
                            metrics='l2', verbose_eval=False)
     assert len(cv_res_lambda) == 2
     assert not np.isnan(cv_res_lambda['l2-mean']).any()
     # ... with NDCG (default) metric
-    cv_res_lambda = lgb.cv(params_lambdarank, lgb_train, num_boost_round=10, nfold=3,
+    cv_res_lambda = gpb.cv(params_lambdarank, gpb_train, num_boost_round=10, nfold=3,
                            verbose_eval=False)
     assert len(cv_res_lambda) == 2
     assert not np.isnan(cv_res_lambda['ndcg@3-mean']).any()
     # self defined folds with lambdarank
-    cv_res_lambda_obj = lgb.cv(params_lambdarank, lgb_train, num_boost_round=10,
+    cv_res_lambda_obj = gpb.cv(params_lambdarank, gpb_train, num_boost_round=10,
                                folds=GroupKFold(n_splits=3),
                                verbose_eval=False)
     np.testing.assert_allclose(cv_res_lambda['ndcg@3-mean'], cv_res_lambda_obj['ndcg@3-mean'])
@@ -778,9 +778,9 @@ def test_cvbooster():
         'metric': 'binary_logloss',
         'verbose': -1,
     }
-    lgb_train = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
     # with early stopping
-    cv_res = lgb.cv(params, lgb_train,
+    cv_res = gpb.cv(params, gpb_train,
                     num_boost_round=25,
                     early_stopping_rounds=5,
                     verbose_eval=False,
@@ -788,10 +788,10 @@ def test_cvbooster():
                     return_cvbooster=True)
     assert 'cvbooster' in cv_res
     cvb = cv_res['cvbooster']
-    assert isinstance(cvb, lgb.CVBooster)
+    assert isinstance(cvb, gpb.CVBooster)
     assert isinstance(cvb.boosters, list)
     assert len(cvb.boosters) == 3
-    assert all(isinstance(bst, lgb.Booster) for bst in cvb.boosters)
+    assert all(isinstance(bst, gpb.Booster) for bst in cvb.boosters)
     assert cvb.best_iteration > 0
     # predict by each fold booster
     preds = cvb.predict(X_test, num_iteration=cvb.best_iteration)
@@ -802,7 +802,7 @@ def test_cvbooster():
     ret = log_loss(y_test, avg_pred)
     assert ret < 0.13
     # without early stopping
-    cv_res = lgb.cv(params, lgb_train,
+    cv_res = gpb.cv(params, gpb_train,
                     num_boost_round=20,
                     verbose_eval=False,
                     nfold=3,
@@ -818,13 +818,13 @@ def test_cvbooster():
 def test_feature_name():
     X_train, y_train = load_boston(return_X_y=True)
     params = {'verbose': -1}
-    lgb_train = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
     feature_names = ['f_' + str(i) for i in range(X_train.shape[-1])]
-    gbm = lgb.train(params, lgb_train, num_boost_round=5, feature_name=feature_names)
+    gbm = gpb.train(params, gpb_train, num_boost_round=5, feature_name=feature_names)
     assert feature_names == gbm.feature_name()
     # test feature_names with whitespaces
     feature_names_with_space = ['f ' + str(i) for i in range(X_train.shape[-1])]
-    gbm = lgb.train(params, lgb_train, num_boost_round=5, feature_name=feature_names_with_space)
+    gbm = gpb.train(params, gpb_train, num_boost_round=5, feature_name=feature_names_with_space)
     assert feature_names == gbm.feature_name()
 
 
@@ -834,13 +834,13 @@ def test_feature_name_with_non_ascii():
     # This has non-ascii strings.
     feature_names = [u'F_零', u'F_一', u'F_二', u'F_三']
     params = {'verbose': -1}
-    lgb_train = lgb.Dataset(X_train, y_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
 
-    gbm = lgb.train(params, lgb_train, num_boost_round=5, feature_name=feature_names)
+    gbm = gpb.train(params, gpb_train, num_boost_round=5, feature_name=feature_names)
     assert feature_names == gbm.feature_name()
-    gbm.save_model('lgb.model')
+    gbm.save_model('gpb.model')
 
-    gbm2 = lgb.Booster(model_file='lgb.model')
+    gbm2 = gpb.Booster(model_file='gpb.model')
     assert feature_names == gbm2.feature_name()
 
 
@@ -853,24 +853,24 @@ def test_save_load_copy_pickle():
             'metric': 'l2',
             'verbose': -1
         }
-        lgb_train = lgb.Dataset(X_train, y_train)
-        gbm_template = lgb.train(params, lgb_train, num_boost_round=10, init_model=init_model)
+        gpb_train = gpb.Dataset(X_train, y_train)
+        gbm_template = gpb.train(params, gpb_train, num_boost_round=10, init_model=init_model)
         return gbm_template if return_model else mean_squared_error(y_test, gbm_template.predict(X_test))
 
     gbm = train_and_predict(return_model=True)
     ret_origin = train_and_predict(init_model=gbm)
     other_ret = []
-    gbm.save_model('lgb.model')
-    with open('lgb.model') as f:  # check all params are logged into model file correctly
+    gbm.save_model('gpb.model')
+    with open('gpb.model') as f:  # check all params are logged into model file correctly
         assert f.read().find("[num_iterations: 10]") != -1
-    other_ret.append(train_and_predict(init_model='lgb.model'))
-    gbm_load = lgb.Booster(model_file='lgb.model')
+    other_ret.append(train_and_predict(init_model='gpb.model'))
+    gbm_load = gpb.Booster(model_file='gpb.model')
     other_ret.append(train_and_predict(init_model=gbm_load))
     other_ret.append(train_and_predict(init_model=copy.copy(gbm)))
     other_ret.append(train_and_predict(init_model=copy.deepcopy(gbm)))
-    with open('lgb.pkl', 'wb') as f:
+    with open('gpb.pkl', 'wb') as f:
         pickle.dump(gbm, f)
-    with open('lgb.pkl', 'rb') as f:
+    with open('gpb.pkl', 'rb') as f:
         gbm_pickle = pickle.load(f)
     other_ret.append(train_and_predict(init_model=gbm_pickle))
     gbm_pickles = pickle.loads(pickle.dumps(gbm))
@@ -906,38 +906,38 @@ def test_pandas_categorical():
         'metric': 'binary_logloss',
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X, y)
-    gbm0 = lgb.train(params, lgb_train, num_boost_round=10)
+    gpb_train = gpb.Dataset(X, y)
+    gbm0 = gpb.train(params, gpb_train, num_boost_round=10)
     pred0 = gbm0.predict(X_test)
-    assert lgb_train.categorical_feature == 'auto'
-    lgb_train = lgb.Dataset(X, pd.DataFrame(y))  # also test that label can be one-column pd.DataFrame
-    gbm1 = lgb.train(params, lgb_train, num_boost_round=10, categorical_feature=[0])
+    assert gpb_train.categorical_feature == 'auto'
+    gpb_train = gpb.Dataset(X, pd.DataFrame(y))  # also test that label can be one-column pd.DataFrame
+    gbm1 = gpb.train(params, gpb_train, num_boost_round=10, categorical_feature=[0])
     pred1 = gbm1.predict(X_test)
-    assert lgb_train.categorical_feature == [0]
-    lgb_train = lgb.Dataset(X, pd.Series(y))  # also test that label can be pd.Series
-    gbm2 = lgb.train(params, lgb_train, num_boost_round=10, categorical_feature=['A'])
+    assert gpb_train.categorical_feature == [0]
+    gpb_train = gpb.Dataset(X, pd.Series(y))  # also test that label can be pd.Series
+    gbm2 = gpb.train(params, gpb_train, num_boost_round=10, categorical_feature=['A'])
     pred2 = gbm2.predict(X_test)
-    assert lgb_train.categorical_feature == ['A']
-    lgb_train = lgb.Dataset(X, y)
-    gbm3 = lgb.train(params, lgb_train, num_boost_round=10, categorical_feature=['A', 'B', 'C', 'D'])
+    assert gpb_train.categorical_feature == ['A']
+    gpb_train = gpb.Dataset(X, y)
+    gbm3 = gpb.train(params, gpb_train, num_boost_round=10, categorical_feature=['A', 'B', 'C', 'D'])
     pred3 = gbm3.predict(X_test)
-    assert lgb_train.categorical_feature == ['A', 'B', 'C', 'D']
+    assert gpb_train.categorical_feature == ['A', 'B', 'C', 'D']
     gbm3.save_model('categorical.model')
-    gbm4 = lgb.Booster(model_file='categorical.model')
+    gbm4 = gpb.Booster(model_file='categorical.model')
     pred4 = gbm4.predict(X_test)
     model_str = gbm4.model_to_string()
     gbm4.model_from_string(model_str, False)
     pred5 = gbm4.predict(X_test)
-    gbm5 = lgb.Booster(model_str=model_str)
+    gbm5 = gpb.Booster(model_str=model_str)
     pred6 = gbm5.predict(X_test)
-    lgb_train = lgb.Dataset(X, y)
-    gbm6 = lgb.train(params, lgb_train, num_boost_round=10, categorical_feature=['A', 'B', 'C', 'D', 'E'])
+    gpb_train = gpb.Dataset(X, y)
+    gbm6 = gpb.train(params, gpb_train, num_boost_round=10, categorical_feature=['A', 'B', 'C', 'D', 'E'])
     pred7 = gbm6.predict(X_test)
-    assert lgb_train.categorical_feature == ['A', 'B', 'C', 'D', 'E']
-    lgb_train = lgb.Dataset(X, y)
-    gbm7 = lgb.train(params, lgb_train, num_boost_round=10, categorical_feature=[])
+    assert gpb_train.categorical_feature == ['A', 'B', 'C', 'D', 'E']
+    gpb_train = gpb.Dataset(X, y)
+    gbm7 = gpb.train(params, gpb_train, num_boost_round=10, categorical_feature=[])
     pred8 = gbm7.predict(X_test)
-    assert lgb_train.categorical_feature == []
+    assert gpb_train.categorical_feature == []
     with pytest.raises(AssertionError):
         np.testing.assert_allclose(pred0, pred1)
     with pytest.raises(AssertionError):
@@ -981,8 +981,8 @@ def test_pandas_sparse():
         'objective': 'binary',
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X, y)
-    gbm = lgb.train(params, lgb_train, num_boost_round=10)
+    gpb_train = gpb.Dataset(X, y)
+    gbm = gpb.train(params, gpb_train, num_boost_round=10)
     pred_sparse = gbm.predict(X_test, raw_score=True)
     if hasattr(X_test, 'sparse'):
         pred_dense = gbm.predict(X_test.sparse.to_dense(), raw_score=True)
@@ -994,13 +994,13 @@ def test_pandas_sparse():
 def test_reference_chain():
     X = np.random.normal(size=(100, 2))
     y = np.random.normal(size=100)
-    tmp_dat = lgb.Dataset(X, y)
+    tmp_dat = gpb.Dataset(X, y)
     # take subsets and train
     tmp_dat_train = tmp_dat.subset(np.arange(80))
     tmp_dat_val = tmp_dat.subset(np.arange(80, 100)).subset(np.arange(18))
     params = {'objective': 'regression_l2', 'metric': 'rmse'}
     evals_result = {}
-    lgb.train(params, tmp_dat_train, num_boost_round=20,
+    gpb.train(params, tmp_dat_train, num_boost_round=20,
               valid_sets=[tmp_dat_train, tmp_dat_val],
               verbose_eval=False, evals_result=evals_result)
     assert len(evals_result['training']['rmse']) == 20
@@ -1015,8 +1015,8 @@ def test_contribs():
         'metric': 'binary_logloss',
         'verbose': -1,
     }
-    lgb_train = lgb.Dataset(X_train, y_train)
-    gbm = lgb.train(params, lgb_train, num_boost_round=20)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gbm = gpb.train(params, gpb_train, num_boost_round=20)
 
     assert (np.linalg.norm(gbm.predict(X_test, raw_score=True)
                            - np.sum(gbm.predict(X_test, pred_contrib=True), axis=1)) < 1e-4)
@@ -1037,8 +1037,8 @@ def test_contribs_sparse():
         'objective': 'binary',
         'verbose': -1,
     }
-    lgb_train = lgb.Dataset(X_train, y_train)
-    gbm = lgb.train(params, lgb_train, num_boost_round=20)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gbm = gpb.train(params, gpb_train, num_boost_round=20)
     contribs_csr = gbm.predict(X_test, pred_contrib=True)
     assert isspmatrix_csr(contribs_csr)
     # convert data to dense and get back same contribs
@@ -1072,8 +1072,8 @@ def test_contribs_sparse_multiclass():
         'num_class': n_labels,
         'verbose': -1,
     }
-    lgb_train = lgb.Dataset(X_train, y_train)
-    gbm = lgb.train(params, lgb_train, num_boost_round=20)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gbm = gpb.train(params, gpb_train, num_boost_round=20)
     contribs_csr = gbm.predict(X_test, pred_contrib=True)
     assert isinstance(contribs_csr, list)
     for perclass_contribs_csr in contribs_csr:
@@ -1107,8 +1107,8 @@ def test_int32_max_sparse_contribs():
     }
     train_features = np.random.rand(100, 1000)
     train_targets = [0] * 50 + [1] * 50
-    lgb_train = lgb.Dataset(train_features, train_targets)
-    gbm = lgb.train(params, lgb_train, num_boost_round=2)
+    gpb_train = gpb.Dataset(train_features, train_targets)
+    gbm = gpb.train(params, gpb_train, num_boost_round=2)
     csr_input_shape = (3000000, 1000)
     test_features = csr_matrix(csr_input_shape)
     for i in range(0, csr_input_shape[0], csr_input_shape[0] // 6):
@@ -1125,14 +1125,14 @@ def test_int32_max_sparse_contribs():
 
 def test_sliced_data():
     def train_and_get_predictions(features, labels):
-        dataset = lgb.Dataset(features, label=labels)
-        lgb_params = {
+        dataset = gpb.Dataset(features, label=labels)
+        gpb_params = {
             'application': 'binary',
             'verbose': -1,
             'min_data': 5,
         }
-        gbm = lgb.train(
-            params=lgb_params,
+        gbm = gpb.train(
+            params=gpb_params,
             train_set=dataset,
             num_boost_round=10,
         )
@@ -1194,7 +1194,7 @@ def generate_trainset_for_monotone_constraints_tests(x3_to_category=True):
     categorical_features = []
     if x3_to_category:
         categorical_features = [2]
-    trainset = lgb.Dataset(x, label=y, categorical_feature=categorical_features, free_raw_data=False)
+    trainset = gpb.Dataset(x, label=y, categorical_feature=categorical_features, free_raw_data=False)
     return trainset
 
 
@@ -1239,7 +1239,7 @@ def test_monotone_constraints():
                 "monotone_constraints_method": monotone_constraints_method,
                 "use_missing": False,
             }
-            constrained_model = lgb.train(params, trainset)
+            constrained_model = gpb.train(params, trainset)
             assert is_correctly_constrained(constrained_model, test_with_categorical_variable)
 
 
@@ -1273,7 +1273,7 @@ def test_monotone_penalty():
             'monotone_penalty': penalization_parameter,
             "monotone_constraints_method": monotone_constraints_method,
         }
-        constrained_model = lgb.train(params, trainset, 10)
+        constrained_model = gpb.train(params, trainset, 10)
         dumped_model = constrained_model.dump_model()["tree_info"]
         for tree in dumped_model:
             assert are_first_splits_non_monotone(tree["tree_structure"], int(penalization_parameter),
@@ -1290,7 +1290,7 @@ def test_monotone_penalty_max():
     x = trainset_constrained_model.data
     y = trainset_constrained_model.label
     x3_negatively_correlated_with_y = x[:, 2]
-    trainset_unconstrained_model = lgb.Dataset(x3_negatively_correlated_with_y.reshape(-1, 1), label=y)
+    trainset_unconstrained_model = gpb.Dataset(x3_negatively_correlated_with_y.reshape(-1, 1), label=y)
     params_constrained_model = {
         'monotone_constraints': monotone_constraints,
         'monotone_penalty': penalization_parameter,
@@ -1302,14 +1302,14 @@ def test_monotone_penalty_max():
         "gpu_use_dp": True,
     }
 
-    unconstrained_model = lgb.train(params_unconstrained_model, trainset_unconstrained_model, 10)
+    unconstrained_model = gpb.train(params_unconstrained_model, trainset_unconstrained_model, 10)
     unconstrained_model_predictions = unconstrained_model.\
         predict(x3_negatively_correlated_with_y.reshape(-1, 1))
 
     for monotone_constraints_method in ["basic", "intermediate", "advanced"]:
         params_constrained_model["monotone_constraints_method"] = monotone_constraints_method
         # The penalization is so high that the first 2 features should not be used here
-        constrained_model = lgb.train(params_constrained_model, trainset_constrained_model, 10)
+        constrained_model = gpb.train(params_constrained_model, trainset_constrained_model, 10)
 
         # Check that a very high penalization is the same as not using the features at all
         np.testing.assert_array_equal(constrained_model.predict(x), unconstrained_model_predictions)
@@ -1330,12 +1330,12 @@ def test_max_bin_by_feature():
         'min_data_in_bin': 1,
         'max_bin_by_feature': [100, 2]
     }
-    lgb_data = lgb.Dataset(X, label=y)
-    est = lgb.train(params, lgb_data, num_boost_round=1)
+    gpb_data = gpb.Dataset(X, label=y)
+    est = gpb.train(params, gpb_data, num_boost_round=1)
     assert len(np.unique(est.predict(X))) == 100
     params['max_bin_by_feature'] = [2, 100]
-    lgb_data = lgb.Dataset(X, label=y)
-    est = lgb.train(params, lgb_data, num_boost_round=1)
+    gpb_data = gpb.Dataset(X, label=y)
+    est = gpb.train(params, gpb_data, num_boost_round=1)
     assert len(np.unique(est.predict(X))) == 3
 
 
@@ -1351,12 +1351,12 @@ def test_small_max_bin():
               'min_data_in_leaf': 1,
               'verbose': -1,
               'max_bin': 2}
-    lgb_x = lgb.Dataset(x, label=y)
-    lgb.train(params, lgb_x, num_boost_round=5)
+    gpb_x = gpb.Dataset(x, label=y)
+    gpb.train(params, gpb_x, num_boost_round=5)
     x[0, 0] = np.nan
     params['max_bin'] = 3
-    lgb_x = lgb.Dataset(x, label=y)
-    lgb.train(params, lgb_x, num_boost_round=5)
+    gpb_x = gpb.Dataset(x, label=y)
+    gpb.train(params, gpb_x, num_boost_round=5)
     np.random.seed()  # reset seed
 
 
@@ -1369,8 +1369,8 @@ def test_refit():
         'verbose': -1,
         'min_data': 10
     }
-    lgb_train = lgb.Dataset(X_train, y_train)
-    gbm = lgb.train(params, lgb_train, num_boost_round=20)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gbm = gpb.train(params, gpb_train, num_boost_round=20)
     err_pred = log_loss(y_test, gbm.predict(X_test))
     new_gbm = gbm.refit(X_test, y_test)
     new_err_pred = log_loss(y_test, new_gbm.predict(X_test))
@@ -1388,8 +1388,8 @@ def test_mape_rf():
         'feature_fraction': 0.8,
         'boost_from_average': True
     }
-    lgb_train = lgb.Dataset(X, y)
-    gbm = lgb.train(params, lgb_train, num_boost_round=20)
+    gpb_train = gpb.Dataset(X, y)
+    gbm = gpb.train(params, gpb_train, num_boost_round=20)
     pred = gbm.predict(X)
     pred_mean = pred.mean()
     assert pred_mean > 20
@@ -1406,8 +1406,8 @@ def test_mape_dart():
         'feature_fraction': 0.8,
         'boost_from_average': False
     }
-    lgb_train = lgb.Dataset(X, y)
-    gbm = lgb.train(params, lgb_train, num_boost_round=40)
+    gpb_train = gpb.Dataset(X, y)
+    gbm = gpb.train(params, gpb_train, num_boost_round=40)
     pred = gbm.predict(X)
     pred_mean = pred.mean()
     assert pred_mean > 18
@@ -1427,8 +1427,8 @@ def check_constant_features(y_true, expected_pred, more_params):
         'boost_from_average': True
     }
     params.update(more_params)
-    lgb_train = lgb.Dataset(X_train, y_train, params=params)
-    gbm = lgb.train(params, lgb_train, num_boost_round=2)
+    gpb_train = gpb.Dataset(X_train, y_train, params=params)
+    gbm = gpb.train(params, gpb_train, num_boost_round=2)
     pred = gbm.predict(X_train)
     assert np.allclose(pred, expected_pred)
 
@@ -1476,15 +1476,15 @@ def test_fpreproc():
         test_data[:, 0] += 1
         dtrain.label[-5:] = 3
         dtest.label[-5:] = 3
-        dtrain = lgb.Dataset(train_data, dtrain.label)
-        dtest = lgb.Dataset(test_data, dtest.label, reference=dtrain)
+        dtrain = gpb.Dataset(train_data, dtrain.label)
+        dtest = gpb.Dataset(test_data, dtest.label, reference=dtrain)
         params['num_class'] = 4
         return dtrain, dtest, params
 
     X, y = load_iris(return_X_y=True)
-    dataset = lgb.Dataset(X, y, free_raw_data=False)
+    dataset = gpb.Dataset(X, y, free_raw_data=False)
     params = {'objective': 'multiclass', 'num_class': 3, 'verbose': -1}
-    results = lgb.cv(params, dataset, num_boost_round=10, fpreproc=preprocess_data)
+    results = gpb.cv(params, dataset, num_boost_round=10, fpreproc=preprocess_data)
     assert 'multi_logloss-mean' in results
     assert len(results['multi_logloss-mean']) == 10
 
@@ -1492,8 +1492,8 @@ def test_fpreproc():
 def test_metrics():
     X, y = load_digits(n_class=2, return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    lgb_train = lgb.Dataset(X_train, y_train, silent=True)
-    lgb_valid = lgb.Dataset(X_test, y_test, reference=lgb_train, silent=True)
+    gpb_train = gpb.Dataset(X_train, y_train, silent=True)
+    gpb_valid = gpb.Dataset(X_test, y_test, reference=gpb_train, silent=True)
 
     evals_result = {}
     params_verbose = {'verbose': -1}
@@ -1512,12 +1512,12 @@ def test_metrics():
     params_metric_none_verbose = {'metric': 'None', 'verbose': -1}
 
     def get_cv_result(params=params_obj_verbose, **kwargs):
-        return lgb.cv(params, lgb_train, num_boost_round=2, verbose_eval=False, **kwargs)
+        return gpb.cv(params, gpb_train, num_boost_round=2, verbose_eval=False, **kwargs)
 
     def train_booster(params=params_obj_verbose, **kwargs):
-        lgb.train(params, lgb_train,
+        gpb.train(params, gpb_train,
                   num_boost_round=2,
-                  valid_sets=[lgb_valid],
+                  valid_sets=[gpb_valid],
                   evals_result=evals_result,
                   verbose_eval=False, **kwargs)
 
@@ -1797,7 +1797,7 @@ def test_metrics():
     assert 'error' in evals_result['valid_0']
 
     X, y = load_digits(n_class=3, return_X_y=True)
-    lgb_train = lgb.Dataset(X, y, silent=True)
+    gpb_train = gpb.Dataset(X, y, silent=True)
 
     obj_multi_aliases = ['multiclass', 'softmax', 'multiclassova', 'multiclass_ova', 'ova', 'ovr']
     for obj_multi_alias in obj_multi_aliases:
@@ -1825,11 +1825,11 @@ def test_metrics():
         assert len(res) == 2
         assert 'error-mean' in res
         # multiclass metric alias with custom one with invalid class_num
-        with pytest.raises(lgb.basic.LightGBMError):
+        with pytest.raises(gpb.basic.GPBoostError):
             get_cv_result(params_obj_class_1_verbose, metrics=obj_multi_alias,
                           fobj=dummy_obj, feval=constant_metric)
         # multiclass default metric without num_class
-        with pytest.raises(lgb.basic.LightGBMError):
+        with pytest.raises(gpb.basic.GPBoostError):
             get_cv_result(params_obj_verbose)
         for metric_multi_alias in obj_multi_aliases + ['multi_logloss']:
             # multiclass metric alias
@@ -1841,11 +1841,11 @@ def test_metrics():
         assert len(res) == 2
         assert 'multi_error-mean' in res
         # non-valid metric for multiclass objective
-        with pytest.raises(lgb.basic.LightGBMError):
+        with pytest.raises(gpb.basic.GPBoostError):
             get_cv_result(params_obj_class_3_verbose, metrics='binary_logloss')
     params_class_3_verbose = {'num_class': 3, 'verbose': -1}
     # non-default num_class for default objective
-    with pytest.raises(lgb.basic.LightGBMError):
+    with pytest.raises(gpb.basic.GPBoostError):
         get_cv_result(params_class_3_verbose)
     # no metric with non-default num_class for custom objective
     res = get_cv_result(params_class_3_verbose, fobj=dummy_obj)
@@ -1860,7 +1860,7 @@ def test_metrics():
     assert len(res) == 2
     assert 'multi_error-mean' in res
     # binary metric with non-default num_class for custom objective
-    with pytest.raises(lgb.basic.LightGBMError):
+    with pytest.raises(gpb.basic.GPBoostError):
         get_cv_result(params_class_3_verbose, metrics='binary_error', fobj=dummy_obj)
 
 
@@ -1871,10 +1871,10 @@ def test_multiple_feval_train():
 
     X_train, X_validation, y_train, y_validation = train_test_split(X, y, test_size=0.2)
 
-    train_dataset = lgb.Dataset(data=X_train, label=y_train, silent=True)
-    validation_dataset = lgb.Dataset(data=X_validation, label=y_validation, reference=train_dataset, silent=True)
+    train_dataset = gpb.Dataset(data=X_train, label=y_train, silent=True)
+    validation_dataset = gpb.Dataset(data=X_validation, label=y_validation, reference=train_dataset, silent=True)
     evals_result = {}
-    lgb.train(
+    gpb.train(
         params=params,
         train_set=train_dataset,
         valid_sets=validation_dataset,
@@ -1893,9 +1893,9 @@ def test_multiple_feval_cv():
 
     params = {'verbose': -1, 'objective': 'binary', 'metric': 'binary_logloss'}
 
-    train_dataset = lgb.Dataset(data=X, label=y, silent=True)
+    train_dataset = gpb.Dataset(data=X, label=y, silent=True)
 
-    cv_results = lgb.cv(
+    cv_results = gpb.cv(
         params=params,
         train_set=train_dataset,
         num_boost_round=5,
@@ -1914,8 +1914,8 @@ def test_multiple_feval_cv():
 @pytest.mark.skipif(psutil.virtual_memory().available / 1024 / 1024 / 1024 < 3, reason='not enough RAM')
 def test_model_size():
     X, y = load_boston(return_X_y=True)
-    data = lgb.Dataset(X, y)
-    bst = lgb.train({'verbose': -1}, data, num_boost_round=2)
+    data = gpb.Dataset(X, y)
+    bst = gpb.train({'verbose': -1}, data, num_boost_round=2)
     y_pred = bst.predict(X)
     model_str = bst.model_to_string()
     one_tree = model_str[model_str.find('Tree=1'):model_str.find('end of trees')]
@@ -1941,8 +1941,8 @@ def test_model_size():
 
 def test_get_split_value_histogram():
     X, y = load_boston(return_X_y=True)
-    lgb_train = lgb.Dataset(X, y, categorical_feature=[2])
-    gbm = lgb.train({'verbose': -1}, lgb_train, num_boost_round=20)
+    gpb_train = gpb.Dataset(X, y, categorical_feature=[2])
+    gbm = gpb.train({'verbose': -1}, gpb_train, num_boost_round=20)
     # test XGBoost-style return value
     params = {'feature': 0, 'xgboost_style': True}
     assert gbm.get_split_value_histogram(**params).shape == (9, 2)
@@ -1953,7 +1953,7 @@ def test_get_split_value_histogram():
     assert gbm.get_split_value_histogram(bins=2, **params).shape == (2, 2)
     assert gbm.get_split_value_histogram(bins=6, **params).shape == (5, 2)
     assert gbm.get_split_value_histogram(bins=7, **params).shape == (6, 2)
-    if lgb.compat.PANDAS_INSTALLED:
+    if gpb.compat.PANDAS_INSTALLED:
         np.testing.assert_allclose(
             gbm.get_split_value_histogram(0, xgboost_style=True).values,
             gbm.get_split_value_histogram(gbm.feature_name()[0], xgboost_style=True).values
@@ -2006,7 +2006,7 @@ def test_get_split_value_histogram():
     if np.__version__ > '1.11.0':
         hist_vals, bin_edges = gbm.get_split_value_histogram(0, bins='auto')
         hist = gbm.get_split_value_histogram(0, bins='auto', xgboost_style=True)
-        if lgb.compat.PANDAS_INSTALLED:
+        if gpb.compat.PANDAS_INSTALLED:
             mask = hist_vals > 0
             np.testing.assert_array_equal(hist_vals[mask], hist['Count'].values)
             np.testing.assert_allclose(bin_edges[1:][mask], hist['SplitValue'].values)
@@ -2015,7 +2015,7 @@ def test_get_split_value_histogram():
             np.testing.assert_array_equal(hist_vals[mask], hist[:, 1])
             np.testing.assert_allclose(bin_edges[1:][mask], hist[:, 0])
     # test histogram is disabled for categorical features
-    with pytest.raises(lgb.basic.LightGBMError):
+    with pytest.raises(gpb.basic.GPBoostError):
         gbm.get_split_value_histogram(2)
 
 
@@ -2031,7 +2031,7 @@ def test_early_stopping_for_only_first_metric():
             'verbose': -1,
             'seed': 123
         }
-        gbm = lgb.train(dict(params, first_metric_only=first_metric_only), lgb_train,
+        gbm = gpb.train(dict(params, first_metric_only=first_metric_only), gpb_train,
                         num_boost_round=25, valid_sets=valid_sets, feval=feval,
                         early_stopping_rounds=5, verbose_eval=False)
         assert assumed_iteration == gbm.best_iteration
@@ -2047,8 +2047,8 @@ def test_early_stopping_for_only_first_metric():
             'seed': 123,
             'gpu_use_dp': True
         }
-        ret = lgb.cv(dict(params, first_metric_only=first_metric_only),
-                     train_set=lgb_train, num_boost_round=25,
+        ret = gpb.cv(dict(params, first_metric_only=first_metric_only),
+                     train_set=gpb_train, num_boost_round=25,
                      stratified=False, feval=feval,
                      early_stopping_rounds=5, verbose_eval=False,
                      eval_train_metric=eval_train_metric)
@@ -2057,9 +2057,9 @@ def test_early_stopping_for_only_first_metric():
     X, y = load_boston(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     X_test1, X_test2, y_test1, y_test2 = train_test_split(X_test, y_test, test_size=0.5, random_state=73)
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_valid1 = lgb.Dataset(X_test1, y_test1, reference=lgb_train)
-    lgb_valid2 = lgb.Dataset(X_test2, y_test2, reference=lgb_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_valid1 = gpb.Dataset(X_test1, y_test1, reference=gpb_train)
+    gpb_valid2 = gpb.Dataset(X_test2, y_test2, reference=gpb_train)
 
     iter_valid1_l1 = 3
     iter_valid1_l2 = 14
@@ -2075,36 +2075,36 @@ def test_early_stopping_for_only_first_metric():
     assert len(set([iter_cv_l1, iter_cv_l2])) == 2
     iter_cv_min = min([iter_cv_l1, iter_cv_l2])
 
-    # test for lgb.train
-    metrics_combination_train_regression(lgb_valid1, [], iter_valid1_l2, False)
-    metrics_combination_train_regression(lgb_valid1, [], iter_valid1_l2, True)
-    metrics_combination_train_regression(lgb_valid1, None, iter_valid1_l2, False)
-    metrics_combination_train_regression(lgb_valid1, None, iter_valid1_l2, True)
-    metrics_combination_train_regression(lgb_valid1, 'l2', iter_valid1_l2, True)
-    metrics_combination_train_regression(lgb_valid1, 'l1', iter_valid1_l1, True)
-    metrics_combination_train_regression(lgb_valid1, ['l2', 'l1'], iter_valid1_l2, True)
-    metrics_combination_train_regression(lgb_valid1, ['l1', 'l2'], iter_valid1_l1, True)
-    metrics_combination_train_regression(lgb_valid1, ['l2', 'l1'], iter_min_valid1, False)
-    metrics_combination_train_regression(lgb_valid1, ['l1', 'l2'], iter_min_valid1, False)
+    # test for gpb.train
+    metrics_combination_train_regression(gpb_valid1, [], iter_valid1_l2, False)
+    metrics_combination_train_regression(gpb_valid1, [], iter_valid1_l2, True)
+    metrics_combination_train_regression(gpb_valid1, None, iter_valid1_l2, False)
+    metrics_combination_train_regression(gpb_valid1, None, iter_valid1_l2, True)
+    metrics_combination_train_regression(gpb_valid1, 'l2', iter_valid1_l2, True)
+    metrics_combination_train_regression(gpb_valid1, 'l1', iter_valid1_l1, True)
+    metrics_combination_train_regression(gpb_valid1, ['l2', 'l1'], iter_valid1_l2, True)
+    metrics_combination_train_regression(gpb_valid1, ['l1', 'l2'], iter_valid1_l1, True)
+    metrics_combination_train_regression(gpb_valid1, ['l2', 'l1'], iter_min_valid1, False)
+    metrics_combination_train_regression(gpb_valid1, ['l1', 'l2'], iter_min_valid1, False)
 
-    # test feval for lgb.train
-    metrics_combination_train_regression(lgb_valid1, 'None', 1, False,
+    # test feval for gpb.train
+    metrics_combination_train_regression(gpb_valid1, 'None', 1, False,
                                          feval=lambda preds, train_data: [decreasing_metric(preds, train_data),
                                                                           constant_metric(preds, train_data)])
-    metrics_combination_train_regression(lgb_valid1, 'None', 25, True,
+    metrics_combination_train_regression(gpb_valid1, 'None', 25, True,
                                          feval=lambda preds, train_data: [decreasing_metric(preds, train_data),
                                                                           constant_metric(preds, train_data)])
-    metrics_combination_train_regression(lgb_valid1, 'None', 1, True,
+    metrics_combination_train_regression(gpb_valid1, 'None', 1, True,
                                          feval=lambda preds, train_data: [constant_metric(preds, train_data),
                                                                           decreasing_metric(preds, train_data)])
 
-    # test with two valid data for lgb.train
-    metrics_combination_train_regression([lgb_valid1, lgb_valid2], ['l2', 'l1'], iter_min_l2, True)
-    metrics_combination_train_regression([lgb_valid2, lgb_valid1], ['l2', 'l1'], iter_min_l2, True)
-    metrics_combination_train_regression([lgb_valid1, lgb_valid2], ['l1', 'l2'], iter_min_l1, True)
-    metrics_combination_train_regression([lgb_valid2, lgb_valid1], ['l1', 'l2'], iter_min_l1, True)
+    # test with two valid data for gpb.train
+    metrics_combination_train_regression([gpb_valid1, gpb_valid2], ['l2', 'l1'], iter_min_l2, True)
+    metrics_combination_train_regression([gpb_valid2, gpb_valid1], ['l2', 'l1'], iter_min_l2, True)
+    metrics_combination_train_regression([gpb_valid1, gpb_valid2], ['l1', 'l2'], iter_min_l1, True)
+    metrics_combination_train_regression([gpb_valid2, gpb_valid1], ['l1', 'l2'], iter_min_l1, True)
 
-    # test for lgb.cv
+    # test for gpb.cv
     metrics_combination_cv_regression(None, iter_cv_l2, True, False)
     metrics_combination_cv_regression('l2', iter_cv_l2, True, False)
     metrics_combination_cv_regression('l1', iter_cv_l1, True, False)
@@ -2120,7 +2120,7 @@ def test_early_stopping_for_only_first_metric():
     metrics_combination_cv_regression(['l2', 'l1'], iter_cv_min, False, True)
     metrics_combination_cv_regression(['l1', 'l2'], iter_cv_min, False, True)
 
-    # test feval for lgb.cv
+    # test feval for gpb.cv
     metrics_combination_cv_regression('None', 1, False, False,
                                       feval=lambda preds, train_data: [decreasing_metric(preds, train_data),
                                                                        constant_metric(preds, train_data)])
@@ -2142,19 +2142,19 @@ def test_node_level_subcol():
         'feature_fraction': 1.0,
         'verbose': -1
     }
-    lgb_train = lgb.Dataset(X_train, y_train)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train)
+    gpb_train = gpb.Dataset(X_train, y_train)
+    gpb_eval = gpb.Dataset(X_test, y_test, reference=gpb_train)
     evals_result = {}
-    gbm = lgb.train(params, lgb_train,
+    gbm = gpb.train(params, gpb_train,
                     num_boost_round=25,
-                    valid_sets=lgb_eval,
+                    valid_sets=gpb_eval,
                     verbose_eval=False,
                     evals_result=evals_result)
     ret = log_loss(y_test, gbm.predict(X_test))
     assert ret < 0.14
     assert evals_result['valid_0']['binary_logloss'][-1] == pytest.approx(ret)
     params['feature_fraction'] = 0.5
-    gbm2 = lgb.train(params, lgb_train, num_boost_round=25)
+    gbm2 = gpb.train(params, gpb_train, num_boost_round=25)
     ret2 = log_loss(y_test, gbm2.predict(X_test))
     assert ret != ret2
 
@@ -2172,8 +2172,8 @@ def test_forced_bins():
               'num_leaves': 2,
               'min_data_in_leaf': 1,
               'verbose': -1}
-    lgb_x = lgb.Dataset(x, label=y)
-    est = lgb.train(params, lgb_x, num_boost_round=20)
+    gpb_x = gpb.Dataset(x, label=y)
+    est = gpb.train(params, gpb_x, num_boost_round=20)
     new_x = np.zeros((3, x.shape[1]))
     new_x[:, 0] = [0.31, 0.37, 0.41]
     new_x[:, 1] = [0, 0, 0]
@@ -2184,15 +2184,15 @@ def test_forced_bins():
     predicted = est.predict(new_x)
     assert len(np.unique(predicted)) == 1
     params['forcedbins_filename'] = ''
-    lgb_x = lgb.Dataset(x, label=y)
-    est = lgb.train(params, lgb_x, num_boost_round=20)
+    gpb_x = gpb.Dataset(x, label=y)
+    est = gpb.train(params, gpb_x, num_boost_round=20)
     predicted = est.predict(new_x)
     assert len(np.unique(predicted)) == 3
     params['forcedbins_filename'] = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                                  '../../examples/regression/forced_bins2.json')
     params['max_bin'] = 11
-    lgb_x = lgb.Dataset(x[:, :1], label=y)
-    est = lgb.train(params, lgb_x, num_boost_round=50)
+    gpb_x = gpb.Dataset(x[:, :1], label=y)
+    est = gpb.train(params, gpb_x, num_boost_round=50)
     predicted = est.predict(x[1:, :1])
     _, counts = np.unique(predicted, return_counts=True)
     assert min(counts) >= 9
@@ -2211,8 +2211,8 @@ def test_binning_same_sign():
               'min_data_in_leaf': 1,
               'verbose': -1,
               'seed': 0}
-    lgb_x = lgb.Dataset(x, label=y)
-    est = lgb.train(params, lgb_x, num_boost_round=20)
+    gpb_x = gpb.Dataset(x, label=y)
+    est = gpb.train(params, gpb_x, num_boost_round=20)
     new_x = np.zeros((3, 2))
     new_x[:, 0] = [-1, 0, 1]
     predicted = est.predict(new_x)
@@ -2272,29 +2272,29 @@ def test_dataset_update_params():
     y = np.random.random(100)
 
     # decreasing without freeing raw data is allowed
-    lgb_data = lgb.Dataset(X, y, params=default_params, free_raw_data=False).construct()
+    gpb_data = gpb.Dataset(X, y, params=default_params, free_raw_data=False).construct()
     default_params["min_data_in_leaf"] -= 1
-    lgb.train(default_params, lgb_data, num_boost_round=3)
+    gpb.train(default_params, gpb_data, num_boost_round=3)
 
     # decreasing before lazy init is allowed
-    lgb_data = lgb.Dataset(X, y, params=default_params)
+    gpb_data = gpb.Dataset(X, y, params=default_params)
     default_params["min_data_in_leaf"] -= 1
-    lgb.train(default_params, lgb_data, num_boost_round=3)
+    gpb.train(default_params, gpb_data, num_boost_round=3)
 
     # increasing is allowed
     default_params["min_data_in_leaf"] += 2
-    lgb.train(default_params, lgb_data, num_boost_round=3)
+    gpb.train(default_params, gpb_data, num_boost_round=3)
 
     # decreasing with disabled filter is allowed
     default_params["feature_pre_filter"] = False
-    lgb_data = lgb.Dataset(X, y, params=default_params).construct()
+    gpb_data = gpb.Dataset(X, y, params=default_params).construct()
     default_params["min_data_in_leaf"] -= 4
-    lgb.train(default_params, lgb_data, num_boost_round=3)
+    gpb.train(default_params, gpb_data, num_boost_round=3)
 
     # decreasing with enabled filter is disallowed;
     # also changes of other params are disallowed
     default_params["feature_pre_filter"] = True
-    lgb_data = lgb.Dataset(X, y, params=default_params).construct()
+    gpb_data = gpb.Dataset(X, y, params=default_params).construct()
     for key, value in unchangeable_params.items():
         new_params = default_params.copy()
         new_params[key] = value
@@ -2302,8 +2302,8 @@ def test_dataset_update_params():
                    if key == "min_data_in_leaf"
                    else "Cannot change {} *".format(key if key != "forcedbins_filename"
                                                     else "forced bins"))
-        with np.testing.assert_raises_regex(lgb.basic.LightGBMError, err_msg):
-            lgb.train(new_params, lgb_data, num_boost_round=3)
+        with np.testing.assert_raises_regex(gpb.basic.GPBoostError, err_msg):
+            gpb.train(new_params, gpb_data, num_boost_round=3)
 
 
 def test_dataset_params_with_reference():
@@ -2312,27 +2312,27 @@ def test_dataset_params_with_reference():
     y = np.random.random(100)
     X_val = np.random.random((100, 2))
     y_val = np.random.random(100)
-    lgb_train = lgb.Dataset(X, y, params=default_params, free_raw_data=False).construct()
-    lgb_val = lgb.Dataset(X_val, y_val, reference=lgb_train, free_raw_data=False).construct()
-    assert lgb_train.get_params() == default_params
-    assert lgb_val.get_params() == default_params
-    lgb.train(default_params, lgb_train, valid_sets=[lgb_val])
+    gpb_train = gpb.Dataset(X, y, params=default_params, free_raw_data=False).construct()
+    gpb_val = gpb.Dataset(X_val, y_val, reference=gpb_train, free_raw_data=False).construct()
+    assert gpb_train.get_params() == default_params
+    assert gpb_val.get_params() == default_params
+    gpb.train(default_params, gpb_train, valid_sets=[gpb_val])
 
 
 def test_extra_trees():
     # check extra trees increases regularization
     X, y = load_boston(return_X_y=True)
-    lgb_x = lgb.Dataset(X, label=y)
+    gpb_x = gpb.Dataset(X, label=y)
     params = {'objective': 'regression',
               'num_leaves': 32,
               'verbose': -1,
               'extra_trees': False,
               'seed': 0}
-    est = lgb.train(params, lgb_x, num_boost_round=10)
+    est = gpb.train(params, gpb_x, num_boost_round=10)
     predicted = est.predict(X)
     err = mean_squared_error(y, predicted)
     params['extra_trees'] = True
-    est = lgb.train(params, lgb_x, num_boost_round=10)
+    est = gpb.train(params, gpb_x, num_boost_round=10)
     predicted_new = est.predict(X)
     err_new = mean_squared_error(y, predicted_new)
     assert err < err_new
@@ -2341,16 +2341,16 @@ def test_extra_trees():
 def test_path_smoothing():
     # check path smoothing increases regularization
     X, y = load_boston(return_X_y=True)
-    lgb_x = lgb.Dataset(X, label=y)
+    gpb_x = gpb.Dataset(X, label=y)
     params = {'objective': 'regression',
               'num_leaves': 32,
               'verbose': -1,
               'seed': 0}
-    est = lgb.train(params, lgb_x, num_boost_round=10)
+    est = gpb.train(params, gpb_x, num_boost_round=10)
     predicted = est.predict(X)
     err = mean_squared_error(y, predicted)
     params['path_smooth'] = 1
-    est = lgb.train(params, lgb_x, num_boost_round=10)
+    est = gpb.train(params, gpb_x, num_boost_round=10)
     predicted_new = est.predict(X)
     err_new = mean_squared_error(y, predicted_new)
     assert err < err_new
@@ -2364,9 +2364,9 @@ def test_trees_to_dataframe():
         return [impcts_dict.get(col, 0.) for col in cols]
 
     X, y = load_breast_cancer(return_X_y=True)
-    data = lgb.Dataset(X, label=y)
+    data = gpb.Dataset(X, label=y)
     num_trees = 10
-    bst = lgb.train({"objective": "binary", "verbose": -1}, data, num_trees)
+    bst = gpb.train({"objective": "binary", "verbose": -1}, data, num_trees)
     tree_df = bst.trees_to_dataframe()
     split_dict = (tree_df[~tree_df['split_gain'].isnull()]
                   .groupby('split_feature')
@@ -2393,8 +2393,8 @@ def test_trees_to_dataframe():
     # test edge case with one leaf
     X = np.ones((10, 2))
     y = np.random.rand(10)
-    data = lgb.Dataset(X, label=y)
-    bst = lgb.train({"objective": "binary", "verbose": -1}, data, num_trees)
+    data = gpb.Dataset(X, label=y)
+    bst = gpb.train({"objective": "binary", "verbose": -1}, data, num_trees)
     tree_df = bst.trees_to_dataframe()
 
     assert len(tree_df) == 1
@@ -2411,32 +2411,32 @@ def test_trees_to_dataframe():
 def test_interaction_constraints():
     X, y = load_boston(return_X_y=True)
     num_features = X.shape[1]
-    train_data = lgb.Dataset(X, label=y)
+    train_data = gpb.Dataset(X, label=y)
     # check that constraint containing all features is equivalent to no constraint
     params = {'verbose': -1,
               'seed': 0}
-    est = lgb.train(params, train_data, num_boost_round=10)
+    est = gpb.train(params, train_data, num_boost_round=10)
     pred1 = est.predict(X)
-    est = lgb.train(dict(params, interaction_constraints=[list(range(num_features))]), train_data,
+    est = gpb.train(dict(params, interaction_constraints=[list(range(num_features))]), train_data,
                     num_boost_round=10)
     pred2 = est.predict(X)
     np.testing.assert_allclose(pred1, pred2)
     # check that constraint partitioning the features reduces train accuracy
-    est = lgb.train(dict(params, interaction_constraints=[list(range(num_features // 2)),
+    est = gpb.train(dict(params, interaction_constraints=[list(range(num_features // 2)),
                                                           list(range(num_features // 2, num_features))]),
                     train_data, num_boost_round=10)
     pred3 = est.predict(X)
     assert mean_squared_error(y, pred1) < mean_squared_error(y, pred3)
     # check that constraints consisting of single features reduce accuracy further
-    est = lgb.train(dict(params, interaction_constraints=[[i] for i in range(num_features)]), train_data,
+    est = gpb.train(dict(params, interaction_constraints=[[i] for i in range(num_features)]), train_data,
                     num_boost_round=10)
     pred4 = est.predict(X)
     assert mean_squared_error(y, pred3) < mean_squared_error(y, pred4)
     # test that interaction constraints work when not all features are used
     X = np.concatenate([np.zeros((X.shape[0], 1)), X], axis=1)
     num_features = X.shape[1]
-    train_data = lgb.Dataset(X, label=y)
-    est = lgb.train(dict(params, interaction_constraints=[[0] + list(range(2, num_features)),
+    train_data = gpb.Dataset(X, label=y)
+    est = gpb.train(dict(params, interaction_constraints=[[0] + list(range(2, num_features)),
                                                           [1] + list(range(2, num_features))]),
                     train_data, num_boost_round=10)
 
@@ -2447,53 +2447,53 @@ def test_linear_trees(tmp_path):
     x = np.arange(0, 100, 0.1)
     y = 2 * x + np.random.normal(0, 0.1, len(x))
     x = x[:, np.newaxis]
-    lgb_train = lgb.Dataset(x, label=y)
+    gpb_train = gpb.Dataset(x, label=y)
     params = {'verbose': -1,
               'metric': 'mse',
               'seed': 0,
               'num_leaves': 2}
-    est = lgb.train(params, lgb_train, num_boost_round=10)
+    est = gpb.train(params, gpb_train, num_boost_round=10)
     pred1 = est.predict(x)
-    lgb_train = lgb.Dataset(x, label=y)
+    gpb_train = gpb.Dataset(x, label=y)
     res = {}
-    est = lgb.train(dict(params, linear_tree=True), lgb_train, num_boost_round=10, evals_result=res,
-                    valid_sets=[lgb_train], valid_names=['train'])
+    est = gpb.train(dict(params, linear_tree=True), gpb_train, num_boost_round=10, evals_result=res,
+                    valid_sets=[gpb_train], valid_names=['train'])
     pred2 = est.predict(x)
     assert res['train']['l2'][-1] == pytest.approx(mean_squared_error(y, pred2), abs=1e-1)
     assert mean_squared_error(y, pred2) < mean_squared_error(y, pred1)
     # test again with nans in data
     x[:10] = np.nan
-    lgb_train = lgb.Dataset(x, label=y)
-    est = lgb.train(params, lgb_train, num_boost_round=10)
+    gpb_train = gpb.Dataset(x, label=y)
+    est = gpb.train(params, gpb_train, num_boost_round=10)
     pred1 = est.predict(x)
-    lgb_train = lgb.Dataset(x, label=y)
+    gpb_train = gpb.Dataset(x, label=y)
     res = {}
-    est = lgb.train(dict(params, linear_tree=True), lgb_train, num_boost_round=10, evals_result=res,
-                    valid_sets=[lgb_train], valid_names=['train'])
+    est = gpb.train(dict(params, linear_tree=True), gpb_train, num_boost_round=10, evals_result=res,
+                    valid_sets=[gpb_train], valid_names=['train'])
     pred2 = est.predict(x)
     assert res['train']['l2'][-1] == pytest.approx(mean_squared_error(y, pred2), abs=1e-1)
     assert mean_squared_error(y, pred2) < mean_squared_error(y, pred1)
     # test again with bagging
     res = {}
-    est = lgb.train(dict(params, linear_tree=True, subsample=0.8, bagging_freq=1), lgb_train,
-                    num_boost_round=10, evals_result=res, valid_sets=[lgb_train], valid_names=['train'])
+    est = gpb.train(dict(params, linear_tree=True, subsample=0.8, bagging_freq=1), gpb_train,
+                    num_boost_round=10, evals_result=res, valid_sets=[gpb_train], valid_names=['train'])
     pred = est.predict(x)
     assert res['train']['l2'][-1] == pytest.approx(mean_squared_error(y, pred), abs=1e-1)
     # test with a feature that has only one non-nan value
     x = np.concatenate([np.ones([x.shape[0], 1]), x], 1)
     x[500:, 1] = np.nan
     y[500:] += 10
-    lgb_train = lgb.Dataset(x, label=y)
+    gpb_train = gpb.Dataset(x, label=y)
     res = {}
-    est = lgb.train(dict(params, linear_tree=True, subsample=0.8, bagging_freq=1), lgb_train,
-                    num_boost_round=10, evals_result=res, valid_sets=[lgb_train], valid_names=['train'])
+    est = gpb.train(dict(params, linear_tree=True, subsample=0.8, bagging_freq=1), gpb_train,
+                    num_boost_round=10, evals_result=res, valid_sets=[gpb_train], valid_names=['train'])
     pred = est.predict(x)
     assert res['train']['l2'][-1] == pytest.approx(mean_squared_error(y, pred), abs=1e-1)
     # test with a categorical feature
     x[:250, 0] = 0
     y[:250] += 10
-    lgb_train = lgb.Dataset(x, label=y)
-    est = lgb.train(dict(params, linear_tree=True, subsample=0.8, bagging_freq=1), lgb_train,
+    gpb_train = gpb.Dataset(x, label=y)
+    est = gpb.train(dict(params, linear_tree=True, subsample=0.8, bagging_freq=1), gpb_train,
                     num_boost_round=10, categorical_feature=[0])
     # test refit: same results on same data
     est2 = est.refit(x, label=y)
@@ -2504,7 +2504,7 @@ def test_linear_trees(tmp_path):
     # test refit with save and load
     temp_model = str(tmp_path / "temp_model.txt")
     est.save_model(temp_model)
-    est2 = lgb.Booster(model_file=temp_model)
+    est2 = gpb.Booster(model_file=temp_model)
     est2 = est2.refit(x, label=y)
     p1 = est.predict(x)
     p2 = est2.predict(x)
@@ -2519,10 +2519,10 @@ def test_linear_trees(tmp_path):
               'verbose': -1,
               'metric': 'mse',
               'seed': 0}
-    train_data = lgb.Dataset(X_train, label=y_train, params=dict(params, num_leaves=2))
-    est = lgb.train(params, train_data, num_boost_round=10, categorical_feature=[0])
-    train_data = lgb.Dataset(X_train, label=y_train, params=dict(params, num_leaves=60))
-    est = lgb.train(params, train_data, num_boost_round=10, categorical_feature=[0])
+    train_data = gpb.Dataset(X_train, label=y_train, params=dict(params, num_leaves=2))
+    est = gpb.train(params, train_data, num_boost_round=10, categorical_feature=[0])
+    train_data = gpb.Dataset(X_train, label=y_train, params=dict(params, num_leaves=60))
+    est = gpb.train(params, train_data, num_boost_round=10, categorical_feature=[0])
 
 
 def test_save_and_load_linear(tmp_path):
@@ -2532,20 +2532,20 @@ def test_save_and_load_linear(tmp_path):
     X_train[:X_train.shape[0] // 2, 0] = 0
     y_train[:X_train.shape[0] // 2] = 1
     params = {'linear_tree': True}
-    train_data_1 = lgb.Dataset(X_train, label=y_train, params=params)
-    est_1 = lgb.train(params, train_data_1, num_boost_round=10, categorical_feature=[0])
+    train_data_1 = gpb.Dataset(X_train, label=y_train, params=params)
+    est_1 = gpb.train(params, train_data_1, num_boost_round=10, categorical_feature=[0])
     pred_1 = est_1.predict(X_train)
 
     tmp_dataset = str(tmp_path / 'temp_dataset.bin')
     train_data_1.save_binary(tmp_dataset)
-    train_data_2 = lgb.Dataset(tmp_dataset)
-    est_2 = lgb.train(params, train_data_2, num_boost_round=10)
+    train_data_2 = gpb.Dataset(tmp_dataset)
+    est_2 = gpb.train(params, train_data_2, num_boost_round=10)
     pred_2 = est_2.predict(X_train)
     np.testing.assert_allclose(pred_1, pred_2)
 
     model_file = str(tmp_path / 'model.txt')
     est_2.save_model(model_file)
-    est_3 = lgb.Booster(model_file=model_file)
+    est_3 = gpb.Booster(model_file=model_file)
     pred_3 = est_3.predict(X_train)
     np.testing.assert_allclose(pred_2, pred_3)
 
@@ -2553,9 +2553,9 @@ def test_save_and_load_linear(tmp_path):
 def test_predict_with_start_iteration():
     def inner_test(X, y, params, early_stopping_rounds):
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-        train_data = lgb.Dataset(X_train, label=y_train)
-        valid_data = lgb.Dataset(X_test, label=y_test)
-        booster = lgb.train(params, train_data, num_boost_round=50, early_stopping_rounds=early_stopping_rounds,
+        train_data = gpb.Dataset(X_train, label=y_train)
+        valid_data = gpb.Dataset(X_test, label=y_test)
+        booster = gpb.train(params, train_data, num_boost_round=50, early_stopping_rounds=early_stopping_rounds,
                             valid_sets=[valid_data])
 
         # test that the predict once with all iterations equals summed results with start_iteration and num_iteration
@@ -2644,8 +2644,8 @@ def test_average_precision_metric():
         'verbose': -1
     }
     res = {}
-    lgb_X = lgb.Dataset(X, label=y)
-    est = lgb.train(params, lgb_X, num_boost_round=10, valid_sets=[lgb_X], evals_result=res)
+    gpb_X = gpb.Dataset(X, label=y)
+    est = gpb.train(params, gpb_X, num_boost_round=10, valid_sets=[gpb_X], evals_result=res)
     ap = res['training']['average_precision'][-1]
     pred = est.predict(X)
     sklearn_ap = average_precision_score(y, pred)
@@ -2653,8 +2653,8 @@ def test_average_precision_metric():
     # test that average precision is 1 where model predicts perfectly
     y = y.copy()
     y[:] = 1
-    lgb_X = lgb.Dataset(X, label=y)
-    lgb.train(params, lgb_X, num_boost_round=1, valid_sets=[lgb_X], evals_result=res)
+    gpb_X = gpb.Dataset(X, label=y)
+    gpb.train(params, gpb_X, num_boost_round=1, valid_sets=[gpb_X], evals_result=res)
     assert res['training']['average_precision'][-1] == pytest.approx(1)
 
 
@@ -2669,8 +2669,8 @@ def test_reset_params_works_with_metric_num_class_and_boosting():
         'boosting': 'gbdt',
         'num_class': 5
     }
-    dtrain = lgb.Dataset(X, y, params=dataset_params)
-    bst = lgb.Booster(
+    dtrain = gpb.Dataset(X, y, params=dataset_params)
+    bst = gpb.Booster(
         params=booster_params,
         train_set=dtrain
     )
