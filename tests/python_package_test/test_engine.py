@@ -1172,47 +1172,6 @@ def test_sliced_data():
     np.testing.assert_allclose(origin_pred, sliced_pred)
 
 
-def test_init_with_subset():
-    data = np.random.random((50, 2))
-    y = [1] * 25 + [0] * 25
-    lgb_train = lgb.Dataset(data, y, free_raw_data=False)
-    subset_index_1 = np.random.choice(np.arange(50), 30, replace=False)
-    subset_data_1 = lgb_train.subset(subset_index_1)
-    subset_index_2 = np.random.choice(np.arange(50), 20, replace=False)
-    subset_data_2 = lgb_train.subset(subset_index_2)
-    params = {
-        'objective': 'binary',
-        'verbose': -1
-    }
-    init_gbm = lgb.train(params=params,
-                         train_set=subset_data_1,
-                         num_boost_round=10,
-                         keep_training_booster=True)
-    lgb.train(params=params,
-              train_set=subset_data_2,
-              num_boost_round=10,
-              init_model=init_gbm)
-    assert lgb_train.get_data().shape[0] == 50
-    assert subset_data_1.get_data().shape[0] == 30
-    assert subset_data_2.get_data().shape[0] == 20
-    lgb_train.save_binary("lgb_train_data.bin")
-    lgb_train_from_file = lgb.Dataset('lgb_train_data.bin', free_raw_data=False)
-    subset_data_3 = lgb_train_from_file.subset(subset_index_1)
-    subset_data_4 = lgb_train_from_file.subset(subset_index_2)
-    init_gbm_2 = lgb.train(params=params,
-                           train_set=subset_data_3,
-                           num_boost_round=10,
-                           keep_training_booster=True)
-    with np.testing.assert_raises_regex(lgb.basic.LightGBMError, "Unknown format of training data"):
-        lgb.train(params=params,
-                  train_set=subset_data_4,
-                  num_boost_round=10,
-                  init_model=init_gbm_2)
-    assert lgb_train_from_file.get_data() == "lgb_train_data.bin"
-    assert subset_data_3.get_data() == "lgb_train_data.bin"
-    assert subset_data_4.get_data() == "lgb_train_data.bin"
-
-
 def generate_trainset_for_monotone_constraints_tests(x3_to_category=True):
     number_of_dpoints = 3000
     x1_positively_correlated_with_y = np.random.random(size=number_of_dpoints)

@@ -182,3 +182,7 @@ miktex*.zip
 *.pub
 *.rdp
 *_rsa
+
+# GraphViz artifacts
+*.gv
+*.gv.*
