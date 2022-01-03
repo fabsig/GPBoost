@@ -38,7 +38,6 @@ class FileLoader:
 
     def train_predict_check(self, gpb_train, X_test, X_test_fn, sk_pred):
         params = dict(self.params)
-        params['force_row_wise'] = True
         gbm = gpb.train(params, gpb_train)
         y_pred = gbm.predict(X_test)
         cpp_pred = gbm.predict(X_test_fn)
