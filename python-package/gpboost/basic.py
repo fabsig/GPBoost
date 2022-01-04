@@ -4193,9 +4193,14 @@ class GPModel(object):
                 raise ValueError("Incorrect number of data points in cluster_ids")
             # Convert cluster_ids to int and save conversion map
             if not np.issubdtype(cluster_ids.dtype, np.integer):
-                self.cluster_ids_map_to_int = dict(
-                    [(cl_name, cl_int) for cl_int, cl_name in enumerate(sorted(set(cluster_ids)))])
-                cluster_ids = np.array([self.cluster_ids_map_to_int[cl_name] for cl_name in cluster_ids])
+                create_map = True
+                if np.issubdtype(cluster_ids.dtype, np.double):
+                    if (np.floor(cluster_ids) == cluster_ids).all():
+                        create_map = False
+                if create_map:
+                    self.cluster_ids_map_to_int = dict(
+                        [(cl_name, cl_int) for cl_int, cl_name in enumerate(sorted(set(cluster_ids)))])
+                    cluster_ids = np.array([self.cluster_ids_map_to_int[cl_name] for cl_name in cluster_ids])
             cluster_ids = cluster_ids.astype(np.int32)
             cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
@@ -4799,9 +4804,14 @@ class GPModel(object):
                                                          convert_to_type=None)
                 if cluster_ids_pred.shape[0] != num_data_pred:
                     raise ValueError("Incorrect number of data points in cluster_ids_pred")
-                if self.cluster_ids_map_to_int is None and not cluster_ids_pred.dtype == np.dtype(int):
-                    raise ValueError("cluster_ids_pred needs to be of type int as the data provided in cluster_ids "
-                                     "when initializing the model was also int (or cluster_ids was not provided)")
+                if self.cluster_ids_map_to_int is None and not np.issubdtype(cluster_ids_pred.dtype, np.int):
+                    error_message = True
+                    if np.issubdtype(cluster_ids_pred.dtype, np.double):
+                        if (np.floor(cluster_ids_pred) == cluster_ids_pred).all():
+                            error_message = False
+                    if error_message:
+                        raise ValueError("cluster_ids_pred needs to be of type int as the data provided in cluster_ids "
+                                         "when initializing the model was also int (or cluster_ids was not provided)")
                 if self.cluster_ids_map_to_int is not None:
                     # Convert cluster_ids_pred to int
                     cluster_ids_pred_map_to_int = dict(
@@ -4992,9 +5002,14 @@ class GPModel(object):
                                                      convert_to_type=None)
             if cluster_ids_pred.shape[0] != num_data_pred:
                 raise ValueError("Incorrect number of data points in cluster_ids_pred")
-            if self.cluster_ids_map_to_int is None and not cluster_ids_pred.dtype == np.dtype(int):
-                raise ValueError("cluster_ids_pred needs to be of type int as the data provided in cluster_ids"
-                                 "when initializing the model was also int (or cluster_ids was not provided)")
+            if self.cluster_ids_map_to_int is None and not np.issubdtype(cluster_ids_pred.dtype, np.int):
+                error_message = True
+                if np.issubdtype(cluster_ids_pred.dtype, np.double):
+                    if (np.floor(cluster_ids_pred) == cluster_ids_pred).all():
+                        error_message = False
+                if error_message:
+                    raise ValueError("cluster_ids_pred needs to be of type int as the data provided in cluster_ids "
+                                     "when initializing the model was also int (or cluster_ids was not provided)")
             if self.cluster_ids_map_to_int is not None:
                 # Convert cluster_ids_pred to int
                 cluster_ids_pred_map_to_int = dict(

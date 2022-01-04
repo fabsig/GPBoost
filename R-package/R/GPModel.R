@@ -237,7 +237,7 @@ gpb.GPModel <- R6::R6Class(
         group_data_unique <- unique(group_data)
         group_data_unique_c_str <- lapply(group_data_unique,gpb.c_str)
         group_data_c_str <- unlist(group_data_unique_c_str[match(group_data,group_data_unique)])
-        # Version 2: slower than above
+        # Version 2: slower than above (not used)
         # group_data_c_str <- unlist(lapply(group_data,gpb.c_str))
         # group_data_c_str <- c()# Version 3: much slower
         # for (i in 1:length(group_data)) {
@@ -379,8 +379,17 @@ gpb.GPModel <- R6::R6Class(
           private$cluster_ids = cluster_ids
           # Convert cluster_ids to int and save conversion map
           if (storage.mode(cluster_ids) != "integer") {
-            private$cluster_ids_map_to_int <- structure(1:length(unique(cluster_ids)),names=c(unique(cluster_ids)))
-            cluster_ids = private$cluster_ids_map_to_int[cluster_ids]
+            create_map <- TRUE
+            if (storage.mode(cluster_ids) == "double") {
+              if (all(cluster_ids == floor(cluster_ids))) {
+                create_map <- FALSE
+                cluster_ids <- as.integer(cluster_ids)
+              }
+            }
+            if (create_map) {
+              private$cluster_ids_map_to_int <- structure(1:length(unique(cluster_ids)),names=c(unique(cluster_ids)))
+              cluster_ids = private$cluster_ids_map_to_int[cluster_ids] 
+            }
           }
         } else {
           stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("cluster_ids"))
@@ -859,7 +868,16 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(cluster_ids_pred)) {
         if (is.vector(cluster_ids_pred)) {
           if (is.null(private$cluster_ids_map_to_int) & storage.mode(cluster_ids_pred) != "integer") {
-            stop("predict.GPModel: cluster_ids_pred needs to be of type int as the data provided in cluster_ids when initializing the model was also int (or cluster_ids was not provided)")
+            error_message <- TRUE
+            if (storage.mode(cluster_ids_pred) == "double") {
+              if (all(cluster_ids_pred == floor(cluster_ids_pred))) {
+                error_message <- FALSE
+                cluster_ids_pred <- as.integer(cluster_ids_pred)
+              }
+            }
+            if (error_message) {
+              stop("predict.GPModel: cluster_ids_pred needs to be of type int as the data provided in cluster_ids when initializing the model was also int (or cluster_ids was not provided)")
+            }
           }
           if (!is.null(private$cluster_ids_map_to_int)) {
             cluster_ids_pred_map_to_int <- structure(1:length(unique(cluster_ids_pred)),names=c(unique(cluster_ids_pred)))
@@ -1094,7 +1112,16 @@ gpb.GPModel <- R6::R6Class(
         if (!is.null(cluster_ids_pred)) {
           if (is.vector(cluster_ids_pred)) {
             if (is.null(private$cluster_ids_map_to_int) & storage.mode(cluster_ids_pred) != "integer") {
-              stop("predict.GPModel: cluster_ids_pred needs to be of type int as the data provided in cluster_ids when initializing the model was also int (or cluster_ids was not provided)")
+              error_message <- TRUE
+              if (storage.mode(cluster_ids_pred) == "double") {
+                if (all(cluster_ids_pred == floor(cluster_ids_pred))) {
+                  error_message <- FALSE
+                  cluster_ids_pred <- as.integer(cluster_ids_pred)
+                }
+              }
+              if (error_message) {
+                stop("predict.GPModel: cluster_ids_pred needs to be of type int as the data provided in cluster_ids when initializing the model was also int (or cluster_ids was not provided)")
+              }
             }
             if (!is.null(private$cluster_ids_map_to_int)) {
               cluster_ids_pred_map_to_int <- structure(1:length(unique(cluster_ids_pred)),names=c(unique(cluster_ids_pred)))

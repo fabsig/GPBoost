@@ -305,6 +305,27 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                              cov_pars = c(0.75,1.25), predict_cov_mat = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+    
+    # Prediction when cluster_ids are not in ascending order
+    group_data_pred = c(1,1,m,m)
+    cluster_ids_pred = c(2,2,1,2)
+    gp_model <- GPModel(group_data = group, cluster_ids = cluster_ids)
+    pred <- gp_model$predict(y = y, group_data_pred = group_data_pred,
+                             cluster_ids_pred = cluster_ids_pred,
+                             cov_pars = c(0.75,1.25), predict_var = TRUE)
+    expected_mu <- c(rep(0,3), 1.179557)
+    expected_var <- c(rep(2,3), 0.8207547)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),1E-6)
+    # same thing when cluster_ids are strings
+    group_data_pred = c(1,1,m,m)
+    cluster_ids_pred_string = paste0(as.character(c(2,2,1,2)),"_s")
+    gp_model <- GPModel(group_data = group, cluster_ids = cluster_ids_string)
+    pred <- gp_model$predict(y = y, group_data_pred = group_data_pred,
+                             cluster_ids_pred = cluster_ids_pred_string,
+                             cov_pars = c(0.75,1.25), predict_var = TRUE)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),1E-6)
 
     # cluster_ids and random coefficients
     y <- Z1%*%b1 + Z3%*%b3 + xi
