@@ -3902,21 +3902,21 @@ class GPModel(object):
             likelihood : string, optional (default="gaussian")
                 likelihood function (distribution) of the response variable
             group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
-                Labels of group levels for grouped random effects
+                The elements are group levels for defining grouped random effects. I.e., this is either a vector
+                consisting of a categorical variable or a matrix whose columns are categorical variables.
             group_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for grouped random coefficients
             ind_effect_group_rand_coef : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data
             or None, optional (default=None)
                 Contains indices that indicate the corresponding random effects (=columns) in 'group_data' for every
-                covariate in 'group_rand_coef_data'.
+                covariate in 'group_rand_coef_data'. Counting starts at 1. The length of this index vector must equal
+                the number of covariates in 'group_rand_coef_data'.
                 For instance, [1,1,2] means that the first two covariates (=first two columns) in 'group_rand_coef_data'
                 have random coefficients corresponding to the first random effect (=first column) in 'group_data',
                 and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
                 corresponding to the second random  effect (=second column) in 'group_data'.
-                The length of this index vector must equal the number of covariates in 'group_rand_coef_data'.
-                Counting starts at 1.
             gp_coords : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-                Coordinates (features) for Gaussian process
+                Coordinates (=features) for defining Gaussian processes
             gp_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for Gaussian process random coefficients
             cov_function : string, optional (default="exponential")
@@ -3953,10 +3953,10 @@ class GPModel(object):
                 is ordered first and neighbors are selected among all points
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
-            cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None,
-                optional (default=None)
-                IDs / labels indicating independent realizations of random effects / Gaussian processes
-                (same values = same random effects / GP realization)
+            cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data
+            or None, optional (default=None)
+                The elements indicate independent realizations of  random effects / Gaussian processes
+                (same values = same process realization)
             free_raw_data : bool, optional (default=False)
                 If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python
                 after initialization
@@ -4298,7 +4298,7 @@ class GPModel(object):
         y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
             Response variable data
         X : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-            Covariate data for fixed effects ( = linear regression term)
+            Covariate data for the fixed effects linear regression term (if there is one)
         params : dict or None, optional (default=None)
             Parameters for fitting / optimization:
                 optimizer_cov : string, optional (default = "gradient_descent")
@@ -4666,13 +4666,14 @@ class GPModel(object):
                 Observed response variable data (can be None, e.g. when the model has been estimated already and
                 the same data is used for making predictions)
             group_data_pred : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
-                Labels of group levels for grouped random effects
+                The elements are group levels for which predictions are made (if there are any grouped random effects
+                in the model)
             group_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-                Covariate data for grouped random coefficients
+                Covariate data for grouped random coefficients (if there are some in the model)
             gp_coords_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-                Coordinates (features) for Gaussian process
+                Prediction coordinates (=features) for Gaussian process (if there is a GP in the model)
             gp_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-                Covariate data for Gaussian process random coefficients
+                Covariate data for Gaussian process random coefficients (if there are some in the model)
             vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
                 Type of Vecchia approximation used for making predictions.
                 "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
@@ -4684,9 +4685,10 @@ class GPModel(object):
                 ordered first and neighbors are selected among all points
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
-            cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
-                IDs / labels indicating independent realizations of random effects / Gaussian processes
-                (same values = same random effects / GP realization)
+            cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data
+            or None, optional (default=None)
+                The elements indicating independent realizations of random effects / Gaussian processes for which
+                predictions are made (set to None if you have not specified this when creating the model)
             predict_cov_mat : bool (default=False)
                 If True, the (posterior / conditional) predictive covariance is calculated in addition to the
                 (posterior / conditional) predictive mean
@@ -4696,7 +4698,7 @@ class GPModel(object):
                 A vector containing covariance parameters (used if the GPModel has not been trained or if predictions
                 should be made for other parameters than the estimated ones)
             X_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-                Covariate data for fixed effects ( = linear regression term)
+                Prediction covariate data for the fixed effects linear regression term (if there is one)
             use_saved_data : bool (default=False)
                 If True, predictions are done using a priory set data via the function 'set_prediction_data'
                 (this option is not used by users directly)
@@ -4925,18 +4927,20 @@ class GPModel(object):
         Parameters
         ----------
             group_data_pred : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
-                Labels of group levels for grouped random effects
+                The elements are group levels for which predictions are made (if there are any grouped random effects
+                in the model)
             group_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-                Covariate data for grouped random coefficients
+                Covariate data for grouped random coefficients (if there are some in the model)
             gp_coords_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-                Coordinates (features) for Gaussian process
+                Prediction coordinates (=features) for Gaussian process (if there is a GP in the model)
             gp_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-                Covariate data for Gaussian process random coefficients
-            cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
-                IDs / labels indicating independent realizations of random effects / Gaussian processes
-                (same values = same random effects / GP realization)
+                Covariate data for Gaussian process random coefficients (if there are some in the model)
+            cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data
+            or None, optional (default=None)
+                The elements indicating independent realizations of random effects / Gaussian processes for which
+                predictions are made (set to None if you have not specified this when creating the model)
             X_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-                Covariate data for fixed effects ( = linear regression term)
+                Prediction covariate data for the fixed effects linear regression term (if there is one)
         """
         group_data_pred_c = ctypes.c_void_p()
         group_rand_coef_data_pred_c = ctypes.c_void_p()

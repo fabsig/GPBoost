@@ -12,7 +12,8 @@
 
 \item{y}{A \code{vector} with response variable data}
 
-\item{X}{A \code{matrix} with covariate data for fixed effects ( = linear regression term)}
+\item{X}{A \code{matrix} with numeric covariate data for the 
+fixed effects linear regression term (if there is one)}
 
 \item{params}{A \code{list} with parameters for the model fitting / optimization
  \itemize{

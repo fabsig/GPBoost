@@ -11,17 +11,24 @@
 \arguments{
 \item{gp_model}{A \code{GPModel}}
 
-\item{group_data_pred}{A \code{vector} or \code{matrix} with labels of group levels for which predictions are made (if there are grouped random effects in the \code{GPModel})}
+\item{group_data_pred}{A \code{vector} or \code{matrix} with elements being group levels 
+for which predictions are made (if there are grouped random effects in the \code{GPModel})}
 
-\item{group_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for grouped random coefficients (if there are some in the \code{GPModel})}
+\item{group_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data 
+for grouped random coefficients (if there are some in the \code{GPModel})}
 
-\item{gp_coords_pred}{A \code{matrix} with prediction coordinates (features) for Gaussian process (if there is a GP in the \code{GPModel})}
+\item{gp_coords_pred}{A \code{matrix} with prediction coordinates (=features) for 
+Gaussian process (if there is a GP in the \code{GPModel})}
 
-\item{gp_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for Gaussian process random coefficients (if there are some in the \code{GPModel})}
+\item{gp_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for 
+Gaussian process random coefficients (if there are some in the \code{GPModel})}
 
-\item{cluster_ids_pred}{A \code{vector} with IDs / labels indicating the realizations of random effects / Gaussian processes for which predictions are made (set to NULL if you have not specified this when creating the \code{GPModel})}
+\item{cluster_ids_pred}{A \code{vector} with elements indicating the realizations of 
+random effects / Gaussian processes for which predictions are made 
+(set to NULL if you have not specified this when creating the \code{GPModel})}
 
-\item{X_pred}{A \code{matrix} with covariate data for the linear regression term (if there is one in the \code{GPModel})}
+\item{X_pred}{A \code{matrix} with prediction covariate data for the 
+fixed effects linear regression term (if there is one in the \code{GPModel})}
 }
 \value{
 A \code{GPModel}
