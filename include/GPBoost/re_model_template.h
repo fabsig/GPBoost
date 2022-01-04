@@ -627,6 +627,20 @@ namespace GPBoost {
 				}
 				else {
 					beta = Eigen::Map<const vec_t>(init_coef, num_covariates);
+					if (scale_covariables) {
+						// transform initial coefficients
+						for (int icol = 0; icol < num_coef_; ++icol) {
+							if (!has_intercept || icol != intercept_col) {
+								if (has_intercept) {
+									beta[intercept_col] += beta[icol] * loc_transf[icol];
+								}
+								beta[icol] *= scale_transf[icol];
+							}
+						}
+						if (has_intercept) {
+							beta[intercept_col] *= scale_transf[intercept_col];
+						}
+					}
 				}
 				beta_after_grad_aux_lag1 = beta;
 				UpdateFixedEffects(beta, fixed_effects, fixed_effects_vec);
@@ -793,7 +807,7 @@ namespace GPBoost {
 			if (has_covariates_) {
 				if (scale_covariables) {
 					// transform coefficients back to original scale
-					if (has_intercept && !gauss_likelihood_) {
+					if (has_intercept) {
 						beta[intercept_col] /= scale_transf[intercept_col];
 					}
 					for (int icol = 0; icol < num_coef_; ++icol) {
