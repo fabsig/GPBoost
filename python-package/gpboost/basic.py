@@ -4244,7 +4244,6 @@ class GPModel(object):
             if model_dict["params"]['init_cov_pars'] is not None:
                 model_dict["params"]['init_cov_pars'] = np.array(model_dict["params"]['init_cov_pars'])
             self.set_optim_params(params=model_dict["params"])
-            self.set_optim_coef_params(params=model_dict["params"])
 
     def __determine_num_cov_pars(self, likelihood):
         if self.cov_function == "wendland":
@@ -4381,8 +4380,6 @@ class GPModel(object):
             self.has_covariates = False
         # Set parameters for optimizer
         self.set_optim_params(params)
-        if X is not None:
-            self.set_optim_coef_params(params)
         # Do optimization
         if X is None:
             _safe_call(_LIB.GPB_OptimCovPar(

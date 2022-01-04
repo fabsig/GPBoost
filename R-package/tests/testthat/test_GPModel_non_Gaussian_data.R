@@ -739,6 +739,9 @@ test_that("Binary classification with linear predictor and grouped random effect
   coef <- c(-0.1532531, 0.2594415, 1.5365657, 0.2660675)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
+  
+  probs <- pnorm(Z1 %*% b_gr_1 + X%*%beta)
+  y <- as.numeric(sim_rand_unif(n=n, init_c=0.542) < probs)
 })
 
 

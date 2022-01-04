@@ -463,7 +463,6 @@ gpb.GPModel <- R6::R6Class(
       }
       if (!is.null(modelfile)){
         self$set_optim_params(params = model_list[["params"]])
-        self$set_optim_coef_params(params = model_list[["params"]])
       }
     }, # End initialize
     
@@ -539,7 +538,6 @@ gpb.GPModel <- R6::R6Class(
           private$coef_names <- c(private$coef_names,colnames(X))
         }
         X <- as.vector(matrix(X))#matrix() is needed in order that all values are contiguous in memory (when colnames is not NULL)
-        self$set_optim_coef_params(params)
       } else {
         private$has_covariates <- FALSE
       }
