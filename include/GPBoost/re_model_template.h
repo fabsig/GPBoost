@@ -596,7 +596,6 @@ namespace GPBoost {
 				scale_covariables = (optimizer_coef == "gradient_descent") && !only_intercept_for_GPBoost_algo;
 				// Scale covariates (in order that the gradient is less sample-size dependent)
 				if (scale_covariables) {
-					X_orig_ = X_;
 					loc_transf = vec_t(num_coef_);
 					scale_transf = vec_t(num_coef_);
 					vec_t col_i_centered;
@@ -818,7 +817,16 @@ namespace GPBoost {
 							}
 						}
 					}
-					X_ = X_orig_;
+					//transform covariates back
+					for (int icol = 0; icol < num_coef_; ++icol) {
+						if (!has_intercept || icol != intercept_col) {
+							X_.col(icol).array() *= scale_transf[icol];
+							X_.col(icol).array() += loc_transf[icol];
+						}
+					}
+					if (has_intercept) {
+						X_.col(intercept_col).array() = 1.;
+					}
 				}
 				for (int i = 0; i < num_covariates; ++i) {
 					optim_coef[i] = beta[i];
@@ -2003,8 +2011,6 @@ namespace GPBoost {
 		int num_coef_;
 		/*! \brief Covariate data */
 		den_mat_t X_;
-		/*! \brief Auxiliary matrix to store original, un-scaled covariate data (used only in case scaling is applied) */
-		den_mat_t X_orig_;
 
 		// OPTIMIZER PROPERTIES
 		/*! \brief List of supported optimizers for covariance parameters */
