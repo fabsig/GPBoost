@@ -52,7 +52,7 @@ namespace GPBoost {
 	template<typename T_mat, typename T_chol>
 	class REModelTemplate;
 
-	// Auxiliary class for passing data to EvalLLforOptimLib for OpimtLib
+	// Auxiliary class for passing data to EvalLLforNMOptimLib for OpimtLib
 	template<typename T_mat, typename T_chol>
 	class OptDataOptimLib {
 	public:
@@ -73,9 +73,9 @@ namespace GPBoost {
 
 	};//end EvalLLforOptim class definition
 
-	// Auxiliary function for optimiuation using OptimLib
+	// Auxiliary function for Nelder-Mead optimization using OptimLib
 	template<typename T_mat, typename T_chol>
-	double EvalLLforOptimLib(const vec_t& pars, vec_t*, void* opt_data)
+	double EvalLLforNMOptimLib(const vec_t& pars, vec_t*, void* opt_data)
 	{
 		OptDataOptimLib<T_mat, T_chol>* objfn_data = reinterpret_cast<OptDataOptimLib<T_mat, T_chol>*>(opt_data);
 		REModelTemplate<T_mat, T_chol>* re_model_templ_ = objfn_data->re_model_templ_;
@@ -879,7 +879,7 @@ namespace GPBoost {
 		}//end OptimLinRegrCoefCovPar
 
 		/*!
-		* \brief Profile out sigma2 (=use closed-form expression for error / nugget variance) (only used in EvalLLforOptimLib)
+		* \brief Profile out sigma2 (=use closed-form expression for error / nugget variance) (only used in EvalLLforNMOptimLib)
 		* \return sigma2_
 		*/
 		double ProfileOutSigma2() {
@@ -888,7 +888,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Return value of neg_log_likelihood_ (only used in EvalLLforOptimLib)
+		* \brief Return value of neg_log_likelihood_ (only used in EvalLLforNMOptimLib)
 		* \return neg_log_likelihood_
 		*/
 		double GetNegLogLikelihood() {
@@ -896,7 +896,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Return num_cov_par_ (only used in EvalLLforOptimLib)
+		* \brief Return num_cov_par_ (only used in EvalLLforNMOptimLib)
 		* \return num_cov_par_
 		*/
 		int GetNumCovPar() {
@@ -904,7 +904,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Return has_covariates_ (only used in EvalLLforOptimLib)
+		* \brief Return has_covariates_ (only used in EvalLLforNMOptimLib)
 		* \return has_covariates_
 		*/
 		bool HasCovariates() {
@@ -4759,7 +4759,7 @@ namespace GPBoost {
 			optim::algo_settings_t settings;
 			settings.iter_max = max_iter;
 			settings.rel_objfn_change_tol = delta_rel_conv;
-			optim::nm(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
+			optim::nm(pars_init, EvalLLforNMOptimLib<T_mat, T_chol>, &opt_data, settings);
 			num_it = (int)settings.opt_iter;
 			neg_log_likelihood_ = settings.opt_fn_value;
 			// Transform parameters back for export
