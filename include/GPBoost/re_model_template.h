@@ -723,6 +723,8 @@ namespace GPBoost {
 								cov_pars[0] = yTPsiInvy_ / num_data_;
 							}
 							CalcCovParGrad(cov_pars, nat_grad, false, false, fixed_effects_ptr);
+							//// For debugging
+							//for (int i = 0; i < (int)nat_grad.size(); ++i) { Log::REDebug("cov_pars_gradient[%d]: %g", i, nat_grad[i]); }
 						}
 						else if (optimizer_cov == "fisher_scoring") {//Fisher scoring
 							// We don't profile out sigma2 (=don't use closed-form expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
