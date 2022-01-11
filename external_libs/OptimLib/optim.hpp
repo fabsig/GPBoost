@@ -21,6 +21,8 @@
 #ifndef OPTIMLIB_INCLUDES
 #define OPTIMLIB_INCLUDES
 
+#include <LightGBM/utils/log.h>
+using LightGBM::Log;
 #include "misc/optim_options.hpp"
 
 namespace optim
@@ -37,26 +39,24 @@ namespace optim
     // misc files
     #include "misc/misc.hpp"
 
-    //ChangedForGPBoost
-    #include "unconstrained/nm.hpp"
+    // line search
+    #include "line_search/more_thuente.hpp"
 
-    //// line search
-    //#include "line_search/more_thuente.hpp"
-
+    //ChangedForGPBoost (exclude some files)
     //// unconstrained optimization
-    //#include "unconstrained/bfgs.hpp"
+    #include "unconstrained/bfgs.hpp"
     //#include "unconstrained/lbfgs.hpp"
     //#include "unconstrained/newton.hpp"
     //#include "unconstrained/cg.hpp"
     //#include "unconstrained/gd.hpp"
     //#include "unconstrained/de.hpp"
     //#include "unconstrained/de_prmm.hpp"
-    //#include "unconstrained/nm.hpp"
+    #include "unconstrained/nm.hpp"
     //#include "unconstrained/pso.hpp"
     //#include "unconstrained/pso_dv.hpp"
 
-    //// constrained optimization
-    //#include "constrained/sumt.hpp"
+    // constrained optimization
+    #include "constrained/sumt.hpp"
 
     //// solving systems of nonlinear equations
     //#include "zeros/broyden.hpp"

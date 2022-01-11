@@ -1,6 +1,7 @@
 /*################################################################################
   ##
   ##   Copyright (C) 2016-2020 Keith O'Hara
+  ##   Modified work Copyright (c) 2021-2022 Fabio Sigrist. All rights reserved.
   ##
   ##   This file is part of the OptimLib C++ library.
   ##
@@ -102,7 +103,8 @@ internal::bfgs_impl(
         settings = *settings_inp;
     }
 
-    const int print_level = settings.print_level;
+    //ChangedForGPBoost
+    //const int print_level = settings.print_level;
     
     const uint_t conv_failure_switch = settings.conv_failure_switch;
 
@@ -175,7 +177,8 @@ internal::bfgs_impl(
 
     double grad_err = OPTIM_MATOPS_L2NORM(grad);
 
-    OPTIM_BFGS_TRACE(-1, grad_err, 0.0, x, d, grad, s, y, W);
+    //ChangedForGPBoost
+    //OPTIM_BFGS_TRACE(-1, grad_err, 0.0, x, d, grad, s, y, W);
 
     if (grad_err <= grad_err_tol) {
         return true;
@@ -212,7 +215,10 @@ internal::bfgs_impl(
     grad_err = OPTIM_MATOPS_L2NORM(grad_p);
     double rel_sol_change = OPTIM_MATOPS_L1NORM( OPTIM_MATOPS_ARRAY_DIV_ARRAY(s, (OPTIM_MATOPS_ARRAY_ADD_SCALAR(OPTIM_MATOPS_ABS(x), 1.0e-08)) ) );
 
-    OPTIM_BFGS_TRACE(0, grad_err, rel_sol_change, x_p, d, grad_p, s, y, W);
+    //ChangedForGPBoost
+    //OPTIM_BFGS_TRACE(0, grad_err, rel_sol_change, x_p, d, grad_p, s, y, W);
+    Log::REDebug("GPModel parameter optimization iteration number %d", 0);
+    for (int i = 0; i < std::min((int)x.size(), 10); ++i) { Log::REDebug("(Transformed) parameter[%d]: %g", i, x[i]); }
 
     if (grad_err <= grad_err_tol) {
         init_out_vals = x_p;
@@ -256,7 +262,20 @@ internal::bfgs_impl(
 
         //
     
-        OPTIM_BFGS_TRACE(iter, grad_err, rel_sol_change, x, d, grad, s, y, W);
+        //ChangedForGPBoost
+        //OPTIM_BFGS_TRACE(iter, grad_err, rel_sol_change, x, d, grad, s, y, W);
+        if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
+            (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
+            Log::REDebug("GPModel parameter optimization iteration number %d", iter);
+            for (int i = 0; i < std::min((int)x.size(), 10); ++i) { Log::REDebug("(Transformed) parameter[%d]: %g", i, x[i]); }
+            if (x.size() > 10) {
+                Log::REDebug("Note: only the first 10 parameters are shown");
+            }
+            Log::REDebug("L2 norm of gradient: %g", grad_err);
+            Log::REDebug("Relative change in paramters: %g", rel_sol_change);
+            ////For debugging
+            //for (int i = 0; i < std::min((int)grad.size(), 10); ++i) { Log::REDebug("grad[%d]: %g", i, grad[i]); }
+        }
     }
 
     //

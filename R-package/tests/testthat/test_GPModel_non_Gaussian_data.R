@@ -92,6 +92,12 @@ test_that("Binary classification with Gaussian process model ", {
   cov_pars3 <- c(0.9998047, 0.1855072)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars3)),TOLERANCE2)
   expect_equal(gp_model$get_num_optim_iter(), 6)
+  # Estimation using BFGS
+  gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit")
+  fit(gp_model, y = y, params = list(optimizer_cov = "bfgs"))
+  cov_pars3 <- c(0.9419084, 0.1866882)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars3)),TOLERANCE2)
+  expect_equal(gp_model$get_num_optim_iter(), 4)
   
   # Prediction
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
@@ -303,6 +309,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-c(0.0000000, -0.7935873, -0.7935873, 0.0000000))),TOLERANCE2)
     expect_lt(sum(abs(as.vector(pred$var)-c(0.1130051, 0.1401125, 0.1401125, 0.4027452))),TOLERANCE2)
     
+    # Estimation using BFGS
+    gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
+    fit(gp_model, y = y, params = list(optimizer_cov = "bfgs"))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.4025483)),TOLERANCE2)
+    # Prediction
+    group_test <- c(1,3,3,9999)
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, predict_var = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-c(0.0000000, -0.7934523, -0.7934523, 0.0000000))),TOLERANCE2)
+    expect_lt(sum(abs(as.vector(pred$var)-c(0.1129896, 0.1400821, 0.1400821, 0.4025483))),TOLERANCE2)
+    
     # Evaluate approximate negative marginal log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y)
     expect_lt(abs(nll-65.8590638),TOLERANCE2)
@@ -348,6 +364,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            y = y, likelihood = "bernoulli_probit",
                            params = list(optimizer_cov = "nelder_mead"))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3055487, 0.9300562, 0.3048811))),TOLERANCE2)
+    # Multiple random effects: training with BFGS
+    gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                           y = y, likelihood = "bernoulli_probit",
+                           params = list(optimizer_cov = "bfgs"))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3030693, 0.9293106, 0.3037503))),TOLERANCE2)
     # Evaluate negative log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.8,1.2),y=y)
     expect_lt(abs(nll-60.6422359),TOLERANCE)
@@ -709,6 +730,16 @@ test_that("Binary classification with linear predictor and grouped random effect
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
   expect_equal(gp_model$get_num_optim_iter(), 88)
   
+  # Estimation using BFGS
+  gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                         y = y, X=X, params = list(optimizer_cov = "bfgs",
+                                                   optimizer_coef = "bfgs"))
+  cov_pars <- c(0.3999729)
+  coef <- c(-0.1109532, 1.5149592)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
+  expect_equal(gp_model$get_num_optim_iter(), 17)
+  
   # Prediction
   gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
                          y = y, X=X, params = list(optimizer_cov = "gradient_descent",
@@ -778,7 +809,7 @@ test_that("Binary classification with linear predictor and Gaussian process mode
                                                    optimizer_coef = "nelder_mead", maxit=10))
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.0003067, 0.3553517))),TOLERANCE)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.0006371053, 0.0007169813))),TOLERANCE)
-  
+
   # Standard deviations
   capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit", 
                                          y = y, X=X, params = list(std_dev = TRUE, optimizer_cov = "gradient_descent",

@@ -384,6 +384,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.4157265, -0.1696440, -1.2674184,
                                                       rep(0,n_new)))),TOLERANCE)
     expect_lt(sum(abs(head(pred$fixed_effect)-c(4.818977, 4.174924, 3.269181, 4.222688, 4.997808, 4.947587))),TOLERANCE)
+    
+    # Use BFGS for training
+    gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params = list(optimizer_cov="bfgs"))
+    bst <- gpboost(data = X_train,
+                   label = y_train,
+                   gp_model = gp_model,
+                   nrounds = 62,
+                   learning_rate = 0.01,
+                   max_depth = 6,
+                   min_data_in_leaf = 5,
+                   objective = "regression_l2",
+                   verbose = 0,
+                   leaves_newton_update = FALSE)
+    cov_pars <- c(0.005087127, 0.590528487, 0.390569351)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
   })
   
   

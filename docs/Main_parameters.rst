@@ -190,13 +190,15 @@ prior to running the GPBoost algorithm.
 
    -  Optimizer used for estimating covariance parameters.
 
-   -  Options: "gradient_descent", "fisher_scoring", and "nelder_mead"
+   -  Options: "gradient_descent", "fisher_scoring", "nelder_mead", and "bfgs"
 
 -  ``optimizer_coef`` : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
 
    -  Optimizer used for estimating linear regression coefficients, if there are any (for the GPBoost algorithm there are usually none).
 
-   -  Options: "gradient_descent", "wls", and "nelder_mead". Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares
+   -  Options: "gradient_descent", "wls", "nelder_mead", and "bfgs". Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
+
+   - If ``optimizer_cov`` is set to "nelder_mead" or "bfgs", ``optimizer_coef`` is automatically also set to the same value.
 
 -  ``maxit`` : integer, optional (default = 1000)
 
@@ -204,7 +206,11 @@ prior to running the GPBoost algorithm.
 
 -  ``delta_rel_conv`` : double, optional (default = 1e-6)
 
-   -  Convergence criterion: stop optimization if relative change in parameters is below this value
+   -  Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
+
+-  ``convergence_criterion`` : string, optional (default = "relative_change_in_log_likelihood")
+
+   -  The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
 
 -  ``init_cov_pars`` : numeric vector / array of doubles, optional (default = Null)
 

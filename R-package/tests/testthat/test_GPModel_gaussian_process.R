@@ -122,6 +122,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(class(cov_pars_est), "numeric")
     expect_equal(length(cov_pars_est), 3)
     expect_equal(gp_model$get_num_optim_iter(), 40)
+    # BFGS
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                           y = y, params = list(optimizer_cov = "bfgs"))
+    cov_pars_est <- as.vector(gp_model$get_cov_pars())
+    expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3,5)])),1E-3)
+    expect_equal(class(cov_pars_est), "numeric")
+    expect_equal(length(cov_pars_est), 3)
+    expect_equal(gp_model$get_num_optim_iter(), 16)
     
     # Prediction from fitted model
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -216,6 +224,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 247)
+    
+    # BFGS
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                           y = y, X=X, params = list(optimizer_cov = "bfgs",
+                                                     maxit=1000))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-2)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-2)
+    expect_equal(gp_model$get_num_optim_iter(), 24)
     
   })
   

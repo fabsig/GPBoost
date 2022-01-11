@@ -112,7 +112,7 @@ namespace GPBoost {
 		* \param lr Learning rate. If lr<= 0, default values are used. Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param max_iter Maximal number of iterations
-		* \param delta_rel_conv Convergence criterion: stop iteration if relative change in parameters is below this value
+		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
 		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters. Default = true
 		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
 		* \param trace If true, the value of the gradient is printed for some iterations. Default = false

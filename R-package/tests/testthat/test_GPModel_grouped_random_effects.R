@@ -183,12 +183,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
                            params = list(optimizer_cov = "nelder_mead",
-                                         optimizer_coef = "gradient_descent", lr_coef=0.1, std_dev = TRUE))
-    cov_pars <- c(0.49175276, 0.02318145, 1.22767304, 0.18058850)
-    coef <- c(2.07357920, 0.11300277, 1.94743042, 0.03381487)
+                                         optimizer_coef = "nelder_mead", std_dev = TRUE))
+    cov_pars <- c(0.47524382, 0.02240321, 2.38806490, 0.34445163)
+    coef <- c(1.45083178, 0.15606729, 1.95360294, 0.03327804)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 171)
+    expect_equal(gp_model$get_num_optim_iter(), 133)
+    
+    # Fit model using BFGS
+    gp_model <- fitGPModel(group_data = group,
+                           y = y, X = X,
+                           params = list(optimizer_cov = "bfgs", std_dev = TRUE))
+    cov_pars <- c(0.49205229, 0.02319557, 1.22064060, 0.17959830)
+    coef <- c(2.07499895, 0.11269251, 1.94766254, 0.03382472)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 12)
   })
   
   
@@ -245,6 +255,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            y = y,
                            params = list(optimizer_cov = "nelder_mead", std_dev = FALSE))
     cov_pars <- c(0.4959521, 1.2408579, 1.0560989, 1.1373089 )
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    
+    # BFGS
+    gp_model <- fitGPModel(group_data = cbind(group,group2),
+                           group_rand_coef_data = x,
+                           ind_effect_group_rand_coef = 1,
+                           y = y,
+                           params = list(optimizer_cov = "bfgs", std_dev = FALSE))
+    cov_pars <- c(0.4955502, 1.2488000, 1.0550351, 1.1383709 )
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     
     # Evaluate negative log-likelihood

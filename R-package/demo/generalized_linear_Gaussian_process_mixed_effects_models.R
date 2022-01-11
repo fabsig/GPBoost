@@ -18,8 +18,8 @@ for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
 b1 <- rnorm(m)
 eps <- b1[group]
 eps <- eps - mean(eps)
-X <- cbind(rep(1,n),runif(n)-0.5) # desing matrix / covariate data for fixed effects
-beta <- c(0,3) # regression coefficents
+X <- cbind(rep(1,n),runif(n)-0.5) # design matrix / covariate data for fixed effects
+beta <- c(0,3) # regression coefficients
 f <- X%*%beta # fixed effects
 
 if (likelihood == "bernoulli_probit") {

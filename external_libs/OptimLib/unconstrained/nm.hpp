@@ -1,6 +1,7 @@
 /*################################################################################
   ##
   ##   Copyright (C) 2016-2020 Keith O'Hara
+  ##   Modified work Copyright (c) 2021-22 Fabio Sigrist. All rights reserved.
   ##
   ##   This file is part of the OptimLib C++ library.
   ##
@@ -312,6 +313,17 @@ internal::nm_impl(
 
         //ChangedForGPBoost
         //OPTIM_NM_TRACE(iter, min_val, rel_objfn_change, rel_sol_change, simplex_fn_vals, simplex_points);
+        if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
+            (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
+            Log::REDebug("GPModel parameter optimization iteration number %d", iter + 1);
+            for (int i = 0; i < std::min((int)n_vals, 10); ++i) { Log::REDebug("Current best (transformed) parameter[%d]: %g", i, simplex_points.row(index_min(simplex_fn_vals))[i]); }
+            if (n_vals > 10) {
+                Log::REDebug("Note: only the first 10 parameters are shown");
+            }
+            Log::REDebug("Relative change in objective value: %g", rel_objfn_change);
+            Log::REDebug("Relative change in paramters: %g", rel_sol_change);
+            Log::REDebug("Minimum simplex objective value:: %g", min_val);
+        }
     }
 
     //ChangedForGPBoost
