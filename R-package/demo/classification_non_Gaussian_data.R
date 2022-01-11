@@ -90,6 +90,25 @@ legend(legend=c("True F","Pred F"),"bottomright",bty="n",lwd=3,col=c(2,4))
 plot(X[,1],y,col=rgb(0,0,0,alpha=0.1),main="Data and predicted response variable")
 lines(X_test_plot[,1],pred_resp$response_mean,col=3,lwd=3)
 
+#--------------------Choosing tuning parameters----------------
+param_grid = list("learning_rate" = c(1,0.1,0.01), "min_data_in_leaf" = c(1,10,100),
+                  "max_depth" = c(1,3,5,10))
+gp_model <- GPModel(group_data = group, likelihood = likelihood)
+dataset <- gpb.Dataset(data = X, label = y)
+set.seed(10)
+opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
+                                              params = params,
+                                              num_try_random = NULL,
+                                              nfold = 4,
+                                              data = dataset,
+                                              gp_model = gp_model,
+                                              verbose_eval = 1,
+                                              nrounds = 1000,
+                                              early_stopping_rounds = 10)
+print(paste0("Best parameters: ",paste0(unlist(lapply(seq_along(opt_params$best_params), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params, n=names(opt_params$best_params))), collapse=", ")))
+print(paste0("Best number of iterations: ", opt_params$best_iter))
+print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
+
 #--------------------Cross-validation for finding number of iterations----------------
 dtrain <- gpb.Dataset(data = X, label = y)
 gp_model <- GPModel(group_data = group, likelihood = likelihood)

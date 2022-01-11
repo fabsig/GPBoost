@@ -128,6 +128,31 @@ bst = gpb.train(params=params,
 gpb.plot_metric(evals_result, figsize=(10, 5))
 plt.show()
 
+#--------------------Choosing tuning parameters----------------
+param_grid = {'learning_rate': [1,0.1,0.01], 'min_data_in_leaf': [1,10,100],
+                    'max_depth': [1,3,5,10]}
+gp_model = gpb.GPModel(group_data=group)
+data_train = gpb.Dataset(X, y)
+opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
+                                             params=params,
+                                             num_try_random=None,
+                                             nfold=4,
+                                             gp_model=gp_model,
+                                             use_gp_model_for_validation=True,
+                                             train_set=data_train,
+                                             verbose_eval=1,
+                                             num_boost_round=1000, 
+                                             early_stopping_rounds=10,
+                                             seed=1000,
+                                             metrics='l2')
+print("Best number of iterations: " + str(opt_params['best_iter']))
+print("Best score: " + str(opt_params['best_score']))
+print("Best parameters: " + str(opt_params['best_params']))
+# I obtained the following best parameters:
+#Best number of iterations: 76
+#Best score: 0.012016713683696178
+#Best parameters: {'learning_rate': 0.01, 'min_data_in_leaf': 100, 'max_depth': 3}
+
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model = gpb.GPModel(group_data=group)
 data_train = gpb.Dataset(X, y)

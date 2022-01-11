@@ -54,7 +54,6 @@ bst <- gpboost(data = X,
                leaves_newton_update = FALSE)
 
 # Same thing using the gpb.train function
-print("Training with gpb.train")
 dataset <- gpb.Dataset(data = X, label = y)
 bst <- gpb.train(data = dataset,
                  gp_model = gp_model,
@@ -90,11 +89,10 @@ points(x_test,pred_mean, col = "blue", lwd = 2)
 legend("bottomright", legend = c("truth", "fitted"),
        lwd=2, col = c("red", "blue"), bty = "n")
 
-#--------------------Using validation set-------------------------
+#--------------------Using a validation set-------------------------
 # Include random effect predictions for validation (=default)
 gp_model <- GPModel(group_data = group[train_ind])
 gp_model$set_prediction_data(group_data_pred = group[-train_ind])
-print("Training with validation data and use_gp_model_for_validation = TRUE ")
 bst <- gpb.train(data = dtrain,
                  gp_model = gp_model,
                  nrounds = 100,
@@ -114,7 +112,6 @@ plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
      xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
 
 # Do not include random effect predictions for validation (observe the higher test error)
-print("Training with validation data and use_gp_model_for_validation = FALSE")
 bst <- gpb.train(data = dtrain,
                  gp_model = gp_model,
                  nrounds = 100,
@@ -133,10 +130,31 @@ val_error <- unlist(bst$record_evals$test$l2$eval)
 plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
      xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
 
+#--------------------Choosing tuning parameters----------------
+param_grid = list("learning_rate" = c(1,0.1,0.01), "min_data_in_leaf" = c(1,10,100),
+                        "max_depth" = c(1,3,5,10))
+gp_model <- GPModel(group_data = group)
+dataset <- gpb.Dataset(data = X, label = y)
+set.seed(100)
+opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
+                                              objective = "regression_l2",
+                                              num_try_random = NULL,
+                                              nfold = 4,
+                                              data = dataset,
+                                              gp_model = gp_model,
+                                              verbose_eval = 1,
+                                              nrounds = 1000,
+                                              early_stopping_rounds = 10,
+                                              eval = "l2")
+print(paste0("Best parameters: ",paste0(unlist(lapply(seq_along(opt_params$best_params), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params, n=names(opt_params$best_params))), collapse=", ")))
+print(paste0("Best number of iterations: ", opt_params$best_iter))
+print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
+# I obtained the following best parameters:
+# ***** New best score (0.0116046167840328) found for the following parameter combination: learning_rate: 0.01, min_data_in_leaf: 100, max_depth: 3, nrounds: 78
+
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model <- GPModel(group_data = group)
 dataset <- gpb.Dataset(data = X, label = y)
-print("Running cross validation for GPBoost model and use_gp_model_for_validation = TRUE")
 bst <- gpb.cv(data = dataset,
               gp_model = gp_model,
               use_gp_model_for_validation = TRUE,
@@ -201,7 +219,6 @@ sum(abs(pred$random_effect_cov - pred_loaded$random_effect_cov))
 #--------------------Do Newton updates for tree leaves---------------
 gp_model <- GPModel(group_data = group[train_ind])
 gp_model$set_prediction_data(group_data_pred = group[-train_ind])
-print("Training with Newton updates for tree leaves")
 bst <- gpb.train(data = dtrain,
                  gp_model = gp_model,
                  nrounds = 100,
@@ -295,7 +312,6 @@ gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 # gp_model$set_optim_params(params=re_params)
 
 # Train model
-print("Train boosting with Gaussian process model")
 bst <- gpboost(data = X,
                label = y,
                gp_model = gp_model,

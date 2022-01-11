@@ -115,6 +115,26 @@ ax1.scatter(X[:, 0], y, linewidth=2, color="black", alpha=0.02)
 ax1.set_title("Data and predicted response variable")
 ax1.legend()
 
+#--------------------Choosing tuning parameters----------------
+param_grid = {'learning_rate': [1,0.1,0.01], 'min_data_in_leaf': [1,10,100],
+                    'max_depth': [1,3,5,10]}
+gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+data_train = gpb.Dataset(X, y)
+opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
+                                             params=params,
+                                             num_try_random=None,
+                                             nfold=4,
+                                             gp_model=gp_model,
+                                             use_gp_model_for_validation=True,
+                                             train_set=data_train,
+                                             verbose_eval=1,
+                                             num_boost_round=1000, 
+                                             early_stopping_rounds=10,
+                                             seed=1000)
+print("Best number of iterations: " + str(opt_params['best_iter']))
+print("Best score: " + str(opt_params['best_score']))
+print("Best parameters: " + str(opt_params['best_params']))
+
 #--------------------Cross-validation for finding number of iterations----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 cvbst = gpb.cv(params=params,

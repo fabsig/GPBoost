@@ -42,7 +42,7 @@ data_train = gpb.Dataset(X, y)
 params = { 'objective': 'binary', 'verbose': 0, 'num_leaves': 2**10, 'max_bin': 255 }
 
 # Small grid and deterministic search
-param_grid_small = {'learning_rate': [1, 0.1,0.01], 'min_data_in_leaf': [20,100],
+param_grid_small = {'learning_rate': [1,0.1,0.01], 'min_data_in_leaf': [20,100],
                     'max_depth': [5,10]}
 # Note: Usually smaller learning rates lead to more accurate models. However, it is
 #         advisable to also try larger learning rates (e.g., 1 or larger) since when using 
