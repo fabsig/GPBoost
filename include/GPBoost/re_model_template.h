@@ -1343,7 +1343,7 @@ namespace GPBoost {
 				}// end loop over clusters
 			}//end not gauss_likelihood_
 		//// For debugging
-		for (int i = 0; i < (int)cov_grad.size(); ++i) { Log::REDebug("cov_grad[%d]: %g", i, cov_grad[i]); }
+		//for (int i = 0; i < (int)cov_grad.size(); ++i) { Log::REDebug("cov_grad[%d]: %g", i, cov_grad[i]); }
 		}//end CalcCovParGrad
 
 		/*!
@@ -1371,7 +1371,7 @@ namespace GPBoost {
 				grad_beta = (X_.transpose()) * grad_F;
 			}
 			//// For debugging
-			for (int i = 0; i < (int)grad_beta.size(); ++i) { Log::REDebug("grad_beta[%d]: %g", i, grad_beta[i]); }
+			//for (int i = 0; i < (int)grad_beta.size(); ++i) { Log::REDebug("grad_beta[%d]: %g", i, grad_beta[i]); }
 		}//end CalcLinCoefGrad
 
 		/*!
