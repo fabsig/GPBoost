@@ -157,7 +157,9 @@ internal::bfgs_impl(
     Vec_t x = init_out_vals;
 
     if (! OPTIM_MATOPS_IS_FINITE(x) ) {
-        printf("bfgs error: non-finite initial value(s).\n");
+        //ChangedForGPBoost
+        //printf("bfgs error: non-finite initial value(s).\n");
+        Log::REWarning("bfgs error: non-finite initial value(s).\n");
         return false;
     }
 

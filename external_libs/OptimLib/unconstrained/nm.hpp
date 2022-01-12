@@ -186,6 +186,8 @@ internal::nm_impl(
     //        OPTIM_MATOPS_COUT << simplex_points << "\n";
     //    }
     //}
+    Log::REDebug("GPModel parameter optimization iteration number %d", 0);
+    for (int i = 0; i < std::min((int)n_vals, 10); ++i) { Log::REDebug("Current best (transformed) parameter[%d]: %g", i, init_out_vals[i]); }
 
     size_t iter = 0;
     double rel_objfn_change = 2*std::abs(rel_objfn_change_tol);
@@ -315,7 +317,7 @@ internal::nm_impl(
         //OPTIM_NM_TRACE(iter, min_val, rel_objfn_change, rel_sol_change, simplex_fn_vals, simplex_points);
         if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
             (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
-            Log::REDebug("GPModel parameter optimization iteration number %d", iter + 1);
+            Log::REDebug("GPModel parameter optimization iteration number %d", iter);
             for (int i = 0; i < std::min((int)n_vals, 10); ++i) { Log::REDebug("Current best (transformed) parameter[%d]: %g", i, simplex_points.row(index_min(simplex_fn_vals))[i]); }
             if (n_vals > 10) {
                 Log::REDebug("Note: only the first 10 parameters are shown");

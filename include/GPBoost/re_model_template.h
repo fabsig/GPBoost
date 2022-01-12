@@ -322,7 +322,9 @@ namespace GPBoost {
 					double num_mem_d = ((double)num_gp_total_) * ((double)num_data_) * ((double)num_neighbors_) * ((double)num_neighbors_);
 					int mem_size = (int)(num_mem_d * 8. / 1000000.);
 					if (mem_size > 8000) {
-						Log::REWarning("The current implementation of the Vecchia approximation is not optimized for memory usage. In your case (num. obs. = %d and num. neighbors = %d), at least approximately %d mb of memory is needed. If this is a problem, contact the developer of this package and ask to implement this feature.", num_data_, num_neighbors_, mem_size);
+						Log::REWarning("The current implementation of the Vecchia approximation is not optimized for memory usage. "
+							"In your case (num. obs. = %d and num. neighbors = %d), at least approximately %d mb of memory is needed. "
+							"If this is a problem, contact the developer of this package and ask to implement this feature.", num_data_, num_neighbors_, mem_size);
 					}
 				}
 			}
@@ -427,10 +429,8 @@ namespace GPBoost {
 			bool only_one_grouped_RE_calculations_on_RE_scale_before = only_one_grouped_RE_calculations_on_RE_scale_;
 			bool only_grouped_REs_use_woodbury_identity_before = only_grouped_REs_use_woodbury_identity_;
 			gauss_likelihood_ = likelihood == "gaussian";
-
 			DetermineSpecialCasesModelsEstimationPrediction();
 			CheckCompatibilitySpecialOptions();
-
 			//Make adaptions in re_comps_ for special options when switching between Gaussian and non-Gaussian likelihoods
 			if (gauss_likelihood_before && !gauss_likelihood_) {
 				if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
@@ -612,6 +612,7 @@ namespace GPBoost {
 			}
 			vec_t cov_pars = Eigen::Map<const vec_t>(init_cov_pars, num_cov_par_);
 			vec_t cov_pars_lag1 = vec_t(num_cov_par_);//used only if convergence_criterion == "relative_change_in_parameters"
+			vec_t cov_pars_init = cov_pars;
 			vec_t cov_pars_after_grad_aux;//auxiliary variable used only if use_nesterov_acc == true
 			vec_t cov_pars_after_grad_aux_lag1 = cov_pars;//auxiliary variable used only if use_nesterov_acc == true
 			// Set response variabla data (if needed)
@@ -627,7 +628,7 @@ namespace GPBoost {
 				y_vec_ = Eigen::Map<const vec_t>(y_data, num_data_);
 			}
 			// Initialization of linear regression coefficients related variables
-			vec_t beta, beta_lag1, beta_after_grad_aux, beta_after_grad_aux_lag1, fixed_effects_vec, loc_transf, scale_transf;
+			vec_t beta, beta_lag1, beta_init, beta_after_grad_aux, beta_after_grad_aux_lag1, fixed_effects_vec, loc_transf, scale_transf;
 			bool scale_covariables = false;
 			if (has_covariates_) {
 				scale_covariables = (optimizer_coef == "gradient_descent" || (optimizer_cov == "bfgs" && !gauss_likelihood_)) && !only_intercept_for_GPBoost_algo;
@@ -679,6 +680,7 @@ namespace GPBoost {
 					}
 				}
 				beta_after_grad_aux_lag1 = beta;
+				beta_init = beta;
 				UpdateFixedEffects(beta, fixed_effects, fixed_effects_vec);
 				if (!gauss_likelihood_) {
 					fixed_effects_ptr = fixed_effects_vec.data();
@@ -697,10 +699,12 @@ namespace GPBoost {
 			// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
 			if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
 				if (gauss_likelihood_) {
-					Log::REFatal("NaN or Inf occurred in negative log-likelihood for intial parameters. You might try providing other initial values.");
+					Log::REFatal("NaN or Inf occurred in negative log-likelihood for initial parameters. "
+						"You might try providing other initial values.");
 				}
 				else {
-					Log::REFatal("NaN or Inf occurred in approximate negative marginal log-likelihood for intial parameters. You might try providing other initial values.");
+					Log::REFatal("NaN or Inf occurred in approximate negative marginal log-likelihood for initial parameters. "
+						"You might try providing other initial values.");
 				}
 			}
 			if (gauss_likelihood_) {
@@ -709,6 +713,7 @@ namespace GPBoost {
 			else {
 				Log::REDebug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
 			}
+			bool na_or_inf_occurred = false;
 			if (optimizer_cov == "nelder_mead" || optimizer_cov == "bfgs") {
 				OptimExternal(cov_pars,
 					beta,
@@ -720,9 +725,26 @@ namespace GPBoost {
 					learn_covariance_parameters,
 					optimizer_cov,
 					profile_out_marginal_variance);
-			}
+				// Check for NA or Inf
+				if (optimizer_cov == "bfgs") {
+					if (learn_covariance_parameters) {
+						for (int i = 0; i < (int)cov_pars.size(); ++i) {
+							if (std::isnan(cov_pars[i]) || std::isinf(cov_pars[i])) {
+								na_or_inf_occurred = true;
+							}
+						}
+					} 
+					if (has_covariates_ && !na_or_inf_occurred) {
+						for (int i = 0; i < (int)beta.size(); ++i) {
+							if (std::isnan(beta[i]) || std::isinf(beta[i])) {
+								na_or_inf_occurred = true;
+							}
+						}
+					}
+				} // end check for NA or Inf
+			} // end "nelder_mead" or "bfgs"
 			else {
-				// Start optimization
+				// Start optimization with "gradient_descent" or "fisher_scoring"
 				for (int it = 0; it < max_iter; ++it) {
 					neg_log_likelihood_lag1_ = neg_log_likelihood_;
 					cov_pars_lag1 = cov_pars;
@@ -751,8 +773,7 @@ namespace GPBoost {
 					}//end has_covariates_
 					else {
 						neg_log_likelihood_after_lin_coef_update_ = neg_log_likelihood_lag1_;
-					}
-					// end update regression coefficients
+					}// end update regression coefficients
 					// Update covariance parameters using one step of gradient descent or Fisher scoring
 					if (learn_covariance_parameters) {
 						// Calculate gradient or natural gradient = FI^-1 * grad (for Fisher scoring)
@@ -775,56 +796,102 @@ namespace GPBoost {
 						// Update covariance parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
 						UpdateCovPars(cov_pars, nat_grad, lr_cov, profile_out_marginal_variance, use_nesterov_acc, it, optimizer_cov,
 							cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, acc_rate_cov, nesterov_schedule_version, momentum_offset, fixed_effects_ptr);
-						// Check for NA or Inf
-						if (std::isnan(cov_pars[0]) || std::isinf(cov_pars[0])) {
-							Log::REFatal("NaN or Inf occurred in covariance parameter optimization. If this is a problem, consider doing the following. If you have used gradient descent, consider using a smaller learning rate or a different optimizer such as 'nelder_mead' or 'bfgs'. If you have used Fisher scoring, try a different optimizer. ");
-						}
 					}
 					else {
 						neg_log_likelihood_ = neg_log_likelihood_after_lin_coef_update_;
+					}// end update covariance parameters
+					// Check for NA or Inf
+					if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
+						na_or_inf_occurred = true;
+						terminate_optim = true;
 					}
-					// end update covariance parameters
-					// Check convergence
-					bool likelihood_is_na = std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_);//if the likelihood is NA, we monitor the parameters instead of the likelihood
-					if (convergence_criterion == "relative_change_in_parameters" || likelihood_is_na) {
-						if (has_covariates_) {
-							if (((beta - beta_lag1).norm() < delta_rel_conv * beta_lag1.norm()) && ((cov_pars - cov_pars_lag1).norm() < delta_rel_conv * cov_pars_lag1.norm())) {
-								terminate_optim = true;
+					else {
+						if (learn_covariance_parameters) {
+							for (int i = 0; i < (int)cov_pars.size(); ++i) {
+								if (std::isnan(cov_pars[i]) || std::isinf(cov_pars[i])) {
+									na_or_inf_occurred = true;
+									terminate_optim = true;
+								}
 							}
 						}
-						else {
-							if ((cov_pars - cov_pars_lag1).norm() < delta_rel_conv * cov_pars_lag1.norm()) {
-								terminate_optim = true;
+					}
+					if (!na_or_inf_occurred) {
+						// Check convergence
+						bool likelihood_is_na = std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_);//if the likelihood is NA, we monitor the parameters instead of the likelihood
+						if (convergence_criterion == "relative_change_in_parameters" || likelihood_is_na) {
+							if (has_covariates_) {
+								if (((beta - beta_lag1).norm() < delta_rel_conv * beta_lag1.norm()) && ((cov_pars - cov_pars_lag1).norm() < delta_rel_conv * cov_pars_lag1.norm())) {
+									terminate_optim = true;
+								}
+							}
+							else {
+								if ((cov_pars - cov_pars_lag1).norm() < delta_rel_conv * cov_pars_lag1.norm()) {
+									terminate_optim = true;
+								}
 							}
 						}
-					}
-					else if (convergence_criterion == "relative_change_in_log_likelihood") {
-						if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < delta_rel_conv * std::abs(neg_log_likelihood_lag1_)) {
-							terminate_optim = true;
-						}
-					}
-					// Output for debugging
-					if ((it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) ||
-						((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) && (it != (max_iter - 1))) {
-						Log::REDebug("GPModel parameter optimization iteration number %d", it + 1);
-						for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars[i]); }
-						for (int i = 0; i < std::min((int)beta.size(), 5); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
-						if (has_covariates_ && beta.size() > 5) {
-							Log::REDebug("Note: only the first 5 linear regression coefficients are shown");
-						}
-						if (gauss_likelihood_) {
-							Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
-						}
-						else {
-							Log::REDebug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
-						}
-					}
+						else if (convergence_criterion == "relative_change_in_log_likelihood") {
+							if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < delta_rel_conv * std::abs(neg_log_likelihood_lag1_)) {
+								terminate_optim = true;
+							}
+						} // end check convergence
+						// Trace output for convergence monitoring
+						if ((it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) ||
+							((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) && (it != (max_iter - 1))) {
+							Log::REDebug("GPModel parameter optimization iteration number %d", it + 1);
+							for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars[i]); }
+							for (int i = 0; i < std::min((int)beta.size(), 5); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
+							if (has_covariates_ && beta.size() > 5) {
+								Log::REDebug("Note: only the first 5 linear regression coefficients are shown");
+							}
+							if (gauss_likelihood_) {
+								Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
+							}
+							else {
+								Log::REDebug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
+							}
+						} // end trace output
+					}// end not na_or_inf_occurred
 					// Check whether to terminate
 					if (terminate_optim) {
 						num_it = it + 1;
 						break;
 					}
 				}//end for loop for optimization
+			}
+			// redo optimization with "nelder_mead" in case NA or Inf occurred
+			if (na_or_inf_occurred && optimizer_cov != "nelder_mead") {
+				string_t optimizers = "";
+				for (auto elem : SUPPORTED_OPTIM_COV_PAR_) {
+					if (gauss_likelihood_ || elem != "fisher_scoring") {
+						optimizers += " '" + elem + "'";
+					}
+				}
+				Log::REWarning("NaN or Inf occurred in covariance parameter optimization using '%s'. "
+								"The optimization will be started a second time using 'nelder_mead'. "
+								"If you want to avoid this, try directly using a different optimizer. "
+								"If you have used 'gradient_descent', you can also consider using a smaller learning rate. "
+								"The following optimizers are currently implemented:%s", optimizer_cov.c_str(), optimizers.c_str());
+				optimizer_cov = "nelder_mead";
+				cov_pars = cov_pars_init;
+				if (has_covariates_) {
+					beta = beta_init;
+				}
+				if (!gauss_likelihood_) { // reset the initial modes to 0
+					for (const auto& cluster_i : unique_clusters_) {
+						likelihood_[cluster_i]->InitializeModeAvec();
+					}
+				}
+				OptimExternal(cov_pars,
+					beta,
+					fixed_effects,
+					max_iter,
+					delta_rel_conv,
+					convergence_criterion,
+					num_it,
+					learn_covariance_parameters,
+					optimizer_cov,
+					profile_out_marginal_variance);
 			}
 			if (num_it == max_iter) {
 				Log::REDebug("GPModel: no convergence after the maximal number of iterations");
@@ -892,7 +959,8 @@ namespace GPBoost {
 						CalcStdDevCoef(cov_pars, X_, std_dev_beta);
 					}
 					else {
-						Log::REWarning("Standard deviations of linear regression coefficients for non-Gaussian data can be very approximative. The only reason for reporting them is that other software packages for generalized linear mixed effects are also doing this.");
+						Log::REWarning("Standard deviations of linear regression coefficients for non-Gaussian data can be very approximative. "
+							"The only reason for reporting them is that other software packages for generalized linear mixed effects are also doing this.");
 						CalcStdDevCoefNonGaussian(num_covariates, beta, cov_pars, fixed_effects, std_dev_beta);
 					}
 					for (int i = 0; i < num_covariates; ++i) {
@@ -917,7 +985,7 @@ namespace GPBoost {
 
 
 		/*!
-		* \brief Reset mode to previous value. Used when, e.g., NA or Inf occured (only used in EvalLLforOptimLib)
+		* \brief Reset mode to previous value. Used when, e.g., NA or Inf occurred (only used in EvalLLforOptimLib)
 		*/
 		void ResetLaplaceApproxModeToPreviousValue() {
 			CHECK(!gauss_likelihood_);
@@ -1534,13 +1602,16 @@ namespace GPBoost {
 				Log::REFatal("Missing cluster_id data for making predictions");
 			}
 			if (!gauss_likelihood_ && predict_response && predict_cov_mat) {
-				Log::REFatal("Calculation of the predictive covariance matrix is not supported when predicting the response variable (label) for non-Gaussian data");
+				Log::REFatal("Calculation of the predictive covariance matrix is not supported "
+					"when predicting the response variable (label) for non-Gaussian data");
 			}
 			if (predict_cov_mat && predict_var) {
-				Log::REFatal("Calculation of both the predictive covariance matrix and variances is not supported. Choose one of these option (predict_cov_mat or predict_var)");
+				Log::REFatal("Calculation of both the predictive covariance matrix and variances is not supported. "
+					"Choose one of these option (predict_cov_mat or predict_var)");
 			}
 			if (vecchia_approx_ && gauss_likelihood_ && predict_var) {
-				Log::REDebug("Calculation of only predictive variances is currently not optimized for the Vecchia approximation. If you need only variances and this takes too much time or memory, contact the developer or open a GitHub issue.");
+				Log::REDebug("Calculation of only predictive variances is currently not optimized for the Vecchia approximation. "
+					"If you need only variances and this takes too much time or memory, contact the developer or open a GitHub issue.");
 			}
 			if (has_covariates_) {
 				CHECK(covariate_data_pred != nullptr);
@@ -1554,7 +1625,10 @@ namespace GPBoost {
 			if (num_data_pred > 10000 && predict_cov_mat) {
 				double num_mem_d = ((double)num_data_pred) * ((double)num_data_pred);
 				int mem_size = (int)(num_mem_d * 8. / 1000000.);
-				Log::REWarning("The covariance matrix can be very large for large sample sizes which might lead to memory limitations. In your case (n = %d), the covariance needs at least approximately %d mb of memory. If you only need variances or covariances for linear combinations, contact the developer of this package or open a GitHub issue and ask to implement this feature.", num_data_pred, mem_size);
+				Log::REWarning("The covariance matrix can be very large for large sample sizes which might lead to memory limitations. "
+					"In your case (n = %d), the covariance needs at least approximately %d mb of memory. "
+					"If you only need variances or covariances for linear combinations, "
+					"contact the developer of this package or open a GitHub issue and ask to implement this feature.", num_data_pred, mem_size);
 			}
 			if (vecchia_approx_) {
 				if (vecchia_pred_type != nullptr) {
@@ -1899,7 +1973,10 @@ namespace GPBoost {
 						double num_mem_d = ((double)num_neighbors_pred_) * ((double)num_neighbors_pred_) * (double)(num_data_tot)+(double)(num_neighbors_pred_) * (double)(num_data_tot);
 						int mem_size = (int)(num_mem_d * 8. / 1000000.);
 						if (mem_size > 4000) {
-							Log::REDebug("The current implementation of the Vecchia approximation needs a lot of memory if the number of neighbors is large. In your case (nb. of neighbors = %d, nb. of observations = %d, nb. of predictions = %d), this needs at least approximately %d mb of memory. If this is a problem for you, contact the developer of this package or open a GitHub issue and ask to change this.", num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
+							Log::REDebug("The current implementation of the Vecchia approximation needs a lot of memory if the number of neighbors is large. "
+								"In your case (nb. of neighbors = %d, nb. of observations = %d, nb. of predictions = %d), "
+								"this needs at least approximately %d mb of memory. If this is a problem for you, "
+								"contact the developer of this package or open a GitHub issue and ask to change this.", num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
 						}
 						//TODO: implement a more efficient version when only predictive variances are required and not full covariance matrices
 						bool predict_var_or_cov_mat = predict_var || predict_cov_mat;
@@ -2045,7 +2122,7 @@ namespace GPBoost {
 		}//end Predict
 
 		/*!
-		* \brief Find "reasonable" default values for the intial values of the covariance parameters (on transformed scale)
+		* \brief Find "reasonable" default values for the initial values of the covariance parameters (on transformed scale)
 		*		 Note: You should pre-allocate memory for optim_cov_pars (length = number of covariance parameters)
 		* \param y_data Response variable data
 		* \param[out] init_cov_pars Initial values for covariance parameters of RE components
@@ -2358,9 +2435,9 @@ namespace GPBoost {
 		std::map<data_size_t, std::vector<sp_mat_t>> B_grad_;
 		/*! \brief Collects derivatives of matrices D for Vecchia approximation */
 		std::map<data_size_t, std::vector<sp_mat_t>> D_grad_;
-		/*! \brief Triplets for intializing the matrices B */
+		/*! \brief Triplets for initializing the matrices B */
 		std::map<data_size_t, std::vector<Triplet_t>> entries_init_B_;
-		/*! \brief Triplets for intializing the matrices B_grad */
+		/*! \brief Triplets for initializing the matrices B_grad */
 		std::map<data_size_t, std::vector<Triplet_t>> entries_init_B_grad_;
 
 		// CLUSTERs of INDEPENDENT REALIZATIONS
@@ -3487,8 +3564,8 @@ namespace GPBoost {
 		* \param[out] nearest_neighbors_cluster_i Collects indices of nearest neighbors
 		* \param[out] dist_obs_neighbors_cluster_i Distances between locations and their nearest neighbors
 		* \param[out] dist_between_neighbors_cluster_i Distances between nearest neighbors for all locations
-		* \param[out] entries_init_B_cluster_i Triplets for intializing the matrices B
-		* \param[out] entries_init_B_grad_cluster_i Triplets for intializing the matrices B_grad
+		* \param[out] entries_init_B_cluster_i Triplets for initializing the matrices B
+		* \param[out] entries_init_B_grad_cluster_i Triplets for initializing the matrices B_grad
 		* \param[out] z_outer_z_obs_neighbors_cluster_i Outer product of covariate vector at observations and neighbors with itself for random coefficients. First index = data point i, second index = GP number j
 		* \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
 		* \param num_neighbors The number of neighbors used in the Vecchia approximation
@@ -3947,8 +4024,8 @@ namespace GPBoost {
 		* \param nearest_neighbors_cluster_i Collects indices of nearest neighbors
 		* \param dist_obs_neighbors_cluster_i Distances between locations and their nearest neighbors
 		* \param dist_between_neighbors_cluster_i Distances between nearest neighbors for all locations
-		* \param entries_init_B_cluster_i Triplets for intializing the matrices B
-		* \param entries_init_B_grad_cluster_i Triplets for intializing the matrices B_grad
+		* \param entries_init_B_cluster_i Triplets for initializing the matrices B
+		* \param entries_init_B_grad_cluster_i Triplets for initializing the matrices B_grad
 		* \param z_outer_z_obs_neighbors_cluster_i Outer product of covariate vector at observations and neighbors with itself for random coefficients. First index = data point i, second index = GP number j
 		* \param[out] B_cluster_i Matrix A = I - B (= Cholesky factor of inverse covariance) for Vecchia approximation
 		* \param[out] D_inv_cluster_i Diagonal matrices D^-1 for Vecchia approximation
