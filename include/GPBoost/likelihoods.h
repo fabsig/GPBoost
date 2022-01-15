@@ -2102,7 +2102,8 @@ namespace GPBoost {
 		* \param num_data Number of data points
 		* \param SigmaI Inverse covariance matrix of latent random effect. Currently, this needs to be a diagonal matrix
 		* \param Zt Transpose Z^T of random effect design matrix that relates latent random effects to observations/likelihoods
-		* \param Cross_Cov Cross covariance matrix between predicted and obsreved random effects ("=Cov(y_p,y)")
+		* \param Ztilde matrix which relates existing random effects to prediction samples
+		* \param Sigma Covariance matrix of random effects
 		* \param pred_mean[out] Predicted mean
 		* \param pred_cov[out] Predicted covariance matrix
 		* \param pred_var[out] Predicted variances
@@ -2116,7 +2117,8 @@ namespace GPBoost {
 			const data_size_t num_data,
 			const sp_mat_t& SigmaI,
 			const sp_mat_t& Zt,
-			const T_mat& Cross_Cov,
+			const sp_mat_t& Ztilde,
+			const sp_mat_t& Sigma,
 			vec_t& pred_mean,
 			T_mat& pred_cov,
 			vec_t& pred_var,
@@ -2130,19 +2132,22 @@ namespace GPBoost {
 			else {
 				CHECK(mode_has_been_calculated_);
 			}
-			pred_mean = Cross_Cov * first_deriv_ll_;
+			vec_t v_aux = Zt * first_deriv_ll_;
+			vec_t v_aux2 = Sigma * v_aux;
+			pred_mean = Ztilde * v_aux2;
 			if (calc_pred_cov || calc_pred_var) {
 				// calculate Maux = L\(Z^T * second_deriv_neg_ll_.asDiagonal() * Cross_Cov^T)
-				T_mat Maux = Zt * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose();
+				sp_mat_t Cross_Cov = Ztilde * Sigma * Zt;
+				sp_mat_t Maux = Zt * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose();
 				if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
 					Maux = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * Maux;
 				}
 				chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL().solveInPlace(Maux);
 				if (calc_pred_cov) {
-					pred_cov += Maux.transpose() * Maux - (T_mat)(Cross_Cov * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose());
+					pred_cov += T_mat(Maux.transpose() * Maux - (T_mat)(Cross_Cov * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose()));
 				}
 				if (calc_pred_var) {
-					T_mat Maux3 = Cross_Cov.cwiseProduct(Cross_Cov * second_deriv_neg_ll_.asDiagonal());
+					sp_mat_t Maux3 = Cross_Cov.cwiseProduct(Cross_Cov * second_deriv_neg_ll_.asDiagonal());
 					Maux = Maux.cwiseProduct(Maux);
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < (int)pred_mean.size(); ++i) {

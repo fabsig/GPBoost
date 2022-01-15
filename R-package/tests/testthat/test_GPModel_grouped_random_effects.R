@@ -201,10 +201,52 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 12)
   })
   
-  
-  # Ignore [GPBoost] [Warning]
-  test_that("two crossed random effects and a random slope ", {
+
+  test_that("Multiple grouped random effects ", {
     
+    ## Two crossed random effects
+    y <- Z1%*%b1 + Z2%*%b2 + xi
+    # Fisher scoring
+    gp_model <- fitGPModel(group_data = cbind(group,group2), y = y, 
+                           params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE))
+    expected_values <- c(0.49792062, 0.02408196, 1.21972166, 0.18357646, 1.06962710, 0.22567292)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 5)
+    
+    # Prediction after training
+    group_data_pred = cbind(c(1,1,m+1),c(2,1,length(group2)+1))
+    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, predict_var = TRUE)
+    expected_mu <- c(0.7509175, -0.4208015, 0.0000000)
+    expected_var <- c(0.5677178, 0.5677178, 2.7872694)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),1E-4)
+    # Prediction without training and parameters given
+    gp_model <- GPModel(group_data = cbind(group,group2))
+    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred,
+                             cov_pars = c(0.1,1,2), predict_cov_mat = TRUE)
+    expected_mu <- c(0.7631462, -0.4328551, 0.000000000)
+    expected_cov <- c(0.114393721, 0.009406189, 0.0000000, 0.009406189,
+                      0.114393721 , 0.0000000, 0.0000000, 0.0000000, 3.100000000)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-3)
+    # Prediction for only existing random effects
+    group_data_pred_in = cbind(c(1,1),c(2,1))
+    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred_in,
+                             cov_pars = c(0.1,1,2), predict_cov_mat = TRUE)
+    expected_mu <- c(0.7631462, -0.4328551)
+    expected_cov <- c(0.114393721, 0.009406189, 0.009406189, 0.114393721)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-3)
+    # Prediction for only new random effects
+    group_data_pred_out = cbind(c(m+1,m+1,m+1),c(length(group2)+1,length(group2)+2,length(group2)+1))
+    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred_out,
+                             cov_pars = c(0.1,1,2), predict_cov_mat = TRUE)
+    expected_mu <- c(rep(0,3))
+    expected_cov <- c(3.1, 1.0, 3.0, 1.0, 3.1, 1.0, 3.0, 1.0, 3.1)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-3)
+    
+    ## Two crossed random effects and a random slope
     y <- Z1%*%b1 + Z2%*%b2 + Z3%*%b3 + xi
     # Fisher scoring
     gp_model <- fitGPModel(group_data = cbind(group,group2),
@@ -220,15 +262,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- GPModel(group_data = cbind(group,group2),
                         group_rand_coef_data = x, ind_effect_group_rand_coef = 1)
     group_data_pred = cbind(c(1,1,m+1),c(2,1,length(group2)+1))
-    group_rand_coef_data_pred = c(0,0.1,0.3)
+    group_rand_coef_data_pred = c(0,10,0.3)
     expect_error(gp_model$predict(group_data_pred = group_data_pred,
                                   cov_pars = c(0.1,1,2,1.5), y=y))# random slope data not provided
     pred <- gp_model$predict(y = y, group_data_pred=group_data_pred,
                              group_rand_coef_data_pred=group_rand_coef_data_pred,
                              cov_pars = c(0.1,1,2,1.5), predict_cov_mat = TRUE)
-    expected_mu <- c(0.7579961, -0.3755475, 0.000000000)
-    expected_cov <- c(0.115340856 , 0.009310105 , 0.0000000, 0.009310105 ,
-                      0.115340856 , 0.0000000, 0.0000000, 0.0000000, 3.235)
+    expected_mu <- c(0.7579961, -0.2868530, 0.000000000)
+    expected_cov <- c(0.11534086, -0.01988167, 0.0000000, -0.01988167, 2.4073302,
+                      0.0000000, 0.0000000, 0.0000000, 3.235)
     expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-3)
     # Predict variances
