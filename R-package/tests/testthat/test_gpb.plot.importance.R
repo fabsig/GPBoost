@@ -12,7 +12,7 @@ test_that("gpb.plot.importance() should run without error for well-formed inputs
         , min_data_in_leaf = 1L
         , min_sum_hessian_in_leaf = 1.0
     )
-    model <- gpb.train(params, dtrain, 3L)
+    model <- gpb.train(params, dtrain, 3L, verbose = 0)
     tree_imp <- gpb.importance(model, percentage = TRUE)
 
     # # Check that there are no plots present before plotting

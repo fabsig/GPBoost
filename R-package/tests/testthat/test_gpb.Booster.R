@@ -70,6 +70,7 @@ test_that("gpb.get.eval.result() should throw an informative error for incorrect
         )
         , min_data = 1L
         , learning_rate = 1.0
+        , verbose = 0
     )
     expect_error({
         eval_results <- gpb.get.eval.result(
@@ -103,6 +104,7 @@ test_that("gpb.get.eval.result() should throw an informative error for incorrect
         )
         , min_data = 1L
         , learning_rate = 1.0
+        , verbose = 0
     )
     expect_error({
         eval_results <- gpb.get.eval.result(
@@ -128,6 +130,7 @@ test_that("gpb.load() gives the expected error messages given different incorrec
         , learning_rate = 1.0
         , nrounds = 2L
         , objective = "binary"
+        , verbose = 0
     )
     
     # you have to give model_str or filename
@@ -171,6 +174,7 @@ test_that("Loading a Booster from a text file works", {
         , learning_rate = 1.0
         , nrounds = 2L
         , objective = "binary"
+        , verbose = 0
     )
     expect_true(gpboost:::gpb.is.Booster(bst))
     
@@ -210,6 +214,7 @@ test_that("boosters with linear models at leaves can be written to text file and
         data = dtrain
         , nrounds = 10L
         , params = params
+        , verbose = 0
     )
     expect_true(gpboost:::gpb.is.Booster(bst))
     
@@ -243,6 +248,7 @@ test_that("Loading a Booster from a string works", {
         , learning_rate = 1.0
         , nrounds = 2L
         , objective = "binary"
+        , verbose = 0
     )
     expect_true(gpboost:::gpb.is.Booster(bst))
     
@@ -274,6 +280,7 @@ test_that("If a string and a file are both passed to gpb.load() the file is used
         , learning_rate = 1.0
         , nrounds = 2L
         , objective = "binary"
+        , verbose = 0
     )
     expect_true(gpboost:::gpb.is.Booster(bst))
     
@@ -309,6 +316,7 @@ test_that("Creating a Booster from a Dataset should work", {
             objective = "binary"
         ),
         train_set = dtrain
+        , verbose = 0
     )
     expect_true(gpboost:::gpb.is.Booster(bst))
     expect_equal(bst$current_iter(), 0L)
@@ -327,6 +335,7 @@ test_that("Creating a Booster from a Dataset with an existing predictor should w
         , learning_rate = 1.0
         , nrounds = nrounds
         , objective = "binary"
+        , verbose = 0
     )
     data(agaricus.test, package = "gpboost")
     dtest <- gpboost:::Dataset$new(
@@ -334,9 +343,11 @@ test_that("Creating a Booster from a Dataset with an existing predictor should w
         , label = agaricus.test$label
         , predictor = bst$to_predictor()
     )
-    bst_from_ds <- gpboost:::Booster$new(
-        train_set = dtest
-    )
+    capture.output( 
+        bst_from_ds <- gpboost:::Booster$new(
+            train_set = dtest
+        )
+        , file='NUL')
     expect_true(gpboost:::gpb.is.Booster(bst))
     expect_equal(bst$current_iter(), nrounds)
     expect_equal(bst$eval_train()[[1L]][["value"]], 0.1115352)
@@ -360,6 +371,7 @@ test_that("Booster$rollback_one_iter() should work as expected", {
         , learning_rate = 1.0
         , nrounds = nrounds
         , objective = "binary"
+        , verbose = 0
     )
     expect_equal(bst$current_iter(), nrounds)
     expect_true(gpboost:::gpb.is.Booster(bst))
@@ -391,15 +403,18 @@ test_that("Booster$update() passing a train_set works as expected", {
         , learning_rate = 1.0
         , nrounds = nrounds
         , objective = "binary"
+        , verbose = 0
     )
     expect_true(gpboost:::gpb.is.Booster(bst))
     expect_equal(bst$current_iter(), nrounds)
-    bst$update(
-        train_set = gpboost:::Dataset$new(
-            data = agaricus.train$data
-            , label = agaricus.train$label
+    capture.output( 
+        bst$update(
+            train_set = gpboost:::Dataset$new(
+                data = agaricus.train$data
+                , label = agaricus.train$label
+            )
         )
-    )
+        , file='NUL')
     expect_true(gpboost:::gpb.is.Booster(bst))
     expect_equal(bst$current_iter(), nrounds + 1L)
     
@@ -411,6 +426,7 @@ test_that("Booster$update() passing a train_set works as expected", {
         , learning_rate = 1.0
         , nrounds = nrounds +  1L
         , objective = "binary"
+        , verbose = 0
     )
     expect_true(gpboost:::gpb.is.Booster(bst2))
     expect_equal(bst2$current_iter(), nrounds +  1L)
@@ -433,6 +449,7 @@ test_that("Booster$update() throws an informative error if you provide a non-Dat
         , learning_rate = 1.0
         , nrounds = nrounds
         , objective = "binary"
+        , verbose = 0
     )
     expect_error({
         bst$update(
@@ -458,10 +475,12 @@ test_that("Booster should store parameters and Booster$reset_parameter() should 
         , boosting = "gbdt"
         , num_class = 5L
     )
-    bst <- gpboost:::Booster$new(
-        params = params
-        , train_set = dtrain
-    )
+    capture.output( 
+        bst <- gpboost:::Booster$new(
+            params = params
+            , train_set = dtrain
+        )
+        , file='NUL')
     expect_identical(bst$params, params)
     
     params[["bagging_fraction"]] <- 0.9
@@ -484,10 +503,12 @@ test_that("Booster$params should include dataset params, before and after Booste
         , max_depth = 4L
         , bagging_fraction = 0.8
     )
-    bst <- gpboost:::Booster$new(
-        params = params
-        , train_set = dtrain
-    )
+    capture.output( 
+        bst <- gpboost:::Booster$new(
+            params = params
+            , train_set = dtrain
+        )
+        , file='NUL')
     expect_identical(
         bst$params
         , list(
@@ -499,7 +520,9 @@ test_that("Booster$params should include dataset params, before and after Booste
     )
     
     params[["bagging_fraction"]] <- 0.9
-    ret_bst <- bst$reset_parameter(params = params)
+    capture.output(
+        ret_bst <- bst$reset_parameter(params = params)
+        , file='NUL')
     expected_params <- list(
         objective = "binary"
         , max_depth = 4L
@@ -524,6 +547,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
             , learning_rate = 1.0
             , nrounds = 2L
             , objective = "binary"
+            , verbose = 0
         )
         expect_true(gpboost:::gpb.is.Booster(bst))
         
@@ -767,10 +791,12 @@ test_that("params (including dataset params) should be stored in .rds file for B
         , max_depth = 4L
         , bagging_fraction = 0.8
     )
-    bst <- gpboost:::Booster$new(
-        params = params
-        , train_set = dtrain
-    )
+    capture.output( 
+        bst <- gpboost:::Booster$new(
+            params = params
+            , train_set = dtrain
+        )
+        , file='NUL')
     bst_file <- tempfile(fileext = ".rds")
     saveRDS.gpb.Booster(bst, file = bst_file)
     
@@ -806,6 +832,7 @@ test_that("boosters with linear models at leaves can be written to RDS and re-lo
         data = dtrain
         , nrounds = 10L
         , params = params
+        , verbose = 0
     )
     expect_true(gpboost:::gpb.is.Booster(bst))
     

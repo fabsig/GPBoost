@@ -66,21 +66,21 @@ DVALID_RANDOM_CLASSIFICATION <- gpb.Dataset(
 
 test_that("train and predict binary classification", {
   nrounds <- 10L
-  bst <- gpboost(
+  capture.output( bst <- gpboost(
     data = train$data
     , label = train$label
     , num_leaves = 5L
     , nrounds = nrounds
     , objective = "binary"
     , metric = "binary_error"
-  )
+  ) , file='NUL')
   expect_false(is.null(bst$record_evals))
   record_results <- gpb.get.eval.result(bst, "train", "binary_error")
   expect_lt(min(record_results), 0.02)
-
+  
   pred <- predict(bst, test$data)
   expect_equal(length(pred), 1611L)
-
+  
   pred1 <- predict(bst, train$data, num_iteration = 1L)
   expect_equal(length(pred1), 6513L)
   err_pred1 <- sum((pred1 > 0.5) != train$label) / length(train$label)
@@ -92,8 +92,8 @@ test_that("train and predict binary classification", {
 test_that("train and predict softmax", {
   set.seed(708L)
   lb <- as.numeric(iris$Species) - 1L
-
-  bst <- gpboost(
+  
+  capture.output( bst <- gpboost(
     data = as.matrix(iris[, -5L])
     , label = lb
     , num_leaves = 4L
@@ -104,12 +104,12 @@ test_that("train and predict softmax", {
     , objective = "multiclass"
     , metric = "multi_error"
     , num_class = 3L
-  )
-
+  ) , file='NUL')
+  
   expect_false(is.null(bst$record_evals))
   record_results <- gpb.get.eval.result(bst, "train", "multi_error")
   expect_lt(min(record_results), 0.06)
-
+  
   pred <- predict(bst, as.matrix(iris[, -5L]))
   expect_equal(length(pred), nrow(iris) * 3L)
 })
@@ -117,7 +117,7 @@ test_that("train and predict softmax", {
 
 test_that("use of multiple eval metrics works", {
   metrics <- list("binary_error", "auc", "binary_logloss")
-  bst <- gpboost(
+  capture.output( bst <- gpboost(
     data = train$data
     , label = train$label
     , num_leaves = 4L
@@ -125,7 +125,7 @@ test_that("use of multiple eval metrics works", {
     , nrounds = 10L
     , objective = "binary"
     , metric = metrics
-  )
+  ) , file='NUL')
   expect_false(is.null(bst$record_evals))
   expect_named(
     bst$record_evals[["train"]]
@@ -145,6 +145,7 @@ test_that("gpb.Booster.upper_bound() and gpb.Booster.lower_bound() work as expec
     , nrounds = nrounds
     , objective = "binary"
     , metric = "binary_error"
+    , verbose = 0
   )
   expect_true(abs(bst$lower_bound() - -1.590853) < TOLERANCE)
   expect_true(abs(bst$upper_bound() - 1.871015) <  TOLERANCE)
@@ -160,6 +161,7 @@ test_that("gpb.Booster.upper_bound() and gpb.Booster.lower_bound() work as expec
     , nrounds = nrounds
     , objective = "regression"
     , metric = "l2"
+    , verbose = 0
   )
   expect_true(abs(bst$lower_bound() - 0.1513859) < TOLERANCE)
   expect_true(abs(bst$upper_bound() - 0.9080349) < TOLERANCE)
@@ -190,7 +192,7 @@ test_that("gpboost() performs evaluation on validation sets if they are provided
     , label = train$label
   )
   nrounds <- 10L
-  bst <- gpboost(
+  capture.output( bst <- gpboost(
     data = train$data
     , label = train$label
     , num_leaves = 5L
@@ -204,8 +206,8 @@ test_that("gpboost() performs evaluation on validation sets if they are provided
       "valid1" = dvalid1
       , "valid2" = dvalid2
     )
-  )
-
+  ), file='NUL')
+  
   expect_named(
     bst$record_evals
     , c("train", "valid1", "valid2", "start_iter")
@@ -236,19 +238,20 @@ test_that("training continuation works", {
     , metric = "binary_logloss"
     , num_leaves = 5L
     , learning_rate = 1.0
+    , verbose = 0
   )
-
+  
   # train for 10 consecutive iterations
-  bst <- gpb.train(param, dtrain, nrounds = 10L, valids = watchlist)
+  bst <- gpb.train(param, dtrain, nrounds = 10L, valids = watchlist, verbose = 0)
   err_bst <- gpb.get.eval.result(bst, "train", "binary_logloss", 10L)
-
+  
   #  train for 5 iterations, save, load, train for 5 more
-  bst1 <- gpb.train(param, dtrain, nrounds = 5L, valids = watchlist)
+  bst1 <- gpb.train(param, dtrain, nrounds = 5L, valids = watchlist, verbose = 0)
   model_file <- tempfile(fileext = ".model")
   gpb.save(bst1, model_file)
-  bst2 <- gpb.train(param, dtrain, nrounds = 5L, valids = watchlist, init_model = bst1)
+  bst2 <- gpb.train(param, dtrain, nrounds = 5L, valids = watchlist, init_model = bst1, verbose = 0)
   err_bst2 <- gpb.get.eval.result(bst2, "train", "binary_logloss", 10L)
-
+  
   # evaluation metrics should be nearly identical for the model trained in 10 coonsecutive
   # iterations and the one trained in 5-then-5.
   expect_lt(abs(err_bst - err_bst2), 0.01)
@@ -267,6 +270,7 @@ test_that("cv works", {
     , min_data = 1L
     , learning_rate = 1.0
     , early_stopping_rounds = 10L
+    , verbose = 0
   )
   expect_false(is.null(bst$record_evals))
 })
@@ -282,6 +286,7 @@ test_that("gpb.cv() rejects negative or 0 value passed to nrounds", {
         , nround_value
         , nfold = 5L
         , min_data = 1L
+        , verbose = 0
       )
     }, "nrounds should be greater than zero")
   }
@@ -304,6 +309,7 @@ test_that("gpb.cv() throws an informative error is 'data' is not an gpb.Dataset 
         , 10L
         , nfold = 5L
         , min_data = 1L
+        , verbose = 0
       )
     }, regexp = "'label' must be provided for gpb.cv if 'data' is not an 'gpb.Dataset'", fixed = TRUE)
   }
@@ -313,7 +319,7 @@ test_that("gpboost.cv() gives the correct best_score and best_iter for a metric 
   set.seed(708L)
   dtrain <- gpb.Dataset(
     data = as.matrix(runif(n = 500L, min = 0.0, max = 15.0), drop = FALSE)
-    , label = rep(c(0L, 1L), 250L)
+    , label = rep(c(0L, 1L), 250L, verbose = 0)
   )
   nrounds <- 10L
   cv_bst <- gpb.cv(
@@ -326,6 +332,7 @@ test_that("gpboost.cv() gives the correct best_score and best_iter for a metric 
       , metric = "auc,binary_error"
       , learning_rate = 1.5
     )
+    , verbose = 0
   )
   expect_is(cv_bst, "gpb.CVBooster")
   expect_named(
@@ -349,7 +356,7 @@ test_that("gpb.cv() fit on linearly-relatead data improves when using linear lea
       , label = 2L * X + runif(nrow(X), 0L, 0.1)
     ))
   }
-
+  
   params <- list(
     objective = "regression"
     , verbose = -1L
@@ -357,25 +364,27 @@ test_that("gpb.cv() fit on linearly-relatead data improves when using linear lea
     , seed = 0L
     , num_leaves = 2L
   )
-
+  
   dtrain <- .new_dataset()
   cv_bst <- gpb.cv(
     data = dtrain
     , nrounds = 10L
     , params = params
     , nfold = 5L
+    , verbose = 0
   )
   expect_is(cv_bst, "gpb.CVBooster")
-
+  
   dtrain <- .new_dataset()
   cv_bst_linear <- gpb.cv(
     data = dtrain
     , nrounds = 10L
     , params = modifyList(params, list(linear_tree = TRUE))
     , nfold = 5L
+    , verbose = 0
   )
   expect_is(cv_bst_linear, "gpb.CVBooster")
-
+  
   expect_true(cv_bst_linear$best_score < cv_bst$best_score)
 })
 
@@ -384,24 +393,24 @@ test_that("gpb.cv() respects showsd argument", {
   params <- list(objective = "regression", metric = "l2")
   nrounds <- 5L
   set.seed(708L)
-  bst_showsd <- gpb.cv(
+  capture.output( bst_showsd <- gpb.cv(
     params = params
     , data = dtrain
     , nrounds = nrounds
     , nfold = 3L
     , min_data = 1L
     , showsd = TRUE
-  )
+  ) , file='NUL')
   evals_showsd <- bst_showsd$record_evals[["valid"]][["l2"]]
   set.seed(708L)
-  bst_no_showsd <- gpb.cv(
+  capture.output( bst_no_showsd <- gpb.cv(
     params = params
     , data = dtrain
     , nrounds = nrounds
     , nfold = 3L
     , min_data = 1L
     , showsd = FALSE
-  )
+  ) , file='NUL')
   evals_no_showsd <- bst_no_showsd$record_evals[["valid"]][["l2"]]
   expect_equal(
     evals_showsd[["eval"]]
@@ -416,7 +425,7 @@ context("gpb.train()")
 
 test_that("gpb.train() works as expected with multiple eval metrics", {
   metrics <- c("binary_error", "auc", "binary_logloss")
-  bst <- gpb.train(
+  capture.output( bst <- gpb.train(
     data = gpb.Dataset(
       train$data
       , label = train$label
@@ -433,7 +442,7 @@ test_that("gpb.train() works as expected with multiple eval metrics", {
         , label = train$label
       )
     )
-  )
+  ) , file='NUL')
   expect_false(is.null(bst$record_evals))
   expect_named(
     bst$record_evals[["train"]]
@@ -538,8 +547,9 @@ test_that("gpb.train() works with force_col_wise and force_row_wise", {
     params = params
     , data = dtrain
     , nrounds = nrounds
+    , verbose = 0
   )
-
+  
   params <- list(
     objective = "binary"
     , metric = "binary_error"
@@ -549,12 +559,13 @@ test_that("gpb.train() works with force_col_wise and force_row_wise", {
     params = params
     , data = dtrain
     , nrounds = nrounds
+    , verbose = 0
   )
-
+  
   expected_error <- 0.003070782
   expect_equal(bst_col_wise$eval_train()[[1L]][["value"]], expected_error)
   expect_equal(bst_row_wise$eval_train()[[1L]][["value"]], expected_error)
-
+  
   # check some basic details of the boosters just to be sure force_col_wise
   # and force_row_wise are not causing any weird side effects
   for (bst in list(bst_row_wise, bst_col_wise)) {
@@ -585,8 +596,9 @@ test_that("gpb.train() works as expected with sparse features", {
     )
     , data = dtrain
     , nrounds = nrounds
+    , verbose = 0
   )
-
+  
   expect_true(gpboost:::gpb.is.Booster(bst))
   expect_equal(bst$current_iter(), nrounds)
   parsed_model <- RJSONIO::fromJSON(bst$dump_model())
@@ -614,7 +626,7 @@ test_that("gpb.train() works with early stopping for classification", {
     , label = validDF[["target"]]
   )
   nrounds <- 10L
-
+  
   ################################
   # train with no early stopping #
   ################################
@@ -628,14 +640,15 @@ test_that("gpb.train() works with early stopping for classification", {
     , valids = list(
       "valid1" = dvalid
     )
+    , verbose = 0
   )
-
+  
   # a perfect model should be trivial to obtain, but all 10 rounds
   # should happen
   expect_equal(bst$best_score, 0.0)
   expect_equal(bst$best_iter, 1L)
   expect_equal(length(bst$record_evals[["valid1"]][["binary_error"]][["eval"]]), nrounds)
-
+  
   #############################
   # train with early stopping #
   #############################
@@ -651,8 +664,9 @@ test_that("gpb.train() works with early stopping for classification", {
     , valids = list(
       "valid1" = dvalid
     )
+    , verbose = 0
   )
-
+  
   # a perfect model should be trivial to obtain, and only 6 rounds
   # should have happen (1 with improvement, 5 consecutive with no improvement)
   expect_equal(bst$best_score, 0.0)
@@ -661,7 +675,7 @@ test_that("gpb.train() works with early stopping for classification", {
     length(bst$record_evals[["valid1"]][["binary_error"]][["eval"]])
     , early_stopping_rounds + 1L
   )
-
+  
 })
 
 test_that("gpb.train() treats early_stopping_rounds<=0 as disabling early stopping", {
@@ -683,9 +697,9 @@ test_that("gpb.train() treats early_stopping_rounds<=0 as disabling early stoppi
     , label = validDF[["target"]]
   )
   nrounds <- 5L
-
+  
   for (value in c(-5L, 0L)) {
-
+    
     #----------------------------#
     # passed as keyword argument #
     #----------------------------#
@@ -700,14 +714,15 @@ test_that("gpb.train() treats early_stopping_rounds<=0 as disabling early stoppi
         "valid1" = dvalid
       )
       , early_stopping_rounds = value
+      , verbose = 0
     )
-
+    
     # a perfect model should be trivial to obtain, but all 10 rounds
     # should happen
     expect_equal(bst$best_score, 0.0)
     expect_equal(bst$best_iter, 1L)
     expect_equal(length(bst$record_evals[["valid1"]][["binary_error"]][["eval"]]), nrounds)
-
+    
     #---------------------------#
     # passed as parameter alias #
     #---------------------------#
@@ -722,8 +737,9 @@ test_that("gpb.train() treats early_stopping_rounds<=0 as disabling early stoppi
       , valids = list(
         "valid1" = dvalid
       )
+      , verbose = 0
     )
-
+    
     # a perfect model should be trivial to obtain, but all 10 rounds
     # should happen
     expect_equal(bst$best_score, 0.0)
@@ -743,7 +759,7 @@ test_that("gpb.train() works with early stopping for classification with a metri
     , label = test$label
   )
   nrounds <- 10L
-
+  
   #############################
   # train with early stopping #
   #############################
@@ -761,6 +777,7 @@ test_that("gpb.train() works with early stopping for classification with a metri
     , valids = list(
       "valid1" = dvalid
     )
+    , verbose = 0
   )
   bst_binary_error  <- gpb.train(
     params = list(
@@ -774,8 +791,9 @@ test_that("gpb.train() works with early stopping for classification with a metri
     , valids = list(
       "valid1" = dvalid
     )
+    , verbose = 0
   )
-
+  
   # early stopping should have been hit for binary_error (higher_better = FALSE)
   eval_info <- bst_binary_error$.__enclos_env__$private$get_eval_info()
   expect_identical(eval_info, "binary_error")
@@ -786,7 +804,7 @@ test_that("gpb.train() works with early stopping for classification with a metri
   expect_identical(bst_binary_error$best_iter, 1L)
   expect_identical(bst_binary_error$current_iter(), early_stopping_rounds + 1L)
   expect_true(abs(bst_binary_error$best_score - 0.01613904) < TOLERANCE)
-
+  
   # early stopping should not have been hit for AUC (higher_better = TRUE)
   eval_info <- bst_auc$.__enclos_env__$private$get_eval_info()
   expect_identical(eval_info, "auc")
@@ -818,7 +836,7 @@ test_that("gpb.train() works with early stopping for regression", {
     , label = validDF[["target"]]
   )
   nrounds <- 10L
-
+  
   ################################
   # train with no early stopping #
   ################################
@@ -832,14 +850,15 @@ test_that("gpb.train() works with early stopping for regression", {
     , valids = list(
       "valid1" = dvalid
     )
+    , verbose = 0
   )
-
+  
   # the best possible model should come from the first iteration, but
   # all 10 training iterations should happen
   expect_equal(bst$best_score, 55.0)
   expect_equal(bst$best_iter, 1L)
   expect_equal(length(bst$record_evals[["valid1"]][["rmse"]][["eval"]]), nrounds)
-
+  
   #############################
   # train with early stopping #
   #############################
@@ -855,8 +874,9 @@ test_that("gpb.train() works with early stopping for regression", {
     , valids = list(
       "valid1" = dvalid
     )
+    , verbose = 0
   )
-
+  
   # the best model should be from the first iteration, and only 6 rounds
   # should have happen (1 with improvement, 5 consecutive with no improvement)
   expect_equal(bst$best_score, 55.0)
@@ -869,7 +889,7 @@ test_that("gpb.train() works with early stopping for regression", {
 
 test_that("gpb.train() does not stop early if early_stopping_rounds is not given", {
   set.seed(708L)
-
+  
   increasing_metric_starting_value <- get(
     ACCUMULATOR_NAME
     , envir = ACCUMULATOR_ENVIRONMENT
@@ -888,22 +908,23 @@ test_that("gpb.train() does not stop early if early_stopping_rounds is not given
     , nrounds = nrounds
     , valids = list("valid1" = DVALID_RANDOM_REGRESSION)
     , eval = metrics
+    , verbose = 0
   )
-
+  
   # Only the two functions provided to "eval" should have been evaluated
   expect_equal(length(bst$record_evals[["valid1"]]), 2L)
-
+  
   # all 10 iterations should have happen, and the best_iter should be
   # the first one (based on constant_metric)
   best_iter <- 1L
   expect_equal(bst$best_iter, best_iter)
-
+  
   # best_score should be taken from the first metric
   expect_equal(
     bst$best_score
     , bst$record_evals[["valid1"]][["constant_metric"]][["eval"]][[best_iter]]
   )
-
+  
   # early stopping should not have happened. Even though constant_metric
   # had 9 consecutive iterations with no improvement, it is ignored because of
   # first_metric_only = TRUE
@@ -919,7 +940,7 @@ test_that("gpb.train() does not stop early if early_stopping_rounds is not given
 
 test_that("If first_metric_only is not given or is FALSE, gpb.train() decides to stop early based on all metrics", {
   set.seed(708L)
-
+  
   early_stopping_rounds <- 3L
   param_variations <- list(
     list(
@@ -934,9 +955,9 @@ test_that("If first_metric_only is not given or is FALSE, gpb.train() decides to
       , first_metric_only = FALSE
     )
   )
-
+  
   for (params in param_variations) {
-
+    
     nrounds <- 10L
     bst <- gpb.train(
       params = params
@@ -949,11 +970,12 @@ test_that("If first_metric_only is not given or is FALSE, gpb.train() decides to
         .increasing_metric
         , .constant_metric
       )
+      , verbose = 0
     )
-
+    
     # Only the two functions provided to "eval" should have been evaluated
     expect_equal(length(bst$record_evals[["valid1"]]), 2L)
-
+    
     # early stopping should have happened, and should have stopped early_stopping_rounds + 1 rounds in
     # because constant_metric never improves
     #
@@ -961,13 +983,13 @@ test_that("If first_metric_only is not given or is FALSE, gpb.train() decides to
     # and gets better every iteration
     best_iter <- early_stopping_rounds + 1L
     expect_equal(bst$best_iter, best_iter)
-
+    
     # best_score should be taken from "increasing_metric" because it was first
     expect_equal(
       bst$best_score
       , bst$record_evals[["valid1"]][["increasing_metric"]][["eval"]][[best_iter]]
     )
-
+    
     # early stopping should not have happened. even though increasing_metric kept
     # getting better, early stopping should have happened because "constant_metric"
     # did not improve
@@ -980,7 +1002,7 @@ test_that("If first_metric_only is not given or is FALSE, gpb.train() decides to
       , early_stopping_rounds + 1L
     )
   }
-
+  
 })
 
 test_that("If first_metric_only is TRUE, gpb.train() decides to stop early based on only the first metric", {
@@ -1004,20 +1026,21 @@ test_that("If first_metric_only is TRUE, gpb.train() decides to stop early based
       .increasing_metric
       , .constant_metric
     )
+    , verbose = 0
   )
-
+  
   # Only the two functions provided to "eval" should have been evaluated
   expect_equal(length(bst$record_evals[["valid1"]]), 2L)
-
+  
   # all 10 iterations should happen, and the best_iter should be the final one
   expect_equal(bst$best_iter, nrounds)
-
+  
   # best_score should be taken from "increasing_metric"
   expect_equal(
     bst$best_score
     , increasing_metric_starting_value + 0.1 * nrounds
   )
-
+  
   # early stopping should not have happened. Even though constant_metric
   # had 9 consecutive iterations with no improvement, it is ignored because of
   # first_metric_only = TRUE
@@ -1051,8 +1074,9 @@ test_that("gpb.train() works when a mixture of functions and strings are passed 
       , .constant_metric
       , "l2"
     )
+    , verbose = 0
   )
-
+  
   # all 4 metrics should have been used
   expect_named(
     bst$record_evals[["valid1"]]
@@ -1060,7 +1084,7 @@ test_that("gpb.train() works when a mixture of functions and strings are passed 
     , ignore.order = TRUE
     , ignore.case = FALSE
   )
-
+  
   # the difference metrics shouldn't have been mixed up with each other
   results <- bst$record_evals[["valid1"]]
   expect_true(abs(results[["rmse"]][["eval"]][[1L]] - 1.105012) < TOLERANCE)
@@ -1072,11 +1096,11 @@ test_that("gpb.train() works when a mixture of functions and strings are passed 
     ) < TOLERANCE
   )
   expect_true(abs(results[["constant_metric"]][["eval"]][[1L]] - CONSTANT_METRIC_VALUE) < TOLERANCE)
-
+  
 })
 
 test_that("gpb.train() works when a list of strings or a character vector is passed to eval", {
-
+  
   # testing list and character vector, as well as length-1 and length-2
   eval_variations <- list(
     c("binary_error", "binary_logloss")
@@ -1084,9 +1108,9 @@ test_that("gpb.train() works when a list of strings or a character vector is pas
     , list("binary_error", "binary_logloss")
     , list("binary_logloss")
   )
-
+  
   for (eval_variation in eval_variations) {
-
+    
     set.seed(708L)
     nrounds <- 10L
     increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
@@ -1101,8 +1125,9 @@ test_that("gpb.train() works when a list of strings or a character vector is pas
         "valid1" = DVALID_RANDOM_CLASSIFICATION
       )
       , eval = eval_variation
+      , verbose = 0
     )
-
+    
     # both metrics should have been used
     expect_named(
       bst$record_evals[["valid1"]]
@@ -1110,7 +1135,7 @@ test_that("gpb.train() works when a list of strings or a character vector is pas
       , ignore.order = TRUE
       , ignore.case = FALSE
     )
-
+    
     # the difference metrics shouldn't have been mixed up with each other
     results <- bst$record_evals[["valid1"]]
     if ("binary_error" %in% unlist(eval_variation)) {
@@ -1137,8 +1162,9 @@ test_that("gpb.train() works when you specify both 'metric' and 'eval' with stri
       "valid1" = DVALID_RANDOM_CLASSIFICATION
     )
     , eval = "binary_logloss"
+    , verbose = 0
   )
-
+  
   # both metrics should have been used
   expect_named(
     bst$record_evals[["valid1"]]
@@ -1146,7 +1172,7 @@ test_that("gpb.train() works when you specify both 'metric' and 'eval' with stri
     , ignore.order = TRUE
     , ignore.case = FALSE
   )
-
+  
   # the difference metrics shouldn't have been mixed up with each other
   results <- bst$record_evals[["valid1"]]
   expect_true(abs(results[["binary_error"]][["eval"]][[1L]] - 0.4864865) < TOLERANCE)
@@ -1168,8 +1194,9 @@ test_that("gpb.train() works when you give a function for eval", {
       "valid1" = DVALID_RANDOM_CLASSIFICATION
     )
     , eval = .constant_metric
+    , verbose = 0
   )
-
+  
   # the difference metrics shouldn't have been mixed up with each other
   results <- bst$record_evals[["valid1"]]
   expect_true(abs(results[["constant_metric"]][["eval"]][[1L]] - CONSTANT_METRIC_VALUE) < TOLERANCE)
@@ -1194,7 +1221,7 @@ test_that("gpb.train() works with early stopping for regression with a metric th
     , label = validDF[["target"]]
   )
   nrounds <- 10L
-
+  
   #############################
   # train with early stopping #
   #############################
@@ -1203,9 +1230,9 @@ test_that("gpb.train() works with early stopping for regression with a metric th
     params = list(
       objective = "regression"
       , metric = c(
-          "mape"
-          , "rmse"
-          , "mae"
+        "mape"
+        , "rmse"
+        , "mae"
       )
       , min_data_in_bin = 5L
       , early_stopping_rounds = early_stopping_rounds
@@ -1215,8 +1242,9 @@ test_that("gpb.train() works with early stopping for regression with a metric th
     , valids = list(
       "valid1" = dvalid
     )
+    , verbose = 0
   )
-
+  
   # the best model should be from the first iteration, and only 6 rounds
   # should have happened (1 with improvement, 5 consecutive with no improvement)
   expect_equal(bst$best_score, 1.1)
@@ -1225,7 +1253,7 @@ test_that("gpb.train() works with early stopping for regression with a metric th
     length(bst$record_evals[["valid1"]][["mape"]][["eval"]])
     , early_stopping_rounds + 1L
   )
-
+  
   # Booster should understand thatt all three of these metrics should be minimized
   eval_info <- bst$.__enclos_env__$private$get_eval_info()
   expect_identical(eval_info, c("mape", "rmse", "l1"))
@@ -1263,7 +1291,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
     , metric = "rmse"
     , learning_rate = 1.5
   )
-
+  
   # example 1: two valids, neither are the training data
   bst <- gpb.train(
     data = dtrain
@@ -1274,6 +1302,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
       , "valid2" = dvalid2
     )
     , params = train_params
+    , verbose = 0
   )
   expect_named(
     bst$record_evals
@@ -1285,7 +1314,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
   expect_length(rmse_scores, nrounds)
   expect_identical(bst$best_iter, which.min(rmse_scores))
   expect_identical(bst$best_score, rmse_scores[which.min(rmse_scores)])
-
+  
   # example 2: train first (called "train") and two valids
   bst <- gpb.train(
     data = dtrain
@@ -1297,6 +1326,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
       , "valid2" = dvalid2
     )
     , params = train_params
+    , verbose = 0
   )
   expect_named(
     bst$record_evals
@@ -1308,7 +1338,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
   expect_length(rmse_scores, nrounds)
   expect_identical(bst$best_iter, which.min(rmse_scores))
   expect_identical(bst$best_score, rmse_scores[which.min(rmse_scores)])
-
+  
   # example 3: train second (called "train") and two valids
   bst <- gpb.train(
     data = dtrain
@@ -1320,6 +1350,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
       , "valid2" = dvalid2
     )
     , params = train_params
+    , verbose = 0
   )
   # note that "train" still ends up as the first one
   expect_named(
@@ -1332,7 +1363,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
   expect_length(rmse_scores, nrounds)
   expect_identical(bst$best_iter, which.min(rmse_scores))
   expect_identical(bst$best_score, rmse_scores[which.min(rmse_scores)])
-
+  
   # example 4: train third (called "train") and two valids
   bst <- gpb.train(
     data = dtrain
@@ -1344,6 +1375,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
       , "train" = dtrain
     )
     , params = train_params
+    , verbose = 0
   )
   # note that "train" still ends up as the first one
   expect_named(
@@ -1356,7 +1388,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
   expect_length(rmse_scores, nrounds)
   expect_identical(bst$best_iter, which.min(rmse_scores))
   expect_identical(bst$best_score, rmse_scores[which.min(rmse_scores)])
-
+  
   # example 5: train second (called "something-random-we-would-not-hardcode") and two valids
   bst <- gpb.train(
     data = dtrain
@@ -1368,6 +1400,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
       , "valid2" = dvalid2
     )
     , params = train_params
+    , verbose = 0
   )
   # note that "something-random-we-would-not-hardcode" was recognized as the training
   # data even though it isn't named "train"
@@ -1381,7 +1414,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
   expect_length(rmse_scores, nrounds)
   expect_identical(bst$best_iter, which.min(rmse_scores))
   expect_identical(bst$best_score, rmse_scores[which.min(rmse_scores)])
-
+  
   # example 6: the only valid supplied is the training data
   bst <- gpb.train(
     data = dtrain
@@ -1391,6 +1424,7 @@ test_that("when early stopping is not activated, best_iter and best_score come f
       "train" = dtrain
     )
     , params = train_params
+    , verbose = 0
   )
   expect_identical(bst$best_iter, -1L)
   expect_identical(bst$best_score, NA_real_)
@@ -1428,6 +1462,7 @@ test_that("gpboost.train() gives the correct best_score and best_iter for a metr
       , metric = "auc"
       , learning_rate = 1.5
     )
+    , verbose = 0
   )
   # note that "something-random-we-would-not-hardcode" was recognized as the training
   # data even though it isn't named "train"
@@ -1503,7 +1538,7 @@ test_that("gpb.cv() works when you specify both 'metric' and 'eval' with strings
   nrounds <- 10L
   nfolds <- 4L
   increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
-  bst <- gpb.cv(
+  capture.output( bst <- gpb.cv(
     params = list(
       objective = "binary"
       , metric = "binary_error"
@@ -1512,8 +1547,8 @@ test_that("gpb.cv() works when you specify both 'metric' and 'eval' with strings
     , nrounds = nrounds
     , nfold = nfolds
     , eval = "binary_logloss"
-  )
-
+  ), file='NUL')
+  
   # both metrics should have been used
   expect_named(
     bst$record_evals[["valid"]]
@@ -1521,12 +1556,12 @@ test_that("gpb.cv() works when you specify both 'metric' and 'eval' with strings
     , ignore.order = TRUE
     , ignore.case = FALSE
   )
-
+  
   # the difference metrics shouldn't have been mixed up with each other
   results <- bst$record_evals[["valid"]]
   expect_true(abs(results[["binary_error"]][["eval"]][[1L]] - 0.5005654) < TOLERANCE)
   expect_true(abs(results[["binary_logloss"]][["eval"]][[1L]] - 0.7016582) < TOLERANCE)
-
+  
   # all boosters should have been created
   expect_length(bst$boosters, nfolds)
 })
@@ -1536,7 +1571,7 @@ test_that("gpb.cv() works when you give a function for eval", {
   nrounds <- 10L
   nfolds <- 3L
   increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
-  bst <- gpb.cv(
+  capture.output( bst <- gpb.cv(
     params = list(
       objective = "binary"
       , metric = "None"
@@ -1545,8 +1580,8 @@ test_that("gpb.cv() works when you give a function for eval", {
     , nfold = nfolds
     , nrounds = nrounds
     , eval = .constant_metric
-  )
-
+  ), file='NUL')
+  
   # the difference metrics shouldn't have been mixed up with each other
   results <- bst$record_evals[["valid"]]
   expect_true(abs(results[["constant_metric"]][["eval"]][[1L]] - CONSTANT_METRIC_VALUE) < TOLERANCE)
@@ -1559,31 +1594,33 @@ test_that("If first_metric_only is TRUE, gpb.cv() decides to stop early based on
   nfolds <- 5L
   early_stopping_rounds <- 3L
   increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
-  bst <- gpb.cv(
-    params = list(
-      objective = "regression"
-      , metric = "None"
-      , early_stopping_rounds = early_stopping_rounds
-      , first_metric_only = TRUE
+  capture.output(
+    bst <- gpb.cv(
+      params = list(
+        objective = "regression"
+        , metric = "None"
+        , early_stopping_rounds = early_stopping_rounds
+        , first_metric_only = TRUE
+      )
+      , data = DTRAIN_RANDOM_REGRESSION
+      , nfold = nfolds
+      , nrounds = nrounds
+      , valids = list(
+        "valid1" = DVALID_RANDOM_REGRESSION
+      )
+      , eval = list(
+        .increasing_metric
+        , .constant_metric
+      )
     )
-    , data = DTRAIN_RANDOM_REGRESSION
-    , nfold = nfolds
-    , nrounds = nrounds
-    , valids = list(
-      "valid1" = DVALID_RANDOM_REGRESSION
-    )
-    , eval = list(
-      .increasing_metric
-      , .constant_metric
-    )
-  )
-
+    ,file='NUL')
+  
   # Only the two functions provided to "eval" should have been evaluated
   expect_named(bst$record_evals[["valid"]], c("increasing_metric", "constant_metric"))
-
+  
   # all 10 iterations should happen, and the best_iter should be the final one
   expect_equal(bst$best_iter, nrounds)
-
+  
   # best_score should be taken from "increasing_metric"
   #
   # this expected value looks magical and confusing, but it's because
@@ -1598,7 +1635,7 @@ test_that("If first_metric_only is TRUE, gpb.cv() decides to stop early based on
   #
   cv_value <- increasing_metric_starting_value + mean(seq_len(nfolds) / 10.0) + (nrounds  - 1L) * 0.1 * nfolds
   expect_equal(bst$best_score, cv_value)
-
+  
   # early stopping should not have happened. Even though constant_metric
   # had 9 consecutive iterations with no improvement, it is ignored because of
   # first_metric_only = TRUE
@@ -1618,35 +1655,37 @@ test_that("early stopping works with gpb.cv()", {
   nfolds <- 5L
   early_stopping_rounds <- 3L
   increasing_metric_starting_value <- get(ACCUMULATOR_NAME, envir = ACCUMULATOR_ENVIRONMENT)
-  bst <- gpb.cv(
-    params = list(
-      objective = "regression"
-      , metric = "None"
-      , early_stopping_rounds = early_stopping_rounds
-      , first_metric_only = TRUE
+  capture.output( 
+    bst <- gpb.cv(
+      params = list(
+        objective = "regression"
+        , metric = "None"
+        , early_stopping_rounds = early_stopping_rounds
+        , first_metric_only = TRUE
+      )
+      , data = DTRAIN_RANDOM_REGRESSION
+      , nfold = nfolds
+      , nrounds = nrounds
+      , valids = list(
+        "valid1" = DVALID_RANDOM_REGRESSION
+      )
+      , eval = list(
+        .constant_metric
+        , .increasing_metric
+      )
     )
-    , data = DTRAIN_RANDOM_REGRESSION
-    , nfold = nfolds
-    , nrounds = nrounds
-    , valids = list(
-      "valid1" = DVALID_RANDOM_REGRESSION
-    )
-    , eval = list(
-      .constant_metric
-      , .increasing_metric
-    )
-  )
-
+    , file='NUL')
+  
   # only the two functions provided to "eval" should have been evaluated
   expect_named(bst$record_evals[["valid"]], c("constant_metric", "increasing_metric"))
-
+  
   # best_iter should be based on the first metric. Since constant_metric
   # never changes, its first iteration was the best oone
   expect_equal(bst$best_iter, 1L)
-
+  
   # best_score should be taken from the first metri
   expect_equal(bst$best_score, 0.2)
-
+  
   # early stopping should have happened, since constant_metric was the first
   # one passed to eval and it will not improve over consecutive iterations
   #
@@ -1673,7 +1712,7 @@ test_that("gpb.train() fit on linearly-relatead data improves when using linear 
       , label = 2L * X + runif(nrow(X), 0L, 0.1)
     ))
   }
-
+  
   params <- list(
     objective = "regression"
     , verbose = -1L
@@ -1681,25 +1720,27 @@ test_that("gpb.train() fit on linearly-relatead data improves when using linear 
     , seed = 0L
     , num_leaves = 2L
   )
-
+  
   dtrain <- .new_dataset()
   bst <- gpb.train(
     data = dtrain
     , nrounds = 10L
     , params = params
     , valids = list("train" = dtrain)
+    , verbose = 0
   )
   expect_true(gpboost:::gpb.is.Booster(bst))
-
+  
   dtrain <- .new_dataset()
   bst_linear <- gpb.train(
     data = dtrain
     , nrounds = 10L
     , params = modifyList(params, list(linear_tree = TRUE))
     , valids = list("train" = dtrain)
+    , verbose = 0
   )
   expect_true(gpboost:::gpb.is.Booster(bst_linear))
-
+  
   bst_last_mse <- bst$record_evals[["train"]][["l2"]][["eval"]][[10L]]
   bst_lin_last_mse <- bst_linear$record_evals[["train"]][["l2"]][["eval"]][[10L]]
   expect_true(bst_lin_last_mse <  bst_last_mse)
@@ -1745,7 +1786,7 @@ test_that("gpb.train() works with linear learners even if Dataset has missing va
       , label = 2L * X + runif(nrow(X), 0L, 0.1)
     ))
   }
-
+  
   params <- list(
     objective = "regression"
     , verbose = -1L
@@ -1753,25 +1794,27 @@ test_that("gpb.train() works with linear learners even if Dataset has missing va
     , seed = 0L
     , num_leaves = 2L
   )
-
+  
   dtrain <- .new_dataset()
   bst <- gpb.train(
     data = dtrain
     , nrounds = 10L
     , params = params
     , valids = list("train" = dtrain)
+    , verbose = 0
   )
   expect_true(gpboost:::gpb.is.Booster(bst))
-
+  
   dtrain <- .new_dataset()
   bst_linear <- gpb.train(
     data = dtrain
     , nrounds = 10L
     , params = modifyList(params, list(linear_tree = TRUE))
     , valids = list("train" = dtrain)
+    , verbose = 0
   )
   expect_true(gpboost:::gpb.is.Booster(bst_linear))
-
+  
   bst_last_mse <- bst$record_evals[["train"]][["l2"]][["eval"]][[10L]]
   bst_lin_last_mse <- bst_linear$record_evals[["train"]][["l2"]][["eval"]][[10L]]
   expect_true(bst_lin_last_mse <  bst_last_mse)
@@ -1791,7 +1834,7 @@ test_that("gpb.train() works with linear learners, bagging, and a Dataset that h
       , label = 2L * X + runif(nrow(X), 0L, 0.1)
     ))
   }
-
+  
   params <- list(
     objective = "regression"
     , verbose = -1L
@@ -1801,25 +1844,27 @@ test_that("gpb.train() works with linear learners, bagging, and a Dataset that h
     , bagging_freq = 1L
     , subsample = 0.8
   )
-
+  
   dtrain <- .new_dataset()
   bst <- gpb.train(
     data = dtrain
     , nrounds = 10L
     , params = params
     , valids = list("train" = dtrain)
+    , verbose = 0
   )
   expect_true(gpboost:::gpb.is.Booster(bst))
-
+  
   dtrain <- .new_dataset()
   bst_linear <- gpb.train(
     data = dtrain
     , nrounds = 10L
     , params = modifyList(params, list(linear_tree = TRUE))
     , valids = list("train" = dtrain)
+    , verbose = 0
   )
   expect_true(gpboost:::gpb.is.Booster(bst_linear))
-
+  
   bst_last_mse <- bst$record_evals[["train"]][["l2"]][["eval"]][[10L]]
   bst_lin_last_mse <- bst_linear$record_evals[["train"]][["l2"]][["eval"]][[10L]]
   expect_true(bst_lin_last_mse <  bst_last_mse)
@@ -1839,7 +1884,7 @@ test_that("gpb.train() works with linear learners and data where a feature has o
       , label = 2L * X + runif(nrow(X), 0L, 0.1)
     ))
   }
-
+  
   params <- list(
     objective = "regression"
     , verbose = -1L
@@ -1847,13 +1892,15 @@ test_that("gpb.train() works with linear learners and data where a feature has o
     , seed = 0L
     , num_leaves = 2L
   )
-
+  
   dtrain <- .new_dataset()
-  bst_linear <- gpb.train(
-    data = dtrain
-    , nrounds = 10L
-    , params = modifyList(params, list(linear_tree = TRUE))
-  )
+  capture.output( 
+    bst_linear <- gpb.train(
+      data = dtrain
+      , nrounds = 10L
+      , params = modifyList(params, list(linear_tree = TRUE))
+    )
+    , file='NUL')
   expect_true(gpboost:::gpb.is.Booster(bst_linear))
 })
 
@@ -1868,7 +1915,7 @@ test_that("gpb.train() works with linear learners when Dataset has categorical f
       , label = 2L * X[, 1L] + runif(nrow(X), 0L, 0.1)
     ))
   }
-
+  
   params <- list(
     objective = "regression"
     , verbose = -1L
@@ -1877,25 +1924,31 @@ test_that("gpb.train() works with linear learners when Dataset has categorical f
     , num_leaves = 2L
     , categorical_featurs = 1L
   )
-
+  
   dtrain <- .new_dataset()
-  bst <- gpb.train(
-    data = dtrain
-    , nrounds = 10L
-    , params = params
-    , valids = list("train" = dtrain)
-  )
+  capture.output( 
+    bst <- gpb.train(
+      data = dtrain
+      , nrounds = 10L
+      , params = params
+      , valids = list("train" = dtrain)
+      , verbose = 0
+    )
+    , file='NUL')
   expect_true(gpboost:::gpb.is.Booster(bst))
-
+  
   dtrain <- .new_dataset()
-  bst_linear <- gpb.train(
-    data = dtrain
-    , nrounds = 10L
-    , params = modifyList(params, list(linear_tree = TRUE))
-    , valids = list("train" = dtrain)
-  )
+  capture.output( 
+    bst_linear <- gpb.train(
+      data = dtrain
+      , nrounds = 10L
+      , params = modifyList(params, list(linear_tree = TRUE))
+      , valids = list("train" = dtrain)
+      , verbose = 0
+    )
+    , file='NUL')
   expect_true(gpboost:::gpb.is.Booster(bst_linear))
-
+  
   bst_last_mse <- bst$record_evals[["train"]][["l2"]][["eval"]][[10L]]
   bst_lin_last_mse <- bst_linear$record_evals[["train"]][["l2"]][["eval"]][[10L]]
   expect_true(bst_lin_last_mse <  bst_last_mse)
@@ -1906,32 +1959,35 @@ context("interaction constraints")
 test_that("gpb.train() throws an informative error if interaction_constraints is not a list", {
   dtrain <- gpb.Dataset(train$data, label = train$label)
   params <- list(objective = "regression", interaction_constraints = "[1,2],[3]")
-    expect_error({
-      bst <- gpboost(
-        data = dtrain
-        , params = params
-        , nrounds = 2L
-      )
-    }, "interaction_constraints must be a list")
+  expect_error({
+    bst <- gpboost(
+      data = dtrain
+      , params = params
+      , nrounds = 2L
+    )
+  }, "interaction_constraints must be a list")
 })
 
 test_that(paste0("gpb.train() throws an informative error if the members of interaction_constraints ",
                  "are not character or numeric vectors"), {
-  dtrain <- gpb.Dataset(train$data, label = train$label)
-  params <- list(objective = "regression", interaction_constraints = list(list(1L, 2L), list(3L)))
-    expect_error({
-      bst <- gpboost(
-        data = dtrain
-        , params = params
-        , nrounds = 2L
-      )
-    }, "every element in interaction_constraints must be a character vector or numeric vector")
-})
+                   dtrain <- gpb.Dataset(train$data, label = train$label)
+                   params <- list(objective = "regression", interaction_constraints = list(list(1L, 2L), list(3L)))
+                   capture.output(
+                     expect_error({
+                       bst <- gpboost(
+                         data = dtrain
+                         , params = params
+                         , nrounds = 2L
+                       )
+                     }, "every element in interaction_constraints must be a character vector or numeric vector")
+                     , file='NUL')
+                 })
 
 test_that("gpb.train() throws an informative error if interaction_constraints contains a too large index", {
   dtrain <- gpb.Dataset(train$data, label = train$label)
   params <- list(objective = "regression",
                  interaction_constraints = list(c(1L, length(colnames(train$data)) + 1L), 3L))
+  capture.output(
     expect_error({
       bst <- gpboost(
         data = dtrain
@@ -1939,66 +1995,77 @@ test_that("gpb.train() throws an informative error if interaction_constraints co
         , nrounds = 2L
       )
     }, "supplied a too large value in interaction_constraints")
+    , file='NUL')
 })
 
 test_that(paste0("gpb.train() gives same result when interaction_constraints is specified as a list of ",
                  "character vectors, numeric vectors, or a combination"), {
-  set.seed(1L)
-  dtrain <- gpb.Dataset(train$data, label = train$label)
-
-  params <- list(objective = "regression", interaction_constraints = list(c(1L, 2L), 3L))
-  bst <- gpboost(
-    data = dtrain
-    , params = params
-    , nrounds = 2L
-  )
-  pred1 <- bst$predict(test$data)
-
-  cnames <- colnames(train$data)
-  params <- list(objective = "regression", interaction_constraints = list(c(cnames[[1L]], cnames[[2L]]), cnames[[3L]]))
-  bst <- gpboost(
-    data = dtrain
-    , params = params
-    , nrounds = 2L
-  )
-  pred2 <- bst$predict(test$data)
-
-  params <- list(objective = "regression", interaction_constraints = list(c(cnames[[1L]], cnames[[2L]]), 3L))
-  bst <- gpboost(
-    data = dtrain
-    , params = params
-    , nrounds = 2L
-  )
-  pred3 <- bst$predict(test$data)
-
-  expect_equal(pred1, pred2)
-  expect_equal(pred2, pred3)
-
-})
+                   set.seed(1L)
+                   dtrain <- gpb.Dataset(train$data, label = train$label)
+                   
+                   params <- list(objective = "regression", interaction_constraints = list(c(1L, 2L), 3L))
+                   capture.output(
+                     bst <- gpboost(
+                       data = dtrain
+                       , params = params
+                       , nrounds = 2L
+                     )
+                     , file='NUL')
+                   pred1 <- bst$predict(test$data)
+                   
+                   cnames <- colnames(train$data)
+                   params <- list(objective = "regression", interaction_constraints = list(c(cnames[[1L]], cnames[[2L]]), cnames[[3L]]))
+                   capture.output(
+                     bst <- gpboost(
+                       data = dtrain
+                       , params = params
+                       , nrounds = 2L
+                     )
+                     , file='NUL')
+                   pred2 <- bst$predict(test$data)
+                   
+                   params <- list(objective = "regression", interaction_constraints = list(c(cnames[[1L]], cnames[[2L]]), 3L))
+                   capture.output(
+                     bst <- gpboost(
+                       data = dtrain
+                       , params = params
+                       , nrounds = 2L
+                     )
+                     , file='NUL')
+                   pred3 <- bst$predict(test$data)
+                   
+                   expect_equal(pred1, pred2)
+                   expect_equal(pred2, pred3)
+                   
+                 })
 
 test_that(paste0("gpb.train() gives same results when using interaction_constraints and specifying colnames"), {
   set.seed(1L)
   dtrain <- gpb.Dataset(train$data, label = train$label)
-
+  
   params <- list(objective = "regression", interaction_constraints = list(c(1L, 2L), 3L))
-  bst <- gpboost(
-    data = dtrain
-    , params = params
-    , nrounds = 2L
-  )
+  capture.output(
+    bst <- gpboost(
+      data = dtrain
+      , params = params
+      , nrounds = 2L
+    )
+    , file='NUL')
   pred1 <- bst$predict(test$data)
-
+  
   new_colnames <- paste0(colnames(train$data), "_x")
   params <- list(objective = "regression"
                  , interaction_constraints = list(c(new_colnames[1L], new_colnames[2L]), new_colnames[3L]))
-  bst <- gpboost(
-    data = dtrain
-    , params = params
-    , nrounds = 2L
-    , colnames = new_colnames
-  )
+  capture.output(
+    bst <- gpboost(
+      data = dtrain
+      , params = params
+      , nrounds = 2L
+      , colnames = new_colnames
+    )
+    , file='NUL')
   pred2 <- bst$predict(test$data)
-
+  
   expect_equal(pred1, pred2)
-
+  
 })

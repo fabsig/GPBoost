@@ -11,13 +11,17 @@ test_that("gpb.Dataset: basic construction, saving, loading", {
   # from dense matrix
   dtest2 <- gpb.Dataset(as.matrix(test_data), label = test_label)
   expect_equal(getinfo(dtest1, "label"), getinfo(dtest2, "label"))
-
+  
   # save to a local file
   tmp_file <- tempfile("gpb.Dataset_")
-  gpb.Dataset.save(dtest1, tmp_file)
+  capture.output( 
+    gpb.Dataset.save(dtest1, tmp_file)
+    , file='NUL')
   # read from a local file
   dtest3 <- gpb.Dataset(tmp_file)
-  gpb.Dataset.construct(dtest3)
+  capture.output( 
+    gpb.Dataset.construct(dtest3)
+    , file='NUL')
   unlink(tmp_file)
   expect_equal(getinfo(dtest1, "label"), getinfo(dtest3, "label"))
 })
@@ -25,14 +29,14 @@ test_that("gpb.Dataset: basic construction, saving, loading", {
 test_that("gpb.Dataset: getinfo & setinfo", {
   dtest <- gpb.Dataset(test_data)
   dtest$construct()
-
+  
   setinfo(dtest, "label", test_label)
   labels <- getinfo(dtest, "label")
   expect_equal(test_label, getinfo(dtest, "label"))
-
+  
   expect_true(length(getinfo(dtest, "weight")) == 0L)
   expect_true(length(getinfo(dtest, "init_score")) == 0L)
-
+  
   # any other label should error
   expect_error(setinfo(dtest, "asdf", test_label))
 })
@@ -169,13 +173,13 @@ test_that("Dataset$update_parameters() does nothing for empty inputs", {
   )
   initial_params <- ds$get_params()
   expect_identical(initial_params, list())
-
+  
   # update_params() should return "self" so it can be chained
   res <- ds$update_params(
     params = list()
   )
   expect_true(gpboost:::gpb.is.Dataset(res))
-
+  
   new_params <- ds$get_params()
   expect_identical(new_params, initial_params)
 })
@@ -187,7 +191,7 @@ test_that("Dataset$update_params() works correctly for recognized Dataset parame
   )
   initial_params <- ds$get_params()
   expect_identical(initial_params, list())
-
+  
   new_params <- list(
     "data_random_seed" = 708L
     , "enable_bundle" = FALSE
@@ -196,7 +200,7 @@ test_that("Dataset$update_params() works correctly for recognized Dataset parame
     params = new_params
   )
   expect_true(gpboost:::gpb.is.Dataset(res))
-
+  
   updated_params <- ds$get_params()
   for (param_name in names(new_params)) {
     expect_identical(new_params[[param_name]], updated_params[[param_name]])
@@ -227,41 +231,13 @@ test_that("gpb.Dataset: should be able to run gpb.train() immediately after usin
     , label = test_label
   )
   tmp_file <- tempfile(pattern = "gpb.Dataset_")
-  gpb.Dataset.save(
-    dataset = dtest
-    , fname = tmp_file
-  )
-
-  # read from a local file
-  dtest_read_in <- gpb.Dataset(data = tmp_file)
-
-  param <- list(
-    objective = "binary"
-    , metric = "binary_logloss"
-    , num_leaves = 5L
-    , learning_rate = 1.0
-  )
-
-  # should be able to train right away
-  bst <- gpb.train(
-    params = param
-    , data = dtest_read_in
-  )
-
-  expect_true(gpboost:::gpb.is.Booster(x = bst))
-})
-
-test_that("gpb.Dataset: should be able to run gpb.cv() immediately after using gpb.Dataset() on a file", {
-  dtest <- gpb.Dataset(
-    data = test_data
-    , label = test_label
-  )
-  tmp_file <- tempfile(pattern = "gpb.Dataset_")
-  gpb.Dataset.save(
-    dataset = dtest
-    , fname = tmp_file
-  )
-
+  capture.output( 
+    gpb.Dataset.save(
+      dataset = dtest
+      , fname = tmp_file
+    )
+    , file='NUL')
+  
   # read from a local file
   dtest_read_in <- gpb.Dataset(data = tmp_file)
   
@@ -271,13 +247,47 @@ test_that("gpb.Dataset: should be able to run gpb.cv() immediately after using g
     , num_leaves = 5L
     , learning_rate = 1.0
   )
+  
+  # should be able to train right away
+  bst <- gpb.train(
+    params = param
+    , data = dtest_read_in
+    , verbose = 0
+  )
+  
+  expect_true(gpboost:::gpb.is.Booster(x = bst))
+})
 
+test_that("gpb.Dataset: should be able to run gpb.cv() immediately after using gpb.Dataset() on a file", {
+  dtest <- gpb.Dataset(
+    data = test_data
+    , label = test_label
+  )
+  tmp_file <- tempfile(pattern = "gpb.Dataset_")
+  capture.output( 
+    gpb.Dataset.save(
+      dataset = dtest
+      , fname = tmp_file
+    )
+    , file='NUL')
+  
+  # read from a local file
+  dtest_read_in <- gpb.Dataset(data = tmp_file)
+  
+  param <- list(
+    objective = "binary"
+    , metric = "binary_logloss"
+    , num_leaves = 5L
+    , learning_rate = 1.0
+  )
+  
   # should be able to train right away
   bst <- gpb.cv(
     params = param
     , data = dtest_read_in
+    , verbose = 0
   )
-
+  
   expect_is(bst, "gpb.CVBooster")
 })
 

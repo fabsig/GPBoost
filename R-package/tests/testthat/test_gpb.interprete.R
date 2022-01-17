@@ -33,6 +33,7 @@ test_that("gpb.intereprete works as expected for binary classification", {
         params = params
         , data = dtrain
         , nrounds = 3L
+        , verbose = 0
     )
     num_trees <- 5L
     tree_interpretation <- gpb.interprete(
@@ -84,6 +85,7 @@ test_that("gpb.intereprete works as expected for multiclass classification", {
         , data = dtrain
         , nrounds = 3L
         , min_data = 1L
+        , verbose = 0
     )
     num_trees <- 5L
     tree_interpretation <- gpb.interprete(

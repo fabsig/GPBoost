@@ -66,6 +66,7 @@ test_that("start_iteration works correctly", {
         , objective = "binary"
         , valids = list("test" = dtest)
         , early_stopping_rounds = 2L
+        , verbose = 0
     )
     expect_true(gpboost:::gpb.is.Booster(bst))
     pred1 <- predict(bst, data = test$data, rawscore = TRUE)
