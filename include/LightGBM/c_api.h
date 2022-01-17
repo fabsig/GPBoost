@@ -1378,16 +1378,16 @@ LIGHTGBM_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \brief Set configuration parameters for the optimizer
 * \param handle Handle of REModel
 * \param init_cov_pars Initial values for covariance parameters of RE components
-* \param lr Learning rate. If <= 0, default values are used. Default value = 0.01 for "gradient_descent" and 1. for "fisher_scoring"
-* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
+* \param lr Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")
+* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
 * \param max_iter Maximal number of iterations
 * \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
-* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters. Default = true
-* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
-* \param trace If true, the value of the gradient is printed for some iterations. Default = false
-* \param optimizer Options: "gradient_descent" or "fisher_scoring"
-* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
-* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
+* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent")
+* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc)
+* \param trace If true, the value of the gradient is printed for some iterations
+* \param optimizer Optimizer for covariance parameters
+* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc)
+* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
 * \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 * \return 0 when succeed, -1 when failure happens
 */
@@ -1411,6 +1411,7 @@ LIGHTGBM_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
 * \param num_covariates Number of covariates
 * \param init_coef Initial values for the regression coefficients
 * \param lr_coef Learning rate for fixed-effect linear coefficients
+* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
 * \param optimizer Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares)
 * \return 0 when succeed, -1 when failure happens
 */
@@ -1554,25 +1555,26 @@ LIGHTGBM_C_EXPORT int GPB_PredictREModel(REModelHandle handle,
     const double* y_data,
     int32_t num_data_pred,
     double* out_predict,
-    bool predict_cov_mat = false,
-    bool predict_var = false,
-    bool predict_response = false,
-    const int32_t* cluster_ids_data_pred = nullptr,
-    const char* re_group_data_pred = nullptr,
-    const double* re_group_rand_coef_data_pred = nullptr,
-    double* gp_coords_pred = nullptr,
-    const double* gp_rand_coef_data_pred = nullptr,
-    const double* cov_pars = nullptr,
-    const double* covariate_data_pred = nullptr,
-    bool use_saved_data = true,
-    const char* vecchia_pred_type = nullptr,
-    int num_neighbors_pred = -1,
-    const double* fixed_effects = nullptr,
-    const double* fixed_effects_pred = nullptr);
+    bool predict_cov_mat,
+    bool predict_var,
+    bool predict_response,
+    const int32_t* cluster_ids_data_pred,
+    const char* re_group_data_pred,
+    const double* re_group_rand_coef_data_pred,
+    double* gp_coords_data_pred,
+    const double* gp_rand_coef_data_pred,
+    const double* cov_pars,
+    const double* covariate_data_pred,
+    bool use_saved_data,
+    const char* vecchia_pred_type,
+    int num_neighbors_pred,
+    const double* fixed_effects,
+    const double* fixed_effects_pred);
 
 /*!
 * \brief Get name of likelihood
-* \param ll_name Likelihood name
+* \param handle Handle of REModel
+* \param out_str Likelihood name
 * \param num_char Number of characters
 * \return 0 when succeed, -1 when failure happens
 */
@@ -1582,6 +1584,7 @@ LIGHTGBM_C_EXPORT int GPB_GetLikelihoodName(REModelHandle handle,
 
 /*!
 * \brief Get name of covariance parameter optimizer
+* \param handle Handle of REModel
 * \param out_str Optimizer name
 * \param num_char Number of characters
 * \return 0 when succeed, -1 when failure happens
@@ -1592,6 +1595,7 @@ LIGHTGBM_C_EXPORT int GPB_GetOptimizerCovPars(REModelHandle handle,
 
 /*!
 * \brief Get name of linear regression coefficients optimizer
+* \param handle Handle of REModel
 * \param out_str Optimizer name
 * \param num_char Number of characters
 * \return 0 when succeed, -1 when failure happens

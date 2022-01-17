@@ -109,16 +109,16 @@ namespace GPBoost {
 		/*!
 		* \brief Set configuration parameters for the optimizer
 		* \param init_cov_pars Initial values for covariance parameters of RE components
-		* \param lr Learning rate. If lr<= 0, default values are used. Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
+		* \param lr Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param max_iter Maximal number of iterations
 		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
-		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters. Default = true
-		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
-		* \param trace If true, the value of the gradient is printed for some iterations. Default = false
-		* \param optimizer Options: "gradient_descent" or "fisher_scoring"
-		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
-		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
+		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent")e
+		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc)
+		* \param trace If true, the value of the gradient is printed for some iterations
+		* \param optimizer_cov Optimizer for covariance parameters
+		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc)
+		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
 		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 		*/
 		void SetOptimConfig(double* init_cov_pars, double lr,
@@ -132,8 +132,8 @@ namespace GPBoost {
 		* \param num_covariates Number of coefficients / covariates
 		* \param init_coef Initial values for the regression coefficients
 		* \param lr_coef Learning rate for fixed-effect linear coefficients
-		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
-		* \param optimizer Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares)
+		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
+		* \param optimizer_coef Optimizer for coefficients
 		*/
 		void SetOptimCoefConfig(int num_covariates, double* init_coef,
 			double lr_coef, double acc_rate_coef, const char* optimizer);
@@ -144,7 +144,7 @@ namespace GPBoost {
 		void ResetCovPars();
 
 		/*!
-		* \brief Find parameters that minimize the negative log-ligelihood (=MLE) using (Nesterov accelerated) gradient descent
+		* \brief Find parameters that minimize the (approximate) negative log-ligelihood
 		* \param y_data Response variable data
 		*		For the GPBoost algorithm for Gaussian data, this equals F - y where F is the fitted value of the ensemble at the training data and y the response data.
 		*		For the GPBoost algorithm for non-Gaussian data, this is ignored (and can be nullptr) as the response data has been set before.
@@ -153,7 +153,7 @@ namespace GPBoost {
 		void OptimCovPar(const double* y_data, const double* fixed_effects);
 
 		/*!
-		* \brief Find linear regression coefficients and covariance parameters that minimize the negative log-ligelihood (=MLE) using (Nesterov accelerated) gradient descent
+		* \brief Find covariance parameters and linear regression coefficients (if there are any) that minimize the (approximate) negative log-ligelihood
 		*		 Note: You should pre-allocate memory for optim_par and num_it. Their length equal the number of covariance parameters + number of linear regression coefficients and 1
 		* \param y_data Response variable data
 		* \param covariate_data Covariate data (=independent variables, features)

@@ -473,9 +473,9 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Find linear regression coefficients and covariance parameters that minimize the negative log-ligelihood (=MLE) using (Nesterov accelerated) gradient descent
+		* \brief Find covariance parameters and linear regression coefficients (if there are any) that minimize the (approximate) negative log-ligelihood
 		*		 Note: You should pre-allocate memory for optim_cov_pars and optim_coef. Their length equal the number of covariance parameters and the number of regression coefficients
-		*           If calc_std_dev=true, you also need to pre-allocate memory for std_dev_cov_par and std_dev_coef of the same length for the standard deviations
+		*           If calc_std_dev, you also need to pre-allocate memory for std_dev_cov_par and std_dev_coef of the same length for the standard deviations
 		* \param y_data Response variable data
 		* \param covariate_data Covariate data (=independent variables, features). Set to nullptr if there is no covariate data
 		* \param num_covariates Number of covariates
@@ -485,22 +485,22 @@ namespace GPBoost {
 		* \param init_cov_pars Initial values for covariance parameters of RE components
 		* \param init_coef Initial values for the regression coefficients (can be nullptr)
 		* \param lr_coef Learning rate for fixed-effect linear coefficients
-		* \param lr_cov Learning rate for covariance parameters. If lr<= 0, default values are used. Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
-		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0) (default = 0.5)
-		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0) (default = 0.5)
-		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (default = 2)
-		* \param max_iter Maximal number of iterations (default = 1000)
+		* \param lr_cov Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")
+		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0)
+		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0)
+		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc)
+		* \param max_iter Maximal number of iterations
 		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
-		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters. Default = true, only used for "gradient_descent"
-		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (default = 0)
+		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent")
+		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc)
 		* \param optimizer_cov Optimizer for covariance parameters
 		* \param optimizer_coef Optimizer for coefficients
-		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters (default = nullptr)
-		* \param[out] std_dev_coef Standard deviations for the coefficients (default = nullptr)
-		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information (default = false)
+		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters (can be nullptr, used only if calc_std_dev)
+		* \param[out] std_dev_coef Standard deviations for the coefficients (can be nullptr, used only if calc_std_dev and if covariate_data is not nullptr)
+		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
 		* \param fixed_effects Externally provided fixed effects component of location parameter (can be nullptr, only used for non-Gaussian data)
-		* \param learn_covariance_parameters If true, covariance parameters are estimated (default = true)
+		* \param learn_covariance_parameters If true, covariance parameters are estimated
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data,
 			const double* covariate_data,
