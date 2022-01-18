@@ -100,7 +100,7 @@ autodoc_default_options = {
 autodoc_typehints = "none"
 
 # Generate autosummary pages. Output should be set with: `:toctree: pythonapi/`
-autosummary_generate = ['Python-API.rst']
+autosummary_generate = ['Python_package.rst']
 
 # Only the class' docstring is inserted.
 autoclass_content = 'class'
