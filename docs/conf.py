@@ -194,7 +194,7 @@ htmlhelp_basename = 'GPBoostdoc'
 
 # The name of an image file (relative to this directory) to place at the top of
 # the title page.
-latex_logo = os.path.join(CURR_PATH, 'logo', 'gpboost_sticker.png')
+latex_logo = os.path.join(CURR_PATH, 'logo', 'gpboost_logo.png')
 
 
 def generate_doxygen_xml(app):
