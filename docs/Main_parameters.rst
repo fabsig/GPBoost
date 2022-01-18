@@ -19,7 +19,7 @@ Currently, the combining tree-boosting with Gaussian process and random effects 
 Tree-boosting parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Below is a list of important parameters for the tree-boosting part. An comprehensive list of all tree-bosting related parameters can be found `here <https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst>`_
+Below is a list of important parameters for the tree-boosting part. An comprehensive list of all tree-bosting related parameters can be found `here <https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst>`_.
 
 -  ``num_iterations`` :raw-html:`<a id="num_iterations" title="Permalink to this parameter" href="#num_iterations">&#x1F517;&#xFE0E;</a>`, default = ``100``, type = int, aliases: ``num_iteration``, ``n_iter``, ``num_tree``, ``num_trees``, ``num_round``, ``num_rounds``, ``num_boost_round``, ``n_estimators``, constraints: ``num_iterations >= 0``
 
@@ -181,17 +181,17 @@ prior to running the GPBoost algorithm.
 
 -  ``optimizer_cov`` : string, optional (default = "gradient_descent")
 
-   -  Optimizer used for estimating covariance parameters.
+   -  Optimizer used for estimating covariance parameters
 
    -  Options: "gradient_descent", "fisher_scoring", "nelder_mead", and "bfgs"
 
 -  ``optimizer_coef`` : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
 
-   -  Optimizer used for estimating linear regression coefficients, if there are any (for the GPBoost algorithm there are usually none).
+   -  Optimizer used for estimating linear regression coefficients, if there are any (for the GPBoost algorithm there are usually none)
 
-   -  Options: "gradient_descent", "wls", "nelder_mead", and "bfgs". Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
+   -  Options: "gradient_descent", "wls", "nelder_mead", and "bfgs". Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares
 
-   - If ``optimizer_cov`` is set to "nelder_mead" or "bfgs", ``optimizer_coef`` is automatically also set to the same value.
+   - If ``optimizer_cov`` is set to "nelder_mead" or "bfgs", ``optimizer_coef`` is automatically also set to the same value
 
 -  ``maxit`` : integer, optional (default = 1000)
 
@@ -199,7 +199,7 @@ prior to running the GPBoost algorithm.
 
 -  ``delta_rel_conv`` : double, optional (default = 1e-6)
 
-   -  Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
+   -  Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
 
 -  ``convergence_criterion`` : string, optional (default = "relative_change_in_log_likelihood")
 

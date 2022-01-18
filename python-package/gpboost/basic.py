@@ -4314,9 +4314,9 @@ class GPModel(object):
                 maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
                 delta_rel_conv : double, optional (default = 1e-6)
-                    Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or
-                    the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the
-                    relative change in the log-likelihood
+                    Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
+                    log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is
+                    used instead of the relative change in the log-likelihood
                 convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
@@ -4452,9 +4452,9 @@ class GPModel(object):
                 maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
                 delta_rel_conv : double, optional (default = 1e-6)
-                    Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or
-                    the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the
-                    relative change in the log-likelihood
+                    Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
+                    log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is
+                    used instead of the relative change in the log-likelihood
                 convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".

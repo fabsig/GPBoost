@@ -8,15 +8,15 @@ Parameters
 
 This page contains descriptions of all tree-boosting (i.e., not random effects) related parameters in GPBoost.
 
-Parameters Format
------------------
+.. Parameters Format
+.. -----------------
 
-The parameters format is ``key1=value1 key2=value2 ...``.
-Parameters can be set both in config file and command line.
-By using command line, parameters should not have spaces before and after ``=``.
-By using config files, one line can only contain one parameter. You can use ``#`` to comment.
+.. The parameters format is ``key1=value1 key2=value2 ...``.
+.. Parameters can be set both in config file and command line.
+.. By using command line, parameters should not have spaces before and after ``=``.
+.. By using config files, one line can only contain one parameter. You can use ``#`` to comment.
 
-If one parameter appears in both command line and config file, GPBoost will use the parameter from the command line.
+.. If one parameter appears in both command line and config file, GPBoost will use the parameter from the command line.
 
 .. start params list
 
