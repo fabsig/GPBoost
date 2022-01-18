@@ -31,6 +31,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 * [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst): a comprehensive list of all tree-boosting (i.e., not random effects) related parameters
 * The [**CLI installation guide**](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst) explaining how to install the command line interface (CLI) version
 * Comments on [**computational efficiency and large data**](https://github.com/fabsig/GPBoost/blob/master/docs/Computational_efficiency.rst)
+* The documentation at [**https://gpboost.readthedocs.io**](https://gpboost.readthedocs.io/en/latest/)
 
 
 ## Modeling background
