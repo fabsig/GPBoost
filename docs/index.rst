@@ -2,20 +2,14 @@
 
 .. image:: ./logo/gpboost_sticker.jpg
    :align: center
-   :width: 600
+   :width: 300
 
 |
 
 Documentation of GPBoost
 ========================
 
-**LightGBM** is a gradient boosting framework that uses tree based learning algorithms. It is designed to be distributed and efficient with the following advantages:
-
-- Faster training speed and higher efficiency.
-- Lower memory usage.
-- Better accuracy.
-- Support of parallel and GPU learning.
-- Capable of handling large-scale data.
+**GPBoost** is a software library for combining tree-boosting with Gaussian process and grouped random effects models (aka mixed effects models or latent Gaussian models). It also allows for independently applying tree-boosting as well as Gaussian process and (generalized) linear mixed effects models (LMMs and GLMMs).
 
 .. toctree::
    :maxdepth: 1
