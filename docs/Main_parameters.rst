@@ -1,14 +1,15 @@
 .. role:: raw-html(raw)
     :format: html
 
-Summary of most important parameters for GPBoost
-================================================
+Main parameters for GPBoost
+===========================
 
-This page contains a summary of the most important parameters. We distinguish between (i) tuning and other parameters for the tree-boosting
-part and (ii) modeling specifications and optimization parameters for the Gaussian process and random effects part. Currently, the GPBoost library
-supports the following likelihoods / objective functions for combining tree boosting with Gaussian process and random effects models:
-"gaussian", "bernoulli_probit" (="binary"), "bernoulli_logit", "poisson", "gamma". This distribution of the data can be specified through the
-``objective`` paramter for the tree part or the ``likelihood`` parameter for the random effects model part.
+This page contains a summary of the most important parameters. We distinguish between the following two types of parameters:
+
+- (Tuning-) parameters for the tree-boosting part 
+- Model specification and optimization parameters for the Gaussian process and random effects part
+
+Currently, the combining tree-boosting with Gaussian process and random effects models is supported for the following likelihoods: "gaussian", "bernoulli_probit" (="binary"), "bernoulli_logit", "poisson", "gamma". This distribution of the data can be specified through the ``objective`` paramter for the tree-boosting part or the ``likelihood`` parameter for the random effects model.
 
 .. contents:: **Contents**
     :depth: 2
@@ -18,9 +19,7 @@ supports the following likelihoods / objective functions for combining tree boos
 Tree-boosting parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tree-boosting tuning parameters
--------------------------------
-Below is a list of important tuning parameters for the tree learning part.
+Below is a list of important parameters for the tree-boosting part. An comprehensive list of all tree-bosting related parameters can be found `here <https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst>`_
 
 -  ``num_iterations`` :raw-html:`<a id="num_iterations" title="Permalink to this parameter" href="#num_iterations">&#x1F517;&#xFE0E;</a>`, default = ``100``, type = int, aliases: ``num_iteration``, ``n_iter``, ``num_tree``, ``num_trees``, ``num_round``, ``num_rounds``, ``num_boost_round``, ``n_estimators``, constraints: ``num_iterations >= 0``
 
@@ -62,16 +61,27 @@ Below is a list of important tuning parameters for the tree learning part.
 
    -  applies only to the GPBoost algorithm for Gaussian data and cannot be used for non-Gaussian data
 
+-  ``lambda_l1`` :raw-html:`<a id="lambda_l1" title="Permalink to this parameter" href="#lambda_l1">&#x1F517;&#xFE0E;</a>`, default = ``0.0``, type = double, aliases: ``reg_alpha``, constraints: ``lambda_l1 >= 0.0``
 
-Note that GPBoost uses the LightGBM tree growing algorithm which grows trees using a leaf-wise strategy. I.e. trees are grown by splitting leaf nodes that maximize
-the information gain until the maximal number of leaves ``num_leaves`` or the maximal depth of a tree ``max_depth`` is
-attained, even when this leads to unbalanced trees. This in contrast to a depth-wise growth strategy of other boosting
-implementations which builds more balanced trees. For shallow trees, small ``max_depth``, there is likely no difference between these two tree growing strategies.
-If you only want to tune the maximal depth of a tree ``max_depth`` parameter and not the ``num_leaves`` parameter, it is recommended that you set the ``num_leaves`` parameter to a large value.
+   -  L1 regularization
 
-Other regularization parameters
--------------------------------
+-  ``lambda_l2`` :raw-html:`<a id="lambda_l2" title="Permalink to this parameter" href="#lambda_l2">&#x1F517;&#xFE0E;</a>`, default = ``0.0``, type = double, aliases: ``reg_lambda``, ``lambda``, constraints: ``lambda_l2 >= 0.0``
+
+   -  L2 regularization
+
 -  ``lambda_l1``, ``lambda_l2`` and ``min_gain_to_split``
+
+-  ``max_bin`` :raw-html:`<a id="max_bin" title="Permalink to this parameter" href="#max_bin">&#x1F517;&#xFE0E;</a>`, default = ``255``, type = int, constraints: ``max_bin > 1``
+
+   -  maximal number of bins that feature values will be bucketed in
+
+   -  GPBoost uses histogram-based algorithms `[1, 2, 3] <#references>`__, which bucket continuous feature (covariate) values into discrete bins. A small number speeds up training and reduces memory usage but may reduce the accuracy of the model
+
+-  ``min_gain_to_split`` :raw-html:`<a id="min_gain_to_split" title="Permalink to this parameter" href="#min_gain_to_split">&#x1F517;&#xFE0E;</a>`, default = ``0.0``, type = double, aliases: ``min_split_gain``, constraints: ``min_gain_to_split >= 0.0``
+
+   -  the minimal gain to perform split
+
+Note that GPBoost uses the LightGBM tree growing algorithm which grows trees using a leaf-wise strategy. I.e., trees are grown by splitting leaf nodes that maximize the information gain until the maximal number of leaves ``num_leaves`` or the maximal depth of a tree ``max_depth`` is attained, even when this leads to unbalanced trees. This in contrast to a depth-wise growth strategy of other boosting implementations which builds more balanced trees. For shallow trees (=small ``max_depth``), there is likely no difference between these two tree growing strategies. If you only want to tune the maximal depth of a tree ``max_depth`` parameter and not the ``num_leaves`` parameter, it is recommended that you set the ``num_leaves`` parameter to a large value.
 
 ..
     Categorical features
@@ -84,23 +94,6 @@ Other regularization parameters
     The basic idea is to sort the categories according to the training objective at each split.
 
     For further details on using categorical features, please refer to the ``categorical_feature`` `parameter <./Parameters.rst#categorical_feature>`__.
-
-
-Histogram-based tree growing algorithm
---------------------------------------
-LightGBM, and thus GPBoost, uses histogram-based algorithms `[1, 2, 3] <#references>`__, which bucket continuous feature (covariate) values into discrete bins. This speeds up training and reduces memory usage.
-
--  ``max_bin`` :raw-html:`<a id="max_bin" title="Permalink to this parameter" href="#max_bin">&#x1F517;&#xFE0E;</a>`, default = ``255``, type = int, constraints: ``max_bin > 1``
-
-   -  max number of bins that feature values will be bucketed in
-
-   -  small number of bins may reduce training accuracy but may increase general power (deal with over-fitting)
-
-
-Missing Value Handle
---------------------
-
--  Missing values are handled by default. Disable it by setting ``use_missing=false``.
 
 
 Gaussian process and random effects parameters

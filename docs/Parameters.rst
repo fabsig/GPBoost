@@ -6,7 +6,7 @@
 Parameters
 ==========
 
-This page contains descriptions of all tree-boosting, i.e., not random effects, related parameters in GPBoost.
+This page contains descriptions of all tree-boosting (i.e., not random effects) related parameters in GPBoost.
 
 Parameters Format
 -----------------

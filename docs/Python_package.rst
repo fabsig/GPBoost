@@ -1,10 +1,10 @@
-Python API
-==========
+Python Package
+==============
 
 .. currentmodule:: gpboost
 
-Data Structure API
-------------------
+Data Structure and GPModel
+--------------------------
 
 .. autosummary::
     :toctree: pythonapi/
@@ -14,8 +14,8 @@ Data Structure API
     GPModel
     CVBooster
 
-Training API
-------------
+GPBoost Algorithm Training and Choosing Tuning Parameters
+---------------------------------------------------------
 
 .. autosummary::
     :toctree: pythonapi/

@@ -26,7 +26,7 @@ for IN_FILE in IN_FILES:
         )
     ]
 
-    prefix = 'LIGHTGBM_C_EXPORT LGBM_SE '
+    prefix = 'GPBOOST_C_EXPORT LGBM_SE '
     current_function = None
     for line in txt:
         if line.startswith(prefix):

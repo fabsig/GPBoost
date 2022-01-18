@@ -1,4 +1,5 @@
-# Comments on computational efficiency for the GPBoost library
+Comments on computational efficiency for GPBoost
+================================================
 
 Training of random effects models and Gaussian process models, in particular, is computational demanding, and this issue translates to the GPBoost algorithm. In the following, a few strategies for computationally efficient inference are presented.
 
