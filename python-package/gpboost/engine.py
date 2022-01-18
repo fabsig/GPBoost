@@ -25,7 +25,7 @@ def train(params, train_set, num_boost_round=100,
           early_stopping_rounds=None, evals_result=None,
           verbose_eval=True, learning_rates=None,
           keep_training_booster=False, callbacks=None):
-    """Perform the training with given parameters.
+    """Training function.
 
     Parameters
     ----------
@@ -521,7 +521,7 @@ def cv(params, train_set, num_boost_round=100,
        verbose_eval=None, show_stdv=False, seed=0,
        callbacks=None, eval_train_metric=False,
        return_cvbooster=False):
-    """Perform the cross-validation with given paramaters.
+    """Perform cross-validation for choosing number of boosting iterations.
 
     Parameters
     ----------
