@@ -1091,7 +1091,7 @@ SEXP GPB_GetLikelihoodName_R(SEXP handle) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetLikelihoodName(R_ExternalPtrAddr(handle),
 		inner_char_buf.data(),
-		num_char));
+		&num_char));
 	R_API_END();
 	ret = PROTECT(Rf_allocVector(STRSXP, 1));
 	SET_STRING_ELT(ret, 0, Rf_mkChar(inner_char_buf.data()));
@@ -1106,7 +1106,7 @@ SEXP GPB_GetOptimizerCovPars_R(SEXP handle) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetOptimizerCovPars(R_ExternalPtrAddr(handle),
 		inner_char_buf.data(),
-		num_char));
+		&num_char));
 	R_API_END();
 	ret = PROTECT(Rf_allocVector(STRSXP, 1));
 	SET_STRING_ELT(ret, 0, Rf_mkChar(inner_char_buf.data()));
@@ -1121,7 +1121,7 @@ SEXP GPB_GetOptimizerCoef_R(SEXP handle) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetOptimizerCoef(R_ExternalPtrAddr(handle),
 		inner_char_buf.data(),
-		num_char));
+		&num_char));
 	R_API_END();
 	ret = PROTECT(Rf_allocVector(STRSXP, 1));
 	SET_STRING_ELT(ret, 0, Rf_mkChar(inner_char_buf.data()));

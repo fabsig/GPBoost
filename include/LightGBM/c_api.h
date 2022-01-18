@@ -1574,35 +1574,35 @@ LIGHTGBM_C_EXPORT int GPB_PredictREModel(REModelHandle handle,
 /*!
 * \brief Get name of likelihood
 * \param handle Handle of REModel
-* \param out_str Likelihood name
-* \param num_char Number of characters
+* \param[out] out_str Likelihood name
+* \param[out] num_char Number of characters
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT int GPB_GetLikelihoodName(REModelHandle handle,
     char* out_str,
-    int& num_char);
+    int* num_char);
 
 /*!
 * \brief Get name of covariance parameter optimizer
 * \param handle Handle of REModel
-* \param out_str Optimizer name
-* \param num_char Number of characters
+* \param[out] out_str Optimizer name
+* \param[out] num_char Number of characters
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT int GPB_GetOptimizerCovPars(REModelHandle handle,
     char* out_str,
-    int& num_char);
+    int* num_char);
 
 /*!
 * \brief Get name of linear regression coefficients optimizer
 * \param handle Handle of REModel
-* \param out_str Optimizer name
-* \param num_char Number of characters
+* \param[out] out_str Optimizer name
+* \param[out] num_char Number of characters
 * \return 0 when succeed, -1 when failure happens
 */
 LIGHTGBM_C_EXPORT int GPB_GetOptimizerCoef(REModelHandle handle,
     char* out_str,
-    int& num_char);
+    int* num_char);
 
 /*!
 * \brief Set the type of likelihood
