@@ -1225,7 +1225,7 @@ static const R_CallMethodDef CallEntries[] = {
   {NULL, NULL, 0}
 };
 
-LIGHTGBM_C_EXPORT void R_init_gpboost(DllInfo* dll);
+GPBOOST_C_EXPORT void R_init_gpboost(DllInfo* dll);
 
 void R_init_gpboost(DllInfo* dll) {
 	R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);

@@ -51,14 +51,14 @@ typedef void* REModelHandle;  /*!< \brief Handle of re_model. */
  * \brief Get string message of the last error.
  * \return Error information
  */
-LIGHTGBM_C_EXPORT const char* LGBM_GetLastError();
+GPBOOST_C_EXPORT const char* LGBM_GetLastError();
 
 /*!
  * \brief Register a callback function for log redirecting.
  * \param callback The callback function to register
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_RegisterLogCallback(void (*callback)(const char*));
+GPBOOST_C_EXPORT int LGBM_RegisterLogCallback(void (*callback)(const char*));
 
 // --- start Dataset interface
 
@@ -70,7 +70,7 @@ LIGHTGBM_C_EXPORT int LGBM_RegisterLogCallback(void (*callback)(const char*));
  * \param[out] out A loaded dataset
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromFile(const char* filename,
+GPBOOST_C_EXPORT int LGBM_DatasetCreateFromFile(const char* filename,
                                                  const char* parameters,
                                                  const DatasetHandle reference,
                                                  DatasetHandle* out);
@@ -87,7 +87,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromFile(const char* filename,
  * \param[out] out Created dataset
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromSampledColumn(double** sample_data,
+GPBOOST_C_EXPORT int LGBM_DatasetCreateFromSampledColumn(double** sample_data,
                                                           int** sample_indices,
                                                           int32_t ncol,
                                                           const int* num_per_col,
@@ -103,7 +103,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromSampledColumn(double** sample_data,
  * \param[out] out Created dataset
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetCreateByReference(const DatasetHandle reference,
+GPBOOST_C_EXPORT int LGBM_DatasetCreateByReference(const DatasetHandle reference,
                                                     int64_t num_total_row,
                                                     DatasetHandle* out);
 
@@ -117,7 +117,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetCreateByReference(const DatasetHandle referenc
  * \param start_row Row start index
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetPushRows(DatasetHandle dataset,
+GPBOOST_C_EXPORT int LGBM_DatasetPushRows(DatasetHandle dataset,
                                            const void* data,
                                            int data_type,
                                            int32_t nrow,
@@ -138,7 +138,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetPushRows(DatasetHandle dataset,
  * \param start_row Row start index
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetPushRowsByCSR(DatasetHandle dataset,
+GPBOOST_C_EXPORT int LGBM_DatasetPushRowsByCSR(DatasetHandle dataset,
                                                 const void* indptr,
                                                 int indptr_type,
                                                 const int32_t* indices,
@@ -164,7 +164,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetPushRowsByCSR(DatasetHandle dataset,
  * \param[out] out Created dataset
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromCSR(const void* indptr,
+GPBOOST_C_EXPORT int LGBM_DatasetCreateFromCSR(const void* indptr,
                                                 int indptr_type,
                                                 const int32_t* indices,
                                                 const void* data,
@@ -187,7 +187,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromCSR(const void* indptr,
  * \param[out] out Created dataset
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromCSRFunc(void* get_row_funptr,
+GPBOOST_C_EXPORT int LGBM_DatasetCreateFromCSRFunc(void* get_row_funptr,
                                                     int num_rows,
                                                     int64_t num_col,
                                                     const char* parameters,
@@ -209,7 +209,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromCSRFunc(void* get_row_funptr,
  * \param[out] out Created dataset
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromCSC(const void* col_ptr,
+GPBOOST_C_EXPORT int LGBM_DatasetCreateFromCSC(const void* col_ptr,
                                                 int col_ptr_type,
                                                 const int32_t* indices,
                                                 const void* data,
@@ -233,7 +233,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromCSC(const void* col_ptr,
  * \param[out] out Created dataset
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromMat(const void* data,
+GPBOOST_C_EXPORT int LGBM_DatasetCreateFromMat(const void* data,
                                                 int data_type,
                                                 int32_t nrow,
                                                 int32_t ncol,
@@ -255,7 +255,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromMat(const void* data,
  * \param[out] out Created dataset
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromMats(int32_t nmat,
+GPBOOST_C_EXPORT int LGBM_DatasetCreateFromMats(int32_t nmat,
                                                  const void** data,
                                                  int data_type,
                                                  int32_t* nrow,
@@ -274,7 +274,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetCreateFromMats(int32_t nmat,
  * \param[out] out Subset of data
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetGetSubset(const DatasetHandle handle,
+GPBOOST_C_EXPORT int LGBM_DatasetGetSubset(const DatasetHandle handle,
                                             const int32_t* used_row_indices,
                                             int32_t num_used_row_indices,
                                             const char* parameters,
@@ -287,7 +287,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetGetSubset(const DatasetHandle handle,
  * \param num_feature_names Number of feature names
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetSetFeatureNames(DatasetHandle handle,
+GPBOOST_C_EXPORT int LGBM_DatasetSetFeatureNames(DatasetHandle handle,
                                                   const char** feature_names,
                                                   int num_feature_names);
 
@@ -303,7 +303,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetSetFeatureNames(DatasetHandle handle,
  * \param[out] feature_names Feature names, should pre-allocate memory
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetGetFeatureNames(DatasetHandle handle,
+GPBOOST_C_EXPORT int LGBM_DatasetGetFeatureNames(DatasetHandle handle,
                                                   const int len,
                                                   int* num_feature_names,
                                                   const size_t buffer_len,
@@ -315,7 +315,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetGetFeatureNames(DatasetHandle handle,
  * \param handle Handle of dataset to be freed
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetFree(DatasetHandle handle);
+GPBOOST_C_EXPORT int LGBM_DatasetFree(DatasetHandle handle);
 
 /*!
  * \brief Save dataset to binary file.
@@ -323,7 +323,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetFree(DatasetHandle handle);
  * \param filename The name of the file
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetSaveBinary(DatasetHandle handle,
+GPBOOST_C_EXPORT int LGBM_DatasetSaveBinary(DatasetHandle handle,
                                              const char* filename);
 
 /*!
@@ -332,7 +332,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetSaveBinary(DatasetHandle handle,
  * \param filename The name of the file
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetDumpText(DatasetHandle handle,
+GPBOOST_C_EXPORT int LGBM_DatasetDumpText(DatasetHandle handle,
                                            const char* filename);
 
 /*!
@@ -348,7 +348,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetDumpText(DatasetHandle handle,
  * \param type Type of ``field_data`` pointer, can be ``C_API_DTYPE_INT32``, ``C_API_DTYPE_FLOAT32`` or ``C_API_DTYPE_FLOAT64``
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetSetField(DatasetHandle handle,
+GPBOOST_C_EXPORT int LGBM_DatasetSetField(DatasetHandle handle,
                                            const char* field_name,
                                            const void* field_data,
                                            int num_element,
@@ -363,7 +363,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetSetField(DatasetHandle handle,
  * \param[out] out_type Type of result pointer, can be ``C_API_DTYPE_INT32``, ``C_API_DTYPE_FLOAT32`` or ``C_API_DTYPE_FLOAT64``
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetGetField(DatasetHandle handle,
+GPBOOST_C_EXPORT int LGBM_DatasetGetField(DatasetHandle handle,
                                            const char* field_name,
                                            int* out_len,
                                            const void** out_ptr,
@@ -375,7 +375,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetGetField(DatasetHandle handle,
  * \param new_parameters New dataset parameters
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetUpdateParamChecking(const char* old_parameters,
+GPBOOST_C_EXPORT int LGBM_DatasetUpdateParamChecking(const char* old_parameters,
                                                       const char* new_parameters);
 
 /*!
@@ -384,7 +384,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetUpdateParamChecking(const char* old_parameters
  * \param[out] out The address to hold number of data points
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetGetNumData(DatasetHandle handle,
+GPBOOST_C_EXPORT int LGBM_DatasetGetNumData(DatasetHandle handle,
                                              int* out);
 
 /*!
@@ -393,7 +393,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetGetNumData(DatasetHandle handle,
  * \param[out] out The address to hold number of features
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetGetNumFeature(DatasetHandle handle,
+GPBOOST_C_EXPORT int LGBM_DatasetGetNumFeature(DatasetHandle handle,
                                                 int* out);
 
 /*!
@@ -402,7 +402,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetGetNumFeature(DatasetHandle handle,
  * \param source The handle of the dataset to take features from
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_DatasetAddFeaturesFrom(DatasetHandle target,
+GPBOOST_C_EXPORT int LGBM_DatasetAddFeaturesFrom(DatasetHandle target,
                                                   DatasetHandle source);
 
 // --- start Booster interfaces
@@ -413,7 +413,7 @@ LIGHTGBM_C_EXPORT int LGBM_DatasetAddFeaturesFrom(DatasetHandle target,
 * \param[out] out The address to hold linear trees indicator
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetLinear(BoosterHandle handle, bool* out);
+GPBOOST_C_EXPORT int LGBM_BoosterGetLinear(BoosterHandle handle, bool* out);
 
 /*!
  * \brief Create a new boosting learner.
@@ -422,7 +422,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetLinear(BoosterHandle handle, bool* out);
  * \param[out] out Handle of created booster
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterCreate(const DatasetHandle train_data,
+GPBOOST_C_EXPORT int LGBM_BoosterCreate(const DatasetHandle train_data,
                                          const char* parameters,
                                          BoosterHandle* out);
 
@@ -434,7 +434,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterCreate(const DatasetHandle train_data,
  * \param[out] out Handle of created booster
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_GPBoosterCreate(const DatasetHandle train_data,
+GPBOOST_C_EXPORT int LGBM_GPBoosterCreate(const DatasetHandle train_data,
     const char* parameters,
     const REModelHandle re_model,
     BoosterHandle* out);
@@ -446,7 +446,7 @@ LIGHTGBM_C_EXPORT int LGBM_GPBoosterCreate(const DatasetHandle train_data,
  * \param[out] out Handle of created booster
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterCreateFromModelfile(const char* filename,
+GPBOOST_C_EXPORT int LGBM_BoosterCreateFromModelfile(const char* filename,
                                                       int* out_num_iterations,
                                                       BoosterHandle* out);
 
@@ -457,7 +457,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterCreateFromModelfile(const char* filename,
  * \param[out] out Handle of created booster
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterLoadModelFromString(const char* model_str,
+GPBOOST_C_EXPORT int LGBM_BoosterLoadModelFromString(const char* model_str,
                                                       int* out_num_iterations,
                                                       BoosterHandle* out);
 
@@ -466,7 +466,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterLoadModelFromString(const char* model_str,
  * \param handle Handle of booster to be freed
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterFree(BoosterHandle handle);
+GPBOOST_C_EXPORT int LGBM_BoosterFree(BoosterHandle handle);
 
 /*!
  * \brief Shuffle models.
@@ -475,7 +475,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterFree(BoosterHandle handle);
  * \param end_iter The last iteration that will be shuffled
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterShuffleModels(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterShuffleModels(BoosterHandle handle,
                                                 int start_iter,
                                                 int end_iter);
 
@@ -485,7 +485,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterShuffleModels(BoosterHandle handle,
  * \param other_handle Other handle of booster
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterMerge(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterMerge(BoosterHandle handle,
                                         BoosterHandle other_handle);
 
 /*!
@@ -494,7 +494,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterMerge(BoosterHandle handle,
  * \param valid_data Validation dataset
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterAddValidData(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterAddValidData(BoosterHandle handle,
                                                const DatasetHandle valid_data);
 
 /*!
@@ -503,7 +503,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterAddValidData(BoosterHandle handle,
  * \param train_data Training dataset
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterResetTrainingData(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterResetTrainingData(BoosterHandle handle,
                                                     const DatasetHandle train_data);
 
 /*!
@@ -512,7 +512,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterResetTrainingData(BoosterHandle handle,
  * \param parameters Parameters in format 'key1=value1 key2=value2'
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterResetParameter(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterResetParameter(BoosterHandle handle,
                                                  const char* parameters);
 
 /*!
@@ -521,7 +521,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterResetParameter(BoosterHandle handle,
  * \param[out] out_len Number of classes
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetNumClasses(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetNumClasses(BoosterHandle handle,
                                                 int* out_len);
 
 /*!
@@ -530,7 +530,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetNumClasses(BoosterHandle handle,
  * \param[out] is_finished 1 means the update was successfully finished (cannot split any more), 0 indicates failure
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterUpdateOneIter(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterUpdateOneIter(BoosterHandle handle,
                                                 int* is_finished);
 
 /*!
@@ -541,7 +541,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterUpdateOneIter(BoosterHandle handle,
  * \param ncol Number of columns of ``leaf_preds``
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterRefit(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterRefit(BoosterHandle handle,
                                         const int32_t* leaf_preds,
                                         int32_t nrow,
                                         int32_t ncol);
@@ -555,7 +555,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterRefit(BoosterHandle handle,
  * \param[out] is_finished 1 means the update was successfully finished (cannot split any more), 0 indicates failure
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterUpdateOneIterCustom(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterUpdateOneIterCustom(BoosterHandle handle,
                                                       const float* grad,
                                                       const float* hess,
                                                       int* is_finished);
@@ -565,7 +565,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterUpdateOneIterCustom(BoosterHandle handle,
  * \param handle Handle of booster
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterRollbackOneIter(BoosterHandle handle);
+GPBOOST_C_EXPORT int LGBM_BoosterRollbackOneIter(BoosterHandle handle);
 
 /*!
  * \brief Get index of the current boosting iteration.
@@ -573,7 +573,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterRollbackOneIter(BoosterHandle handle);
  * \param[out] out_iteration Index of the current boosting iteration
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetCurrentIteration(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetCurrentIteration(BoosterHandle handle,
                                                       int* out_iteration);
 
 /*!
@@ -582,7 +582,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetCurrentIteration(BoosterHandle handle,
  * \param[out] out_tree_per_iteration Number of trees per iteration
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterNumModelPerIteration(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterNumModelPerIteration(BoosterHandle handle,
                                                        int* out_tree_per_iteration);
 
 /*!
@@ -591,7 +591,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterNumModelPerIteration(BoosterHandle handle,
  * \param[out] out_models Number of weak sub-models
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterNumberOfTotalModel(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterNumberOfTotalModel(BoosterHandle handle,
                                                      int* out_models);
 
 /*!
@@ -600,7 +600,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterNumberOfTotalModel(BoosterHandle handle,
  * \param[out] out_len Total number of evaluation datasets
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetEvalCounts(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetEvalCounts(BoosterHandle handle,
                                                 int* out_len);
 
 /*!
@@ -615,7 +615,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetEvalCounts(BoosterHandle handle,
  * \param[out] out_strs Names of evaluation datasets, should pre-allocate memory
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetEvalNames(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetEvalNames(BoosterHandle handle,
                                                const int len,
                                                int* out_len,
                                                const size_t buffer_len,
@@ -634,7 +634,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetEvalNames(BoosterHandle handle,
  * \param[out] out_strs Names of features, should pre-allocate memory
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetFeatureNames(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetFeatureNames(BoosterHandle handle,
                                                   const int len,
                                                   int* out_len,
                                                   const size_t buffer_len,
@@ -647,7 +647,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetFeatureNames(BoosterHandle handle,
  * \param[out] out_len Total number of features
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetNumFeature(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetNumFeature(BoosterHandle handle,
                                                 int* out_len);
 
 /*!
@@ -661,7 +661,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetNumFeature(BoosterHandle handle,
  * \param[out] out_results Array with evaluation results
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetEval(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetEval(BoosterHandle handle,
                                           int data_idx,
                                           int* out_len,
                                           double* out_results);
@@ -674,7 +674,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetEval(BoosterHandle handle,
  * \param[out] out_len Number of predictions
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetNumPredict(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetNumPredict(BoosterHandle handle,
                                                 int data_idx,
                                                 int64_t* out_len);
 
@@ -688,7 +688,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetNumPredict(BoosterHandle handle,
  * \param[out] out_result Pointer to array with predictions
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetPredict(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetPredict(BoosterHandle handle,
                                              int data_idx,
                                              int64_t* out_len,
                                              double* out_result);
@@ -709,7 +709,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetPredict(BoosterHandle handle,
  * \param result_filename Filename of result file in which predictions will be written
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForFile(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForFile(BoosterHandle handle,
                                                  const char* data_filename,
                                                  int data_has_header,
                                                  int predict_type,
@@ -732,7 +732,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForFile(BoosterHandle handle,
  * \param[out] out_len Length of prediction
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterCalcNumPredict(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterCalcNumPredict(BoosterHandle handle,
                                                  int num_row,
                                                  int predict_type,
                                                  int start_iteration,
@@ -745,7 +745,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterCalcNumPredict(BoosterHandle handle,
  * \param fastConfig Handle to the FastConfig object acquired with a ``*FastInit()`` method.
  * \return 0 when it succeeds, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_FastConfigFree(FastConfigHandle fastConfig);
+GPBOOST_C_EXPORT int LGBM_FastConfigFree(FastConfigHandle fastConfig);
 
 /*!
  * \brief Make prediction for a new dataset in CSR format.
@@ -775,7 +775,7 @@ LIGHTGBM_C_EXPORT int LGBM_FastConfigFree(FastConfigHandle fastConfig);
  * \param[out] out_result Pointer to array with predictions
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForCSR(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForCSR(BoosterHandle handle,
                                                 const void* indptr,
                                                 int indptr_type,
                                                 const int32_t* indices,
@@ -819,7 +819,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForCSR(BoosterHandle handle,
  * \param[out] out_data Pointer to sparse data space
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictSparseOutput(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictSparseOutput(BoosterHandle handle,
                                                       const void* indptr,
                                                       int indptr_type,
                                                       const int32_t* indices,
@@ -847,7 +847,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictSparseOutput(BoosterHandle handle,
  * \param data_type Type of ``data`` pointer, can be ``C_API_DTYPE_FLOAT32`` or ``C_API_DTYPE_FLOAT64``
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterFreePredictSparse(void* indptr, int32_t* indices, void* data, int indptr_type, int data_type);
+GPBOOST_C_EXPORT int LGBM_BoosterFreePredictSparse(void* indptr, int32_t* indices, void* data, int indptr_type, int data_type);
 
 /*!
  * \brief Make prediction for a new dataset in CSR format. This method re-uses the internal predictor structure
@@ -878,7 +878,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterFreePredictSparse(void* indptr, int32_t* indic
  * \param[out] out_result Pointer to array with predictions
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForCSRSingleRow(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForCSRSingleRow(BoosterHandle handle,
                                                          const void* indptr,
                                                          int indptr_type,
                                                          const int32_t* indices,
@@ -913,7 +913,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForCSRSingleRow(BoosterHandle handle,
  * \param[out] out_fastConfig FastConfig object with which you can call ``LGBM_BoosterPredictForCSRSingleRowFast``
  * \return 0 when it succeeds, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForCSRSingleRowFastInit(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForCSRSingleRowFastInit(BoosterHandle handle,
                                                                  const int predict_type,
                                                                  const int start_iteration,
                                                                  const int num_iteration,
@@ -953,7 +953,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForCSRSingleRowFastInit(BoosterHandle h
  * \param[out] out_result Pointer to array with predictions
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForCSRSingleRowFast(FastConfigHandle fastConfig_handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForCSRSingleRowFast(FastConfigHandle fastConfig_handle,
                                                              const void* indptr,
                                                              const int indptr_type,
                                                              const int32_t* indices,
@@ -991,7 +991,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForCSRSingleRowFast(FastConfigHandle fa
  * \param[out] out_result Pointer to array with predictions
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForCSC(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForCSC(BoosterHandle handle,
                                                 const void* col_ptr,
                                                 int col_ptr_type,
                                                 const int32_t* indices,
@@ -1032,7 +1032,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForCSC(BoosterHandle handle,
  * \param[out] out_result Pointer to array with predictions
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForMat(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForMat(BoosterHandle handle,
                                                 const void* data,
                                                 int data_type,
                                                 int32_t nrow,
@@ -1070,7 +1070,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForMat(BoosterHandle handle,
  * \param[out] out_result Pointer to array with predictions
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForMatSingleRow(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForMatSingleRow(BoosterHandle handle,
                                                          const void* data,
                                                          int data_type,
                                                          int ncol,
@@ -1101,7 +1101,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForMatSingleRow(BoosterHandle handle,
  * \param[out] out_fastConfig FastConfig object with which you can call ``LGBM_BoosterPredictForMatSingleRowFast``
  * \return 0 when it succeeds, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForMatSingleRowFastInit(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForMatSingleRowFastInit(BoosterHandle handle,
                                                                  const int predict_type,
                                                                  const int start_iteration,
                                                                  const int num_iteration,
@@ -1130,7 +1130,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForMatSingleRowFastInit(BoosterHandle h
  * \param[out] out_result Pointer to array with predictions
  * \return 0 when it succeeds, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForMatSingleRowFast(FastConfigHandle fastConfig_handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForMatSingleRowFast(FastConfigHandle fastConfig_handle,
                                                              const void* data,
                                                              int64_t* out_len,
                                                              double* out_result);
@@ -1159,7 +1159,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForMatSingleRowFast(FastConfigHandle fa
  * \param[out] out_result Pointer to array with predictions
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForMats(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterPredictForMats(BoosterHandle handle,
                                                  const void** data,
                                                  int data_type,
                                                  int32_t nrow,
@@ -1180,7 +1180,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterPredictForMats(BoosterHandle handle,
  * \param filename The name of the file
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterSaveModel(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterSaveModel(BoosterHandle handle,
                                             int start_iteration,
                                             int num_iteration,
                                             int feature_importance_type,
@@ -1197,7 +1197,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterSaveModel(BoosterHandle handle,
  * \param[out] out_str String of model, should pre-allocate memory
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterSaveModelToString(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterSaveModelToString(BoosterHandle handle,
                                                     int start_iteration,
                                                     int num_iteration,
                                                     int feature_importance_type,
@@ -1216,7 +1216,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterSaveModelToString(BoosterHandle handle,
  * \param[out] out_str JSON format string of model, should pre-allocate memory
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterDumpModel(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterDumpModel(BoosterHandle handle,
                                             int start_iteration,
                                             int num_iteration,
                                             int feature_importance_type,
@@ -1232,7 +1232,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterDumpModel(BoosterHandle handle,
  * \param[out] out_val Output result from the specified leaf
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetLeafValue(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetLeafValue(BoosterHandle handle,
                                                int tree_idx,
                                                int leaf_idx,
                                                double* out_val);
@@ -1245,7 +1245,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetLeafValue(BoosterHandle handle,
  * \param val Leaf value
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterSetLeafValue(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterSetLeafValue(BoosterHandle handle,
                                                int tree_idx,
                                                int leaf_idx,
                                                double val);
@@ -1260,7 +1260,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterSetLeafValue(BoosterHandle handle,
  * \param[out] out_results Result array with feature importance
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterFeatureImportance(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterFeatureImportance(BoosterHandle handle,
                                                     int num_iteration,
                                                     int importance_type,
                                                     double* out_results);
@@ -1271,7 +1271,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterFeatureImportance(BoosterHandle handle,
  * \param[out] out_results Result pointing to max value
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetUpperBoundValue(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetUpperBoundValue(BoosterHandle handle,
                                                      double* out_results);
 
 /*!
@@ -1280,7 +1280,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetUpperBoundValue(BoosterHandle handle,
  * \param[out] out_results Result pointing to min value
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_BoosterGetLowerBoundValue(BoosterHandle handle,
+GPBOOST_C_EXPORT int LGBM_BoosterGetLowerBoundValue(BoosterHandle handle,
                                                      double* out_results);
 
 /*!
@@ -1291,7 +1291,7 @@ LIGHTGBM_C_EXPORT int LGBM_BoosterGetLowerBoundValue(BoosterHandle handle,
  * \param num_machines Total number of machines
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_NetworkInit(const char* machines,
+GPBOOST_C_EXPORT int LGBM_NetworkInit(const char* machines,
                                        int local_listen_port,
                                        int listen_time_out,
                                        int num_machines);
@@ -1300,7 +1300,7 @@ LIGHTGBM_C_EXPORT int LGBM_NetworkInit(const char* machines,
  * \brief Finalize the network.
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_NetworkFree();
+GPBOOST_C_EXPORT int LGBM_NetworkFree();
 
 /*!
  * \brief Initialize the network with external collective functions.
@@ -1310,7 +1310,7 @@ LIGHTGBM_C_EXPORT int LGBM_NetworkFree();
  * \param allgather_ext_fun The external allgather function
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int LGBM_NetworkInitWithFunctions(int num_machines,
+GPBOOST_C_EXPORT int LGBM_NetworkInitWithFunctions(int num_machines,
                                                     int rank,
                                                     void* reduce_scatter_ext_fun,
                                                     void* allgather_ext_fun);
@@ -1344,7 +1344,7 @@ LIGHTGBM_C_EXPORT int LGBM_NetworkInitWithFunctions(int num_machines,
 * \param[out] out Created REModel
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_CreateREModel(int32_t num_data,
+GPBOOST_C_EXPORT int GPB_CreateREModel(int32_t num_data,
     const int32_t* cluster_ids_data,
     const char* re_group_data,
     int32_t num_re_group,
@@ -1372,7 +1372,7 @@ LIGHTGBM_C_EXPORT int GPB_CreateREModel(int32_t num_data,
  * \param handle Handle of REModel to be freed
  * \return 0 when succeed, -1 when failure happens
  */
-LIGHTGBM_C_EXPORT int GPB_REModelFree(REModelHandle handle);
+GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 
 /*!
 * \brief Set configuration parameters for the optimizer
@@ -1391,7 +1391,7 @@ LIGHTGBM_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
     double* init_cov_pars,
     double lr,
     double acc_rate_cov,
@@ -1415,7 +1415,7 @@ LIGHTGBM_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
 * \param optimizer Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares)
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_SetOptimCoefConfig(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_SetOptimCoefConfig(REModelHandle handle,
     int num_covariates,
     double* init_coef,
     double lr_coef,
@@ -1429,7 +1429,7 @@ LIGHTGBM_C_EXPORT int GPB_SetOptimCoefConfig(REModelHandle handle,
 * \param fixed_effects Fixed effects component F of location parameter (only used for non-Gaussian data). For Gaussian data, this is ignored
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_OptimCovPar(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_OptimCovPar(REModelHandle handle,
     const double* y_data,
     const double* fixed_effects);
 
@@ -1442,7 +1442,7 @@ LIGHTGBM_C_EXPORT int GPB_OptimCovPar(REModelHandle handle,
 * \param num_covariates Number of covariates
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_OptimLinRegrCoefCovPar(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_OptimLinRegrCoefCovPar(REModelHandle handle,
     const double* y_data,
     const double* covariate_data,
     int num_covariates);
@@ -1455,7 +1455,7 @@ LIGHTGBM_C_EXPORT int GPB_OptimLinRegrCoefCovPar(REModelHandle handle,
 * \param[out] negll Negative log-likelihood
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_EvalNegLogLikelihood(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_EvalNegLogLikelihood(REModelHandle handle,
     const double* y_data,
     double* cov_pars,
     double* negll);
@@ -1468,7 +1468,7 @@ LIGHTGBM_C_EXPORT int GPB_EvalNegLogLikelihood(REModelHandle handle,
 * \param calc_std_dev If true, standard deviations are also exported
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_GetCovPar(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_GetCovPar(REModelHandle handle,
     double* optim_cov_pars,
     bool calc_std_dev);
 
@@ -1479,7 +1479,7 @@ LIGHTGBM_C_EXPORT int GPB_GetCovPar(REModelHandle handle,
 * \param[out] init_cov_pars Initial covariance parameters
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_GetInitCovPar(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_GetInitCovPar(REModelHandle handle,
     double* init_cov_pars);
 
 /*!
@@ -1490,7 +1490,7 @@ LIGHTGBM_C_EXPORT int GPB_GetInitCovPar(REModelHandle handle,
 * \param calc_std_dev If true, standard deviations are also exported
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_GetCoef(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_GetCoef(REModelHandle handle,
     double* optim_coef,
     bool calc_std_dev);
 
@@ -1501,7 +1501,7 @@ LIGHTGBM_C_EXPORT int GPB_GetCoef(REModelHandle handle,
 * \param[out] num_it Number of iterations for convergence
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
     int* num_it);
 
 /*!
@@ -1515,7 +1515,7 @@ LIGHTGBM_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
 * \param gp_rand_coef_data_pred Covariate data for Gaussian process random coefficients
 * \param covariate_data_pred Covariate data (=independent variables, features) for prediction
 */
-LIGHTGBM_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
     int32_t num_data_pred,
     const int32_t* cluster_ids_data_pred,
     const char* re_group_data_pred,
@@ -1551,7 +1551,7 @@ LIGHTGBM_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
 * \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_PredictREModel(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_PredictREModel(REModelHandle handle,
     const double* y_data,
     int32_t num_data_pred,
     double* out_predict,
@@ -1578,7 +1578,7 @@ LIGHTGBM_C_EXPORT int GPB_PredictREModel(REModelHandle handle,
 * \param[out] num_char Number of characters
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_GetLikelihoodName(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_GetLikelihoodName(REModelHandle handle,
     char* out_str,
     int* num_char);
 
@@ -1589,7 +1589,7 @@ LIGHTGBM_C_EXPORT int GPB_GetLikelihoodName(REModelHandle handle,
 * \param[out] num_char Number of characters
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_GetOptimizerCovPars(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_GetOptimizerCovPars(REModelHandle handle,
     char* out_str,
     int* num_char);
 
@@ -1600,7 +1600,7 @@ LIGHTGBM_C_EXPORT int GPB_GetOptimizerCovPars(REModelHandle handle,
 * \param[out] num_char Number of characters
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_GetOptimizerCoef(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_GetOptimizerCoef(REModelHandle handle,
     char* out_str,
     int* num_char);
 
@@ -1610,7 +1610,7 @@ LIGHTGBM_C_EXPORT int GPB_GetOptimizerCoef(REModelHandle handle,
 * \param likelihood Likelihood name
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_SetLikelihood(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_SetLikelihood(REModelHandle handle,
     const char* likelihood);
 
 /*!
@@ -1619,7 +1619,7 @@ LIGHTGBM_C_EXPORT int GPB_SetLikelihood(REModelHandle handle,
 * \param[out] response_data Response variable data (memory needs to be preallocated)
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_GetResponseData(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_GetResponseData(REModelHandle handle,
     double* response_data);
 
 /*!
@@ -1628,7 +1628,7 @@ LIGHTGBM_C_EXPORT int GPB_GetResponseData(REModelHandle handle,
 * \param[out] covariate_data covariate data
 * \return 0 when succeed, -1 when failure happens
 */
-LIGHTGBM_C_EXPORT int GPB_GetCovariateData(REModelHandle handle,
+GPBOOST_C_EXPORT int GPB_GetCovariateData(REModelHandle handle,
     double* covariate_data);
 
 #if defined(_MSC_VER)
