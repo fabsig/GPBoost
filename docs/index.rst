@@ -1,8 +1,8 @@
 .. GPBoost documentation master file
 
-.. image:: ./logo/gpboost_sticker.jpg
+.. image:: ./logo/gpboost_logo.png
    :align: center
-   :width: 300
+   :width: 200
 
 |
 

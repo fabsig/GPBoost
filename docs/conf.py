@@ -118,12 +118,12 @@ author = 'Fabio Sigrist'
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
-html_logo = os.path.join(CURR_PATH, 'logo', 'gpboost_sticker.jpg')
+html_logo = os.path.join(CURR_PATH, 'logo', 'gpboost_logo.png')
 
 # The name of an image file (relative to this directory) to use as a favicon of
 # the docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
 # pixels large.
-html_favicon = os.path.join(CURR_PATH, '_static', 'images', 'gpboost_sticker.ico')
+html_favicon = os.path.join(CURR_PATH, '_static', 'images', 'gpboost_logo.ico')
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -194,7 +194,7 @@ htmlhelp_basename = 'GPBoostdoc'
 
 # The name of an image file (relative to this directory) to place at the top of
 # the title page.
-latex_logo = os.path.join(CURR_PATH, 'logo', 'gpboost_sticker.jpg')
+latex_logo = os.path.join(CURR_PATH, 'logo', 'gpboost_sticker.png')
 
 
 def generate_doxygen_xml(app):

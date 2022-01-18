@@ -1,7 +1,7 @@
-<img src="https://github.com/fabsig/GPBoost/blob/master/gpboost_sticker.jpg?raw=true"
+<img src="https://github.com/fabsig/GPBoost/blob/master/gpboost_logo.png?raw=true"
      alt="GPBoost icon"
      align = "right"
-     width="40%" />
+     width="30%" />
 
 # GPBoost R Package
 
