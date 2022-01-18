@@ -103,6 +103,10 @@ coverage.xml
 **/coverage.html.zip
 R-package/tests/testthat/Rplots.pdf
 
+# Sphinx documentation
+docs/_build/
+docs/pythonapi/
+
 # Doxygen documentation
 docs/doxyoutput/
 
