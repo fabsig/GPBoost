@@ -13,13 +13,13 @@
 This is the Python package implementation of the GPBoost library. See https://github.com/fabsig/GPBoost for more information on the modeling background and the software implementation.
 
 ### Table of Contents
-* [Examples](#examples)
+* [Examples and documentation](#examples-and-documentation)
 * [Installation](#installation)
   * [Installation from PyPI](#installation-from-pypi-using-precompiled-binaries)
   * [Installation from source](#installation-from-source)
 
 
-## Examples
+## Examples and documentation
 
 * [**Detailed Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide):
   * [GPBoost algorithm](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm.py) for combining tree-boosting with Gaussian process and random effects models
@@ -33,6 +33,7 @@ This is the Python package implementation of the GPBoost library. See https://gi
    * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)
    * [Use GPBoost for generalized linear mixed effects models (GLMMs)](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c) 
 * [This demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
+* The documentation at [**https://gpboost.readthedocs.io**](https://gpboost.readthedocs.io/en/latest/Python_package.html)
 
 
 ## Installation
