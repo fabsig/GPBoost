@@ -33,7 +33,7 @@ This is the Python package implementation of the GPBoost library. See https://gi
    * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)
    * [Use GPBoost for generalized linear mixed effects models (GLMMs)](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c) 
 * [This demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
-* The documentation at [**https://gpboost.readthedocs.io**](https://gpboost.readthedocs.io/en/latest/Python_package.html)
+* The **documentation** at [https://gpboost.readthedocs.io](https://gpboost.readthedocs.io/en/latest/Python_package.html)
 
 
 ## Installation
