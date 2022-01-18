@@ -1,8 +1,8 @@
 # coding: utf-8
-"""Helper script for generating config file and parameters list.
+"""Helper script for generating the config file and parameters list.
 
-This script generates GPBoost/src/LightGBM/io/config_auto.cpp file
-with list of all parameters, aliases table and other routines
+This script generates the GPBoost/src/LightGBM/io/config_auto.cpp file
+with a list of all tree-boosting related parameters 
 along with parameters description in GPBoost/docs/Parameters.rst file
 from the information in GPBoost/include/LightGBM/config.h file.
 """
