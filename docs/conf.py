@@ -244,63 +244,63 @@ def generate_doxygen_xml(app):
         raise Exception("An error has occurred while executing Doxygen\n" + str(e))
 
 
-def generate_r_docs(app):
-    """Generate documentation for R-package.
-
-    Parameters
-    ----------
-    app : object
-        The application object representing the Sphinx process.
-    """
-    commands = """
-    /home/docs/.conda/bin/conda create \
-        -q \
-        -y \
-        -c conda-forge \
-        -n r_env \
-            cmake=3.18.2=ha30ef3c_0 \
-            r-base=4.0.3=ha43b4e8_3 \
-            r-data.table=1.13.2=r40h0eb13af_0 \
-            r-jsonlite=1.7.1=r40hcdcec82_0 \
-            r-matrix=1.2_18=r40h7fa42b6_3 \
-            r-pkgdown=1.6.1=r40h6115d3f_0 \
-            r-roxygen2=7.1.1=r40h0357c0b_0
-    source /home/docs/.conda/bin/activate r_env
-    export TAR=/bin/tar
-    cd {0}
-    export R_LIBS="$CONDA_PREFIX/lib/R/library"
-    Rscript build_r.R || exit -1
-    cd {1}
-    Rscript -e "roxygen2::roxygenize(load = 'installed')" || exit -1
-    Rscript -e "pkgdown::build_site( \
-            lazy = FALSE \
-            , install = FALSE \
-            , devel = FALSE \
-            , examples = TRUE \
-            , run_dont_run = TRUE \
-            , seed = 42L \
-            , preview = FALSE \
-            , new_process = TRUE \
-        )
-        " || exit -1
-    cd {0}
-    """.format(os.path.join(CURR_PATH, os.path.pardir), os.path.join(CURR_PATH, os.path.pardir, "gpboost_r"))
-    try:
-        # Warning! The following code can cause buffer overflows on RTD.
-        # Consider suppressing output completely if RTD project silently fails.
-        # Refer to https://github.com/svenevs/exhale
-        # /blob/fe7644829057af622e467bb529db6c03a830da99/exhale/deploy.py#L99-L111
-        process = Popen(['/bin/bash'],
-                        stdin=PIPE, stdout=PIPE, stderr=PIPE,
-                        universal_newlines=True)
-        stdout, stderr = process.communicate(commands)
-        output = '\n'.join([i for i in (stdout, stderr) if i is not None])
-        if process.returncode != 0:
-            raise RuntimeError(output)
-        else:
-            print(output)
-    except BaseException as e:
-        raise Exception("An error has occurred while generating documentation for R-package\n" + str(e))
+#def generate_r_docs(app):
+#    """Generate documentation for R-package.
+#
+#    Parameters
+#    ----------
+#    app : object
+#        The application object representing the Sphinx process.
+#    """
+#    commands = """
+#    /home/docs/.conda/bin/conda create \
+#        -q \
+#        -y \
+#        -c conda-forge \
+#        -n r_env \
+#            cmake=3.18.2=ha30ef3c_0 \
+#            r-base=4.0.3=ha43b4e8_3 \
+#            r-data.table=1.13.2=r40h0eb13af_0 \
+#            r-jsonlite=1.7.1=r40hcdcec82_0 \
+#            r-matrix=1.2_18=r40h7fa42b6_3 \
+#            r-pkgdown=1.6.1=r40h6115d3f_0 \
+#            r-roxygen2=7.1.1=r40h0357c0b_0
+#    source /home/docs/.conda/bin/activate r_env
+#    export TAR=/bin/tar
+#    cd {0}
+#    export R_LIBS="$CONDA_PREFIX/lib/R/library"
+#    Rscript build_r.R || exit -1
+#    cd {1}
+#    Rscript -e "roxygen2::roxygenize(load = 'installed')" || exit -1
+#    Rscript -e "pkgdown::build_site( \
+#            lazy = FALSE \
+#            , install = FALSE \
+#            , devel = FALSE \
+#            , examples = TRUE \
+#            , run_dont_run = TRUE \
+#            , seed = 42L \
+#            , preview = FALSE \
+#            , new_process = TRUE \
+#        )
+#        " || exit -1
+#    cd {0}
+#    """.format(os.path.join(CURR_PATH, os.path.pardir), os.path.join(CURR_PATH, os.path.pardir, "gpboost_r"))
+#    try:
+#        # Warning! The following code can cause buffer overflows on RTD.
+#        # Consider suppressing output completely if RTD project silently fails.
+#        # Refer to https://github.com/svenevs/exhale
+#        # /blob/fe7644829057af622e467bb529db6c03a830da99/exhale/deploy.py#L99-L111
+#        process = Popen(['/bin/bash'],
+#                        stdin=PIPE, stdout=PIPE, stderr=PIPE,
+#                        universal_newlines=True)
+#        stdout, stderr = process.communicate(commands)
+#        output = '\n'.join([i for i in (stdout, stderr) if i is not None])
+#        if process.returncode != 0:
+#            raise RuntimeError(output)
+#        else:
+#            print(output)
+#    except BaseException as e:
+#        raise Exception("An error has occurred while generating documentation for R-package\n" + str(e))
 
 
 def setup(app):
@@ -318,12 +318,12 @@ def setup(app):
         app.connect("builder-inited", generate_doxygen_xml)
     else:
         app.add_directive('doxygenfile', IgnoredDirective)
-    if RTD:  # build R docs only on Read the Docs site
-        if first_run:
-            app.connect("builder-inited", generate_r_docs)
-        app.connect("build-finished",
-                    lambda app, _: copy_tree(os.path.join(CURR_PATH, os.path.pardir, "gpboost_r", "docs"),
-                                             os.path.join(app.outdir, "R"), verbose=0))
+#    if RTD:  # build R docs only on Read the Docs site
+#        if first_run:
+#            app.connect("builder-inited", generate_r_docs)
+#        app.connect("build-finished",
+#                    lambda app, _: copy_tree(os.path.join(CURR_PATH, os.path.pardir, "gpboost_r", "docs"),
+#                                             os.path.join(app.outdir, "R"), verbose=0))
     app.add_transform(InternalRefTransform)
     add_js_file = getattr(app, 'add_js_file', False) or app.add_javascript
     add_js_file("js/script.js")
