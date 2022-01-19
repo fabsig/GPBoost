@@ -694,15 +694,24 @@ namespace GPBoost {
 			// - calculate initial value of objective function
 			CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
 			// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
-			if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
-				if (gauss_likelihood_) {
-					Log::REFatal("NaN or Inf occurred in negative log-likelihood for initial parameters. "
-						"You might try providing other initial values.");
-				}
-				else {
-					Log::REFatal("NaN or Inf occurred in approximate negative marginal log-likelihood for initial parameters. "
-						"You might try providing other initial values.");
-				}
+			string_t ll_str;
+			if (gauss_likelihood_) {
+				ll_str = "negative log-likelihood";
+			}
+			else {
+				ll_str = "approximate negative marginal log-likelihood";
+			}
+			string_t init_coef_str = "";
+			if (has_covariates_) {
+				init_coef_str = " and 'init_coef'";
+			}
+			if (std::isnan(neg_log_likelihood_)) {
+				Log::REFatal(("NaN occurred in " + ll_str + " for initial parameters. "
+					"You might try providing other initial values ('init_cov_pars'" + init_coef_str + ")").c_str());
+			}
+			else if (std::isinf(neg_log_likelihood_)) {
+				Log::REFatal(("Inf occurred in " + ll_str + " for initial parameters. "
+					"You might try providing other initial values ('init_cov_pars'" + init_coef_str + ")").c_str());
 			}
 			if (gauss_likelihood_) {
 				Log::REDebug("Initial negative log-likelihood: %g", neg_log_likelihood_);

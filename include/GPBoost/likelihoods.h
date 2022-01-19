@@ -582,6 +582,7 @@ namespace GPBoost {
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
+				// Check convergence
 				if (it == 0) {
 					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
 						terminate_optim = true;
@@ -731,10 +732,6 @@ namespace GPBoost {
 				diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
 				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);//this is the bottleneck (for large data and sparse matrices)
-				////only for debugging
-				//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale: Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt));//only for debugging
-				//T_mat chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL();//only for debugging
-				//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale: chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_: number non zeros = %d", GetNumberNonZeros<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt));//only for debugging
 				// Update mode and a_vec_
 				v_aux = (*Sigma) * rhs;
 				v_aux.array() *= diag_sqrt_ZtWZ.array();
@@ -761,7 +758,12 @@ namespace GPBoost {
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
-				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g", it, approx_marginal_ll, approx_marginal_ll_new);///Only for debugging
+				////Only for debugging
+				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g", it, approx_marginal_ll, approx_marginal_ll_new);
+				//for (int i = 0; i < 10; ++i) {
+				//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
+				//}
+				// Check convergence
 				if (it == 0) {
 					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
 						terminate_optim = true;
@@ -896,6 +898,7 @@ namespace GPBoost {
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
+				// Check convergence
 				if (it == 0) {
 					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
 						terminate_optim = true;
@@ -1044,10 +1047,16 @@ namespace GPBoost {
 				}
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+				//// Only for debugging
+				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g", it, approx_marginal_ll, approx_marginal_ll_new);
+				//for (int i = 0; i < 10; ++i) {
+				//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
+				//}
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
+				// Check convergence
 				if (it == 0) {
 					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
 						terminate_optim = true;
@@ -1194,6 +1203,7 @@ namespace GPBoost {
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
+				// Check convergence
 				if (it == 0) {
 					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
 						terminate_optim = true;
