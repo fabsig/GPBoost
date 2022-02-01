@@ -79,6 +79,8 @@ On Linux GPBoost can be built using **CMake** and **gcc** or **Clang**.
 
 **Note**: glibc >= 2.14 is required.
 
+**Note**: In some rare cases you may need to install OpenMP runtime library separately (use your package manager and search for ``lib[g|i]omp`` for doing this).
+
 macOS
 ~~~~~
 

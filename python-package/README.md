@@ -70,6 +70,8 @@ Installation from source can be either done from PyPI or GitHub.
 
 * Installation from source requires that you have installed [**CMake**](https://cmake.org/).
 
+* For **Linux** users, **glibc** >= 2.14 is required. Also, in some rare cases you may need to install OpenMP runtime library separately (use your package manager and search for ``lib[g|i]omp`` for doing this).
+
 * For **macOS** users, you can perform installation either with **Apple Clang** or **gcc**.
 
   * In case you prefer **Apple Clang**, you should install **OpenMP** (details for installation can be found in the [Installation Guide](https://github.com/microsoft/LightGBM/blob/master/docs/Installation-Guide.rst#apple-clang)) first and **CMake** version 3.16 or higher is required. Only Apple Clang version 8.1 or higher is supported.
@@ -91,7 +93,7 @@ pip install --no-binary :all: gpboost
 pip install gpboost --install-option=--mingw
 ```
 
-* [CMake](https://cmake.org/) and [MinGW-w64](https://mingw-w64.org/) should be installed first.
+* [CMake](https://cmake.org/) and [MinGW-w64](https://www.mingw-w64.org/) should be installed first.
 
 
 ##### Build 32-bit version with 32-bit Python
@@ -119,6 +121,6 @@ Note: ``sudo`` (or administrator rights in **Windows**) may be needed to perform
 ```sh
 python setup.py install --mingw
 ```
-* [CMake](https://cmake.org/) and [MinGW-w64](https://mingw-w64.org/) should be installed first.
+* [CMake](https://cmake.org/) and [MinGW-w64](https://www.mingw-w64.org/) should be installed first.
 
 If you get any errors during installation or due to any other reasons, you may want to build a dynamic library from source by any method you prefer and then just run ``python setup.py install --precompile``.
