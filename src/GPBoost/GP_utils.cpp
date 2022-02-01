@@ -155,13 +155,15 @@ namespace GPBoost {
 		dist.setFromTriplets(triplets.begin(), triplets.end());
 		if (show_number_non_zeros) {
 			double prct_non_zero;
+			int num_non_zero = non_zeros;
 			if (only_one_set_of_coords) {
 				prct_non_zero = (2. * non_zeros + coords1.rows()) / coords1.rows() / coords1.rows() * 100.;
+				num_non_zero = 2. * non_zeros + (int)coords1.rows();
 			}
 			else {
 				prct_non_zero = non_zeros / coords1.rows() / coords2.rows() * 100.;
 			}
-			Log::REInfo("Percentage of non-zero values in covariance matrix: %g %%", prct_non_zero);
+			Log::REInfo("Numebr of non-zero values in covariance matrix: %d (in percentage: %g %%)", num_non_zero, prct_non_zero);
 		}
 	}
 
