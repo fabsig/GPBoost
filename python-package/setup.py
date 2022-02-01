@@ -74,7 +74,6 @@ def copy_files(integrated_opencl: bool = False, use_gpu: bool = False) -> None:
         copyfile(CURRENT_DIR.parent / "CMakeLists.txt",
                  CURRENT_DIR / "compile" / "CMakeLists.txt")
         if integrated_opencl:
-            (CURRENT_DIR / "compile" / "cmake").mkdir(parents=True, exist_ok=True)
             copyfile(CURRENT_DIR.parent / "CMakeIntegratedOpenCL.cmake",
                      CURRENT_DIR / "compile" / "CMakeIntegratedOpenCL.cmake")
 
