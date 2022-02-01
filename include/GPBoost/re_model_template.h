@@ -20,14 +20,13 @@
 //#include <Eigen/src/misc/lapack.h>
 
 #define OPTIM_ENABLE_EIGEN_WRAPPERS
-#include "optim.hpp" // OptimLib
+#include <optim.hpp> // OptimLib
 
 #include <memory>
 #include <mutex>
 #include <vector>
 #include <algorithm>    // std::shuffle
 #include <random>       // std::default_random_engine
-//#include <typeinfo> // Only needed for debugging
 #include <chrono>  // only for debugging
 #include <thread> // only for debugging
 //std::this_thread::sleep_for(std::chrono::milliseconds(200));// Only for debugging
