@@ -20,7 +20,8 @@
 //#include <Eigen/src/misc/lapack.h>
 
 #define OPTIM_ENABLE_EIGEN_WRAPPERS
-#include "../../external_libs/OptimLib/optim.hpp"// OptimLib
+//#include "../../external_libs/OptimLib/optim.hpp"// OptimLib
+#include <optim.hpp>// OptimLib
 
 #include <memory>
 #include <mutex>
