@@ -82,7 +82,7 @@
 #'                \item{init_cov_pars}{ Initial values for covariance parameters of Gaussian process and 
 #'                random effects (can be NULL). Default=NULL}
 #'                \item{lr_coef}{ Learning rate for fixed effect regression coefficients if gradient descent is used.
-#'                Default=1}
+#'                Default=0.1}
 #'                \item{lr_cov}{ Learning rate for covariance parameters. If <= 0, internal default values are used.
 #'                Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"}
 #'                \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used.
@@ -1477,7 +1477,7 @@ gpb.GPModel <- R6::R6Class(
     params = list(maxit = 1000L,
                   delta_rel_conv = 1E-6,
                   init_coef = NULL,
-                  lr_coef = 1.,
+                  lr_coef = 0.1,
                   lr_cov = -1.,
                   use_nesterov_acc = TRUE,
                   acc_rate_coef = 0.5,

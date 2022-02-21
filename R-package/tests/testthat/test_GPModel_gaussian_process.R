@@ -208,22 +208,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            y=y, X=X,
                            params = list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent",
                                          delta_rel_conv=1E-6, use_nesterov_acc = TRUE, std_dev = FALSE, lr_coef=1))
-    cov_pars <- c(0.02173291, 0.98826111, 0.09716771)
-    coef <- c(2.304117, 1.899065)
+    cov_pars <- c(0.01624576, 0.99717015, 0.09616822)
+    coef <- c(2.305484, 1.899207)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 178)
+    expect_equal(gp_model$get_num_optim_iter(), 99)
 
     # Nelder-Mead
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y, X=X, params = list(optimizer_cov = "nelder_mead",
                                                      optimizer_coef = "nelder_mead",
-                                                     maxit=1000))
-    cov_pars <- c(0.007253618, 1.004320456, 0.094662117)
-    coef <- c(2.305755, 1.899809)
+                                                     maxit=1000, delta_rel_conv=1e-12))
+    cov_pars <- c(0.008459373, 1.001564796, 0.094655964)
+    coef <- c(2.307798, 1.899516)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 247)
+    expect_equal(gp_model$get_num_optim_iter(), 429)
     
     # BFGS
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -231,7 +231,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                      maxit=1000))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-2)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-2)
-    expect_equal(gp_model$get_num_optim_iter(), 24)
+    expect_equal(gp_model$get_num_optim_iter(), 25)
     
   })
   

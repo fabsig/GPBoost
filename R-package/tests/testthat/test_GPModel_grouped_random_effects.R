@@ -19,7 +19,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
   Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
   b1 <- qnorm(sim_rand_unif(n=m, init_c=0.546))
-  # Second random effecs
+  # Second random effects
   n_gr <- n/20 # number of groups
   group2 <- rep(1,n) # grouping variable
   for(i in 1:(n/n_gr)) group2[(1:n_gr)+n_gr*(i-1)] <- 1:n_gr
@@ -138,6 +138,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                     convergence_criterion = "relative_change_in_parameters"))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 6)
+    
+    # Inf in response variable data gives error
+    y_Inf <- y
+    y_Inf[1] = -Inf
+    expect_error(gp_model <- fitGPModel(group_data = group, y = y_Inf))
   })
   
   
@@ -173,22 +178,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            y = y, X = X,
                            params = list(optimizer_cov = "gradient_descent", maxit=1000, std_dev = TRUE,
                                          optimizer_coef = "gradient_descent", lr_coef=1, use_nesterov_acc=TRUE))
-    cov_pars <- c(0.49205012, 0.02319547, 1.22089504, 0.17963425)
-    coef <- c(2.07513927, 0.11270379, 1.94322756, 0.03382466)
+    cov_pars <- c(0.49213311, 0.02319938, 1.22051070, 0.17958108)
+    coef <- c(2.07485695, 0.11268711, 1.95215530, 0.03382747)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 110)
+    expect_equal(gp_model$get_num_optim_iter(), 8)
     
     # Fit model using Nelder-Mead
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
                            params = list(optimizer_cov = "nelder_mead",
-                                         optimizer_coef = "nelder_mead", std_dev = TRUE))
-    cov_pars <- c(0.47524382, 0.02240321, 2.38806490, 0.34445163)
-    coef <- c(1.45083178, 0.15606729, 1.95360294, 0.03327804)
+                                         optimizer_coef = "nelder_mead", std_dev = TRUE, delta_rel_conv=1e-6))
+    cov_pars <- c(0.49215382, 0.02320035, 1.21828714, 0.17926694)
+    coef <- c(2.07198836, 0.11258850, 1.94792785, 0.03382805)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 133)
+    expect_equal(gp_model$get_num_optim_iter(), 125)
     
     # Fit model using BFGS
     gp_model <- fitGPModel(group_data = group,
@@ -198,7 +203,39 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coef <- c(2.07499895, 0.11269251, 1.94766254, 0.03382472)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 12)
+    expect_equal(gp_model$get_num_optim_iter(), 11)
+    
+    # Large data
+    n_L <- 1e6 # number of samples
+    m_L <- n_L/10 # number of categories / levels for grouping variable
+    group_L <- rep(1,n_L) # grouping variable
+    for(i in 1:m_L) group_L[((i-1)*n_L/m_L+1):(i*n_L/m_L)] <- i
+    keps <- 1E-10
+    b1_L <- qnorm(sim_rand_unif(n=m_L, init_c=0.846)*(1-keps) + keps/2)
+    X_L <- cbind(rep(1,n_L),sim_rand_unif(n=n_L, init_c=0.341)) # design matrix / covariate data for fixed effect
+    beta <- c(2,2) # regression coefficients
+    xi_L <- sqrt(0.5) * qnorm(sim_rand_unif(n=m_L, init_c=0.321)*(1-keps) + keps/2)
+    y_L <- b1_L[group_L] + X_L%*%beta + xi_L
+    # Fit model using gradient descent instead of wls for regression coefficients
+    gp_model <- fitGPModel(group_data = group_L,
+                           y = y_L, X = X_L,
+                           params = list(optimizer_cov = "gradient_descent", maxit=1000, std_dev = TRUE,
+                                         optimizer_coef = "gradient_descent", lr_coef=0.1, use_nesterov_acc=TRUE))
+    cov_pars <- c(0.5005068978, 0.0007461116, 0.9982863693, 0.0046888995)
+    coef <- c(1.994283503, 0.003484753, 2.004006668, 0.002577150)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 7)
+    
+    gp_model <- fitGPModel(group_data = group_L,
+                           y = y_L, X = X_L,
+                           params = list(optimizer_cov = "nelder_mead", maxit=1000))
+    cov_pars <- c(0.5004681, 0.9988288)
+    coef <- c(2.000747, 1.999343)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 152)
+    
   })
   
 

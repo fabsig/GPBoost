@@ -4002,7 +4002,7 @@ class GPModel(object):
         self.params = {"maxit": 1000,
                        "delta_rel_conv": 1e-6,
                        "init_coef": None,
-                       "lr_coef": 1,
+                       "lr_coef": 0.1,
                        "lr_cov": -1.,
                        "use_nesterov_acc": True,
                        "acc_rate_coef": 0.5,
@@ -4327,7 +4327,7 @@ class GPModel(object):
                 lr_cov : double, optional (default = -1.)
                     If <= 0, internal default values are used.
                     Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
-                lr_coef : double, optional (default = 1)
+                lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
                 use_nesterov_acc : bool, optional (default = True)
                     If True, Nesterov acceleration is used for gradient descent
@@ -4473,6 +4473,20 @@ class GPModel(object):
                     If True, information on the progress of the parameter optimization is printed.
                 std_dev : bool (default=False)
                     If True, (asymptotic) standard deviations are calculated for the covariance parameters
+                optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
+                    Optimizer used for estimating linear regression coefficients, if there are any
+                    (for the GPBoost algorithm there are usually none).
+                    Options: "gradient_descent", "wls", "nelder_mead", and "bfgs". Gradient descent steps are done simultaneously with
+                    gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
+                    for the regression coefficients using weighted least squares
+                    If 'optimizer_cov' is set to "nelder_mead" or "bfgs", 'optimizer_coef' is automatically also set to
+                    the same value.
+                init_coef : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for the regression coefficients (if there are any, can be None)
+                lr_coef : double, optional (default = 0.1)
+                    Learning rate for fixed effect regression coefficients
+                acc_rate_coef : double, optional (default = 0.5)
+                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
         """
         if self.handle is None:
             raise ValueError("Gaussian process model has not been initialized")
@@ -4548,7 +4562,7 @@ class GPModel(object):
                     the same value.
                 init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
-                lr_coef : double, optional (default = 1)
+                lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
                 acc_rate_coef : double, optional (default = 0.5)
                     Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration

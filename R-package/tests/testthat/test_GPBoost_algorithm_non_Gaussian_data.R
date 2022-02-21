@@ -248,9 +248,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     fit_GP_cov_pars_OOS = FALSE,
                     folds = folds,
                     verbose = 0)
-    expect_iter <- 22
-    expect_score <- 0.332
-    expect_equal(cvbst$best_iter, 22)
+    expect_iter <- 9
+    expect_score <- 0.352
+    expect_equal(cvbst$best_iter, expect_iter)
     expect_lt(abs(cvbst$best_score-expect_score), TOLERANCE)
     # same thing but "wrong" likelihood given in gp_model
     gp_model <- GPModel(group_data = group_data_train, likelihood="gaussian")
@@ -299,21 +299,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    min_data_in_leaf = 5,
                    objective = "binary",
                    verbose = 0)
-    cov_pars <- c(0.4578269, 0.3456968)
+    cov_pars <- c(0.4590874, 0.3459219)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.51178920, -0.05545146, 1.01821906, 0.82828590, -0.65907968, 0.79543632))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.122428, -1.070665, -1.239412,
+    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.51870398, -0.03819206, 0.99821096, 0.86094202, -0.65647551, 0.83694023))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.114939, -1.063664, -1.239394,
                                                       rep(0,n_new)))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1291347, 0.1285408, 0.1291399,
-                                                     rep(0.8035238,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1292918, 0.1284037, 0.1291332,
+                                                     rep(0.8050093,n_new)))),TOLERANCE)
     # Predict response
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = FALSE)
-    expect_lt(sum(abs(tail(pred$response_mean)-c(0.1736593, 0.2040348, 0.0160197, 0.6340967, 0.2016883, 0.6203350))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$response_var)-c(0.14350173, 0.16240460, 0.01576307, 0.23201808, 0.16101015, 0.23551948))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.0171176, 0.6237437, 0.1986085, 0.6377248))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.01682459, 0.23468750, 0.15916318, 0.23103189))),TOLERANCE)
     
     # Prediction when having only one grouped random effect
     group_1 <- rep(1,ntrain) # grouping variable
@@ -333,16 +333,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    verbose = 0,
                    leaves_newton_update = FALSE)
     pred <- predict(bst, data = X_test[1:length(unique(b1)),], group_data_pred = 1:length(unique(b1)), rawscore = TRUE)
-    # plot(pred$random_effect_mean,b1)
     expect_lt(abs(sqrt(sum((pred$random_effect_mean - b1)^2))-1.667843),TOLERANCE)
     # Prediction for only new groups
     group_test <- c(-1,-1,-2,-2)
     pred <- predict(bst, data = X_test[1:4,], group_data_pred = group_test, rawscore = TRUE)
-    fix_eff <- c(0.2287468, 0.3291124, 0.6719900, 0.5064598)
+    fix_eff <- c(0.2292592, 0.3296304, 0.6725046, 0.5069731)
     expect_lt(sum(abs(pred$fixed_effect-fix_eff)),TOLERANCE)
     expect_lt(sum(abs(pred$random_effect_mean-rep(0,4))),TOLERANCE)
     pred <- predict(bst, data = X_test[1:4,], group_data_pred = group_test, rawscore = FALSE)
-    resp <- c(0.5737526, 0.6054649, 0.7075445, 0.6597110)
+    resp <- c(0.5739159, 0.6056269, 0.7076881, 0.6598638)
     expect_lt(sum(abs(pred$response_mean-resp)),TOLERANCE)
     # Prediction for only new cluster_ids
     cluster_ids_pred <- c(-1L,-1L,-2L,-2L)
@@ -447,10 +446,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.53899584, -0.09207871, 0.97135394, 0.82693065, -0.57499653, 0.61848314))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.120990, -1.057176, -1.243158,
+    expect_lt(sum(abs(head(pred$fixed_effect,n=4)-c(0.53963543, -0.09143685, 0.97199209, 0.82756999))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.121577, -1.057764, -1.243746,
                                                       rep(0,n_new)))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1294617, 0.1286434, 0.1289687,
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1294601, 0.1286418, 0.1289668,
                                                      rep(0.8227741,n_new)))),TOLERANCE)
     
     # # Training using BFGS (sometimes crashes)
@@ -574,8 +573,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     fit_GP_cov_pars_OOS = FALSE,
                     folds = folds,
                     verbose = 0)
-    expect_equal(cvbst$best_iter, 25)
-    expect_lt(abs(cvbst$best_score-0.374), TOLERANCE)
+    expect_equal(cvbst$best_iter, 12)
+    expect_lt(abs(cvbst$best_score-0.383), TOLERANCE)
     # CV for finding number of boosting iterations when use_gp_model_for_validation = TRUE
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
     gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
@@ -636,21 +635,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    min_data_in_leaf = 5,
                    objective = "binary",
                    verbose = 0)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9895254 )),TOLERANCE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9865279)),TOLERANCE)
     
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.3621398, 0.4816929, 0.5798819, 0.5308795, -1.1647686, 0.3271781))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-2.001068, -2.001068, -2.001068,
+    expect_lt(sum(abs(head(pred$fixed_effect,n=4)-c(0.3656899, 0.5207786, 0.6272630, 0.5435066))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-2.004453, -2.004453, -2.004453,
                                                       rep(0,n_new)))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.2161747, 0.2161747, 0.2161747,
-                                                     rep(0.9894106,n_new)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.2156130, 0.2156130, 0.2156130,
+                                                     rep(0.9865279,n_new)))),TOLERANCE)
     # Predict response
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = FALSE)
-    expect_lt(sum(abs(tail(pred$response_mean)-c(0.049208897, 0.034971804, 0.003212806, 0.582992755, 0.263110688, 0.403178220))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$response_var)-c(0.046787381, 0.033748777, 0.003202484, 0.243112203, 0.193883454, 0.240625543))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_mean,n=4)-c(0.003516566, 0.589670698, 0.262059586, 0.409466628))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_var,n=4)-c(0.0035042, 0.2419592, 0.1933844, 0.2418037))),TOLERANCE)
     
     # Training using Nelder-Mead
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
@@ -667,12 +666,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9927358)),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
-                    predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(head(pred$fixed_effect)-c(0.3555116, 0.5236091, 0.6358643, 0.5443878, -1.1371436, 0.3320095))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(rep(-2.0045,3),
-                                                      rep(0,n_new)))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov)-c(rep(0.2166956 ,3),
-                                                     rep(0.9927358 ,n_new)))),TOLERANCE)
+                    predict_var = TRUE, rawscore = FALSE)
+    expect_lt(sum(abs(tail(pred$response_mean,n=4)-c(0.003543759, 0.588232583, 0.262807287, 0.401855180))),TOLERANCE)
     
     # Training using BFGS
     gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
@@ -811,7 +806,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.04289627, 0.06221441, 0.05985171, 0.05598201))),TOLERANCE)
     expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.2586964, -0.8518375, -0.8887175, 0.3031393))),TOLERANCE)
     
-    # Training with Wendland coviarance
+    # Training with Wendland covariance
     capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
                                         cov_fct_shape=1, cov_fct_taper_range=0.2,
                                         likelihood = "bernoulli_probit"), file='NUL')
@@ -828,9 +823,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.26034584, -0.04429499, 0.19254697, 0.15292097))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.1363623, 0.1207949, 0.1169734, 0.1250183))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4503264, -0.6168187, -0.5849960, 0.4789195))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.26118832, -0.04498759, 0.19187178, 0.15228845))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.1364641, 0.1208750, 0.1170557, 0.1251195))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4521438, -0.6149245, -0.5831075, 0.4807347))),TOLERANCE)
     
     # Wendland covariance and Nelder-Mead
     capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
@@ -932,9 +927,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.5081432, -0.4017808, -1.3285980, -1.0642832))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.1536216, 0.2059958, 0.2395400, 0.2395374))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4476850, 0.5303294, 0.5041246, 0.5303294))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.5066947, -0.4004523, -1.3271121, -1.0627929))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.1536139, 0.2059765, 0.2395216, 0.2395186))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4461313, 0.5287861, 0.5025805, 0.5287861))),TOLERANCE)
     # Predict response
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                     predict_var = TRUE, rawscore = FALSE)
@@ -1121,16 +1116,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                     group_data_pred = group_data_test,
-                    predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.288050844, -0.007106957, -0.477971382, -0.203242488))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2217984, 0.3436291, 0.3518723, 0.3410435))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4926260, 0.1655148, -0.9709708, 0.3310103))),TOLERANCE)
-    # Predict response
-    pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-                    group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = FALSE)
-    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.7599903, 0.5543497, 0.1063479, 0.5439268))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.1824051, 0.2470461, 0.0950380, 0.2480704))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.7599814, 0.5543266, 0.1063388, 0.5439135))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.18240965, 0.24704862, 0.09503084, 0.24807160))),TOLERANCE)
     
     # The following is very slow
     # Train model using Nelder-Mead
@@ -1145,14 +1133,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      min_data_in_leaf = 5,
                      objective = "binary",
                      verbose = 0)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.2393602, 0.2966351, 0.350636))),TOLERANCE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.2390776, 0.2966670, 0.3499098))),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                     group_data_pred = group_data_test,
-                    predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.290144339, -0.005138535, -0.477228489, -0.201850869))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2219624, 0.3440523, 0.3523278, 0.3414581))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4909556,0.1634722, -0.9726520, 0.3289525))),TOLERANCE)
+                    predict_var = TRUE, rawscore = FALSE)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.7600335, 0.5543040, 0.1062553, 0.5437832))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.18238257, 0.24705107, 0.09496514, 0.24808303))),TOLERANCE)
     
     # Use validation set to determine number of boosting iteration
     dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
@@ -1417,13 +1404,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-1.8270022, 0.9539667, -0.8701595, 0.4154421))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-0.9885184, -0.9266520, -1.0419271, rep(0,3)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-1.8305056, 0.9506364, -0.8736293, 0.4120991))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-0.9853151, -0.9234402, -1.0387300, rep(0,3)))),TOLERANCE)
     # Predict response
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = FALSE)
-    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.05882079, 4.06710225, 0.65626182, 2.37359617))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.05907663, 28.12665541, 1.28269053, 10.56825808))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.05880294, 4.05273488, 0.65385231, 2.36518123))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.05905864, 27.92579356, 1.27525196, 10.49611686))),TOLERANCE)
   })
   
   test_that("GPBoost algorithm with grouped random effects for gamma regression", {
@@ -1485,18 +1472,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    min_data_in_leaf = 5,
                    objective = "gamma",
                    verbose = 0)
-    cov_pars_est <- c(0.5951351, 0.5053411)
+    cov_pars_est <- c(0.5946253, 0.5044433)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = TRUE)
-    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-1.4088893, 0.8568438, -1.1329152, 0.5102665))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.548890, -1.281786, -1.626295, rep(0,3)))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-1.4125121, 0.8533486, -1.1365429, 0.5067477))),TOLERANCE)
     # Predict response
     pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                     predict_var = TRUE, rawscore = FALSE)
-    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.04968093, 4.08402019, 0.55840144, 2.88782791))),TOLERANCE)
-    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.002805522, 83.582807760, 1.562551186, 41.791101074))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.04967546, 4.06690743, 0.55598796, 2.87565940))),TOLERANCE)
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.002804865, 82.743971184, 1.546459557, 41.369729192))),TOLERANCE)
   })
   
   
@@ -1711,7 +1697,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                   folds = folds)
     
     expect_lt(abs(opt_params$best_score-0.5131497),TOLERANCE)
-    expect_equal(opt_params$best_iter,33)
+    expect_equal(opt_params$best_iter,31)
     expect_equal(opt_params$best_params$learning_rate,0.11)
     expect_equal(opt_params$best_params$max_bin,255)
     expect_equal(opt_params$best_params$max_depth,5)

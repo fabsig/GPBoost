@@ -158,7 +158,7 @@ namespace GPBoost {
 			int num_non_zero = non_zeros;
 			if (only_one_set_of_coords) {
 				prct_non_zero = (2. * non_zeros + coords1.rows()) / coords1.rows() / coords1.rows() * 100.;
-				num_non_zero = 2. * non_zeros + (int)coords1.rows();
+				num_non_zero = 2 * non_zeros + (int)coords1.rows();
 			}
 			else {
 				prct_non_zero = non_zeros / coords1.rows() / coords2.rows() * 100.;
