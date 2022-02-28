@@ -1611,13 +1611,15 @@ namespace GPBoost {
 				re_group_levels_pred_orig = re_group_levels_pred;
 			}
 			//Some checks
-			CHECK(num_data_pred > 0);
 			//Check whether required data is missing
+			if (re_group_data_pred == nullptr && num_re_group_ > 0) {
+				Log::REFatal("Missing data for grouped random effects for making predictions");
+			}
 			if (re_group_rand_coef_data_pred == nullptr && num_re_group_rand_coef_ > 0) {
 				Log::REFatal("Missing covariate data for random coefficients for grouped random effects for making predictions");
 			}
 			if (gp_coords_data_pred == nullptr && num_gp_ > 0) {
-				Log::REFatal("Missing coordinate data for Gaussian process for making predictions");
+				Log::REFatal("Missing data for Gaussian process for making predictions");
 			}
 			if (gp_rand_coef_data_pred == nullptr && num_gp_rand_coef_ > 0) {
 				Log::REFatal("Missing covariate data for random coefficients for Gaussian process for making predictions");
@@ -1625,6 +1627,7 @@ namespace GPBoost {
 			if (cluster_ids_data_pred == nullptr && num_clusters_ > 1) {
 				Log::REFatal("Missing cluster_id data for making predictions");
 			}
+			CHECK(num_data_pred > 0);
 			if (!gauss_likelihood_ && predict_response && predict_cov_mat) {
 				Log::REFatal("Calculation of the predictive covariance matrix is not supported "
 					"when predicting the response variable (label) for non-Gaussian data");
