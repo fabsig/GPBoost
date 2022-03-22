@@ -4238,7 +4238,6 @@ class GPModel(object):
             self.gp_coords = None
             self.gp_rand_coef_data = None
             self.cluster_ids = None
-            self.cluster_ids_map_to_int = None
 
         if model_file is not None:
             if model_dict["params"]['init_cov_pars'] is not None:

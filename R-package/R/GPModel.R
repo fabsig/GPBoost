@@ -462,7 +462,6 @@ gpb.GPModel <- R6::R6Class(
         private$gp_coords <- NULL
         private$gp_rand_coef_data <- NULL
         private$cluster_ids <- NULL
-        private$cluster_ids_map_to_int <- NULL
       }
       if (!is.null(modelfile)){
         self$set_optim_params(params = model_list[["params"]])
