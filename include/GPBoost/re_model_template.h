@@ -1612,7 +1612,7 @@ namespace GPBoost {
 			}
 			//Some checks
 			//Check whether required data is missing
-			if (re_group_data_pred == nullptr && num_re_group_ > 0) {
+			if ((int)re_group_levels_pred.size() == 0 && num_re_group_ > 0) {
 				Log::REFatal("Missing data for grouped random effects for making predictions");
 			}
 			if (re_group_rand_coef_data_pred == nullptr && num_re_group_rand_coef_ > 0) {
