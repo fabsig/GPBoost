@@ -251,7 +251,7 @@ namespace GPBoost {
 				//				log_normalizing_constant_ = log_normalizing_constant;
 				log_normalizing_constant_ = 0. * y_data[0];//y_data[0] is just a trick to avoid compiler warnings complaining about unreferenced parameters...
 			}
-			else if (likelihood_type_ == "gaussian" | likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit") {
+			else if (likelihood_type_ == "gaussian" || likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit") {
 				log_normalizing_constant_ = 0. * y_data[0];//y_data[0] is just a trick to avoid compiler warnings complaining about unreferenced parameters...
 			}
 			else {
