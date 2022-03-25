@@ -208,7 +208,7 @@ pred <- predict(bst, data = Xtest, group_data_pred = group_test, predict_var= TR
 # Save model to file
 filename <- tempfile(fileext = ".json")
 gpb.save(bst,filename = filename)
-# Load from file and make predictions again
+# Load from file and make predictions again (note: on older R versions, this can sometimes crash)
 bst_loaded <- gpb.load(filename = filename)
 pred_loaded <- predict(bst_loaded, data = Xtest, group_data_pred = group_test, predict_var= TRUE)
 # Check equality
