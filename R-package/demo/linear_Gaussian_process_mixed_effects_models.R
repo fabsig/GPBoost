@@ -109,7 +109,7 @@ gp_model <- GPModel(group_data = group, likelihood = "gaussian")
 fit(gp_model, y = y_lin, X = X, params = list(std_dev = TRUE))
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(group_data = group,
+gp_model <- fitGPModel(group_data = group, likelihood = "gaussian",
                        y = y_lin, X = X, params = list(std_dev = TRUE))
 summary(gp_model)
 # Get coefficients and variance/covariance parameters separately
