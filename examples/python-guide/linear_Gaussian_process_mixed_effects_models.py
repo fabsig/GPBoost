@@ -55,6 +55,9 @@ y_nested = b[group] + b_nested[group_nested] + xi  # observed data
 gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 gp_model.fit(y=y, X=X, params={"std_dev": True})
 gp_model.summary()
+# Get coefficients and variance/covariance parameters separately
+gp_model.get_coef()
+gp_model.get_cov_pars()
 # Use other optimization specifications (gradient descent with Nesterov acceleration)
 # and monitor convergence of optimization ("trace": True)
 gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")

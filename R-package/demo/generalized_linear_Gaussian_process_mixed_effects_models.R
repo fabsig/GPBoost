@@ -40,6 +40,9 @@ hist(y,breaks=50)# visualize response variable
 # Train model
 gp_model <- fitGPModel(group_data = group, likelihood = likelihood, y = y, X = X)
 summary(gp_model)
+# Get coefficients and variance/covariance parameters separately
+gp_model$get_coef()
+gp_model$get_cov_pars()
 
 # Make predictions
 group_test <- 1:m

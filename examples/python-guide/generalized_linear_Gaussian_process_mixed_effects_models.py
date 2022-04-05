@@ -53,6 +53,9 @@ plt.hist(y, bins=50)  # visualize response variable
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 gp_model.fit(y=y, X=X)  # use params={"trace": True} for monitoring convergence
 gp_model.summary()
+# Get coefficients and variance/covariance parameters separately
+gp_model.get_coef()
+gp_model.get_cov_pars()
 
 # --------------------Make predictions----------------
 group_test = np.arange(m)

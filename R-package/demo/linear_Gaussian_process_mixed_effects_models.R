@@ -53,7 +53,7 @@ y_nested <- b[group] + b_nested[group_nested] + xi # observed data
 
 #--------------------Grouped random effects model: single-level random effect----------------
 # --------------------Training----------------
-gp_model <- GPModel(group_data = group) # Create random effects model
+gp_model <- GPModel(group_data = group, likelihood = "gaussian") # Create random effects model
 fit(gp_model, y = y, params = list(std_dev = TRUE)) # Fit model
 summary(gp_model)
 # Alternatively, define and fit model directly using fitGPModel
@@ -104,7 +104,7 @@ pred$var - pred_loaded$var
 
 #--------------------Mixed effects model: random effects and linear fixed effects----------------
 # Create random effects model
-gp_model <- GPModel(group_data = group)
+gp_model <- GPModel(group_data = group, likelihood = "gaussian")
 # Fit model
 fit(gp_model, y = y_lin, X = X, params = list(std_dev = TRUE))
 summary(gp_model)
@@ -112,6 +112,9 @@ summary(gp_model)
 gp_model <- fitGPModel(group_data = group,
                        y = y_lin, X = X, params = list(std_dev = TRUE))
 summary(gp_model)
+# Get coefficients and variance/covariance parameters separately
+gp_model$get_coef()
+gp_model$get_cov_pars()
 
 #--------------------Two crossed random effects and a random slope----------------
 # Create random effects model
