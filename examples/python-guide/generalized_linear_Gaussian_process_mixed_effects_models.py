@@ -84,7 +84,7 @@ plt.title("Comparison of true and predicted random effects")
 plt.xlabel("truth")
 plt.ylabel("predicted")
 plt.show()
-# Addint the overall intercept gives the group-wise intercepts
+# Adding the overall intercept gives the group-wise intercepts
 group_wise_intercepts = gp_model.get_coef()[0] + pred_random_effects['mu']
 
 # --------------------Approximate p-values for fixed effects coefficients----------------
