@@ -54,67 +54,64 @@ y_nested <- b[group] + b_nested[group_nested] + xi # observed data
 #--------------------Grouped random effects model: single-level random effect----------------
 # --------------------Training----------------
 gp_model <- GPModel(group_data = group, likelihood = "gaussian") # Create random effects model
-fit(gp_model, y = y, params = list(std_dev = TRUE)) # Fit model
+fit(gp_model, y = y, X = X, params = list(std_dev = TRUE)) # Fit model
 summary(gp_model)
+# Get coefficients and variance/covariance parameters separately
+gp_model$get_coef()
+gp_model$get_cov_pars()
 # Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(group_data = group, y = y, params = list(std_dev = TRUE))
+gp_model <- fitGPModel(group_data = group, y = y, X = X, 
+                       params = list(std_dev = TRUE))
 summary(gp_model)
-# Use other optimization technique (gradient descent with Nesterov acceleration 
-#   instead of Fisher scoring) and monitor convergence of optimization (trace=TRUE)
-gp_model <- fitGPModel(group_data = group, y = y,
-                       params = list(optimizer_cov = "gradient_descent",
+
+# Manually specify optimization algorithm and options (gradient descent with Nesterov acceleration)
+# and monitor convergence of optimization (trace=TRUE)
+# For available optimization options, see
+#   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
+gp_model <- fitGPModel(group_data = group, y = y, X = X,
+                       params = list(optimizer_cov= "gradient_descent",
                                      lr_cov = 0.1, use_nesterov_acc = TRUE,
                                      maxit = 100, std_dev = TRUE, trace=TRUE))
 summary(gp_model)
 
-# Evaluate negative log-likelihood
-gp_model$neg_log_likelihood(cov_pars=c(sigma2,sigma2_1),y=y)
-
-# Do optimization using optim and e.g. Nelder-Mead
-gp_model <- GPModel(group_data = group)
-optim(par=c(1,1), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
-
 # --------------------Prediction----------------
-gp_model <- fitGPModel(group_data = group, y = y, params = list(std_dev = TRUE))
-group_test <- 1:m
-pred <- predict(gp_model, group_data_pred = group_test)
+gp_model <- fitGPModel(group_data = group, y = y, X = X)
+group_test <- c(1,1,2,2,-1,-1)
+X_test <- cbind(rep(1,length(group_test)),runif(length(group_test)))
+pred <- predict(gp_model, group_data_pred = group_test, X_pred = X_test,
+                predict_var = TRUE)
+pred$mu# Predicted mean
+pred$var# Predicted variance
+
+# --------------------Predicting random effects----------------
+# The following shows how to obtain predicted (="estimated") random effects for the training data
+group_unique <- unique(group)
+X_zero <- cbind(rep(0,length(group_unique)),rep(0,length(group_unique)))
+pred_random_effects <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero)
+pred_random_effects$mu[1:5]# Predicted random effects
 # Compare true and predicted random effects
-plot(b, pred$mu, xlab="truth", ylab="predicted",
+plot(b, pred_random_effects$mu, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 abline(a=0,b=1)
-# Also predict covariance matrix
-group_test = c(1,1,2,2,-1,-1)
-pred <- predict(gp_model, group_data_pred = group_test, predict_cov_mat = TRUE)
-pred$mu# Predicted mean
-pred$cov# Predicted covariance
+# Adding the overall intercept gives the group-wise intercepts
+group_wise_intercepts <- gp_model$get_coef()[1] + pred_random_effects$mu
 
 #--------------------Saving a GPModel and loading it from a file----------------
-gp_model <- fitGPModel(group_data = group, y = y)
+gp_model <- fitGPModel(group_data = group, y = y, X=X)
 group_test = c(1,1,2,2,-1,-1)
-pred <- predict(gp_model, group_data_pred = group_test, predict_var = TRUE)
+X_test <- cbind(rep(1,length(group_test)),runif(length(group_test)))
+pred <- predict(gp_model, group_data_pred = group_test, X_pred = X_test, 
+                predict_var = TRUE)
 # Save model to file
 filename <- tempfile(fileext = ".json")
 saveGPModel(gp_model,filename = filename)
 # Load from file and make predictions again
 gp_model_loaded <- loadGPModel(filename = filename)
-pred_loaded <- predict(gp_model_loaded, group_data_pred = group_test, predict_var = TRUE)
+pred_loaded <- predict(gp_model_loaded, group_data_pred = group_test, X_pred = X_test,
+                       predict_var = TRUE)
 # Check equality
 pred$mu - pred_loaded$mu
 pred$var - pred_loaded$var
-
-#--------------------Mixed effects model: random effects and linear fixed effects----------------
-# Create random effects model
-gp_model <- GPModel(group_data = group, likelihood = "gaussian")
-# Fit model
-fit(gp_model, y = y_lin, X = X, params = list(std_dev = TRUE))
-summary(gp_model)
-# Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(group_data = group, likelihood = "gaussian",
-                       y = y_lin, X = X, params = list(std_dev = TRUE))
-summary(gp_model)
-# Get coefficients and variance/covariance parameters separately
-gp_model$get_coef()
-gp_model$get_cov_pars()
 
 #--------------------Two crossed random effects and a random slope----------------
 # Create random effects model

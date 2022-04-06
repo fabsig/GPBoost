@@ -58,8 +58,11 @@ gp_model.summary()
 # Get coefficients and variance/covariance parameters separately
 gp_model.get_coef()
 gp_model.get_cov_pars()
-# Use other optimization specifications (gradient descent with Nesterov acceleration)
+
+# Manually specify optimization algorithm and options (gradient descent with Nesterov acceleration)
 # and monitor convergence of optimization ("trace": True)
+# For available optimization options, see
+#   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
 gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 gp_model.fit(y=y, X=X, params={"optimizer_cov": "gradient_descent", "lr_cov": 0.1,
                                "std_dev": True, "use_nesterov_acc": True,
@@ -69,12 +72,26 @@ gp_model.summary()
 # --------------------Prediction----------------
 gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 gp_model.fit(y=y, X=X)
-
 group_test = np.array([1,2,-1])
 X_test = np.column_stack((np.ones(len(group_test)), np.random.uniform(size=len(group_test))))
 pred = gp_model.predict(group_data_pred=group_test, X_pred=X_test, predict_var = True)
 print(pred['mu'])# Predicted mean
 print(pred['var'])# Predicted variances
+
+# --------------------Predicting random effects----------------
+# The following shows how to obtain predicted (="estimated") random effects for the training data
+group_unique = np.unique(group)
+X_zero = np.column_stack((np.zeros(len(group_unique)), np.zeros(len(group_unique))))
+pred_random_effects = gp_model.predict(group_data_pred=group_unique, X_pred=X_zero)
+print(pred_random_effects['mu'][0:5])# Predicted random effects
+plt.figure("Comparison of true and predicted random effects")
+plt.scatter(b, pred_random_effects['mu'])
+plt.title("Comparison of true and predicted random effects")
+plt.xlabel("truth")
+plt.ylabel("predicted")
+plt.show()
+# Adding the overall intercept gives the group-wise intercepts
+group_wise_intercepts = gp_model.get_coef()[0] + pred_random_effects['mu']
 
 #--------------------Saving a GPModel and loading it from a file----------------
 # Train model and make predictions

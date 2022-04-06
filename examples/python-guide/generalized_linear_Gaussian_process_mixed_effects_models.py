@@ -57,7 +57,7 @@ gp_model.summary()
 gp_model.get_coef()
 gp_model.get_cov_pars()
 
-# --------------------Make predictions----------------
+# --------------------Prediction----------------
 group_test = np.arange(m)
 X_test = np.column_stack((np.ones(m), np.zeros(m)))
 # Predict latent variable
@@ -70,6 +70,22 @@ pred_resp = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
                              predict_var=True, predict_response=True)
 print(pred_resp['mu'][0:5])  # Predicted response variable (label)
 print(pred_resp['var'][0:5])  # # Predicted variance of response
+
+# --------------------Predicting random effects----------------
+# The following shows how to obtain predicted (="estimated") random effects for the training data
+group_unique = np.unique(group)
+X_zero = np.column_stack((np.zeros(len(group_unique)), np.zeros(len(group_unique))))
+pred_random_effects = gp_model.predict(group_data_pred=group_unique,
+                                       X_pred=X_zero, predict_response=False)
+print(pred_random_effects['mu'][0:5])# Predicted random effects
+plt.figure("Comparison of true and predicted random effects")
+plt.scatter(b1, pred_random_effects['mu'])
+plt.title("Comparison of true and predicted random effects")
+plt.xlabel("truth")
+plt.ylabel("predicted")
+plt.show()
+# Addint the overall intercept gives the group-wise intercepts
+group_wise_intercepts = gp_model.get_coef()[0] + pred_random_effects['mu']
 
 # --------------------Approximate p-values for fixed effects coefficients----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)

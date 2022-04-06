@@ -37,14 +37,14 @@ if (likelihood == "bernoulli_probit") {
 }
 hist(y,breaks=50)# visualize response variable
 
-# Train model
+# --------------------Train model----------------
 gp_model <- fitGPModel(group_data = group, likelihood = likelihood, y = y, X = X)
 summary(gp_model)
 # Get coefficients and variance/covariance parameters separately
 gp_model$get_coef()
 gp_model$get_cov_pars()
 
-# Make predictions
+# --------------------Prediction----------------
 group_test <- 1:m
 X_test <- cbind(rep(1,m),rep(0,m))
 # Predict latent variable
@@ -58,7 +58,21 @@ pred_resp <- predict(gp_model, X_pred = X_test, group_data_pred = group_test,
 pred_resp$mu[1:5] # Predicted response variable (label)
 pred_resp$var[1:5] # Predicted variance of response variable
 
-# Approximate p-values for fixed effects coefficients
+# --------------------Predicting random effects----------------
+# The following shows how to obtain predicted (="estimated") random effects for the training data
+group_unique <- unique(group)
+X_zero <- cbind(rep(0,length(group_unique)),rep(0,length(group_unique)))
+pred_random_effects <- predict(gp_model, group_data_pred = group_unique,
+                               X_pred = X_zero, predict_response = FALSE)
+pred_random_effects$mu[1:5]# Predicted random effects
+# Compare true and predicted random effects
+plot(b1, pred_random_effects$mu, xlab="truth", ylab="predicted",
+     main="Comparison of true and predicted random effects")
+abline(a=0,b=1)
+# Adding the overall intercept gives the group-wise intercepts
+group_wise_intercepts <- gp_model$get_coef()[1] + pred_random_effects$mu
+
+# --------------------Approximate p-values for fixed effects coefficients----------------
 gp_model <- fitGPModel(group_data = group, likelihood = likelihood, y = y, X = X,
                        params = list(std_dev = TRUE))
 coefs <- gp_model$get_coef()
@@ -66,6 +80,23 @@ z_values <- coefs[1,] / coefs[2,]
 p_values <- 2 * exp(pnorm(-abs(z_values), log.p = TRUE))
 coefs_summary <- rbind(coefs,z_values,p_values)
 print(signif(coefs_summary, digits=4))
+
+#--------------------Saving a GPModel and loading it from a file----------------
+# Save model to file
+filename <- tempfile(fileext = ".json")
+saveGPModel(gp_model,filename = filename)
+# Load from file and make predictions again
+gp_model_loaded <- loadGPModel(filename = filename)
+pred_loaded <- predict(gp_model_loaded, group_data_pred = group_test, 
+                       X_pred = X_test, predict_var = TRUE, predict_response = FALSE)
+pred_resp_loaded <- predict(gp_model_loaded, group_data_pred = group_test, 
+                            X_pred = X_test, predict_var = TRUE, predict_response = TRUE)
+# Check equality
+sum(abs(pred$mu - pred_loaded$mu))
+sum(abs(pred$var - pred_loaded$var))
+sum(abs(pred_resp$mu - pred_resp_loaded$mu))
+sum(abs(pred_resp$var - pred_resp_loaded$var))
+
 
 #--------------------Gaussian process model----------------
 # Simulate data
