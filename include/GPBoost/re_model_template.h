@@ -3636,8 +3636,14 @@ namespace GPBoost {
 				cov_fct_taper_range,
 				false,
 				false)));
-			find_nearest_neighbors_Veccia_fast(gp_coords_mat, num_data_per_cluster[cluster_i], num_neighbors,
-				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1);
+			find_nearest_neighbors_Veccia_fast(gp_coords_mat,
+				num_data_per_cluster[cluster_i],
+				num_neighbors,
+				nearest_neighbors_cluster_i,
+				dist_obs_neighbors_cluster_i,
+				dist_between_neighbors_cluster_i,
+				0,
+				-1);
 			for (int i = 0; i < num_data_per_cluster[cluster_i]; ++i) {
 				for (int j = 0; j < (int)nearest_neighbors_cluster_i[i].size(); ++j) {
 					entries_init_B_cluster_i.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.));
@@ -3645,7 +3651,6 @@ namespace GPBoost {
 				}
 				entries_init_B_cluster_i.push_back(Triplet_t(i, i, 1.));//Put 1's on the diagonal since B = I - A
 			}
-
 			//Random coefficients
 			if (num_gp_rand_coef > 0) {
 				std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp]);
@@ -3677,7 +3682,7 @@ namespace GPBoost {
 						z_outer_z_obs_neighbors_cluster_i[i][j] = coef_vec * coef_vec.transpose();
 					}
 				}
-			}
+			}// end random coefficients
 		}
 
 
