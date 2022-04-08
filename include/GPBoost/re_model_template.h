@@ -391,7 +391,9 @@ namespace GPBoost {
 			if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 				InitializeMatricesForOnlyGroupedREsUseWoodburyIdentity();
 			}
-			InitializeIdentityMatricesForGaussianData();
+			if (!vecchia_approx_) {
+				InitializeIdentityMatricesForGaussianData();
+			}
 			if (vecchia_approx_) {
 				Log::REInfo("Nearest neighbors for Vecchia approximation found");
 			}
@@ -2986,7 +2988,7 @@ namespace GPBoost {
 			}
 			else {
 
-				//Version 2: solving by hand
+				//Version 1: solving by hand
 				T3 L_inv = Id_[cluster_i];
 #pragma omp parallel for schedule(static)//TODO: maybe sometimes faster without parallelization?
 				for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
@@ -3402,7 +3404,7 @@ namespace GPBoost {
 		* \brief Initialize identity matrices required for Gaussian data
 		*/
 		void InitializeIdentityMatricesForGaussianData() {
-			if (gauss_likelihood_) {
+			if (gauss_likelihood_ && !vecchia_approx_) {
 				for (const auto& cluster_i : unique_clusters_) {
 					ConstructI<T_mat>(cluster_i);//Idendity matrices needed for computing inverses of covariance matrices used in gradient descent for Gaussian data
 				}
