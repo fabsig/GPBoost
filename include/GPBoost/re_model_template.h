@@ -315,15 +315,6 @@ namespace GPBoost {
 				}
 				num_gp_total_ = num_gp_ + num_gp_rand_coef_;
 				num_comps_total_ += num_gp_total_;
-				if (vecchia_approx) {
-					double num_mem_d = ((double)num_gp_total_) * ((double)num_data_) * ((double)num_neighbors_) * ((double)num_neighbors_);
-					int mem_size = (int)(num_mem_d * 8. / 1000000.);
-					if (mem_size > 8000) {
-						Log::REWarning("The current implementation of the Vecchia approximation is not optimized for memory usage. "
-							"In your case (num. obs. = %d and num. neighbors = %d), at least approximately %d mb of memory is needed. "
-							"If this is a problem, contact the developer of this package and ask to implement this feature.", num_data_, num_neighbors_, mem_size);
-					}
-				}
 			}
 			DetermineSpecialCasesModelsEstimationPrediction();
 			//Create RE/GP component models
@@ -725,13 +716,17 @@ namespace GPBoost {
 			if (has_covariates_) {
 				init_coef_str = " and 'init_coef'";
 			}
+			string_t problem_str = "none";
 			if (std::isnan(neg_log_likelihood_)) {
-				Log::REFatal(("NaN occurred in " + ll_str + " for initial parameters. "
-					"You might try providing other initial values ('init_cov_pars'" + init_coef_str + ")").c_str());
+				problem_str = "NaN";
 			}
 			else if (std::isinf(neg_log_likelihood_)) {
-				Log::REFatal(("Inf occurred in " + ll_str + " for initial parameters. "
-					"You might try providing other initial values ('init_cov_pars'" + init_coef_str + ")").c_str());
+				problem_str = "Inf";
+			}
+			if (problem_str != "none") {
+				Log::REFatal((problem_str + " occurred in initial " + ll_str + ". "
+					"Possible solutions: try other initial values ('init_cov_pars'" + init_coef_str + ") " 
+					"or other tuning parameters in case you apply the GPBoost algorithm (e.g., learning_rate)").c_str());
 			}
 			if (gauss_likelihood_) {
 				Log::REDebug("Initial negative log-likelihood: %g", neg_log_likelihood_);
