@@ -159,7 +159,6 @@ R-package/src/src/
 R-package/src-x64
 R-package/src-i386
 R-package/**/VERSION.txt
-**/Makevars.win
 gpboost_r/*
 gpboost*.tar.gz
 gpboost*.tgz
