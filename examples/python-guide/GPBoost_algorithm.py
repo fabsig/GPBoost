@@ -34,7 +34,7 @@ y = f + eps + xi  # observed data
 
 #--------------------Training----------------
 # Define GPModel
-gp_model = gpb.GPModel(group_data=group)
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 # The default optimizer for covariance parameters (hyperparameters) is Nesterov-accelerated gradient descent.
 # This can be changed to, e.g., Nelder-Mead as follows:
 # gp_model.set_optim_params(params={"optimizer_cov": "nelder_mead"})
@@ -57,7 +57,7 @@ bst = gpb.train(params=params,
 gp_model.summary()
 
 # Showing training loss
-gp_model = gpb.GPModel(group_data=group)
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 bst = gpb.train(params=params,
                 train_set=data_train,
                 gp_model=gp_model,
@@ -97,7 +97,7 @@ train_ind = np.random.choice(n, int(0.9 * n), replace=False)
 test_ind = [i for i in range(n) if i not in train_ind]
 data_train = gpb.Dataset(X[train_ind, :], y[train_ind])
 data_eval = gpb.Dataset(X[test_ind, :], y[test_ind], reference=data_train)
-gp_model = gpb.GPModel(group_data=group[train_ind])
+gp_model = gpb.GPModel(group_data=group[train_ind], likelihood="gaussian")
 
 # Include random effect predictions for validation (=default)
 gp_model.set_prediction_data(group_data_pred=group[test_ind])
@@ -131,7 +131,7 @@ plt.show()
 #--------------------Choosing tuning parameters----------------
 param_grid = {'learning_rate': [1,0.1,0.01], 'min_data_in_leaf': [1,10,100],
                     'max_depth': [1,3,5,10]}
-gp_model = gpb.GPModel(group_data=group)
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 data_train = gpb.Dataset(X, y)
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
                                              params=params,
@@ -154,7 +154,7 @@ print("Best parameters: " + str(opt_params['best_params']))
 #Best parameters: {'learning_rate': 0.01, 'min_data_in_leaf': 100, 'max_depth': 3}
 
 #--------------------Cross-validation for determining number of iterations----------------
-gp_model = gpb.GPModel(group_data=group)
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 data_train = gpb.Dataset(X, y)
 cvbst = gpb.cv(params=params, train_set=data_train,
                gp_model=gp_model, use_gp_model_for_validation=True,
@@ -167,11 +167,27 @@ gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 data_train = gpb.Dataset(X, y)
 bst = gpb.train(params=params, train_set=data_train,
                 gp_model=gp_model, num_boost_round=15)
-# Calculate and plot feature importances
+# Split-based feature importances
 feature_importances = bst.feature_importance(importance_type='gain')
 plt = gpb.plot_importance(bst, importance_type='gain')
-# SHAP values and dependence plots
-# Note: you need shap version>=0.36.0
+# Partial dependence plot
+from pdpbox import pdp
+import pandas as pd
+# Note: for the pdpbox package, the data needs to be a pandas DataFrame
+Xpd = pd.DataFrame(X,columns=['variable_1','variable_2'])
+pdp_dist = pdp.pdp_isolate(model=bst, dataset=Xpd, model_features=Xpd.columns,
+                           feature='variable_1', num_grid_points=50,
+                           predict_kwds={"ignore_gp_model": True})
+ax = pdp.pdp_plot(pdp_dist, 'variable_1', plot_lines=True, frac_to_plot=0.1)
+ax[1]['pdp_ax'].set_ylim([0, 3])
+# Interaction plot
+interact = pdp.pdp_interact(model=bst, dataset=Xpd, model_features=Xpd.columns,
+                             features=['variable_1','variable_2'],
+                             predict_kwds={"ignore_gp_model": True})
+pdp.pdp_interact_plot(interact, ['variable_1','variable_2'], x_quantile=True,
+                      plot_type='contour', plot_pdp=True)# ignore any error message
+
+# SHAP values and dependence plots (note: you need shap version>=0.36.0)
 import shap
 shap_values = shap.TreeExplainer(bst).shap_values(X)
 shap.summary_plot(shap_values, X)
@@ -243,7 +259,8 @@ xi = np.sqrt(sigma2) * np.random.normal(size=n)  # simulate error term
 y = F + eps + xi  # observed data
 
 # define GPModel
-gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
+gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential",
+                       likelihood="gaussian")
 # The default optimizer for covariance parameters (hyperparameters) is Nesterov-accelerated gradient descent.
 # This can be changed to, e.g., Nelder-Mead as follows:
 # gp_model.set_optim_params(params={"optimizer_cov": "nelder_mead"})

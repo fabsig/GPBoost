@@ -34,7 +34,7 @@ Xtest <- cbind(x_test,rep(0,length(x_test)))
 
 #--------------------Training----------------
 # Create random effects model
-gp_model <- GPModel(group_data = group)
+gp_model <- GPModel(group_data = group, likelihood = "gaussian")
 # The default optimizer for covariance parameters (hyperparameters) is 
 # Nesterov-accelerated gradient descent.
 # This can be changed to, e.g., Nelder-Mead as follows:
@@ -91,7 +91,7 @@ legend("bottomright", legend = c("truth", "fitted"),
 
 #--------------------Using a validation set-------------------------
 # Include random effect predictions for validation (=default)
-gp_model <- GPModel(group_data = group[train_ind])
+gp_model <- GPModel(group_data = group[train_ind], likelihood = "gaussian")
 gp_model$set_prediction_data(group_data_pred = group[-train_ind])
 bst <- gpb.train(data = dtrain,
                  gp_model = gp_model,
@@ -133,7 +133,7 @@ plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
 #--------------------Choosing tuning parameters----------------
 param_grid = list("learning_rate" = c(1,0.1,0.01), "min_data_in_leaf" = c(1,10,100),
                         "max_depth" = c(1,3,5,10))
-gp_model <- GPModel(group_data = group)
+gp_model <- GPModel(group_data = group, likelihood = "gaussian")
 dataset <- gpb.Dataset(data = X, label = y)
 set.seed(100)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
@@ -153,7 +153,7 @@ print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
 # ***** New best score (0.0116046167840328) found for the following parameter combination: learning_rate: 0.01, min_data_in_leaf: 100, max_depth: 3, nrounds: 78
 
 #--------------------Cross-validation for determining number of iterations----------------
-gp_model <- GPModel(group_data = group)
+gp_model <- GPModel(group_data = group, likelihood = "gaussian")
 dataset <- gpb.Dataset(data = X, label = y)
 bst <- gpb.cv(data = dataset,
               gp_model = gp_model,
@@ -182,9 +182,14 @@ bst <- gpboost(data = X,
                min_data_in_leaf = 5,
                objective = "regression_l2",
                verbose = 0)
-# Calculate and plot feature importances
+# Split-based feature importances
 feature_importances <- gpb.importance(bst, percentage = TRUE)
 gpb.plot.importance(feature_importances, top_n = 5L, measure = "Gain")
+# Partial dependence plot
+gpb.plot.partial.dependence(bst, X, variable = 1)
+# Interaction plot
+gpb.plot.part.dep.interact(bst, X, variables = c(1,2))
+
 # SHAP values and dependence plots
 library("SHAPforxgboost")
 shap.plot.summary.wrap1(bst, X = X)
@@ -217,7 +222,7 @@ sum(abs(pred$random_effect_mean - pred_loaded$random_effect_mean))
 sum(abs(pred$random_effect_cov - pred_loaded$random_effect_cov))
 
 #--------------------Do Newton updates for tree leaves---------------
-gp_model <- GPModel(group_data = group[train_ind])
+gp_model <- GPModel(group_data = group[train_ind], likelihood = "gaussian")
 gp_model$set_prediction_data(group_data_pred = group[-train_ind])
 bst <- gpb.train(data = dtrain,
                  gp_model = gp_model,
@@ -248,7 +253,7 @@ bst <- gpboost(data = dtrain,
 
 #--------------------GPBoostOOS algorithm: GP parameters estimated out-of-sample----------------
 # Create random effects model and dataset
-gp_model <- GPModel(group_data = group)
+gp_model <- GPModel(group_data = group, likelihood = "gaussian")
 dataset <- gpb.Dataset(X, label = y)
 params <- list(learning_rate = 0.05,
                max_depth = 6,
@@ -304,7 +309,8 @@ xi <- sqrt(sigma2) * rnorm(n) # simulate error term
 y <- y + eps + xi # add random effects and error to data
 
 # Create Gaussian process model
-gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
+gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                    likelihood = "gaussian")
 # The default optimizer for covariance parameters (hyperparameters) is 
 # Nesterov-accelerated gradient descent.
 # This can be changed to, e.g., Nelder-Mead as follows:
