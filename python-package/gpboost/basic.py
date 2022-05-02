@@ -19,6 +19,7 @@ from typing import Any, Dict
 
 import numpy as np
 import scipy.sparse
+import pandas as pd
 
 from .compat import PANDAS_INSTALLED, pd_DataFrame, pd_Series, concat, is_dtype_sparse, dt_DataTable
 from .libpath import find_lib_path
@@ -4592,8 +4593,8 @@ class GPModel(object):
 
         Returns
         -------
-        result : numpy array
-            (estimated) covariance parameters and standard deciations if (if std_dev=True as set in 'fit')
+        result : pandas DataFrame
+            (estimated) covariance parameters and standard deviations (if std_dev=True was set in 'fit')
         """
         if self.params["std_dev"]:
             optim_pars = np.zeros(2 * self.num_cov_pars, dtype=np.float64)
@@ -4607,8 +4608,10 @@ class GPModel(object):
         if self.params["std_dev"] and self.get_likelihood_name() == "gaussian":
             cov_pars = np.row_stack((optim_pars[0:self.num_cov_pars],
                                      optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
+            cov_pars = pd.DataFrame(cov_pars, columns=self.cov_par_names, index=['Param.', 'Std. dev.'])
         else:
             cov_pars = optim_pars[0:self.num_cov_pars]
+            cov_pars = pd.DataFrame(cov_pars, columns=self.cov_par_names)
         return cov_pars
 
     def get_coef(self):
@@ -4616,8 +4619,8 @@ class GPModel(object):
 
         Returns
         -------
-        result : numpy array
-            (estimated) linear regression coefficients and standard deciations if (if std_dev=True as set in 'fit')
+        result : pandas DataFrame
+            (estimated) linear regression coefficients and standard deviations (if std_dev=True was set in 'fit')
         """
         if self.num_coef is None:
             raise ValueError("'fit' has not been called")
@@ -4633,28 +4636,20 @@ class GPModel(object):
         if self.params["std_dev"]:
             coef = np.row_stack((optim_pars[0:self.num_coef],
                                  optim_pars[self.num_coef:(2 * self.num_coef)]))
+            coef = pd.DataFrame(coef, columns=self.coef_names, index=['Param.', 'Std. dev.'])
         else:
             coef = optim_pars[0:self.num_coef]
+            coef = pd.DataFrame(coef, columns=self.coef_names)
         return coef
 
     def summary(self):
         """Print summary of fitted model parameters.
         """
-        cov_pars = self.get_cov_pars()
-        message = "Covariance parameters "
-        if self.params["std_dev"]:
-            message = message + "and standard deviations (second row):"
-        print(message)
-        print(self.cov_par_names)
-        print(cov_pars)
+        print("Covariance parameters: ")
+        print(self.get_cov_pars())
         if self.has_covariates:
-            coef = self.get_coef()
-            message = "Linear regression coefficients "
-            if self.params["std_dev"]:
-                message = message + "and standard deviations (second row):"
-            print(message)
-            print(self.coef_names)
-            print(coef)
+            print("Linear regression coefficients: ")
+            print(self.get_coef())
         if self.params["maxit"] == self.get_num_optim_iter():
             print("Note: no convergence after the maximal number of iterations")
         return self
