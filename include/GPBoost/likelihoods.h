@@ -141,6 +141,51 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Returns a pointer to first_deriv_ll_
+		*/
+		const vec_t* GetFirstDerivLL() const {
+			return(&first_deriv_ll_);
+		}
+
+		/*!
+		* \brief Multiplies a vector v by the (transposed) incidence matrix Zt when only indices that indicate to which random effect every data point is related are given
+		* \param num_data Number of data points
+		* \param num_re Number of random effects
+		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
+		* \param v Vector which is to be multiplied by Zt
+		* \param[out] ZtV Vector Zt * v
+		* \param initialize_zero If true, ZtV is initialized to zero. Otherwise, the result is added to it
+		*/
+		void CalcZtVGivenIndices(const data_size_t num_data,
+			const data_size_t num_re,
+			const data_size_t* const random_effects_indices_of_data,
+			const vec_t& v,
+			vec_t& ZtV,
+			bool initialize_zero) const {
+			if (initialize_zero) {
+				ZtV = vec_t::Zero(num_re);
+			}
+#pragma omp parallel
+			{
+				vec_t Ztv_private = vec_t::Zero(num_re);
+#pragma omp for
+				for (data_size_t i = 0; i < num_data; ++i) {
+					Ztv_private[random_effects_indices_of_data[i]] += v[i];
+				}
+#pragma omp critical
+				{
+					for (data_size_t i_re = 0; i_re < num_re; ++i_re) {
+						ZtV[i_re] += Ztv_private[i_re];
+					}
+				}//end omp critical
+			}//end omp parallel
+			//Non-parallel version
+			//for (data_size_t i = 0; i < num_data; ++i) {
+			//	ZtV[random_effects_indices_of_data[i]] += v[i];
+			//}
+		}
+
+		/*!
 		* \brief Checks whether the response variables (labels) have the correct values
 		* \param y_data Response variable data
 		* \param num_data Number of data points
@@ -756,40 +801,9 @@ namespace GPBoost {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 				// Calculate right hand side for mode update
-				diag_sqrt_ZtWZ.setZero();
-#pragma omp parallel
-				{
-					vec_t diag_sqrt_ZtWZ_private = vec_t::Zero(num_re_);
-#pragma omp for
-					for (data_size_t i = 0; i < num_data; ++i) {
-						diag_sqrt_ZtWZ_private[random_effects_indices_of_data[i]] += second_deriv_neg_ll_[i];
-					}
-#pragma omp critical
-					{
-						for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-							diag_sqrt_ZtWZ[i_re] += diag_sqrt_ZtWZ_private[i_re];
-						}
-					}//end omp critical
-				}//end omp parallel
-				//Non-parallel version
-				//for (data_size_t i = 0; i < num_data; ++i) {
-				//	diag_sqrt_ZtWZ[random_effects_indices_of_data[i]] += second_deriv_neg_ll_[i];
-				//}
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_sqrt_ZtWZ, true);
 				rhs = (diag_sqrt_ZtWZ.array() * mode_.array()).matrix();//rhs = ZtWZ * mode_ + Zt * first_deriv_ll_ for updating mode
-#pragma omp parallel
-				{
-					vec_t rhs_private = vec_t::Zero(num_re_);
-#pragma omp for
-					for (data_size_t i = 0; i < num_data; ++i) {
-						rhs_private[random_effects_indices_of_data[i]] += first_deriv_ll_[i];
-					}
-#pragma omp critical
-					{
-						for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-							rhs[i_re] += rhs_private[i_re];
-						}
-					}//end omp critical
-				}//end omp parallel
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, rhs, false);
 				// Calculate Cholesky factor of matrix B = Id + ZtWZsqrt * Sigma * ZtWZsqrt
 				diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
 				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
@@ -852,21 +866,7 @@ namespace GPBoost {
 			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
-			diag_sqrt_ZtWZ.setZero();
-#pragma omp parallel
-			{
-				vec_t diag_sqrt_ZtWZ_private = vec_t::Zero(num_re_);
-#pragma omp for
-				for (data_size_t i = 0; i < num_data; ++i) {
-					diag_sqrt_ZtWZ_private[random_effects_indices_of_data[i]] += second_deriv_neg_ll_[i];
-				}
-#pragma omp critical
-				{
-					for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-						diag_sqrt_ZtWZ[i_re] += diag_sqrt_ZtWZ_private[i_re];
-					}
-				}//end omp critical
-			}//end omp parallel
+			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_sqrt_ZtWZ, true);
 			diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
 			Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
 			CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
@@ -1062,36 +1062,9 @@ namespace GPBoost {
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 				// Calculate rhs for mode update
 				rhs = - mode_ / sigma2;//right hand side for updating mode
-#pragma omp parallel
-				{
-					vec_t rhs_private = vec_t::Zero(num_re_);
-#pragma omp for
-					for (data_size_t i = 0; i < num_data; ++i) {
-						rhs_private[random_effects_indices_of_data[i]] += first_deriv_ll_[i];
-					}
-#pragma omp critical
-					{
-						for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-							rhs[i_re] += rhs_private[i_re];
-						}
-					}//end omp critical
-				}//end omp parallel
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, rhs, false);
 				// Update mode
-				diag_SigmaI_plus_ZtWZ_.setZero();
-#pragma omp parallel
-				{
-					vec_t diag_SigmaI_plus_ZtWZ_private = vec_t::Zero(num_re_);
-#pragma omp for
-					for (data_size_t i = 0; i < num_data; ++i) {
-						diag_SigmaI_plus_ZtWZ_private[random_effects_indices_of_data[i]] += second_deriv_neg_ll_[i];
-					}
-#pragma omp critical
-					{
-						for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-							diag_SigmaI_plus_ZtWZ_[i_re] += diag_SigmaI_plus_ZtWZ_private[i_re];
-						}
-					}//end omp critical
-				}//end omp parallel
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_SigmaI_plus_ZtWZ_, true);
 				diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
 				mode_ += (rhs.array() / diag_SigmaI_plus_ZtWZ_.array()).matrix();
 				// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
@@ -1145,21 +1118,7 @@ namespace GPBoost {
 			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
-			diag_SigmaI_plus_ZtWZ_.setZero();
-#pragma omp parallel
-			{
-				vec_t diag_SigmaI_plus_ZtWZ_private = vec_t::Zero(num_re_);
-#pragma omp for
-				for (data_size_t i = 0; i < num_data; ++i) {
-					diag_SigmaI_plus_ZtWZ_private[random_effects_indices_of_data[i]] += second_deriv_neg_ll_[i];
-				}
-#pragma omp critical
-				{
-					for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-						diag_SigmaI_plus_ZtWZ_[i_re] += diag_SigmaI_plus_ZtWZ_private[i_re];
-					}
-				}//end omp critical
-			}//end omp parallel
+			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_SigmaI_plus_ZtWZ_, true);
 			diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
 			approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * num_re_ * std::log(sigma2);
 			mode_has_been_calculated_ = true;
@@ -1476,42 +1435,15 @@ namespace GPBoost {
 				}
 			}
 			// Matrix ZtWZsqrt
-			vec_t diag_ZtWZ = vec_t::Zero(num_re_);
-#pragma omp parallel
-			{
-				vec_t diag_sqrt_ZtWZ_private = vec_t::Zero(num_re_);
-#pragma omp for
-				for (data_size_t i = 0; i < num_data; ++i) {
-					diag_sqrt_ZtWZ_private[random_effects_indices_of_data[i]] += second_deriv_neg_ll_[i];
-				}
-#pragma omp critical
-				{
-					for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-						diag_ZtWZ.array()[i_re] += diag_sqrt_ZtWZ_private[i_re];
-					}
-				}//end omp critical
-			}//end omp parallel
+			vec_t diag_ZtWZ;
+			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_ZtWZ, true);
 			T_mat L_inv_ZtWZsqrt(num_re_, num_re_);//diagonal matrix with square root of diagonal of ZtWZ
 			L_inv_ZtWZsqrt.setIdentity();
 			L_inv_ZtWZsqrt.diagonal().array() = diag_ZtWZ.array().sqrt();
 			vec_t third_deriv(num_data);//vector of third derivatives of log-likelihood
 			CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
-			vec_t diag_ZtThirdDerivZ(num_re_);//sqrt of diagonal matrix ZtWZ
-			diag_ZtThirdDerivZ.setZero();
-#pragma omp parallel
-			{
-				vec_t diag_ZtThirdDerivZ_private = vec_t::Zero(num_re_);
-#pragma omp for
-				for (data_size_t i = 0; i < num_data; ++i) {
-					diag_ZtThirdDerivZ_private[random_effects_indices_of_data[i]] += third_deriv[i];
-				}
-#pragma omp critical
-				{
-					for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-						diag_ZtThirdDerivZ[i_re] += diag_ZtThirdDerivZ_private[i_re];
-					}
-				}//end omp critical
-			}//end omp parallel
+			vec_t diag_ZtThirdDerivZ;
+			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, third_deriv, diag_ZtThirdDerivZ, true);
 			ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZsqrt);
 			chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL().solveInPlace(L_inv_ZtWZsqrt);//L_inv_ZtWZsqrt = L\ZtWZsqrt //This is the bottleneck (in this first part) for large data when using sparse matrices
 			T_mat L_inv_ZtWZsqrt_Sigma = L_inv_ZtWZsqrt * (*Sigma);
@@ -1520,22 +1452,8 @@ namespace GPBoost {
 			//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale: L_inv_ZtWZsqrt_Sigma: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt_Sigma));//Only for debugging
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
-				vec_t ZtFirstDeriv(num_re_);//sqrt of diagonal matrix ZtWZ
-				ZtFirstDeriv.setZero();
-#pragma omp parallel
-				{
-					vec_t ZtFirstDeriv_private = vec_t::Zero(num_re_);
-#pragma omp for
-					for (data_size_t i = 0; i < num_data; ++i) {
-						ZtFirstDeriv_private[random_effects_indices_of_data[i]] += first_deriv_ll_[i];
-					}
-#pragma omp critical
-					{
-						for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-							ZtFirstDeriv[i_re] += ZtFirstDeriv_private[i_re];
-						}
-					}//end omp critical
-				}//end omp parallel
+				vec_t ZtFirstDeriv;
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, ZtFirstDeriv, true);
 				T_mat ZtWZI_Sigma_inv = L_inv_ZtWZsqrt.transpose() * L_inv_ZtWZsqrt;//ZtWZI_Sigma_inv = ZtWZsqrt * L^T\(L\ZtWZsqrt) = ((ZtWZ)^-1 + Sigma)^-1
 				// calculate gradient of approx. marginal log-likelihood wrt the mode
 				// note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = ZSigmaZt - L_inv_ZtWZsqrt_Sigma^T*L_inv_ZtWZsqrt_Sigma
@@ -1786,57 +1704,18 @@ namespace GPBoost {
 			vec_t third_deriv(num_data);//vector of third derivatives of log-likelihood
 			CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
 			// calculate gradient of approx. marginal likeligood wrt the mode
-			vec_t d_mll_d_mode = vec_t::Zero(num_re_);
-#pragma omp parallel
-			{
-				vec_t third_deriv_private = vec_t::Zero(num_re_);
-#pragma omp for
-				for (data_size_t i = 0; i < num_data; ++i) {
-					third_deriv_private[random_effects_indices_of_data[i]] += third_deriv[i];
-				}
-#pragma omp critical
-				{
-					for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-						d_mll_d_mode[i_re] += third_deriv_private[i_re];
-					}
-				}//end omp critical
-			}//end omp parallel
+			vec_t d_mll_d_mode;
+			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, third_deriv, d_mll_d_mode, true);
 			d_mll_d_mode.array() /= -2. * diag_SigmaI_plus_ZtWZ_.array();	   
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
-				vec_t diag_ZtWZ = vec_t::Zero(num_re_);
-#pragma omp parallel
-				{
-					vec_t diag_ZtWZ_private = vec_t::Zero(num_re_);
-#pragma omp for
-					for (data_size_t i = 0; i < num_data; ++i) {
-						diag_ZtWZ_private[random_effects_indices_of_data[i]] += second_deriv_neg_ll_[i];
-					}
-#pragma omp critical
-					{
-						for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-							diag_ZtWZ[i_re] += diag_ZtWZ_private[i_re];
-						}
-					}//end omp critical
-				}//end omp parallel
+				vec_t diag_ZtWZ;
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_ZtWZ, true);
 				double explicit_derivative = -0.5 * (mode_.array() * mode_.array()).sum() / sigma2 +
 					0.5 * (diag_ZtWZ.array() / diag_SigmaI_plus_ZtWZ_.array()).sum();
 				// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-				vec_t d_mode_d_par = vec_t::Zero(num_re_);
-#pragma omp parallel
-				{
-					vec_t first_deriv_private = vec_t::Zero(num_re_);
-#pragma omp for
-					for (data_size_t i = 0; i < num_data; ++i) {
-						first_deriv_private[random_effects_indices_of_data[i]] += first_deriv_ll_[i];
-					}
-#pragma omp critical
-					{
-						for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-							d_mode_d_par[i_re] += first_deriv_private[i_re];
-						}
-					}//end omp critical
-				}//end omp parallel
+				vec_t d_mode_d_par;
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, d_mode_d_par, true);
 				d_mode_d_par.array() /= diag_SigmaI_plus_ZtWZ_.array();
 				cov_grad[0] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
 				////Only for debugging
@@ -2091,38 +1970,12 @@ namespace GPBoost {
 			else {
 				CHECK(mode_has_been_calculated_);
 			}
-			vec_t ZtFirstDeriv = vec_t::Zero(num_re_);//sqrt of diagonal matrix ZtWZ
-#pragma omp parallel
-			{
-				vec_t ZtFirstDeriv_private = vec_t::Zero(num_re_);
-#pragma omp for
-				for (data_size_t i = 0; i < num_data; ++i) {
-					ZtFirstDeriv_private[random_effects_indices_of_data[i]] += first_deriv_ll_[i];
-				}
-#pragma omp critical
-				{
-					for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-						ZtFirstDeriv[i_re] += ZtFirstDeriv_private[i_re];
-					}
-				}//end omp critical
-			}//end omp parallel
+			vec_t ZtFirstDeriv;
+			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, ZtFirstDeriv, true);
 			pred_mean = Cross_Cov * ZtFirstDeriv;
 			if (calc_pred_cov || calc_pred_var) {
-				vec_t diag_ZtWZ = vec_t::Zero(num_re_);
-#pragma omp parallel
-				{
-					vec_t diag_sqrt_ZtWZ_private = vec_t::Zero(num_re_);
-#pragma omp for
-					for (data_size_t i = 0; i < num_data; ++i) {
-						diag_sqrt_ZtWZ_private[random_effects_indices_of_data[i]] += second_deriv_neg_ll_[i];
-					}
-#pragma omp critical
-					{
-						for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-							diag_ZtWZ.array()[i_re] += diag_sqrt_ZtWZ_private[i_re];
-						}
-					}//end omp critical
-				}//end omp parallel
+				vec_t diag_ZtWZ;
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_ZtWZ, true);
 				sp_mat_t ZtWZsqrt(num_re_, num_re_);//diagonal matrix with square root of diagonal of ZtWZ
 				ZtWZsqrt.setIdentity();
 				ZtWZsqrt.diagonal().array() = diag_ZtWZ.array().sqrt();
@@ -2289,37 +2142,26 @@ namespace GPBoost {
 			else {
 				CHECK(mode_has_been_calculated_);
 			}
-			vec_t ZtFirstDeriv = vec_t::Zero(num_re_);//sqrt of diagonal matrix ZtWZ
-#pragma omp parallel
-			{
-				vec_t ZtFirstDeriv_private = vec_t::Zero(num_re_);
-#pragma omp for
-				for (data_size_t i = 0; i < num_data; ++i) {
-					ZtFirstDeriv_private[random_effects_indices_of_data[i]] += first_deriv_ll_[i];
-				}
-#pragma omp critical
-				{
-					for (data_size_t i_re = 0; i_re < num_re_; ++i_re) {
-						ZtFirstDeriv[i_re] += ZtFirstDeriv_private[i_re];
-					}
-				}//end omp critical
-			}//end omp parallel
+			vec_t ZtFirstDeriv;
+			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, ZtFirstDeriv, true);
 			pred_mean = Cross_Cov * ZtFirstDeriv;
-			vec_t diag_Sigma_plus_ZtWZI = vec_t(num_re_);
-			diag_Sigma_plus_ZtWZI.array() = 1. / diag_SigmaI_plus_ZtWZ_.array();
-			diag_Sigma_plus_ZtWZI.array() /= sigma2;
-			diag_Sigma_plus_ZtWZI.array() -= 1.;
-			diag_Sigma_plus_ZtWZI.array() /= sigma2;
-			if (calc_pred_cov) {
-				T_mat Maux = Cross_Cov * diag_Sigma_plus_ZtWZI.asDiagonal() * Cross_Cov.transpose();
-				pred_cov += Maux;
-			}
-			if (calc_pred_var) {
-				T_mat Maux = Cross_Cov * diag_Sigma_plus_ZtWZI.asDiagonal();
-				T_mat Maux2 = Cross_Cov.cwiseProduct(Maux);
+			if (calc_pred_cov || calc_pred_var) {
+				vec_t diag_Sigma_plus_ZtWZI(num_re_);
+				diag_Sigma_plus_ZtWZI.array() = 1. / diag_SigmaI_plus_ZtWZ_.array();
+				diag_Sigma_plus_ZtWZI.array() /= sigma2;
+				diag_Sigma_plus_ZtWZI.array() -= 1.;
+				diag_Sigma_plus_ZtWZI.array() /= sigma2;
+				if (calc_pred_cov) {
+					T_mat Maux = Cross_Cov * diag_Sigma_plus_ZtWZI.asDiagonal() * Cross_Cov.transpose();
+					pred_cov += Maux;
+				}
+				if (calc_pred_var) {
+					T_mat Maux = Cross_Cov * diag_Sigma_plus_ZtWZI.asDiagonal();
+					T_mat Maux2 = Cross_Cov.cwiseProduct(Maux);
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < (int)pred_mean.size(); ++i) {
-					pred_var[i] += Maux2.row(i).sum();
+					for (int i = 0; i < (int)pred_mean.size(); ++i) {
+						pred_var[i] += Maux2.row(i).sum();
+					}
 				}
 			}
 			////Only for debugging
