@@ -107,6 +107,22 @@ namespace GPBoost {
 	*/
 	void CalcLInvH(den_mat_t& L, den_mat_t& H, den_mat_t& LInvH, bool lower = true);
 
+	/*!
+	* \brief Multiplies a vector v by the (transposed) incidence matrix Zt when only indices that indicate to which random effect every data point is related are given
+	* \param num_data Number of data points
+	* \param num_re Number of random effects
+	* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
+	* \param v Vector which is to be multiplied by Zt
+	* \param[out] ZtV Vector Zt * v
+	* \param initialize_zero If true, ZtV is initialized to zero. Otherwise, the result is added to it
+	*/
+	void CalcZtVGivenIndices(const data_size_t num_data,
+		const data_size_t num_re,
+		const data_size_t* const random_effects_indices_of_data,
+		const vec_t& v,
+		vec_t& ZtV,
+		bool initialize_zero);
+
 }  // namespace GPBoost
 
 #endif   // GPB_SPARSE_MAT_H_

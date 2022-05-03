@@ -148,44 +148,6 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Multiplies a vector v by the (transposed) incidence matrix Zt when only indices that indicate to which random effect every data point is related are given
-		* \param num_data Number of data points
-		* \param num_re Number of random effects
-		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
-		* \param v Vector which is to be multiplied by Zt
-		* \param[out] ZtV Vector Zt * v
-		* \param initialize_zero If true, ZtV is initialized to zero. Otherwise, the result is added to it
-		*/
-		void CalcZtVGivenIndices(const data_size_t num_data,
-			const data_size_t num_re,
-			const data_size_t* const random_effects_indices_of_data,
-			const vec_t& v,
-			vec_t& ZtV,
-			bool initialize_zero) const {
-			if (initialize_zero) {
-				ZtV = vec_t::Zero(num_re);
-			}
-#pragma omp parallel
-			{
-				vec_t Ztv_private = vec_t::Zero(num_re);
-#pragma omp for
-				for (data_size_t i = 0; i < num_data; ++i) {
-					Ztv_private[random_effects_indices_of_data[i]] += v[i];
-				}
-#pragma omp critical
-				{
-					for (data_size_t i_re = 0; i_re < num_re; ++i_re) {
-						ZtV[i_re] += Ztv_private[i_re];
-					}
-				}//end omp critical
-			}//end omp parallel
-			//Non-parallel version
-			//for (data_size_t i = 0; i < num_data; ++i) {
-			//	ZtV[random_effects_indices_of_data[i]] += v[i];
-			//}
-		}
-
-		/*!
 		* \brief Checks whether the response variables (labels) have the correct values
 		* \param y_data Response variable data
 		* \param num_data Number of data points
