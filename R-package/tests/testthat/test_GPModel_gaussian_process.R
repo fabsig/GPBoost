@@ -150,6 +150,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
     
+    # Predict training data random effects
+    training_data_random_effects <- predict_training_data_random_effects(gp_model)
+    pred_random_effects <- predict(gp_model, gp_coords_pred = coords)
+    expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
+    
     # Prediction using given parameters
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
@@ -355,6 +360,11 @@ test_that("Gaussian process model with multiple observations at the same locatio
   cov_pars <- c(0.037136462, 0.006064181, 1.153630335, 0.435788570, 0.192080613, 0.102631006)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
   expect_equal(gp_model$get_num_optim_iter(), 14)
+  
+  # Predict training data random effects
+  training_data_random_effects <- predict_training_data_random_effects(gp_model)
+  pred_random_effects <- predict(gp_model, gp_coords_pred = coords_multiple)
+  expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
   
   # Prediction
   coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))

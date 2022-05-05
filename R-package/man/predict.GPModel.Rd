@@ -72,7 +72,6 @@ Make predictions for a \code{GPModel}
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
-library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
 #--------------------Grouped random effects model: single-level random effect----------------

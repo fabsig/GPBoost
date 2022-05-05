@@ -889,6 +889,23 @@ GPBOOST_C_EXPORT SEXP GPB_PredictREModel_R(
 );
 
 /*!
+* \brief Predict ("estimate") training data random effects
+* \param handle Handle of REModel
+* \param cov_pars_pred Covariance parameters of components
+* \param y_obs Response variable for observed data
+* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
+* \param[out] out_predict Predicted training data random effects
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT SEXP GPB_PredictREModelTrainingDataRandomEffects_R(
+	SEXP handle,
+	SEXP cov_pars,
+	SEXP y_obs,
+	SEXP fixed_effects,
+	SEXP out_predict
+);
+
+/*!
 * \brief Get name of likelihood
 * \return R character vector (length=1) with likelihood name
 */

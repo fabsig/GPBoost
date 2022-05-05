@@ -2,7 +2,6 @@ GPBoost_algorithm           GPBoost algorithm: combining tree-boosting with Gaus
 classification_non_Gaussian_data           GPBoost algorithm for non-Gaussian data
 parameter_tuning               Parameter tuning using deterministic or random grid search
 boosting               Basic boosting walkthrough (without Gausssian process or random effects)
-linear_Gaussian_process_mixed_effects_models           Linear Gaussian process and mixed effects model examples
 generalized_linear_Gaussian_process_mixed_effects_models           Generalized linear Gaussian process and mixed effects model examples for various likelihoods
 examples_in_R_package_documentation           Examples used in the R package documentation
 cross_validation               Cross validation function for finding the number of boosting iterations

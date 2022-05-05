@@ -658,7 +658,7 @@ namespace GPBoost {
 				Log::REFatal("Covariance parameters have not been estimated or are not given.");
 			}
 			// Note: cov_pars_initialized_ is set to true by InitializeCovParsIfNotDefined() which is called by OptimCovPar(), OptimLinRegrCoefCovPar(), and EvalNegLogLikelihood().
-			//			It is assume that if one of these three functions has been called, the covariance parameters have been estimated
+			//			It is assumed that if one of these three functions has been called, the covariance parameters have been estimated
 			cov_pars_pred_trans = cov_pars_;
 			if (GaussLikelihood()) {
 				// We don't factorize the covariance matrix for Gaussian data in case this has already been done (e.g. at the end of the estimation)
@@ -697,7 +697,53 @@ namespace GPBoost {
 				vecchia_pred_type, num_neighbors_pred,
 				fixed_effects, fixed_effects_pred);
 		}
-	}
+	}//end Predict
+
+	void REModel::PredictTrainingDataRandomEffects(const double* cov_pars_pred,
+		const double* y_obs,
+		double* out_predict,
+		const double* fixed_effects) const {
+		bool calc_cov_factor = true;
+		vec_t cov_pars_pred_trans;
+		if (cov_pars_pred != nullptr) {
+			vec_t cov_pars_pred_orig = Eigen::Map<const vec_t>(cov_pars_pred, num_cov_pars_);
+			cov_pars_pred_trans = vec_t(num_cov_pars_);
+			if (sparse_) {
+				re_model_sp_->TransformCovPars(cov_pars_pred_orig, cov_pars_pred_trans);
+			}
+			else {
+				re_model_den_->TransformCovPars(cov_pars_pred_orig, cov_pars_pred_trans);
+			}
+		}//end if cov_pars_pred != nullptr
+		else {// use saved cov_pars
+			if (!cov_pars_initialized_) {
+				Log::REFatal("Covariance parameters have not been estimated or are not given.");
+			}
+			cov_pars_pred_trans = cov_pars_;
+			if (GaussLikelihood()) {
+				calc_cov_factor = !covariance_matrix_has_been_factorized_;
+			}
+		}// end use saved cov_pars
+		if (has_covariates_) {
+			CHECK(coef_initialized_ == true);
+		}
+		if (sparse_) {
+			re_model_sp_->PredictTrainingDataRandomEffects(cov_pars_pred_trans.data(),
+				coef_.data(),
+				y_obs,
+				out_predict, 
+				calc_cov_factor,
+				fixed_effects);
+		}
+		else {
+			re_model_den_->PredictTrainingDataRandomEffects(cov_pars_pred_trans.data(),
+				coef_.data(),
+				y_obs,
+				out_predict,
+				calc_cov_factor,
+				fixed_effects);
+		}
+	}//end PredictTrainingDataRandomEffects
 
 	int REModel::GetNumIt() const {
 		return(num_it_);

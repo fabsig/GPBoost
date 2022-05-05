@@ -248,10 +248,12 @@ gpb.GPModel <- R6::R6Class(
         private$num_data <- as.integer(dim(group_data)[1])
         private$group_data <- group_data
         if (is.null(colnames(private$group_data))) {
-          private$cov_par_names <- c(private$cov_par_names,paste0("Group_",1:private$num_group_re))
+          new_name <- paste0("Group_",1:private$num_group_re)
         } else {
-          private$cov_par_names <- c(private$cov_par_names,colnames(private$group_data))
+          new_name <- colnames(private$group_data)
         }
+        private$cov_par_names <- c(private$cov_par_names,new_name)
+        private$re_comp_names <- c(private$re_comp_names,new_name)
         # Convert to correct format for passing to C
         group_data <- as.vector(group_data)
         group_data_unique <- unique(group_data)
@@ -300,15 +302,15 @@ gpb.GPModel <- R6::R6Class(
           counter_re <- rep(1,private$num_group_re)
           for (ii in 1:private$num_group_rand_coef) {
             if (is.null(colnames(private$group_rand_coef_data))) {
-              private$cov_par_names <- c(private$cov_par_names,
-                                         paste0(private$cov_par_names[ind_effect_group_rand_coef[ii]+offset],
-                                                "_rand_coef_nb_",counter_re[ind_effect_group_rand_coef[ii]]))
+              new_name <- paste0(private$cov_par_names[ind_effect_group_rand_coef[ii]+offset],
+                                 "_rand_coef_nb_",counter_re[ind_effect_group_rand_coef[ii]])
               counter_re[ind_effect_group_rand_coef[ii]] <- counter_re[ind_effect_group_rand_coef[ii]] + 1
             } else {
-              private$cov_par_names <- c(private$cov_par_names,
-                                         paste0(private$cov_par_names[ind_effect_group_rand_coef[ii]+offset],
-                                                "_rand_coef_",colnames(private$group_rand_coef_data)[ii]))
+              new_name <- paste0(private$cov_par_names[ind_effect_group_rand_coef[ii]+offset],
+                                 "_rand_coef_",colnames(private$group_rand_coef_data)[ii])
             }
+            private$cov_par_names <- c(private$cov_par_names,new_name)
+            private$re_comp_names <- c(private$re_comp_names,new_name)
           }
         } # End set data for grouped random coefficients
       } # End set data for grouped random effects
@@ -348,6 +350,7 @@ gpb.GPModel <- R6::R6Class(
         } else {
           private$cov_par_names <- c(private$cov_par_names,"GP_var","GP_range")
         }
+        private$re_comp_names <- c(private$re_comp_names,"GP")
         # Set data for GP random coefficients
         if (!is.null(gp_rand_coef_data)) {
           if (is.numeric(gp_rand_coef_data)) {
@@ -387,6 +390,7 @@ gpb.GPModel <- R6::R6Class(
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range"))
               }
             }
+            private$re_comp_names <- c(private$re_comp_names,paste0("GP_rand_coef_nb_", ii))
           }
         } # End set data for GP random coefficients
       } # End set data for Gaussian process part
@@ -717,48 +721,56 @@ gpb.GPModel <- R6::R6Class(
     },
     
     get_cov_pars = function() {
-      if (private$params[["std_dev"]]) {
-        optim_pars <- numeric(2 * private$num_cov_pars)
+      if (private$model_has_been_loaded_from_saved_file) {
+        cov_pars <- private$cov_pars_loaded_from_file
       } else {
-        optim_pars <- numeric(private$num_cov_pars)
-      }
-      .Call(
-        GPB_GetCovPar_R
-        , private$handle
-        , private$params[["std_dev"]]
-        , optim_pars
-      )
-      cov_pars <- optim_pars[1:private$num_cov_pars]
-      names(cov_pars) <- private$cov_par_names
-      if (private$params[["std_dev"]] & self$get_likelihood_name() == "gaussian") {
-        cov_pars_std_dev <- optim_pars[1:private$num_cov_pars+private$num_cov_pars]
-        cov_pars <- rbind(cov_pars,cov_pars_std_dev)
-        rownames(cov_pars) <- c("Param.", "Std. dev.")
+        if (private$params[["std_dev"]]) {
+          optim_pars <- numeric(2 * private$num_cov_pars)
+        } else {
+          optim_pars <- numeric(private$num_cov_pars)
+        }
+        .Call(
+          GPB_GetCovPar_R
+          , private$handle
+          , private$params[["std_dev"]]
+          , optim_pars
+        )
+        cov_pars <- optim_pars[1:private$num_cov_pars]
+        names(cov_pars) <- private$cov_par_names
+        if (private$params[["std_dev"]] & self$get_likelihood_name() == "gaussian") {
+          cov_pars_std_dev <- optim_pars[1:private$num_cov_pars+private$num_cov_pars]
+          cov_pars <- rbind(cov_pars,cov_pars_std_dev)
+          rownames(cov_pars) <- c("Param.", "Std. dev.")
+        }
       }
       return(cov_pars)
     },
     
     get_coef = function() {
-      if (is.null(private$num_coef)) {
-        stop("GPModel: ", sQuote("fit"), " has not been called")
-      }
-      if (private$params[["std_dev"]]) {
-        optim_pars <- numeric(2 * private$num_coef)
+      if (private$model_has_been_loaded_from_saved_file) {
+        coef <- private$coefs_loaded_from_file
       } else {
-        optim_pars <- numeric(private$num_coef)
-      }
-      .Call(
-        GPB_GetCoef_R
-        , private$handle
-        , private$params[["std_dev"]]
-        , optim_pars
-      )
-      coef <- optim_pars[1:private$num_coef]
-      names(coef) <- private$coef_names
-      if (private$params[["std_dev"]]) {
-        coef_std_dev <- optim_pars[1:private$num_coef+private$num_coef]
-        coef <- rbind(coef,coef_std_dev)
-        rownames(coef) <- c("Param.", "Std. dev.")
+        if (is.null(private$num_coef)) {
+          stop("GPModel: ", sQuote("fit"), " has not been called")
+        }
+        if (private$params[["std_dev"]]) {
+          optim_pars <- numeric(2 * private$num_coef)
+        } else {
+          optim_pars <- numeric(private$num_coef)
+        }
+        .Call(
+          GPB_GetCoef_R
+          , private$handle
+          , private$params[["std_dev"]]
+          , optim_pars
+        )
+        coef <- optim_pars[1:private$num_coef]
+        names(coef) <- private$coef_names
+        if (private$params[["std_dev"]]) {
+          coef_std_dev <- optim_pars[1:private$num_coef+private$num_coef]
+          coef <- rbind(coef,coef_std_dev)
+          rownames(coef) <- c("Param.", "Std. dev.")
+        }
       }
       return(coef)
     },
@@ -951,7 +963,11 @@ gpb.GPModel <- R6::R6Class(
           y <- private$y_loaded_from_file
         }
         if (is.null(cov_pars)) {
-          cov_pars <- private$cov_pars_loaded_from_file
+          if (is.matrix(private$cov_pars_loaded_from_file)) {
+            cov_pars <- private$cov_pars_loaded_from_file[1,]
+          } else {
+            cov_pars <- private$cov_pars_loaded_from_file
+          }
         }
       }
       if(predict_cov_mat && predict_var){
@@ -1111,15 +1127,20 @@ gpb.GPModel <- R6::R6Class(
             stop("predict.GPModel: Number of covariates in ", sQuote("X_pred"), " is not correct")
           }
           if (private$model_has_been_loaded_from_saved_file) {
-            if (is.null(fixed_effects)) {
-              fixed_effects <- as.vector(private$X_loaded_from_file %*% private$coefs_loaded_from_file)
+            if (is.matrix(private$coefs_loaded_from_file)) {
+              coefs <- private$coefs_loaded_from_file[1,]
             } else {
-              fixed_effects <- fixed_effects + as.vector(private$X_loaded_from_file %*% private$coefs_loaded_from_file)
+              coefs <- private$coefs_loaded_from_file
+            }
+            if (is.null(fixed_effects)) {
+              fixed_effects <- as.vector(private$X_loaded_from_file %*% coefs)
+            } else {
+              fixed_effects <- fixed_effects + as.vector(private$X_loaded_from_file %*% coefs)
             }
             if (is.null(fixed_effects_pred)) {
-              fixed_effects_pred <- as.vector(X_pred %*% private$coefs_loaded_from_file)
+              fixed_effects_pred <- as.vector(X_pred %*% coefs)
             } else {
-              fixed_effects_pred <- fixed_effects_pred + as.vector(X_pred %*% private$coefs_loaded_from_file)
+              fixed_effects_pred <- fixed_effects_pred + as.vector(X_pred %*% coefs)
             }
           } else {
             X_pred <- as.vector(matrix(X_pred))
@@ -1246,6 +1267,27 @@ gpb.GPModel <- R6::R6Class(
         pred_cov_mat <- matrix(preds[1:(num_data_pred^2) + num_data_pred],ncol=num_data_pred)
       }
       return(list(mu=pred_mean,cov=pred_cov_mat,var=pred_var))
+    },
+    
+    predict_training_data_random_effects = function() {
+      if(isTRUE(private$model_has_been_loaded_from_saved_file)){
+        stop("GPModel: 'predict_training_data_random_effects' is currently not 
+        implemented for models that have been loaded from a saved file")
+      }
+      num_re_comps = private$num_group_re + private$num_group_rand_coef + 
+        private$num_gp + private$num_gp_rand_coef
+      re_preds <- numeric(private$num_data * num_re_comps)
+      .Call(
+        GPB_PredictREModelTrainingDataRandomEffects_R
+        , private$handle
+        , NULL
+        , NULL
+        , NULL
+        , re_preds
+      )
+      re_preds <- matrix(re_preds, ncol = num_re_comps, 
+                         dimnames=list(NULL, private$re_comp_names))
+      return(re_preds)
     },
     
     get_group_data = function() {##TODO: get all this data from C++ and don't double save this here in R
@@ -1463,6 +1505,7 @@ gpb.GPModel <- R6::R6Class(
     vecchia_pred_type = "order_obs_first_cond_obs_only",
     num_neighbors_pred = 30L,
     cov_par_names = NULL,
+    re_comp_names = NULL,
     coef_names = NULL,
     cluster_ids = NULL,
     cluster_ids_map_to_int = NULL,
@@ -1589,7 +1632,6 @@ gpb.GPModel <- R6::R6Class(
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
@@ -1665,7 +1707,6 @@ fit <- function(gp_model, y, X, params, fixed_effects = NULL) UseMethod("fit")
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
@@ -1724,7 +1765,6 @@ fit.GPModel <- function(gp_model,
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
@@ -1861,7 +1901,6 @@ fitGPModel <- function(group_data = NULL,
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
@@ -1916,7 +1955,6 @@ summary.GPModel <- function(object, ...){
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
-#' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
@@ -1963,21 +2001,21 @@ predict.GPModel <- function(object,
                             vecchia_pred_type = NULL,
                             num_neighbors_pred = -1,
                             predict_response = FALSE,...){
-  invisible(object$predict(y = y,
-                           group_data_pred = group_data_pred,
-                           group_rand_coef_data_pred = group_rand_coef_data_pred,
-                           gp_coords_pred = gp_coords_pred,
-                           gp_rand_coef_data_pred = gp_rand_coef_data_pred,
-                           cluster_ids_pred = cluster_ids_pred,
-                           predict_cov_mat = predict_cov_mat,
-                           predict_var = predict_var,
-                           cov_pars = cov_pars,
-                           X_pred = X_pred,
-                           use_saved_data = use_saved_data,
-                           vecchia_pred_type = vecchia_pred_type,
-                           num_neighbors_pred = num_neighbors_pred,
-                           predict_response = predict_response,
-                           ...))
+  return(object$predict(y = y,
+                        group_data_pred = group_data_pred,
+                        group_rand_coef_data_pred = group_rand_coef_data_pred,
+                        gp_coords_pred = gp_coords_pred,
+                        gp_rand_coef_data_pred = gp_rand_coef_data_pred,
+                        cluster_ids_pred = cluster_ids_pred,
+                        predict_cov_mat = predict_cov_mat,
+                        predict_var = predict_var,
+                        cov_pars = cov_pars,
+                        X_pred = X_pred,
+                        use_saved_data = use_saved_data,
+                        vecchia_pred_type = vecchia_pred_type,
+                        num_neighbors_pred = num_neighbors_pred,
+                        predict_response = predict_response,
+                        ...))
 }
 
 #' @name saveGPModel
@@ -1990,7 +2028,6 @@ predict.GPModel <- function(object,
 #'
 #' @examples
 #' \donttest{
-#' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
@@ -2034,7 +2071,6 @@ saveGPModel <- function(gp_model, filename) {
 #'
 #' @examples
 #' \donttest{
-#' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
@@ -2075,7 +2111,6 @@ loadGPModel <- function(filename){
 #'
 #' @examples
 #' \donttest{
-#' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' set.seed(1)
 #' train_ind <- sample.int(length(y),size=250)
@@ -2105,7 +2140,6 @@ set_prediction_data <- function(gp_model,
 #'
 #' @examples
 #' \donttest{
-#' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' set.seed(1)
 #' train_ind <- sample.int(length(y),size=250)
@@ -2135,6 +2169,61 @@ set_prediction_data.GPModel <- function(gp_model,
                                          gp_rand_coef_data_pred = gp_rand_coef_data_pred,
                                          cluster_ids_pred = cluster_ids_pred,
                                          X_pred = X_pred))
+}
+
+#' Generic 'predict_training_data_random_effects' method for a \code{GPModel}
+#'
+#' Generic 'predict_training_data_random_effects' method for a \code{GPModel}
+#' 
+#' @param gp_model A \code{GPModel}
+#' @inheritParams GPModel_shared_params
+#'
+#' @return A \code{GPModel}
+#'
+#' @examples
+#' \donttest{
+#' data(GPBoost_data, package = "gpboost")
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
+#' all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+#' first_occurences <- match(unique(group_data[,1]), group_data[,1])
+#' unique_training_data_random_effects <- all_training_data_random_effects[first_occurences]
+#' head(unique_training_data_random_effects)
+#' }
+#' @author Fabio Sigrist
+#' @export 
+#' 
+predict_training_data_random_effects <- function(gp_model) UseMethod("predict_training_data_random_effects")
+
+#' Predict ("estimate") training data random effects for a \code{GPModel}
+#' 
+#' Predict ("estimate") training data random effects for a \code{GPModel} 
+#' 
+#' @param gp_model A \code{GPModel}
+#' @inheritParams GPModel_shared_params
+#'
+#' @return A \code{GPModel}
+#'
+#' @examples
+#' \donttest{
+#' data(GPBoost_data, package = "gpboost")
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
+#' all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+#' first_occurences <- match(unique(group_data[,1]), group_data[,1])
+#' unique_training_data_random_effects <- all_training_data_random_effects[first_occurences]
+#' head(unique_training_data_random_effects)
+#' }
+#' @method predict_training_data_random_effects GPModel 
+#' @rdname predict_training_data_random_effects.GPModel
+#' @author Fabio Sigrist
+#' @export 
+#' 
+predict_training_data_random_effects.GPModel <- function(gp_model) {
+  
+  if (!gpb.check.r6.class(gp_model, "GPModel")) {
+    stop("predict_training_data_random_effects.GPModel: gp_model needs to be a ", sQuote("GPModel"))
+  }
+  
+  return(gp_model$predict_training_data_random_effects())
 }
 
 

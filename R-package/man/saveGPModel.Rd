@@ -19,7 +19,6 @@ Save a \code{GPModel}
 }
 \examples{
 \donttest{
-library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
 gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")

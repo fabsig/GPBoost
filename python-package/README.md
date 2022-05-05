@@ -25,7 +25,6 @@ This is the Python package implementation of the GPBoost library. See https://gi
   * [GPBoost algorithm](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm.py) for combining tree-boosting with Gaussian process and random effects models
   * [GPBoost algorithm for binary classification and other non-Gaussian data](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/classification_non_Gaussian_data.py) (Poisson regression, etc.)
   * [Parameter tuning](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/parameter_tuning.py) using deterministic or random grid search
-  * [Linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/linear_Gaussian_process_mixed_effects_models.py)
   * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/generalized_linear_Gaussian_process_mixed_effects_models.py)
   * [GPBoost algorithm applied to panel data](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/panel_data_example.py)
 * **Blog posts** on how to 

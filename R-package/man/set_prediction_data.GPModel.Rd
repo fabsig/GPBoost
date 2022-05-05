@@ -38,7 +38,6 @@ Set the data required for making predictions with a \code{GPModel}
 }
 \examples{
 \donttest{
-library(gpboost)
 data(GPBoost_data, package = "gpboost")
 set.seed(1)
 train_ind <- sample.int(length(y),size=250)

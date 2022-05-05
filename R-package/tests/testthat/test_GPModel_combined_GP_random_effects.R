@@ -102,6 +102,15 @@ test_that("Combined Gaussian process and grouped random effects model ", {
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
   expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
   
+  # Predict training data random effects
+  training_data_random_effects <- predict_training_data_random_effects(gp_model)
+  pred_GP <- predict(gp_model, gp_coords_pred = coords, group_data_pred=rep(-1,dim(coords)[1]))
+  expect_lt(sum(abs(training_data_random_effects[,2] - pred_GP$mu)),1E-6)
+  # Grouped REs
+  preds <- predict(gp_model, group_data_pred = group, gp_coords_pred = coords)
+  pred_RE <- preds$mu - pred_GP$mu
+  expect_lt(sum(abs(training_data_random_effects[,1] - pred_RE)),1E-6)
+  
   # Prediction using given paraneters
   gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group)
   pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, group_data_pred = group_test,

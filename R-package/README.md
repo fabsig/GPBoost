@@ -24,7 +24,6 @@ This is the R package implementation of the GPBoost library. See https://github.
   * [GPBoost algorithm](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/GPBoost_algorithm.R) for combining tree-boosting with Gaussian process and random effects models
   * [GPBoost algorithm for binary classification and other non-Gaussian data](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/classification_non_Gaussian_data.R) (Poisson regression, etc.)
   * [Parameter tuning](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/parameter_tuning.R) using deterministic or random grid search
-  * [Linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/linear_Gaussian_process_mixed_effects_models.R)
   * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/generalized_linear_Gaussian_process_mixed_effects_models.R)
 * **Blog posts** on how to 
    * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)

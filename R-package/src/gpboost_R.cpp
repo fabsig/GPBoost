@@ -1084,6 +1084,21 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 	return R_NilValue;
 }
 
+SEXP GPB_PredictREModelTrainingDataRandomEffects_R(SEXP handle,
+	SEXP cov_pars,
+	SEXP y_obs,
+	SEXP fixed_effects,
+	SEXP out_predict) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_PredictREModelTrainingDataRandomEffects(R_ExternalPtrAddr(handle),
+		R_REAL_PTR(cov_pars),
+		R_REAL_PTR(y_obs),
+		R_REAL_PTR(out_predict),
+		R_REAL_PTR(fixed_effects)));
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP GPB_GetLikelihoodName_R(SEXP handle) {
 	SEXP ret;
 	std::vector<char> inner_char_buf(128);
@@ -1216,6 +1231,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 2},
   {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 8},
   {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 19},
+  {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 5},
   {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 1},
   {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC)&GPB_GetOptimizerCovPars_R        , 1},
   {"GPB_GetOptimizerCoef_R"           , (DL_FUNC)&GPB_GetOptimizerCoef_R           , 1},

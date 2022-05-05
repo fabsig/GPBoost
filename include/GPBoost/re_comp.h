@@ -85,7 +85,7 @@ namespace GPBoost {
 		/*!
 		* \brief Virtual function that calculates the covariance matrix Z*Sigma*Z^T
 		* \return Covariance matrix Z*Sigma*Z^T of this component
-		*   Note that since sigma_ is saved (since it is used in GetZSigmaZt and GetZSigmaZtGrad) we return a pointer and do not write on an input paramter in order to avoid copying
+		*   Note that since sigma_ is saved (since it is used in GetZSigmaZt and GetZSigmaZtGrad) we return a pointer and do not write on an input parameter in order to avoid copying
 		*/
 		virtual std::shared_ptr<T_mat> GetZSigmaZt() const = 0;
 
@@ -123,6 +123,14 @@ namespace GPBoost {
 		*/
 		int NumCovPar() const {
 			return(num_cov_par_);
+		}
+
+		/*!
+		* \brief Returns has_Z_
+		* \return True if has_Z_
+		*/
+		bool HasZ() const {
+			return(has_Z_);
 		}
 
 		/*!
@@ -948,7 +956,7 @@ namespace GPBoost {
 					pars[1] = 3. / std::pow(mean_dist, cov_function_->shape_);//pars[1] = 1/range^shape
 				}
 				else {
-					Log::REFatal("Finding initial values for covariance paramters for covariance of type '%s' is not supported.", cov_function_->cov_fct_type_.c_str());
+					Log::REFatal("Finding initial values for covariance parameters for covariance of type '%s' is not supported.", cov_function_->cov_fct_type_.c_str());
 				}
 			}
 		}
@@ -958,7 +966,6 @@ namespace GPBoost {
 		*/
 		void CalcSigma() override {
 			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
-			//(*cov_function_).template GetCovMat(*dist_, this->cov_pars_, sigma_);Old version used when CovFunction was a template class
 			cov_function_->GetCovMat(*dist_, this->cov_pars_, sigma_);
 			sigma_defined_ = true;
 		}
@@ -1193,7 +1200,7 @@ namespace GPBoost {
 		bool coord_saved_ = true;
 		/*! \brief Covariance function */
 		std::unique_ptr<CovFunction> cov_function_;
-		/*! \brief Covariance matrix (for a certain choice of covariance paramters). This is saved for re-use at two locations in the code: GetZSigmaZt and GetZSigmaZtGrad) */
+		/*! \brief Covariance matrix (for a certain choice of covariance parameters). This is saved for re-use at two locations in the code: GetZSigmaZt and GetZSigmaZtGrad) */
 		T_mat sigma_;
 		/*! \brief Indicates whether sigma_ has been defined or not */
 		bool sigma_defined_ = false;

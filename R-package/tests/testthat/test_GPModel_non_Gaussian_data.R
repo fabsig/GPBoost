@@ -123,6 +123,11 @@ test_that("Binary classification with Gaussian process model ", {
   expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
   expect_lt(sum(abs(pred$var-expected_mu*(1-expected_mu))),TOLERANCE2)
   
+  # Predict training data random effects
+  training_data_random_effects <- predict_training_data_random_effects(gp_model)
+  pred_random_effects <- predict(gp_model, gp_coords_pred = coords)
+  expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
+  
   # Evaluate approximate negative marginal log-likelihood
   nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
   expect_lt(abs(nll-63.6205917),TOLERANCE2)
@@ -217,6 +222,11 @@ test_that("Binary classification with Gaussian process model with multiple obser
   expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.4263502, 0.4263502))),TOLERANCE2)
   expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2445757, 0.2445757))),TOLERANCE2)
   
+  # Predict training data random effects
+  training_data_random_effects <- predict_training_data_random_effects(gp_model)
+  pred_random_effects <- predict(gp_model, gp_coords_pred = coords_multiple)
+  expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
+  
   # Multiple cluster IDs and multiple observations
   coord_test <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
   cluster_ids_pred = c(0L,3L,3L)
@@ -303,6 +313,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_response = TRUE)
     expect_lt(sum(abs(pred$mu-rep(0.5,4))),TOLERANCE2)
     
+    # Predict training data random effects
+    all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+    first_occurences <- match(unique(group), group)
+    training_data_random_effects <- all_training_data_random_effects[first_occurences] 
+    group_unique <- unique(group)
+    pred_random_effects <- predict(gp_model, group_data_pred = group_unique)
+    expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
+    
     # Estimation using Nelder-Mead
     gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
     fit(gp_model, y = y, params = list(optimizer_cov = "nelder_mead"))
@@ -346,6 +364,30 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_values <- c(0.3060671, 0.9328884, 0.3146682)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE2)
     expect_equal(gp_model$get_num_optim_iter(), 37)
+    
+    # Predict training data random effects
+    all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+    first_occurences_1 <- match(unique(group), group)
+    first_occurences_2 <- match(unique(group2), group2)
+    pred_random_effects <- all_training_data_random_effects[first_occurences_1,1]
+    pred_random_slopes <- all_training_data_random_effects[first_occurences_1,3]
+    pred_random_effects_crossed <- all_training_data_random_effects[first_occurences_2,2] 
+    group_unique <- unique(group)
+    group_data_pred = cbind(group_unique,rep(-1,length(group_unique)))
+    x_pr = rep(0,length(group_unique))
+    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    expect_lt(sum(abs(pred_random_effects - preds$mu)),1E-6)
+    # Check whether random slopes are correct
+    x_pr = rep(1,length(group_unique))
+    preds2 <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    expect_lt(sum(abs(pred_random_slopes - (preds2$mu-preds$mu))),1E-6)
+    # Check whether crossed random effects are correct
+    group_unique <- unique(group2)
+    group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
+    x_pr = rep(0,length(group_unique))
+    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    expect_lt(sum(abs(pred_random_effects_crossed - preds$mu)),1E-6)
+    
     # Prediction
     gp_model <- GPModel(likelihood = "bernoulli_probit", group_data = cbind(group,group2),
                         group_rand_coef_data = x, ind_effect_group_rand_coef = 1)
@@ -443,6 +485,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, group_data_pred = group_test, predict_response = TRUE)
     expected_mu <- c(0.5336859, 0.2492699, 0.4252731)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
+    
+    # Predict training data random effects
+    training_data_random_effects <- predict_training_data_random_effects(gp_model)
+    pred_GP <- predict(gp_model, gp_coords_pred = coords, group_data_pred=rep(-1,dim(coords)[1]))
+    expect_lt(sum(abs(training_data_random_effects[,2] - pred_GP$mu)),1E-6)
+    # Grouped REs
+    preds <- predict(gp_model, group_data_pred = group, gp_coords_pred = coords)
+    pred_RE <- preds$mu - pred_GP$mu
+    expect_lt(sum(abs(training_data_random_effects[,1] - pred_RE)),1E-6)
     
     # Estimation using Nelder-Mead
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
@@ -761,6 +812,15 @@ test_that("Binary classification with linear predictor and grouped random effect
   pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, predict_response = TRUE)
   expected_mu <- c(0.2234684, 0.4683921, 0.5797885, 0.8821984)
   expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
+  
+  # Predict training data random effects
+  all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+  first_occurences <- match(unique(group), group)
+  training_data_random_effects <- all_training_data_random_effects[first_occurences] 
+  group_unique <- unique(group)
+  X_zero <- cbind(rep(0,length(group_unique)),rep(0,length(group_unique)))
+  pred_random_effects <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero)
+  expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
   
   # Standard deviations
   capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit", 

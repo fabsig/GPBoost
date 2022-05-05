@@ -3995,6 +3995,7 @@ class GPModel(object):
             self.cov_par_names = ["Error_term"]
         else:
             self.cov_par_names = []
+        self.re_comp_names = []
         self.coef_names = None
         self.cluster_ids = None
         self.cluster_ids_map_to_int = None
@@ -4077,7 +4078,7 @@ class GPModel(object):
             group_data, group_data_names = _format_check_data(data=group_data, get_variable_names=True,
                                                               data_name="group_data", check_data_type=False,
                                                               convert_to_type=None)
-            # Note: groupe_data is saved here in its original format and is only converted to string before
+            # Note: group_data is saved here in its original format and is only converted to string before
             #   sending it to C++
             self.num_group_re = group_data.shape[1]
             self.num_data = group_data.shape[0]
@@ -4085,8 +4086,10 @@ class GPModel(object):
             if group_data_names is None:
                 for ig in range(self.num_group_re):
                     self.cov_par_names.append('Group_' + str(ig + 1))
+                    self.re_comp_names.append('Group_' + str(ig + 1))
             else:
                 self.cov_par_names.extend(group_data_names)
+                self.re_comp_names.extend(group_data_names)
             if not group_data.dtype == np.dtype(str):
                 group_data = group_data.astype(np.dtype(str))
             # Convert to correct format for passing to C
@@ -4120,16 +4123,16 @@ class GPModel(object):
                 counter_re = np.zeros(self.num_group_re, dtype=int)
                 for ii in range(self.num_group_rand_coef):
                     if group_rand_coef_data_names is None:
-                        self.cov_par_names.append(
-                            self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_nb_" + str(
-                                int(counter_re[self.ind_effect_group_rand_coef[ii] - 1] + 1)))
+                        new_name = self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_nb_" \
+                                   + str(int(counter_re[self.ind_effect_group_rand_coef[ii] - 1] + 1))
                         counter_re[self.ind_effect_group_rand_coef[ii] - 1] = counter_re[
                                                                                   self.ind_effect_group_rand_coef[
                                                                                       ii] - 1] + 1
                     else:
-                        self.cov_par_names.append(
-                            self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_" +
-                            group_rand_coef_data_names[ii])
+                        new_name = self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_" + \
+                                   group_rand_coef_data_names[ii]
+                    self.cov_par_names.append(new_name)
+                    self.re_comp_names.append(new_name)
                 group_rand_coef_data_c, _, _ = c_float_array(self.group_rand_coef_data.flatten(order='F'))
                 ind_effect_group_rand_coef_c = self.ind_effect_group_rand_coef.ctypes.data_as(
                     ctypes.POINTER(ctypes.c_int32))
@@ -4158,6 +4161,7 @@ class GPModel(object):
                 self.cov_par_names.extend(["GP_var"])
             else:
                 self.cov_par_names.extend(["GP_var", "GP_range"])
+            self.re_comp_names.append("GP")
             gp_coords_c, _, _ = c_float_array(self.gp_coords.flatten(order='F'))
             # Set data for GP random coefficients
             if gp_rand_coef_data is not None:
@@ -4178,6 +4182,7 @@ class GPModel(object):
                         else:
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_nb_" + str(ii + 1) + "_var", "GP_rand_coef_nb_" + str(ii + 1) + "_range"])
+                        self.re_comp_names.append("GP_rand_coef_nb_" + str(ii + 1))
                     else:
                         if self.cov_function == "wendland":
                             self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"])
@@ -4185,6 +4190,7 @@ class GPModel(object):
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
                                  "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range"])
+                        self.re_comp_names.append("GP_rand_coef_" + gp_rand_coef_data_names[ii])
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids is not None:
             cluster_ids = _format_check_1D_data(cluster_ids, data_name="cluster_ids", check_data_type=False,
@@ -4588,58 +4594,78 @@ class GPModel(object):
             optimizer_coef_c))
         return self
 
-    def get_cov_pars(self):
+    def get_cov_pars(self, format_pandas=True):
         """Get (estimated) covariance parameters.
+
+        Parameters
+        ----------
+        format_pandas : bool (default=True)
+            If True, a pandas DataFrame is returned, otherwise a numpy array is returned
 
         Returns
         -------
         result : pandas DataFrame
             (estimated) covariance parameters and standard deviations (if std_dev=True was set in 'fit')
         """
-        if self.params["std_dev"]:
-            optim_pars = np.zeros(2 * self.num_cov_pars, dtype=np.float64)
+        if self.model_has_been_loaded_from_saved_file:
+            cov_pars = self.cov_pars_loaded_from_file
         else:
-            optim_pars = np.zeros(self.num_cov_pars, dtype=np.float64)
+            if self.params["std_dev"]:
+                optim_pars = np.zeros(2 * self.num_cov_pars, dtype=np.float64)
+            else:
+                optim_pars = np.zeros(self.num_cov_pars, dtype=np.float64)
 
-        _safe_call(_LIB.GPB_GetCovPar(
-            self.handle,
-            optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            ctypes.c_bool(self.params["std_dev"])))
-        if self.params["std_dev"] and self.get_likelihood_name() == "gaussian":
-            cov_pars = np.row_stack((optim_pars[0:self.num_cov_pars],
-                                     optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
-            cov_pars = pd.DataFrame(cov_pars, columns=self.cov_par_names, index=['Param.', 'Std. dev.'])
-        else:
-            cov_pars = optim_pars[0:self.num_cov_pars]
-            cov_pars = pd.DataFrame(cov_pars, columns=self.cov_par_names)
+            _safe_call(_LIB.GPB_GetCovPar(
+                self.handle,
+                optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+                ctypes.c_bool(self.params["std_dev"])))
+            if self.params["std_dev"] and self.get_likelihood_name() == "gaussian":
+                cov_pars = np.row_stack((optim_pars[0:self.num_cov_pars],
+                                         optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
+                if format_pandas:
+                    cov_pars = pd.DataFrame(cov_pars, columns=self.cov_par_names, index=['Param.', 'Std. dev.'])
+            else:
+                cov_pars = optim_pars[0:self.num_cov_pars]
+                if format_pandas:
+                    cov_pars = pd.DataFrame(cov_pars.reshape((1, -1)), columns=self.cov_par_names, index=['Param.'])
         return cov_pars
 
-    def get_coef(self):
+    def get_coef(self, format_pandas=True):
         """Get (estimated) linear regression coefficients.
+
+        Parameters
+        ----------
+        format_pandas : bool (default=True)
+            If True, a pandas DataFrame is returned, otherwise a numpy array is returned
 
         Returns
         -------
-        result : pandas DataFrame
+        result : numpy array or pandas DataFrame
             (estimated) linear regression coefficients and standard deviations (if std_dev=True was set in 'fit')
         """
-        if self.num_coef is None:
-            raise ValueError("'fit' has not been called")
-        if self.params["std_dev"]:
-            optim_pars = np.zeros(2 * self.num_coef, dtype=np.float64)
+        if self.model_has_been_loaded_from_saved_file:
+            coef = self.coefs_loaded_from_file
         else:
-            optim_pars = np.zeros(self.num_coef, dtype=np.float64)
+            if self.num_coef is None:
+                raise ValueError("'fit' has not been called")
+            if self.params["std_dev"]:
+                optim_pars = np.zeros(2 * self.num_coef, dtype=np.float64)
+            else:
+                optim_pars = np.zeros(self.num_coef, dtype=np.float64)
 
-        _safe_call(_LIB.GPB_GetCoef(
-            self.handle,
-            optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            ctypes.c_bool(self.params["std_dev"])))
-        if self.params["std_dev"]:
-            coef = np.row_stack((optim_pars[0:self.num_coef],
-                                 optim_pars[self.num_coef:(2 * self.num_coef)]))
-            coef = pd.DataFrame(coef, columns=self.coef_names, index=['Param.', 'Std. dev.'])
-        else:
-            coef = optim_pars[0:self.num_coef]
-            coef = pd.DataFrame(coef, columns=self.coef_names)
+            _safe_call(_LIB.GPB_GetCoef(
+                self.handle,
+                optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+                ctypes.c_bool(self.params["std_dev"])))
+            if self.params["std_dev"]:
+                coef = np.row_stack((optim_pars[0:self.num_coef],
+                                     optim_pars[self.num_coef:(2 * self.num_coef)]))
+                if format_pandas:
+                    coef = pd.DataFrame(coef, columns=self.coef_names, index=['Param.', 'Std. dev.'])
+            else:
+                coef = optim_pars[0:self.num_coef]
+                if format_pandas:
+                    coef = pd.DataFrame(coef.reshape((1, -1)), columns=self.coef_names, index=['Param.'])
         return coef
 
     def summary(self):
@@ -4650,7 +4676,7 @@ class GPModel(object):
         if self.has_covariates:
             print("Linear regression coefficients: ")
             print(self.get_coef())
-        if self.params["maxit"] == self.get_num_optim_iter():
+        if self.params["maxit"] == self.get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
             print("Note: no convergence after the maximal number of iterations")
         return self
 
@@ -4731,7 +4757,10 @@ class GPModel(object):
             if y is None:
                 y = self.y_loaded_from_file
             if cov_pars is None:
-                cov_pars = self.cov_pars_loaded_from_file
+                if len(self.cov_pars_loaded_from_file.shape) == 2:
+                    cov_pars = self.cov_pars_loaded_from_file[0]
+                else:
+                    cov_pars = self.cov_pars_loaded_from_file
         if predict_cov_mat and predict_var:
             predict_cov_mat = True
             predict_var = False
@@ -4784,7 +4813,7 @@ class GPModel(object):
                         raise ValueError("Incorrect number of data points in group_rand_coef_data_pred")
                     if group_rand_coef_data_pred.shape[1] != self.num_group_rand_coef:
                         raise ValueError("Incorrect number of covariates in group_rand_coef_data_pred")
-                    group_rand_coef_data_c, _, _ = c_float_array(group_rand_coef_data_pred.flatten(order='F'))
+                    group_rand_coef_data_pred_c, _, _ = c_float_array(group_rand_coef_data_pred.flatten(order='F'))
             # Set data for Gaussian process
             if gp_coords_pred is not None:
                 gp_coords_pred, not_used = _format_check_data(data=gp_coords_pred,
@@ -4854,14 +4883,18 @@ class GPModel(object):
                 if X_pred.shape[1] != self.num_coef:
                     raise ValueError("Incorrect number of covariates in X_pred")
                 if self.model_has_been_loaded_from_saved_file:
+                    if len(self.coefs_loaded_from_file.shape) == 2:
+                        coefs = self.coefs_loaded_from_file[0]
+                    else:
+                        coefs = self.coefs_loaded_from_file
                     if fixed_effects is None:
-                        fixed_effects = self.X_loaded_from_file.dot(self.coefs_loaded_from_file)
+                        fixed_effects = self.X_loaded_from_file.dot(coefs)
                     else:
-                        fixed_effects = fixed_effects + self.X_loaded_from_file.dot(self.coefs_loaded_from_file)
+                        fixed_effects = fixed_effects + self.X_loaded_from_file.dot(coefs)
                     if fixed_effects_pred is None:
-                        fixed_effects_pred = X_pred.dot(self.coefs_loaded_from_file)
+                        fixed_effects_pred = X_pred.dot(coefs)
                     else:
-                        fixed_effects_pred = fixed_effects_pred + X_pred.dot(self.coefs_loaded_from_file)
+                        fixed_effects_pred = fixed_effects_pred + X_pred.dot(coefs)
                 else:
                     X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
         else:
@@ -5068,6 +5101,27 @@ class GPModel(object):
             X_pred_c))
         return self
 
+    def predict_training_data_random_effects(self):
+        """Predict ("estimate") training data random effects.
+        Returns
+        -------
+        result : a matrix with predicted ("estimated") training data random effects
+        """
+        if self.model_has_been_loaded_from_saved_file:
+            raise ValueError("'predict_training_data_random_effects' is currently not implemented for models that have "
+                             "been loaded from a saved file")
+        num_re_comps = self.num_group_re + self.num_group_rand_coef + self.num_gp + self.num_gp_rand_coef
+        re_preds = np.zeros(self.num_data * num_re_comps, dtype=np.float64)
+        _safe_call(_LIB.GPB_PredictREModelTrainingDataRandomEffects(
+            self.handle,
+            ctypes.c_void_p(),
+            ctypes.c_void_p(),
+            re_preds.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            ctypes.c_void_p()))
+        re_preds = re_preds.reshape((self.num_data, num_re_comps), order='F')
+        re_preds = pd.DataFrame(re_preds, columns=self.re_comp_names)
+        return re_preds
+
     def get_response_data(self):
         """Get response variable data.
         Returns
@@ -5118,7 +5172,7 @@ class GPModel(object):
         # Parameters
         model_dict["params"] = self.get_optim_params()
         model_dict["likelihood"] = self.get_likelihood_name()
-        model_dict["cov_pars"] = self.get_cov_pars()
+        model_dict["cov_pars"] = self.get_cov_pars(format_pandas=False)
         # Response data
         if include_response_data:
             model_dict["y"] = self.get_response_data()
@@ -5140,7 +5194,7 @@ class GPModel(object):
         # Covariate data
         model_dict["has_covariates"] = self.has_covariates
         if self.has_covariates:
-            model_dict["coefs"] = self.get_coef()
+            model_dict["coefs"] = self.get_coef(format_pandas=False)
             model_dict["num_coef"] = self.num_coef
             model_dict["X"] = self.get_covariate_data()
         return model_dict

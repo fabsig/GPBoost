@@ -163,7 +163,7 @@ namespace GPBoost {
 			else {
 				prct_non_zero = non_zeros / coords1.rows() / coords2.rows() * 100.;
 			}
-			Log::REInfo("Numebr of non-zero values in covariance matrix: %d (in percentage: %g %%)", num_non_zero, prct_non_zero);
+			Log::REInfo("Number of non-zero values in covariance matrix: %d (%g %%)", num_non_zero, prct_non_zero);
 		}
 	}
 

@@ -2863,6 +2863,18 @@ int GPB_PredictREModel(REModelHandle handle,
 	API_END();
 }
 
+int GPB_PredictREModelTrainingDataRandomEffects(REModelHandle handle,
+	const double* cov_pars_pred,
+	const double* y_obs,
+	double* out_predict,
+	const double* fixed_effects) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->PredictTrainingDataRandomEffects(cov_pars_pred,
+		y_obs, out_predict, fixed_effects);
+	API_END();
+}
+
 int GPB_GetLikelihoodName(REModelHandle handle,
 	char* out_str,
 	int* num_char) {
