@@ -4,6 +4,9 @@ Demo code used in this blog post:
 https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb
 
 @author: Fabio Sigrist
+
+Note: results in comments are obtained with gpboost version 0.7.5 and merf 
+        version 0.3.0
 """
 
 import gpboost as gpb
@@ -28,7 +31,7 @@ F = F * 10**0.5 # with this choice, the fixed-effects regression function has th
 group_train = np.arange(ntrain)  # grouping variable
 for i in range(m):
     group_train[int(i * ntrain / m):int((i + 1) * ntrain / m)] = i
-group_test = np.arange(ntrain) # grouping variable for test data. Some existing and some new groups
+group_test = np.arange(ntrain) # grouping variable for test data. 50% existing and 50% new groups
 m_test = 2 * m
 for i in range(m_test):
     group_test[int(i * ntrain / m_test):int((i + 1) * ntrain / m_test)] = i
@@ -53,16 +56,16 @@ data_train = gpb.Dataset(X_train, y_train)
 params = { 'objective': 'regression_l2', 'learning_rate': 0.1,
     'max_depth': 6, 'min_data_in_leaf': 5, 'verbose': 0 }
 # train model
-bst = gpb.train(params=params, train_set=data_train, gp_model=gp_model, num_boost_round=32)
+bst = gpb.train(params=params, train_set=data_train, gp_model=gp_model, num_boost_round=31)
 gp_model.summary() # estimated covariance parameters
-# Covariance parameters in the following order:
-# ['Error_term', 'Group_1']
-# [0.9183072 1.013057 ]
+#Covariance parameters: 
+#        Error_term   Group_1
+#Param.     0.92534  1.016069
 
 # Make predictions
 pred = bst.predict(data=X_test, group_data_pred=group_test)
 y_pred = pred['fixed_effect'] + pred['random_effect_mean'] # sum predictions of fixed effect and random effect
-np.sqrt(np.mean((y_test - y_pred) ** 2)) # root mean square error (RMSE) on test data. Approx. = 1.25
+np.sqrt(np.mean((y_test - y_pred) ** 2)) # root mean square error (RMSE) on test data. Approx. = 1.26
 
 # Parameter tuning using cross-validation (only number of boosting iterations)
 gp_model = gpb.GPModel(group_data=group_train)
@@ -72,7 +75,7 @@ cvbst = gpb.cv(params=params, train_set=data_train,
                nfold=4, verbose_eval=True, show_stdv=False, seed=1)
 best_iter = np.argmin(cvbst['l2-mean'])
 print("Best number of iterations: " + str(best_iter))
-# Best number of iterations: 32
+# Best number of iterations: 31
 
 # --------------------Model interpretation----------------
 # SHAP values and dependence plots
@@ -118,7 +121,6 @@ start_time = time.time() # measure time
 gp_model.fit(y=y_train, X=X_train_linear) # add a column of 1's for intercept
 results.loc["Linear_ME","Time"] = time.time() - start_time
 y_pred = gp_model.predict(group_data_pred=group_test, X_pred=X_test_linear)
-F_pred = X_test_linear.dot(gp_model.get_coef())
 results.loc["Linear_ME","RMSE"] = np.sqrt(np.mean((y_test - y_pred['mu']) ** 2))
 
 # 3. Gradient tree-boosting ignoring the grouping variable ('Boosting_Ign')
@@ -127,7 +129,6 @@ cvbst = gpb.cv(params=params, train_set=data_train,
                nfold=4, verbose_eval=True, show_stdv=False, seed=1)
 best_iter = np.argmin(cvbst['l2-mean'])
 print("Best number of iterations: " + str(best_iter))
-# Best number of iterations: 19
 start_time = time.time() # measure time
 bst = gpb.train(params=params, train_set=data_train, num_boost_round=best_iter)
 results.loc["Boosting_Ign","Time"] = time.time() - start_time
@@ -143,7 +144,6 @@ cvbst = gpb.cv(params=params, train_set=data_train_cat,
                nfold=4, verbose_eval=True, show_stdv=False, seed=1)
 best_iter = np.argmin(cvbst['l2-mean'])
 print("Best number of iterations: " + str(best_iter))
-# Best number of iterations: 49
 start_time = time.time() # measure time
 bst = gpb.train(params=params, train_set=data_train_cat, num_boost_round=best_iter)
 results.loc["Boosting_Cat","Time"] = time.time() - start_time
