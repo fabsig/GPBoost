@@ -22,7 +22,7 @@ This is the Python package implementation of the GPBoost library. See https://gi
 ## Examples and documentation
 
 * [**Detailed Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide):
-  * [GPBoost and LaGaboost algorithms](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm.py) for Gaussian data ("regression") and non-Gaussian data ("classification", etc.) combining tree-boosting with Gaussian process and random effects models
+  * [GPBoost and LaGaBoost algorithms](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm.py) for Gaussian data ("regression") and non-Gaussian data ("classification", etc.) combining tree-boosting with Gaussian process and random effects models
   * [Parameter tuning](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/parameter_tuning.py) using deterministic or random grid search
   * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/generalized_linear_Gaussian_process_mixed_effects_models.py)
   * [GPBoost algorithm applied to panel data](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/panel_data_example.py)

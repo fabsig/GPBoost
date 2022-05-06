@@ -21,7 +21,7 @@ This is the R package implementation of the GPBoost library. See https://github.
 ## Examples
 
 * [**Detailed R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo):
-  * [GPBoost and LaGaboost algorithms](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/GPBoost_algorithm.R) for Gaussian data ("regression") and non-Gaussian data ("classification", etc.) combining tree-boosting with Gaussian process and random effects models
+  * [GPBoost and LaGaBoost algorithms](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/GPBoost_algorithm.R) for Gaussian data ("regression") and non-Gaussian data ("classification", etc.) combining tree-boosting with Gaussian process and random effects models
   * [Parameter tuning](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/parameter_tuning.R) using deterministic or random grid search
   * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/generalized_linear_Gaussian_process_mixed_effects_models.R)
 * **Blog posts** on how to 
