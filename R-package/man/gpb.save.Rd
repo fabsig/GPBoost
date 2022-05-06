@@ -12,13 +12,13 @@ gpb.save(booster, filename, start_iteration = NULL, num_iteration = NULL,
 
 \item{filename}{saved filename}
 
-\item{start_iteration}{int or None, optional (default=None)
+\item{start_iteration}{int or NULL, optional (default=NULL)
 Start index of the iteration to predict.
-If None or <= 0, starts from the first iteration.}
+If NULL or <= 0, starts from the first iteration.}
 
-\item{num_iteration}{int or None, optional (default=None)
+\item{num_iteration}{int or NULL, optional (default=NULL)
 Limit number of iterations in the prediction.
-If None, if the best iteration exists and start_iteration is None or <= 0, the
+If NULL, if the best iteration exists and start_iteration is NULL or <= 0, the
 best iteration is used; otherwise, all iterations from start_iteration are used.
 If <= 0, all iterations from start_iteration are used (no limits).}
 
@@ -42,24 +42,18 @@ data(GPBoost_data, package = "gpboost")
 
 # Train model and make prediction
 gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
-bst <- gpboost(data = X,
-               label = y,
-               gp_model = gp_model,
-               nrounds = 16,
-               learning_rate = 0.05,
-               max_depth = 6,
-               min_data_in_leaf = 5,
-               objective = "regression_l2",
-               verbose = 0)
+bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
+               learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
+               objective = "regression_l2", verbose = 0)
 pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
-                predict_var= TRUE)
+                predict_var= TRUE, pred_latent = TRUE)
 # Save model to file
 filename <- tempfile(fileext = ".json")
 gpb.save(bst,filename = filename)
 # Load from file and make predictions again
 bst_loaded <- gpb.load(filename = filename)
 pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test[,1],
-                       predict_var= TRUE)
+                       predict_var= TRUE, pred_latent = TRUE)
 # Check equality
 pred$fixed_effect - pred_loaded$fixed_effect
 pred$random_effect_mean - pred_loaded$random_effect_mean
@@ -67,5 +61,5 @@ pred$random_effect_cov - pred_loaded$random_effect_cov
 }
 }
 \author{
-Authors of the LightGBM R package, Fabio Sigrist
+Fabio Sigrist, authors of the LightGBM R package
 }

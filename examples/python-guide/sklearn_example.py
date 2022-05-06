@@ -10,6 +10,7 @@ process models
 import numpy as np
 import gpboost as gpb
 import random
+import matplotlib.pyplot as plt
 
 print('Simulating data...')
 # Simulate data

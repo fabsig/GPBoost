@@ -616,7 +616,7 @@ Booster <- R6::R6Class(
       if (is.null(start_iteration)) {
         start_iteration <- 0L
       }
-
+      
       model_str <- .Call(
         LGBM_BoosterSaveModelToString_R
         , private$handle
@@ -652,7 +652,7 @@ Booster <- R6::R6Class(
     predict = function(data,
                        start_iteration = NULL,
                        num_iteration = NULL,
-                       rawscore = FALSE,
+                       pred_latent = FALSE,
                        predleaf = FALSE,
                        predcontrib = FALSE,
                        header = FALSE,
@@ -667,7 +667,12 @@ Booster <- R6::R6Class(
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
                        ignore_gp_model = FALSE,
+                       rawscore = NULL,
                        ...) {
+      
+      if (!is.null(rawscore)) {
+        warning("The argument 'raw_score' is deprecated and ignored. Use the renamed equivalent argument 'pred_latent' instead")
+      }
       
       # Check if number of iteration is non existent
       if (is.null(num_iteration)) {
@@ -751,13 +756,24 @@ Booster <- R6::R6Class(
             warning("Number of data points in fixed effect (tree ensemble) and random effect are not equal")
           }
           
-          if(predict_cov_mat){
-            pred_var_cov <- random_effect_pred$cov
-          } else if(predict_var){
-            pred_var_cov <- random_effect_pred$var
+          if (pred_latent) {
+            if(predict_cov_mat){
+              pred_var_cov <- random_effect_pred$cov
+            } else if(predict_var){
+              pred_var_cov <- random_effect_pred$var
+            }
+            random_effect_mean <- random_effect_pred$mu
+          } 
+          else {
+            if(predict_cov_mat){
+              response_var <- random_effect_pred$cov
+            } else if(predict_var){
+              response_var <- random_effect_pred$var
+            }
+            response_mean <- random_effect_pred$mu + fixed_effect
+            fixed_effect <- NULL
           }
-          random_effect_mean <- random_effect_pred$mu
-          
+
         }##end Gaussian data
         else{## non-Gaussian data
           
@@ -793,7 +809,7 @@ Booster <- R6::R6Class(
                                             , header = header
                                             , reshape = FALSE )
           
-          if (rawscore) {
+          if (pred_latent) {
             
             # Note: we don't need to provide the response variable y as this is saved
             #   in the gp_model ("in C++") for non-Gaussian data. y is only not NULL when
@@ -824,8 +840,8 @@ Booster <- R6::R6Class(
             }
             random_effect_mean <- random_effect_pred$mu
             
-          }##end rawscore
-          else {##predict response variable (not rawscore)
+          }##end pred_latent
+          else {##predict response variable
             
             pred_resp <- private$gp_model$predict(group_data_pred = group_data_pred,
                                                   group_rand_coef_data_pred = group_rand_coef_data_pred,
@@ -847,7 +863,7 @@ Booster <- R6::R6Class(
             response_var <-  pred_resp$var
             fixed_effect <- NA
             
-          }##end not rawscore
+          }##end not pred_latent
           
         }##end non-Gaussian data
         
@@ -864,7 +880,7 @@ Booster <- R6::R6Class(
             data = data
             , start_iteration = start_iteration
             , num_iteration = num_iteration
-            , rawscore = rawscore
+            , rawscore = pred_latent
             , predleaf = predleaf
             , predcontrib = predcontrib
             , header = header
@@ -1106,17 +1122,18 @@ Booster <- R6::R6Class(
 #' @inheritParams GPModel_shared_params
 #' @param object Object of class \code{gpb.Booster}
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
-#' @param start_iteration int or None, optional (default=None)
+#' @param start_iteration int or NULL, optional (default=NULL)
 #'                        Start index of the iteration to predict.
-#'                        If None or <= 0, starts from the first iteration.
-#' @param num_iteration int or None, optional (default=None)
+#'                        If NULL or <= 0, starts from the first iteration.
+#' @param num_iteration int or NULL, optional (default=NULL)
 #'                      Limit number of iterations in the prediction.
-#'                      If None, if the best iteration exists and start_iteration is None or <= 0, the
+#'                      If NULL, if the best iteration exists and start_iteration is NULL or <= 0, the
 #'                      best iteration is used; otherwise, all iterations from start_iteration are used.
 #'                      If <= 0, all iterations from start_iteration are used (no limits).
-#' @param rawscore whether the prediction should be returned in the for of original untransformed
-#'                 sum of predictions from boosting iterations' results. E.g., setting \code{rawscore=TRUE}
-#'                 for logistic regression would result in predictions for log-odds instead of probabilities.
+#' @param pred_latent  If TRUE latent variables, both fixed effects (tree-ensemble) 
+#' and random effects (\code{gp_model}) are predicted. Otherwise, the response variable 
+#' (label) is predicted. If there is no \code{gp_model}, this argument corresponds 
+#' to 'raw_score' in LightGBM.
 #' @param predleaf whether predict leaf index instead.
 #' @param predcontrib return per-feature contributions for each record.
 #' @param header only used for prediction for text file. True if text file has header
@@ -1124,17 +1141,27 @@ Booster <- R6::R6Class(
 #'                prediction outputs per case.
 #' @param ignore_gp_model A \code{boolean}. If TRUE, predictions are only made for the tree ensemble part
 #' and the \code{gp_model} is ignored
+#' @param rawscore This is deprecated, use the renamed equivalent argument 
+#' \code{pred_latent} instead
 #' @param ... Additional named arguments passed to the \code{predict()} method of
 #'            the \code{gpb.Booster} object passed to \code{object}. 
-#' @return For regression or binary classification, it returns a vector of length \code{nrows(data)}.
-#'         For multiclass classification, either a \code{num_class * nrows(data)} vector or
-#'         a \code{(nrows(data), num_class)} dimension matrix is returned, depending on
-#'         the \code{reshape} value.
-#'
-#'         When \code{predleaf = TRUE}, the output is a matrix object with the
-#'         number of columns corresponding to the number of trees.
-#'
+#' @return either a list with vectors or a single vector / matrix depending on 
+#' whether there is a \code{gp_model} or not
+#'   If there is a \code{gp_model}, the result dict contains the following entries.
+#'     1. If \code{pred_latent} is TRUE, the dict contains the following 3 entries:
+#'       - result["fixed_effect"] are the predictions from the tree-ensemble.
+#'       - result["random_effect_mean"] are the predicted means of the \code{gp_model}.
+#'       - result["random_effect_cov"] are the predicted covariances or variances of the \code{gp_model}
+#'   (only if 'predict_var' or 'predict_cov' is True).
+#'     2. If \code{pred_latent} is FALSE, the dict contains the following 2 entries:
+#'       - result["response_mean"] are the predicted means of the response variable (Label) taking into account
+#'     both the fixed effects (tree-ensemble) and the random effects (\code{gp_model})
+#'       - result["response_var"] are the predicted variances of the response variable
+#'   If there is no \code{gp_model} or \code{predcontrib} or \code{ignore_gp_model} 
+#'     are TRUE, the result contains predictions from the tree-booster only.
+#' 
 #' @examples
+#' 
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
 #' library(gpboost)
@@ -1153,26 +1180,25 @@ Booster <- R6::R6Class(
 #' # gp_model$set_optim_params(params=re_params)
 #' 
 #' # Train model
-#' bst <- gpboost(data = X,
-#'                label = y,
-#'                gp_model = gp_model,
-#'                nrounds = 16,
-#'                learning_rate = 0.05,
-#'                max_depth = 6,
-#'                min_data_in_leaf = 5,
-#'                objective = "regression_l2",
-#'                verbose = 0)
+#' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
+#'                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
+#'                objective = "regression_l2", verbose = 0)
 #' # Estimated random effects model
 #' summary(gp_model)
 #' 
 #' # Make predictions
+#' # Predict latent variables
 #' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
-#'                 predict_var= TRUE)
-#' pred$random_effect_mean # Predicted mean
-#' pred$random_effect_cov # Predicted variances
-#' pred$fixed_effect # Predicted fixed effect from tree ensemble
-#' # Sum them up to otbain a single prediction
-#' pred$random_effect_mean + pred$fixed_effect
+#'                 predict_var = TRUE, pred_latent = TRUE)
+#' pred$random_effect_mean # Predicted latent random effects mean
+#' pred$random_effect_cov # Predicted random effects variances
+#' pred$fixed_effect # Predicted fixed effects from tree ensemble
+#' # Predict response variable
+#' pred_resp <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
+#'                      predict_var = TRUE, pred_latent = FALSE)
+#' pred_resp$response_mean # Predicted response mean
+#' # For Gaussian data: pred$random_effect_mean + pred$fixed_effect = pred_resp$response_mean
+#' pred$random_effect_mean + pred$fixed_effect - pred_resp$response_mean
 #' 
 #' \donttest{
 #' #--------------------Combine tree-boosting and Gaussian process model----------------
@@ -1180,33 +1206,30 @@ Booster <- R6::R6Class(
 #' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
 #'                     likelihood = "gaussian")
 #' # Train model
-#' bst <- gpboost(data = X,
-#'                label = y,
-#'                gp_model = gp_model,
-#'                nrounds = 8,
-#'                learning_rate = 0.1,
-#'                max_depth = 6,
-#'                min_data_in_leaf = 5,
-#'                objective = "regression_l2",
-#'                verbose = 0)
+#' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 8,
+#'                learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
+#'                objective = "regression_l2", verbose = 0)
 #' # Estimated random effects model
 #' summary(gp_model)
 #' # Make predictions
+# Predict latent variables
 #' pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-#'                 predict_cov_mat =TRUE)
-#' pred$random_effect_mean # Predicted (posterior) mean of GP
-#' pred$random_effect_cov # Predicted (posterior) covariance matrix of GP
-#' pred$fixed_effect # Predicted fixed effect from tree ensemble
-#' # Sum them up to otbain a single prediction
-#' pred$random_effect_mean + pred$fixed_effect
+#'                 predict_var = TRUE, pred_latent = TRUE)
+#' pred$random_effect_mean # Predicted latent random effects mean
+#' pred$random_effect_cov # Predicted random effects variances
+#' pred$fixed_effect # Predicted fixed effects from tree ensemble
+#' # Predict response variable
+#' pred_resp <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+#'                      predict_var = TRUE, pred_latent = FALSE)
+#' pred_resp$response_mean # Predicted response mean
 #' }
-#' @author Authors of the LightGBM R package, Fabio Sigrist
+#' @author Fabio Sigrist, authors of the LightGBM R package
 #' @export
 predict.gpb.Booster <- function(object,
                                 data,
                                 start_iteration = NULL,
                                 num_iteration = NULL,
-                                rawscore = FALSE,
+                                pred_latent = FALSE,
                                 predleaf = FALSE,
                                 predcontrib = FALSE,
                                 header = FALSE,
@@ -1221,6 +1244,7 @@ predict.gpb.Booster <- function(object,
                                 predict_cov_mat = FALSE,
                                 predict_var = FALSE,
                                 ignore_gp_model = FALSE,
+                                rawscore = NULL,
                                 ...) {
   
   if (!gpb.is.Booster(x = object)) {
@@ -1233,7 +1257,7 @@ predict.gpb.Booster <- function(object,
       data = data
       , start_iteration = start_iteration
       , num_iteration = num_iteration
-      , rawscore = rawscore
+      , pred_latent = pred_latent
       , predleaf =  predleaf
       , predcontrib =  predcontrib
       , header = header
@@ -1248,6 +1272,7 @@ predict.gpb.Booster <- function(object,
       , predict_cov_mat = predict_cov_mat
       , predict_var = predict_var
       , ignore_gp_model = ignore_gp_model
+      , rawscore = rawscore
       , ...
     )
   )
@@ -1270,30 +1295,24 @@ predict.gpb.Booster <- function(object,
 #' 
 #' # Train model and make prediction
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
-#' bst <- gpboost(data = X,
-#'                label = y,
-#'                gp_model = gp_model,
-#'                nrounds = 16,
-#'                learning_rate = 0.05,
-#'                max_depth = 6,
-#'                min_data_in_leaf = 5,
-#'                objective = "regression_l2",
-#'                verbose = 0)
+#' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
+#'                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
+#'                objective = "regression_l2", verbose = 0)
 #' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
-#'                 predict_var= TRUE)
+#'                 predict_var= TRUE, pred_latent = TRUE)
 #' # Save model to file
 #' filename <- tempfile(fileext = ".json")
 #' gpb.save(bst,filename = filename)
 #' # Load from file and make predictions again
 #' bst_loaded <- gpb.load(filename = filename)
 #' pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test[,1],
-#'                        predict_var= TRUE)
+#'                        predict_var= TRUE, pred_latent = TRUE)
 #' # Check equality
 #' pred$fixed_effect - pred_loaded$fixed_effect
 #' pred$random_effect_mean - pred_loaded$random_effect_mean
 #' pred$random_effect_cov - pred_loaded$random_effect_cov
 #' }
-#' @author Authors of the LightGBM R package, Fabio Sigrist
+#' @author Fabio Sigrist, authors of the LightGBM R package
 #' @export
 gpb.load <- function(filename = NULL, model_str = NULL) {
   
@@ -1325,12 +1344,12 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' @description Save GPBoost model
 #' @param booster Object of class \code{gpb.Booster}
 #' @param filename saved filename
-#' @param start_iteration int or None, optional (default=None)
+#' @param start_iteration int or NULL, optional (default=NULL)
 #'                        Start index of the iteration to predict.
-#'                        If None or <= 0, starts from the first iteration.
-#' @param num_iteration int or None, optional (default=None)
+#'                        If NULL or <= 0, starts from the first iteration.
+#' @param num_iteration int or NULL, optional (default=NULL)
 #'                      Limit number of iterations in the prediction.
-#'                      If None, if the best iteration exists and start_iteration is None or <= 0, the
+#'                      If NULL, if the best iteration exists and start_iteration is NULL or <= 0, the
 #'                      best iteration is used; otherwise, all iterations from start_iteration are used.
 #'                      If <= 0, all iterations from start_iteration are used (no limits).
 #' @param save_raw_data If TRUE, the raw data (predictor / covariate data) for the Booster is also saved.
@@ -1348,33 +1367,27 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' 
 #' # Train model and make prediction
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
-#' bst <- gpboost(data = X,
-#'                label = y,
-#'                gp_model = gp_model,
-#'                nrounds = 16,
-#'                learning_rate = 0.05,
-#'                max_depth = 6,
-#'                min_data_in_leaf = 5,
-#'                objective = "regression_l2",
-#'                verbose = 0)
+#' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
+#'                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
+#'                objective = "regression_l2", verbose = 0)
 #' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
-#'                 predict_var= TRUE)
+#'                 predict_var= TRUE, pred_latent = TRUE)
 #' # Save model to file
 #' filename <- tempfile(fileext = ".json")
 #' gpb.save(bst,filename = filename)
 #' # Load from file and make predictions again
 #' bst_loaded <- gpb.load(filename = filename)
 #' pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test[,1],
-#'                        predict_var= TRUE)
+#'                        predict_var= TRUE, pred_latent = TRUE)
 #' # Check equality
 #' pred$fixed_effect - pred_loaded$fixed_effect
 #' pred$random_effect_mean - pred_loaded$random_effect_mean
 #' pred$random_effect_cov - pred_loaded$random_effect_cov
 #' }
-#' @author Authors of the LightGBM R package, Fabio Sigrist
+#' @author Fabio Sigrist, authors of the LightGBM R package
 #' @export
-gpb.save <- function(booster, filename, start_iteration = NULL, num_iteration = NULL,
-                     save_raw_data = FALSE, ...) {
+gpb.save <- function(booster, filename, start_iteration = NULL, 
+                     num_iteration = NULL, save_raw_data = FALSE, ...) {
   
   if (!gpb.is.Booster(x = booster)) {
     stop("gpb.save: booster should be an ", sQuote("gpb.Booster"))

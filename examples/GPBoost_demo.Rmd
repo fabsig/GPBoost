@@ -203,8 +203,7 @@ grid.arrange(plot1, plot2, plot3, plot4, ncol=2, widths = c(2.5,3))
 library(gpboost)
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
 # Train model
-bst <- gpboost(data = X, label = y,
-               gp_model = gp_model,
+bst <- gpboost(data = X, label = y, gp_model = gp_model,
                nrounds = 247, learning_rate = 0.01,
                max_depth = 3, min_data_in_leaf = 10, num_leaves = 2^10,
                objective = "regression_l2", verbose = 0)
@@ -225,8 +224,8 @@ gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
 data_train = gpb.Dataset(X, y)
 params = { 'objective': 'regression_l2', 'learning_rate': 0.01,
 'max_depth': 3, 'min_data_in_leaf': 10, 'num_leaves': 2**10, 'verbose': 0 }
-bst = gpb.train(params=params, train_set=data_train,
-gp_model=gp_model, num_boost_round=247)
+bst = gpb.train(params=params, train_set=data_train, gp_model=gp_model, 
+                num_boost_round=247)
 print("Estimated covariance parameters:")
 gp_model.summary()
 ```
@@ -238,10 +237,15 @@ gp_model.summary()
 
 ***In R***
 ```{r prediction, results='hold', message=F, cache=cache, fig.align='center', fig.cap='Prediction: Predicted (posterior) mean and prediction uncertainty (=standard deviation) of GP as well as predicted mean function F(X).'}
-# Make predictions
-pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var = TRUE)
-# Sum the predictions of the trees and the GP
-y_pred <- pred$fixed_effect + pred$random_effect_mean
+# Make predictions: latent variables and response variable
+pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
+                predict_var = TRUE, pred_latent = TRUE)
+# pred[["fixed_effect"]]: predictions from the tree-ensemble.
+# pred[["random_effect_mean"]]: predicted means of the gp_model.
+# pred["random_effect_cov"]]: predicted (co-)variances of the gp_model
+pred_resp <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
+                     pred_latent = FALSE)
+y_pred <- pred_resp[["response_mean"]] # predicted response mean
 # Calculate mean square error
 MSE_GPBoost <- mean((y_pred-y_test)^2)
 print(paste0("Mean square error: ", MSE_GPBoost)) # 0.3942886
@@ -278,8 +282,14 @@ grid.arrange(plot8, plot5, plot6, plot7, ncol=2)
 ***In Python***
 <div class="fold s o">
 ```{python prediction_python, collapse=T, message=F, cache=cache, eval=run_python}
-pred = bst.predict(data=X_test, gp_coords_pred=coords_test, predict_var=True)
-y_pred = pred['fixed_effect'] + pred['random_effect_mean']
+# Make predictions: latent variables and response variable
+pred = bst.predict(data=X_test, gp_coords_pred=coords_test, predict_var=True, pred_latent=True)
+# pred['fixed_effect']: predictions from the tree-ensemble.
+# pred['random_effect_mean']: predicted means of the gp_model.
+# pred['random_effect_cov']: predicted (co-)variances of the gp_model
+#     (only if 'predict_var' or 'predict_cov' is True).
+pred_resp = bst.predict(data=X_test, gp_coords_pred=coords_test, predict_var=False, pred_latent=False)
+y_pred = pred_resp['response_mean'] # predicted response mean
 print("Mean square error (MSE): " + str(np.mean((y_pred-y_test)**2)))
 ```
 </div>
@@ -452,6 +462,7 @@ print(RMSEs)
 
 # Combining Tree-Boosting and Grouped Random Effects
 In the following, we show how a non-linear mixed effects model can be trained using `gpboost`. We use a random effects model that includes two crossed grouped random effects as well as a random slope. We first simulate data and then show how to train a GPBoost model and make predictions.
+
 ***In R***
 <div class="fold s">
 ```{r simulate_group_data, results='hide', message=F, cache=cache}

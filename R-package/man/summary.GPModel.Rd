@@ -21,16 +21,20 @@ Summary for a \code{GPModel}
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
 data(GPBoost_data, package = "gpboost")
+# Add intercept column
+X1 <- cbind(rep(1,dim(X)[1]),X)
+X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 
 #--------------------Grouped random effects model: single-level random effect----------------
-gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
-                       params = list(std_dev = TRUE))
+gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
+                       likelihood="gaussian", params = list(std_dev = TRUE))
 summary(gp_model)
+
 
 \donttest{
 #--------------------Gaussian process model----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                       likelihood="gaussian", y = y, params = list(std_dev = TRUE))
+                       likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 summary(gp_model)
 }
 

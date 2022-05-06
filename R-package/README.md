@@ -21,14 +21,13 @@ This is the R package implementation of the GPBoost library. See https://github.
 ## Examples
 
 * [**Detailed R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo):
-  * [GPBoost algorithm](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/GPBoost_algorithm.R) for combining tree-boosting with Gaussian process and random effects models
-  * [GPBoost algorithm for binary classification and other non-Gaussian data](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/classification_non_Gaussian_data.R) (Poisson regression, etc.)
+  * [GPBoost and LaGaboost algorithms](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/GPBoost_algorithm.R) for Gaussian data ("regression") and non-Gaussian data ("classification", etc.) combining tree-boosting with Gaussian process and random effects models
   * [Parameter tuning](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/parameter_tuning.R) using deterministic or random grid search
   * [Generalized linear Gaussian process and mixed effects model examples](https://github.com/fabsig/GPBoost/blob/master/R-package/demo/generalized_linear_Gaussian_process_mixed_effects_models.R)
 * **Blog posts** on how to 
    * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)
-   * [Use GPBoost for generalized linear mixed effects models (GLMMs)](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c) 
-* [This demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
+   * [GPBoost for generalized linear mixed effects models (GLMMs)](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c) 
+* [Demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
 
 This is also a short example:
 
@@ -41,7 +40,7 @@ bst <- gpboost(data = X, label = y, gp_model = gp_model,
                nrounds = 10, objective = "regression_l2")
 summary(gp_model)
 pred <- predict(bst, data = X_test, group_data_pred = group_data_test)
-pred$random_effect_mean + pred$fixed_effect
+pred$response_mean
 ```
 
 ## Installation

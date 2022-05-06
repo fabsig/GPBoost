@@ -1708,17 +1708,22 @@ fit <- function(gp_model, y, X, params, fixed_effects = NULL) UseMethod("fit")
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
 #' data(GPBoost_data, package = "gpboost")
+#' # Add intercept column
+#' X1 <- cbind(rep(1,dim(X)[1]),X)
+#' X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
+#' fit(gp_model, y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' # Make predictions
-#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+#'                 X_pred = X_test1, predict_var = TRUE)
 #' pred$mu # Predicted mean
 #' pred$var # Predicted variances
 #' # Also predict covariance matrix
-#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat = TRUE)
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+#'                 X_pred = X_test1, predict_cov_mat = TRUE)
 #' pred$mu # Predicted mean
 #' pred$cov # Predicted covariance
 #'  
@@ -1726,14 +1731,13 @@ fit <- function(gp_model, y, X, params, fixed_effects = NULL) UseMethod("fit")
 #' #--------------------Gaussian process model----------------
 #' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
 #'                     likelihood="gaussian")
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
+#' fit(gp_model, y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' # Make predictions
-#' pred <- predict(gp_model, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
-#' # Predicted (posterior/conditional) mean of GP
-#' pred$mu
-#' # Predicted (posterior/conditional) covariance matrix of GP
-#' pred$cov
+#' pred <- predict(gp_model, gp_coords_pred = coords_test, 
+#'                 X_pred = X_test1, predict_cov_mat = TRUE)
+#' pred$mu # Predicted (posterior) mean of GP
+#' pred$cov # Predicted (posterior) covariance matrix of GP
 #' }
 #' 
 #' @method fit GPModel 
@@ -1766,54 +1770,44 @@ fit.GPModel <- function(gp_model,
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
 #' data(GPBoost_data, package = "gpboost")
+#' # Add intercept column
+#' X1 <- cbind(rep(1,dim(X)[1]),X)
+#' X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
-#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
-#'                        params = list(std_dev = TRUE))
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
+#'                        likelihood="gaussian", params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' # Make predictions
-#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+#'                 X_pred = X_test1, predict_var = TRUE)
 #' pred$mu # Predicted mean
 #' pred$var # Predicted variances
 #' # Also predict covariance matrix
-#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat = TRUE)
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+#'                 X_pred = X_test1, predict_cov_mat = TRUE)
 #' pred$mu # Predicted mean
 #' pred$cov # Predicted covariance
 #'
 #'
 #' \donttest{
-#' #--------------------Mixed effects model: random effects and linear fixed effects----------------
-#' X1 <- cbind(rep(1,length(y)),X) # Add intercept column
-#' gp_model <- fitGPModel(group_data = group_data[,1], likelihood="gaussian",
-#'                        y = y, X = X1, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#'
-#'
 #' #--------------------Two crossed random effects and a random slope----------------
 #' gp_model <- fitGPModel(group_data = group_data, likelihood="gaussian",
 #'                        group_rand_coef_data = X[,2],
 #'                        ind_effect_group_rand_coef = 1,
-#'                        y = y, params = list(std_dev = TRUE))
+#'                        y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #'
 #'
 #' #--------------------Gaussian process model----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                        likelihood="gaussian", y = y, params = list(std_dev = TRUE))
+#'                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' # Make predictions
-#' pred <- predict(gp_model, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
-#' # Predicted (posterior/conditional) mean of GP
-#' pred$mu
-#' # Predicted (posterior/conditional) covariance matrix of GP
-#' pred$cov
-#'
-#'
-#' #--------------------Gaussian process model with linear mean function----------------
-#' X1 <- cbind(rep(1,length(y)),X) # Add intercept column
-#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                        likelihood="gaussian", y = y, X=X1, params = list(std_dev = TRUE))
-#' summary(gp_model)
+#' pred <- predict(gp_model, gp_coords_pred = coords_test, 
+#'                 X_pred = X_test1, predict_cov_mat = TRUE)
+#' pred$mu # Predicted (posterior) mean of GP
+#' pred$cov # Predicted (posterior) covariance matrix of GP
 #'
 #'
 #' #--------------------Gaussian process model with Vecchia approximation----------------
@@ -1823,12 +1817,7 @@ fit.GPModel <- function(gp_model,
 #' summary(gp_model)
 #'
 #'
-#' #--------------------Gaussian process model with random coefficents----------------
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-#'                     gp_rand_coef_data = X[,2], likelihood = "gaussian")
-#' fit(gp_model, y = y, params = list(std_dev = TRUE))
-#' summary(gp_model)
-#' # Alternatively, define and fit model directly using fitGPModel
+#' #--------------------Gaussian process model with random coefficients----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
 #'                        gp_rand_coef_data = X[,2], y=y,
 #'                        likelihood = "gaussian", params = list(std_dev = TRUE))
@@ -1838,7 +1827,7 @@ fit.GPModel <- function(gp_model,
 #' #--------------------Combine Gaussian process with grouped random effects----------------
 #' gp_model <- fitGPModel(group_data = group_data,
 #'                        gp_coords = coords, cov_function = "exponential",
-#'                        likelihood = "gaussian", y = y, params = list(std_dev = TRUE))
+#'                        likelihood = "gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' }
 #' 
@@ -1902,16 +1891,20 @@ fitGPModel <- function(group_data = NULL,
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
 #' data(GPBoost_data, package = "gpboost")
+#' # Add intercept column
+#' X1 <- cbind(rep(1,dim(X)[1]),X)
+#' X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
-#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
-#'                        params = list(std_dev = TRUE))
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
+#'                        likelihood="gaussian", params = list(std_dev = TRUE))
 #' summary(gp_model)
-#' 
+#'
+#'
 #' \donttest{
 #' #--------------------Gaussian process model----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                        likelihood="gaussian", y = y, params = list(std_dev = TRUE))
+#'                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' }
 #' 
@@ -1956,31 +1949,36 @@ summary.GPModel <- function(object, ...){
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
 #' data(GPBoost_data, package = "gpboost")
+#' # Add intercept column
+#' X1 <- cbind(rep(1,dim(X)[1]),X)
+#' X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
-#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
-#'                        params = list(std_dev = TRUE))
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
+#'                        likelihood="gaussian", params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' # Make predictions
-#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+#'                 X_pred = X_test1, predict_var = TRUE)
 #' pred$mu # Predicted mean
 #' pred$var # Predicted variances
 #' # Also predict covariance matrix
-#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat = TRUE)
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+#'                 X_pred = X_test1, predict_cov_mat = TRUE)
 #' pred$mu # Predicted mean
 #' pred$cov # Predicted covariance
-#' 
+#'
+#'
 #' \donttest{
 #' #--------------------Gaussian process model----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                        likelihood="gaussian", y = y, params = list(std_dev = TRUE))
+#'                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' # Make predictions
-#' pred <- predict(gp_model, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
-#' # Predicted (posterior/conditional) mean of GP
-#' pred$mu
-#' # Predicted (posterior/conditional) covariance matrix of GP
-#' pred$cov
+#' pred <- predict(gp_model, gp_coords_pred = coords_test, 
+#'                 X_pred = X_test1, predict_cov_mat = TRUE)
+#' pred$mu # Predicted (posterior) mean of GP
+#' pred$cov # Predicted (posterior) covariance matrix of GP
 #' }
 #' 
 #' @rdname predict.GPModel
@@ -2029,15 +2027,20 @@ predict.GPModel <- function(object,
 #' @examples
 #' \donttest{
 #' data(GPBoost_data, package = "gpboost")
+#' # Add intercept column
+#' X1 <- cbind(rep(1,dim(X)[1]),X)
+#' X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 #' 
-#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
-#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+#'                 X_pred = X_test1, predict_var = TRUE)
 #' # Save model to file
 #' filename <- tempfile(fileext = ".json")
 #' saveGPModel(gp_model,filename = filename)
 #' # Load from file and make predictions again
 #' gp_model_loaded <- loadGPModel(filename = filename)
-#' pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], 
+#'                        X_pred = X_test1, predict_var = TRUE)
 #' # Check equality
 #' pred$mu - pred_loaded$mu
 #' pred$var - pred_loaded$var
@@ -2072,15 +2075,20 @@ saveGPModel <- function(gp_model, filename) {
 #' @examples
 #' \donttest{
 #' data(GPBoost_data, package = "gpboost")
+#' # Add intercept column
+#' X1 <- cbind(rep(1,dim(X)[1]),X)
+#' X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 #' 
-#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
-#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
+#' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+#'                 X_pred = X_test1, predict_var = TRUE)
 #' # Save model to file
 #' filename <- tempfile(fileext = ".json")
 #' saveGPModel(gp_model,filename = filename)
 #' # Load from file and make predictions again
 #' gp_model_loaded <- loadGPModel(filename = filename)
-#' pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], predict_var = TRUE)
+#' pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], 
+#'                        X_pred = X_test1, predict_var = TRUE)
 #' # Check equality
 #' pred$mu - pred_loaded$mu
 #' pred$var - pred_loaded$var
@@ -2183,7 +2191,11 @@ set_prediction_data.GPModel <- function(gp_model,
 #' @examples
 #' \donttest{
 #' data(GPBoost_data, package = "gpboost")
-#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
+#' # Add intercept column
+#' X1 <- cbind(rep(1,dim(X)[1]),X)
+#' X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
+#' 
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
 #' all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
 #' first_occurences <- match(unique(group_data[,1]), group_data[,1])
 #' unique_training_data_random_effects <- all_training_data_random_effects[first_occurences]
@@ -2206,7 +2218,11 @@ predict_training_data_random_effects <- function(gp_model) UseMethod("predict_tr
 #' @examples
 #' \donttest{
 #' data(GPBoost_data, package = "gpboost")
-#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
+#' # Add intercept column
+#' X1 <- cbind(rep(1,dim(X)[1]),X)
+#' X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
+#' 
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
 #' all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
 #' first_occurences <- match(unique(group_data[,1]), group_data[,1])
 #' unique_training_data_random_effects <- all_training_data_random_effects[first_occurences]

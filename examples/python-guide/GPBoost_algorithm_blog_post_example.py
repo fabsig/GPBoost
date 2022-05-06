@@ -5,7 +5,7 @@ https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb
 
 @author: Fabio Sigrist
 
-Note: results in comments are obtained with gpboost version 0.7.5 and merf 
+Note: results in comments are obtained with gpboost version 0.7.6 and merf 
         version 0.3.0
 """
 
@@ -64,7 +64,7 @@ gp_model.summary() # estimated covariance parameters
 
 # Make predictions
 pred = bst.predict(data=X_test, group_data_pred=group_test)
-y_pred = pred['fixed_effect'] + pred['random_effect_mean'] # sum predictions of fixed effect and random effect
+y_pred = pred['response_mean']
 np.sqrt(np.mean((y_test - y_pred) ** 2)) # root mean square error (RMSE) on test data. Approx. = 1.26
 
 # Parameter tuning using cross-validation (only number of boosting iterations)
@@ -110,7 +110,7 @@ start_time = time.time() # measure time
 bst = gpb.train(params=params, train_set=data_train, gp_model=gp_model, num_boost_round=best_iter)
 results.loc["GPBoost","Time"] = time.time() - start_time
 pred = bst.predict(data=X_test, group_data_pred=group_test)
-y_pred = pred['fixed_effect'] + pred['random_effect_mean'] # sum predictions of fixed effect and random effect
+y_pred = pred['response_mean']
 results.loc["GPBoost","RMSE"] = np.sqrt(np.mean((y_test - y_pred) ** 2))
 
 # 2. Linear mixed effects model ('Linear_ME')

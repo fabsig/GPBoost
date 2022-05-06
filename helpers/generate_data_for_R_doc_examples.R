@@ -54,15 +54,3 @@ coords <- coords[1:ntrain,]
 X <- X[1:ntrain,]
 
 # save(y, X, group_data, coords, X_test, group_data_test, coords_test, file = "GPBoost_data.RData")
-
-# var(f)
-# var(eps_group)
-# var(eps_spatial)
-
-
-
-
-
-
-
-

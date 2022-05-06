@@ -73,31 +73,36 @@ Make predictions for a \code{GPModel}
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
 data(GPBoost_data, package = "gpboost")
+# Add intercept column
+X1 <- cbind(rep(1,dim(X)[1]),X)
+X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 
 #--------------------Grouped random effects model: single-level random effect----------------
-gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
-                       params = list(std_dev = TRUE))
+gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
+                       likelihood="gaussian", params = list(std_dev = TRUE))
 summary(gp_model)
 # Make predictions
-pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+                X_pred = X_test1, predict_var = TRUE)
 pred$mu # Predicted mean
 pred$var # Predicted variances
 # Also predict covariance matrix
-pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat = TRUE)
+pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+                X_pred = X_test1, predict_cov_mat = TRUE)
 pred$mu # Predicted mean
 pred$cov # Predicted covariance
+
 
 \donttest{
 #--------------------Gaussian process model----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                       likelihood="gaussian", y = y, params = list(std_dev = TRUE))
+                       likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 summary(gp_model)
 # Make predictions
-pred <- predict(gp_model, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
-# Predicted (posterior/conditional) mean of GP
-pred$mu
-# Predicted (posterior/conditional) covariance matrix of GP
-pred$cov
+pred <- predict(gp_model, gp_coords_pred = coords_test, 
+                X_pred = X_test1, predict_cov_mat = TRUE)
+pred$mu # Predicted (posterior) mean of GP
+pred$cov # Predicted (posterior) covariance matrix of GP
 }
 
 }

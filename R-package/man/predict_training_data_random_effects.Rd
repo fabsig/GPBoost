@@ -18,7 +18,11 @@ Generic 'predict_training_data_random_effects' method for a \code{GPModel}
 \examples{
 \donttest{
 data(GPBoost_data, package = "gpboost")
-gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
+# Add intercept column
+X1 <- cbind(rep(1,dim(X)[1]),X)
+X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
+
+gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
 all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
 first_occurences <- match(unique(group_data[,1]), group_data[,1])
 unique_training_data_random_effects <- all_training_data_random_effects[first_occurences]

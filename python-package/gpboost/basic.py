@@ -3292,13 +3292,13 @@ class Booster:
         return ret
 
     def predict(self, data, start_iteration=0, num_iteration=None,
-                raw_score=False, pred_leaf=False, pred_contrib=False,
+                pred_latent=False, pred_leaf=False, pred_contrib=False,
                 data_has_header=False, is_reshape=True,
                 group_data_pred=None, group_rand_coef_data_pred=None,
                 gp_coords_pred=None, gp_rand_coef_data_pred=None,
                 cluster_ids_pred=None, vecchia_pred_type=None,
                 num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False,
-                ignore_gp_model = False, **kwargs):
+                ignore_gp_model=False, raw_score=None, **kwargs):
         """Make a prediction.
 
         Parameters
@@ -3314,8 +3314,10 @@ class Booster:
             If None, if the best iteration exists and start_iteration <= 0, the best iteration is used;
             otherwise, all iterations from ``start_iteration`` are used (no limits).
             If <= 0, all iterations from ``start_iteration`` are used (no limits).
-        raw_score : bool, optional (default=False)
-            Whether to predict raw scores.
+        pred_latent : bool, optional (default=False)
+            If True latent variables, both fixed effects (tree-ensemble) and random effects (gp_model) are predicted.
+            Otherwise, the response variable (label) is predicted. If there is no gp_model, this argument corresponds
+            to 'raw_score' in LightGBM.
         pred_leaf : bool, optional (default=False)
             Whether to predict leaf index.
         pred_contrib : bool, optional (default=False)
@@ -3364,21 +3366,30 @@ class Booster:
             (posterior / conditional) predictive mean. Used only if the Booster has a gp_model
         ignore_gp_model : bool, optional (default=False)
             If True, predictions are only made for the tree ensemble part and the gp_model is ignored
+        raw_score : bool, deprecated
+            This is deprecated, use the renamed equivalent argument 'pred_latent' instead
         **kwargs
             Other parameters for the prediction.
 
         Returns
         -------
-        result : either a numpy array (if there is no GPModel) or a dict with three entries each having numpy arrays
-                as values (if there is a GPModel)
-            If there is no GPModel: Predictions from the tree-booster.
-            If there is a GPModel: Separate predictions for the tree-ensemble (=fixed_effect) and the GP / random effect
-            The first entry of the dict result['fixed_effect'] are the predictions from the tree-booster.
-            The second entry of the dict result['random_effect_mean'] is the predicted mean of the GP / random effect.
-            The third entry result['random_effect_cov'] are the predicted covariances or variances of the GP / random effect
-            (=None if 'predict_cov_mat=False'). I.e., to get a point prediction of the entire model, one has to
-            calculate the sum result['fixed_effect'] + result['random_effect_mean'].
+        result : either a dict with numpy arrays or a single numpy array depending on whether there is a gp_model or not
+            If there is a gp_model, the result dict contains the following entries.
+                1. If 'pred_latent' is True, the dict contains the following 3 entries:
+                - result['fixed_effect'] are the predictions from the tree-ensemble.
+                - result['random_effect_mean'] are the predicted means of the gp_model.
+                - result['random_effect_cov'] are the predicted covariances or variances of the gp_model
+                    (only if 'predict_var' or 'predict_cov' is True).
+                2. If 'pred_latent' is False, the dict contains the following 2 entries:
+                - result['response_mean'] are the predicted means of the response variable (Label) taking into account
+                    both the fixed effects (tree-ensemble) and the random effects (gp_model)
+                - result['response_var'] are the predicted variances of the response variable
+            If there is no gp_model or 'pred_contrib' or 'ignore_gp_model' are True, the result contains
+                predictions from the tree-booster only.
         """
+        if raw_score is not None:
+            warnings.warn("The argument 'raw_score' is deprecated and ignored. "
+                          "Use the renamed equivalent argument 'pred_latent' instead")
         predictor = self._to_predictor(deepcopy(kwargs))
         if num_iteration is None:
             if start_iteration <= 0:
@@ -3424,17 +3435,25 @@ class Booster:
                                                            predict_cov_mat=predict_cov_mat,
                                                            predict_var=predict_var)
                 fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
-                                                 num_iteration=num_iteration, raw_score=raw_score, pred_leaf=pred_leaf,
+                                                 num_iteration=num_iteration, raw_score=True, pred_leaf=pred_leaf,
                                                  pred_contrib=False, data_has_header=data_has_header,
                                                  is_reshape=is_reshape)
                 if len(fixed_effect) != len(random_effect_pred['mu']):
                     warnings.warn("Number of data points in fixed effect (tree ensemble) and random effect "
                                   "are not equal")
-                if predict_cov_mat:
-                    pred_var_cov = random_effect_pred['cov']
-                elif predict_var:
-                    pred_var_cov = random_effect_pred['var']
-                random_effect_mean = random_effect_pred['mu']
+                if pred_latent:
+                    if predict_cov_mat:
+                        pred_var_cov = random_effect_pred['cov']
+                    elif predict_var:
+                        pred_var_cov = random_effect_pred['var']
+                    random_effect_mean = random_effect_pred['mu']
+                else:
+                    if predict_cov_mat:
+                        response_var = random_effect_pred['cov']
+                    elif predict_var:
+                        response_var = random_effect_pred['var']
+                    response_mean = random_effect_pred['mu'] + fixed_effect
+                    fixed_effect = None
             else:  # non-Gaussian data
                 y = None
                 if not has_raw_data and self.gp_model_prediction_data_loaded_from_file:
@@ -3451,7 +3470,7 @@ class Booster:
                                                  num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                  pred_contrib=False, data_has_header=data_has_header,
                                                  is_reshape=False)
-                if raw_score:
+                if pred_latent:
                     # Note: we don't need to provide the response variable y as this is saved
                     #   in the gp_model ("in C++") for non-Gaussian data. y is only not NULL when
                     #   the model was loaded from a file
@@ -3475,7 +3494,7 @@ class Booster:
                     elif predict_var:
                         pred_var_cov = random_effect_pred['var']
                     random_effect_mean = random_effect_pred['mu']
-                else:  # predict response variable (not rawscore)
+                else:  # predict response variable (not pred_latent)
                     pred_resp = self.gp_model.predict(group_data_pred=group_data_pred,
                                                       group_rand_coef_data_pred=group_rand_coef_data_pred,
                                                       gp_coords_pred=gp_coords_pred,
@@ -3499,7 +3518,7 @@ class Booster:
                     "response_var": response_var}
         else:  # no gp_model or pred_contrib or ignore_gp_model
             return predictor.predict(data=data, start_iteration=start_iteration, num_iteration=num_iteration,
-                                     raw_score=raw_score, pred_leaf=pred_leaf, pred_contrib=pred_contrib,
+                                     raw_score=pred_latent, pred_leaf=pred_leaf, pred_contrib=pred_contrib,
                                      data_has_header=data_has_header, is_reshape=is_reshape)
 
     def refit(self, data, label, decay_rate=0.9, **kwargs):

@@ -136,54 +136,44 @@ Estimates the parameters of a \code{GPModel} using maximum likelihood estimation
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
 data(GPBoost_data, package = "gpboost")
+# Add intercept column
+X1 <- cbind(rep(1,dim(X)[1]),X)
+X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 
 #--------------------Grouped random effects model: single-level random effect----------------
-gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian",
-                       params = list(std_dev = TRUE))
+gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
+                       likelihood="gaussian", params = list(std_dev = TRUE))
 summary(gp_model)
 # Make predictions
-pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+                X_pred = X_test1, predict_var = TRUE)
 pred$mu # Predicted mean
 pred$var # Predicted variances
 # Also predict covariance matrix
-pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_cov_mat = TRUE)
+pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+                X_pred = X_test1, predict_cov_mat = TRUE)
 pred$mu # Predicted mean
 pred$cov # Predicted covariance
 
 
 \donttest{
-#--------------------Mixed effects model: random effects and linear fixed effects----------------
-X1 <- cbind(rep(1,length(y)),X) # Add intercept column
-gp_model <- fitGPModel(group_data = group_data[,1], likelihood="gaussian",
-                       y = y, X = X1, params = list(std_dev = TRUE))
-summary(gp_model)
-
-
 #--------------------Two crossed random effects and a random slope----------------
 gp_model <- fitGPModel(group_data = group_data, likelihood="gaussian",
                        group_rand_coef_data = X[,2],
                        ind_effect_group_rand_coef = 1,
-                       y = y, params = list(std_dev = TRUE))
+                       y = y, X = X1, params = list(std_dev = TRUE))
 summary(gp_model)
 
 
 #--------------------Gaussian process model----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                       likelihood="gaussian", y = y, params = list(std_dev = TRUE))
+                       likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 summary(gp_model)
 # Make predictions
-pred <- predict(gp_model, gp_coords_pred = coords_test, predict_cov_mat = TRUE)
-# Predicted (posterior/conditional) mean of GP
-pred$mu
-# Predicted (posterior/conditional) covariance matrix of GP
-pred$cov
-
-
-#--------------------Gaussian process model with linear mean function----------------
-X1 <- cbind(rep(1,length(y)),X) # Add intercept column
-gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                       likelihood="gaussian", y = y, X=X1, params = list(std_dev = TRUE))
-summary(gp_model)
+pred <- predict(gp_model, gp_coords_pred = coords_test, 
+                X_pred = X_test1, predict_cov_mat = TRUE)
+pred$mu # Predicted (posterior) mean of GP
+pred$cov # Predicted (posterior) covariance matrix of GP
 
 
 #--------------------Gaussian process model with Vecchia approximation----------------
@@ -193,12 +183,7 @@ gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
 summary(gp_model)
 
 
-#--------------------Gaussian process model with random coefficents----------------
-gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                    gp_rand_coef_data = X[,2], likelihood = "gaussian")
-fit(gp_model, y = y, params = list(std_dev = TRUE))
-summary(gp_model)
-# Alternatively, define and fit model directly using fitGPModel
+#--------------------Gaussian process model with random coefficients----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        gp_rand_coef_data = X[,2], y=y,
                        likelihood = "gaussian", params = list(std_dev = TRUE))
@@ -208,7 +193,7 @@ summary(gp_model)
 #--------------------Combine Gaussian process with grouped random effects----------------
 gp_model <- fitGPModel(group_data = group_data,
                        gp_coords = coords, cov_function = "exponential",
-                       likelihood = "gaussian", y = y, params = list(std_dev = TRUE))
+                       likelihood = "gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 summary(gp_model)
 }
 

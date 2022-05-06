@@ -43,8 +43,9 @@ def simulate_response_variable(lp, rand_eff, likelihood):
         y = mu * stats.gamma.ppf(np.random.uniform(size=n), a=1)
     return y
 
-# Choose likelihood: either "gaussian", "bernoulli_probit",
-#                     "bernoulli_logit", "poisson", or "gamma"
+# Choose likelihood: either "gaussian" (=regression), 
+#                     "bernoulli_probit", "bernoulli_logit", (=classification)
+#                     "poisson", or "gamma"
 likelihood = "gaussian"
 
 """
@@ -233,27 +234,27 @@ for i in range(0, n):
         D[j, i] = D[i, j]
 Sigma = sigma2_1 * np.exp(-D / rho) + np.diag(np.zeros(n) + 1e-20)
 C = np.linalg.cholesky(Sigma)
-b1 = C.dot(np.random.normal(size=n)) # simulate GP
-b1 = b1 - np.mean(b1)
-y = simulate_response_variable(lp=0, rand_eff=b1, likelihood=likelihood)
+b = C.dot(np.random.normal(size=n)) # simulate GP
+b = b - np.mean(b)
+y = simulate_response_variable(lp=0, rand_eff=b, likelihood=likelihood)
 # Split into training and test data
 y_train = y[0:ntrain]
 y_test = y[ntrain:n]
-b1_train = b1[0:ntrain]
-b1_test = b1[ntrain:n]
+b_train = b[0:ntrain]
+b_test = b[ntrain:n]
 hst = plt.hist(y_train, bins=50)  # visualize response variable
 # Simulate linear regression fixed effects
 X = np.column_stack((np.ones(ntrain), np.random.uniform(size=ntrain) - 0.5)) # design matrix / covariate data for fixed effect
 beta = np.array([0, 3]) # regression coefficents
 lp = X.dot(beta)
-y_lin = simulate_response_variable(lp=lp, rand_eff=b1_train, likelihood=likelihood)
+y_lin = simulate_response_variable(lp=lp, rand_eff=b_train, likelihood=likelihood)
 # Spatially varying coefficient (random coefficient) model
 X_SVC = np.column_stack(
     (np.random.uniform(size=ntrain), np.random.uniform(size=ntrain)))  # covariate data for random coefficients
 b2 = C[0:ntrain,0:ntrain].dot(np.random.normal(size=ntrain))
 b3 = C[0:ntrain,0:ntrain].dot(np.random.normal(size=ntrain))
 # Note: for simplicity, we assume that all GPs have the same covariance parameters
-rand_eff = b1_train + X_SVC[:, 0] * b2 + X_SVC[:, 1] * b3
+rand_eff = b_train + X_SVC[:, 0] * b2 + X_SVC[:, 1] * b3
 rand_eff = rand_eff - np.mean(rand_eff)
 y_svc = simulate_response_variable(lp=0, rand_eff=rand_eff, likelihood=likelihood)
 
@@ -300,9 +301,10 @@ else:
 # Visualize predictions and compare to true values
 fig, axs = plt.subplots(2, 2, figsize=[10,8])
 # data and true GP
-b1_test_plot = b1_test.reshape((nx, nx))
-CS = axs[0, 0].contourf(coords_test_x1, coords_test_x2, b1_test_plot)
-axs[0, 0].plot(coords_train[:, 0], coords_train[:, 1], '+', color="white")
+b_test_plot = b_test.reshape((nx, nx))
+CS = axs[0, 0].contourf(coords_test_x1, coords_test_x2, b_test_plot)
+axs[0, 0].plot(coords_train[:, 0], coords_train[:, 1], '+', color="white", 
+   markersize = 4)
 axs[0, 0].set_title("True latent GP and training locations")
 # predicted latent mean
 pred_mu_plot = pred['mu'].reshape((nx, nx))
@@ -316,7 +318,7 @@ axs[1, 0].set_title("Predicted latent GP standard deviation")
 # Predict latent GP at training data locations (=smoothing)
 GP_smooth = gp_model.predict_training_data_random_effects()
 # Compare true and predicted random effects
-plt.scatter(b1_train, GP_smooth)
+plt.scatter(b_train, GP_smooth)
 plt.title("Comparison of true and smoothed GP")
 # The above is equivalent to the following
 #GP_smooth2 = gp_model.predict(gp_coords_pred=coords_train)
@@ -354,7 +356,7 @@ gp_model.summary()
 # Predict latent GP at training data locations (=smoothing)
 GP_smooth = gp_model.predict_training_data_random_effects()
 # Compare true and predicted random effects
-plt.scatter(b1_train, GP_smooth['GP'], label="Intercept GP", alpha=0.5)
+plt.scatter(b_train, GP_smooth['GP'], label="Intercept GP", alpha=0.5)
 plt.scatter(b2, GP_smooth['GP_rand_coef_nb_1'], label="1. random coef. GP", alpha=0.5)
 plt.scatter(b3, GP_smooth['GP_rand_coef_nb_2'], label="2. random coef. GP", alpha=0.5)
 plt.legend()

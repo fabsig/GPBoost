@@ -1086,10 +1086,13 @@ gpb.grid.search.tune.parameters <- function(param_grid
       best_iter <- cvbst$best_iter
       best_params <- param_comb
       if (verbose_eval >= 1L) {
+        metric_name <- names(cvbst$record_evals$valid)
         param_comb_print <- param_comb
         param_comb_print[["nrounds"]] <- best_iter
         str <- lapply(seq_along(param_comb_print), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb_print, n=names(param_comb_print))
-        message(paste0("***** New best score (", best_score,  ") found for the following parameter combination: ", paste0(unlist(str), collapse=", ")))
+        message(paste0("***** New best test score (",metric_name, " = ", 
+                       best_score,  ") found for the following parameter combination: ", 
+                       paste0(unlist(str), collapse=", ")))
       }
     }
     counter_num_comb <- counter_num_comb + 1L

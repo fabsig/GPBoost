@@ -190,26 +190,25 @@ gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
 # gp_model$set_optim_params(params=re_params)
 
 # Train model
-bst <- gpboost(data = X,
-               label = y,
-               gp_model = gp_model,
-               nrounds = 16,
-               learning_rate = 0.05,
-               max_depth = 6,
-               min_data_in_leaf = 5,
-               objective = "regression_l2",
-               verbose = 0)
+bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
+               learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
+               objective = "regression_l2", verbose = 0)
 # Estimated random effects model
 summary(gp_model)
 
 # Make predictions
+# Predict latent variables
 pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
-                predict_var= TRUE)
-pred$random_effect_mean # Predicted mean
-pred$random_effect_cov # Predicted variances
-pred$fixed_effect # Predicted fixed effect from tree ensemble
-# Sum them up to otbain a single prediction
-pred$random_effect_mean + pred$fixed_effect
+                predict_var = TRUE, pred_latent = TRUE)
+pred$random_effect_mean # Predicted latent random effects mean
+pred$random_effect_cov # Predicted random effects variances
+pred$fixed_effect # Predicted fixed effects from tree ensemble
+# Predict response variable
+pred_resp <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
+                     predict_var = TRUE, pred_latent = FALSE)
+pred_resp$response_mean # Predicted response mean
+# For Gaussian data: pred$random_effect_mean + pred$fixed_effect = pred_resp$response_mean
+pred$random_effect_mean + pred$fixed_effect - pred_resp$response_mean
 
 \donttest{
 #--------------------Combine tree-boosting and Gaussian process model----------------
@@ -217,27 +216,23 @@ pred$random_effect_mean + pred$fixed_effect
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                     likelihood = "gaussian")
 # Train model
-bst <- gpboost(data = X,
-               label = y,
-               gp_model = gp_model,
-               nrounds = 8,
-               learning_rate = 0.1,
-               max_depth = 6,
-               min_data_in_leaf = 5,
-               objective = "regression_l2",
-               verbose = 0)
+bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 8,
+               learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
+               objective = "regression_l2", verbose = 0)
 # Estimated random effects model
 summary(gp_model)
 # Make predictions
 pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-                predict_cov_mat =TRUE)
-pred$random_effect_mean # Predicted (posterior) mean of GP
-pred$random_effect_cov # Predicted (posterior) covariance matrix of GP
-pred$fixed_effect # Predicted fixed effect from tree ensemble
-# Sum them up to otbain a single prediction
-pred$random_effect_mean + pred$fixed_effect
+                predict_var = TRUE, pred_latent = TRUE)
+pred$random_effect_mean # Predicted latent random effects mean
+pred$random_effect_cov # Predicted random effects variances
+pred$fixed_effect # Predicted fixed effects from tree ensemble
+# Predict response variable
+pred_resp <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                     predict_var = TRUE, pred_latent = FALSE)
+pred_resp$response_mean # Predicted response mean
 }
 }
 \author{
-Authors of the LightGBM R package, Fabio Sigrist
+Fabio Sigrist, authors of the LightGBM R package
 }

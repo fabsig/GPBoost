@@ -34,14 +34,9 @@
 #' # gp_model$set_optim_params(params=re_params)
 #' dtrain <- gpb.Dataset(data = X, label = y)
 #' # Train model
-#' bst <- gpb.train(data = dtrain,
-#'                  gp_model = gp_model,
-#'                  nrounds = 16,
-#'                  learning_rate = 0.05,
-#'                  max_depth = 6,
-#'                  min_data_in_leaf = 5,
-#'                  objective = "regression_l2",
-#'                  verbose = 0)
+#' bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 16,
+#'                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
+#'                  objective = "regression_l2", verbose = 0)
 #' # Estimated random effects model
 #' summary(gp_model)
 #' # Make predictions
@@ -60,14 +55,9 @@
 #'                     likelihood = "gaussian")
 #' # Train model
 #' dtrain <- gpb.Dataset(data = X, label = y)
-#' bst <- gpb.train(data = dtrain,
-#'                  gp_model = gp_model,
-#'                  nrounds = 16,
-#'                  learning_rate = 0.05,
-#'                  max_depth = 6,
-#'                  min_data_in_leaf = 5,
-#'                  objective = "regression_l2",
-#'                  verbose = 0)
+#' bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 16,
+#'                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
+#'                  objective = "regression_l2", verbose = 0)
 #' # Estimated random effects model
 #' summary(gp_model)
 #' # Make predictions
@@ -90,17 +80,10 @@
 #' # Need to set prediction data for gp_model
 #' gp_model$set_prediction_data(group_data_pred = group_data[-train_ind,1])
 #' # Training with validation data and use_gp_model_for_validation = TRUE
-#' bst <- gpb.train(data = dtrain,
-#'                  gp_model = gp_model,
-#'                  nrounds = 100,
-#'                  learning_rate = 0.05,
-#'                  max_depth = 6,
-#'                  min_data_in_leaf = 5,
-#'                  objective = "regression_l2",
-#'                  verbose = 1,
-#'                  valids = valids,
-#'                  early_stopping_rounds = 10,
-#'                  use_gp_model_for_validation = TRUE)
+#' bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 100,
+#'                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
+#'                  objective = "regression_l2", verbose = 1, valids = valids,
+#'                  early_stopping_rounds = 10, use_gp_model_for_validation = TRUE)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter,
 #'              ", best test error: ", bst$best_score))
 #' # Plot validation error
@@ -111,17 +94,10 @@
 #'
 #' #--------------------Do Newton updates for tree leaves---------------
 #' # Note: run the above examples first
-#' bst <- gpb.train(data = dtrain,
-#'                  gp_model = gp_model,
-#'                  nrounds = 100,
-#'                  learning_rate = 0.05,
-#'                  max_depth = 6,
-#'                  min_data_in_leaf = 5,
-#'                  objective = "regression_l2",
-#'                  verbose = 1,
-#'                  valids = valids,
-#'                  early_stopping_rounds = 5,
-#'                  use_gp_model_for_validation = FALSE,
+#' bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 100,
+#'                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
+#'                  objective = "regression_l2", verbose = 1, valids = valids,
+#'                  early_stopping_rounds = 5, use_gp_model_for_validation = FALSE,
 #'                  leaves_newton_update = TRUE)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter,
 #'              ", best test error: ", bst$best_score))
@@ -168,7 +144,7 @@
 #' # The GPModel has not changed:
 #' summary(gp_model)
 #' }
-#' @author Authors of the LightGBM R package, Fabio Sigrist
+#' @author Fabio Sigrist, authors of the LightGBM R package
 #' @export
 gpb.train <- function(params = list(),
                       data,

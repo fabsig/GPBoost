@@ -5,32 +5,33 @@
 \title{Predict method for GPBoost model}
 \usage{
 \method{predict}{gpb.Booster}(object, data, start_iteration = NULL,
-  num_iteration = NULL, rawscore = FALSE, predleaf = FALSE,
+  num_iteration = NULL, pred_latent = FALSE, predleaf = FALSE,
   predcontrib = FALSE, header = FALSE, reshape = FALSE,
   group_data_pred = NULL, group_rand_coef_data_pred = NULL,
   gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
   cluster_ids_pred = NULL, vecchia_pred_type = NULL,
   num_neighbors_pred = -1, predict_cov_mat = FALSE, predict_var = FALSE,
-  ignore_gp_model = FALSE, ...)
+  ignore_gp_model = FALSE, rawscore = NULL, ...)
 }
 \arguments{
 \item{object}{Object of class \code{gpb.Booster}}
 
 \item{data}{a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename}
 
-\item{start_iteration}{int or None, optional (default=None)
+\item{start_iteration}{int or NULL, optional (default=NULL)
 Start index of the iteration to predict.
-If None or <= 0, starts from the first iteration.}
+If NULL or <= 0, starts from the first iteration.}
 
-\item{num_iteration}{int or None, optional (default=None)
+\item{num_iteration}{int or NULL, optional (default=NULL)
 Limit number of iterations in the prediction.
-If None, if the best iteration exists and start_iteration is None or <= 0, the
+If NULL, if the best iteration exists and start_iteration is NULL or <= 0, the
 best iteration is used; otherwise, all iterations from start_iteration are used.
 If <= 0, all iterations from start_iteration are used (no limits).}
 
-\item{rawscore}{whether the prediction should be returned in the for of original untransformed
-sum of predictions from boosting iterations' results. E.g., setting \code{rawscore=TRUE}
-for logistic regression would result in predictions for log-odds instead of probabilities.}
+\item{pred_latent}{If TRUE latent variables, both fixed effects (tree-ensemble) 
+and random effects (\code{gp_model}) are predicted. Otherwise, the response variable 
+(label) is predicted. If there is no \code{gp_model}, this argument corresponds 
+to 'raw_score' in LightGBM.}
 
 \item{predleaf}{whether predict leaf index instead.}
 
@@ -77,22 +78,33 @@ predictive variances are calculated}
 \item{ignore_gp_model}{A \code{boolean}. If TRUE, predictions are only made for the tree ensemble part
 and the \code{gp_model} is ignored}
 
+\item{rawscore}{This is deprecated, use the renamed equivalent argument 
+\code{pred_latent} instead}
+
 \item{...}{Additional named arguments passed to the \code{predict()} method of
 the \code{gpb.Booster} object passed to \code{object}.}
 }
 \value{
-For regression or binary classification, it returns a vector of length \code{nrows(data)}.
-        For multiclass classification, either a \code{num_class * nrows(data)} vector or
-        a \code{(nrows(data), num_class)} dimension matrix is returned, depending on
-        the \code{reshape} value.
-
-        When \code{predleaf = TRUE}, the output is a matrix object with the
-        number of columns corresponding to the number of trees.
+either a list with vectors or a single vector / matrix depending on 
+whether there is a \code{gp_model} or not
+  If there is a \code{gp_model}, the result dict contains the following entries.
+    1. If \code{pred_latent} is TRUE, the dict contains the following 3 entries:
+      - result["fixed_effect"] are the predictions from the tree-ensemble.
+      - result["random_effect_mean"] are the predicted means of the \code{gp_model}.
+      - result["random_effect_cov"] are the predicted covariances or variances of the \code{gp_model}
+  (only if 'predict_var' or 'predict_cov' is True).
+    2. If \code{pred_latent} is FALSE, the dict contains the following 2 entries:
+      - result["response_mean"] are the predicted means of the response variable (Label) taking into account
+    both the fixed effects (tree-ensemble) and the random effects (\code{gp_model})
+      - result["response_var"] are the predicted variances of the response variable
+  If there is no \code{gp_model} or \code{predcontrib} or \code{ignore_gp_model} 
+    are TRUE, the result contains predictions from the tree-booster only.
 }
 \description{
 Predicted values based on class \code{gpb.Booster}
 }
 \examples{
+
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
 library(gpboost)
@@ -111,26 +123,25 @@ gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
 # gp_model$set_optim_params(params=re_params)
 
 # Train model
-bst <- gpboost(data = X,
-               label = y,
-               gp_model = gp_model,
-               nrounds = 16,
-               learning_rate = 0.05,
-               max_depth = 6,
-               min_data_in_leaf = 5,
-               objective = "regression_l2",
-               verbose = 0)
+bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
+               learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
+               objective = "regression_l2", verbose = 0)
 # Estimated random effects model
 summary(gp_model)
 
 # Make predictions
+# Predict latent variables
 pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
-                predict_var= TRUE)
-pred$random_effect_mean # Predicted mean
-pred$random_effect_cov # Predicted variances
-pred$fixed_effect # Predicted fixed effect from tree ensemble
-# Sum them up to otbain a single prediction
-pred$random_effect_mean + pred$fixed_effect
+                predict_var = TRUE, pred_latent = TRUE)
+pred$random_effect_mean # Predicted latent random effects mean
+pred$random_effect_cov # Predicted random effects variances
+pred$fixed_effect # Predicted fixed effects from tree ensemble
+# Predict response variable
+pred_resp <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
+                     predict_var = TRUE, pred_latent = FALSE)
+pred_resp$response_mean # Predicted response mean
+# For Gaussian data: pred$random_effect_mean + pred$fixed_effect = pred_resp$response_mean
+pred$random_effect_mean + pred$fixed_effect - pred_resp$response_mean
 
 \donttest{
 #--------------------Combine tree-boosting and Gaussian process model----------------
@@ -138,27 +149,23 @@ pred$random_effect_mean + pred$fixed_effect
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                     likelihood = "gaussian")
 # Train model
-bst <- gpboost(data = X,
-               label = y,
-               gp_model = gp_model,
-               nrounds = 8,
-               learning_rate = 0.1,
-               max_depth = 6,
-               min_data_in_leaf = 5,
-               objective = "regression_l2",
-               verbose = 0)
+bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 8,
+               learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
+               objective = "regression_l2", verbose = 0)
 # Estimated random effects model
 summary(gp_model)
 # Make predictions
 pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-                predict_cov_mat =TRUE)
-pred$random_effect_mean # Predicted (posterior) mean of GP
-pred$random_effect_cov # Predicted (posterior) covariance matrix of GP
-pred$fixed_effect # Predicted fixed effect from tree ensemble
-# Sum them up to otbain a single prediction
-pred$random_effect_mean + pred$fixed_effect
+                predict_var = TRUE, pred_latent = TRUE)
+pred$random_effect_mean # Predicted latent random effects mean
+pred$random_effect_cov # Predicted random effects variances
+pred$fixed_effect # Predicted fixed effects from tree ensemble
+# Predict response variable
+pred_resp <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                     predict_var = TRUE, pred_latent = FALSE)
+pred_resp$response_mean # Predicted response mean
 }
 }
 \author{
-Authors of the LightGBM R package, Fabio Sigrist
+Fabio Sigrist, authors of the LightGBM R package
 }

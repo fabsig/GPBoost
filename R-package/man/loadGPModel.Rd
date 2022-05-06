@@ -18,15 +18,20 @@ Load a \code{GPModel} from a file
 \examples{
 \donttest{
 data(GPBoost_data, package = "gpboost")
+# Add intercept column
+X1 <- cbind(rep(1,dim(X)[1]),X)
+X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 
-gp_model <- fitGPModel(group_data = group_data[,1], y = y, likelihood="gaussian")
-pred <- predict(gp_model, group_data_pred = group_data_test[,1], predict_var = TRUE)
+gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
+pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
+                X_pred = X_test1, predict_var = TRUE)
 # Save model to file
 filename <- tempfile(fileext = ".json")
 saveGPModel(gp_model,filename = filename)
 # Load from file and make predictions again
 gp_model_loaded <- loadGPModel(filename = filename)
-pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], predict_var = TRUE)
+pred_loaded <- predict(gp_model_loaded, group_data_pred = group_data_test[,1], 
+                       X_pred = X_test1, predict_var = TRUE)
 # Check equality
 pred$mu - pred_loaded$mu
 pred$var - pred_loaded$var

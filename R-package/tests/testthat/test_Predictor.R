@@ -69,7 +69,7 @@ test_that("start_iteration works correctly", {
         , verbose = 0
     )
     expect_true(gpboost:::gpb.is.Booster(bst))
-    pred1 <- predict(bst, data = test$data, rawscore = TRUE)
+    pred1 <- predict(bst, data = test$data, pred_latent = TRUE)
     pred_contrib1 <- predict(bst, test$data, predcontrib = TRUE)
     pred2 <- rep(0.0, length(pred1))
     pred_contrib2 <- rep(0.0, length(pred2))
@@ -84,7 +84,7 @@ test_that("start_iteration works correctly", {
         inc_pred <- predict(bst, test$data
             , start_iteration = start_iter
             , num_iteration = n_iter
-            , rawscore = TRUE
+            , pred_latent = TRUE
         )
         inc_pred_contrib <- bst$predict(test$data
             , start_iteration = start_iter

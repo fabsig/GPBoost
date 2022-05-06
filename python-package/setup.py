@@ -343,7 +343,7 @@ if __name__ == "__main__":
           install_requires=[
               'wheel',
               'numpy',
-              'pandas'
+              'pandas',
               'scipy',
               'scikit-learn!=0.22.0'
           ],
