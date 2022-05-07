@@ -151,7 +151,7 @@ group_wise_intercepts = gp_model.get_coef().iloc[0,0] + training_data_random_eff
 #group_unique = np.unique(group)
 #X_zero = np.column_stack((np.zeros(len(group_unique)), np.zeros(len(group_unique))))
 #pred_random_effects = gp_model.predict(group_data_pred=group_unique, X_pred=X_zero)
-#np.sum(np.abs(training_data_random_effects - pred_random_effects['mu']))
+#np.sum(np.abs(training_data_random_effects['Group_1'] - pred_random_effects['mu']))
 
 #--------------------Saving a GPModel and loading it from a file----------------
 # Save trained model
