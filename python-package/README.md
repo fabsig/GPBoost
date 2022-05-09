@@ -26,7 +26,7 @@ This is the Python package implementation of the GPBoost library. See https://gi
   * [Parameter tuning](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/parameter_tuning.py) using deterministic or random grid search
   * [Generalized linear Gaussian process and mixed effects models](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/generalized_linear_Gaussian_process_mixed_effects_models.py)
   * [GPBoost algorithm applied to panel data](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/panel_data_example.py)
-* The documentation at [https://gpboost.readthedocs.io](https://gpboost.readthedocs.io/en/latest/Python_package.html)
+* The **documentation at [https://gpboost.readthedocs.io](https://gpboost.readthedocs.io/en/latest/Python_package.html)**
 * Blog posts on how to 
    * [Combine tree-boosting with grouped random effects models](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) 
    * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)
