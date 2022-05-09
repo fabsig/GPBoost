@@ -16,7 +16,7 @@ Documentation of GPBoost
    :caption: Contents:
 
    Main parameters <Main_parameters>
-   Detailed Python and R Examples <Examples>
+   Python and R Examples <Examples>
    Python package <Python_package>
    R package <R_package>
    C API <C-API>
