@@ -23,15 +23,15 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 * The companion articles [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) and [**Sigrist (2021)**](https://arxiv.org/abs/2105.08966)
 * Detailed [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst): the most important parameters / settings for the GPBoost library
-* [**Parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst): a comprehensive list of all tree-boosting (i.e., not random effects) related parameters
+* [Detailed tree-boosting parameters](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst): a comprehensive list of all tree-boosting (i.e., not random effects) related parameters
 * These blog posts on how to 
    * [Combine tree-boosting with grouped random effects models](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) 
    * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)
    * [Use GPBoost for generalized linear mixed effects models (GLMMs)](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c) 
 * [This demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
-* The [**CLI installation guide**](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst) explaining how to install the command line interface (CLI) version
-* Comments on [**computational efficiency and large data**](https://github.com/fabsig/GPBoost/blob/master/docs/Computational_efficiency.rst)
-* The **documentation** at [https://gpboost.readthedocs.io](https://gpboost.readthedocs.io/en/latest/)
+* The [CLI installation guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst) explaining how to install the command line interface (CLI) version
+* Comments on [computational efficiency and large data](https://github.com/fabsig/GPBoost/blob/master/docs/Computational_efficiency.rst)
+* The documentation at [https://gpboost.readthedocs.io](https://gpboost.readthedocs.io/en/latest/)
 
 
 ## Modeling background

@@ -16,17 +16,18 @@ Documentation of GPBoost
    :caption: Contents:
 
    Main parameters <Main_parameters>
-   Tree-boosting (i.e., not random effects) related parameters <Parameters>
-   CLI installation guide <Installation_guide>
-   C API <C-API>
+   Detailed Python and R Examples <Examples>
    Python package <Python_package>
    R package <https://cran.r-project.org/web/packages/gpboost/gpboost.pdf>
+   C API <C-API>
    Computational efficiency <Computational_efficiency>
 
 .. toctree::
    :hidden:
 
    README
+   Parameters
+   Installation_guide
 
 Indices and Tables
 ==================

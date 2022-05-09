@@ -48,7 +48,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", or "gamma"
-likelihood = "bernoulli_probit"
+likelihood = "gaussian"
 
 """
 Combine tree-boosting and grouped random effects model

@@ -9,17 +9,17 @@ This page contains a summary of the most important parameters. We distinguish be
 - (Tuning-) parameters for the tree-boosting part 
 - Model specification and optimization parameters for the Gaussian process and random effects part
 
-Currently, the combining tree-boosting with Gaussian process and random effects models is supported for the following likelihoods: "gaussian", "bernoulli_probit" (="binary"), "bernoulli_logit", "poisson", "gamma". This distribution of the data can be specified through the ``objective`` paramter for the tree-boosting part or the ``likelihood`` parameter for the random effects model.
+Currently, the GPBoost and LaGaBoost algorithms are supported for the following likelihoods: "gaussian", "bernoulli_probit" (="binary"), "bernoulli_logit", "poisson", "gamma". This distribution of the data can be specified through the ``likelihood`` parameter for the random effects model and the ``objective`` paramter for the tree-boosting part.
 
 .. contents:: **Contents**
     :depth: 2
     :local:
     :backlinks: none
 
-Tree-boosting parameters
-~~~~~~~~~~~~~~~~~~~~~~~~
+Important tree-boosting parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Below is a list of important parameters for the tree-boosting part. An comprehensive list of all tree-bosting related parameters can be found `here <https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst>`_.
+Below is a list of important parameters for the tree-boosting part. `A comprehensive list of all tree-bosting related parameters can be found here <https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst>`_.
 
 -  ``num_iterations`` :raw-html:`<a id="num_iterations" title="Permalink to this parameter" href="#num_iterations">&#x1F517;&#xFE0E;</a>`, default = ``100``, type = int, aliases: ``num_iteration``, ``n_iter``, ``num_tree``, ``num_trees``, ``num_round``, ``num_rounds``, ``num_boost_round``, ``n_estimators``, constraints: ``num_iterations >= 0``
 
