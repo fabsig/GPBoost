@@ -18,7 +18,7 @@ Documentation of GPBoost
    Main parameters <Main_parameters>
    Detailed Python and R Examples <Examples>
    Python package <Python_package>
-   R package <https://cran.r-project.org/web/packages/gpboost/gpboost.pdf>
+   R package <R_package>
    C API <C-API>
    Computational efficiency <Computational_efficiency>
 

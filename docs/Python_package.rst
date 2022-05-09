@@ -1,6 +1,8 @@
 Python Package
 ==============
 
+Below is the official documentation of the Python package. See also the `Python package GitHub page <https://github.com/fabsig/GPBoost/tree/master/python-package>`__ for more information on the Python package (e.g., installation and examples).
+
 .. currentmodule:: gpboost
 
 Data Structure and GPModel
