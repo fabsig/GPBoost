@@ -3375,17 +3375,26 @@ class Booster:
         -------
         result : either a dict with numpy arrays or a single numpy array depending on whether there is a gp_model or not
             If there is a gp_model, the result dict contains the following entries.
-                1. If 'pred_latent' is True, the dict contains the following 3 entries:
-                - result['fixed_effect'] are the predictions from the tree-ensemble.
-                - result['random_effect_mean'] are the predicted means of the gp_model.
-                - result['random_effect_cov'] are the predicted covariances or variances of the gp_model
-                    (only if 'predict_var' or 'predict_cov' is True).
-                2. If 'pred_latent' is False, the dict contains the following 2 entries:
-                - result['response_mean'] are the predicted means of the response variable (Label) taking into account
-                    both the fixed effects (tree-ensemble) and the random effects (gp_model)
-                - result['response_var'] are the predicted variances of the response variable
+
+            1. If 'pred_latent' is True, the dict contains the following 3 entries:
+
+                result['fixed_effect'] : numpy array
+                    Predictions from the tree-ensemble.
+                result['random_effect_mean'] : numpy array
+                    Predicted means of the gp_model.
+                result['random_effect_cov'] : numpy array
+                    Predicted covariances or variances of the gp_model (only if 'predict_var' or 'predict_cov' is True).
+
+            2. If 'pred_latent' is False, the dict contains the following 2 entries:
+
+                result['response_mean'] : numpy array
+                    Predicted means of the response variable (Label) taking into account both the fixed effects
+                    (tree-ensemble) and the random effects (gp_model)
+                result['response_var'] : numpy array
+                    Predicted variances of the response variable
+
             If there is no gp_model or 'pred_contrib' or 'ignore_gp_model' are True, the result contains
-                predictions from the tree-booster only.
+            predictions from the tree-booster only.
         """
         if raw_score is not None:
             warnings.warn("The argument 'raw_score' is deprecated and ignored. "

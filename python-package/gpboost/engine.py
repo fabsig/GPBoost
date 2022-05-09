@@ -1,6 +1,7 @@
 # coding: utf-8
 """
 Library with training routines of GPBoost.
+
 Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
 Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
 Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
@@ -25,6 +26,7 @@ def train(params, train_set, num_boost_round=100,
           verbose_eval=True, learning_rates=None,
           keep_training_booster=False, callbacks=None):
     """Training function.
+
     Parameters
     ----------
     params : dict
@@ -52,6 +54,7 @@ def train(params, train_set, num_boost_round=100,
         Customized objective function.
         Should accept two parameters: preds, train_data,
         and return (grad, hess).
+
             preds : list or numpy 1-D array
                 The predicted values.
             train_data : Dataset
@@ -60,6 +63,7 @@ def train(params, train_set, num_boost_round=100,
                 The value of the first order derivative (gradient) for each sample point.
             hess : list or numpy 1-D array
                 The value of the second order derivative (Hessian) for each sample point.
+
         For binary task, the preds is margin.
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is score[j * num_data + i]
@@ -68,6 +72,7 @@ def train(params, train_set, num_boost_round=100,
         Customized evaluation function.
         Each evaluation function should accept two parameters: preds, train_data,
         and return (eval_name, eval_result, is_higher_better) or list of such tuples.
+
             preds : list or numpy 1-D array
                 The predicted values.
             train_data : Dataset
@@ -78,6 +83,7 @@ def train(params, train_set, num_boost_round=100,
                 The eval result.
             is_higher_better : bool
                 Is eval result higher better, e.g. AUC is ``is_higher_better``.
+
         For binary task, the preds is probability of positive class (or margin in case of specified ``fobj``).
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is preds[j * num_data + i].
@@ -109,19 +115,24 @@ def train(params, train_set, num_boost_round=100,
     evals_result: dict or None, optional (default=None)
         This dictionary used to store all evaluation results of all the items in ``valid_sets``.
         .. rubric:: Example
+
         With a ``valid_sets`` = [valid_set, train_set],
         ``valid_names`` = ['eval', 'train']
         and a ``params`` = {'metric': 'logloss'}
         returns {'train': {'logloss': ['0.48253', '0.35953', ...]},
         'eval': {'logloss': ['0.480385', '0.357756', ...]}}.
+
     verbose_eval : bool or int, optional (default=True)
         Requires at least one validation data.
         If True, the eval metric on the valid set is printed at each boosting stage.
         If int, the eval metric on the valid set is printed at every ``verbose_eval`` boosting stage.
         The last boosting stage or the boosting stage found by using ``early_stopping_rounds`` is also printed.
+
         .. rubric:: Example
+
         With ``verbose_eval`` = 4 and at least one item in ``valid_sets``,
         an evaluation metric is printed every 4 (instead of 1) boosting stages.
+
     learning_rates : list, callable or None, optional (default=None)
         List of learning rates for each boosting round
         or a customized function that calculates ``learning_rate``
@@ -135,10 +146,12 @@ def train(params, train_set, num_boost_round=100,
     callbacks : list of callables or None, optional (default=None)
         List of callback functions that are applied at each iteration.
         See Callbacks in Python API for more information.
+
     Returns
     -------
     booster : Booster
         The trained Booster model.
+
     :Authors:
         Authors of the LightGBM Python package
         Fabio Sigrist
@@ -313,9 +326,11 @@ def train(params, train_set, num_boost_round=100,
 
 class CVBooster:
     """CVBooster in GPBoost.
+
     Auxiliary data structure to hold and redirect all boosters of ``cv`` function.
     This class has the same methods as Booster class.
     All method calls are actually performed for underlying Boosters and then all returned results are returned in a list.
+
     Attributes
     ----------
     boosters : list of Booster
@@ -326,6 +341,7 @@ class CVBooster:
 
     def __init__(self):
         """Initialize the CVBooster.
+
         Generally, no need to instantiate manually.
         """
         self.boosters = []
@@ -504,6 +520,7 @@ def cv(params, train_set, num_boost_round=100,
        callbacks=None, eval_train_metric=False,
        return_cvbooster=False):
     """Perform cross-validation for choosing number of boosting iterations.
+
     Parameters
     ----------
     params : dict
@@ -546,6 +563,7 @@ def cv(params, train_set, num_boost_round=100,
         Customized objective function.
         Should accept two parameters: preds, train_data,
         and return (grad, hess).
+
             preds : list or numpy 1-D array
                 The predicted values.
             train_data : Dataset
@@ -554,6 +572,7 @@ def cv(params, train_set, num_boost_round=100,
                 The value of the first order derivative (gradient) for each sample point.
             hess : list or numpy 1-D array
                 The value of the second order derivative (Hessian) for each sample point.
+
         For binary task, the preds is margin.
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is score[j * num_data + i]
@@ -562,6 +581,7 @@ def cv(params, train_set, num_boost_round=100,
         Customized evaluation function.
         Each evaluation function should accept two parameters: preds, train_data,
         and return (eval_name, eval_result, is_higher_better) or list of such tuples.
+
             preds : list or numpy 1-D array
                 The predicted values.
             train_data : Dataset
@@ -572,6 +592,7 @@ def cv(params, train_set, num_boost_round=100,
                 The eval result.
             is_higher_better : bool
                 Is eval result higher better, e.g. AUC is ``is_higher_better``.
+
         For binary task, the preds is probability of positive class (or margin in case of specified ``fobj``).
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is preds[j * num_data + i].
@@ -619,6 +640,7 @@ def cv(params, train_set, num_boost_round=100,
         The score of the metric is calculated again after each training step, so there is some impact on performance.
     return_cvbooster : bool, optional (default=False)
         Whether to return Booster models trained on each fold through ``CVBooster``.
+
     Returns
     -------
     eval_hist : dict
@@ -628,6 +650,7 @@ def cv(params, train_set, num_boost_round=100,
         'metric2-mean': [values], 'metric2-stdv': [values],
         ...}.
         If ``return_cvbooster=True``, also returns trained boosters via ``cvbooster`` key.
+
     :Authors:
         Authors of the LightGBM Python package
         Fabio Sigrist
@@ -749,14 +772,17 @@ def cv(params, train_set, num_boost_round=100,
 
 def _get_grid_size(param_grid):
     """Determine total number of parameter combinations on a grid
+
     Parameters
     ----------
     param_grid : dict
         Parameter grid
+
     Returns
     -------
     grid_size : int
         Parameter grid size
+
     :Authors:
         Fabio Sigrist
     """
@@ -768,16 +794,19 @@ def _get_grid_size(param_grid):
 
 def _get_param_combination(param_comb_number, param_grid):
     """Select parameter combination from a grid of parameters
+
     Parameters
     ----------
     param_comb_number : int
         Index number of parameter combination on parameter grid that should be returned (counting starts at 0).
     param_grid : dict
         Parameter grid
+
     Returns
     -------
     param_comb : dict
         Parameter combination
+
     :Authors:
         Fabio Sigrist
     """
@@ -799,6 +828,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                                 early_stopping_rounds=None, fpreproc=None,
                                 verbose_eval=1, seed=0, callbacks=None):
     """Function that allows for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
+
     Parameters
     ----------
     param_grid : dict
@@ -841,6 +871,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         Customized objective function.
         Should accept two parameters: preds, train_data,
         and return (grad, hess).
+
             preds : list or numpy 1-D array
                 The predicted values.
             train_data : Dataset
@@ -849,15 +880,18 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                 The value of the first order derivative (gradient) for each sample point.
             hess : list or numpy 1-D array
                 The value of the second order derivative (Hessian) for each sample point.
+
         For binary task, the preds is margin.
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is score[j * num_data + i]
         and you should group grad and hess in this way as well.
+
     feval : callable, list of callable functions or None, optional (default=None)
         Customized evaluation function.
         If more than one evaluation function is provided, only the first evaluation function will be used to choose tuning parameters
         Each evaluation function should accept two parameters: preds, train_data,
         and return (eval_name, eval_result, is_higher_better) or list of such tuples.
+
             preds : list or numpy 1-D array
                 The predicted values.
             train_data : Dataset
@@ -868,6 +902,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                 The eval result.
             is_higher_better : bool
                 Is eval result higher better, e.g. AUC is ``is_higher_better``.
+
         For binary task, the preds is probability of positive class (or margin in case of specified ``fobj``).
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is preds[j * num_data + i].
@@ -907,12 +942,14 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     callbacks : list of callables or None, optional (default=None)
         List of callback functions that are applied at each iteration.
         See Callbacks in Python API for more information.
+
     Returns
     -------
     return : dict
         Dictionary with the best parameter combination and score
         The dictionary has the following format:
         {'best_params': best_params, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+
     :Authors:
         Fabio Sigrist
     """
