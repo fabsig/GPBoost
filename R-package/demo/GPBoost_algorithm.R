@@ -98,12 +98,13 @@ bst <- gpb.train(data = dataset, gp_model = gp_model, nrounds = nrounds,
 group_test <- 1:m
 x_test <- seq(from=0,to=1,length.out=m)
 Xtest <- cbind(x_test,rep(0,length(x_test)))
-#1. Predict latent variable (pred_latent=TRUE) and variance
+# 1. Predict latent variable (pred_latent=TRUE) and variance
 pred <- predict(bst, data = Xtest, group_data_pred = group_test, 
                 predict_var = TRUE, pred_latent = TRUE)
 # pred[["fixed_effect"]]: predictions from the tree-ensemble.
 # pred[["random_effect_mean"]]: predicted means of the gp_model.
 # pred["random_effect_cov"]]: predicted (co-)variances of the gp_model
+# 2. Predict response variable (pred_latent=FALSE)
 group_test <- rep(-1,m) # only new groups since we are only interested in the fixed effects for visualization
 pred_resp <- predict(bst, data = Xtest, group_data_pred = group_test, 
                      pred_latent = FALSE)

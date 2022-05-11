@@ -152,6 +152,14 @@ def train(params, train_set, num_boost_round=100,
     booster : Booster
         The trained Booster model.
 
+    Example
+    -------
+    >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+    >>> data_train = gpb.Dataset(X, y)
+    >>> params = {'objective': 'regression_l2', 'verbose': 0}
+    >>> bst = gpb.train(params=params, train_set=data_train,  gp_model=gp_model,
+    >>>                 num_boost_round=100)
+
     :Authors:
         Authors of the LightGBM Python package
         Fabio Sigrist
@@ -238,7 +246,7 @@ def train(params, train_set, num_boost_round=100,
         params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
         # Set the default metric to the (approximate marginal) negative log-likelihood if only the training loss should be calculated
         if is_valid_contain_train and len(reduced_valid_sets) == 0 and params.get('metric') is None:
-            if gp_model.get_likelihood_name() == "gaussian":
+            if gp_model._get_likelihood_name() == "gaussian":
                 params['metric'] = "neg_log_likelihood"
             else:
                 params['metric'] = "approx_neg_marginal_log_likelihood"
@@ -471,7 +479,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                      vecchia_pred_type=vecchia_pred_type,
                                      num_neighbors_pred=num_neighbors_pred,
                                      cluster_ids=cluster_ids,
-                                     likelihood=gp_model.get_likelihood_name(),
+                                     likelihood=gp_model._get_likelihood_name(),
                                      free_raw_data=True)
             if use_gp_model_for_validation:
                 gp_model_train.set_prediction_data(group_data_pred=group_data_pred,
@@ -480,10 +488,9 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                                    gp_rand_coef_data_pred=gp_rand_coef_data_pred,
                                                    cluster_ids_pred=cluster_ids_pred)
             cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
-            gp_model.set_likelihood(
-                gp_model_train.get_likelihood_name())  # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
-            gp_model_train.set_optim_params(params=gp_model.get_optim_params())
-            gp_model_train.set_optim_coef_params(params=gp_model.get_optim_params())
+            gp_model._set_likelihood(
+                gp_model_train._get_likelihood_name())  # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
+            gp_model_train.set_optim_params(params=gp_model._get_optim_params())
         else:  # no gp_model
             cvbooster = Booster(tparam, train_set)
         if eval_train_metric:
@@ -650,6 +657,16 @@ def cv(params, train_set, num_boost_round=100,
         'metric2-mean': [values], 'metric2-stdv': [values],
         ...}.
         If ``return_cvbooster=True``, also returns trained boosters via ``cvbooster`` key.
+
+    Example
+    -------
+    >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+    >>> data_train = gpb.Dataset(X, y)
+    >>> params = {'objective': 'regression_l2', 'verbose': 0}
+    >>> cvbst = gpb.cv(params=params, train_set=data_train,
+    >>>                gp_model=gp_model, use_gp_model_for_validation=True,
+    >>>                num_boost_round=1000, early_stopping_rounds=5,
+    >>>                nfold=4, verbose_eval=True, show_stdv=False, seed=1)
 
     :Authors:
         Authors of the LightGBM Python package
@@ -949,6 +966,28 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         Dictionary with the best parameter combination and score
         The dictionary has the following format:
         {'best_params': best_params, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+
+    Example
+    -------
+    >>> param_grid = {'learning_rate': [1,0.1,0.01], 'min_data_in_leaf': [1,10,100],
+    >>>                     'max_depth': [1,3,5,10,-1]}
+    >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+    >>> data_train = gpb.Dataset(X, y)
+    >>> params = {'objective': 'regression_l2', 'verbose': 0}
+    >>> opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
+    >>>                                              params=params,
+    >>>                                              num_try_random=None,
+    >>>                                              nfold=4,
+    >>>                                              gp_model=gp_model,
+    >>>                                              use_gp_model_for_validation=True,
+    >>>                                              train_set=data_train,
+    >>>                                              verbose_eval=1,
+    >>>                                              num_boost_round=1000,
+    >>>                                              early_stopping_rounds=10,
+    >>>                                              seed=1000)
+    >>> print("Best parameters: " + str(opt_params['best_params']))
+    >>> print("Best number of iterations: " + str(opt_params['best_iter']))
+    >>> print("Best score: " + str(opt_params['best_score']))
 
     :Authors:
         Fabio Sigrist

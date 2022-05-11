@@ -2426,7 +2426,7 @@ class Booster:
                 if save_data.get("raw_data") is not None:
                     self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
                 else:
-                    if self.gp_model.get_likelihood_name() == "gaussian":
+                    if self.gp_model._get_likelihood_name() == "gaussian":
                         self.residual_loaded_from_file = np.array(save_data['residual'])
                     else:
                         self.fixed_effect_train_loaded_from_file = np.array(save_data['fixed_effect_train'])
@@ -3108,7 +3108,7 @@ class Booster:
                 fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
                                                        num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                        pred_contrib=False, data_has_header=False, is_reshape=False)
-                if self.gp_model.get_likelihood_name() == "gaussian":  # Gaussian data
+                if self.gp_model._get_likelihood_name() == "gaussian":  # Gaussian data
                     residual = self.train_set.label - fixed_effect_train
                     save_data['residual'] = residual
                 else:
@@ -3395,6 +3395,25 @@ class Booster:
 
             If there is no gp_model or 'pred_contrib' or 'ignore_gp_model' are True, the result contains
             predictions from the tree-booster only.
+
+        Example
+        -------
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> data_train = gpb.Dataset(X, y)
+        >>> params = {'objective': 'regression_l2', 'verbose': 0}
+        >>> bst = gpb.train(params=params, train_set=data_train,  gp_model=gp_model,
+        >>>                 num_boost_round=100)
+        >>> # 1. Predict latent variable (pred_latent=True) and variance
+        >>> pred = bst.predict(data=Xtest, group_data_pred=group_test, predict_var=True,
+        >>>                    pred_latent=True)
+        >>> # pred_resp['fixed_effect']: predictions for the latent fixed effects / tree ensemble
+        >>> # pred_resp['random_effect_mean']: mean predictions for the random effects
+        >>> # pred_resp['random_effect_cov']: predictive (co-)variances (if predict_var=True) of the random effects
+        >>> # 2. Predict response variable (pred_latent=False)
+        >>> pred_resp = bst.predict(data=Xtest, group_data_pred=group_test, pred_latent=False)
+        >>> # pred_resp['response_mean']: mean predictions of the response variable
+        >>> #   which combines predictions from the tree ensemble and the random effects
+        >>> # pred_resp['response_var']: predictive variances (if predict_var=True)
         """
         if raw_score is not None:
             warnings.warn("The argument 'raw_score' is deprecated and ignored. "
@@ -3422,7 +3441,7 @@ class Booster:
                 if start_iteration != 0:
                     raise GPBoostError("Cannot use the option 'start_iteration' after loading "
                                        "from file without raw data. Set 'save_raw_data = TRUE' when you save the model")
-            if self.gp_model.get_likelihood_name() == "gaussian":  # Gaussian data
+            if self.gp_model._get_likelihood_name() == "gaussian":  # Gaussian data
                 if not has_raw_data and self.gp_model_prediction_data_loaded_from_file:
                     residual = self.residual_loaded_from_file
                 else:
@@ -3933,7 +3952,7 @@ class GPModel(object):
             group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 Either a vector or a matrix whose columns are categorical grouping variables. The elements are group
                 levels defining grouped random effects. The number of columns corresponds to the number of grouped
-                (intercept) random effects.
+                (intercept) random effects
             group_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for grouped random coefficients
             ind_effect_group_rand_coef : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
@@ -4393,8 +4412,8 @@ class GPModel(object):
         >>> gp_model.fit(y=y)
         """
 
-        if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or
-                (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
+        if ((self.num_cov_pars == 1 and self._get_likelihood_name() == "gaussian") or
+                (self.num_cov_pars == 0 and self._get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
         y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
                                   convert_to_type=np.float64)
@@ -4448,7 +4467,7 @@ class GPModel(object):
                 ctypes.c_int(self.num_coef)))
 
         if self.params["trace"]:
-            num_it = self.get_num_optim_iter()
+            num_it = self._get_num_optim_iter()
             print("Number of iterations until convergence: " + str(num_it))
         return self
 
@@ -4465,9 +4484,14 @@ class GPModel(object):
         Returns
         -------
         result : the value of the negative log-likelihood
+
+        Example
+        -------
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> gp_model.neg_log_likelihood(y=y, cov_pars=[1.,1.])
         """
-        if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or
-                (self.num_cov_pars == 0 and self.get_likelihood_name() != "gaussian")):
+        if ((self.num_cov_pars == 1 and self._get_likelihood_name() == "gaussian") or
+                (self.num_cov_pars == 0 and self._get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
         y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
                                   convert_to_type=np.float64)
@@ -4492,52 +4516,58 @@ class GPModel(object):
     def set_optim_params(self, params):
         """Set parameters for estimation of the covariance parameters.
 
-          Parameters
-          ----------
-          params : dict
-            Parameters for fitting / optimization:
-                optimizer_cov : string, optional (default = "gradient_descent")
-                    Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "fisher_scoring", "nelder_mead", and "bfgs"
-                maxit : integer, optional (default = 1000)
-                    Maximal number of iterations for optimization algorithm
-                delta_rel_conv : double, optional (default = 1e-6)
-                    Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
-                    log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is
-                    used instead of the relative change in the log-likelihood
-                convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
-                    The convergence criterion used for terminating the optimization algorithm.
-                    Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
-                init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for covariance parameters of Gaussian process and random effects (can be None)
-                lr_cov : double, optional (default = -1.)
-                    If <= 0, internal default values are used.
-                    Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
-                use_nesterov_acc : bool, optional (default = True)
-                    If True, Nesterov acceleration is used for gradient descent
-                acc_rate_cov : double, optional (default = 0.5)
-                    Acceleration rate for covariance parameters for Nesterov acceleration
-                momentum_offset : integer, optional (default = 2)
-                    Number of iterations for which no momentum is applied in the beginning
-                trace : bool, optional (default = False)
-                    If True, information on the progress of the parameter optimization is printed.
-                std_dev : bool (default=False)
-                    If True, (asymptotic) standard deviations are calculated for the covariance parameters
-                optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
-                    Optimizer used for estimating linear regression coefficients, if there are any
-                    (for the GPBoost algorithm there are usually none).
-                    Options: "gradient_descent", "wls", "nelder_mead", and "bfgs". Gradient descent steps are done simultaneously with
-                    gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
-                    for the regression coefficients using weighted least squares
-                    If 'optimizer_cov' is set to "nelder_mead" or "bfgs", 'optimizer_coef' is automatically also set to
-                    the same value.
-                init_coef : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for the regression coefficients (if there are any, can be None)
-                lr_coef : double, optional (default = 0.1)
-                    Learning rate for fixed effect regression coefficients
-                acc_rate_coef : double, optional (default = 0.5)
-                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
+        Parameters
+        ----------
+        params : dict
+        Parameters for fitting / optimization:
+            optimizer_cov : string, optional (default = "gradient_descent")
+                Optimizer used for estimating covariance parameters.
+                Options: "gradient_descent", "fisher_scoring", "nelder_mead", and "bfgs"
+            maxit : integer, optional (default = 1000)
+                Maximal number of iterations for optimization algorithm
+            delta_rel_conv : double, optional (default = 1e-6)
+                Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
+                log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is
+                used instead of the relative change in the log-likelihood
+            convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
+                The convergence criterion used for terminating the optimization algorithm.
+                Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
+            init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
+                Initial values for covariance parameters of Gaussian process and random effects (can be None)
+            lr_cov : double, optional (default = -1.)
+                If <= 0, internal default values are used.
+                Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
+            use_nesterov_acc : bool, optional (default = True)
+                If True, Nesterov acceleration is used for gradient descent
+            acc_rate_cov : double, optional (default = 0.5)
+                Acceleration rate for covariance parameters for Nesterov acceleration
+            momentum_offset : integer, optional (default = 2)
+                Number of iterations for which no momentum is applied in the beginning
+            trace : bool, optional (default = False)
+                If True, information on the progress of the parameter optimization is printed.
+            std_dev : bool (default=False)
+                If True, (asymptotic) standard deviations are calculated for the covariance parameters
+            optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
+                Optimizer used for estimating linear regression coefficients, if there are any
+                (for the GPBoost algorithm there are usually none).
+                Options: "gradient_descent", "wls", "nelder_mead", and "bfgs". Gradient descent steps are done simultaneously with
+                gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
+                for the regression coefficients using weighted least squares
+                If 'optimizer_cov' is set to "nelder_mead" or "bfgs", 'optimizer_coef' is automatically also set to
+                the same value.
+            init_coef : numpy array or pandas DataFrame, optional (default = None)
+                Initial values for the regression coefficients (if there are any, can be None)
+            lr_coef : double, optional (default = 0.1)
+                Learning rate for fixed effect regression coefficients
+            acc_rate_coef : double, optional (default = 0.5)
+                Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
+
+        Example
+        -------
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> gp_model.set_optim_params(params={"optimizer_cov": "nelder_mead", "trace": True})
         """
+
         if self.handle is None:
             raise ValueError("Gaussian process model has not been initialized")
         self.__update_params(params=params)
@@ -4567,10 +4597,10 @@ class GPModel(object):
         optim_coef_params = ["init_coef", "lr_coef", "acc_rate_coef", "optimizer_coef"]
         if params is not None:
             if any(x in optim_coef_params for x in params.keys()):
-                self.set_optim_coef_params(params=params)
+                self._set_optim_coef_params(params=params)
         return self
 
-    def get_optim_params(self):
+    def _get_optim_params(self):
         params = self.params
         buffer_len = 1 << 20
         string_buffer = ctypes.create_string_buffer(buffer_len)
@@ -4595,8 +4625,8 @@ class GPModel(object):
             params["init_cov_pars"] = init_cov_pars
         return params
 
-    def set_optim_coef_params(self, params):
-        """Set parameters for estimation of the covariance paramters.
+    def _set_optim_coef_params(self, params):
+        """Set parameters for estimation of the linear regression coefficients.
 
           Parameters
           ----------
@@ -4650,6 +4680,12 @@ class GPModel(object):
         -------
         result : pandas DataFrame
             (estimated) covariance parameters and standard deviations (if std_dev=True was set in 'fit')
+
+        Example
+        -------
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> gp_model.fit(y=y, X=X)
+        >>> gp_model.get_cov_pars()
         """
         if self.model_has_been_loaded_from_saved_file:
             cov_pars = self.cov_pars_loaded_from_file
@@ -4663,7 +4699,7 @@ class GPModel(object):
                 self.handle,
                 optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
                 ctypes.c_bool(self.params["std_dev"])))
-            if self.params["std_dev"] and self.get_likelihood_name() == "gaussian":
+            if self.params["std_dev"] and self._get_likelihood_name() == "gaussian":
                 cov_pars = np.row_stack((optim_pars[0:self.num_cov_pars],
                                          optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
                 if format_pandas:
@@ -4686,6 +4722,12 @@ class GPModel(object):
         -------
         result : numpy array or pandas DataFrame
             (estimated) linear regression coefficients and standard deviations (if std_dev=True was set in 'fit')
+
+        Example
+        -------
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> gp_model.fit(y=y, X=X)
+        >>> gp_model.get_cov_pars()
         """
         if self.model_has_been_loaded_from_saved_file:
             coef = self.coefs_loaded_from_file
@@ -4714,13 +4756,19 @@ class GPModel(object):
 
     def summary(self):
         """Print summary of fitted model parameters.
+
+        Example
+        -------
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> gp_model.fit(y=y, X=X)
+        >>> gp_model.summary()
         """
         print("Covariance parameters: ")
         print(self.get_cov_pars())
         if self.has_covariates:
             print("Linear regression coefficients: ")
             print(self.get_coef())
-        if self.params["maxit"] == self.get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
+        if self.params["maxit"] == self._get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
             print("Note: no convergence after the maximal number of iterations")
         return self
 
@@ -4795,6 +4843,21 @@ class GPModel(object):
             The first entry of the dict result['mu'] is the predicted mean, the second entry result['cov'] is the
             the predicted covariance matrix (=None if 'predict_cov_mat=False'), and the thirs entry result['var'] are
             predicted variances (=None if 'predict_var=False')
+
+        Example
+        -------
+        >>> # Grouped random effects model
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> gp_model.fit(y=y, X=X)
+        >>> pred = gp_model.predict(X_pred=X_test, group_data_pred=group_test,
+                                    predict_var=True, predict_response=False)
+        >>> print(pred['mu']) # Predicted latent mean
+        >>> print(pred['var']) # Predicted latent variance
+        >>> # Gaussian process model
+        >>> gp_model = gpb.GPModel(gp_coords=X, cov_function="exponential", likelihood="gaussian")
+        >>> gp_model.fit(y=y)
+        >>> pred = gp_model.predict(X_pred=X_test, gp_coords_pred=coords_test,
+        >>>                         predict_var=True, predict_response=False)
         """
 
         if self.model_has_been_loaded_from_saved_file:
@@ -5012,7 +5075,7 @@ class GPModel(object):
                             gp_rand_coef_data_pred=None,
                             cluster_ids_pred=None,
                             X_pred=None):
-        """Set the data required for making predictions with a GPModel
+        """Set the data required for making predictions with a GPModel.
 
         Parameters
         ----------
@@ -5031,6 +5094,11 @@ class GPModel(object):
                 predictions are made (set to None if you have not specified this when creating the model)
             X_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Prediction covariate data for the fixed effects linear regression term (if there is one)
+
+        Example
+        -------
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> pred = gp_model.set_prediction_data(group_data_pred=group_valid)
         """
         group_data_pred_c = ctypes.c_void_p()
         group_rand_coef_data_pred_c = ctypes.c_void_p()
@@ -5147,9 +5215,21 @@ class GPModel(object):
 
     def predict_training_data_random_effects(self):
         """Predict ("estimate") training data random effects.
+
         Returns
         -------
         result : a matrix with predicted ("estimated") training data random effects
+
+        Example
+        -------
+        >>> # Grouped random effects model
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> gp_model.fit(y=y, X=X)
+        >>> gp_model.predict_training_data_random_effects()
+        >>> # The function 'predict_training_data_random_effects' returns predicted random effects for all data points.
+        >>> # Unique random effects for every group can be obtained as follows
+        >>> first_occurences = [np.where(group==i)[0][0] for i in np.unique(group)]
+        >>> training_data_random_effects = all_training_data_random_effects.iloc[first_occurences]
         """
         if self.model_has_been_loaded_from_saved_file:
             raise ValueError("'predict_training_data_random_effects' is currently not implemented for models that have "
@@ -5166,7 +5246,7 @@ class GPModel(object):
         re_preds = pd.DataFrame(re_preds, columns=self.re_comp_names)
         return re_preds
 
-    def get_response_data(self):
+    def _get_response_data(self):
         """Get response variable data.
         Returns
         -------
@@ -5179,8 +5259,8 @@ class GPModel(object):
             y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))))
         return y
 
-    def get_covariate_data(self):
-        """Get response variable data.
+    def _get_covariate_data(self):
+        """Get covariate data.
         Returns
         -------
         y : a numpy array with the response variable data
@@ -5197,7 +5277,7 @@ class GPModel(object):
 
     def model_to_dict(self, include_response_data=True):
         """Convert a GPModel to a dict for saving.
-        
+
         Parameters
         ----------
         include_response_data : bool (default=False)
@@ -5214,12 +5294,12 @@ class GPModel(object):
 
         model_dict = {}
         # Parameters
-        model_dict["params"] = self.get_optim_params()
-        model_dict["likelihood"] = self.get_likelihood_name()
+        model_dict["params"] = self._get_optim_params()
+        model_dict["likelihood"] = self._get_likelihood_name()
         model_dict["cov_pars"] = self.get_cov_pars(format_pandas=False)
         # Response data
         if include_response_data:
-            model_dict["y"] = self.get_response_data()
+            model_dict["y"] = self._get_response_data()
         # Feature data
         model_dict["group_data"] = self.group_data
         model_dict["group_rand_coef_data"] = self.group_rand_coef_data
@@ -5240,7 +5320,7 @@ class GPModel(object):
         if self.has_covariates:
             model_dict["coefs"] = self.get_coef(format_pandas=False)
             model_dict["num_coef"] = self.num_coef
-            model_dict["X"] = self.get_covariate_data()
+            model_dict["X"] = self._get_covariate_data()
         return model_dict
 
     def save_model(self, filename):
@@ -5255,6 +5335,12 @@ class GPModel(object):
         -------
         self : GPModel
             Returns self.
+
+        Example
+        -------
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> gp_model.fit(y=y, X=X)
+        >>> gp_model.save_model('gp_model.json')
         """
 
         if (self.free_raw_data):
@@ -5264,7 +5350,7 @@ class GPModel(object):
             json.dump(model_dict, f, default=json_default_with_numpy)
         return self
 
-    def get_likelihood_name(self):
+    def _get_likelihood_name(self):
         buffer_len = 1 << 20
         string_buffer = ctypes.create_string_buffer(buffer_len)
         ptr_string_buffer = ctypes.c_char_p(*[ctypes.addressof(string_buffer)])
@@ -5276,7 +5362,7 @@ class GPModel(object):
         ret = string_buffer.value.decode()
         return ret
 
-    def set_likelihood(self, likelihood):
+    def _set_likelihood(self, likelihood):
         _safe_call(_LIB.GPB_SetLikelihood(
             self.handle,
             c_str(likelihood)))
@@ -5286,7 +5372,7 @@ class GPModel(object):
         if likelihood == "gaussian" and "Error_term" not in self.cov_par_names:
             self.cov_par_names.insert(0, "Error_term")
 
-    def get_num_optim_iter(self):
+    def _get_num_optim_iter(self):
         num_it = ctypes.c_int64(0)
         _safe_call(_LIB.GPB_GetNumIt(
             self.handle,

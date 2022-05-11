@@ -10,7 +10,7 @@
 #' @param group_data A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 #' The elements being group levels defining grouped random effects.
 #' The elements of 'group_data' can be integer, double, or character.
-#' The number of columns corresponds to the number of grouped (intercept) random effects.
+#' The number of columns corresponds to the number of grouped (intercept) random effects
 #' @param group_rand_coef_data A \code{vector} or \code{matrix} with numeric covariate data 
 #' for grouped random coefficients
 #' @param ind_effect_group_rand_coef A \code{vector} with integer indices that 

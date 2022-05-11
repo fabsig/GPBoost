@@ -522,7 +522,6 @@ gpb.cv <- function(params = list()
         booster <- Booster$new(params = params, train_set = dtrain, gp_model = gp_model_train)
         gp_model$set_likelihood(gp_model_train$get_likelihood_name()) ## potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
         gp_model_train$set_optim_params(params = gp_model$get_optim_params())
-        gp_model_train$set_optim_coef_params(params = gp_model$get_optim_params())
         
       } else {
         booster <- Booster$new(params = params, train_set = dtrain)

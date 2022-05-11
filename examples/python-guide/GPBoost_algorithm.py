@@ -106,7 +106,7 @@ gp_model.summary() # Estimated random effects model
 group_test = np.arange(m)
 Xtest = np.zeros((m, 2))
 Xtest[:, 0] = np.linspace(0, 1, m)
-#1. Predict latent variable (pred_latent=True) and variance
+# 1. Predict latent variable (pred_latent=True) and variance
 pred = bst.predict(data=Xtest, group_data_pred=group_test, predict_var=True, 
                    pred_latent=True)
 # pred_resp['fixed_effect']: predictions for the latent fixed effects / tree ensemble
