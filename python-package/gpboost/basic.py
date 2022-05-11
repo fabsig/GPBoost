@@ -3932,20 +3932,20 @@ class GPModel(object):
                 likelihood function (distribution) of the response variable
             group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 The elements are group levels for defining grouped random effects. I.e., this is either a vector
-                consisting of a categorical variable or a matrix whose columns are categorical variables.
+                consisting of a categorical variable or a matrix whose columns are categorical variables
             group_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for grouped random coefficients
             ind_effect_group_rand_coef : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data
-            or None, optional (default=None)
+                or None, optional (default=None)
                 Contains indices that indicate the corresponding random effects (=columns) in 'group_data' for every
                 covariate in 'group_rand_coef_data'. Counting starts at 1. The length of this index vector must equal
-                the number of covariates in 'group_rand_coef_data'.
+                the number of covariates in 'group_rand_coef_data'
                 For instance, [1,1,2] means that the first two covariates (=first two columns) in 'group_rand_coef_data'
                 have random coefficients corresponding to the first random effect (=first column) in 'group_data',
                 and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
-                corresponding to the second random  effect (=second column) in 'group_data'.
+                corresponding to the second random  effect (=second column) in 'group_data'
             gp_coords : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
-                Coordinates (=features) for defining Gaussian processes
+                Coordinates (= inputs / features) for defining Gaussian processes
             gp_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for Gaussian process random coefficients
             cov_function : string, optional (default="exponential")
@@ -3963,7 +3963,7 @@ class GPModel(object):
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
             cov_fct_taper_range : float, optional (default=1.)
                 Range parameter of the Wendland covariance function / taper. We follow the notation of
-                Bevilacqua et al. (2019).
+                Bevilacqua et al. (2019)
             vecchia_approx : bool, optional (default=False)
                 If true, the Vecchia approximation is used
             num_neighbors : integer, optional (default=30)
@@ -3993,6 +3993,13 @@ class GPModel(object):
                 Path to the model file.
             model_dict : dict or None, optional (default=None)
                 Dict with model file
+
+        Example
+        -------
+        >>> # Grouped random effects model
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> # Gaussian process model
+        >>> gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential", likelihood="gaussian")
         """
 
         # Initialize variables with default values
@@ -4375,6 +4382,15 @@ class GPModel(object):
                     If True, information on the progress of the parameter optimization is printed.
                 std_dev : bool (default=False)
                     If True, (asymptotic) standard deviations are calculated for the covariance parameters
+
+        Example
+        -------
+        >>> # Grouped random effects model
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> gp_model.fit(y=y, X=X)
+        >>> # Gaussian process model
+        >>> gp_model = gpb.GPModel(gp_coords=X, cov_function="exponential", likelihood="gaussian")
+        >>> gp_model.fit(y=y)
         """
 
         if ((self.num_cov_pars == 1 and self.get_likelihood_name() == "gaussian") or

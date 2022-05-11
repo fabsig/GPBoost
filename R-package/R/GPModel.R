@@ -20,8 +20,8 @@
 #' For instance, c(1,1,2) means that the first two covariates (=first two columns) in 'group_rand_coef_data'
 #' have random coefficients corresponding to the first random effect (=first column) in 'group_data',
 #' and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
-#' corresponding to the second random  effect (=second column) in 'group_data'.
-#' @param gp_coords A \code{matrix} with numeric coordinates (=features) for defining Gaussian processes
+#' corresponding to the second random  effect (=second column) in 'group_data'
+#' @param gp_coords A \code{matrix} with numeric coordinates (= inputs / features) for defining Gaussian processes
 #' @param gp_rand_coef_data A \code{vector} or \code{matrix} with numeric covariate data for  
 #' Gaussian process random coefficients
 #' @param cov_function A \code{string} specifying the covariance function for the Gaussian process. 
@@ -35,8 +35,9 @@
 #' @param cov_fct_shape A \code{numeric} specifying the shape parameter of the covariance function 
 #' (=smoothness parameter for Matern and Wendland covariance). For the Wendland covariance function, 
 #' we follow the notation of Bevilacqua et al. (2019)). 
-#' This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
-#' @param cov_fct_taper_range A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019)
+#' This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+#' @param cov_fct_taper_range A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. 
+#' We follow the notation of Bevilacqua et al. (2019)
 #' @param vecchia_approx A \code{boolean}. If TRUE, the Vecchia approximation is used 
 #' @param num_neighbors An \code{integer} specifying the number of neighbors for the Vecchia approximation
 #' @param vecchia_ordering A \code{string} specifying the ordering used in the Vecchia approximation. 
