@@ -3935,8 +3935,7 @@ class GPModel(object):
                 consisting of a categorical variable or a matrix whose columns are categorical variables
             group_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for grouped random coefficients
-            ind_effect_group_rand_coef : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data
-                or None, optional (default=None)
+            ind_effect_group_rand_coef : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
                 Contains indices that indicate the corresponding random effects (=columns) in 'group_data' for every
                 covariate in 'group_rand_coef_data'. Counting starts at 1. The length of this index vector must equal
                 the number of covariates in 'group_rand_coef_data'
