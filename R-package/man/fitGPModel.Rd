@@ -15,24 +15,24 @@ fitGPModel(group_data = NULL, group_rand_coef_data = NULL,
   params = list())
 }
 \arguments{
-\item{group_data}{A \code{vector} or \code{matrix} with elements being group levels for defining 
-grouped random effects. I.e., this is either a \code{vector} consisting of a 
-categorical variable or a \code{matrix} whose columns are categorical variables.
-The elements of 'group_data' can be integer, double, or character.}
+\item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
+The elements being group levels defining grouped random effects.
+The elements of 'group_data' can be integer, double, or character.
+The number of columns corresponds to the number of grouped (intercept) random effects.}
 
 \item{group_rand_coef_data}{A \code{vector} or \code{matrix} with numeric covariate data 
 for grouped random coefficients}
 
 \item{ind_effect_group_rand_coef}{A \code{vector} with integer indices that 
-indicate the corresponding random effects (=columns) in 'group_data' for 
+indicate the corresponding categorical grouping variable (=columns) in 'group_data' for 
 every covariate in 'group_rand_coef_data'. Counting starts at 1.
 The length of this index vector must equal the number of covariates in 'group_rand_coef_data'.
 For instance, c(1,1,2) means that the first two covariates (=first two columns) in 'group_rand_coef_data'
-have random coefficients corresponding to the first random effect (=first column) in 'group_data',
+have random coefficients corresponding to the first categorical grouping variable (=first column) in 'group_data',
 and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
-corresponding to the second random  effect (=second column) in 'group_data'.}
+corresponding to the second grouping variable (=second column) in 'group_data'}
 
-\item{gp_coords}{A \code{matrix} with numeric coordinates (=features) for defining Gaussian processes}
+\item{gp_coords}{A \code{matrix} with numeric coordinates (= inputs / features) for defining Gaussian processes}
 
 \item{gp_rand_coef_data}{A \code{vector} or \code{matrix} with numeric covariate data for
 Gaussian process random coefficients}
@@ -49,9 +49,10 @@ a compactly supported Wendland covariance function (= tapering)}
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
 (=smoothness parameter for Matern and Wendland covariance). For the Wendland covariance function, 
 we follow the notation of Bevilacqua et al. (2019)). 
-This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.}
+This parameter is irrelevant for some covariance functions such as the exponential or Gaussian}
 
-\item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019)}
+\item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. 
+We follow the notation of Bevilacqua et al. (2019)}
 
 \item{vecchia_approx}{A \code{boolean}. If TRUE, the Vecchia approximation is used}
 

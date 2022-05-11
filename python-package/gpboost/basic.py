@@ -3931,18 +3931,19 @@ class GPModel(object):
             likelihood : string, optional (default="gaussian")
                 likelihood function (distribution) of the response variable
             group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
-                The elements are group levels for defining grouped random effects. I.e., this is either a vector
-                consisting of a categorical variable or a matrix whose columns are categorical variables
+                Either a vector or a matrix whose columns are categorical grouping variables. The elements are group
+                levels defining grouped random effects. The number of columns corresponds to the number of grouped
+                (intercept) random effects.
             group_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for grouped random coefficients
             ind_effect_group_rand_coef : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
-                Contains indices that indicate the corresponding random effects (=columns) in 'group_data' for every
-                covariate in 'group_rand_coef_data'. Counting starts at 1. The length of this index vector must equal
-                the number of covariates in 'group_rand_coef_data'
+                Indices that indicate the corresponding categorical grouping variable (=columns) in 'group_data' for
+                every covariate in 'group_rand_coef_data'. Counting starts at 1. The length of this index vector must
+                equal the number of covariates in 'group_rand_coef_data'
                 For instance, [1,1,2] means that the first two covariates (=first two columns) in 'group_rand_coef_data'
-                have random coefficients corresponding to the first random effect (=first column) in 'group_data',
-                and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
-                corresponding to the second random  effect (=second column) in 'group_data'
+                have random coefficients corresponding to the first categorical grouping variable (=first column) in
+                'group_data', and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
+                corresponding to the second grouping variable (=second column) in 'group_data'
             gp_coords : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Coordinates (= inputs / features) for defining Gaussian processes
             gp_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
