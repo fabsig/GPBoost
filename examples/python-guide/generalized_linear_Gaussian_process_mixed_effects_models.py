@@ -282,6 +282,15 @@ gp_model.summary()
 #                               "optimizer_cov": "gradient_descent", "lr_cov": 0.1,
 #                               "use_nesterov_acc": True, "maxit": 100})
 
+# Evaluate negative log-likelihood
+if likelihood == "gaussian":
+  cov_pars = [0.1,sigma2_1,rho]
+else:
+  cov_pars = [sigma2_1,rho]
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+                       likelihood=likelihood)
+gp_model.neg_log_likelihood(cov_pars=cov_pars, y=y_train)
+
 #--------------------Prediction----------------
 # Prediction of latent variable
 pred = gp_model.predict(gp_coords_pred=coords_test,

@@ -1426,7 +1426,7 @@ GPBOOST_C_EXPORT int GPB_SetOptimCoefConfig(REModelHandle handle,
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)
 * \param handle Handle of REModel
 * \param y_data Response variable data
-* \param fixed_effects Fixed effects component F of location parameter (only used for non-Gaussian data). For Gaussian data, this is ignored
+* \param fixed_effects Fixed effects component of location parameter (only used for non-Gaussian data). For Gaussian data, this is ignored
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_OptimCovPar(REModelHandle handle,
@@ -1452,12 +1452,14 @@ GPBOOST_C_EXPORT int GPB_OptimLinRegrCoefCovPar(REModelHandle handle,
 * \param handle Handle of REModel
 * \param y_data Response variable data
 * \param cov_pars Values for covariance parameters of RE components
+* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data). For Gaussian data, this is ignored
 * \param[out] negll Negative log-likelihood
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_EvalNegLogLikelihood(REModelHandle handle,
     const double* y_data,
     double* cov_pars,
+    const double* fixed_effects,
     double* negll);
 
 /*!
@@ -1547,7 +1549,7 @@ GPBOOST_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
 * \param use_saved_data If true previusly set data on groups, coordinates, and covariates are used and some arguments of this function are ignored
 * \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 * \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
-* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
+* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data). For Gaussian data, this is ignored
 * \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
 * \return 0 when succeed, -1 when failure happens
 */
@@ -1577,7 +1579,7 @@ GPBOOST_C_EXPORT int GPB_PredictREModel(REModelHandle handle,
 * \param cov_pars_pred Covariance parameters of components
 * \param y_obs Response variable for observed data
 * \param[out] out_predict Predicted training data random effects
-* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
+* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data). For Gaussian data, this is ignored
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_PredictREModelTrainingDataRandomEffects(REModelHandle handle,

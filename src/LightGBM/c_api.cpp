@@ -2792,10 +2792,11 @@ int GPB_OptimLinRegrCoefCovPar(REModelHandle handle,
 int GPB_EvalNegLogLikelihood(REModelHandle handle,
 	const double* y_data,
 	double* cov_pars,
+	const double* fixed_effects,
 	double* negll) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->EvalNegLogLikelihood(y_data, cov_pars, negll[0], nullptr, true, false);
+	ref_remodel->EvalNegLogLikelihood(y_data, cov_pars, negll[0], fixed_effects, true, false);
 	API_END();
 }
 

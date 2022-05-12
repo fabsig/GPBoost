@@ -275,12 +275,19 @@ summary(gp_model)
 #                                      lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 100))
 
 # Evaluate negative log-likelihood
+if (likelihood == "gaussian") {
+  cov_pars <- c(0.1,sigma2_1,rho)
+  init_cov_pars <- c(1,1,0.2)
+} else {
+  cov_pars <- c(sigma2_1,rho)
+  init_cov_pars <- c(1,0.2)
+}
 model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                  likelihood = likelihood)
-model$neg_log_likelihood(cov_pars=c(0.1,sigma2_1,rho),y=y_train)
+model$neg_log_likelihood(cov_pars = cov_pars, y = y_train)
 
 # Do optimization using optim and e.g. Nelder-Mead
-optim(par=c(1,1,0.2), fn=model$neg_log_likelihood, y=y_train, method="Nelder-Mead")
+optim(par = init_cov_pars, fn = model$neg_log_likelihood, y = y_train, method = "Nelder-Mead")
 
 #--------------------Prediction----------------
 # Prediction of latent variable

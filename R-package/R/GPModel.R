@@ -573,7 +573,7 @@ gpb.GPModel <- R6::R6Class(
     },
     
     # Evaluate the negative log-likelihood
-    neg_log_likelihood = function(cov_pars, y) {
+    neg_log_likelihood = function(cov_pars, y, fixed_effects = NULL) {
       if (gpb.is.null.handle(private$handle)) {
         stop("GPModel: Gaussian process model has not been initialized")
       }
@@ -608,12 +608,26 @@ gpb.GPModel <- R6::R6Class(
       if (length(y) != private$num_data) {
         stop("GPModel.neg_log_likelihood: Number of data points in ", sQuote("y"), " does not match number of data points of initialized model")
       }
+      if (!is.null(fixed_effects)) {
+        if (is.vector(fixed_effects)) {
+          if (storage.mode(fixed_effects) != "double") {
+            storage.mode(fixed_effects) <- "double"
+          }
+          fixed_effects <- as.vector(fixed_effects)
+        } else {
+          stop("GPModel.neg_log_likelihood: Can only use ", sQuote("vector"), " as ", sQuote("fixed_effects"))
+        }
+        if (length(fixed_effects) != private$num_data) {
+          stop("GPModel.neg_log_likelihood: Length of ", sQuote("fixed_effects"), " does not match number of observed data points")
+        }
+      }# end fixed_effects
       negll <- 0.
       .Call(
         GPB_EvalNegLogLikelihood_R
         , private$handle
         , y
         , cov_pars
+        , fixed_effects
         , negll
       )
       return(negll)

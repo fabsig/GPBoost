@@ -4401,6 +4401,9 @@ class GPModel(object):
                     If True, information on the progress of the parameter optimization is printed.
                 std_dev : bool (default=False)
                     If True, (asymptotic) standard deviations are calculated for the covariance parameters
+            fixed_effects : numpy 1-D array or None, optional (default=None)
+                Additional fixed effects component of location parameter for observed data.
+                Used only for non-Gaussian data. For Gaussian data, this is ignored
 
         Example
         -------
@@ -4471,7 +4474,7 @@ class GPModel(object):
             print("Number of iterations until convergence: " + str(num_it))
         return self
 
-    def neg_log_likelihood(self, cov_pars, y):
+    def neg_log_likelihood(self, cov_pars, y, fixed_effects=None):
         """Evaluate the negative log-likelihood.
 
         Parameters
@@ -4480,6 +4483,9 @@ class GPModel(object):
             Covariance parameters of Gaussian process and random effects
         y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
             Response variable data
+        fixed_effects : numpy 1-D array or None, optional (default=None)
+            Additional fixed effects component of location parameter for observed data.
+            Used only for non-Gaussian data. For Gaussian data, this is ignored
 
         Returns
         -------
@@ -4503,12 +4509,23 @@ class GPModel(object):
         if cov_pars.shape[0] != self.num_cov_pars:
             raise ValueError("params['init_cov_pars'] does not contain the correct number of parameters")
         cov_pars_c = cov_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        fixed_effects_c = ctypes.c_void_p()
+        if fixed_effects is not None:
+            if not isinstance(fixed_effects, np.ndarray):
+                raise ValueError("fixed_effects needs to be a numpy.ndarray")
+            if len(fixed_effects.shape) != 1:
+                raise ValueError("fixed_effects needs to be a vector / one-dimensional numpy.ndarray ")
+            if fixed_effects.shape[0] != self.num_data:
+                raise ValueError("Incorrect number of data points in fixed_effects")
+            fixed_effects_c = fixed_effects.astype(np.float64)
+            fixed_effects_c = fixed_effects_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
         negll = ctypes.c_double(0)
         _safe_call(_LIB.GPB_EvalNegLogLikelihood(
             self.handle,
             y_c,
             cov_pars_c,
+            fixed_effects_c,
             ctypes.byref(negll)))
 
         return negll.value
@@ -4816,8 +4833,7 @@ class GPModel(object):
                 ordered first and neighbors are selected among all points
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
-            cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data
-            or None, optional (default=None)
+            cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data or None, optional (default=None)
                 The elements indicating independent realizations of random effects / Gaussian processes for which
                 predictions are made (set to None if you have not specified this when creating the model)
             predict_cov_mat : bool (default=False)
@@ -4836,6 +4852,12 @@ class GPModel(object):
             predict_response : bool (default=False)
                 If True, the response variable (label) is predicted, otherwise the latent random effects
                 (this is only relevant for non-Gaussian data)
+            fixed_effects : numpy 1-D array or None, optional (default=None)
+                Additional fixed effects component of location parameter for observed data.
+                Used only for non-Gaussian data. For Gaussian data, this is ignored
+            fixed_effects_pred : numpy 1-D array or None, optional (default=None)
+                Additional fixed effects component of location parameter for predicted data.
+                Used only for non-Gaussian data. For Gaussian data, this is ignored
 
         Returns
         -------
