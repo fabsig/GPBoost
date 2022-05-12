@@ -142,6 +142,35 @@ group_wise_intercepts <- gp_model$get_coef()[1] + training_data_random_effects
 # pred_random_effects <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero)
 # sum(abs(training_data_random_effects - pred_random_effects$mu))
 
+#--------------------Evaluate negative log-likelihood and do optimization using optim----------------
+gp_model <- GPModel(group_data = group, likelihood = likelihood)
+if (likelihood == "gaussian") {
+  init_cov_pars <- c(1,1)
+} else {
+  init_cov_pars <- 1
+}
+eval_nll <- function(pars, gp_model, y, X, likelihood) {
+  if (likelihood == "gaussian") {
+    coef <- pars[-c(1,2)]
+    cov_pars <- exp(pars[c(1,2)])
+  } else {
+    coef <- pars[-1]
+    cov_pars <- exp(pars[1])
+  }
+  fixed_effects <- as.numeric(X%*%coef)
+  if (likelihood == "gaussian") {
+    y <- y - fixed_effects
+    fixed_effects <- NULL
+  }
+  gp_model$neg_log_likelihood(cov_pars=cov_pars, y=y, fixed_effects=fixed_effects)
+}
+pars <- c(init_cov_pars, rep(0,dim(X)[2]))
+eval_nll(pars = pars, gp_model = gp_model, X = X, likelihood = likelihood)
+gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y)
+# Do optimization using optim and e.g. Nelder-Mead
+opt <- optim(par = pars, fn = eval_nll, gp_model = gp_model, y = y, X = X, 
+             likelihood = likelihood, method = "Nelder-Mead")
+
 #--------------------Saving a GPModel and loading it from a file----------------
 # Save model to file
 filename <- tempfile(fileext = ".json")
@@ -274,20 +303,17 @@ summary(gp_model)
 #                                      optimizer_cov= "gradient_descent",
 #                                      lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 100))
 
-# Evaluate negative log-likelihood
+# Evaluate negative log-likelihood and do optimization using optim
+gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                    likelihood = likelihood)
 if (likelihood == "gaussian") {
-  cov_pars <- c(0.1,sigma2_1,rho)
   init_cov_pars <- c(1,1,0.2)
 } else {
-  cov_pars <- c(sigma2_1,rho)
   init_cov_pars <- c(1,0.2)
 }
-model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                 likelihood = likelihood)
-model$neg_log_likelihood(cov_pars = cov_pars, y = y_train)
-
+gp_model$neg_log_likelihood(cov_pars = init_cov_pars, y = y_train)
 # Do optimization using optim and e.g. Nelder-Mead
-optim(par = init_cov_pars, fn = model$neg_log_likelihood, y = y_train, method = "Nelder-Mead")
+optim(par = init_cov_pars, fn = gp_model$neg_log_likelihood, y = y_train, method = "Nelder-Mead")
 
 #--------------------Prediction----------------
 # Prediction of latent variable
