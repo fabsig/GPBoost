@@ -77,7 +77,7 @@ if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
 } 
 # Note: these parameters are not necessarily optimal for all situations considered here
 
-# --------------------
+#--------------------Training----------------
 # Define random effects model
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
 # The default optimizer for covariance parameters (hyperparameters) is 
