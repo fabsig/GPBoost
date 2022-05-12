@@ -63,16 +63,6 @@ f <- f1d(X[,1])
 y <- simulate_response_variable(lp=f, rand_eff=rand_eff, likelihood=likelihood)
 hist(y, breaks=20)  # visualize response variable
 
-# --------------------Training----------------
-# Define random effects model
-gp_model <- GPModel(group_data = group, likelihood = likelihood)
-# The default optimizer for covariance parameters (hyperparameters) is 
-# Nesterov-accelerated gradient descent.
-# This can be changed to, e.g., Nelder-Mead as follows:
-# gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
-# Use the option trace=TRUE to monitor convergence of hyperparameter estimation of the gp_model. E.g.:
-# gp_model$set_optim_params(params=list(trace=TRUE))
-
 # Specify boosting parameters as list
 params <- list(objective = likelihood, learning_rate = 0.01, max_depth = 3,
                monotone_constraints = c(1,0))
@@ -85,7 +75,18 @@ if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
   nrounds <- 500
   params$objective="binary"
 } 
-# Note: these parameters are not neccessary optimal for all situations considered here
+# Note: these parameters are not necessarily optimal for all situations considered here
+
+# --------------------
+# Define random effects model
+gp_model <- GPModel(group_data = group, likelihood = likelihood)
+# The default optimizer for covariance parameters (hyperparameters) is 
+# Nesterov-accelerated gradient descent.
+# This can be changed to, e.g., Nelder-Mead as follows:
+# gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
+# Use the option trace=TRUE to monitor convergence of hyperparameter estimation of the gp_model. E.g.:
+# gp_model$set_optim_params(params=list(trace=TRUE))
+
 bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = nrounds, 
                params = params, verbose = 0)
 summary(gp_model) # Estimated random effects model 
@@ -143,6 +144,8 @@ opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
 print(paste0("Best parameters: ",paste0(unlist(lapply(seq_along(opt_params$best_params), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params, n=names(opt_params$best_params))), collapse=", ")))
 print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
+# Note: other scoring / evaluation metrics can be chosen using the 
+#       'eval' argument
 
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
@@ -162,7 +165,7 @@ valids <- list(test = dvalid)
 # Include random effect predictions for validation (=default)
 gp_model <- GPModel(group_data = group[train_ind], likelihood = likelihood)
 gp_model$set_prediction_data(group_data_pred = group[-train_ind])
-bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = nrounds,
+bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 1000,
                  params = params, verbose = 1, valids = valids,
                  early_stopping_rounds = 10, use_gp_model_for_validation = TRUE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
@@ -172,7 +175,7 @@ val_error <- unlist(bst$record_evals$test$l2$eval)
 plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
      xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
 # Do not include random effect predictions for validation (observe the higher test error)
-bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = nrounds,
+bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 1000,
                  params = params, verbose = 1, valids = valids,
                  early_stopping_rounds = 10, use_gp_model_for_validation = FALSE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
@@ -181,6 +184,8 @@ print(paste0("Optimal number of iterations: ", bst$best_iter,
 val_error <- unlist(bst$record_evals$test$l2$eval)
 plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
      xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
+# Note: other scoring / evaluation metrics can be chosen using the 
+#       'eval' argument
 
 #--------------------Do Newton updates for tree leaves (only for Gaussian data)----------------
 if (likelihood == "gaussian") {
@@ -305,12 +310,6 @@ b_1_train <- b_1[1:ntrain]
 b_1_test <- b_1[1:ntest+ntrain]
 hist(y_train, breaks=20)# visualize response variable
 
-#--------------------Training----------------
-# Define Gaussian process model
-gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                    likelihood = likelihood)
-# Create dataset for gpb.train
-dtrain <- gpb.Dataset(data = X_train, label = y_train)
 # Specify boosting parameters as list
 params <- list(objective = likelihood, learning_rate = 0.1, max_depth = 3,
                monotone_constraints = c(1,0))
@@ -325,6 +324,13 @@ if (likelihood=="bernoulli_logit") {
 if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
   params$objective="binary"
 } 
+
+#--------------------Training----------------
+# Define Gaussian process model
+gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                    likelihood = likelihood)
+# Create dataset for gpb.train
+dtrain <- gpb.Dataset(data = X_train, label = y_train)
 bst <- gpb.train(data = dtrain, gp_model = gp_model,
                  nrounds = nrounds, params = params, verbose = 0)
 # Takes a few seconds

@@ -1196,8 +1196,12 @@ namespace GPBoost {
 		* \param InitializeModeCovMat If true, posterior mode is initialized to 0 and the covariance matrix is calculated. Otherwise, existing values are used
 		* \param CalcModePostRandEff_already_done If true, it is assumed that the posterior mode of the random effects has already been calculated
 		*/
-		void EvalLAApproxNegLogLikelihood(const double* y_data, const double* cov_pars, double& negll,
-			const double* fixed_effects = nullptr, bool InitializeModeCovMat = true, bool CalcModePostRandEff_already_done = false) {
+		void EvalLAApproxNegLogLikelihood(const double* y_data,
+			const double* cov_pars,
+			double& negll,
+			const double* fixed_effects,
+			bool InitializeModeCovMat,
+			bool CalcModePostRandEff_already_done) {
 			if (y_data != nullptr) {
 				SetY(y_data);
 			}

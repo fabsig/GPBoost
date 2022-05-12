@@ -187,7 +187,7 @@ internal::nm_impl(
     //    }
     //}
     Log::REDebug("GPModel parameter optimization iteration number %d", 0);
-    for (int i = 0; i < std::min((int)n_vals, 10); ++i) { Log::REDebug("Current best (transformed) parameter[%d]: %g", i, init_out_vals[i]); }
+    for (int i = 0; i < std::min((int)n_vals, 5); ++i) { Log::REDebug("Current best (transformed) parameter[%d]: %g", i, init_out_vals[i]); }
 
     size_t iter = 0;
     double rel_objfn_change = 2*std::abs(rel_objfn_change_tol);
@@ -318,9 +318,9 @@ internal::nm_impl(
         if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
             (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
             Log::REDebug("GPModel parameter optimization iteration number %d", iter);
-            for (int i = 0; i < std::min((int)n_vals, 10); ++i) { Log::REDebug("Current best (transformed) parameter[%d]: %g", i, simplex_points.row(index_min(simplex_fn_vals))[i]); }
-            if (n_vals > 10) {
-                Log::REDebug("Note: only the first 10 parameters are shown");
+            for (int i = 0; i < std::min((int)n_vals, 5); ++i) { Log::REDebug("Current best (transformed) parameter[%d]: %g", i, simplex_points.row(index_min(simplex_fn_vals))[i]); }
+            if (n_vals > 5) {
+                Log::REDebug("Note: only the first 5 parameters are shown");
             }
             Log::REDebug("Relative change in objective value: %g", rel_objfn_change);
             Log::REDebug("Relative change in paramters: %g", rel_sol_change);

@@ -176,8 +176,12 @@ namespace GPBoost {
 		* \param InitializeModeCovMat (only used for non-Gaussian data) If true, posterior mode is initialized to 0 and the covariance matrix is calculated. Otherwise, existing values are used
 		* \param CalcModePostRandEff_already_done (only used for non-Gaussian data) If true, it is assumed that the posterior mode of the random effects has already been calculated
 		*/
-		void EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll,
-			const double* fixed_effects, bool InitializeModeCovMat, bool CalcModePostRandEff_already_done);
+		void EvalNegLogLikelihood(const double* y_data,
+			double* cov_pars,
+			double& negll,
+			const double* fixed_effects,
+			bool InitializeModeCovMat,
+			bool CalcModePostRandEff_already_done);
 
 		/*!
 		* \brief Calculate gradient and write on input (for Gaussian data, the gradient is Psi^-1*y (=y_aux))

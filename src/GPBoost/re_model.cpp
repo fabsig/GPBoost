@@ -418,8 +418,12 @@ namespace GPBoost {
 		}
 	}
 
-	void REModel::EvalNegLogLikelihood(const double* y_data, double* cov_pars, double& negll,
-		const double* fixed_effects, bool InitializeModeCovMat, bool CalcModePostRandEff_already_done) {
+	void REModel::EvalNegLogLikelihood(const double* y_data,
+		double* cov_pars,
+		double& negll,
+		const double* fixed_effects,
+		bool InitializeModeCovMat,
+		bool CalcModePostRandEff_already_done) {
 		vec_t cov_pars_trafo;
 		if (cov_pars == nullptr) {
 			if (y_data != nullptr) {

@@ -48,7 +48,7 @@ namespace LightGBM {
 			double loss;
 			if (metric_for_train_data_) {
 				REModel* re_model = objective->GetGPModel();
-				re_model->EvalNegLogLikelihood(nullptr, nullptr, loss, score, false, false);
+				re_model->EvalNegLogLikelihood(nullptr, nullptr, loss, nullptr, false, false);
 			}
 			else {
 				//loss = std::numeric_limits<double>::quiet_NaN();//gives an error
@@ -84,7 +84,7 @@ namespace LightGBM {
 
 		void Init(const Metadata&, data_size_t) override {
 			if (!metric_for_train_data_) {
-				Log::Fatal("The metric 'neg_log_likelihood' cannot be used for validation data, it can only be used for training data");
+				Log::Fatal("The metric 'approx_neg_marginal_log_likelihood' cannot be used for validation data, it can only be used for training data");
 			}
 		}
 

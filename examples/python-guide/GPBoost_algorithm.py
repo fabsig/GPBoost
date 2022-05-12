@@ -71,6 +71,18 @@ y = simulate_response_variable(lp=f, rand_eff=rand_eff, likelihood=likelihood)
 hst = plt.hist(y, bins=20)  # visualize response variable
 plt.show()
 
+# Specify boosting parameters as dict
+params = {'objective': likelihood, 'learning_rate': 0.01, 'max_depth': 3,
+          'verbose': 0, 'monotone_constraints': [1, 0]}
+num_boost_round = 250
+if likelihood == "gaussian":
+    num_boost_round = 35
+    params['objective'] = 'regression_l2'
+if likelihood in ("bernoulli_probit", "bernoulli_logit"):
+    num_boost_round = 500
+    params['objective'] = 'binary'
+# Note: these parameters are not necessarily optimal for all situations considered here
+
 #--------------------Training----------------
 # Define random effects model
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
@@ -82,17 +94,6 @@ gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 
 # Create dataset for gpb.train
 data_train = gpb.Dataset(X, y)
-# Specify boosting parameters as dict
-params = {'objective': likelihood, 'learning_rate': 0.01, 'max_depth': 3,
-          'verbose': 0, 'monotone_constraints': [1, 0]}
-num_boost_round = 250
-if likelihood == "gaussian":
-    num_boost_round = 35
-    params['objective'] = 'regression_l2'
-if likelihood in ("bernoulli_probit", "bernoulli_logit"):
-    num_boost_round = 500
-    params['objective'] = 'binary'
-# Note: these parameters are not neccessary optimal for all situations considered here
 bst = gpb.train(params=params, train_set=data_train,  gp_model=gp_model,
                 num_boost_round=num_boost_round)
 gp_model.summary() # Estimated random effects model
@@ -161,6 +162,8 @@ opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
 print("Best parameters: " + str(opt_params['best_params']))
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
+# Note: other scoring / evaluation metrics can be chosen using the 
+#       'eval' argument
 
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
@@ -197,6 +200,8 @@ bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
                 evals_result=evals_result)
 gpb.plot_metric(evals_result, figsize=(10, 5)) # plot validation scores
 plt.show()
+# Note: other scoring / evaluation metrics can be chosen using the 
+#       'eval' argument
 
 #--------------------Do Newton updates for tree leaves (only for Gaussian data)----------------
 if likelihood == "gaussian":
@@ -305,12 +310,6 @@ b_test = b[ntrain:n]
 hst = plt.hist(y_train, bins=20)  # visualize response variable
 plt.show()
 
-#--------------------Training----------------
-# Define Gaussian process model
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
-                       likelihood=likelihood)
-# Create dataset for gpb.train
-data_train = gpb.Dataset(X_train, y_train)
 # Specify boosting parameters as dict
 params = {'learning_rate': 0.1, 'objective': likelihood,
           'verbose': 0, 'monotone_constraints': [1, 0]}
@@ -322,6 +321,13 @@ if likelihood == "bernoulli_logit":
     num_boost_round = 50
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     params['objective'] = 'binary'
+
+#--------------------Training----------------
+# Define Gaussian process model
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+                       likelihood=likelihood)
+# Create dataset for gpb.train
+data_train = gpb.Dataset(X_train, y_train)
 bst = gpb.train(params=params, train_set=data_train, gp_model=gp_model,
                 num_boost_round=num_boost_round)
 gp_model.summary() # Estimated random effects model
