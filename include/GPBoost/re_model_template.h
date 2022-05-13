@@ -589,13 +589,6 @@ namespace GPBoost {
 			if (has_covariates_) {
 				num_coef_ = num_covariates;
 				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_coef_);
-				Eigen::ColPivHouseholderQR<den_mat_t> qr_decomp(X_);
-				int rank = (int)qr_decomp.rank();
-				if (rank < num_coef_) {
-					Log::REWarning("The linear regression covariate data matrix (fixed effect) is rank deficient. "
-						"This is not necessarily a problem when using gradient descent. "
-						"If this is not desired, consider dropping some columns / covariates.");
-				}
 				for (int icol = 0; icol < num_coef_; ++icol) {
 					if ((X_.col(icol).array() - 1.).abs().sum() < EPSILON_VECTORS) {
 						has_intercept = true;
@@ -607,6 +600,15 @@ namespace GPBoost {
 					Log::REWarning("The covariate data contains no column of ones, i.e., no intercept is included.");
 				}
 				only_intercept_for_GPBoost_algo = has_intercept && num_coef_ == 1 && !learn_covariance_parameters;
+				if (!only_intercept_for_GPBoost_algo) {
+					Eigen::ColPivHouseholderQR<den_mat_t> qr_decomp(X_);
+					int rank = (int)qr_decomp.rank();
+					if (rank < num_coef_) {
+						Log::REWarning("The linear regression covariate data matrix (fixed effect) is rank deficient. "
+							"This is not necessarily a problem when using gradient descent. "
+							"If this is not desired, consider dropping some columns / covariates.");
+					}
+				}
 			}
 			// Assume that this function is only called for initialization of the GPBoost algorithm
 			//	when (i) there is only an intercept (and not other covariates) and (ii) the covariance parameters are not learned
