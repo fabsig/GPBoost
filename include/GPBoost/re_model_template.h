@@ -589,6 +589,12 @@ namespace GPBoost {
 			if (has_covariates_) {
 				num_coef_ = num_covariates;
 				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_coef_);
+				Eigen::ColPivHouseholderQR<den_mat_t> qr_decomp(X_);
+				int rank = (int)qr_decomp.rank();
+				if (rank < num_coef_) {
+					Log::REWarning("The linear regression covariate data matrix (fixed effect) is rank deficient. "
+						"If this is not desired, consider dropping some columns / covariates.");
+				}
 				for (int icol = 0; icol < num_coef_; ++icol) {
 					if ((X_.col(icol).array() - 1.).abs().sum() < EPSILON_VECTORS) {
 						has_intercept = true;
