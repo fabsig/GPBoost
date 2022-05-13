@@ -593,6 +593,7 @@ namespace GPBoost {
 				int rank = (int)qr_decomp.rank();
 				if (rank < num_coef_) {
 					Log::REWarning("The linear regression covariate data matrix (fixed effect) is rank deficient. "
+						"This is not necessarily a problem when using gradient descent. "
 						"If this is not desired, consider dropping some columns / covariates.");
 				}
 				for (int icol = 0; icol < num_coef_; ++icol) {
