@@ -155,7 +155,9 @@ internal::gd_basic_impl(
     // initialization
 
     if (! OPTIM_MATOPS_IS_FINITE(init_out_vals) ) {
-        printf("gd error: non-finite initial value(s).\n");
+        //ChangedForGPBoost
+        //printf("gd error: non-finite initial value(s).\n");
+        Log::REFatal("bfgs error: non-finite initial value(s).");
         return false;
     }
 
@@ -183,7 +185,10 @@ internal::gd_basic_impl(
 
     double grad_err = OPTIM_MATOPS_L2NORM(grad);
 
-    OPTIM_GD_TRACE(-1, grad_err, 0.0, x, d, grad, adam_vec_m, adam_vec_v);
+    //ChangedForGPBoost
+    //OPTIM_GD_TRACE(-1, grad_err, 0.0, x, d, grad, adam_vec_m, adam_vec_v);
+    Log::REDebug("GPModel parameter optimization iteration number %d", 0);
+    for (int i = 0; i < std::min((int)x.size(), 5); ++i) { Log::REDebug("(Transformed) parameter[%d]: %g", i, x[i]); }
 
     if (grad_err <= grad_err_tol) {
         return true;
@@ -224,7 +229,21 @@ internal::gd_basic_impl(
 
         //
 
-        OPTIM_GD_TRACE(iter-1, grad_err, rel_sol_change, x, d, grad_p, adam_vec_m, adam_vec_v)
+        //ChangedForGPBoost
+        //OPTIM_GD_TRACE(iter-1, grad_err, rel_sol_change, x, d, grad_p, adam_vec_m, adam_vec_v)
+        if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
+            (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
+            Log::REDebug("GPModel parameter optimization iteration number %d", iter);
+            for (int i = 0; i < std::min((int)x.size(), 5); ++i) { Log::REDebug("(Transformed) parameter[%d]: %g", i, x[i]); }
+            if (x.size() > 5) {
+                Log::REDebug("Note: only the first 5 parameters are shown");
+            }
+            Log::REDebug("L2 norm of gradient: %g", grad_err);
+            Log::REDebug("Relative change in paramters: %g", rel_sol_change);
+            ////For debugging
+            //for (int i = 0; i < std::min((int)grad.size(), 10); ++i) { Log::REDebug("grad[%d]: %g", i, grad[i]); }
+        }
+
     }
 
     //

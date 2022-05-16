@@ -30,8 +30,9 @@ If <= 0, all iterations from start_iteration are used (no limits).}
 
 \item{pred_latent}{If TRUE latent variables, both fixed effects (tree-ensemble) 
 and random effects (\code{gp_model}) are predicted. Otherwise, the response variable 
-(label) is predicted. If there is no \code{gp_model}, this argument corresponds 
-to 'raw_score' in LightGBM.}
+(label) is predicted. Depending on how the argument 'pred_latent' is set,
+different values are returned from this function; see the 'Value' section for more details. 
+If there is no \code{gp_model}, this argument corresponds to 'raw_score' in LightGBM.}
 
 \item{predleaf}{whether predict leaf index instead.}
 

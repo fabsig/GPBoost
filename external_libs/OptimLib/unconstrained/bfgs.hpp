@@ -220,7 +220,7 @@ internal::bfgs_impl(
     //ChangedForGPBoost
     //OPTIM_BFGS_TRACE(0, grad_err, rel_sol_change, x_p, d, grad_p, s, y, W);
     Log::REDebug("GPModel parameter optimization iteration number %d", 0);
-    for (int i = 0; i < std::min((int)x.size(), 10); ++i) { Log::REDebug("(Transformed) parameter[%d]: %g", i, x[i]); }
+    for (int i = 0; i < std::min((int)x.size(), 5); ++i) { Log::REDebug("(Transformed) parameter[%d]: %g", i, x[i]); }
 
     if (grad_err <= grad_err_tol) {
         init_out_vals = x_p;
@@ -269,9 +269,9 @@ internal::bfgs_impl(
         if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
             (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
             Log::REDebug("GPModel parameter optimization iteration number %d", iter);
-            for (int i = 0; i < std::min((int)x.size(), 10); ++i) { Log::REDebug("(Transformed) parameter[%d]: %g", i, x[i]); }
-            if (x.size() > 10) {
-                Log::REDebug("Note: only the first 10 parameters are shown");
+            for (int i = 0; i < std::min((int)x.size(), 5); ++i) { Log::REDebug("(Transformed) parameter[%d]: %g", i, x[i]); }
+            if (x.size() > 5) {
+                Log::REDebug("Note: only the first 5 parameters are shown");
             }
             Log::REDebug("L2 norm of gradient: %g", grad_err);
             Log::REDebug("Relative change in paramters: %g", rel_sol_change);

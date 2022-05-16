@@ -17,19 +17,19 @@ fixed effects linear regression term (if there is one)}
 \item{params}{A \code{list} with parameters for the model fitting / optimization
  \itemize{
     \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
-    Options: "gradient_descent", "fisher_scoring", "nelder_mead", and "bfgs".
+    Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam".
     Default= gradient_descent"}
     \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
     (for the GPBoost algorithm there are usually none). 
-    Options: "gradient_descent", "wls", "nelder_mead", and "bfgs". Gradient descent steps are done simultaneously 
+    Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously 
     with gradient descent steps for the covariance parameters. 
     "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
     Default="wls" for Gaussian data and "gradient_descent" for other likelihoods.
-    If 'optimizer_cov' is set to "nelder_mead" or "bfgs", 'optimizer_coef' is automatically also set to the same value.}
+    If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 'optimizer_coef' is automatically also set to the same value.}
     \item{maxit}{ Maximal number of iterations for optimization algorithm. Default=1000}
     \item{delta_rel_conv}{ Convergence tolerance. The algorithm stops if the relative change 
     in eiher the (approximate) log-likelihood or the parameters is below this value. 
-    For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood. 
+    For "bfgs" and "adam", the L2 norm of the gradient is used instead of the relative change in the log-likelihood. 
     Default=1E-6}
     \item{convergence_criterion}{ The convergence criterion used for terminating the optimization algorithm.
     Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"}

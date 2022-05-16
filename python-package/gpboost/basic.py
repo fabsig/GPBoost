@@ -3316,8 +3316,9 @@ class Booster:
             If <= 0, all iterations from ``start_iteration`` are used (no limits).
         pred_latent : bool, optional (default=False)
             If True latent variables, both fixed effects (tree-ensemble) and random effects (gp_model) are predicted.
-            Otherwise, the response variable (label) is predicted. If there is no gp_model, this argument corresponds
-            to 'raw_score' in LightGBM.
+            Otherwise, the response variable (label) is predicted. Depending on how the argument 'pred_latent' is set,
+            different values are returned from this function; see the 'Returns' section for more details.
+            If there is no gp_model, this argument corresponds to 'raw_score' in LightGBM.
         pred_leaf : bool, optional (default=False)
             Whether to predict leaf index.
         pred_contrib : bool, optional (default=False)
@@ -4362,21 +4363,21 @@ class GPModel(object):
             Parameters for fitting / optimization:
                 optimizer_cov : string, optional (default = "gradient_descent")
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "fisher_scoring", "nelder_mead", and "bfgs"
+                    Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam"
                 optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
-                    Options: "gradient_descent", "wls", "nelder_mead", and "bfgs". Gradient descent steps are done simultaneously with
+                    Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously with
                     gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
                     for the regression coefficients using weighted least squares
-                    If 'optimizer_cov' is set to "nelder_mead" or "bfgs", 'optimizer_coef' is automatically also set to
+                    If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 'optimizer_coef' is automatically also set to
                     the same value.
                 maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
                 delta_rel_conv : double, optional (default = 1e-6)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
-                    log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is
-                    used instead of the relative change in the log-likelihood
+                    log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
+                    gradient is used instead of the relative change in the log-likelihood
                 convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
@@ -4539,13 +4540,13 @@ class GPModel(object):
         Parameters for fitting / optimization:
             optimizer_cov : string, optional (default = "gradient_descent")
                 Optimizer used for estimating covariance parameters.
-                Options: "gradient_descent", "fisher_scoring", "nelder_mead", and "bfgs"
+                Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam"
             maxit : integer, optional (default = 1000)
                 Maximal number of iterations for optimization algorithm
             delta_rel_conv : double, optional (default = 1e-6)
                 Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
-                log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is
-                used instead of the relative change in the log-likelihood
+                log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
+                gradient is used instead of the relative change in the log-likelihood
             convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                 The convergence criterion used for terminating the optimization algorithm.
                 Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
@@ -4567,10 +4568,10 @@ class GPModel(object):
             optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                 Optimizer used for estimating linear regression coefficients, if there are any
                 (for the GPBoost algorithm there are usually none).
-                Options: "gradient_descent", "wls", "nelder_mead", and "bfgs". Gradient descent steps are done simultaneously with
-                gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
-                for the regression coefficients using weighted least squares
-                If 'optimizer_cov' is set to "nelder_mead" or "bfgs", 'optimizer_coef' is automatically also set to
+                Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done
+                simultaneously with gradient descent steps for the covariance paramters. "wls" refers to doing
+                coordinate descent for the regression coefficients using weighted least squares
+                If 'optimizer_cov' is set to "nelder_mead", "bfgs" or "adam", 'optimizer_coef' is automatically also set to
                 the same value.
             init_coef : numpy array or pandas DataFrame, optional (default = None)
                 Initial values for the regression coefficients (if there are any, can be None)
@@ -4652,10 +4653,10 @@ class GPModel(object):
                 optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
-                    Options: "gradient_descent", "wls", "nelder_mead", and "bfgs". Gradient descent steps are done simultaneously with
+                    Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously with
                     gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
                     for the regression coefficients using weighted least squares
-                    If 'optimizer_cov' is set to "nelder_mead" or "bfgs", 'optimizer_coef' is automatically also set to
+                    If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 'optimizer_coef' is automatically also set to
                     the same value.
                 init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)

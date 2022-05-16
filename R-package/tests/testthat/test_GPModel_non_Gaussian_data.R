@@ -102,6 +102,11 @@ test_that("Binary classification with Gaussian process model ", {
   cov_pars3 <- c(0.9419084, 0.1866882)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars3)),TOLERANCE2)
   expect_equal(gp_model$get_num_optim_iter(), 4)
+  # Estimation using Adam
+  gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit")
+  fit(gp_model, y = y, params = list(optimizer_cov = "adam"))
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars3)),TOLERANCE2)
+  expect_equal(gp_model$get_num_optim_iter(), 200)
   
   # Prediction
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",

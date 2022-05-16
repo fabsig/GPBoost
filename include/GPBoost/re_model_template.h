@@ -573,12 +573,16 @@ namespace GPBoost {
 			if (optimizer_coef != "gradient_descent") {
 				use_nesterov_acc_coef = false;//Nesterov acceleration is only used for gradient descent and not for other methods
 			}
-			if (optimizer_cov == "nelder_mead" || optimizer_cov == "bfgs") {
+			//if (optimizer_cov == "nelder_mead" || optimizer_cov == "bfgs") {//DELETE
+			//	optimizer_coef = optimizer_cov;
+			//}
+			if (OPTIM_EXTERNAL_.find(optimizer_cov) != OPTIM_EXTERNAL_.end()) {
 				optimizer_coef = optimizer_cov;
 			}
 			bool terminate_optim = false;
 			num_it = max_iter;
-			bool profile_out_marginal_variance = gauss_likelihood_ && (optimizer_cov == "gradient_descent" || optimizer_cov == "nelder_mead");
+			bool profile_out_marginal_variance = gauss_likelihood_ && (optimizer_cov == "gradient_descent" || optimizer_cov == "nelder_mead" 
+				|| optimizer_cov == "adam");
 			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data 
 			//	(the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 			bool gradient_contains_error_var = gauss_likelihood_ && !profile_out_marginal_variance;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
@@ -744,7 +748,8 @@ namespace GPBoost {
 				Log::REDebug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
 			}
 			bool na_or_inf_occurred = false;
-			if (optimizer_cov == "nelder_mead" || optimizer_cov == "bfgs") {
+			//if (optimizer_cov == "nelder_mead" || optimizer_cov == "bfgs") {//DELETE
+			if (OPTIM_EXTERNAL_.find(optimizer_cov) != OPTIM_EXTERNAL_.end()) {
 				OptimExternal(cov_pars,
 					beta,
 					fixed_effects,
@@ -772,7 +777,7 @@ namespace GPBoost {
 						}
 					}
 				} // end check for NA or Inf
-			} // end "nelder_mead" or "bfgs"
+			} // end use of external optimizer
 			else {
 				// Start optimization with "gradient_descent" or "fisher_scoring"
 				for (int it = 0; it < max_iter; ++it) {
@@ -2467,9 +2472,11 @@ namespace GPBoost {
 
 		// OPTIMIZER PROPERTIES
 		/*! \brief List of supported optimizers for covariance parameters */
-		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs" };
+		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam" };
 		/*! \brief List of supported optimizers for regression coefficients */
 		const std::set<string_t> SUPPORTED_OPTIM_COEF_{ "gradient_descent", "wls", "nelder_mead", "bfgs" };
+		/*! \brief List of optimizers which are externally handled by OptimLib */
+		const std::set<string_t> OPTIM_EXTERNAL_{ "nelder_mead", "bfgs", "adam" };
 		/*! \brief List of supported convergence criteria used for terminating the optimization algorithm */
 		const std::set<string_t> SUPPORTED_CONV_CRIT_{ "relative_change_in_parameters", "relative_change_in_log_likelihood" };
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done */
@@ -5004,6 +5011,15 @@ namespace GPBoost {
 			else if (optimizer == "bfgs") {
 				optim::bfgs(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 			}
+			else if (optimizer == "adam") {
+				settings.gd_settings.method = 6;
+				settings.gd_settings.ada_max = false;
+				optim::gd(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
+			}
+			//else if (optimizer == "adadelta") {// adadelta currently not supported as default settings do not always work
+			//	settings.gd_settings.method = 5;
+			//	optim::gd(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
+			//}
 			num_it = (int)settings.opt_iter;
 			neg_log_likelihood_ = settings.opt_fn_value;
 			// Transform parameters back for export
