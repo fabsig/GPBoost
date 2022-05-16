@@ -15,10 +15,10 @@ Documentation of GPBoost
    :maxdepth: 1
    :caption: Contents:
 
-   Main parameters <Main_parameters>
-   Python and R Examples <Examples>
    Python package <Python_package>
    R package <R_package>
+   Main parameters <Main_parameters>
+   Python and R Examples <Examples>
    C API <C-API>
    Computational efficiency <Computational_efficiency>
 
