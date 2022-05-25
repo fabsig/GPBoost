@@ -64,8 +64,7 @@ y <- simulate_response_variable(lp=f, rand_eff=rand_eff, likelihood=likelihood)
 hist(y, breaks=20)  # visualize response variable
 
 # Specify boosting parameters as list
-params <- list(objective = likelihood, learning_rate = 0.01, max_depth = 3,
-               monotone_constraints = c(1,0))
+params <- list(objective = likelihood, learning_rate = 0.01, max_depth = 3)
 nrounds <- 250
 if (likelihood=="gaussian") {
   nrounds <- 35
@@ -311,8 +310,7 @@ b_1_test <- b_1[1:ntest+ntrain]
 hist(y_train, breaks=20)# visualize response variable
 
 # Specify boosting parameters as list
-params <- list(objective = likelihood, learning_rate = 0.1, max_depth = 3,
-               monotone_constraints = c(1,0))
+params <- list(objective = likelihood, learning_rate = 0.1, max_depth = 3)
 nrounds <- 25
 if (likelihood=="gaussian") {
   nrounds <- 10

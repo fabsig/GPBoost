@@ -73,7 +73,7 @@ plt.show()
 
 # Specify boosting parameters as dict
 params = {'objective': likelihood, 'learning_rate': 0.01, 'max_depth': 3,
-          'verbose': 0, 'monotone_constraints': [1, 0]}
+          'verbose': 0}
 num_boost_round = 250
 if likelihood == "gaussian":
     num_boost_round = 35
@@ -311,8 +311,7 @@ hst = plt.hist(y_train, bins=20)  # visualize response variable
 plt.show()
 
 # Specify boosting parameters as dict
-params = {'learning_rate': 0.1, 'objective': likelihood,
-          'verbose': 0, 'monotone_constraints': [1, 0]}
+params = {'learning_rate': 0.1, 'objective': likelihood, 'verbose': 0}
 num_boost_round = 25
 if likelihood == "gaussian":
     num_boost_round = 10
