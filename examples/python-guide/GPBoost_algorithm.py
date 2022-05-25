@@ -69,7 +69,7 @@ X = np.random.rand(n, 2)
 f = f1d(X[:, 0])
 y = simulate_response_variable(lp=f, rand_eff=rand_eff, likelihood=likelihood)
 hst = plt.hist(y, bins=20)  # visualize response variable
-plt.show()
+plt.show(block=False)
 
 # Specify boosting parameters as dict
 params = {'objective': likelihood, 'learning_rate': 0.01, 'max_depth': 3,
@@ -126,7 +126,7 @@ ax1.plot(Xtest[:, 0], pred_resp['response_mean'], linewidth=2, label="Pred respo
 ax1.scatter(X[:, 0], y, linewidth=2, color="black", alpha=0.02)
 ax1.set_title("Data and predicted response variable")
 ax1.legend()
-plt.show()
+plt.show(block=False)
 # Visualize fitted (latent) fixed effects function
 fig1, ax1 = plt.subplots()
 ax1.plot(Xtest[:, 0], f1d(Xtest[:, 0]), linewidth=2, label="True F")
@@ -135,13 +135,13 @@ if likelihood in ("gaussian", "bernoulli_probit", "bernoulli_logit"):
     ax1.scatter(X[:, 0], y, linewidth=2, color="black", alpha=0.02)
 ax1.set_title("Data, true and predicted latent function F")
 ax1.legend()
-plt.show()
+plt.show(block=False)
 # Compare true and predicted random effects
 plt.scatter(b1, pred['random_effect_mean'])
 plt.title("Comparison of true and predicted random effects")
 plt.xlabel("truth")
 plt.ylabel("predicted")
-plt.show()
+plt.show(block=False)
 
 #--------------------Choosing tuning parameters----------------
 param_grid = {'learning_rate': [1,0.1,0.01], 'min_data_in_leaf': [1,10,100],
@@ -191,7 +191,7 @@ bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
                 early_stopping_rounds=10, use_gp_model_for_validation=True,
                 evals_result=evals_result)
 gpb.plot_metric(evals_result, figsize=(10, 5))# plot validation scores
-plt.show()
+plt.show(block=False)
 # Do not include random effect predictions for validation (observe the higher test error)
 evals_result = {}  # record eval results for plotting
 bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
@@ -199,7 +199,7 @@ bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
                 early_stopping_rounds=10, use_gp_model_for_validation=False,
                 evals_result=evals_result)
 gpb.plot_metric(evals_result, figsize=(10, 5)) # plot validation scores
-plt.show()
+plt.show(block=False)
 # Note: other scoring / evaluation metrics can be chosen using the 
 #       'eval' argument
 
@@ -308,7 +308,7 @@ y_test = y[ntrain:n]
 b_train = b[0:ntrain]
 b_test = b[ntrain:n]
 hst = plt.hist(y_train, bins=20)  # visualize response variable
-plt.show()
+plt.show(block=False)
 
 # Specify boosting parameters as dict
 params = {'learning_rate': 0.1, 'objective': likelihood, 'verbose': 0}

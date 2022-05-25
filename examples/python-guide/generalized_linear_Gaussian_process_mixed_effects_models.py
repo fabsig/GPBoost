@@ -68,7 +68,7 @@ beta = np.array([0, 3]) # regression coefficents
 lp = X.dot(beta)
 y = simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
 hst = plt.hist(y, bins=20)  # visualize response variable
-plt.show()
+plt.show(block=False)
 # Two crossed grouped random effects and a random slope
 x = np.random.uniform(size=n)  # covariate data for random slope
 n_obs_gr = int(n / m)  # number of sampels per group
@@ -146,7 +146,7 @@ print(training_data_random_effects[0:5])# Predicted training data random effects
 # Compare true and predicted random effects
 plt.scatter(b, training_data_random_effects)
 plt.title("Comparison of true and predicted random effects")
-plt.show()
+plt.show(block=False)
 # Adding the overall intercept gives the group-wise intercepts
 group_wise_intercepts = gp_model.get_coef().iloc[0,0] + training_data_random_effects
 # Alternatively, this can also be done as follows
@@ -191,7 +191,7 @@ plt.scatter(b_random_slope, pred_random_slopes, label="Random slopes")
 plt.scatter(b_crossed, pred_random_effects_crossed, label="Crossed random effects")
 plt.legend()
 plt.title("Comparison of true and predicted random effects")
-plt.show()
+plt.show(block=False)
 
 # --------------------Two nested random effects----------------
 group_data = np.column_stack((group, group_nested))
