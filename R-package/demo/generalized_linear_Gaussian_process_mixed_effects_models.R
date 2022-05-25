@@ -142,35 +142,6 @@ group_wise_intercepts <- gp_model$get_coef()[1] + training_data_random_effects
 # pred_random_effects <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero)
 # sum(abs(training_data_random_effects - pred_random_effects$mu))
 
-#--------------------Evaluate negative log-likelihood and do optimization using optim----------------
-gp_model <- GPModel(group_data = group, likelihood = likelihood)
-if (likelihood == "gaussian") {
-  init_cov_pars <- c(1,1)
-} else {
-  init_cov_pars <- 1
-}
-eval_nll <- function(pars, gp_model, y, X, likelihood) {
-  if (likelihood == "gaussian") {
-    coef <- pars[-c(1,2)]
-    cov_pars <- exp(pars[c(1,2)])
-  } else {
-    coef <- pars[-1]
-    cov_pars <- exp(pars[1])
-  }
-  fixed_effects <- as.numeric(X%*%coef)
-  if (likelihood == "gaussian") {
-    y <- y - fixed_effects
-    fixed_effects <- NULL
-  }
-  gp_model$neg_log_likelihood(cov_pars=cov_pars, y=y, fixed_effects=fixed_effects)
-}
-pars <- c(init_cov_pars, rep(0,dim(X)[2]))
-eval_nll(pars = pars, gp_model = gp_model, X = X, likelihood = likelihood)
-gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y)
-# Do optimization using optim and e.g. Nelder-Mead
-opt <- optim(par = pars, fn = eval_nll, gp_model = gp_model, y = y, X = X, 
-             likelihood = likelihood, method = "Nelder-Mead")
-
 #--------------------Saving a GPModel and loading it from a file----------------
 # Save model to file
 filename <- tempfile(fileext = ".json")
@@ -221,6 +192,34 @@ gp_model <- fitGPModel(group_data = group, y = y, cluster_ids = cluster_ids,
 summary(gp_model)
 #Note: gives sames result in this example as when not using cluster_ids
 #   since the random effects of different groups are independent anyway
+
+#--------------------Evaluate negative log-likelihood and do optimization using optim----------------
+gp_model <- GPModel(group_data = group, likelihood = likelihood)
+if (likelihood == "gaussian") {
+  init_cov_pars <- c(1,1)
+} else {
+  init_cov_pars <- 1
+}
+eval_nll <- function(pars, gp_model, y, X, likelihood) {
+  if (likelihood == "gaussian") {
+    coef <- pars[-c(1,2)]
+    cov_pars <- exp(pars[c(1,2)])
+  } else {
+    coef <- pars[-1]
+    cov_pars <- exp(pars[1])
+  }
+  fixed_effects <- as.numeric(X%*%coef)
+  if (likelihood == "gaussian") {
+    y <- y - fixed_effects
+    fixed_effects <- NULL
+  }
+  gp_model$neg_log_likelihood(cov_pars=cov_pars, y=y, fixed_effects=fixed_effects)
+}
+pars <- c(init_cov_pars, rep(0,dim(X)[2]))
+eval_nll(pars = pars, gp_model = gp_model, X = X, y=y, likelihood = likelihood)
+# Do optimization using optim and e.g. Nelder-Mead
+opt <- optim(par = pars, fn = eval_nll, gp_model = gp_mod, y = y, X = X, 
+             likelihood = likelihood, method = "Nelder-Mead")
 
 
 #################################
@@ -303,18 +302,6 @@ summary(gp_model)
 #                                      optimizer_cov= "gradient_descent",
 #                                      lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 100))
 
-# Evaluate negative log-likelihood and do optimization using optim
-gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                    likelihood = likelihood)
-if (likelihood == "gaussian") {
-  init_cov_pars <- c(1,1,0.2)
-} else {
-  init_cov_pars <- c(1,0.2)
-}
-gp_model$neg_log_likelihood(cov_pars = init_cov_pars, y = y_train)
-# Do optimization using optim and e.g. Nelder-Mead
-optim(par = init_cov_pars, fn = gp_model$neg_log_likelihood, y = y_train, method = "Nelder-Mead")
-
 #--------------------Prediction----------------
 # Prediction of latent variable
 pred <- predict(gp_model, gp_coords_pred = coords_test,
@@ -335,12 +322,14 @@ library(ggplot2)
 library(viridis)
 library(gridExtra)
 plot1 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=b_1_test),aes(x=s_1,y=s_2,color=b)) +
-  geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + ggtitle("True latent GP and training locations") + 
+  geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + 
+  ggtitle("True latent GP and training locations") + 
   geom_point(data = data.frame(s_1=coords_train[,1],s_2=coords_train[,2],y=y_train),aes(x=s_1,y=s_2),size=3, col="white", alpha=1, shape=43)
 plot2 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=pred$mu),aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + ggtitle("Predicted latent GP mean")
 plot3 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=sqrt(pred$var)),aes(x=s_1,y=s_2,color=b)) +
-  geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + labs(title="Predicted latent GP standard deviation", subtitle=" = prediction uncertainty")
+  geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + 
+  labs(title="Predicted latent GP standard deviation", subtitle=" = prediction uncertainty")
 grid.arrange(plot1, plot2, plot3, ncol=2)
 
 # Predict latent GP at training data locations (=smoothing)
@@ -388,8 +377,22 @@ points(b_3, GP_smooth[,3], col=4, pch=4, lwd=1.5)
 cluster_ids = rep(0,ntrain)
 cluster_ids[(ntrain/2+1):ntrain] = 1
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
-                       cluster_ids = cluster_ids, likelihood = likelihood, y = y_train)
+                       cluster_ids = cluster_ids, likelihood = likelihood,
+                       y = y_train)
 summary(gp_model)
+
+# --------------------Evaluate negative log-likelihood and do optimization using optim----------------
+gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                    likelihood = likelihood)
+if (likelihood == "gaussian") {
+  init_cov_pars <- c(1,1,0.2)
+} else {
+  init_cov_pars <- c(1,0.2)
+}
+gp_model$neg_log_likelihood(cov_pars = init_cov_pars, y = y_train)
+# Do optimization using optim and e.g. Nelder-Mead
+optim(par = init_cov_pars, fn = gp_model$neg_log_likelihood, y = y_train,
+      method = "Nelder-Mead")
 
 
 #################################
