@@ -332,12 +332,7 @@ namespace GPBoost {
 						cluster_i,
 						num_data_per_cluster_,
 						gp_coords_data,
-						dim_gp_coords_,
 						gp_rand_coef_data,
-						num_gp_rand_coef_,
-						cov_fct_,
-						cov_fct_shape_,
-						cov_fct_taper_range_,
 						re_comps_cluster_i,
 						nearest_neighbors_cluster_i,
 						dist_obs_neighbors_cluster_i,
@@ -356,23 +351,13 @@ namespace GPBoost {
 				}//end vecchia_approx_
 				else {//not vecchia_approx_
 					CreateREComponents(num_data_,
-						num_re_group_,
 						data_indices_per_cluster_,
 						cluster_i,
 						re_group_levels,
 						num_data_per_cluster_,
-						num_re_group_rand_coef_,
 						re_group_rand_coef_data,
-						ind_effect_group_rand_coef_,
-						num_gp_,
 						gp_coords_data,
-						dim_gp_coords_,
 						gp_rand_coef_data,
-						num_gp_rand_coef_,
-						cov_fct_,
-						cov_fct_shape_,
-						cov_fct_taper_range_,
-						ind_intercept_gp_,
 						!only_grouped_REs_use_woodbury_identity_,
 						re_comps_cluster_i);
 				}//end not vecchia_approx_
@@ -1732,9 +1717,8 @@ namespace GPBoost {
 							std::vector<Triplet_t> entries_init_B_grad_cluster_i;
 							std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							CreateREComponentsVecchia(num_data_pred, data_indices_per_cluster_pred, cluster_i,
-								num_data_per_cluster_pred, gp_coords_data_pred, dim_gp_coords_,
-								gp_rand_coef_data_pred, num_gp_rand_coef_, cov_fct_,
-								cov_fct_shape_, cov_fct_taper_range_, re_comps_cluster_i,
+								num_data_per_cluster_pred, gp_coords_data_pred,
+								gp_rand_coef_data_pred, re_comps_cluster_i,
 								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
 								entries_init_B_cluster_i, entries_init_B_grad_cluster_i, z_outer_z_obs_neighbors_cluster_i,
 								"none", num_neighbors_pred_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
@@ -1761,13 +1745,10 @@ namespace GPBoost {
 							psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
 						}//end vecchia_approx_
 						else {//not vecchia_approx_
-							CreateREComponents(num_data_pred, num_re_group_, data_indices_per_cluster_pred,
+							CreateREComponents(num_data_pred, data_indices_per_cluster_pred,
 								cluster_i, re_group_levels_pred, num_data_per_cluster_pred,
-								num_re_group_rand_coef_, re_group_rand_coef_data_pred, ind_effect_group_rand_coef_,
-								num_gp_, gp_coords_data_pred, dim_gp_coords_,
-								gp_rand_coef_data_pred, num_gp_rand_coef_, cov_fct_,
-								cov_fct_shape_, cov_fct_taper_range_, ind_intercept_gp_,
-								true, re_comps_cluster_i);
+								re_group_rand_coef_data_pred, gp_coords_data_pred,
+								gp_rand_coef_data_pred, true, re_comps_cluster_i);
 							if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
 								num_REs_pred = re_comps_cluster_i[0]->GetNumUniqueREs();
 							}
@@ -3543,49 +3524,29 @@ namespace GPBoost {
 		/*!
 		* \brief Initialize individual component models and collect them in a containter
 		* \param num_data Number of data points
-		* \param num_re_group Number of grouped random effects
 		* \param data_indices_per_cluster Keys: Labels of independent realizations of REs/GPs, values: vectors with indices for data points
 		* \param cluster_i Index / label of the realization of the Gaussian process for which the components should be constructed
 		* \param Group levels for every grouped random effect
 		* \param num_data_per_cluster Keys: Labels of independent realizations of REs/GPs, values: number of data points per independent realization
-		* \param num_re_group_rand_coef Number of grouped random coefficients
 		* \param re_group_rand_coef_data Covariate data for grouped random coefficients
-		* \param ind_effect_group_rand_coef Indices that relate every random coefficients to a "base" intercept grouped random effect. Counting start at 1.
-		* \param num_gp Number of Gaussian processes (intercept only, random coefficients not counting)
 		* \param gp_coords_data Coordinates (features) for Gaussian process
-		* \param dim_gp_coords Dimension of the coordinates (=number of features) for Gaussian process
 		* \param gp_rand_coef_data Covariate data for Gaussian process random coefficients
-		* \param num_gp_rand_coef Number of Gaussian process random coefficients
-		* \param cov_fct Type of covariance (kernel) function for Gaussian processes
-		* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern covariance)
-		* \param cov_fct_taper_range Range parameter of Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)
-		* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps_') of the intercept GP associated with the random coefficient GPs
 		* \param calculateZZt If true, the matrix Z*Z^T is calculated for grouped random effects and saved (usually not needed if Woodbury identity is used)
 		* \param[out] re_comps_cluster_i Container that collects the individual component models
 		*/
 		void CreateREComponents(data_size_t num_data,
-			data_size_t num_re_group,
 			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
 			data_size_t cluster_i,
 			std::vector<std::vector<re_group_t>>& re_group_levels,
 			std::map<data_size_t, int>& num_data_per_cluster,
-			data_size_t num_re_group_rand_coef,
 			const double* re_group_rand_coef_data,
-			std::vector<int>& ind_effect_group_rand_coef,
-			data_size_t num_gp,
 			const double* gp_coords_data,
-			int dim_gp_coords,
 			const double* gp_rand_coef_data,
-			data_size_t num_gp_rand_coef,
-			const string_t cov_fct,
-			double cov_fct_shape,
-			double cov_fct_taper_range,
-			int ind_intercept_gp,
 			bool calculateZZt,
 			std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i) {
 			//Grouped random effects
-			if (num_re_group > 0) {
-				for (int j = 0; j < num_re_group; ++j) {
+			if (num_re_group_ > 0) {
+				for (int j = 0; j < num_re_group_; ++j) {
 					std::vector<re_group_t> group_data;
 					for (const auto& id : data_indices_per_cluster[cluster_i]) {
 						group_data.push_back(re_group_levels[j][id]);
@@ -3596,13 +3557,13 @@ namespace GPBoost {
 						!only_one_grouped_RE_calculations_on_RE_scale_)));
 				}
 				//Random slope grouped random effects
-				if (num_re_group_rand_coef > 0) {
-					for (int j = 0; j < num_re_group_rand_coef; ++j) {
+				if (num_re_group_rand_coef_ > 0) {
+					for (int j = 0; j < num_re_group_rand_coef_; ++j) {
 						std::vector<double> rand_coef_data;
 						for (const auto& id : data_indices_per_cluster[cluster_i]) {
 							rand_coef_data.push_back(re_group_rand_coef_data[j * num_data + id]);
 						}
-						std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_cluster_i[ind_effect_group_rand_coef[j] - 1]);//Subtract -1 since ind_effect_group_rand_coef[j] starts counting at 1 not 0
+						std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_cluster_i[ind_effect_group_rand_coef_[j] - 1]);//Subtract -1 since ind_effect_group_rand_coef[j] starts counting at 1 not 0
 						re_comps_cluster_i.push_back(std::shared_ptr<RECompGroup<T_mat>>(new RECompGroup<T_mat>(
 							re_comp->random_effects_indices_of_data_.data(),
 							re_comp->num_data_,
@@ -3614,37 +3575,37 @@ namespace GPBoost {
 				}
 			}
 			//GPs
-			if (num_gp > 0) {
+			if (num_gp_ > 0) {
 				std::vector<double> gp_coords;
-				for (int j = 0; j < dim_gp_coords; ++j) {
+				for (int j = 0; j < dim_gp_coords_; ++j) {
 					for (const auto& id : data_indices_per_cluster[cluster_i]) {
 						gp_coords.push_back(gp_coords_data[j * num_data + id]);
 					}
 				}
-				den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords);
+				den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords_);
 				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 					gp_coords_mat,
-					cov_fct,
-					cov_fct_shape,
-					cov_fct_taper_range,
+					cov_fct_,
+					cov_fct_shape_,
+					cov_fct_taper_range_,
 					true,
 					only_one_GP_calculations_on_RE_scale_)));
 				//Random slope GPs
-				if (num_gp_rand_coef > 0) {
-					for (int j = 0; j < num_gp_rand_coef; ++j) {
+				if (num_gp_rand_coef_ > 0) {
+					for (int j = 0; j < num_gp_rand_coef_; ++j) {
 						std::vector<double> rand_coef_data;
 						for (const auto& id : data_indices_per_cluster[cluster_i]) {
 							rand_coef_data.push_back(gp_rand_coef_data[j * num_data + id]);
 						}
-						std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp]);
+						std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp_]);
 						re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 							re_comp->dist_,
 							re_comp->has_Z_,
 							&re_comp->Z_,
 							rand_coef_data,
-							cov_fct,
-							cov_fct_shape,
-							cov_fct_taper_range,
+							cov_fct_,
+							cov_fct_shape_,
+							cov_fct_taper_range_,
 							re_comp->GetTaperMu())));
 					}
 				}
@@ -3658,12 +3619,7 @@ namespace GPBoost {
 		* \param cluster_i Index / label of the realization of the Gaussian process for which the components should be constructed
 		* \param num_data_per_cluster Keys: Labels of independent realizations of REs/GPs, values: number of data points per independent realization
 		* \param gp_coords_data Coordinates (features) for Gaussian process
-		* \param dim_gp_coords Dimension of the coordinates (=number of features) for Gaussian process
 		* \param gp_rand_coef_data Covariate data for Gaussian process random coefficients
-		* \param num_gp_rand_coef Number of Gaussian process random coefficients
-		* \param cov_fct Type of covariance (kernel) function for Gaussian processes
-		* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern covariance)
-		* \param cov_fct_taper_range Range parameter of Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)
 		* \param[out] re_comps_cluster_i Container that collects the individual component models
 		* \param[out] nearest_neighbors_cluster_i Collects indices of nearest neighbors
 		* \param[out] dist_obs_neighbors_cluster_i Distances between locations and their nearest neighbors
@@ -3679,12 +3635,7 @@ namespace GPBoost {
 			data_size_t cluster_i,
 			std::map<data_size_t, int>& num_data_per_cluster,
 			const double* gp_coords_data,
-			int dim_gp_coords,
 			const double* gp_rand_coef_data,
-			data_size_t num_gp_rand_coef,
-			const string_t cov_fct,
-			double cov_fct_shape,
-			double cov_fct_taper_range,
 			std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i,
 			std::vector<std::vector<int>>& nearest_neighbors_cluster_i,
 			std::vector<den_mat_t>& dist_obs_neighbors_cluster_i,
@@ -3700,17 +3651,17 @@ namespace GPBoost {
 				std::shuffle(data_indices_per_cluster[cluster_i].begin(), data_indices_per_cluster[cluster_i].end(), std::default_random_engine(seed));
 			}
 			std::vector<double> gp_coords;
-			for (int j = 0; j < dim_gp_coords; ++j) {
+			for (int j = 0; j < dim_gp_coords_; ++j) {
 				for (const auto& id : data_indices_per_cluster[cluster_i]) {
 					gp_coords.push_back(gp_coords_data[j * num_data + id]);
 				}
 			}
-			den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords);
+			den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords_);
 			re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 				gp_coords_mat,
-				cov_fct,
-				cov_fct_shape,
-				cov_fct_taper_range,
+				cov_fct_,
+				cov_fct_shape_,
+				cov_fct_taper_range_,
 				false,
 				false)));
 			find_nearest_neighbors_Veccia_fast(gp_coords_mat,
@@ -3729,24 +3680,24 @@ namespace GPBoost {
 				entries_init_B_cluster_i.push_back(Triplet_t(i, i, 1.));//Put 1's on the diagonal since B = I - A
 			}
 			//Random coefficients
-			if (num_gp_rand_coef > 0) {
+			if (num_gp_rand_coef_ > 0) {
 				std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp]);
-				for (int j = 0; j < num_gp_rand_coef; ++j) {
+				for (int j = 0; j < num_gp_rand_coef_; ++j) {
 					std::vector<double> rand_coef_data;
 					for (const auto& id : data_indices_per_cluster[cluster_i]) {
 						rand_coef_data.push_back(gp_rand_coef_data[j * num_data + id]);
 					}
 					re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 						rand_coef_data,
-						cov_fct,
-						cov_fct_shape,
-						cov_fct_taper_range,
+						cov_fct_,
+						cov_fct_shape_,
+						cov_fct_taper_range_,
 						re_comp->GetTaperMu())));
 					//save random coefficient data in the form ot outer product matrices
 #pragma omp for schedule(static)
 					for (int i = 0; i < num_data_per_cluster[cluster_i]; ++i) {
 						if (j == 0) {
-							z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef);
+							z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef_);
 						}
 						int dim_z = (i == 0) ? 1 : ((int)nearest_neighbors_cluster_i[i].size() + 1);
 						vec_t coef_vec(dim_z);
