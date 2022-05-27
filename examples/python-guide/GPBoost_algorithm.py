@@ -76,7 +76,7 @@ params = {'objective': likelihood, 'learning_rate': 0.01, 'max_depth': 3,
           'verbose': 0}
 num_boost_round = 250
 if likelihood == "gaussian":
-    num_boost_round = 35
+    num_boost_round = 50
     params['objective'] = 'regression_l2'
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     num_boost_round = 500
@@ -312,13 +312,11 @@ plt.show(block=False)
 
 # Specify boosting parameters as dict
 params = {'learning_rate': 0.1, 'objective': likelihood, 'verbose': 0}
-num_boost_round = 25
+num_boost_round = 10
 if likelihood == "gaussian":
-    num_boost_round = 10
     params['objective'] = 'regression_l2'
-if likelihood == "bernoulli_logit":
-    num_boost_round = 50
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
+    num_boost_round = 50
     params['objective'] = 'binary'
 
 #--------------------Training----------------

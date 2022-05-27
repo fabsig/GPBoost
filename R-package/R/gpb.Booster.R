@@ -671,7 +671,8 @@ Booster <- R6::R6Class(
                        ...) {
       
       if (!is.null(rawscore)) {
-        warning("The argument 'raw_score' is deprecated and ignored. Use the renamed equivalent argument 'pred_latent' instead")
+        stop("predict: The argument 'raw_score' is deprecated and ignored. 
+             Use the renamed equivalent argument 'pred_latent' instead")
       }
       
       # Check if number of iteration is non existent

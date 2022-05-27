@@ -67,7 +67,7 @@ hist(y, breaks=20)  # visualize response variable
 params <- list(objective = likelihood, learning_rate = 0.01, max_depth = 3)
 nrounds <- 250
 if (likelihood=="gaussian") {
-  nrounds <- 35
+  nrounds <- 50
   params$objective="regression_l2"
 }
 if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
@@ -311,15 +311,12 @@ hist(y_train, breaks=20)# visualize response variable
 
 # Specify boosting parameters as list
 params <- list(objective = likelihood, learning_rate = 0.1, max_depth = 3)
-nrounds <- 25
+nrounds <- 10
 if (likelihood=="gaussian") {
-  nrounds <- 10
   params$objective="regression_l2"
 }
-if (likelihood=="bernoulli_logit") {
-  nrounds <- 50
-}
 if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
+  nrounds <- 50
   params$objective="binary"
 } 
 

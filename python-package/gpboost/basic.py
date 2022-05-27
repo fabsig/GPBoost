@@ -3417,7 +3417,7 @@ class Booster:
         >>> # pred_resp['response_var']: predictive variances (if predict_var=True)
         """
         if raw_score is not None:
-            warnings.warn("The argument 'raw_score' is deprecated and ignored. "
+            GPBoostError("The argument 'raw_score' is deprecated and ignored. "
                           "Use the renamed equivalent argument 'pred_latent' instead")
         predictor = self._to_predictor(deepcopy(kwargs))
         if num_iteration is None:
