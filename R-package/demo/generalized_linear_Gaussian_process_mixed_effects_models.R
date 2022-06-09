@@ -162,8 +162,12 @@ sum(abs(pred_resp$var - pred_resp_loaded$var))
 gp_model <- fitGPModel(group_data = cbind(group,group_crossed), group_rand_coef_data = x,
                        ind_effect_group_rand_coef = 1, likelihood = likelihood,
                        y = y_crossed_random_slope, X = X)
-# 'ind_effect_group_rand_coef' indicates that the random slope is for the first random effect
+# 'ind_effect_group_rand_coef = 1' indicates that the random slope is for the first random effect
 summary(gp_model)
+# Prediction
+pred <- predict(gp_model, group_data_pred=cbind(group,group_crossed), 
+                group_rand_coef_data_pred=x, X_pred=X)
+
 # Obtain predicted (="estimated") random effects for the training data
 all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
 # The function 'predict_training_data_random_effects' returns predicted random effects for all data points.
@@ -178,6 +182,14 @@ plot(b, pred_random_effects, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 points(b_random_slope, pred_random_slopes, col=2, pch=2, lwd=1.5)
 points(b_crossed, pred_random_effects_crossed, col=4, pch=4, lwd=1.5)
+
+# Random slope model in which a intercept random effect is dropped / not included
+gp_model <- fitGPModel(group_data = cbind(group,group_crossed), group_rand_coef_data = x,
+                       ind_effect_group_rand_coef = 1, drop_intercept_group_rand_effect = c(TRUE,FALSE),
+                       likelihood = likelihood, y = y_crossed_random_slope, X = X)
+# 'drop_intercept_group_rand_effect = c(TRUE,FALSE)' indicates that the first categorical variable 
+#   in group_data has no intercept random effect
+summary(gp_model)
 
 # --------------------Two nested random effects----------------
 group_data <- cbind(group, group_nested)

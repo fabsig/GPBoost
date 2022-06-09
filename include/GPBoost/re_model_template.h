@@ -193,6 +193,7 @@ namespace GPBoost {
 		* \param re_group_rand_coef_data Covariate data for grouped random coefficients
 		* \param ind_effect_group_rand_coef Indices that relate every random coefficients to a "base" intercept grouped random effect. Counting start at 1.
 		* \param num_re_group_rand_coef Number of grouped random coefficient
+		* \param drop_intercept_group_rand_effect Indicates whether intercept random effects are dropped (only for random coefficients). If drop_intercept_group_rand_effect[k] > 0, the intercept random effect number k is dropped. Only random effects with random slopes can be dropped.
 		* \param num_gp Number of (intercept) Gaussian processes
 		* \param gp_coords_data Coordinates (features) for Gaussian process
 		* \param dim_gp_coords Dimension of the coordinates (=number of features) for Gaussian process
@@ -215,6 +216,7 @@ namespace GPBoost {
 			const double* re_group_rand_coef_data,
 			const data_size_t* ind_effect_group_rand_coef,
 			data_size_t num_re_group_rand_coef,
+			const int* drop_intercept_group_rand_effect,
 			data_size_t num_gp,
 			const double* gp_coords_data,
 			int dim_gp_coords,
@@ -251,6 +253,11 @@ namespace GPBoost {
 					Log::REFatal("The Veccia approximation can currently not be used when there are grouped random effects.");
 				}
 				num_re_group_ = num_re_group;
+				num_group_variables_ = num_re_group_;
+				drop_intercept_group_rand_effect_ = std::vector<bool>(num_re_group_);
+				for (int j = 0; j < num_re_group_; ++j) {
+					drop_intercept_group_rand_effect_[j] = false;
+				}
 				CHECK(re_group_data != nullptr);
 				if (num_re_group_rand_coef > 0) {
 					num_re_group_rand_coef_ = num_re_group_rand_coef;
@@ -260,13 +267,25 @@ namespace GPBoost {
 						CHECK(0 < ind_effect_group_rand_coef[j] && ind_effect_group_rand_coef[j] <= num_re_group_);
 					}
 					ind_effect_group_rand_coef_ = std::vector<int>(ind_effect_group_rand_coef, ind_effect_group_rand_coef + num_re_group_rand_coef_);
+					if (drop_intercept_group_rand_effect != nullptr) {
+						drop_intercept_group_rand_effect_ = std::vector<bool>(num_re_group_);
+						for (int j = 0; j < num_re_group_; ++j) {
+							drop_intercept_group_rand_effect_[j] = drop_intercept_group_rand_effect[j] > 0;
+						}
+						for (int j = 0; j < num_re_group_; ++j) { // check that all dropped intercept random effects have at least on random slope
+							if (drop_intercept_group_rand_effect_[j] && 
+								std::find(ind_effect_group_rand_coef_.begin(), ind_effect_group_rand_coef_.end(), j) != ind_effect_group_rand_coef_.end()) {
+								Log::REFatal("Cannot drop intercept random effect number %d as this random effect has no corresponding random coefficients", j);
+							}
+						}
+					}
 				}
 				num_re_group_total_ = num_re_group_ + num_re_group_rand_coef_;
 				num_comps_total_ += num_re_group_total_;
-				// Convert characters in 'const char* re_group_data' to matrix (num_re_group_ x num_data_) with strings of group labels
-				re_group_levels = std::vector<std::vector<re_group_t>>(num_re_group_, std::vector<re_group_t>(num_data_));
-				if (num_re_group_ > 0) {
-					ConvertCharToStringGroupLevels(num_data_, num_re_group_, re_group_data, re_group_levels);
+				// Convert characters in 'const char* re_group_data' to matrix (num_group_variables_ x num_data_) with strings of group labels
+				re_group_levels = std::vector<std::vector<re_group_t>>(num_group_variables_, std::vector<re_group_t>(num_data_));
+				if (num_group_variables_ > 0) {
+					ConvertCharToStringGroupLevels(num_data_, num_group_variables_, re_group_data, re_group_levels);
 				}
 			}
 			//Do some checks for GP components and set meta data (number of components etc.)
@@ -558,9 +577,6 @@ namespace GPBoost {
 			if (optimizer_coef != "gradient_descent") {
 				use_nesterov_acc_coef = false;//Nesterov acceleration is only used for gradient descent and not for other methods
 			}
-			//if (optimizer_cov == "nelder_mead" || optimizer_cov == "bfgs") {//DELETE
-			//	optimizer_coef = optimizer_cov;
-			//}
 			if (OPTIM_EXTERNAL_.find(optimizer_cov) != OPTIM_EXTERNAL_.end()) {
 				optimizer_coef = optimizer_cov;
 			}
@@ -733,7 +749,6 @@ namespace GPBoost {
 				Log::REDebug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
 			}
 			bool na_or_inf_occurred = false;
-			//if (optimizer_cov == "nelder_mead" || optimizer_cov == "bfgs") {//DELETE
 			if (OPTIM_EXTERNAL_.find(optimizer_cov) != OPTIM_EXTERNAL_.end()) {
 				OptimExternal(cov_pars,
 					beta,
@@ -1491,9 +1506,9 @@ namespace GPBoost {
 				re_group_levels_pred_.clear();
 			}
 			else {
-				//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_re_group_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
-				re_group_levels_pred_ = std::vector<std::vector<re_group_t>>(num_re_group_, std::vector<re_group_t>(num_data_pred));
-				ConvertCharToStringGroupLevels(num_data_pred, num_re_group_, re_group_data_pred, re_group_levels_pred_);
+				//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_group_variables_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
+				re_group_levels_pred_ = std::vector<std::vector<re_group_t>>(num_group_variables_, std::vector<re_group_t>(num_data_pred));
+				ConvertCharToStringGroupLevels(num_data_pred, num_group_variables_, re_group_data_pred, re_group_levels_pred_);
 			}
 			if (re_group_rand_coef_data_pred == nullptr) {
 				re_group_rand_coef_data_pred_.clear();
@@ -1602,29 +1617,30 @@ namespace GPBoost {
 			}// end use_saved_data
 			else {
 				if (re_group_data_pred != nullptr) {
-					//For grouped random effects: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_re_group_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
-					re_group_levels_pred = std::vector<std::vector<re_group_t>>(num_re_group_, std::vector<re_group_t>(num_data_pred));
-					ConvertCharToStringGroupLevels(num_data_pred, num_re_group_, re_group_data_pred, re_group_levels_pred);
+					//For grouped random effects: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_group_variables_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
+					re_group_levels_pred = std::vector<std::vector<re_group_t>>(num_group_variables_, std::vector<re_group_t>(num_data_pred));
+					ConvertCharToStringGroupLevels(num_data_pred, num_group_variables_, re_group_data_pred, re_group_levels_pred);
 				}
 			}
 			if (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
 				re_group_levels_pred_orig = re_group_levels_pred;
 			}
 			//Some checks including whether required data is present
-			if ((int)re_group_levels_pred.size() == 0 && num_re_group_ > 0) {
-				Log::REFatal("Missing data for grouped random effects for making predictions");
+			if ((int)re_group_levels_pred.size() == 0 && num_group_variables_ > 0) {
+				Log::REFatal("Missing grouping data ('group_data_pred') for grouped random effects for making predictions");
 			}
 			if (re_group_rand_coef_data_pred == nullptr && num_re_group_rand_coef_ > 0) {
-				Log::REFatal("Missing covariate data for random coefficients for grouped random effects for making predictions");
+				Log::REFatal("Missing covariate data ('re_group_rand_coef_data_pred') for random coefficients "
+					"for grouped random effects for making predictions");
 			}
 			if (gp_coords_data_pred == nullptr && num_gp_ > 0) {
-				Log::REFatal("Missing data for Gaussian process for making predictions");
+				Log::REFatal("Missing coordinates data ('gp_coords_pred') for Gaussian process for making predictions");
 			}
 			if (gp_rand_coef_data_pred == nullptr && num_gp_rand_coef_ > 0) {
-				Log::REFatal("Missing covariate data for random coefficients for Gaussian process for making predictions");
+				Log::REFatal("Missing covariate data ('gp_rand_coef_data_pred') for random coefficients for Gaussian process for making predictions");
 			}
 			if (cluster_ids_data_pred == nullptr && num_clusters_ > 1) {
-				Log::REFatal("Missing cluster_id data for making predictions");
+				Log::REFatal("Missing cluster_id data ('cluster_ids_pred') for making predictions");
 			}
 			CHECK(num_data_pred > 0);
 			if (!gauss_likelihood_ && predict_response && predict_cov_mat) {
@@ -1635,9 +1651,9 @@ namespace GPBoost {
 				Log::REFatal("Calculation of both the predictive covariance matrix and variances is not supported. "
 					"Choose one of these option (predict_cov_mat or predict_var)");
 			}
-			if (vecchia_approx_ && gauss_likelihood_ && predict_var) {
-				Log::REDebug("Calculation of only predictive variances is currently not optimized for the Vecchia approximation. "
-					"If you need only variances and this takes too much time or memory, contact the developer or open a GitHub issue.");
+			if (vecchia_approx_ && gauss_likelihood_ && predict_var && num_data_pred > 10000) {
+				Log::REWarning("Calculation of (only) predictive variances is currently not optimized for the Vecchia approximation, "
+					"and this might takes a lot of time and/or memory.");
 			}
 			CHECK(cov_pars_pred != nullptr);
 			if (has_covariates_) {
@@ -1653,9 +1669,7 @@ namespace GPBoost {
 				double num_mem_d = ((double)num_data_pred) * ((double)num_data_pred);
 				int mem_size = (int)(num_mem_d * 8. / 1000000.);
 				Log::REWarning("The covariance matrix can be very large for large sample sizes which might lead to memory limitations. "
-					"In your case (n = %d), the covariance needs at least approximately %d mb of memory. "
-					"If you only need variances or covariances for linear combinations, "
-					"contact the developer of this package or open a GitHub issue and ask to implement this feature.", num_data_pred, mem_size);
+					"In your case (n = %d), the covariance needs at least approximately %d mb of memory. ", num_data_pred, mem_size);
 			}
 			if (vecchia_approx_) {
 				if (vecchia_pred_type != nullptr) {
@@ -1922,8 +1936,8 @@ namespace GPBoost {
 						if (mem_size > 4000) {
 							Log::REDebug("The current implementation of the Vecchia approximation needs a lot of memory if the number of neighbors is large. "
 								"In your case (nb. of neighbors = %d, nb. of observations = %d, nb. of predictions = %d), "
-								"this needs at least approximately %d mb of memory. If this is a problem for you, "
-								"contact the developer of this package or open a GitHub issue and ask to change this.", num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
+								"this needs at least approximately %d mb of memory.", 
+								num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
 						}
 						//TODO: implement a more efficient version when only predictive variances are required and not full covariance matrices
 						bool predict_var_or_cov_mat = predict_var || predict_cov_mat;
@@ -2138,10 +2152,15 @@ namespace GPBoost {
 				}//end gouped random effects
 				//Random coefficient grouped random effects
 				for (int j = 0; j < num_re_group_rand_coef_; ++j) {
-					sp_mat_t* Z_j = re_comps_[cluster_i][cn]->GetZ();
-					sp_mat_t* Z_base_j = re_comps_[cluster_i][ind_effect_group_rand_coef_[j] - 1]->GetZ();
 					double sigma = re_comps_[cluster_i][cn]->cov_pars_[0];
-					vec_t mean_pred_id = sigma * (*Z_base_j) * (*Z_j).transpose() * (*y_aux);
+					sp_mat_t* Z_j = re_comps_[cluster_i][cn]->GetZ();
+					sp_mat_t Z_base_j = *Z_j;
+					for (int k = 0; k < Z_base_j.outerSize(); ++k) {
+						for (sp_mat_t::InnerIterator it(Z_base_j, k); it; ++it) {
+							it.valueRef() = 1.;
+						}
+					}
+					vec_t mean_pred_id = sigma * Z_base_j * (*Z_j).transpose() * (*y_aux);
 #pragma omp parallel for schedule(static)// Write on output
 					for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
 						out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_ * cn] = mean_pred_id[i];
@@ -2370,10 +2389,14 @@ namespace GPBoost {
 		// GROUPED RANDOM EFFECTS
 		/*! \brief Number of grouped (intercept) random effects components */
 		data_size_t num_re_group_ = 0;
+		/*! \brief Number of categorical grouping variables that define grouped random effects (can be different from num_re_group_ in case intercept effects are dropped when having random coefficients)  */
+		data_size_t num_group_variables_ = 0;
 		/*! \brief Number of grouped random coefficients components */
 		data_size_t num_re_group_rand_coef_ = 0;
 		/*! \brief Indices that relate every random coefficients to a "base" intercept grouped random effect component. Counting starts at 1 (and ends at the number of base intercept random effects). Length of vector = num_re_group_rand_coef_. */
 		std::vector<int> ind_effect_group_rand_coef_;
+		/*! \brief Indicates whether intercept random effects are dropped (only for random coefficients). If drop_intercept_group_rand_effect_[k] is true, the intercept random effect number k is dropped. Only random effects with random slopes can be dropped. Length of vector = num_re_group_. */
+		std::vector<bool> drop_intercept_group_rand_effect_;
 		/*! \brief Total number of grouped random effects components (random intercepts plus random coefficients (slopes)) */
 		data_size_t num_re_group_total_ = 0;
 
@@ -3385,7 +3408,7 @@ namespace GPBoost {
 		void DetermineSpecialCasesModelsEstimationPrediction() {
 			chol_fact_pattern_analyzed_ = false;
 			// Decide whether to use the Woodbury identity (i.e. do matrix inversion on the b scale and not the Zb scale) for grouped random effects models only
-			if (num_re_group_ > 0 && num_gp_total_ == 0) {
+			if (num_re_group_total_ > 0 && num_gp_total_ == 0) {
 				only_grouped_REs_use_woodbury_identity_ = true;//Faster to use Woodbury identity since the dimension of the random effects is typically much smaller than the number of data points
 				//Note: the use of the Woodburry identity is currently only implemented for grouped random effects (which is also the only use of it). 
 				//		If this should be applied to GPs in the future, adaptions need to be made e.g. in the calculations of the gradient (see y_tilde2_)
@@ -3572,6 +3595,17 @@ namespace GPBoost {
 							rand_coef_data,
 							calculateZZt)));
 					}
+					// drop some intercept random effects (if specified)
+					int num_droped = 0;
+					for (int j = 0; j < num_re_group_; ++j) {
+						if (drop_intercept_group_rand_effect_[j]) {
+							re_comps_cluster_i.erase(re_comps_cluster_i.begin() + j);
+							num_droped += 1;
+						}
+					}
+					num_re_group_ -= num_droped;
+					num_re_group_total_ -= num_droped;
+					num_comps_total_ -= num_droped;
 				}
 			}
 			//GPs
@@ -5159,25 +5193,26 @@ namespace GPBoost {
 				Ztilde = sp_mat_t(num_data_per_cluster_pred[cluster_i], cum_num_rand_eff_[cluster_i][num_re_group_total_]);
 				bool has_ztilde = false;
 				std::vector<Triplet_t> triplets(num_data_per_cluster_pred[cluster_i] * num_re_group_total_);
-				for (int j = 0; j < num_re_group_; ++j) {
-					std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][cn]);
-					std::vector<re_group_t> group_data;
-					for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
-						group_data.push_back(re_group_levels_pred[j][id]);
+				for (int j = 0; j < num_group_variables_; ++j) {
+					if (!drop_intercept_group_rand_effect_[j]) {
+						std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][cn]);
+						std::vector<re_group_t> group_data;
+						for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
+							group_data.push_back(re_group_levels_pred[j][id]);
+						}
+						re_comp->CalcInsertZtilde(group_data, nullptr, cum_num_rand_eff_[cluster_i][cn], cn, triplets, has_ztilde);
+						if (predict_cov_mat) {
+							re_comp->AddPredCovMatrices(group_data, cross_cov, cov_mat_pred_id,
+								false, true, dont_add_but_overwrite, false, nullptr);
+							dont_add_but_overwrite = false;
+						}
+						if (predict_var) {
+							re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
+						}
+						cn += 1;
 					}
-					re_comp->CalcInsertZtilde(group_data, nullptr, cum_num_rand_eff_[cluster_i][cn], cn, triplets, has_ztilde);
-					if (predict_cov_mat) {
-						re_comp->AddPredCovMatrices(group_data, cross_cov, cov_mat_pred_id,
-							false, true, dont_add_but_overwrite, false, nullptr);
-						dont_add_but_overwrite = false;
-					}
-					if (predict_var) {
-						re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
-					}
-					cn += 1;
 				}
-				if (num_re_group_rand_coef_ > 0) {
-					//Random coefficient grouped random effects
+				if (num_re_group_rand_coef_ > 0) {//Random coefficient grouped random effects
 					for (int j = 0; j < num_re_group_rand_coef_; ++j) {
 						std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][cn]);
 						std::vector<re_group_t> group_data;
@@ -5204,41 +5239,41 @@ namespace GPBoost {
 				CalcSigmaIGroupedREsOnly(Sigma, cluster_i, false);
 			}//end only_grouped_REs_use_woodbury_identity_
 			else {
-				//Grouped random effects
-				if (num_re_group_ > 0) {
-					for (int j = 0; j < num_re_group_; ++j) {
-						std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][cn]);
-						std::vector<re_group_t> group_data;
-						for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
-							group_data.push_back(re_group_levels_pred[j][id]);
-						}
-						re_comp->AddPredCovMatrices(group_data, cross_cov, cov_mat_pred_id,
-							true, predict_cov_mat, dont_add_but_overwrite, false, nullptr);
-						dont_add_but_overwrite = false;
-						if (predict_var) {
-							re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
-						}
-						cn += 1;
-					}
-					if (num_re_group_rand_coef_ > 0) {
-						//Random coefficient grouped random effects
-						for (int j = 0; j < num_re_group_rand_coef_; ++j) {
+				if (num_re_group_ > 0) {//Grouped random effects
+					for (int j = 0; j < num_group_variables_; ++j) {
+						if (!drop_intercept_group_rand_effect_[j]) {
 							std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][cn]);
 							std::vector<re_group_t> group_data;
-							std::vector<double> rand_coef_data;
 							for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
-								rand_coef_data.push_back(re_group_rand_coef_data_pred[j * num_data_pred + id]);
-								group_data.push_back(re_group_levels_pred[ind_effect_group_rand_coef_[j] - 1][id]);//subtract 1 since counting starts at one for this index
+								group_data.push_back(re_group_levels_pred[j][id]);
 							}
 							re_comp->AddPredCovMatrices(group_data, cross_cov, cov_mat_pred_id,
-								true, predict_cov_mat, false, false, rand_coef_data.data());
+								true, predict_cov_mat, dont_add_but_overwrite, false, nullptr);
+							dont_add_but_overwrite = false;
 							if (predict_var) {
-								re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
+								re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
 							}
 							cn += 1;
 						}
 					}
 				}//end grouped random effects
+				if (num_re_group_rand_coef_ > 0) { //Random coefficient grouped random effects
+					for (int j = 0; j < num_re_group_rand_coef_; ++j) {
+						std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][cn]);
+						std::vector<re_group_t> group_data;
+						std::vector<double> rand_coef_data;
+						for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
+							rand_coef_data.push_back(re_group_rand_coef_data_pred[j * num_data_pred + id]);
+							group_data.push_back(re_group_levels_pred[ind_effect_group_rand_coef_[j] - 1][id]);//subtract 1 since counting starts at one for this index
+						}
+						re_comp->AddPredCovMatrices(group_data, cross_cov, cov_mat_pred_id,
+							true, predict_cov_mat, false, false, rand_coef_data.data());
+						if (predict_var) {
+							re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
+						}
+						cn += 1;
+					}
+				}//end random coefficient grouped random effects
 				//Gaussian process
 				if (num_gp_ > 0) {
 					std::shared_ptr<RECompGP<T_mat>> re_comp_base = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][cn]);

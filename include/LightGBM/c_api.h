@@ -1327,6 +1327,7 @@ GPBOOST_C_EXPORT int LGBM_NetworkInitWithFunctions(int num_machines,
 * \param re_group_rand_coef_data Covariate data for grouped random coefficients
 * \param ind_effect_group_rand_coef Indices that relate every random coefficients to a "base" intercept grouped random effect. Counting starts at 1.
 * \param num_re_group_rand_coef Number of grouped random coefficients
+* \param drop_intercept_group_rand_effect Indicates whether intercept random effects are dropped (only for random coefficients). If drop_intercept_group_rand_effect[k] > 0, the intercept random effect number k is dropped. Only random effects with random slopes can be dropped.
 * \param num_gp Number of Gaussian processes (intercept only, random coefficients not counting)
 * \param gp_coords_data Coordinates (features) for Gaussian process
 * \param dim_gp_coords Dimension of the coordinates (=number of features) for Gaussian process
@@ -1351,6 +1352,7 @@ GPBOOST_C_EXPORT int GPB_CreateREModel(int32_t num_data,
     const double* re_group_rand_coef_data,
     const int32_t* ind_effect_group_rand_coef,
     int32_t num_re_group_rand_coef,
+    const int* drop_intercept_group_rand_effect,
     int32_t num_gp,
     const double* gp_coords_data,
     const int dim_gp_coords,

@@ -44,7 +44,7 @@ namespace LightGBM {
 			}
 		}
 
-		std::vector<double> Eval(const double* score, const ObjectiveFunction* objective) const override {
+		std::vector<double> Eval(const double*, const ObjectiveFunction* objective) const override {
 			double loss;
 			if (metric_for_train_data_) {
 				REModel* re_model = objective->GetGPModel();

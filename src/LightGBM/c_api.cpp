@@ -170,12 +170,10 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 					Log::Fatal("Bagging cannot be applied for the GPBoost algorithm. Set 'bagging_freq = 0'");
 				}
 				if (train_data_->metadata().weights() != nullptr) {
-					Log::Fatal("Weighted data is currently not supported for the GPBoost algorithm. "
-						"If this is desired, contact the developer or open a GitHub issue.");
+					Log::Fatal("Weighted data is currently not supported for the GPBoost algorithm.");
 				}
 				if (config_.sigmoid != 1.0) {
-					Log::Fatal("The GPBoost algorithm currently does not support a sigmoid != 1.0. "
-						"If this is desired, contact the developer or open a GitHub issue.");
+					Log::Fatal("The GPBoost algorithm currently does not support a sigmoid != 1.0.");
 				}
 				// Make sure that objective for boosting and likelihood for re_model match, otherwise change them accordingly
 				if (config_.objective == std::string("binary")) {
@@ -205,8 +203,7 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 					}
 				}
 				else {
-					Log::Fatal("The GPBoost algorithm can currently not be used for objective = %s. "
-						"If this is desired, contact the developer or open a GitHub issue.", config_.objective.c_str());
+					Log::Fatal("The GPBoost algorithm can currently not be used for objective = %s.", config_.objective.c_str());
 				}
 				// Check consistency of likelihood and metrics
 				for (auto metric_type : config_.metric) {
@@ -2689,6 +2686,7 @@ int GPB_CreateREModel(int32_t num_data,
 	const double* re_group_rand_coef_data,
 	const int32_t* ind_effect_group_rand_coef,
 	int32_t num_re_group_rand_coef,
+	const int* drop_intercept_group_rand_effect,
 	int32_t num_gp,
 	const double* gp_coords_data,
 	const int dim_gp_coords,
@@ -2713,6 +2711,7 @@ int GPB_CreateREModel(int32_t num_data,
 		re_group_rand_coef_data,
 		ind_effect_group_rand_coef,
 		num_re_group_rand_coef,
+		drop_intercept_group_rand_effect,
 		num_gp,
 		gp_coords_data,
 		dim_gp_coords,

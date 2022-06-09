@@ -201,7 +201,8 @@ test_that("Binary classification with Gaussian process model ", {
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
 })
 
-test_that("Binary classification with Gaussian process model with multiple observations at the same location", {
+test_that("Binary classification with Gaussian process model with 
+          multiple observations at the same location", {
   eps_multiple <- as.vector(L_multiple %*% b_multiple)
   probs <- pnorm(eps_multiple)
   y <- as.numeric(sim_rand_unif(n=n, init_c=0.9341) < probs)
@@ -423,6 +424,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Evaluate negative log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.8,1.2),y=y)
     expect_lt(abs(nll-60.6422359),TOLERANCE)
+    
     # Multiple cluster_ids
     gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                            y = y, cluster_ids = cluster_ids, likelihood = "bernoulli_probit",
@@ -442,6 +444,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                       1.7120000, 0.0000000, 0.0000000, 0.0000000, 1.8080000)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
+    
     # Only one RE and random coefficient
     probs <- pnorm(Z1 %*% b_gr_1 + Z3 %*% b_gr_3)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.957341) < probs)
@@ -452,6 +455,53 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_values <- c(1.00742383, 0.02612587)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE2)
     expect_equal(gp_model$get_num_optim_iter(), 100)
+    
+    # Random coefficients with intercept random effect dropped
+    probs <- pnorm(Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.8341) < probs)
+    gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, 
+                           ind_effect_group_rand_coef = 1, drop_intercept_group_rand_effect = c(TRUE,FALSE),
+                           y = y, likelihood = "bernoulli_probit",
+                           params = list(optimizer_cov = "gradient_descent"))
+    expected_values <- c(1.0044712, 0.6549656)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE2)
+    expect_equal(gp_model$get_num_optim_iter(), 18)
+    # Predict training data random effects
+    all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+    first_occurences_1 <- match(unique(group), group)
+    first_occurences_2 <- match(unique(group2), group2)
+    pred_random_slopes <- all_training_data_random_effects[first_occurences_1,2]
+    pred_random_effects_crossed <- all_training_data_random_effects[first_occurences_2,1] 
+    group_unique <- unique(group)
+    group_data_pred = cbind(group_unique,rep(-1,length(group_unique)))
+    # Check whether random slopes are correct
+    x_pr = rep(1,length(group_unique))
+    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    expect_lt(sum(abs(pred_random_slopes - preds$mu)),1E-6)
+    # Check whether crossed random effects are correct
+    group_unique <- unique(group2)
+    group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
+    x_pr = rep(0,length(group_unique))
+    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    expect_lt(sum(abs(pred_random_effects_crossed - preds$mu)),1E-6)
+    # Prediction
+    gp_model <- GPModel(likelihood = "bernoulli_probit", group_data = cbind(group,group2),
+                        group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                        drop_intercept_group_rand_effect = c(TRUE,FALSE))
+    group_data_pred = cbind(c(1,1,77),c(2,1,98))
+    group_rand_coef_data_pred = c(0,0.1,0.3)
+    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
+                             cov_pars = c(0.8,1.2), predict_cov_mat = TRUE)
+    expected_mu <- c(0.8493404, -0.2338359, 0.0000000)
+    expected_cov <- c(0.206019606, -0.001276366, 0.0000000, -0.001276366,
+                      0.155209578, 0.0000000, 0.0000000, 0.0000000, 0.908000000)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
+    # Predict variances
+    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
+                             cov_pars = c(0.8,1.2), predict_var = TRUE)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE2)
   })
   
   

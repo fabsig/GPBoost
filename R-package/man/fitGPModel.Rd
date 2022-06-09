@@ -5,7 +5,8 @@
 \title{Fits a \code{GPModel}}
 \usage{
 fitGPModel(group_data = NULL, group_rand_coef_data = NULL,
-  ind_effect_group_rand_coef = NULL, gp_coords = NULL,
+  ind_effect_group_rand_coef = NULL,
+  drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
   gp_rand_coef_data = NULL, cov_function = "exponential",
   cov_fct_shape = 0, cov_fct_taper_range = 1, vecchia_approx = FALSE,
   num_neighbors = 30L, vecchia_ordering = "none",
@@ -31,6 +32,11 @@ For instance, c(1,1,2) means that the first two covariates (=first two columns) 
 have random coefficients corresponding to the first categorical grouping variable (=first column) in 'group_data',
 and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
 corresponding to the second grouping variable (=second column) in 'group_data'}
+
+\item{drop_intercept_group_rand_effect}{A \code{vector} of type \code{logical} (boolean). 
+Indicates whether intercept random effects are dropped (only for random coefficients). 
+If drop_intercept_group_rand_effect[k] is TRUE, the intercept random effect number k is dropped / not included. 
+Only random effects with random slopes can be dropped.}
 
 \item{gp_coords}{A \code{matrix} with numeric coordinates (= inputs / features) for defining Gaussian processes}
 

@@ -175,9 +175,12 @@ print(np.sum(np.abs(pred_resp['var'] - pred_resp_loaded['var'])))
 group_data = np.column_stack((group, group_crossed))
 gp_model = gpb.GPModel(group_data=group_data, group_rand_coef_data=x,
                        ind_effect_group_rand_coef=[1], likelihood=likelihood)
-# 'ind_effect_group_rand_coef' indicates that the random slope is for the first random effect
+# 'ind_effect_group_rand_coef=[1]' indicates that the random slope is for the first random effect
 gp_model.fit(y=y_crossed_random_slope, X=X)
 gp_model.summary()
+# Prediction
+pred = gp_model.predict(group_data_pred=group_data, group_rand_coef_data_pred=x, X_pred=X)
+
 # Obtain predicted (="estimated") random effects for the training data
 all_training_data_random_effects = gp_model.predict_training_data_random_effects()
 first_occurences_1 = [np.where(group==i)[0][0] for i in np.unique(group)]
@@ -192,6 +195,15 @@ plt.scatter(b_crossed, pred_random_effects_crossed, label="Crossed random effect
 plt.legend()
 plt.title("Comparison of true and predicted random effects")
 plt.show(block=False)
+
+# Random slope model in which a intercept random effect is dropped / not included
+gp_model = gpb.GPModel(group_data=group_data, group_rand_coef_data=x,
+                       ind_effect_group_rand_coef=[1], 
+                       drop_intercept_group_rand_effect=[True,False], likelihood=likelihood)
+# 'drop_intercept_group_rand_effect=[True,False]' indicates that the first categorical variable 
+#   in group_data has no intercept random effect
+gp_model.fit(y=y_crossed_random_slope, X=X)
+gp_model.summary()
 
 # --------------------Two nested random effects----------------
 group_data = np.column_stack((group, group_nested))

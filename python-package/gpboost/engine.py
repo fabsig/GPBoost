@@ -465,9 +465,11 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             cov_fct_shape = gp_model.cov_fct_shape
             cov_fct_taper_range = gp_model.cov_fct_taper_range
             ind_effect_group_rand_coef = gp_model.ind_effect_group_rand_coef
+            drop_intercept_group_rand_effect = gp_model.drop_intercept_group_rand_effect
             gp_model_train = GPModel(group_data=group_data,
                                      group_rand_coef_data=group_rand_coef_data,
                                      ind_effect_group_rand_coef=ind_effect_group_rand_coef,
+                                     drop_intercept_group_rand_effect=drop_intercept_group_rand_effect,
                                      gp_coords=gp_coords,
                                      gp_rand_coef_data=gp_rand_coef_data,
                                      cov_function=cov_function,

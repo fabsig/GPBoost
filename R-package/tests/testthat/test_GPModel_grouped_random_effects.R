@@ -404,6 +404,59 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(nll-2335.803),1E-2)
   })
   
+  test_that("Random coefficients with intercept random effect dropped ", {
+    
+    ## A random effect and a random slope without a corresponding intercept effect
+    y <- Z2%*%b2 + Z3%*%b3 + xi
+    gp_model <- fitGPModel(group_data = cbind(group,group2),
+                           group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                           drop_intercept_group_rand_effect = c(TRUE,FALSE), y = y,
+                           params = list(optimizer_cov = "gradient_descent"))
+    expected_values <- c(0.5017205, 1.0818474, 1.1157430)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOL_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 7)
+    
+    # Predict training data random effects
+    all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+    first_occurences_1 <- match(unique(group), group)
+    first_occurences_2 <- match(unique(group2), group2)
+    pred_random_slopes <- all_training_data_random_effects[first_occurences_1,2]
+    pred_random_effects_crossed <- all_training_data_random_effects[first_occurences_2,1] 
+    group_unique <- unique(group)
+    group_data_pred = cbind(group_unique,rep(-1,length(group_unique)))
+    # Check whether random slopes are correct
+    x_pr = rep(1,length(group_unique))
+    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    expect_lt(sum(abs(pred_random_slopes - preds$mu)),TOL_STRICT)
+    # Check whether crossed random effects are correct
+    group_unique <- unique(group2)
+    group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
+    x_pr = rep(0,length(group_unique))
+    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    expect_lt(sum(abs(pred_random_effects_crossed - preds$mu)),TOL_STRICT)
+    
+    # Prediction
+    gp_model <- GPModel(group_data = cbind(group,group2),
+                        group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                        drop_intercept_group_rand_effect = c(TRUE,FALSE))
+    group_data_pred = cbind(c(1,1,m+1),c(2,1,length(group2)+1))
+    group_rand_coef_data_pred = c(0,10,0.3)
+    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred,
+                             group_rand_coef_data_pred=group_rand_coef_data_pred,
+                             cov_pars = c(0.1,2,1.5), predict_cov_mat = TRUE)
+    expected_mu <- c(0.8426751, -0.5964363, 0.000000000)
+    expected_cov <- c(0.10558205, -0.01269261, 0.00000000, -0.01269261, 2.40180871,
+                      0.00000000, 0.00000000, 0.00000000, 2.23500000)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOL_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE)
+    # Predict variances
+    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred,
+                             group_rand_coef_data_pred=group_rand_coef_data_pred,
+                             cov_pars = c(0.1,2,1.5), predict_var = TRUE)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOL_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE)
+    
+  })
   
   test_that("not constant cluster_id's for grouped random effects ", {
     

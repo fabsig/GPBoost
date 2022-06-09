@@ -39,6 +39,7 @@ namespace GPBoost {
 		* \param re_group_rand_coef_data Covariate data for grouped random coefficients
 		* \param ind_effect_group_rand_coef Indices that relate every random coefficients to a "base" intercept grouped random effect. Counting start at 1.
 		* \param num_re_group_rand_coef Number of grouped random coefficient
+		* \param drop_intercept_group_rand_effect Indicates whether intercept random effects are dropped (only for random coefficients). If drop_intercept_group_rand_effect[k] > 0, the intercept random effect number k is dropped. Only random effects with random slopes can be dropped.
 		* \param num_gp Number of (intercept) Gaussian processes
 		* \param gp_coords_data Coordinates (features) for Gaussian process
 		* \param dim_gp_coords Dimension of the coordinates (=number of features) for Gaussian process
@@ -60,6 +61,7 @@ namespace GPBoost {
 			const double* re_group_rand_coef_data,
 			const data_size_t* ind_effect_group_rand_coef,
 			data_size_t num_re_group_rand_coef,
+			const int* drop_intercept_group_rand_effect,
 			data_size_t num_gp,
 			const double* gp_coords_data,
 			int dim_gp_coords,

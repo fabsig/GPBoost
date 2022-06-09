@@ -24,6 +24,11 @@ have random coefficients corresponding to the first categorical grouping variabl
 and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
 corresponding to the second grouping variable (=second column) in 'group_data'}
 
+\item{drop_intercept_group_rand_effect}{A \code{vector} of type \code{logical} (boolean). 
+Indicates whether intercept random effects are dropped (only for random coefficients). 
+If drop_intercept_group_rand_effect[k] is TRUE, the intercept random effect number k is dropped / not included. 
+Only random effects with random slopes can be dropped.}
+
 \item{gp_coords}{A \code{matrix} with numeric coordinates (= inputs / features) for defining Gaussian processes}
 
 \item{gp_rand_coef_data}{A \code{vector} or \code{matrix} with numeric covariate data for

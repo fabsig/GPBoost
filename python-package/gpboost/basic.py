@@ -3930,6 +3930,7 @@ class GPModel(object):
                  group_data=None,
                  group_rand_coef_data=None,
                  ind_effect_group_rand_coef=None,
+                 drop_intercept_group_rand_effect=None,
                  gp_coords=None,
                  gp_rand_coef_data=None,
                  cov_function="exponential",
@@ -3964,6 +3965,10 @@ class GPModel(object):
                 have random coefficients corresponding to the first categorical grouping variable (=first column) in
                 'group_data', and the third covariate (=third column) in 'group_rand_coef_data' has a random coefficient
                 corresponding to the second grouping variable (=second column) in 'group_data'
+            drop_intercept_group_rand_effect : list, numpy 1-D array, pandas Series / one-column DataFrame with bool data or None, optional (default=None)
+                Indicates whether intercept random effects are dropped (only for random coefficients).
+                If drop_intercept_group_rand_effect[k] is True, the intercept random effect number k is dropped / not included.
+                Only random effects with random slopes can be dropped.
             gp_coords : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Coordinates (= inputs / features) for defining Gaussian processes
             gp_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
@@ -4036,6 +4041,7 @@ class GPModel(object):
         self.group_data = None
         self.group_rand_coef_data = None
         self.ind_effect_group_rand_coef = None
+        self.drop_intercept_group_rand_effect = None
         self.gp_coords = None
         self.gp_rand_coef_data = None
         self.cov_function = "exponential"
@@ -4087,6 +4093,8 @@ class GPModel(object):
                 group_rand_coef_data = np.array(model_dict.get("group_rand_coef_data"))
             if model_dict.get("ind_effect_group_rand_coef") is not None:
                 ind_effect_group_rand_coef = np.array(model_dict.get("ind_effect_group_rand_coef"))
+            if model_dict.get("drop_intercept_group_rand_effect") is not None:
+                drop_intercept_group_rand_effect = np.array(model_dict.get("drop_intercept_group_rand_effect"))
             if model_dict.get("gp_coords") is not None:
                 gp_coords = np.array(model_dict.get("gp_coords"))
             if model_dict.get("gp_rand_coef_data") is not None:
@@ -4125,6 +4133,7 @@ class GPModel(object):
         group_data_c = ctypes.c_void_p()
         group_rand_coef_data_c = ctypes.c_void_p()
         ind_effect_group_rand_coef_c = ctypes.c_void_p()
+        drop_intercept_group_rand_effect_c = ctypes.c_void_p()
         gp_coords_c = ctypes.c_void_p()
         gp_rand_coef_data_c = ctypes.c_void_p()
         cluster_ids_c = ctypes.c_void_p()
@@ -4159,10 +4168,10 @@ class GPModel(object):
                                                                                       convert_to_type=np.float64)
                 self.group_rand_coef_data = deepcopy(group_rand_coef_data)
                 if self.group_rand_coef_data.shape[0] != self.num_data:
-                    raise ValueError("Incorrect number of data points in group_rand_coef_data")
+                    raise ValueError("Incorrect number of data points in 'group_rand_coef_data'")
                 self.num_group_rand_coef = self.group_rand_coef_data.shape[1]
                 if ind_effect_group_rand_coef is None:
-                    raise ValueError("Indices of grouped random effects (ind_effect_group_rand_coef) for "
+                    raise ValueError("Indices of grouped random effects ('ind_effect_group_rand_coef') for "
                                      "random slopes in group_rand_coef_data not provided")
                 ind_effect_group_rand_coef = _format_check_1D_data(ind_effect_group_rand_coef,
                                                                    data_name="ind_effect_group_rand_coef",
@@ -4170,8 +4179,16 @@ class GPModel(object):
                                                                    convert_to_type=np.dtype(np.int32))
                 self.ind_effect_group_rand_coef = deepcopy(ind_effect_group_rand_coef)
                 if self.ind_effect_group_rand_coef.shape[0] != self.num_group_rand_coef:
-                    raise ValueError("Number of random coefficients in group_rand_coef_data does not match number "
-                                     "in ind_effect_group_rand_coef")
+                    raise ValueError("Number of random coefficients in 'group_rand_coef_data' does not match number "
+                                     "in 'ind_effect_group_rand_coef'")
+                if drop_intercept_group_rand_effect is not None:
+                    drop_intercept_group_rand_effect = _format_check_1D_data(drop_intercept_group_rand_effect,
+                                                                             data_name="drop_intercept_group_rand_effect",
+                                                                             check_data_type=False, check_must_be_int=False,
+                                                                             convert_to_type=np.dtype(bool))
+                    if drop_intercept_group_rand_effect.shape[0] != self.num_group_re:
+                        raise ValueError("Length of 'drop_intercept_group_rand_effect' does not match number of random effects")
+                self.drop_intercept_group_rand_effect = deepcopy(drop_intercept_group_rand_effect)
                 offset = 0
                 if likelihood != "gaussian":
                     offset = -1
@@ -4180,17 +4197,26 @@ class GPModel(object):
                     if group_rand_coef_data_names is None:
                         new_name = self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_nb_" \
                                    + str(int(counter_re[self.ind_effect_group_rand_coef[ii] - 1] + 1))
-                        counter_re[self.ind_effect_group_rand_coef[ii] - 1] = counter_re[
-                                                                                  self.ind_effect_group_rand_coef[
-                                                                                      ii] - 1] + 1
+                        counter_re[self.ind_effect_group_rand_coef[ii] - 1] = counter_re[self.ind_effect_group_rand_coef[ii] - 1] + 1
                     else:
                         new_name = self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_" + \
                                    group_rand_coef_data_names[ii]
                     self.cov_par_names.append(new_name)
                     self.re_comp_names.append(new_name)
+                if self.drop_intercept_group_rand_effect is not None:
+                    if self.drop_intercept_group_rand_effect.sum() > 0:
+                        offset = int(likelihood == "gaussian")
+                        for i in np.arange(0,self.num_group_re):
+                            if self.drop_intercept_group_rand_effect[i]:
+                                del self.cov_par_names[i + offset]
+                                del self.re_comp_names[i]
                 group_rand_coef_data_c, _, _ = c_float_array(self.group_rand_coef_data.flatten(order='F'))
                 ind_effect_group_rand_coef_c = self.ind_effect_group_rand_coef.ctypes.data_as(
                     ctypes.POINTER(ctypes.c_int32))
+                if self.drop_intercept_group_rand_effect is not None:
+                    drop_intercept_group_rand_effect = self.drop_intercept_group_rand_effect.astype(np.int32)
+                    drop_intercept_group_rand_effect_c = drop_intercept_group_rand_effect.ctypes.data_as(
+                        ctypes.POINTER(ctypes.c_int32))
         # Set data for Gaussian process
         if gp_coords is not None:
             gp_coords, names_not_used = _format_check_data(data=gp_coords, get_variable_names=False,
@@ -4276,6 +4302,7 @@ class GPModel(object):
             group_rand_coef_data_c,
             ind_effect_group_rand_coef_c,
             ctypes.c_int(self.num_group_rand_coef),
+            drop_intercept_group_rand_effect_c,
             ctypes.c_int(self.num_gp),
             gp_coords_c,
             ctypes.c_int(self.dim_coords),
@@ -4313,6 +4340,8 @@ class GPModel(object):
             num_par_per_GP =2
         self.num_cov_pars = self.num_group_re + self.num_group_rand_coef + \
                             num_par_per_GP * (self.num_gp + self.num_gp_rand_coef)
+        if self.drop_intercept_group_rand_effect is not None:
+            self.num_cov_pars = self.num_cov_pars - self.drop_intercept_group_rand_effect.sum()
         if likelihood == "gaussian":
             self.num_cov_pars = self.num_cov_pars + 1
 
@@ -5258,6 +5287,8 @@ class GPModel(object):
             raise ValueError("'predict_training_data_random_effects' is currently not implemented for models that have "
                              "been loaded from a saved file")
         num_re_comps = self.num_group_re + self.num_group_rand_coef + self.num_gp + self.num_gp_rand_coef
+        if self.drop_intercept_group_rand_effect is not None:
+            num_re_comps = num_re_comps - self.drop_intercept_group_rand_effect.sum()
         re_preds = np.zeros(self.num_data * num_re_comps, dtype=np.float64)
         _safe_call(_LIB.GPB_PredictREModelTrainingDataRandomEffects(
             self.handle,
@@ -5329,6 +5360,7 @@ class GPModel(object):
         model_dict["gp_coords"] = self.gp_coords
         model_dict["gp_rand_coef_data"] = self.gp_rand_coef_data
         model_dict["ind_effect_group_rand_coef"] = self.ind_effect_group_rand_coef
+        model_dict["drop_intercept_group_rand_effect"] = self.drop_intercept_group_rand_effect
         model_dict["cluster_ids"] = self.cluster_ids
         model_dict["vecchia_approx"] = self.vecchia_approx
         model_dict["num_neighbors"] = self.num_neighbors
