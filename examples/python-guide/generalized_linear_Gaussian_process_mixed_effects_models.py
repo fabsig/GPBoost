@@ -190,7 +190,7 @@ plt.legend()
 plt.title("Comparison of true and predicted random effects")
 plt.show(block=False)
 
-# Random slope model in which a intercept random effect is dropped / not included
+# Random slope model in which an intercept random effect is dropped / not included
 gp_model = gpb.GPModel(group_data=group_data, group_rand_coef_data=x,
                        ind_effect_group_rand_coef=[1], 
                        drop_intercept_group_rand_effect=[True,False], likelihood=likelihood)

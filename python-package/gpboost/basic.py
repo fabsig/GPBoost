@@ -3968,7 +3968,7 @@ class GPModel(object):
             drop_intercept_group_rand_effect : list, numpy 1-D array, pandas Series / one-column DataFrame with bool data or None, optional (default=None)
                 Indicates whether intercept random effects are dropped (only for random coefficients).
                 If drop_intercept_group_rand_effect[k] is True, the intercept random effect number k is dropped / not included.
-                Only random effects with random slopes can be dropped.
+                Only random effects with random slopes can be dropped
             gp_coords : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Coordinates (= inputs / features) for defining Gaussian processes
             gp_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)

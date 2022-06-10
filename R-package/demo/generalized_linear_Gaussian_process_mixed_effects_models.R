@@ -175,7 +175,7 @@ plot(b, pred_random_effects, xlab="truth", ylab="predicted",
 points(b_random_slope, pred_random_slopes, col=2, pch=2, lwd=1.5)
 points(b_crossed, pred_random_effects_crossed, col=4, pch=4, lwd=1.5)
 
-# Random slope model in which a intercept random effect is dropped / not included
+# Random slope model in which an intercept random effect is dropped / not included
 gp_model <- fitGPModel(group_data = cbind(group,group_crossed), group_rand_coef_data = x,
                        ind_effect_group_rand_coef = 1, drop_intercept_group_rand_effect = c(TRUE,FALSE),
                        likelihood = likelihood, y = y_crossed_random_slope, X = X)
