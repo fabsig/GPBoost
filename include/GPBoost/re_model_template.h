@@ -994,8 +994,7 @@ namespace GPBoost {
 						CalcStdDevCoef(cov_pars, X_, std_dev_beta);
 					}
 					else {
-						Log::REWarning("Standard deviations of linear regression coefficients for non-Gaussian data can be very approximative. "
-							"The only reason for reporting them is that other software packages for generalized linear mixed effects are also doing this.");
+						Log::REWarning("Standard deviations of linear regression coefficients for non-Gaussian data can be \"very approximative\". ");
 						CalcStdDevCoefNonGaussian(num_covariates, beta, cov_pars, fixed_effects, std_dev_beta);
 					}
 					for (int i = 0; i < num_covariates; ++i) {

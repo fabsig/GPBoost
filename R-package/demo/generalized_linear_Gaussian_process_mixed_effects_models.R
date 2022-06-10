@@ -80,18 +80,19 @@ rand_eff <- rand_eff - mean(rand_eff)
 y_nested <- simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
 
 # --------------------Training----------------
-gp_model <- GPModel(group_data = group, likelihood = likelihood) # Create random effects model
-fit(gp_model, y = y, X = X) # Fit model
-# Alternatively, define and fit model directly using fitGPModel
-gp_model <- fitGPModel(group_data = group, y = y, X = X)
+gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood)
 summary(gp_model)
 # Get coefficients and variance/covariance parameters separately
 gp_model$get_coef()
 gp_model$get_cov_pars()
+# Obtaining standard deviations and p-values for fixed effects coefficients ('std_dev = TRUE')
+gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood,
+                       params = list(std_dev = TRUE))
+summary(gp_model)
 
 # Optional arguments for the 'params' argument of the 'fit' function:
-# - monitoring convergence: trace=TRUE
-# - obtain standard deviations: std_dev = TRUE
+# - monitoring convergence: 'trace = TRUE'
+# - calculate standard deviations: 'std_dev = TRUE'
 # - change optimization algorithm options (see below)
 # For available optimization options, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
@@ -100,15 +101,6 @@ gp_model$get_cov_pars()
 #                                      std_dev = TRUE,
 #                                      optimizer_cov= "gradient_descent",
 #                                      lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 100))
-
-# --------------------Approximate p-values for fixed effects coefficients----------------
-gp_model <- fitGPModel(group_data = group, likelihood = likelihood, y = y, X = X,
-                       params = list(std_dev = TRUE))
-coefs <- gp_model$get_coef()
-z_values <- coefs[1,] / coefs[2,]
-p_values <- 2 * exp(pnorm(-abs(z_values), log.p = TRUE))
-coefs_summary <- rbind(coefs,z_val=z_values,p_val=p_values)
-print(signif(coefs_summary, digits=4))
 
 # --------------------Prediction----------------
 group_test <- c(1,2,-1)

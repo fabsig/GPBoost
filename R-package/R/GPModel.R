@@ -199,6 +199,7 @@ gpb.GPModel <- R6::R6Class(
         }
         # Set feature data overwriting arguments for constructor
         group_data = model_list[["group_data"]]
+        private$nb_groups = model_list[["nb_groups"]]
         group_rand_coef_data = model_list[["group_rand_coef_data"]]
         ind_effect_group_rand_coef = model_list[["ind_effect_group_rand_coef"]]
         drop_intercept_group_rand_effect = model_list[["drop_intercept_group_rand_effect"]]
@@ -226,6 +227,7 @@ gpb.GPModel <- R6::R6Class(
           private$num_coef = model_list[["num_coef"]]
           private$X_loaded_from_file = model_list[["X"]]
         }
+        private$model_fitted = model_list[["model_fitted"]]
       }# end !is.null(modelfile) | !is.null(model_list)
       
       if(likelihood == "gaussian"){
@@ -273,6 +275,8 @@ gpb.GPModel <- R6::R6Class(
         # for (i in 1:length(group_data)) {
         #   group_data_c_str <- c(group_data_c_str,gpb.c_str(group_data[i]))
         # }
+        faux <- function(x) length(unique(x))
+        private$nb_groups <- apply(private$group_data,2,faux)
         # Set data for grouped random coefficients
         if (!is.null(group_rand_coef_data)) {
           if (is.numeric(group_rand_coef_data)) {
@@ -599,8 +603,10 @@ gpb.GPModel <- R6::R6Class(
         )
       }
       if (private$params$trace) {
-        message(paste0("GPModel: Number of iterations until convergence: ", self$get_num_optim_iter()))
+        message(paste0("GPModel: Number of iterations until convergence: ", 
+                       self$get_num_optim_iter()))
       }
+      private$model_fitted <- TRUE
       return(invisible(self))
     },
     
@@ -1225,7 +1231,8 @@ gpb.GPModel <- R6::R6Class(
             stop("predict.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("cluster_ids_pred"))
           }
           if (length(cluster_ids_pred) != num_data_pred) {
-            stop("predict.GPModel: Length of ", sQuote("cluster_ids_pred"), " does not match number of predicted data points")
+            stop("predict.GPModel: Length of ", sQuote("cluster_ids_pred"), 
+                 " does not match number of predicted data points")
           }
           cluster_ids_pred <- as.vector(cluster_ids_pred)
         } # End set cluster_ids for independent processes
@@ -1238,7 +1245,8 @@ gpb.GPModel <- R6::R6Class(
         X_pred <- NULL
         num_data_pred <- private$num_data_pred
         if (is.null(private$num_data_pred)) {
-          stop("predict.GPModel: No data has been set for making predictions. Call set_prediction_data first")
+          stop("predict.GPModel: No data has been set for making predictions. 
+               Call set_prediction_data first")
         }
       }
       if (storage.mode(predict_cov_mat) != "logical") {
@@ -1440,6 +1448,16 @@ gpb.GPModel <- R6::R6Class(
       return(num_it)
     },
     
+    get_current_neg_log_likelihood = function() {
+      negll <- 0.
+      .Call(
+        GPB_GetCurrentNegLogLikelihood_R
+        , private$handle
+        , negll
+      )
+      return(negll)
+    },
+    
     get_likelihood_name = function() {
       ll_name <- .Call(
         GPB_GetLikelihoodName_R
@@ -1482,6 +1500,7 @@ gpb.GPModel <- R6::R6Class(
       }
       # Feature data
       model_list[["group_data"]] <- self$get_group_data()
+      model_list[["nb_groups"]] <- private$nb_groups
       model_list[["group_rand_coef_data"]] <- self$get_group_rand_coef_data()
       model_list[["gp_coords"]] <- self$get_gp_coords()
       model_list[["gp_rand_coef_data"]] <- self$get_gp_rand_coef_data()
@@ -1503,12 +1522,13 @@ gpb.GPModel <- R6::R6Class(
         model_list[["num_coef"]] <- private$num_coef
         model_list[["X"]] <- self$get_covariate_data()
       }
+      model_list[["model_fitted"]] <- private$model_fitted
       # Make sure that data is saved in correct format by RJSONIO::toJSON
       MAYBE_CONVERT_TO_VECTOR <- c("cov_pars","group_data", "group_rand_coef_data",
                                    "gp_coords", "gp_rand_coef_data",
                                    "ind_effect_group_rand_coef",
                                    "drop_intercept_group_rand_effect",
-                                   "cluster_ids","coefs","X")
+                                   "cluster_ids","coefs","X","nb_groups")
       for (feature in MAYBE_CONVERT_TO_VECTOR) {
         if (!is.null(model_list[[feature]])) {
           if (is.vector(model_list[[feature]])) {
@@ -1535,7 +1555,60 @@ gpb.GPModel <- R6::R6Class(
       save_data_json <- RJSONIO::toJSON(self$model_to_list(include_response_data=TRUE), digits=17)
       write(save_data_json, file=filename)
       return(invisible(self))
+    },
+    
+    summary = function() {
+      cov_pars <- self$get_cov_pars()
+      cat("=====================================================\n")
+      if (private$model_fitted) {
+        cat("Model summary:\n")
+        ll <- -self$get_current_neg_log_likelihood()
+        npar <- private$num_cov_pars
+        if (private$has_covariates) {
+          npar <- npar + private$num_coef
+        }
+        aic <- 2*npar - 2*ll
+        bic <- npar*log(self$get_num_data()) - 2*ll
+        print(round(c("Log-lik"=ll, "AIC"=aic, "BIC"=bic),digits=2))
+        cat(paste0("Nb. observations: ", self$get_num_data(),"\n"))
+        if ((private$num_group_re + private$num_group_rand_coef) > 0) {
+          nb_groups <- t(private$nb_groups)
+          rownames(nb_groups) <- "Nb. groups: "
+          colnames(nb_groups) <- private$re_comp_names[1:private$num_group_re]
+          print(nb_groups)
+        }
+        cat("---------------------------------------------------\n")
+      }
+      cat("Covariance parameters (random effects):\n")
+      if (is.matrix(cov_pars)) {
+        print(round(t(cov_pars),4))
+      } else {
+        cov_pars <- t(t(cov_pars))
+        colnames(cov_pars) <- "Param."
+        print(round(cov_pars,4))
+      }
+      if (private$has_covariates) {
+        coefs <- self$get_coef()
+        cat("---------------------------------------------------\n")
+        cat("Linear regression coefficients (fixed effects):\n")
+        if (private$params$std_dev) {
+          z_values <- coefs[1,] / coefs[2,]
+          p_values <- 2 * exp(pnorm(-abs(z_values), log.p = TRUE))
+          coefs_summary <- cbind(t(coefs),"z value"=z_values,"P(>|z|)"=p_values)
+          print(round(coefs_summary,4))
+        } else {
+          coefs <- t(t(coefs))
+          colnames(coefs) <- "Param."
+          print(round(coefs,4))
+        }
+      }
+      if (private$params$maxit == self$get_num_optim_iter()) {
+        cat("\n")
+        cat("Note: no convergence after the maximal number of iterations\n")
+      }
+      cat("=====================================================\n")
     }
+    
   ), # end public
   
   private = list(
@@ -1550,6 +1623,7 @@ gpb.GPModel <- R6::R6Class(
     has_covariates = FALSE,
     num_coef = 0,
     group_data = NULL,
+    nb_groups = NULL,
     group_rand_coef_data = NULL,
     ind_effect_group_rand_coef = NULL,
     drop_intercept_group_rand_effect = NULL,
@@ -1575,6 +1649,7 @@ gpb.GPModel <- R6::R6Class(
     cov_pars_loaded_from_file = NULL,
     coefs_loaded_from_file = NULL,
     X_loaded_from_file = NULL,
+    model_fitted = FALSE,
     params = list(maxit = 1000L,
                   delta_rel_conv = 1E-6,
                   init_coef = NULL,
@@ -1979,18 +2054,7 @@ fitGPModel <- function(group_data = NULL,
 #' @author Fabio Sigrist
 #' @export
 summary.GPModel <- function(object, ...){
-  cov_pars <- object$get_cov_pars()
-  message("Covariance parameters:")
-  print(signif(cov_pars,6))
-  if (object$.__enclos_env__$private$has_covariates) {
-    coef <- object$get_coef()
-    message("Linear regression coefficients:")
-    print(signif(coef,6))
-  }
-  if (object$.__enclos_env__$private$params$maxit == object$get_num_optim_iter()) {
-    cat("\n")
-    message("Note: no convergence after the maximal number of iterations")
-  }
+  object$summary()
   return(invisible(object))
 }
 

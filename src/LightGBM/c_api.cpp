@@ -2799,6 +2799,14 @@ int GPB_EvalNegLogLikelihood(REModelHandle handle,
 	API_END();
 }
 
+int GPB_GetCurrentNegLogLikelihood(REModelHandle handle,
+	double* negll) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->GetCurrentNegLogLikelihood(negll[0]);
+	API_END();
+}
+
 int GPB_GetCovPar(REModelHandle handle,
 	double* optim_cov_pars,
 	bool calc_std_dev) {

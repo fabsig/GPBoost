@@ -468,6 +468,15 @@ namespace GPBoost {
 		//(e.g. fitting model with covariates, then calling likelihood without covariates, then making prediction with covariates)
 	}
 
+	void REModel::GetCurrentNegLogLikelihood(double& negll) {
+		if (sparse_) {
+			negll = re_model_sp_->neg_log_likelihood_;
+		}
+		else {
+			negll = re_model_den_->neg_log_likelihood_;
+		}
+	}
+
 	void REModel::CalcGradient(double* y, const double* fixed_effects, bool calc_cov_factor) {
 		if (y != nullptr) {
 			InitializeCovParsIfNotDefined(y);

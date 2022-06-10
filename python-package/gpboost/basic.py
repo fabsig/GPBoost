@@ -4039,6 +4039,7 @@ class GPModel(object):
         self.has_covariates = False
         self.num_coef = 0
         self.group_data = None
+        self.nb_groups = None
         self.group_rand_coef_data = None
         self.ind_effect_group_rand_coef = None
         self.drop_intercept_group_rand_effect = None
@@ -4081,6 +4082,7 @@ class GPModel(object):
         self.y_loaded_from_file = None
         self.coefs_loaded_from_file = None
         self.X_loaded_from_file = None
+        self.model_fitted = False
 
         if (model_file is not None) or (model_dict is not None):
             if model_file is not None:
@@ -4089,6 +4091,8 @@ class GPModel(object):
             # Set feature data overwriting arguments for constructor
             if model_dict.get("group_data") is not None:
                 group_data = np.array(model_dict.get("group_data"))
+            if model_dict.get("nb_groups") is not None:
+                self.nb_groups = np.array(model_dict.get("nb_groups"))
             if model_dict.get("group_rand_coef_data") is not None:
                 group_rand_coef_data = np.array(model_dict.get("group_rand_coef_data"))
             if model_dict.get("ind_effect_group_rand_coef") is not None:
@@ -4123,6 +4127,7 @@ class GPModel(object):
                 self.num_coef = model_dict.get("num_coef")
                 if model_dict.get("X") is not None:
                     self.X_loaded_from_file = np.array(model_dict.get("X"))
+            self.model_fitted = model_dict.get("model_fitted")
 
         if num_neighbors_pred is None:
             num_neighbors_pred = num_neighbors
@@ -4159,6 +4164,13 @@ class GPModel(object):
             # Convert to correct format for passing to C
             group_data_c = group_data.flatten(order='F')
             group_data_c = string_array_c_str(group_data_c)
+            if len(self.group_data.shape) == 1:
+                nb_groups = [len(np.unique(group_data))]
+            else:
+                nb_groups = []
+                for i in np.arange(0,group_data.shape[1]):
+                    nb_groups = nb_groups + [len(np.unique(group_data[:,i]))]
+            self.nb_groups = np.array(nb_groups)
             # Set data for grouped random coefficients
             if group_rand_coef_data is not None:
                 group_rand_coef_data, group_rand_coef_data_names = _format_check_data(data=group_rand_coef_data,
@@ -4498,10 +4510,11 @@ class GPModel(object):
                 y_c,
                 X_c,
                 ctypes.c_int(self.num_coef)))
-
         if self.params["trace"]:
             num_it = self._get_num_optim_iter()
             print("Number of iterations until convergence: " + str(num_it))
+        self.model_fitted = True
+
         return self
 
     def neg_log_likelihood(self, cov_pars, y, fixed_effects=None):
@@ -4810,13 +4823,42 @@ class GPModel(object):
         >>> gp_model.fit(y=y, X=X)
         >>> gp_model.summary()
         """
-        print("Covariance parameters: ")
-        print(self.get_cov_pars())
+        cov_pars = self.get_cov_pars(format_pandas=True)
+        print("===================================================")
+        if self.model_fitted:
+            print("Model summary:")
+            ll = -self.get_current_neg_log_likelihood()
+            npar = self.num_cov_pars
+            if self.has_covariates:
+                npar = npar + self.num_coef
+            aic = 2 * npar - 2 * ll
+            bic = npar * np.log(self.num_data) - 2 * ll
+            printout = pd.DataFrame([ll, aic, bic]).transpose()
+            printout.columns = ["Log-lik", "AIC", "BIC"]
+            print(printout.to_string(index=False))
+            print("Nb. observations: " + str(self.num_data))
+            if (self.num_group_re + self.num_group_rand_coef) > 0:
+                outstr = pd.DataFrame(self.nb_groups,
+                                      columns=self.re_comp_names[0:self.num_group_re]).to_string(index=False)
+                print("Nb. groups: " + outstr)
+            print("---------------------------------------------------")
+        print("Covariance parameters (random effects):")
+        print(round(cov_pars.transpose(),4))
         if self.has_covariates:
-            print("Linear regression coefficients: ")
-            print(self.get_coef())
+            print("---------------------------------------------------")
+            print("Linear regression coefficients (fixed effects):")
+            coefs = self.get_coef(format_pandas=True)
+            if self.params["std_dev"]:
+                z_values = np.array(coefs.iloc[0] / coefs.iloc[1])
+                p_values = 2 * scipy.stats.norm.cdf(-np.abs(z_values))
+                coefs = coefs.transpose()
+                print(round(pd.concat([coefs, pd.DataFrame({"z value": z_values, "P(>|z|)": p_values},
+                                                           index=coefs.index)], axis=1),4))
+            else:
+               print(round(coefs.transpose(),4))
         if self.params["maxit"] == self._get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
             print("Note: no convergence after the maximal number of iterations")
+        print("===================================================")
         return self
 
     def predict(self,
@@ -5356,6 +5398,7 @@ class GPModel(object):
             model_dict["y"] = self._get_response_data()
         # Feature data
         model_dict["group_data"] = self.group_data
+        model_dict["nb_groups"] = self.nb_groups
         model_dict["group_rand_coef_data"] = self.group_rand_coef_data
         model_dict["gp_coords"] = self.gp_coords
         model_dict["gp_rand_coef_data"] = self.gp_rand_coef_data
@@ -5376,6 +5419,7 @@ class GPModel(object):
             model_dict["coefs"] = self.get_coef(format_pandas=False)
             model_dict["num_coef"] = self.num_coef
             model_dict["X"] = self._get_covariate_data()
+        model_dict["model_fitted"] = self.model_fitted
         return model_dict
 
     def save_model(self, filename):
@@ -5433,3 +5477,24 @@ class GPModel(object):
             self.handle,
             ctypes.byref(num_it)))
         return num_it.value
+
+    def get_current_neg_log_likelihood(self):
+        """Get the current value of the negative log-likelihood
+
+        Returns
+        -------
+        result : the current value of the negative log-likelihood
+
+        Example
+        -------
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+        >>> gp_model.fit(y=y)
+        >>> gp_model.get_current_neg_log_likelihood()
+        """
+
+        negll = ctypes.c_double(0)
+        _safe_call(_LIB.GPB_GetCurrentNegLogLikelihood(
+            self.handle,
+            ctypes.byref(negll)))
+
+        return negll.value

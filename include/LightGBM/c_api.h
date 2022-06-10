@@ -1465,6 +1465,15 @@ GPBOOST_C_EXPORT int GPB_EvalNegLogLikelihood(REModelHandle handle,
     double* negll);
 
 /*!
+* \brief Get the current value of the negative log-likelihood
+* \param handle Handle of REModel
+* \param[out] negll Negative log-likelihood
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetCurrentNegLogLikelihood(REModelHandle handle,
+    double* negll);
+
+/*!
 * \brief Get covariance paramters
 *		 Note: You should pre-allocate memory for optim_cov_pars. Its length equals the number of covariance parameters (num_cov_pars) or twice this if calc_std_dev = true
 * \param handle Handle of REModel

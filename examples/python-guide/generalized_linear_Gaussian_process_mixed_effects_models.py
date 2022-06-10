@@ -97,10 +97,13 @@ gp_model.summary()
 # Get coefficients and variance/covariance parameters separately
 gp_model.get_coef()
 gp_model.get_cov_pars()
+# Obtaining standard deviations and p-values for fixed effects coefficients ('std_dev = TRUE')
+gp_model.fit(y=y, X=X, params={"std_dev": True})
+gp_model.summary()
 
 # Optional arguments for the 'params' argument of the 'fit' function:
 # - monitoring convergence: "trace": True
-# - obtain standard deviations: "std_dev": True
+# - calculate standard deviations: "std_dev": True
 # - change optimization algorithm options (see below)
 # For available optimization options, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
@@ -109,15 +112,6 @@ gp_model.get_cov_pars()
 #                               "std_dev": True,
 #                               "optimizer_cov": "gradient_descent", "lr_cov": 0.1,
 #                               "use_nesterov_acc": True, "maxit": 100})
-
-# --------------------(Approximate) p-values for linear regression coefficients----------------
-gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-gp_model.fit(y=y, X=X, params={"std_dev": True})
-coefs = gp_model.get_coef()
-z_values = coefs.iloc[0] / coefs.iloc[1]
-p_values = 2 * stats.norm.cdf(-np.abs(z_values))
-print("(Approximate) p-values for linear regression coefficients:")
-print(p_values)
 
 # --------------------Prediction----------------
 group_test = np.array([1,2,-1])
