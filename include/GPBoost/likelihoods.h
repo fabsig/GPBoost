@@ -1263,7 +1263,7 @@ namespace GPBoost {
 			bool calc_F_grad,
 			double* cov_grad,
 			vec_t& fixed_effect_grad,
-			bool calc_mode = false) {
+			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLStable(y_data, y_data_int, fixed_effects, num_data, ZSigmaZt, mll);
@@ -1369,7 +1369,7 @@ namespace GPBoost {
 			bool calc_F_grad,
 			double* cov_grad,
 			vec_t & fixed_effect_grad,
-			bool calc_mode = false) {
+			bool calc_mode) {
 			//std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();// only for debugging
 			//std::chrono::steady_clock::time_point begin, end;// only for debugging
 			//double el_time;
@@ -1497,7 +1497,7 @@ namespace GPBoost {
 			bool calc_F_grad,
 			double* cov_grad,
 			vec_t& fixed_effect_grad,
-			bool calc_mode = false) {
+			bool calc_mode) {
 			int num_REs = (int)SigmaI.cols();//number of random effect realizations
 			int num_comps = (int)cum_num_rand_eff_cluster_i.size() - 1;//number of different random effect components
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
@@ -1640,7 +1640,7 @@ namespace GPBoost {
 			bool calc_F_grad,
 			double* cov_grad,
 			vec_t& fixed_effect_grad,
-			bool calc_mode = false) {
+			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, num_data,
@@ -1739,7 +1739,7 @@ namespace GPBoost {
 			bool calc_F_grad,
 			double* cov_grad,
 			vec_t& fixed_effect_grad,
-			bool calc_mode = false) {
+			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, mll);
@@ -1845,9 +1845,9 @@ namespace GPBoost {
 			vec_t& pred_mean,
 			T_mat& pred_cov,
 			vec_t& pred_var,
-			bool calc_pred_cov = false,
-			bool calc_pred_var = false,
-			bool calc_mode = false) {
+			bool calc_pred_cov,
+			bool calc_pred_var,
+			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLStable(y_data, y_data_int, fixed_effects, num_data, ZSigmaZt, mll);
@@ -1921,9 +1921,9 @@ namespace GPBoost {
 			vec_t& pred_mean,
 			T_mat& pred_cov,
 			vec_t& pred_var,
-			bool calc_pred_cov = false,
-			bool calc_pred_var = false,
-			bool calc_mode = false) {
+			bool calc_pred_cov,
+			bool calc_pred_var,
+			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale(y_data, y_data_int, fixed_effects,
@@ -2009,9 +2009,9 @@ namespace GPBoost {
 			vec_t& pred_mean,
 			T_mat& pred_cov,
 			vec_t& pred_var,
-			bool calc_pred_cov = false,
-			bool calc_pred_var = false,
-			bool calc_mode = false) {
+			bool calc_pred_cov,
+			bool calc_pred_var,
+			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, num_data, SigmaI, Zt, mll);
@@ -2093,9 +2093,9 @@ namespace GPBoost {
 			vec_t& pred_mean,
 			T_mat& pred_cov,
 			vec_t& pred_var,
-			bool calc_pred_cov = false,
-			bool calc_pred_var = false,
-			bool calc_mode = false) {
+			bool calc_pred_cov,
+			bool calc_pred_var,
+			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, num_data,
@@ -2179,9 +2179,9 @@ namespace GPBoost {
 			vec_t& pred_mean,
 			T_mat& pred_cov,
 			vec_t& pred_var,
-			bool calc_pred_cov = false,
-			bool calc_pred_var = false,
-			bool calc_mode = false) {
+			bool calc_pred_cov,
+			bool calc_pred_var,
+			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, mll);
@@ -2217,7 +2217,7 @@ namespace GPBoost {
 		* \param pred_var[out] Predicted variances of latent random effects. The predicted variance for the response variables is written on this
 		* \param predict_var If true, predictive variances are also calculated
 		*/
-		void PredictResponse(vec_t& pred_mean, vec_t& pred_var, bool predict_var = false) {
+		void PredictResponse(vec_t& pred_mean, vec_t& pred_var, bool predict_var) {
 			if (likelihood_type_ == "bernoulli_probit") {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
@@ -2347,7 +2347,7 @@ namespace GPBoost {
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "poisson", "gamma" };
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
 		int MAXIT_MODE_NEWTON_ = 1000;
-		/*! \brief Used for cheking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
+		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
 		double DELTA_REL_CONV_ = 1e-6;
 		/*! \brief Additional parameters for likelihoods. For gamma, auxiliary_pars_[0] = shape parameter  */
 		std::vector<double> aux_pars_;
