@@ -9,7 +9,8 @@
   gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL,
   predict_cov_mat = FALSE, predict_var = FALSE, cov_pars = NULL,
   X_pred = NULL, use_saved_data = FALSE, vecchia_pred_type = NULL,
-  num_neighbors_pred = -1, predict_response = FALSE, ...)
+  num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
+  predict_response = FALSE, ...)
 }
 \arguments{
 \item{object}{a \code{GPModel}}
@@ -55,6 +56,9 @@ for the latent process and observed data is ordered first and neighbors are sele
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 for making predictions}
+
+\item{cg_delta_conv_pred}{a \code{numeric} specifying the olerance level for L2 norm of residuals for 
+checking convergence in conjugate gradient algorithm when being used for prediction}
 
 \item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) is predicted, otherwise the latent random effects (this is only relevant for non-Gaussian data)}
 

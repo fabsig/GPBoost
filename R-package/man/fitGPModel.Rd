@@ -130,7 +130,9 @@ fixed effects linear regression term (if there is one)}
     Default=2}
     \item{trace}{ If TRUE, information on the progress of the parameter
     optimization is printed. Default=FALSE}
-    \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}
+    \item{std_dev}{ If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
+    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
+    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
 }}
 }
 \value{

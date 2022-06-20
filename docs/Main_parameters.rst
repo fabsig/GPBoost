@@ -174,10 +174,7 @@ Model specification parameters
 Optimization parameters
 -----------------------
 
-The following list shows options for the optimization of the variance and covariance parameters of ``gp_model`` objects
-which contain Gaussian process and/or grouped random effects models. These parameters are passed to either the ``fit``
-function of a ``gp_model`` object in Python and R or to the ``set_optim_params`` (and ``set_optim_coef_params``) function
-prior to running the GPBoost algorithm.
+The following list shows options for the optimization of the variance and covariance parameters of ``gp_model`` objects which contain Gaussian process and/or grouped random effects models. These parameters are passed to either the ``fit`` function of a ``gp_model`` object in Python and R or to the ``set_optim_params`` function prior to running the GPBoost algorithm.
 
 -  ``optimizer_cov`` : string, optional (default = "gradient_descent")
 

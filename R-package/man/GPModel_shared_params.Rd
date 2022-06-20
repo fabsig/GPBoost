@@ -69,6 +69,9 @@ for the latent process and observed data is ordered first and neighbors are sele
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 for making predictions}
 
+\item{cg_delta_conv_pred}{a \code{numeric} specifying the olerance level for L2 norm of residuals for 
+checking convergence in conjugate gradient algorithm when being used for prediction}
+
 \item{cluster_ids}{A \code{vector} with elements indicating independent realizations of 
 random effects / Gaussian processes (same values = same process realization).
 The elements of 'cluster_ids' can be integer, double, or character.}
@@ -118,7 +121,9 @@ fixed effects linear regression term (if there is one)}
     Default=2}
     \item{trace}{ If TRUE, information on the progress of the parameter
     optimization is printed. Default=FALSE}
-    \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}
+    \item{std_dev}{ If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
+    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
+    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
 }}
 
 \item{fixed_effects}{A \code{vector} of optional external fixed effects which are held fixed during training.}

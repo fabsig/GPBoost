@@ -97,9 +97,6 @@ namespace GPBoost {
 				likelihood));
 			num_cov_pars_ = re_model_den_->num_cov_par_;
 		}
-		if (!GaussLikelihood()) {
-			optimizer_coef_ = "gradient_descent";
-		}
 	}
 
 	/*! \brief Destructor */
@@ -133,27 +130,48 @@ namespace GPBoost {
 			re_model_den_->SetLikelihood(likelihood);
 			num_cov_pars_ = re_model_den_->num_cov_par_;
 		}
-		if (!GaussLikelihood() && !cov_pars_optimizer_hase_been_set_) {
-			optimizer_cov_pars_ = "gradient_descent";
-		}
-		if (!GaussLikelihood() && !coef_optimizer_hase_been_set_) {
-			optimizer_coef_ = "gradient_descent";
-		}
 	}
 
 	string_t REModel::GetOptimizerCovPars() const {
-		return(optimizer_cov_pars_);
+		if (sparse_) {
+			return(re_model_sp_->optimizer_cov_pars_);
+		}
+		else {
+			return(re_model_den_->optimizer_cov_pars_);
+		}
 	}
 
 	string_t REModel::GetOptimizerCoef() const {
-		return(optimizer_coef_);
+		if (sparse_) {
+			return(re_model_sp_->optimizer_coef_);
+		}
+		else {
+			return(re_model_den_->optimizer_coef_);
+		}
 	}
 
-	void REModel::SetOptimConfig(double* init_cov_pars, double lr,
-		double acc_rate_cov, int max_iter, double delta_rel_conv,
-		bool use_nesterov_acc, int nesterov_schedule_version, bool trace,
-		const char* optimizer, int momentum_offset, const char* convergence_criterion,
-		bool calc_std_dev) {
+	void REModel::SetOptimConfig(double* init_cov_pars,
+		double lr,
+		double acc_rate_cov,
+		int max_iter,
+		double delta_rel_conv,
+		bool use_nesterov_acc,
+		int nesterov_schedule_version,
+		bool trace,
+		const char* optimizer,
+		int momentum_offset,
+		const char* convergence_criterion,
+		bool calc_std_dev, 
+		int num_covariates,
+		double* init_coef,
+		double lr_coef,
+		double acc_rate_coef,
+		const char* optimizer_coef,
+		const char* matrix_inversion_method,
+		int cg_max_num_it,
+		int cg_max_num_it_tridiag,
+		double cg_delta_conv) {
+		// Initial covariance parameters
 		if (init_cov_pars != nullptr) {
 			vec_t init_cov_pars_orig = Eigen::Map<const vec_t>(init_cov_pars, num_cov_pars_);
 			init_cov_pars_ = vec_t(num_cov_pars_);
@@ -166,31 +184,7 @@ namespace GPBoost {
 			init_cov_pars_provided_ = true;
 			covariance_matrix_has_been_factorized_ = false;
 		}
-		lr_cov_ = lr;
-		acc_rate_cov_ = acc_rate_cov;
-		max_iter_ = max_iter;
-		delta_rel_conv_ = delta_rel_conv;
-		use_nesterov_acc_ = use_nesterov_acc;
-		nesterov_schedule_version_ = nesterov_schedule_version;
-		if (optimizer != nullptr) {
-			optimizer_cov_pars_ = std::string(optimizer);
-			cov_pars_optimizer_hase_been_set_ = true;
-		}
-		if (convergence_criterion != nullptr) {
-			convergence_criterion_ = std::string(convergence_criterion);
-		}
-		momentum_offset_ = momentum_offset;
-		if (trace) {
-			Log::ResetLogLevelRE(LogLevelRE::Debug);
-		}
-		else {
-			Log::ResetLogLevelRE(LogLevelRE::Info);
-		}
-		calc_std_dev_ = calc_std_dev;
-	}
-
-	void REModel::SetOptimCoefConfig(int num_covariates, double* init_coef,
-		double lr_coef, double acc_rate_coef, const char* optimizer) {
+		// Iniutial linear regression coefficients
 		if (init_coef != nullptr) {
 			coef_ = Eigen::Map<const vec_t>(init_coef, num_covariates);
 			coef_initialized_ = true;
@@ -198,11 +192,23 @@ namespace GPBoost {
 		else {
 			coef_initialized_ = false;
 		}
-		lr_coef_ = lr_coef;
-		acc_rate_coef_ = acc_rate_coef;
-		if (optimizer != nullptr) {
-			optimizer_coef_ = std::string(optimizer);
-			coef_optimizer_hase_been_set_ = true;
+		// Logging level
+		if (trace) {
+			Log::ResetLogLevelRE(LogLevelRE::Debug);
+		}
+		else {
+			Log::ResetLogLevelRE(LogLevelRE::Info);
+		}
+		calc_std_dev_ = calc_std_dev;
+		if (sparse_) {
+			re_model_sp_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
+				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
+				matrix_inversion_method, cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv);
+		}
+		else {
+			re_model_den_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
+				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
+				matrix_inversion_method, cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv);
 		}
 	}
 
@@ -234,21 +240,9 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				nullptr,
-				1,
-				lr_cov_,
-				1,
-				acc_rate_cov_,
-				momentum_offset_,
-				max_iter_,
-				delta_rel_conv_,
-				use_nesterov_acc_,
-				nesterov_schedule_version_,
-				optimizer_cov_pars_,
-				"none",
 				std_dev_cov_par,
 				nullptr,
 				calc_std_dev_,
-				convergence_criterion_,
 				fixed_effects,
 				true);
 		}
@@ -261,21 +255,9 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				nullptr,
-				1,
-				lr_cov_,
-				1,
-				acc_rate_cov_,
-				momentum_offset_,
-				max_iter_,
-				delta_rel_conv_,
-				use_nesterov_acc_,
-				nesterov_schedule_version_,
-				optimizer_cov_pars_,
-				"none",
 				std_dev_cov_par,
 				nullptr,
 				calc_std_dev_,
-				convergence_criterion_,
 				fixed_effects,
 				true);
 		}
@@ -311,21 +293,9 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				coef_.data(),
-				lr_coef_,
-				lr_cov_,
-				acc_rate_coef_,
-				acc_rate_cov_,
-				momentum_offset_,
-				max_iter_,
-				delta_rel_conv_,
-				use_nesterov_acc_,
-				nesterov_schedule_version_,
-				optimizer_cov_pars_,
-				optimizer_coef_,
 				std_dev_cov_par,
 				std_dev_coef,
 				calc_std_dev_,
-				convergence_criterion_,
 				nullptr,
 				true);
 		}
@@ -338,21 +308,9 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				coef_.data(),
-				lr_coef_,
-				lr_cov_,
-				acc_rate_coef_,
-				acc_rate_cov_,
-				momentum_offset_,
-				max_iter_,
-				delta_rel_conv_,
-				use_nesterov_acc_,
-				nesterov_schedule_version_,
-				optimizer_cov_pars_,
-				optimizer_coef_,
 				std_dev_cov_par,
 				std_dev_coef,
 				calc_std_dev_,
-				convergence_criterion_,
 				nullptr,
 				true);
 		}
@@ -374,21 +332,9 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				init_score,
-				lr_coef_,
-				lr_cov_,
-				acc_rate_coef_,
-				acc_rate_cov_,
-				momentum_offset_,
-				max_iter_,
-				delta_rel_conv_,
-				use_nesterov_acc_,
-				nesterov_schedule_version_,
-				optimizer_cov_pars_,
-				optimizer_coef_,
 				nullptr,
 				nullptr,
 				false,
-				convergence_criterion_,
 				nullptr,
 				false);//learn_covariance_parameters=false
 		}
@@ -401,21 +347,9 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				init_score,
-				lr_coef_,
-				lr_cov_,
-				acc_rate_coef_,
-				acc_rate_cov_,
-				momentum_offset_,
-				max_iter_,
-				delta_rel_conv_,
-				use_nesterov_acc_,
-				nesterov_schedule_version_,
-				optimizer_cov_pars_,
-				optimizer_coef_,
 				nullptr,
 				nullptr,
 				false,
-				convergence_criterion_,
 				nullptr,
 				false);//learn_covariance_parameters=false
 		}
@@ -634,28 +568,60 @@ namespace GPBoost {
 	}
 
 	void REModel::SetPredictionData(data_size_t num_data_pred,
-		const data_size_t* cluster_ids_data_pred, const char* re_group_data_pred,
-		const double* re_group_rand_coef_data_pred, double* gp_coords_data_pred,
-		const double* gp_rand_coef_data_pred, const double* covariate_data_pred) {
+		const data_size_t* cluster_ids_data_pred,
+		const char* re_group_data_pred,
+		const double* re_group_rand_coef_data_pred,
+		double* gp_coords_data_pred,
+		const double* gp_rand_coef_data_pred,
+		const double* covariate_data_pred,
+		const char* vecchia_pred_type,
+		int num_neighbors_pred,
+		double cg_delta_conv_pred) {
 		if (sparse_) {
 			re_model_sp_->SetPredictionData(num_data_pred,
-				cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred, gp_coords_data_pred,
-				gp_rand_coef_data_pred, covariate_data_pred);
+				cluster_ids_data_pred,
+				re_group_data_pred,
+				re_group_rand_coef_data_pred,
+				gp_coords_data_pred,
+				gp_rand_coef_data_pred,
+				covariate_data_pred,
+				vecchia_pred_type,
+				num_neighbors_pred,
+				cg_delta_conv_pred);
 		}
 		else {
 			re_model_den_->SetPredictionData(num_data_pred,
-				cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred, gp_coords_data_pred,
-				gp_rand_coef_data_pred, covariate_data_pred);
+				cluster_ids_data_pred,
+				re_group_data_pred,
+				re_group_rand_coef_data_pred,
+				gp_coords_data_pred,
+				gp_rand_coef_data_pred,
+				covariate_data_pred,
+				vecchia_pred_type,
+				num_neighbors_pred,
+				cg_delta_conv_pred);
 		}
 	}
 
-	void REModel::Predict(const double* y_obs, data_size_t num_data_pred, double* out_predict,
-		bool predict_cov_mat, bool predict_var, bool predict_response,
-		const data_size_t* cluster_ids_data_pred, const char* re_group_data_pred, const double* re_group_rand_coef_data_pred,
-		double* gp_coords_data_pred, const double* gp_rand_coef_data_pred,
-		const double* cov_pars_pred, const double* covariate_data_pred,
-		bool use_saved_data, const char* vecchia_pred_type, int num_neighbors_pred,
-		const double* fixed_effects, const double* fixed_effects_pred,
+	void REModel::Predict(const double* y_obs,
+		data_size_t num_data_pred,
+		double* out_predict,
+		bool predict_cov_mat,
+		bool predict_var,
+		bool predict_response,
+		const data_size_t* cluster_ids_data_pred,
+		const char* re_group_data_pred,
+		const double* re_group_rand_coef_data_pred,
+		double* gp_coords_data_pred,
+		const double* gp_rand_coef_data_pred,
+		const double* cov_pars_pred,
+		const double* covariate_data_pred,
+		bool use_saved_data,
+		const char* vecchia_pred_type,
+		int num_neighbors_pred,
+		double cg_delta_conv_pred,
+		const double* fixed_effects,
+		const double* fixed_effects_pred,
 		bool suppress_calc_cov_factor) const {
 		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
@@ -694,24 +660,50 @@ namespace GPBoost {
 			calc_cov_factor = false;
 		}
 		if (sparse_) {
-			re_model_sp_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred,
-				out_predict, calc_cov_factor, predict_cov_mat, predict_var, predict_response,
-				covariate_data_pred, coef_.data(),
-				cluster_ids_data_pred, re_group_data_pred,
-				re_group_rand_coef_data_pred, gp_coords_data_pred,
-				gp_rand_coef_data_pred, use_saved_data,
-				vecchia_pred_type, num_neighbors_pred,
-				fixed_effects, fixed_effects_pred);
+			re_model_sp_->Predict(cov_pars_pred_trans.data(),
+				y_obs,
+				num_data_pred,
+				out_predict,
+				calc_cov_factor,
+				predict_cov_mat,
+				predict_var,
+				predict_response,
+				covariate_data_pred,
+				coef_.data(),
+				cluster_ids_data_pred,
+				re_group_data_pred,
+				re_group_rand_coef_data_pred,
+				gp_coords_data_pred,
+				gp_rand_coef_data_pred,
+				use_saved_data,
+				vecchia_pred_type,
+				num_neighbors_pred,
+				cg_delta_conv_pred,
+				fixed_effects,
+				fixed_effects_pred);
 		}
 		else {
-			re_model_den_->Predict(cov_pars_pred_trans.data(), y_obs, num_data_pred,
-				out_predict, calc_cov_factor, predict_cov_mat, predict_var, predict_response,
-				covariate_data_pred, coef_.data(),
-				cluster_ids_data_pred, re_group_data_pred,
-				re_group_rand_coef_data_pred, gp_coords_data_pred,
-				gp_rand_coef_data_pred, use_saved_data,
-				vecchia_pred_type, num_neighbors_pred,
-				fixed_effects, fixed_effects_pred);
+			re_model_den_->Predict(cov_pars_pred_trans.data(),
+				y_obs,
+				num_data_pred,
+				out_predict,
+				calc_cov_factor,
+				predict_cov_mat,
+				predict_var,
+				predict_response,
+				covariate_data_pred,
+				coef_.data(),
+				cluster_ids_data_pred,
+				re_group_data_pred,
+				re_group_rand_coef_data_pred,
+				gp_coords_data_pred,
+				gp_rand_coef_data_pred,
+				use_saved_data,
+				vecchia_pred_type,
+				num_neighbors_pred,
+				cg_delta_conv_pred,
+				fixed_effects,
+				fixed_effects_pred);
 		}
 	}//end Predict
 

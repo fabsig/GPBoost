@@ -684,7 +684,16 @@ GPBOOST_C_EXPORT SEXP GPB_REModelFree_R(
 * \param optimizer Options: "gradient_descent" or "fisher_scoring"
 * \param momentum_offset Number of iterations for which no mometum is applied in the beginning
 * \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
-* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
+* \param calc_std_dev If true, approximate standard deviations are calculated (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
+* \param num_covariates Number of covariates
+* \param init_coef Initial values for the regression coefficients
+* \param lr_coef Learning rate for fixed-effect linear coefficients
+* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
+* \param optimizer_coef Optimizer for linear regression coefficients
+* \param matrix_inversion_method Method which is used for matrix inversion
+* \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
+* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
+* \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
@@ -700,26 +709,16 @@ GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
 	SEXP optimizer,
 	SEXP momentum_offset,
 	SEXP convergence_criterion,
-	SEXP calc_std_dev
-);
-
-/*!
-* \brief Set configuration parameters for the optimizer for linear regression coefficients
-* \param handle Handle of REModel
-* \param num_covariates Number of covariates
-* \param init_coef Initial values for the regression coefficients
-* \param lr_coef Learning rate for fixed-effect linear coefficients
-* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
-* \param optimizer Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares)
-* \return 0 when succeed, -1 when failure happens
-*/
-GPBOOST_C_EXPORT SEXP GPB_SetOptimCoefConfig_R(
-	SEXP handle,
+	SEXP calc_std_dev,
 	SEXP num_covariates,
 	SEXP init_coef,
 	SEXP lr_coef,
 	SEXP acc_rate_coef,
-	SEXP optimizer
+	SEXP optimizer_coef,
+	SEXP matrix_inversion_method,
+	SEXP cg_max_num_it,
+	SEXP cg_max_num_it_tridiag,
+	SEXP cg_delta_conv
 );
 
 /*!
@@ -841,6 +840,9 @@ GPBOOST_C_EXPORT SEXP GPB_GetNumIt_R(
 * \param gp_coords_data_pred Coordinates (features) for Gaussian process
 * \param gp_rand_coef_data_pred Covariate data for Gaussian process random coefficients
 * \param covariate_data_pred Covariate data (=independent variables, features) for prediction
+* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
+* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
+* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_SetPredictionData_R(
@@ -851,7 +853,10 @@ GPBOOST_C_EXPORT SEXP GPB_SetPredictionData_R(
 	SEXP re_group_rand_coef_data_pred,
 	SEXP gp_coords_data_pred,
 	SEXP gp_rand_coef_data_pred,
-	SEXP covariate_data_pred
+	SEXP covariate_data_pred,
+	SEXP vecchia_pred_type,
+	SEXP num_neighbors_pred,
+	SEXP cg_delta_conv_pred
 );
 
 /*!
@@ -876,6 +881,7 @@ GPBOOST_C_EXPORT SEXP GPB_SetPredictionData_R(
 * \param use_saved_data If true previusly set data on groups, coordinates, and covariates are used and some arguments of this function are ignored
 * \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 * \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
+* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
 * \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
 * \param[out] out_predict Predictive/conditional mean at prediciton points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
@@ -898,6 +904,7 @@ GPBOOST_C_EXPORT SEXP GPB_PredictREModel_R(
 	SEXP use_saved_data,
 	SEXP vecchia_pred_type,
 	SEXP num_neighbors_pred,
+	SEXP cg_delta_conv_pred,
 	SEXP fixed_effects,
 	SEXP fixed_effects_pred,
 	SEXP out_predict

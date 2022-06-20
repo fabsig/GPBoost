@@ -1390,7 +1390,16 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \param optimizer Optimizer for covariance parameters
 * \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc)
 * \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
-* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
+* \param calc_std_dev If true, approximate standard deviations are calculated (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
+* \param num_covariates Number of covariates
+* \param init_coef Initial values for the regression coefficients
+* \param lr_coef Learning rate for fixed-effect linear coefficients
+* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
+* \param optimizer_coef Optimizer for linear regression coefficients
+* \param matrix_inversion_method Method which is used for matrix inversion
+* \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
+* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
+* \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
@@ -1405,24 +1414,16 @@ GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
     const char* optimizer,
     int momentum_offset,
     const char* convergence_criterion,
-    bool calc_std_dev);
-
-/*!
-* \brief Set configuration parameters for the optimizer for linear regression coefficients
-* \param handle Handle of REModel
-* \param num_covariates Number of covariates
-* \param init_coef Initial values for the regression coefficients
-* \param lr_coef Learning rate for fixed-effect linear coefficients
-* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
-* \param optimizer Options: "gradient_descent" or "wls" (coordinate descent using weighted least squares)
-* \return 0 when succeed, -1 when failure happens
-*/
-GPBOOST_C_EXPORT int GPB_SetOptimCoefConfig(REModelHandle handle,
+    bool calc_std_dev,
     int num_covariates,
     double* init_coef,
     double lr_coef,
     double acc_rate_coef,
-    const char* optimizer);
+    const char* optimizer_coef,
+    const char* matrix_inversion_method,
+    int cg_max_num_it,
+    int cg_max_num_it_tridiag,
+    double cg_delta_conv);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)
@@ -1527,6 +1528,9 @@ GPBOOST_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
 * \param gp_coords_data_pred Coordinates (features) for Gaussian process
 * \param gp_rand_coef_data_pred Covariate data for Gaussian process random coefficients
 * \param covariate_data_pred Covariate data (=independent variables, features) for prediction
+* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
+* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
+* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 */
 GPBOOST_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
     int32_t num_data_pred,
@@ -1535,7 +1539,10 @@ GPBOOST_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
     const double* re_group_rand_coef_data_pred,
     double* gp_coords_data_pred,
     const double* gp_rand_coef_data_pred,
-    const double* covariate_data_pred);
+    const double* covariate_data_pred,
+    const char* vecchia_pred_type,
+    int num_neighbors_pred,
+    double cg_delta_conv_pred);
 
 /*!
 * \brief Make predictions: calculate conditional mean and variances or covariance matrix
@@ -1560,6 +1567,7 @@ GPBOOST_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
 * \param use_saved_data If true previusly set data on groups, coordinates, and covariates are used and some arguments of this function are ignored
 * \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 * \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
+* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data). For Gaussian data, this is ignored
 * \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
 * \return 0 when succeed, -1 when failure happens
@@ -1581,6 +1589,7 @@ GPBOOST_C_EXPORT int GPB_PredictREModel(REModelHandle handle,
     bool use_saved_data,
     const char* vecchia_pred_type,
     int num_neighbors_pred,
+    double cg_delta_conv_pred,
     const double* fixed_effects,
     const double* fixed_effects_pred);
 

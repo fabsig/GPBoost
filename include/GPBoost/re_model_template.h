@@ -395,6 +395,9 @@ namespace GPBoost {
 			CheckCompatibilitySpecialOptions();
 			InitializeLikelihoods(likelihood_strg);
 			DetermineCovarianceParameterIndicesNumCovPars();
+			if (!gauss_likelihood_) {
+				optimizer_coef_ = "gradient_descent";
+			}
 		}//end REModelTemplate
 
 		/*! \brief Destructor */
@@ -467,6 +470,87 @@ namespace GPBoost {
 			}
 			InitializeLikelihoods(likelihood);
 			DetermineCovarianceParameterIndicesNumCovPars();
+			if (!gauss_likelihood_ && !cov_pars_optimizer_hase_been_set_) {
+				optimizer_cov_pars_ = "gradient_descent";
+			}
+			if (!gauss_likelihood_ && !coef_optimizer_hase_been_set_) {
+				optimizer_coef_ = "gradient_descent";
+			}
+		}
+
+
+		/*!
+		* \brief Set configuration parameters for the optimizer
+		* \param lr Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")
+		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
+		* \param max_iter Maximal number of iterations
+		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
+		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent")e
+		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc)
+		* \param optimizer_cov Optimizer for covariance parameters
+		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc)
+		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
+		* \param lr_coef Learning rate for fixed-effect linear coefficients
+		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
+		* \param optimizer_coef Optimizer for linear regression coefficients
+		* \param matrix_inversion_method Method which is used for matrix inversion
+		* \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
+		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
+		* \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
+		*/
+		void SetOptimConfig(double lr,
+			double acc_rate_cov,
+			int max_iter,
+			double delta_rel_conv,
+			bool use_nesterov_acc,
+			int nesterov_schedule_version,
+			const char* optimizer,
+			int momentum_offset,
+			const char* convergence_criterion,
+			double lr_coef,
+			double acc_rate_coef,
+			const char* optimizer_coef,
+			const char* matrix_inversion_method,
+			int cg_max_num_it,
+			int cg_max_num_it_tridiag,
+			double cg_delta_conv) {
+			lr_cov_ = lr;
+			lr_cov_init_ = lr;
+			acc_rate_cov_ = acc_rate_cov;
+			max_iter_ = max_iter;
+			delta_rel_conv_ = delta_rel_conv;
+			use_nesterov_acc_ = use_nesterov_acc;
+			nesterov_schedule_version_ = nesterov_schedule_version;
+			if (optimizer != nullptr) {
+				optimizer_cov_pars_ = std::string(optimizer);
+				cov_pars_optimizer_hase_been_set_ = true;
+			}
+			momentum_offset_ = momentum_offset;
+			if (convergence_criterion != nullptr) {
+				convergence_criterion_ = std::string(convergence_criterion);
+				if (SUPPORTED_CONV_CRIT_.find(convergence_criterion_) == SUPPORTED_CONV_CRIT_.end()) {
+					Log::REFatal("Convergence criterion '%s' is not supported.", convergence_criterion_.c_str());
+				}
+			}
+			lr_coef_ = lr_coef;
+			lr_coef_init_ = lr_coef;
+			acc_rate_coef_ = acc_rate_coef;
+			if (optimizer_coef != nullptr) {
+				optimizer_coef_ = std::string(optimizer_coef);
+				coef_optimizer_hase_been_set_ = true;
+			}
+			// Conjugate gradient algorithm related parameters
+			if (matrix_inversion_method != nullptr) {
+				matrix_inversion_method_ = std::string(matrix_inversion_method);
+				if (SUPPORTED_MATRIX_INVERSION_METHODS_.find(matrix_inversion_method_) == SUPPORTED_MATRIX_INVERSION_METHODS_.end()) {
+					Log::REFatal("Matrix inversion method '%s' is not supported.", matrix_inversion_method_.c_str());
+				}
+			}
+			if (matrix_inversion_method_ == "cg") {
+				cg_max_num_it_ = cg_max_num_it;
+				cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
+				cg_delta_conv_ = cg_delta_conv;
+			}
 		}
 
 		/*!
@@ -481,21 +565,9 @@ namespace GPBoost {
 		* \param[out] num_it Number of iterations
 		* \param init_cov_pars Initial values for covariance parameters of RE components
 		* \param init_coef Initial values for the regression coefficients (can be nullptr)
-		* \param lr_coef Learning rate for fixed-effect linear coefficients
-		* \param lr_cov Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")
-		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0)
-		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0)
-		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc)
-		* \param max_iter Maximal number of iterations
-		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
-		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent")
-		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc)
-		* \param optimizer_cov Optimizer for covariance parameters
-		* \param optimizer_coef Optimizer for coefficients
 		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters (can be nullptr, used only if calc_std_dev)
 		* \param[out] std_dev_coef Standard deviations for the coefficients (can be nullptr, used only if calc_std_dev and if covariate_data is not nullptr)
 		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
-		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
 		* \param fixed_effects Externally provided fixed effects component of location parameter (can be nullptr, only used for non-Gaussian data)
 		* \param learn_covariance_parameters If true, covariance parameters are estimated
 		*/
@@ -507,42 +579,27 @@ namespace GPBoost {
 			int& num_it,
 			double* init_cov_pars,
 			double* init_coef,
-			double lr_coef,
-			double lr_cov,
-			double acc_rate_coef,
-			double acc_rate_cov,
-			int momentum_offset,
-			int max_iter,
-			double delta_rel_conv,
-			bool use_nesterov_acc,
-			int nesterov_schedule_version,
-			string_t optimizer_cov,
-			string_t optimizer_coef,
 			double* std_dev_cov_par,
 			double* std_dev_coef,
 			bool calc_std_dev,
-			string_t convergence_criterion,
 			const double* fixed_effects,
 			bool learn_covariance_parameters) {
 			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 			// Some checks
-			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov) == SUPPORTED_OPTIM_COV_PAR_.end()) {
-				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov.c_str());
-			}
-			if (SUPPORTED_CONV_CRIT_.find(convergence_criterion) == SUPPORTED_CONV_CRIT_.end()) {
-				Log::REFatal("Convergence criterion '%s' is not supported.", convergence_criterion.c_str());
+			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov_pars_) == SUPPORTED_OPTIM_COV_PAR_.end()) {
+				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters.", optimizer_cov_pars_.c_str());
 			}
 			if (!gauss_likelihood_) {
-				if (optimizer_cov == "fisher_scoring") {
-					Log::REFatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian data. ", optimizer_cov.c_str());
+				if (optimizer_cov_pars_ == "fisher_scoring") {
+					Log::REFatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian data. ", optimizer_cov_pars_.c_str());
 				}
 			}
 			if (covariate_data != nullptr) {
-				if (SUPPORTED_OPTIM_COEF_.find(optimizer_coef) == SUPPORTED_OPTIM_COEF_.end()) {
-					Log::REFatal("Optimizer option '%s' is not supported for regression coefficients.", optimizer_coef.c_str());
+				if (SUPPORTED_OPTIM_COEF_.find(optimizer_coef_) == SUPPORTED_OPTIM_COEF_.end()) {
+					Log::REFatal("Optimizer option '%s' is not supported for regression coefficients.", optimizer_coef_.c_str());
 				}
-				if (!gauss_likelihood_ && optimizer_coef == "wls") {
-					Log::REFatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian data.", optimizer_coef.c_str());
+				if (!gauss_likelihood_ && optimizer_coef_ == "wls") {
+					Log::REFatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian data.", optimizer_coef_.c_str());
 				}
 			}
 			if (gauss_likelihood_ && fixed_effects != nullptr) {
@@ -564,26 +621,38 @@ namespace GPBoost {
 				}
 			}
 			// Initialization of variables
+			lr_cov_ = lr_cov_init_;
+			lr_coef_ = lr_coef_init_;
+			if (lr_cov_ < 0.) {//a value below 0 indicates that the default values should be used
+				if (optimizer_cov_pars_ == "fisher_scoring") {
+					lr_cov_ = 1.;
+				}
+				else if (optimizer_cov_pars_ == "gradient_descent") {
+					lr_cov_ = 0.1;
+				}
+			}
 			if (covariate_data == nullptr) {
 				has_covariates_ = false;
 			}
 			else {
 				has_covariates_ = true;
 			}
-			bool use_nesterov_acc_coef = use_nesterov_acc;
-			if (optimizer_cov != "gradient_descent") {
-				use_nesterov_acc = false;//Nesterov acceleration is only used for gradient descent and not for other methods
+			bool use_nesterov_acc = use_nesterov_acc_;
+			bool use_nesterov_acc_coef = use_nesterov_acc_;
+			//Nesterov acceleration is only used for gradient descent and not for other methods
+			if (optimizer_cov_pars_ != "gradient_descent") {
+				use_nesterov_acc = false;
 			}
-			if (optimizer_coef != "gradient_descent") {
-				use_nesterov_acc_coef = false;//Nesterov acceleration is only used for gradient descent and not for other methods
+			if (optimizer_coef_ != "gradient_descent") {
+				use_nesterov_acc_coef = false;
 			}
-			if (OPTIM_EXTERNAL_.find(optimizer_cov) != OPTIM_EXTERNAL_.end()) {
-				optimizer_coef = optimizer_cov;
+			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
+				optimizer_coef_ = optimizer_cov_pars_;
 			}
 			bool terminate_optim = false;
-			num_it = max_iter;
-			bool profile_out_marginal_variance = gauss_likelihood_ && (optimizer_cov == "gradient_descent" || optimizer_cov == "nelder_mead" 
-				|| optimizer_cov == "adam");
+			num_it = max_iter_;
+			bool profile_out_marginal_variance = gauss_likelihood_ && 
+				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam");
 			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data 
 			//	(the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 			bool gradient_contains_error_var = gauss_likelihood_ && !profile_out_marginal_variance;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
@@ -619,16 +688,8 @@ namespace GPBoost {
 			//	when (i) there is only an intercept (and not other covariates) and (ii) the covariance parameters are not learned
 			const double* fixed_effects_ptr = fixed_effects;
 			// Initialization of covariance parameters related variables
-			if (lr_cov < 0.) {//a value below 0 indicates that the default values should be used
-				if (optimizer_cov == "fisher_scoring") {
-					lr_cov = 1.;
-				}
-				else if (optimizer_cov == "gradient_descent") {
-					lr_cov = 0.1;
-				}
-			}
 			vec_t cov_pars = Eigen::Map<const vec_t>(init_cov_pars, num_cov_par_);
-			vec_t cov_pars_lag1 = vec_t(num_cov_par_);//used only if convergence_criterion == "relative_change_in_parameters"
+			vec_t cov_pars_lag1 = vec_t(num_cov_par_);//used only if convergence_criterion_ == "relative_change_in_parameters"
 			vec_t cov_pars_init = cov_pars;
 			vec_t cov_pars_after_grad_aux;//auxiliary variable used only if use_nesterov_acc == true
 			vec_t cov_pars_after_grad_aux_lag1 = cov_pars;//auxiliary variable used only if use_nesterov_acc == true
@@ -648,7 +709,7 @@ namespace GPBoost {
 			vec_t beta, beta_lag1, beta_init, beta_after_grad_aux, beta_after_grad_aux_lag1, fixed_effects_vec, loc_transf, scale_transf;
 			bool scale_covariables = false;
 			if (has_covariates_) {
-				scale_covariables = (optimizer_coef == "gradient_descent" || (optimizer_cov == "bfgs" && !gauss_likelihood_)) && !only_intercept_for_GPBoost_algo;
+				scale_covariables = (optimizer_coef_ == "gradient_descent" || (optimizer_cov_pars_ == "bfgs" && !gauss_likelihood_)) && !only_intercept_for_GPBoost_algo;
 				// Scale covariates (in order that the gradient is less sample-size dependent)
 				if (scale_covariables) {
 					loc_transf = vec_t(num_coef_);
@@ -749,19 +810,19 @@ namespace GPBoost {
 				Log::REDebug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
 			}
 			bool na_or_inf_occurred = false;
-			if (OPTIM_EXTERNAL_.find(optimizer_cov) != OPTIM_EXTERNAL_.end()) {
+			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
 				OptimExternal(cov_pars,
 					beta,
 					fixed_effects,
-					max_iter,
-					delta_rel_conv,
-					convergence_criterion,
+					max_iter_,
+					delta_rel_conv_,
+					convergence_criterion_,
 					num_it,
 					learn_covariance_parameters,
-					optimizer_cov,
+					optimizer_cov_pars_,
 					profile_out_marginal_variance);
 				// Check for NA or Inf
-				if (optimizer_cov == "bfgs") {
+				if (optimizer_cov_pars_ == "bfgs") {
 					if (learn_covariance_parameters) {
 						for (int i = 0; i < (int)cov_pars.size(); ++i) {
 							if (std::isnan(cov_pars[i]) || std::isinf(cov_pars[i])) {
@@ -780,22 +841,22 @@ namespace GPBoost {
 			} // end use of external optimizer
 			else {
 				// Start optimization with "gradient_descent" or "fisher_scoring"
-				for (int it = 0; it < max_iter; ++it) {
+				for (int it = 0; it < max_iter_; ++it) {
 					neg_log_likelihood_lag1_ = neg_log_likelihood_;
 					cov_pars_lag1 = cov_pars;
 					// Update linear regression coefficients using gradient descent or generalized least squares (the latter option only for Gaussian data)
 					if (has_covariates_) {
 						beta_lag1 = beta;
-						if (optimizer_coef == "gradient_descent") {// one step of gradient descent
+						if (optimizer_coef_ == "gradient_descent") {// one step of gradient descent
 							vec_t grad_beta;
 							// Calculate gradient for linear regression coefficients
 							CalcLinCoefGrad(cov_pars[0], beta, grad_beta, fixed_effects_ptr);
 							// Update linear regression coefficients, apply step size safeguard, and recalculate mode for Laplace approx. (only for non-Gaussian data)
-							UpdateLinCoef(beta, grad_beta, lr_coef, cov_pars, use_nesterov_acc_coef, it, beta_after_grad_aux, beta_after_grad_aux_lag1,
-								acc_rate_coef, nesterov_schedule_version, momentum_offset, fixed_effects, fixed_effects_vec);
+							UpdateLinCoef(beta, grad_beta, cov_pars, use_nesterov_acc_coef, it, beta_after_grad_aux, beta_after_grad_aux_lag1,
+								acc_rate_coef_, nesterov_schedule_version_, momentum_offset_, fixed_effects, fixed_effects_vec);
 							fixed_effects_ptr = fixed_effects_vec.data();
 						}
-						else if (optimizer_coef == "wls") {// coordinate descent using generalized least squares (only for Gaussian data)
+						else if (optimizer_coef_ == "wls") {// coordinate descent using generalized least squares (only for Gaussian data)
 							CHECK(gauss_likelihood_);
 							SetY(y_vec_.data());
 							CalcYAux();
@@ -817,10 +878,10 @@ namespace GPBoost {
 							// Profile out sigma2 (=use closed-form expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 							cov_pars[0] = yTPsiInvy_ / num_data_;
 						}
-						if (optimizer_cov == "gradient_descent") {//gradient descent
+						if (optimizer_cov_pars_ == "gradient_descent") {//gradient descent
 							CalcCovParGrad(cov_pars, nat_grad, gradient_contains_error_var, false, fixed_effects_ptr);
 						}
-						else if (optimizer_cov == "fisher_scoring") {//Fisher scoring
+						else if (optimizer_cov_pars_ == "fisher_scoring") {//Fisher scoring
 							// We don't profile out sigma2 (=don't use closed-form expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
 							vec_t grad;
 							den_mat_t FI;
@@ -829,8 +890,8 @@ namespace GPBoost {
 							nat_grad = FI.llt().solve(grad);
 						}
 						// Update covariance parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
-						UpdateCovPars(cov_pars, nat_grad, lr_cov, profile_out_marginal_variance, use_nesterov_acc, it, optimizer_cov,
-							cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, acc_rate_cov, nesterov_schedule_version, momentum_offset, fixed_effects_ptr);
+						UpdateCovPars(cov_pars, nat_grad, profile_out_marginal_variance, use_nesterov_acc, it,
+							cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, acc_rate_cov_, nesterov_schedule_version_, momentum_offset_, fixed_effects_ptr);
 					}
 					else {
 						neg_log_likelihood_ = neg_log_likelihood_after_lin_coef_update_;
@@ -853,26 +914,26 @@ namespace GPBoost {
 					if (!na_or_inf_occurred) {
 						// Check convergence
 						bool likelihood_is_na = std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_);//if the likelihood is NA, we monitor the parameters instead of the likelihood
-						if (convergence_criterion == "relative_change_in_parameters" || likelihood_is_na) {
+						if (convergence_criterion_ == "relative_change_in_parameters" || likelihood_is_na) {
 							if (has_covariates_) {
-								if (((beta - beta_lag1).norm() < delta_rel_conv * beta_lag1.norm()) && ((cov_pars - cov_pars_lag1).norm() < delta_rel_conv * cov_pars_lag1.norm())) {
+								if (((beta - beta_lag1).norm() < delta_rel_conv_ * beta_lag1.norm()) && ((cov_pars - cov_pars_lag1).norm() < delta_rel_conv_ * cov_pars_lag1.norm())) {
 									terminate_optim = true;
 								}
 							}
 							else {
-								if ((cov_pars - cov_pars_lag1).norm() < delta_rel_conv * cov_pars_lag1.norm()) {
+								if ((cov_pars - cov_pars_lag1).norm() < delta_rel_conv_ * cov_pars_lag1.norm()) {
 									terminate_optim = true;
 								}
 							}
 						}
-						else if (convergence_criterion == "relative_change_in_log_likelihood") {
-							if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < delta_rel_conv * std::abs(neg_log_likelihood_lag1_)) {
+						else if (convergence_criterion_ == "relative_change_in_log_likelihood") {
+							if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < delta_rel_conv_ * std::abs(neg_log_likelihood_lag1_)) {
 								terminate_optim = true;
 							}
 						} // end check convergence
 						// Trace output for convergence monitoring
 						if ((it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) ||
-							((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) && (it != (max_iter - 1))) {
+							((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) && (it != (max_iter_ - 1))) {
 							Log::REDebug("GPModel parameter optimization iteration number %d", it + 1);
 							for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars[i]); }
 							for (int i = 0; i < std::min((int)beta.size(), 5); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
@@ -895,7 +956,7 @@ namespace GPBoost {
 				}//end for loop for optimization
 			}
 			// redo optimization with "nelder_mead" in case NA or Inf occurred
-			if (na_or_inf_occurred && optimizer_cov != "nelder_mead") {
+			if (na_or_inf_occurred && optimizer_cov_pars_ != "nelder_mead") {
 				string_t optimizers = "";
 				for (auto elem : SUPPORTED_OPTIM_COV_PAR_) {
 					if (gauss_likelihood_ || elem != "fisher_scoring") {
@@ -906,8 +967,7 @@ namespace GPBoost {
 					"The optimization will be started a second time using 'nelder_mead'. "
 					"If you want to avoid this, try directly using a different optimizer. "
 					"If you have used 'gradient_descent', you can also consider using a smaller learning rate. "
-					"The following optimizers are currently implemented:%s", optimizer_cov.c_str(), optimizers.c_str());
-				optimizer_cov = "nelder_mead";
+					"The following optimizers are currently implemented:%s", optimizer_cov_pars_.c_str(), optimizer_cov_pars_.c_str());
 				cov_pars = cov_pars_init;
 				if (has_covariates_) {
 					beta = beta_init;
@@ -920,15 +980,15 @@ namespace GPBoost {
 				OptimExternal(cov_pars,
 					beta,
 					fixed_effects,
-					max_iter,
-					delta_rel_conv,
-					convergence_criterion,
+					max_iter_,
+					delta_rel_conv_,
+					convergence_criterion_,
 					num_it,
 					learn_covariance_parameters,
-					optimizer_cov,
+					"nelder_mead",
 					profile_out_marginal_variance);
 			}
-			if (num_it == max_iter) {
+			if (num_it == max_iter_) {
 				Log::REDebug("GPModel: no convergence after the maximal number of iterations");
 			}
 			else {
@@ -1489,11 +1549,20 @@ namespace GPBoost {
 		* \param gp_coords_data_pred Coordinates (features) for Gaussian process
 		* \param gp_rand_coef_data_pred Covariate data for Gaussian process random coefficients
 		* \param covariate_data_pred Covariate data (=independent variables, features) for prediction
+		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
+		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
+		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 		*/
 		void SetPredictionData(int num_data_pred,
-			const data_size_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
-			const double* re_group_rand_coef_data_pred = nullptr, double* gp_coords_data_pred = nullptr,
-			const double* gp_rand_coef_data_pred = nullptr, const double* covariate_data_pred = nullptr) {
+			const data_size_t* cluster_ids_data_pred,
+			const char* re_group_data_pred,
+			const double* re_group_rand_coef_data_pred,
+			double* gp_coords_data_pred,
+			const double* gp_rand_coef_data_pred,
+			const double* covariate_data_pred,
+			const char* vecchia_pred_type,
+			int num_neighbors_pred,
+			double cg_delta_conv_pred) {
 			CHECK(num_data_pred > 0);
 			if (cluster_ids_data_pred == nullptr) {
 				cluster_ids_data_pred_.clear();
@@ -1534,6 +1603,23 @@ namespace GPBoost {
 				covariate_data_pred_ = std::vector<double>(covariate_data_pred, covariate_data_pred + num_data_pred * num_coef_);
 			}
 			num_data_pred_ = num_data_pred;
+			if (vecchia_approx_) {
+				if (vecchia_pred_type != nullptr) {
+					string_t vecchia_pred_type_S = std::string(vecchia_pred_type);
+					if (SUPPORTED_VECCHIA_PRED_TYPES_.find(vecchia_pred_type_S) == SUPPORTED_VECCHIA_PRED_TYPES_.end()) {
+						Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_S.c_str());
+					}
+					vecchia_pred_type_ = vecchia_pred_type_S;
+				}
+				if (num_neighbors_pred > 0) {
+					num_neighbors_pred_ = num_neighbors_pred;
+				}
+			}
+			if (matrix_inversion_method_ == "cg") {
+				if (cg_delta_conv_pred > 0) {
+					cg_delta_conv_pred_ = cg_delta_conv_pred;
+				}
+			}
 		}//end SetPredictionData
 
 		/*!
@@ -1560,17 +1646,31 @@ namespace GPBoost {
 		* \param use_saved_data If true, saved data is used and some arguments are ignored
 		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
+		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
 		* \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
 		*/
-		void Predict(const double* cov_pars_pred, const double* y_obs, data_size_t num_data_pred,
-			double* out_predict, bool calc_cov_factor = true, bool predict_cov_mat = false, bool predict_var = false, bool predict_response = false,
-			const double* covariate_data_pred = nullptr, const double* coef_pred = nullptr,
-			const data_size_t* cluster_ids_data_pred = nullptr, const char* re_group_data_pred = nullptr,
-			const double* re_group_rand_coef_data_pred = nullptr, double* gp_coords_data_pred = nullptr,
-			const double* gp_rand_coef_data_pred = nullptr, bool use_saved_data = false,
-			const char* vecchia_pred_type = nullptr, int num_neighbors_pred = -1,
-			const double* fixed_effects = nullptr, const double* fixed_effects_pred = nullptr) {
+		void Predict(const double* cov_pars_pred,
+			const double* y_obs,
+			data_size_t num_data_pred,
+			double* out_predict,
+			bool calc_cov_factor,
+			bool predict_cov_mat,
+			bool predict_var,
+			bool predict_response,
+			const double* covariate_data_pred,
+			const double* coef_pred,
+			const data_size_t* cluster_ids_data_pred,
+			const char* re_group_data_pred,
+			const double* re_group_rand_coef_data_pred,
+			double* gp_coords_data_pred,
+			const double* gp_rand_coef_data_pred,
+			bool use_saved_data,
+			const char* vecchia_pred_type,
+			int num_neighbors_pred,
+			double cg_delta_conv_pred,
+			const double* fixed_effects,
+			const double* fixed_effects_pred) {
 			//First check whether previously set data should be used and load it if required
 			std::vector<std::vector<re_group_t>> re_group_levels_pred, re_group_levels_pred_orig;//Matrix with group levels for the grouped random effects (re_group_levels_pred[j] contains the levels for RE number j)
 			// Note: re_group_levels_pred_orig is only used for the case (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_)
@@ -1682,7 +1782,11 @@ namespace GPBoost {
 					num_neighbors_pred_ = num_neighbors_pred;
 				}
 			}
-
+			if (matrix_inversion_method_ == "cg") {
+				if (cg_delta_conv_pred > 0) {
+					cg_delta_conv_pred_ = cg_delta_conv_pred;
+				}
+			}
 			// Initialize linear predictor related terms and covariance parameters
 			vec_t coef, mu;//mu = linear regression predictor
 			if (has_covariates_) {//calculate linear regression term
@@ -2474,14 +2578,58 @@ namespace GPBoost {
 		den_mat_t X_;
 
 		// OPTIMIZER PROPERTIES
+		/*! \brief Optimizer for covariance parameters */
+		string_t optimizer_cov_pars_ = "gradient_descent";
 		/*! \brief List of supported optimizers for covariance parameters */
 		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam" };
-		/*! \brief List of supported optimizers for regression coefficients */
-		const std::set<string_t> SUPPORTED_OPTIM_COEF_{ "gradient_descent", "wls", "nelder_mead", "bfgs" };
-		/*! \brief List of optimizers which are externally handled by OptimLib */
-		const std::set<string_t> OPTIM_EXTERNAL_{ "nelder_mead", "bfgs", "adam" };
+		/*! \brief Convergence criterion for terminating the 'OptimLinRegrCoefCovPar' optimization algorithm */
+		string_t convergence_criterion_ = "relative_change_in_log_likelihood";
 		/*! \brief List of supported convergence criteria used for terminating the optimization algorithm */
 		const std::set<string_t> SUPPORTED_CONV_CRIT_{ "relative_change_in_parameters", "relative_change_in_log_likelihood" };
+		/*! \brief Maximal number of iterations for covariance parameter and linear regression parameter estimation */
+		int max_iter_ = 1000;
+		/*! \brief Convergence tolerance for covariance and linear regression coefficient estimation. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood */
+		double delta_rel_conv_ = 1.0e-6;
+		/*! \brief Learning rate for covariance parameters. If lr <= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring") */
+		double lr_cov_ = -1.;
+		/*! \brief Initial learning rate for covariance parameters (lr_cov_ can be decreased) */
+		double lr_cov_init_ = -1;
+		/*! \brief Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent") */
+		bool use_nesterov_acc_ = true;
+		/*! \brief Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
+		double acc_rate_cov_ = 0.5;
+		/*! \brief Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc) */
+		int momentum_offset_ = 2;
+		/*! \brief Select Nesterov acceleration schedule 0 or 1 */
+		int nesterov_schedule_version_ = 0;
+		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian data upon initialization) */
+		string_t optimizer_coef_ = "wls";
+		/*! \brief List of supported optimizers for regression coefficients */
+		const std::set<string_t> SUPPORTED_OPTIM_COEF_{ "gradient_descent", "wls", "nelder_mead", "bfgs", "adam" };
+		/*! \brief Learning rate for fixed-effect linear coefficients */
+		double lr_coef_ = 0.1;
+		/*! \brief Initial learning rate for fixed-effect linear coefficients (lr_coef_ can be decreased) */
+		double lr_coef_init_ = 0.1;
+		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
+		double acc_rate_coef_ = 0.5;
+		/*! \brief List of optimizers which are externally handled by OptimLib */
+		const std::set<string_t> OPTIM_EXTERNAL_{ "nelder_mead", "bfgs", "adam" };
+		/*! \brief Matrix inversion method */
+		string_t matrix_inversion_method_ = "cholesky";
+		/*! \brief Supported matrix inversion methods */
+		const std::set<string_t> SUPPORTED_MATRIX_INVERSION_METHODS_{ "cholesky", "cg" };
+		/*! \brief Maximal number of iterations for conjugate gradient algorithm */
+		int cg_max_num_it_ = 100;
+		/*! \brief Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization */
+		int cg_max_num_it_tridiag_ = 20;
+		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation */
+		double cg_delta_conv_ = 1.;
+		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
+		double cg_delta_conv_pred_ = 0.01;
+		/*! \brief true if the function 'SetOptimConfig' has been called and optimizer_cov_pars_ has been set */
+		bool cov_pars_optimizer_hase_been_set_ = false;
+		/*! \brief true if the function 'SetOptimConfig' has been called and optimizer_coef_ has been set */
+		bool coef_optimizer_hase_been_set_ = false;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done */
 		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
 		/*! \brief Learning rate shrinkage factor */
@@ -3847,11 +3995,9 @@ namespace GPBoost {
 		* \brief Update covariance parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
 		* \param[out] cov_pars Covariance parameters
 		* \param nat_grad Gradient for gradient descent or = FI^-1 * gradient for Fisher scoring (="natural" gradient)
-		* \param[out] lr_cov Learning rate (can be written on in case it get decreased)
 		* \param profile_out_marginal_variance If true, the first parameter (marginal variance, nugget effect) is ignored
 		* \param use_nesterov_acc If true, Nesterov acceleration is used
 		* \param it Iteration number
-		* \param optimizer_cov Optimizer used
 		* \param[out] cov_pars_after_grad_aux Auxiliary variable used only if use_nesterov_acc == true (see the code below for a description)
 		* \param[out] cov_pars_after_grad_aux_lag1 Auxiliary variable used only if use_nesterov_acc == true (see the code below for a description)
 		* \param acc_rate_cov Nesterov acceleration speed
@@ -3859,14 +4005,14 @@ namespace GPBoost {
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
 		* \param fixed_effects Fixed effects component of location parameter
 		*/
-		void UpdateCovPars(vec_t& cov_pars, const vec_t& nat_grad, double& lr_cov, bool profile_out_marginal_variance,
-			bool use_nesterov_acc, int it, const string_t& optimizer_cov, vec_t& cov_pars_after_grad_aux, vec_t& cov_pars_after_grad_aux_lag1,
+		void UpdateCovPars(vec_t& cov_pars, const vec_t& nat_grad, bool profile_out_marginal_variance,
+			bool use_nesterov_acc, int it, vec_t& cov_pars_after_grad_aux, vec_t& cov_pars_after_grad_aux_lag1,
 			double acc_rate_cov, int nesterov_schedule_version, int momentum_offset, const double* fixed_effects = nullptr) {
 			vec_t cov_pars_new(num_cov_par_);
 			if (profile_out_marginal_variance) {
 				cov_pars_new[0] = cov_pars[0];
 			}
-			double lr = lr_cov;
+			double lr = lr_cov_;
 			bool decrease_found = false;
 			bool halving_done = false;
 			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
@@ -3907,17 +4053,19 @@ namespace GPBoost {
 				}
 			}
 			if (halving_done) {
-				if (optimizer_cov == "fisher_scoring") {
-					Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. The learning rate has been decreased in this iteration.", it + 1);
+				if (optimizer_cov_pars_ == "fisher_scoring") {
+					Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. "
+						"The learning rate has been decreased in this iteration.", it + 1);
 				}
-				else if (optimizer_cov == "gradient_descent") {
-					lr_cov = lr; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring) 
+				else if (optimizer_cov_pars_ == "gradient_descent") {
+					lr_cov_ = lr; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring) 
 					Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently since with the previous learning rate, "
-						"there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_cov);
+						"there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_cov_);
 				}
 			}
 			if (!decrease_found) {
-				Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+				Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d "
+					"after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
 			}
 			if (use_nesterov_acc) {
 				cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
@@ -3929,7 +4077,6 @@ namespace GPBoost {
 		* \brief Update linear regression coefficients and apply step size safeguard
 		* \param[out] beta Linear regression coefficients
 		* \param grad Gradient
-		* \param[out] lr_coef Learning rate (can be written on in case it get decreased)
 		* \param use_nesterov_acc If true, Nesterov acceleration is used
 		* \param it Iteration number
 		* \param[out] beta_after_grad_aux Auxiliary variable used only if use_nesterov_acc == true (see the code below for a description)
@@ -3940,11 +4087,11 @@ namespace GPBoost {
 		* \param fixed_effects External fixed effects
 		* \param[out] fixed_effects_vec Fixed effects component of location parameter as sum of linear predictor and potentiall additional external fixed effects
 		*/
-		void UpdateLinCoef(vec_t& beta, const vec_t& grad, double& lr_coef, const vec_t& cov_pars,
+		void UpdateLinCoef(vec_t& beta, const vec_t& grad, const vec_t& cov_pars,
 			bool use_nesterov_acc, int it, vec_t& beta_after_grad_aux, vec_t& beta_after_grad_aux_lag1,
 			double acc_rate_coef, int nesterov_schedule_version, int momentum_offset, const double* fixed_effects, vec_t& fixed_effects_vec) {
 			vec_t beta_new;
-			double lr = lr_coef;
+			double lr = lr_coef_;
 			bool decrease_found = false;
 			bool halving_done = false;
 			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
@@ -3982,9 +4129,9 @@ namespace GPBoost {
 				}
 			}
 			if (halving_done) {
-				lr_coef = lr; //permanently decrease learning rate
+				lr_coef_ = lr; //permanently decrease learning rate
 				Log::REDebug("GPModel linear regression coefficient estimation: The learning rate has been decreased permanently since with the previous learning rate, "
-					"there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_coef);
+					"there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_coef_);
 			}
 			if (!decrease_found) {
 				Log::REDebug("GPModel linear regression coefficient estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
@@ -4883,7 +5030,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate standard deviations for the MLE of the regression coefficients as the diagonal of the inverse Fisher information
+		* \brief Calculate standard deviations for the MLE of the regression coefficients as the square root of diagonal of a numerically approximated inverse Hessian
 		* \param num_covariates Number of covariates / coefficients
 		* \param beta Regression coefficients
 		* \param cov_pars Covariance parameters

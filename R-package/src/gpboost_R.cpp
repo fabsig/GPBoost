@@ -896,11 +896,24 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP optimizer,
 	SEXP momentum_offset,
 	SEXP convergence_criterion,
-	SEXP calc_std_dev) {
+	SEXP calc_std_dev,
+	SEXP num_covariates,
+	SEXP init_coef,
+	SEXP lr_coef,
+	SEXP acc_rate_coef,
+	SEXP optimizer_coef,
+	SEXP matrix_inversion_method,
+	SEXP cg_max_num_it,
+	SEXP cg_max_num_it_tridiag,
+	SEXP cg_delta_conv) {
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
 	SEXP convergence_criterion_aux = PROTECT(Rf_asChar(convergence_criterion));
+	SEXP optimizer_coef_aux = PROTECT(Rf_asChar(optimizer_coef));
+	SEXP matrix_inversion_method_aux = PROTECT(Rf_asChar(matrix_inversion_method));
 	const char* optimizer_ptr = (Rf_isNull(optimizer)) ? nullptr : CHAR(optimizer_aux);
 	const char* convergence_criterion_ptr = (Rf_isNull(convergence_criterion)) ? nullptr : CHAR(convergence_criterion_aux);
+	const char* optimizer_coef_ptr = (Rf_isNull(optimizer_coef)) ? nullptr : CHAR(optimizer_coef_aux);
+	const char* matrix_inversion_method_ptr = (Rf_isNull(matrix_inversion_method)) ? nullptr : CHAR(matrix_inversion_method_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetOptimConfig(R_ExternalPtrAddr(handle),
 		R_REAL_PTR(init_cov_pars),
@@ -914,29 +927,18 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		optimizer_ptr,
 		Rf_asInteger(momentum_offset),
 		convergence_criterion_ptr,
-		Rf_asLogical(calc_std_dev)));
-	R_API_END();
-	UNPROTECT(2);
-	return R_NilValue;
-}
-
-SEXP GPB_SetOptimCoefConfig_R(SEXP handle,
-	SEXP num_covariates,
-	SEXP init_coef,
-	SEXP lr_coef,
-	SEXP acc_rate_coef,
-	SEXP optimizer) {
-	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
-	const char* optimizer_ptr = (Rf_isNull(optimizer)) ? nullptr : CHAR(optimizer_aux);
-	R_API_BEGIN();
-	CHECK_CALL(GPB_SetOptimCoefConfig(R_ExternalPtrAddr(handle),
+		Rf_asLogical(calc_std_dev),
 		Rf_asInteger(num_covariates),
 		R_REAL_PTR(init_coef),
 		Rf_asReal(lr_coef),
 		Rf_asReal(acc_rate_coef),
-		optimizer_ptr));
+		optimizer_coef_ptr,
+		matrix_inversion_method_ptr,
+		Rf_asInteger(cg_max_num_it),
+		Rf_asInteger(cg_max_num_it_tridiag),
+		Rf_asReal(cg_delta_conv)));
 	R_API_END();
-	UNPROTECT(1);
+	UNPROTECT(4);
 	return R_NilValue;
 }
 
@@ -1035,8 +1037,13 @@ SEXP GPB_SetPredictionData_R(SEXP handle,
 	SEXP re_group_rand_coef_data_pred,
 	SEXP gp_coords_data_pred,
 	SEXP gp_rand_coef_data_pred,
-	SEXP covariate_data_pred) {
+	SEXP covariate_data_pred,
+	SEXP vecchia_pred_type,
+	SEXP num_neighbors_pred,
+	SEXP cg_delta_conv_pred) {
 	int32_t numdata_pred = static_cast<int32_t>(Rf_asInteger(num_data_pred));
+	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
+	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetPredictionData(R_ExternalPtrAddr(handle),
 		numdata_pred,
@@ -1045,8 +1052,12 @@ SEXP GPB_SetPredictionData_R(SEXP handle,
 		R_REAL_PTR(re_group_rand_coef_data_pred),
 		R_REAL_PTR(gp_coords_data_pred),
 		R_REAL_PTR(gp_rand_coef_data_pred),
-		R_REAL_PTR(covariate_data_pred)));
+		R_REAL_PTR(covariate_data_pred),
+		vecchia_pred_type_ptr,
+		Rf_asInteger(num_neighbors_pred),
+		Rf_asReal(cg_delta_conv_pred)));
 	R_API_END();
+	UNPROTECT(1);
 	return R_NilValue;
 }
 
@@ -1066,6 +1077,7 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 	SEXP use_saved_data,
 	SEXP vecchia_pred_type,
 	SEXP num_neighbors_pred,
+	SEXP cg_delta_conv_pred,
 	SEXP fixed_effects,
 	SEXP fixed_effects_pred,
 	SEXP out_predict) {
@@ -1090,6 +1102,7 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 		Rf_asLogical(use_saved_data),
 		vecchia_pred_type_ptr,
 		Rf_asInteger(num_neighbors_pred),
+		Rf_asReal(cg_delta_conv_pred),
 		R_REAL_PTR(fixed_effects),
 		R_REAL_PTR(fixed_effects_pred)));
 	R_API_END();
@@ -1233,8 +1246,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 22},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 13},
-  {"GPB_SetOptimCoefConfig_R"         , (DL_FUNC)&GPB_SetOptimCoefConfig_R         , 6},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 22},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
   {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 4},
   {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},
@@ -1243,8 +1255,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetInitCovPar_R"              , (DL_FUNC)&GPB_GetInitCovPar_R              , 2},
   {"GPB_GetCoef_R"                    , (DL_FUNC)&GPB_GetCoef_R                    , 3},
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 2},
-  {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 8},
-  {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 19},
+  {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 11},
+  {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 20},
   {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 5},
   {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 1},
   {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC)&GPB_GetOptimizerCovPars_R        , 1},

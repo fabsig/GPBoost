@@ -4006,7 +4006,8 @@ class GPModel(object):
                 "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data
                 is ordered first and neighbors are selected among all points
             num_neighbors_pred : integer or None, optional (default=None)
-                Number of neighbors for the Vecchia approximation for making predictions
+                Number of neighbors for the Vecchia approximation for making predictions. If num_neighbors_pred is
+                None, it is set to num_neighbors
             cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data
             or None, optional (default=None)
                 The elements indicate independent realizations of  random effects / Gaussian processes
@@ -4053,6 +4054,7 @@ class GPModel(object):
         self.vecchia_ordering = "none"
         self.vecchia_pred_type = "order_obs_first_cond_obs_only"
         self.num_neighbors_pred = 30
+        self.cg_delta_conv_pred = 0.01
         if likelihood == "gaussian":
             self.cov_par_names = ["Error_term"]
         else:
@@ -4075,7 +4077,12 @@ class GPModel(object):
                        "momentum_offset": 2,
                        "trace": False,
                        "convergence_criterion": "relative_change_in_log_likelihood",
-                       "std_dev": False}
+                       "std_dev": False,
+                       "matrix_inversion_method": "cholesky",
+                       "cg_max_num_it": 100,
+                       "cg_max_num_it_tridiag": 20,
+                       "cg_delta_conv": 1.
+        }
         self.prediction_data_is_set = False
         self.model_has_been_loaded_from_saved_file = False
         self.cov_pars_loaded_from_file = None
@@ -4442,7 +4449,9 @@ class GPModel(object):
                 trace : bool, optional (default = False)
                     If True, information on the progress of the parameter optimization is printed.
                 std_dev : bool (default=False)
-                    If True, (asymptotic) standard deviations are calculated for the covariance parameters
+                    If True, approximate standard deviations are calculated for the covariance parameters
+                    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
+                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
             fixed_effects : numpy 1-D array or None, optional (default=None)
                 Additional fixed effects component of location parameter for observed data.
                 Used only for non-Gaussian data. For Gaussian data, this is ignored
@@ -4606,7 +4615,9 @@ class GPModel(object):
             trace : bool, optional (default = False)
                 If True, information on the progress of the parameter optimization is printed.
             std_dev : bool (default=False)
-                If True, (asymptotic) standard deviations are calculated for the covariance parameters
+                If True, approximate standard deviations are calculated for the covariance parameters
+                (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
+                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
             optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                 Optimizer used for estimating linear regression coefficients, if there are any
                 (for the GPBoost algorithm there are usually none).
@@ -4633,6 +4644,9 @@ class GPModel(object):
         self.__update_params(params=params)
         init_cov_pars_c = ctypes.c_void_p()
         optimizer_cov_c = ctypes.c_void_p()
+        init_coef_c = ctypes.c_void_p()
+        optimizer_coef_c = ctypes.c_void_p()
+        matrix_inversion_method_c = ctypes.c_void_p()
         if params is not None:
             if "init_cov_pars" in params:
                 if params["init_cov_pars"] is not None:
@@ -4640,6 +4654,12 @@ class GPModel(object):
             if "optimizer_cov" in params:
                 if params["optimizer_cov"] is not None:
                     optimizer_cov_c = c_str(params["optimizer_cov"])
+            if "init_coef" in self.params:
+                if self.params["init_coef"] is not None:
+                    init_coef_c = self.params["init_coef"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            if "optimizer_coef" in params:
+                if params["optimizer_coef"] is not None:
+                    optimizer_coef_c = c_str(params["optimizer_coef"])
         _safe_call(_LIB.GPB_SetOptimConfig(
             self.handle,
             init_cov_pars_c,
@@ -4653,11 +4673,16 @@ class GPModel(object):
             optimizer_cov_c,
             ctypes.c_int(self.params["momentum_offset"]),
             c_str(self.params["convergence_criterion"]),
-            ctypes.c_bool(self.params["std_dev"])))
-        optim_coef_params = ["init_coef", "lr_coef", "acc_rate_coef", "optimizer_coef"]
-        if params is not None:
-            if any(x in optim_coef_params for x in params.keys()):
-                self._set_optim_coef_params(params=params)
+            ctypes.c_bool(self.params["std_dev"]),
+            ctypes.c_int(self.num_coef),
+            init_coef_c,
+            ctypes.c_double(self.params["lr_coef"]),
+            ctypes.c_double(self.params["acc_rate_coef"]),
+            optimizer_coef_c,
+            c_str(self.params["matrix_inversion_method"]),
+            ctypes.c_int(self.params["cg_max_num_it"]),
+            ctypes.c_int(self.params["cg_max_num_it_tridiag"]),
+            ctypes.c_double(self.params["cg_delta_conv"])))
         return self
 
     def _get_optim_params(self):
@@ -4684,49 +4709,6 @@ class GPModel(object):
         if (init_cov_pars - init_cov_pars_none).sum() > 1e-6:
             params["init_cov_pars"] = init_cov_pars
         return params
-
-    def _set_optim_coef_params(self, params):
-        """Set parameters for estimation of the linear regression coefficients.
-
-          Parameters
-          ----------
-          params : dict
-            Parameters for fitting / optimization:
-                optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
-                    Optimizer used for estimating linear regression coefficients, if there are any
-                    (for the GPBoost algorithm there are usually none).
-                    Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously with
-                    gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
-                    for the regression coefficients using weighted least squares
-                    If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 'optimizer_coef' is automatically also set to
-                    the same value.
-                init_coef : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for the regression coefficients (if there are any, can be None)
-                lr_coef : double, optional (default = 0.1)
-                    Learning rate for fixed effect regression coefficients
-                acc_rate_coef : double, optional (default = 0.5)
-                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
-        """
-        if self.handle is None:
-            raise ValueError("Gaussian process model has not been initialized")
-        self.__update_params(params=params)
-        init_coef_c = ctypes.c_void_p()
-        optimizer_coef_c = ctypes.c_void_p()
-        if "init_coef" in self.params:
-            if self.params["init_coef"] is not None:
-                init_coef_c = self.params["init_coef"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-        if params is not None:
-            if "optimizer_coef" in params:
-                if params["optimizer_coef"] is not None:
-                    optimizer_coef_c = c_str(params["optimizer_coef"])
-        _safe_call(_LIB.GPB_SetOptimCoefConfig(
-            self.handle,
-            ctypes.c_int(self.num_coef),
-            init_coef_c,
-            ctypes.c_double(self.params["lr_coef"]),
-            ctypes.c_double(self.params["acc_rate_coef"]),
-            optimizer_coef_c))
-        return self
 
     def get_cov_pars(self, format_pandas=True):
         """Get (estimated) covariance parameters.
@@ -4869,6 +4851,7 @@ class GPModel(object):
                 gp_rand_coef_data_pred=None,
                 vecchia_pred_type=None,
                 num_neighbors_pred=None,
+                cg_delta_conv_pred=None,
                 cluster_ids_pred=None,
                 predict_cov_mat=False,
                 predict_var=False,
@@ -4905,6 +4888,9 @@ class GPModel(object):
                 ordered first and neighbors are selected among all points
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
+            cg_delta_conv_pred : double or None, optional (default=None)
+                Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
+                when being used for prediction
             cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data or None, optional (default=None)
                 The elements indicating independent realizations of random effects / Gaussian processes for which
                 predictions are made (set to None if you have not specified this when creating the model)
@@ -4969,6 +4955,8 @@ class GPModel(object):
             self.vecchia_pred_type = vecchia_pred_type
         if num_neighbors_pred is not None:
             self.num_neighbors_pred = num_neighbors_pred
+        if cg_delta_conv_pred is not None:
+            self.cg_delta_conv_pred = cg_delta_conv_pred
         y_c = ctypes.c_void_p()
         if y is not None:
             y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
@@ -5149,6 +5137,7 @@ class GPModel(object):
             ctypes.c_bool(use_saved_data),
             c_str(self.vecchia_pred_type),
             ctypes.c_int(self.num_neighbors_pred),
+            ctypes.c_double(self.cg_delta_conv_pred),
             fixed_effects_c,
             fixed_effects_pred_c))
 
@@ -5168,7 +5157,10 @@ class GPModel(object):
                             gp_coords_pred=None,
                             gp_rand_coef_data_pred=None,
                             cluster_ids_pred=None,
-                            X_pred=None):
+                            X_pred=None,
+                            vecchia_pred_type=None,
+                            num_neighbors_pred=None,
+                            cg_delta_conv_pred=None):
         """Set the data required for making predictions with a GPModel.
 
         Parameters
@@ -5188,6 +5180,20 @@ class GPModel(object):
                 predictions are made (set to None if you have not specified this when creating the model)
             X_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Prediction covariate data for the fixed effects linear regression term (if there is one)
+            vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
+                Type of Vecchia approximation used for making predictions.
+                "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
+                points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected
+                among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for
+                making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent
+                process and observed data is ordered first and neighbors are only observed points,
+                "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is
+                ordered first and neighbors are selected among all points
+            num_neighbors_pred : integer or None, optional (default=None)
+                Number of neighbors for the Vecchia approximation for making predictions
+            cg_delta_conv_pred : double or None, optional (default=None)
+                Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
+                when being used for prediction
 
         Example
         -------
@@ -5294,6 +5300,12 @@ class GPModel(object):
                 raise ValueError("Incorrect number of covariates in X_pred")
             X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
         self.num_data_pred = num_data_pred
+        if vecchia_pred_type is not None:
+            self.vecchia_pred_type = vecchia_pred_type
+        if num_neighbors_pred is not None:
+            self.num_neighbors_pred = num_neighbors_pred
+        if cg_delta_conv_pred is not None:
+            self.cg_delta_conv_pred = cg_delta_conv_pred
         self.prediction_data_is_set = True
 
         _safe_call(_LIB.GPB_SetPredictionData(
@@ -5304,7 +5316,10 @@ class GPModel(object):
             group_rand_coef_data_pred_c,
             gp_coords_pred_c,
             gp_rand_coef_data_pred_c,
-            X_pred_c))
+            X_pred_c,
+            c_str(self.vecchia_pred_type),
+            ctypes.c_int(self.num_neighbors_pred),
+            ctypes.c_double(self.cg_delta_conv_pred)))
         return self
 
     def predict_training_data_random_effects(self):

@@ -55,6 +55,8 @@
 #' for the latent process and observed data is ordered first and neighbors are selected among all points
 #' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 #' for making predictions
+#' @param cg_delta_conv_pred a \code{numeric} specifying the olerance level for L2 norm of residuals for 
+#' checking convergence in conjugate gradient algorithm when being used for prediction
 #' @param cluster_ids A \code{vector} with elements indicating independent realizations of 
 #' random effects / Gaussian processes (same values = same process realization).
 #' The elements of 'cluster_ids' can be integer, double, or character.
@@ -100,7 +102,9 @@
 #'                Default=2}
 #'                \item{trace}{ If TRUE, information on the progress of the parameter
 #'                optimization is printed. Default=FALSE}
-#'                \item{std_dev}{ If TRUE, (asymptotic) standard deviations are calculated for the covariance parameters}
+#'                \item{std_dev}{ If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
+#'                (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
+#'                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
 #'            }
 #' @param fixed_effects A \code{vector} of optional external fixed effects which are held fixed during training. 
 #' @param group_data_pred A \code{vector} or \code{matrix} with elements being group levels 
@@ -698,6 +702,18 @@ gpb.GPModel <- R6::R6Class(
         init_cov_pars <- params[["init_cov_pars"]]
       }
       std_dev <- private$params[["std_dev"]]
+      num_coef <- private$num_coef
+      init_coef <- private$params[["init_coef"]]
+      lr_coef <- private$params[["lr_coef"]]
+      acc_rate_coef <- private$params[["acc_rate_coef"]]
+      optimizer_coef_c_str <- NULL
+      if (!is.null(params[["optimizer_coef"]])) {
+        optimizer_coef_c_str <- params[["optimizer_coef"]]
+      }
+      matrix_inversion_method <- private$params[["matrix_inversion_method"]]
+      cg_max_num_it <- private$params[["cg_max_num_it"]]
+      cg_max_num_it_tridiag <- private$params[["cg_max_num_it_tridiag"]]
+      cg_delta_conv <- private$params[["cg_delta_conv"]]
       .Call(
         GPB_SetOptimConfig_R
         , private$handle
@@ -713,11 +729,16 @@ gpb.GPModel <- R6::R6Class(
         , momentum_offset
         , convergence_criterion
         , std_dev
+        , num_coef
+        , init_coef
+        , lr_coef
+        , acc_rate_coef
+        , optimizer_coef_c_str
+        , matrix_inversion_method
+        , cg_max_num_it
+        , cg_max_num_it_tridiag
+        , cg_delta_conv
       )
-      optim_coef_params <- c("init_coef","lr_coef","acc_rate_coef","optimizer_coef")
-      if (any(names(params) %in% optim_coef_params)) {
-        self$set_optim_coef_params(params=params)
-      }
       return(invisible(self))
     },
     
@@ -746,33 +767,6 @@ gpb.GPModel <- R6::R6Class(
         params$init_cov_pars <- init_cov_pars
       }
       return(params)
-    },
-    
-    # Set configuration parameters for the optimizer
-    set_optim_coef_params = function(params = list()) {
-      if (gpb.is.null.handle(private$handle)) {
-        stop("GPModel: Gaussian process model has not been initialized")
-      }
-      private$update_params(params)
-      # prepare for calling C++
-      num_coef <- private$num_coef
-      init_coef <- private$params[["init_coef"]]
-      lr_coef <- private$params[["lr_coef"]]
-      acc_rate_coef <- private$params[["acc_rate_coef"]]
-      optimizer_coef_c_str <- NULL
-      if (!is.null(params[["optimizer_coef"]])) {
-        optimizer_coef_c_str <- params[["optimizer_coef"]]
-      }
-      .Call(
-        GPB_SetOptimCoefConfig_R
-        , private$handle
-        , num_coef
-        , init_coef
-        , lr_coef
-        , acc_rate_coef
-        , optimizer_coef_c_str
-      )
-      return(invisible(self))
     },
     
     get_cov_pars = function() {
@@ -835,7 +829,10 @@ gpb.GPModel <- R6::R6Class(
                                    gp_coords_pred = NULL,
                                    gp_rand_coef_data_pred = NULL,
                                    cluster_ids_pred = NULL,
-                                   X_pred = NULL) {
+                                   X_pred = NULL,
+                                   vecchia_pred_type = NULL,
+                                   num_neighbors_pred = NULL,
+                                   cg_delta_conv_pred = NULL) {
       num_data_pred <- 0
       group_data_pred_c_str <- NULL
       # Set data for grouped random effects
@@ -983,6 +980,16 @@ gpb.GPModel <- R6::R6Class(
         cluster_ids_pred <- as.vector(cluster_ids_pred)
       } # End set cluster_ids for independent processes
       private$num_data_pred <- num_data_pred
+      if (!is.null(vecchia_pred_type)) {
+        private$vecchia_pred_type <- vecchia_pred_type
+      }
+      vecchia_pred_type_c_str <- private$vecchia_pred_type
+      if (!is.null(num_neighbors_pred)) {
+        private$num_neighbors_pred <- as.integer(num_neighbors_pred)
+      }
+      if (!is.null(cg_delta_conv_pred)) {
+        private$cg_delta_conv_pred <- as.numeric(cg_delta_conv_pred)
+      }
       .Call(
         GPB_SetPredictionData_R
         , private$handle
@@ -993,6 +1000,9 @@ gpb.GPModel <- R6::R6Class(
         , gp_coords_pred
         , gp_rand_coef_data_pred
         , X_pred
+        , vecchia_pred_type_c_str
+        , private$num_neighbors_pred
+        , private$cg_delta_conv_pred
       )
       return(invisible(self))
     },
@@ -1004,6 +1014,7 @@ gpb.GPModel <- R6::R6Class(
                        gp_rand_coef_data_pred = NULL,
                        vecchia_pred_type = NULL,
                        num_neighbors_pred = NULL,
+                       cg_delta_conv_pred = NULL,
                        cluster_ids_pred = NULL,
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
@@ -1029,7 +1040,6 @@ gpb.GPModel <- R6::R6Class(
         predict_cov_mat <- TRUE
         predict_var <- FALSE
       }
-      group_data_pred_c_str <- NULL
       if (!is.null(vecchia_pred_type)) {
         private$vecchia_pred_type <- vecchia_pred_type
       }
@@ -1037,9 +1047,13 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(num_neighbors_pred)) {
         private$num_neighbors_pred <- as.integer(num_neighbors_pred)
       }
+      if (!is.null(cg_delta_conv_pred)) {
+        private$cg_delta_conv_pred <- as.numeric(cg_delta_conv_pred)
+      }
       if (gpb.is.null.handle(private$handle)) {
         stop("predict.GPModel: Gaussian process model has not been initialized")
       }
+      group_data_pred_c_str <- NULL
       if (!is.null(y)) {
         if (!is.vector(y)) {
           if (is.matrix(y)) {
@@ -1310,6 +1324,7 @@ gpb.GPModel <- R6::R6Class(
         , use_saved_data
         , vecchia_pred_type_c_str
         , private$num_neighbors_pred
+        , private$cg_delta_conv_pred
         , fixed_effects
         , fixed_effects_pred
         , preds
@@ -1637,6 +1652,7 @@ gpb.GPModel <- R6::R6Class(
     vecchia_ordering = "none",
     vecchia_pred_type = "order_obs_first_cond_obs_only",
     num_neighbors_pred = 30L,
+    cg_delta_conv_pred = 0.01,
     cov_par_names = NULL,
     re_comp_names = NULL,
     coef_names = NULL,
@@ -1662,7 +1678,11 @@ gpb.GPModel <- R6::R6Class(
                   momentum_offset = 2L,
                   trace = FALSE,
                   convergence_criterion = "relative_change_in_log_likelihood",
-                  std_dev = FALSE),
+                  std_dev = FALSE,
+                  matrix_inversion_method = "cholesky",
+                  cg_max_num_it = 100L,
+                  cg_max_num_it_tridiag = 20L,
+                  cg_delta_conv = 1.),
     
     determine_num_cov_pars = function(likelihood) {
       if (private$cov_function == "wendland") {
@@ -1683,11 +1703,13 @@ gpb.GPModel <- R6::R6Class(
     
     update_params = function(params) {
       ##Check format of parameters
-      numeric_params <- c("lr_cov","acc_rate_cov","delta_rel_conv",
-                          "lr_coef","acc_rate_coef")
-      integer_params <- c("maxit","nesterov_schedule_version","momentum_offset")
-      character_params <- c("optimizer_cov","convergence_criterion","optimizer_coef")
-      logical_params <- c("use_nesterov_acc","trace","std_dev")
+      numeric_params <- c("lr_cov", "acc_rate_cov", "delta_rel_conv",
+                          "lr_coef", "acc_rate_coef", "cg_delta_conv")
+      integer_params <- c("maxit", "nesterov_schedule_version",
+                          "momentum_offset", "cg_max_num_it", "cg_max_num_it_tridiag")
+      character_params <- c("optimizer_cov", "convergence_criterion",
+                            "optimizer_coef", "matrix_inversion_method")
+      logical_params <- c("use_nesterov_acc", "trace", "std_dev")
       if (!is.null(params[["init_cov_pars"]])) {
         if (is.vector(params[["init_cov_pars"]])) {
           if (storage.mode(params[["init_cov_pars"]]) != "double") {
@@ -2127,7 +2149,8 @@ predict.GPModel <- function(object,
                             X_pred = NULL,
                             use_saved_data = FALSE,
                             vecchia_pred_type = NULL,
-                            num_neighbors_pred = -1,
+                            num_neighbors_pred = NULL,
+                            cg_delta_conv_pred = NULL,
                             predict_response = FALSE,...){
   return(object$predict(y = y,
                         group_data_pred = group_data_pred,
@@ -2142,6 +2165,7 @@ predict.GPModel <- function(object,
                         use_saved_data = use_saved_data,
                         vecchia_pred_type = vecchia_pred_type,
                         num_neighbors_pred = num_neighbors_pred,
+                        cg_delta_conv_pred = cg_delta_conv_pred,
                         predict_response = predict_response,
                         ...))
 }
@@ -2265,7 +2289,10 @@ set_prediction_data <- function(gp_model,
                                 gp_coords_pred = NULL,
                                 gp_rand_coef_data_pred = NULL,
                                 cluster_ids_pred = NULL,
-                                X_pred = NULL) UseMethod("set_prediction_data")
+                                X_pred = NULL,
+                                vecchia_pred_type = NULL,
+                                num_neighbors_pred = NULL,
+                                cg_delta_conv_pred = NULL) UseMethod("set_prediction_data")
 
 #' Set prediction data for a \code{GPModel}
 #' 
@@ -2295,7 +2322,10 @@ set_prediction_data.GPModel <- function(gp_model,
                                         gp_coords_pred = NULL,
                                         gp_rand_coef_data_pred = NULL,
                                         cluster_ids_pred = NULL,
-                                        X_pred = NULL) {
+                                        X_pred = NULL,
+                                        vecchia_pred_type = NULL,
+                                        num_neighbors_pred = NULL,
+                                        cg_delta_conv_pred = NULL) {
   
   if (!gpb.check.r6.class(gp_model, "GPModel")) {
     stop("set_prediction_data.GPModel: gp_model needs to be a ", sQuote("GPModel"))
@@ -2306,7 +2336,10 @@ set_prediction_data.GPModel <- function(gp_model,
                                          gp_coords_pred = gp_coords_pred,
                                          gp_rand_coef_data_pred = gp_rand_coef_data_pred,
                                          cluster_ids_pred = cluster_ids_pred,
-                                         X_pred = X_pred))
+                                         X_pred = X_pred,
+                                         vecchia_pred_type = vecchia_pred_type,
+                                         num_neighbors_pred = num_neighbors_pred,
+                                         cg_delta_conv_pred = cg_delta_conv_pred))
 }
 
 #' Generic 'predict_training_data_random_effects' method for a \code{GPModel}

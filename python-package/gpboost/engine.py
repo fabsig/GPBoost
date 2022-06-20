@@ -478,8 +478,6 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                      vecchia_approx=vecchia_approx,
                                      num_neighbors=num_neighbors,
                                      vecchia_ordering=vecchia_ordering,
-                                     vecchia_pred_type=vecchia_pred_type,
-                                     num_neighbors_pred=num_neighbors_pred,
                                      cluster_ids=cluster_ids,
                                      likelihood=gp_model._get_likelihood_name(),
                                      free_raw_data=True)
@@ -488,7 +486,10 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                                    group_rand_coef_data_pred=group_rand_coef_data_pred,
                                                    gp_coords_pred=gp_coords_pred,
                                                    gp_rand_coef_data_pred=gp_rand_coef_data_pred,
-                                                   cluster_ids_pred=cluster_ids_pred)
+                                                   cluster_ids_pred=cluster_ids_pred,
+                                                   vecchia_pred_type=vecchia_pred_type,
+                                                   num_neighbors_pred=num_neighbors_pred,
+                                                   cg_delta_conv_pred=gp_model.cg_delta_conv_pred)
             cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
             gp_model._set_likelihood(
                 gp_model_train._get_likelihood_name())  # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods

@@ -2748,24 +2748,39 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	const char* optimizer,
 	int momentum_offset,
 	const char* convergence_criterion,
-	bool calc_std_dev) {
-	API_BEGIN();
-	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->SetOptimConfig(init_cov_pars, lr, acc_rate_cov, max_iter, delta_rel_conv,
-		use_nesterov_acc, nesterov_schedule_version, trace, optimizer, momentum_offset,
-		convergence_criterion, calc_std_dev);
-	API_END();
-}
-
-int GPB_SetOptimCoefConfig(REModelHandle handle,
+	bool calc_std_dev,
 	int num_covariates,
 	double* init_coef,
 	double lr_coef,
 	double acc_rate_coef,
-	const char* optimizer) {
+	const char* optimizer_coef,
+	const char* matrix_inversion_method,
+	int cg_max_num_it,
+	int cg_max_num_it_tridiag,
+	double cg_delta_conv) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->SetOptimCoefConfig(num_covariates, init_coef, lr_coef, acc_rate_coef, optimizer);
+	ref_remodel->SetOptimConfig(init_cov_pars,
+		lr,
+		acc_rate_cov,
+		max_iter,
+		delta_rel_conv,
+		use_nesterov_acc,
+		nesterov_schedule_version,
+		trace,
+		optimizer,
+		momentum_offset,
+		convergence_criterion, 
+		calc_std_dev,
+		num_covariates,
+		init_coef,
+		lr_coef,
+		acc_rate_coef,
+		optimizer_coef,
+		matrix_inversion_method,
+		cg_max_num_it,
+		cg_max_num_it_tridiag,
+		cg_delta_conv);
 	API_END();
 }
 
@@ -2848,12 +2863,22 @@ int GPB_SetPredictionData(REModelHandle handle,
 	const double* re_group_rand_coef_data_pred,
 	double* gp_coords_data_pred,
 	const double* gp_rand_coef_data_pred,
-	const double* covariate_data_pred) {
+	const double* covariate_data_pred,
+	const char* vecchia_pred_type,
+	int num_neighbors_pred,
+	double cg_delta_conv_pred) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetPredictionData(num_data_pred,
-		cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred,
-		gp_coords_data_pred, gp_rand_coef_data_pred, covariate_data_pred);
+		cluster_ids_data_pred,
+		re_group_data_pred,
+		re_group_rand_coef_data_pred,
+		gp_coords_data_pred,
+		gp_rand_coef_data_pred,
+		covariate_data_pred,
+		vecchia_pred_type,
+		num_neighbors_pred,
+		cg_delta_conv_pred);
 	API_END();
 }
 
@@ -2874,17 +2899,30 @@ int GPB_PredictREModel(REModelHandle handle,
 	bool use_saved_data,
 	const char* vecchia_pred_type,
 	int num_neighbors_pred,
+	double cg_delta_conv_pred,
 	const double* fixed_effects,
 	const double* fixed_effects_pred) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->Predict(y_data, num_data_pred, out_predict,
-		predict_cov_mat, predict_var, predict_response,
-		cluster_ids_data_pred, re_group_data_pred, re_group_rand_coef_data_pred,
-		gp_coords_data_pred, gp_rand_coef_data_pred,
-		cov_pars, covariate_data_pred,
-		use_saved_data, vecchia_pred_type, num_neighbors_pred,
-		fixed_effects, fixed_effects_pred,
+	ref_remodel->Predict(y_data,
+		num_data_pred,
+		out_predict,
+		predict_cov_mat,
+		predict_var,
+		predict_response,
+		cluster_ids_data_pred,
+		re_group_data_pred,
+		re_group_rand_coef_data_pred,
+		gp_coords_data_pred,
+		gp_rand_coef_data_pred,
+		cov_pars,
+		covariate_data_pred,
+		use_saved_data,
+		vecchia_pred_type,
+		num_neighbors_pred,
+		cg_delta_conv_pred,
+		fixed_effects,
+		fixed_effects_pred,
 		false);
 	API_END();
 }

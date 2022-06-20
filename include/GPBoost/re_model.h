@@ -121,24 +121,38 @@ namespace GPBoost {
 		* \param optimizer_cov Optimizer for covariance parameters
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc)
 		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
-		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
-		*/
-		void SetOptimConfig(double* init_cov_pars, double lr,
-			double acc_rate_cov, int max_iter, double delta_rel_conv,
-			bool use_nesterov_acc, int nesterov_schedule_version, bool trace,
-			const char* optimizer, int momentum_offset, const char* convergence_criterion,
-			bool calc_std_dev);
-
-		/*!
-		* \brief Set configuration parameters for the optimizer for linear regression coefficients
-		* \param num_covariates Number of coefficients / covariates
+		* \param calc_std_dev If true, approximate standard deviations are calculated (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
+		* \param num_covariates Number of covariates
 		* \param init_coef Initial values for the regression coefficients
 		* \param lr_coef Learning rate for fixed-effect linear coefficients
 		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
-		* \param optimizer_coef Optimizer for coefficients
+		* \param optimizer_coef Optimizer for linear regression coefficients
+		* \param matrix_inversion_method Method which is used for matrix inversion
+		* \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
+		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
+		* \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
 		*/
-		void SetOptimCoefConfig(int num_covariates, double* init_coef,
-			double lr_coef, double acc_rate_coef, const char* optimizer);
+		void SetOptimConfig(double* init_cov_pars,
+			double lr,
+			double acc_rate_cov,
+			int max_iter,
+			double delta_rel_conv,
+			bool use_nesterov_acc,
+			int nesterov_schedule_version,
+			bool trace,
+			const char* optimizer,
+			int momentum_offset,
+			const char* convergence_criterion,
+			bool calc_std_dev, 
+			int num_covariates,
+			double* init_coef,
+			double lr_coef,
+			double acc_rate_coef,
+			const char* optimizer_coef,
+			const char* matrix_inversion_method,
+			int cg_max_num_it,
+			int cg_max_num_it_tridiag,
+			double cg_delta_conv);
 
 		/*!
 		* \brief Reset cov_pars_ (to their initial values).
@@ -256,11 +270,20 @@ namespace GPBoost {
 		* \param gp_coords_data_pred Coordinates (features) for Gaussian process
 		* \param gp_rand_coef_data_pred Covariate data for Gaussian process random coefficients
 		* \param covariate_data_pred Covariate data (=independent variables, features) for prediction
+		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
+		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
+		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 		*/
 		void SetPredictionData(data_size_t num_data_pred,
-			const data_size_t* cluster_ids_data_pred, const char* re_group_data_pred,
-			const double* re_group_rand_coef_data_pred, double* gp_coords_data_pred,
-			const double* gp_rand_coef_data_pred, const double* covariate_data_pred);
+			const data_size_t* cluster_ids_data_pred,
+			const char* re_group_data_pred,
+			const double* re_group_rand_coef_data_pred,
+			double* gp_coords_data_pred,
+			const double* gp_rand_coef_data_pred,
+			const double* covariate_data_pred,
+			const char* vecchia_pred_type,
+			int num_neighbors_pred,
+			double cg_delta_conv_pred);
 
 		/*!
 		* \brief Make predictions: calculate conditional mean and variances or covariance matrix
@@ -284,17 +307,30 @@ namespace GPBoost {
 		* \param use_saved_data If true previusly set data on groups, coordinates, and covariates are used and some arguments of this function are ignored
 		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
+		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
 		* \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
 		* \param suppress_calc_cov_factor If true, the covariance matrix of the observed data is not factorized (default=false), otherwise it is dynamically decided whether to factorize or nor
 		*/
-		void Predict(const double* y_obs, data_size_t num_data_pred, double* out_predict,
-			bool predict_cov_mat, bool predict_var, bool predict_response,
-			const data_size_t* cluster_ids_data_pred, const char* re_group_data_pred, const double* re_group_rand_coef_data_pred,
-			double* gp_coords_data_pred, const double* gp_rand_coef_data_pred,
-			const double* cov_pars_pred, const double* covariate_data_pred,
-			bool use_saved_data, const char* vecchia_pred_type, int num_neighbors_pred,
-			const double* fixed_effects, const double* fixed_effects_pred,
+		void Predict(const double* y_obs,
+			data_size_t num_data_pred,
+			double* out_predict,
+			bool predict_cov_mat,
+			bool predict_var,
+			bool predict_response,
+			const data_size_t* cluster_ids_data_pred,
+			const char* re_group_data_pred,
+			const double* re_group_rand_coef_data_pred,
+			double* gp_coords_data_pred,
+			const double* gp_rand_coef_data_pred,
+			const double* cov_pars_pred,
+			const double* covariate_data_pred,
+			bool use_saved_data,
+			const char* vecchia_pred_type,
+			int num_neighbors_pred,
+			double cg_delta_conv_pred,
+			const double* fixed_effects,
+			const double* fixed_effects_pred,
 			bool suppress_calc_cov_factor) const;
 
 		/*!
@@ -334,36 +370,21 @@ namespace GPBoost {
 		bool sparse_ = false;
 		std::unique_ptr < REModelTemplate<sp_mat_t, chol_sp_mat_t> > re_model_sp_;
 		std::unique_ptr < REModelTemplate<den_mat_t, chol_den_mat_t> > re_model_den_;
-		vec_t cov_pars_;//covariance paramters
-		vec_t init_cov_pars_;//Initial values for covariance parameters
-		bool cov_pars_initialized_ = false;// This is true of InitializeCovParsIfNotDefined() has been called
-		bool covariance_matrix_has_been_factorized_ = false;//If true, the covariance matrix Psi has been factorized for the cov_pars_ (either through OptimCovPar/OptimLinRegrCoefCovPar or EvalNegLogLikelihood) and will not be factorized anew when making predictions in Predict
+		vec_t cov_pars_; //Covariance paramters
+		vec_t init_cov_pars_; //Initial values for covariance parameters
+		bool cov_pars_initialized_ = false; //This is true of InitializeCovParsIfNotDefined() has been called
+		bool covariance_matrix_has_been_factorized_ = false; //If true, the covariance matrix Psi has been factorized for the cov_pars_ (either through OptimCovPar/OptimLinRegrCoefCovPar or EvalNegLogLikelihood) and will not be factorized anew when making predictions in Predict
 		bool init_cov_pars_provided_ = false;
 		vec_t std_dev_cov_pars_;
 		int num_cov_pars_;
-		int num_it_ = 0;
-		double lr_cov_ = -1.;
-		double acc_rate_cov_ = 0.5;
-		int momentum_offset_ = 2;
-		int max_iter_ = 1000;
-		double delta_rel_conv_ = 1.0e-6;
-		bool use_nesterov_acc_ = true;//only used for "gradient_descent"
-		int nesterov_schedule_version_ = 0;
-		string_t optimizer_cov_pars_ = "gradient_descent";//"gradient_descent", "fisher_scoring", or "nelder_mead"
+		int num_it_ = 0; //Number of iterations done for covariance and linear regression parameter estimation
 		vec_t coef_;//linear regression coefficients for fixed effects (in case there are any)
 		bool has_covariates_ = false;
 		bool coef_initialized_ = false;
 		vec_t std_dev_coef_;
-		double lr_coef_ = 0.1;
-		double acc_rate_coef_ = 0.5;
-		string_t optimizer_coef_ = "wls";//"gradient_descent" or "wls" (The default = "wls" is changed to "gradient_descent" for non-Gaussian data upon initialization)
-		string_t convergence_criterion_ = "relative_change_in_log_likelihood";//"relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
-		bool cov_pars_optimizer_hase_been_set_ = false;//true if the function 'SetOptimConfig' has been called and optimizer_cov_pars_ has been set
-		bool coef_optimizer_hase_been_set_ = false;//true if the function 'SetOptimCoefConfig' has been called and optimizer_coef_ has been set
 		bool calc_std_dev_ = false;
 		/*! \brief List of covariance functions wtih compact support */
-		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland",
-			"exponential_tapered" };
+		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland", "exponential_tapered" };
 	};
 
 }  // namespace GPBoost

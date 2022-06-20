@@ -6,7 +6,9 @@
 \usage{
 set_prediction_data(gp_model, group_data_pred = NULL,
   group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
-  gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL)
+  gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL,
+  vecchia_pred_type = NULL, num_neighbors_pred = NULL,
+  cg_delta_conv_pred = NULL)
 }
 \arguments{
 \item{gp_model}{A \code{GPModel}}
@@ -29,6 +31,20 @@ random effects / Gaussian processes for which predictions are made
 
 \item{X_pred}{A \code{matrix} with prediction covariate data for the 
 fixed effects linear regression term (if there is one in the \code{GPModel})}
+
+\item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions. 
+"order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed points, 
+"order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected among all points 
+(observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, 
+"latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent process and observed data is 
+ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all" = Vecchia approximation 
+for the latent process and observed data is ordered first and neighbors are selected among all points}
+
+\item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
+for making predictions}
+
+\item{cg_delta_conv_pred}{a \code{numeric} specifying the olerance level for L2 norm of residuals for 
+checking convergence in conjugate gradient algorithm when being used for prediction}
 }
 \description{
 Generic 'set_prediction_data' method for a \code{GPModel}
