@@ -153,7 +153,7 @@ sum(abs(pred_resp$var - pred_resp_loaded$var))
 #--------------------Two crossed random effects and a random slope----------------
 gp_model <- fitGPModel(group_data = cbind(group,group_crossed), group_rand_coef_data = x,
                        ind_effect_group_rand_coef = 1, likelihood = likelihood,
-                       y = y_crossed_random_slope, X = X)
+                       y = y_crossed_random_slope, X = X, params = list(std_dev = TRUE))
 # 'ind_effect_group_rand_coef = 1' indicates that the random slope is for the first random effect
 summary(gp_model)
 # Prediction
@@ -178,21 +178,23 @@ points(b_crossed, pred_random_effects_crossed, col=4, pch=4, lwd=1.5)
 # Random slope model in which an intercept random effect is dropped / not included
 gp_model <- fitGPModel(group_data = cbind(group,group_crossed), group_rand_coef_data = x,
                        ind_effect_group_rand_coef = 1, drop_intercept_group_rand_effect = c(TRUE,FALSE),
-                       likelihood = likelihood, y = y_crossed_random_slope, X = X)
+                       likelihood = likelihood, y = y_crossed_random_slope, X = X, 
+                       params = list(std_dev = TRUE))
 # 'drop_intercept_group_rand_effect = c(TRUE,FALSE)' indicates that the first categorical variable 
 #   in group_data has no intercept random effect
 summary(gp_model)
 
 # --------------------Two nested random effects----------------
 group_data <- cbind(group, group_nested)
-gp_model <- fitGPModel(group_data = group_data, y = y_nested, likelihood = likelihood)
+gp_model <- fitGPModel(group_data = group_data, y = y_nested, 
+                       likelihood = likelihood, params = list(std_dev = TRUE))
 summary(gp_model)
 
 # --------------------Using cluster_ids for independent realizations of random effects----------------
 cluster_ids = rep(0,n)
 cluster_ids[(n/2+1):n] = 1
 gp_model <- fitGPModel(group_data = group, y = y, cluster_ids = cluster_ids, 
-                       likelihood = likelihood)
+                       likelihood = likelihood, params = list(std_dev = TRUE))
 summary(gp_model)
 #Note: gives sames result in this example as when not using cluster_ids
 #   since the random effects of different groups are independent anyway
@@ -348,7 +350,7 @@ plot(b_1_train, GP_smooth, xlab="truth", ylab="predicted",
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
-                       y = y_lin, X=X, likelihood = likelihood)
+                       y = y_lin, X=X, likelihood = likelihood, params = list(std_dev = TRUE))
 summary(gp_model)
 
 #--------------------Gaussian process model with Vecchia approximation----------------

@@ -181,7 +181,7 @@ Cross validation function for determining number of boosting iterations
 
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
-
+\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -203,6 +203,7 @@ cvbst <- gpb.cv(params = params,
                 use_gp_model_for_validation = TRUE)
 print(paste0("Optimal number of iterations: ", cvbst$best_iter,
              ", best test error: ", cvbst$best_score))
+}
 }
 \author{
 Authors of the LightGBM R package, Fabio Sigrist

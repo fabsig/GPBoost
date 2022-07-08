@@ -292,9 +292,9 @@ test_that("Gaussian process and two random coefficients ", {
                          gp_rand_coef_data = Z_SVC, y = y,
                          params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
                                        use_nesterov_acc= FALSE, maxit=5))
-  expected_values <- c(0.000242813, 0.197623969, 1.120356660, 0.442501100,
-                       0.141084495, 0.070778399, 1.670556231, 0.798785653, 0.055598038,
-                       0.047379252, 0.430573036, 0.605871724, 0.038976112, 0.116595965)
+  expected_values <- c(0.000242813, 0.176573955, 1.008181385, 0.397341267, 0.141084495, 
+                       0.070671768, 1.432715033, 0.708039197, 0.055598038, 0.048988825, 
+                       0.430573036, 0.550644708, 0.038976112, 0.106110593)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
   expect_equal(gp_model$get_num_optim_iter(), 5)
   
@@ -679,9 +679,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            gp_rand_coef_data = Z_SVC, y = y,
                            params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
                                          use_nesterov_acc= FALSE, maxit=5)), file='NUL')
-    expected_values <- c(0.000242813, 0.197623969, 1.120356660, 0.442501100,
-                         0.141084495, 0.070778399, 1.670556231, 0.798785653, 0.055598038,
-                         0.047379252, 0.430573036, 0.605871724, 0.038976112, 0.116595965)
+    expected_values <- c(0.000242813, 0.176573955, 1.008181385, 0.397341267, 0.141084495, 
+                         0.070671768, 1.432715033, 0.708039197, 0.055598038, 0.048988825, 
+                         0.430573036, 0.550644708, 0.038976112, 0.106110593)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 5)
     
@@ -766,9 +766,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
                                          use_nesterov_acc = FALSE,
                                          delta_rel_conv=1E-6)), file='NUL')
-    cov_pars <- c(3.079098e-193, 1.142352e-01, 9.935983e-01, 2.094882e-01)
+    cov_pars <- c(2.946448e-08, 1.599928e-01, 1.391589e+00, 2.933997e-01)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 7)
+    expect_equal(gp_model$get_num_optim_iter(), 5)
     # Evaluate negative log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.02,1.2),y=y)
     expect_lt(abs(nll-136.9508962),1E-6)

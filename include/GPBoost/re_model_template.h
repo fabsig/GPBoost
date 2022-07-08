@@ -631,6 +631,7 @@ namespace GPBoost {
 					lr_cov_ = 0.1;
 				}
 			}
+			lr_cov_init_after_default_ = lr_cov_;
 			if (covariate_data == nullptr) {
 				has_covariates_ = false;
 			}
@@ -689,10 +690,10 @@ namespace GPBoost {
 			const double* fixed_effects_ptr = fixed_effects;
 			// Initialization of covariance parameters related variables
 			vec_t cov_pars = Eigen::Map<const vec_t>(init_cov_pars, num_cov_par_);
-			vec_t cov_pars_lag1 = vec_t(num_cov_par_);//used only if convergence_criterion_ == "relative_change_in_parameters"
+			vec_t cov_pars_lag1 = vec_t(num_cov_par_);
 			vec_t cov_pars_init = cov_pars;
-			vec_t cov_pars_after_grad_aux;//auxiliary variable used only if use_nesterov_acc == true
 			vec_t cov_pars_after_grad_aux_lag1 = cov_pars;//auxiliary variable used only if use_nesterov_acc == true
+			vec_t cov_pars_after_grad_aux, cov_pars_before_lr_coef_small;//auxiliary variables
 			// Set response variabla data (if needed). Note: for the GPBoost algorithm this is set a prior by calling SetY. For Gaussian data with covariates, this is set later repeatedly.
 			if ((!has_covariates_ || !gauss_likelihood_) && y_data != nullptr) {
 				SetY(y_data);
@@ -706,7 +707,7 @@ namespace GPBoost {
 				y_vec_ = Eigen::Map<const vec_t>(y_data, num_data_);
 			}
 			// Initialization of linear regression coefficients related variables
-			vec_t beta, beta_lag1, beta_init, beta_after_grad_aux, beta_after_grad_aux_lag1, fixed_effects_vec, loc_transf, scale_transf;
+			vec_t beta, beta_lag1, beta_init, beta_after_grad_aux, beta_after_grad_aux_lag1, beta_before_lr_cov_small, fixed_effects_vec, loc_transf, scale_transf;
 			bool scale_covariables = false;
 			if (has_covariates_) {
 				scale_covariables = (optimizer_coef_ == "gradient_descent" || (optimizer_cov_pars_ == "bfgs" && !gauss_likelihood_)) && !only_intercept_for_GPBoost_algo;
@@ -841,6 +842,7 @@ namespace GPBoost {
 			} // end use of external optimizer
 			else {
 				// Start optimization with "gradient_descent" or "fisher_scoring"
+				bool lr_cov_is_small = false, lr_coef_is_small = false;
 				for (int it = 0; it < max_iter_; ++it) {
 					neg_log_likelihood_lag1_ = neg_log_likelihood_;
 					cov_pars_lag1 = cov_pars;
@@ -855,6 +857,13 @@ namespace GPBoost {
 							UpdateLinCoef(beta, grad_beta, cov_pars, use_nesterov_acc_coef, it, beta_after_grad_aux, beta_after_grad_aux_lag1,
 								acc_rate_coef_, nesterov_schedule_version_, momentum_offset_, fixed_effects, fixed_effects_vec);
 							fixed_effects_ptr = fixed_effects_vec.data();
+							// In case lr_coef_ is very small, we monitor whether cov_pars continues to change. If it does, we will reset lr_coef_ to its initial value
+							if (lr_coef_ < LR_IS_SMALL_THRESHOLD_ && learn_covariance_parameters && !lr_coef_is_small) {
+								if ((beta - beta_lag1).norm() < LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * beta_lag1.norm()) {//also require that relative change in parameters is small
+									lr_coef_is_small = true;
+									cov_pars_before_lr_coef_small = cov_pars;
+								}
+							}
 						}
 						else if (optimizer_coef_ == "wls") {// coordinate descent using generalized least squares (only for Gaussian data)
 							CHECK(gauss_likelihood_);
@@ -865,6 +874,20 @@ namespace GPBoost {
 							vec_t resid = y_vec_ - (X_ * beta);
 							SetY(resid.data());
 							EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_pars.data(), neg_log_likelihood_after_lin_coef_update_);
+						}
+						// Reset lr_cov_ to its initial value in case beta changes substantially after lr_cov_ is very small
+						if (lr_cov_is_small && learn_covariance_parameters) {
+							if ((beta - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
+								lr_cov_ = lr_cov_init_after_default_;
+								lr_cov_is_small = false;
+								if (!gauss_likelihood_) {
+									//Reset the initial modes to 0. Otherwise, they can get stuck
+									for (const auto& cluster_i : unique_clusters_) {
+										likelihood_[cluster_i]->InitializeModeAvec();
+									}
+									CalcModePostRandEff(fixed_effects_ptr);
+								}
+							}
 						}
 					}//end has_covariates_
 					else {
@@ -892,6 +915,27 @@ namespace GPBoost {
 						// Update covariance parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
 						UpdateCovPars(cov_pars, nat_grad, profile_out_marginal_variance, use_nesterov_acc, it,
 							cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, acc_rate_cov_, nesterov_schedule_version_, momentum_offset_, fixed_effects_ptr);
+						// In case lr_cov_ is very small, we monitor whether beta continues to change. If it does, we will reset lr_cov_ to its initial value
+						if (lr_cov_ < LR_IS_SMALL_THRESHOLD_ && has_covariates_ && !lr_cov_is_small) {
+							if ((cov_pars - cov_pars_lag1).norm() < LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * cov_pars_lag1.norm()) {//also require that relative change in parameters is small
+								lr_cov_is_small = true;
+								beta_before_lr_cov_small = beta;
+							}
+						}
+						// Reset lr_coef_ to its initial value in case cov_pars changes substantially after lr_coef_ is very small
+						if (lr_coef_is_small && has_covariates_) {
+							if ((cov_pars - cov_pars_before_lr_coef_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * cov_pars_before_lr_coef_small.norm()) {
+								lr_coef_ = lr_coef_init_;
+								lr_coef_is_small = false;
+								if (!gauss_likelihood_) {
+									//Reset the initial modes to 0. Otherwise, they can get stuck
+									for (const auto& cluster_i : unique_clusters_) {
+										likelihood_[cluster_i]->InitializeModeAvec();
+									}
+									CalcModePostRandEff(fixed_effects_ptr);
+								}
+							}
+						}
 					}
 					else {
 						neg_log_likelihood_ = neg_log_likelihood_after_lin_coef_update_;
@@ -1045,7 +1089,7 @@ namespace GPBoost {
 				else {
 					std_dev_cov.setZero();// Calculation of standard deviations for covariance paramters is not supported for non-Gaussian data
 					if (!has_covariates_) {
-						Log::REWarning("Calculation of standard deviations of covariance parameters for non-Gaussian data is (currently) not supported.");
+						Log::REWarning("Calculation of standard deviations of covariance parameters for non-Gaussian data is currently not supported.");
 					}
 				}
 				if (has_covariates_) {
@@ -1054,7 +1098,7 @@ namespace GPBoost {
 						CalcStdDevCoef(cov_pars, X_, std_dev_beta);
 					}
 					else {
-						Log::REWarning("Standard deviations of linear regression coefficients for non-Gaussian data can be \"very approximative\". ");
+						Log::REDebug("Standard deviations of linear regression coefficients for non-Gaussian data can be \"very approximative\". ");
 						CalcStdDevCoefNonGaussian(num_covariates, beta, cov_pars, fixed_effects, std_dev_beta);
 					}
 					for (int i = 0; i < num_covariates; ++i) {
@@ -2589,11 +2633,13 @@ namespace GPBoost {
 		/*! \brief Maximal number of iterations for covariance parameter and linear regression parameter estimation */
 		int max_iter_ = 1000;
 		/*! \brief Convergence tolerance for covariance and linear regression coefficient estimation. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood */
-		double delta_rel_conv_ = 1.0e-6;
+		double delta_rel_conv_ = 1e-6;
 		/*! \brief Learning rate for covariance parameters. If lr <= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring") */
 		double lr_cov_ = -1.;
 		/*! \brief Initial learning rate for covariance parameters (lr_cov_ can be decreased) */
 		double lr_cov_init_ = -1;
+		/*! \brief Initial learning rate for covariance parameters (lr_cov_ can be decreased) after checking for default values */
+		double lr_cov_init_after_default_;
 		/*! \brief Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent") */
 		bool use_nesterov_acc_ = true;
 		/*! \brief Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
@@ -2602,6 +2648,10 @@ namespace GPBoost {
 		int momentum_offset_ = 2;
 		/*! \brief Select Nesterov acceleration schedule 0 or 1 */
 		int nesterov_schedule_version_ = 0;
+		/*! \brief If true, updates for covariance parameters on the log-scale in one gradient descent or Fisher scoring step are capped at a certain level */
+		bool CAP_TOO_LARGE_COV_PAR_GRADIENT_UPDATES_LOG_SCALE_ = true;
+		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
+		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log(100.); // allow maximally a change by a factor of 100 in one iteration
 		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian data upon initialization) */
 		string_t optimizer_coef_ = "wls";
 		/*! \brief List of supported optimizers for regression coefficients */
@@ -2612,6 +2662,20 @@ namespace GPBoost {
 		double lr_coef_init_ = 0.1;
 		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
 		double acc_rate_coef_ = 0.5;
+		/*! \brief Maximal number of steps for which learning rate shrinkage is done for gradient-based optimization of covariance parameters and regression coefficients */
+		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
+		/*! \brief Learning rate shrinkage factor for gradient-based optimization of covariance parameters and regression coefficients */
+		double LR_SHRINKAGE_FACTOR_ = 0.5;
+		/*! \brief Threshold value for a learning rate below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
+		double LR_IS_SMALL_THRESHOLD_ = 1e-6;
+		/*! \brief Threshold value for relative change in parameters below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
+		double LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ = 1e-4;
+		/*! \brief Threshold value for relative change in other parameters above which a learning rate is again set to its initial value (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
+		double MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ = 1e-2;
+		/*! \brief true if the function 'SetOptimConfig' has been called and optimizer_cov_pars_ has been set */
+		bool cov_pars_optimizer_hase_been_set_ = false;
+		/*! \brief true if the function 'SetOptimConfig' has been called and optimizer_coef_ has been set */
+		bool coef_optimizer_hase_been_set_ = false;
 		/*! \brief List of optimizers which are externally handled by OptimLib */
 		const std::set<string_t> OPTIM_EXTERNAL_{ "nelder_mead", "bfgs", "adam" };
 		/*! \brief Matrix inversion method */
@@ -2626,14 +2690,6 @@ namespace GPBoost {
 		double cg_delta_conv_ = 1.;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
 		double cg_delta_conv_pred_ = 0.01;
-		/*! \brief true if the function 'SetOptimConfig' has been called and optimizer_cov_pars_ has been set */
-		bool cov_pars_optimizer_hase_been_set_ = false;
-		/*! \brief true if the function 'SetOptimConfig' has been called and optimizer_coef_ has been set */
-		bool coef_optimizer_hase_been_set_ = false;
-		/*! \brief Maximal number of steps for which learning rate shrinkage is done */
-		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
-		/*! \brief Learning rate shrinkage factor */
-		double LR_SHRINKAGE_FACTOR_ = 0.5;
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
 		/*! \brief Collects matrices Z^T (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
@@ -4016,11 +4072,23 @@ namespace GPBoost {
 			bool decrease_found = false;
 			bool halving_done = false;
 			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
+				vec_t update = lr * nat_grad;
+				// Avoid to large steps on log-scale
+				if (CAP_TOO_LARGE_COV_PAR_GRADIENT_UPDATES_LOG_SCALE_) {
+					for (int ip = 0; ip < (int)update.size(); ++ip) {
+						if (update[ip] > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
+							update[ip] = MAX_GRADIENT_UPDATE_LOG_SCALE_;
+						}
+						else if (update[ip] < -MAX_GRADIENT_UPDATE_LOG_SCALE_) {
+							update[ip] = -MAX_GRADIENT_UPDATE_LOG_SCALE_;
+						}
+					}
+				}
 				if (profile_out_marginal_variance) {
-					cov_pars_new.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - lr * nat_grad.array()).exp().matrix();//make update on log-scale
+					cov_pars_new.segment(1, num_cov_par_ - 1) = (cov_pars.segment(1, num_cov_par_ - 1).array().log() - update.array()).exp().matrix();//make update on log-scale
 				}
 				else {
-					cov_pars_new = (cov_pars.array().log() - lr * nat_grad.array()).exp().matrix();//make update on log-scale
+					cov_pars_new = (cov_pars.array().log() - update.array()).exp().matrix();//make update on log-scale
 				}
 				// Apply Nesterov acceleration
 				if (use_nesterov_acc) {

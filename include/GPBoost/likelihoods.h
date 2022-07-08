@@ -89,6 +89,7 @@ namespace GPBoost {
 			mode_initialized_ = true;
 			first_deriv_ll_ = vec_t(num_data_);
 			second_deriv_neg_ll_ = vec_t(num_data_);
+			mode_has_been_calculated_ = false;
 		}
 
 		/*!

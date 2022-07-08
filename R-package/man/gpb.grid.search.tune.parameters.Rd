@@ -140,7 +140,6 @@ Function that allows for choosing tuning parameters from a grid in a determinsti
 
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
-
 \donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")

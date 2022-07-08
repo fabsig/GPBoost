@@ -1587,10 +1587,16 @@ gpb.GPModel <- R6::R6Class(
         print(round(c("Log-lik"=ll, "AIC"=aic, "BIC"=bic),digits=2))
         cat(paste0("Nb. observations: ", self$get_num_data(),"\n"))
         if ((private$num_group_re + private$num_group_rand_coef) > 0) {
-          nb_groups <- t(private$nb_groups)
-          rownames(nb_groups) <- "Nb. groups: "
-          colnames(nb_groups) <- private$re_comp_names[1:private$num_group_re]
-          print(nb_groups)
+          outstr <- "Nb. groups: "
+          for (i in 1:private$num_group_re) {
+            if (i > 1) {
+              outstr <- paste0(outstr,", ")
+            }
+            outstr <- paste0(outstr,private$nb_groups[i]," (",
+                             private$re_comp_names[i],")")
+          }
+          outstr <- paste0(outstr,"\n")
+          cat(outstr)
         }
         cat("---------------------------------------------------\n")
       }

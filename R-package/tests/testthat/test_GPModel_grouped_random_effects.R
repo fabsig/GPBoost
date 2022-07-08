@@ -71,7 +71,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                          acc_rate_cov = 0.1, maxit = 1000,
                                          convergence_criterion = "relative_change_in_parameters"))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(1,3)])),1E-5)
-    expect_equal(gp_model$get_num_optim_iter(), 10)
+    expect_equal(gp_model$get_num_optim_iter(), 9)
     # Using gradient descent and a too large learning rate
     gp_model <- fitGPModel(group_data = group, y = y,
                            params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
@@ -248,9 +248,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- fitGPModel(group_data = group_L,
                            y = y_L, X = X_L,
                            params = list(optimizer_cov = "gradient_descent", maxit=1000, std_dev = TRUE,
-                                         optimizer_coef = "gradient_descent", lr_coef=0.1, use_nesterov_acc=TRUE))
-    cov_pars <- c(0.5005068978, 0.0007461116, 0.9982863693, 0.0046888995)
-    coef <- c(1.994283503, 0.003484753, 2.004006668, 0.002577150)
+                                         optimizer_coef = "gradient_descent", lr_coef=0.1, use_nesterov_acc=TRUE, trace=TRUE))
+    cov_pars <- c(0.5005173784, 0.0007461273, 0.9983076514, 0.0046889994)
+    coef <- c(1.995527352, 0.003484790, 2.001518751, 0.002577176)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOL_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 7)

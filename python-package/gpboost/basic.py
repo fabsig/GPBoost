@@ -598,8 +598,14 @@ def _format_check_data(data, get_variable_names=False, data_name="data", check_d
     elif isinstance(data, np.ndarray):
         if len(data.shape) == 1:
             data = data.reshape((len(data), 1))
-        if get_variable_names and data.dtype.names is not None:
-            variable_names = list(data.dtype.names)
+        if get_variable_names:
+            if data.dtype.names is not None:
+                variable_names = list(data.dtype.names)
+            else:
+                try:
+                    variable_names = data.design_info.column_names # get names for patsy DesignMatrix
+                except BaseException:
+                    pass
     elif is_1d_list(data):
         data = np.array(data)
         data = data.reshape((len(data), 1))
@@ -4490,7 +4496,7 @@ class GPModel(object):
             fixed_effects_c = fixed_effects_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
         if X is not None:
-            X, X_names = _format_check_data(data=X, get_variable_names=False, data_name="X", check_data_type=True,
+            X, X_names = _format_check_data(data=X, get_variable_names=True, data_name="X", check_data_type=True,
                                             convert_to_type=np.float64)
             if X.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in X")
@@ -4815,14 +4821,19 @@ class GPModel(object):
                 npar = npar + self.num_coef
             aic = 2 * npar - 2 * ll
             bic = npar * np.log(self.num_data) - 2 * ll
-            printout = pd.DataFrame([ll, aic, bic]).transpose()
+            printout = pd.DataFrame([round(ll, 2), round(aic, 2), round(bic, 2)]).transpose()
             printout.columns = ["Log-lik", "AIC", "BIC"]
             print(printout.to_string(index=False))
             print("Nb. observations: " + str(self.num_data))
             if (self.num_group_re + self.num_group_rand_coef) > 0:
-                outstr = pd.DataFrame(self.nb_groups,
+                outstr = pd.DataFrame(self.nb_groups.reshape((1, -1)),
                                       columns=self.re_comp_names[0:self.num_group_re]).to_string(index=False)
-                print("Nb. groups: " + outstr)
+                outstr = "Nb. groups: "
+                for i in range(self.num_group_re):
+                    if i > 0:
+                        outstr = outstr + ", "
+                    outstr = outstr + str(self.nb_groups[i]) + " (" + self.re_comp_names[i] + ")"
+                print(outstr)
             print("---------------------------------------------------")
         print("Covariance parameters (random effects):")
         print(round(cov_pars.transpose(),4))
