@@ -5240,7 +5240,7 @@ class GPModel(object):
                     raise ValueError("Incorrect number of data points in group_rand_coef_data_pred")
                 if group_rand_coef_data_pred.shape[1] != self.num_group_rand_coef:
                     raise ValueError("Incorrect number of covariates in group_rand_coef_data_pred")
-                group_rand_coef_data_c, _, _ = c_float_array(group_rand_coef_data_pred.flatten(order='F'))
+                group_rand_coef_data_pred_c, _, _ = c_float_array(group_rand_coef_data_pred.flatten(order='F'))
         # Set data for Gaussian process
         if gp_coords_pred is not None:
             gp_coords_pred, not_used = _format_check_data(data=gp_coords_pred,
