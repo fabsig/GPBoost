@@ -2,7 +2,7 @@
 % Please edit documentation in R/gpb.Booster.R
 \name{predict.gpb.Booster}
 \alias{predict.gpb.Booster}
-\title{Predict method for GPBoost model}
+\title{Prediction function for \code{gpb.Booster} objects}
 \usage{
 \method{predict}{gpb.Booster}(object, data, start_iteration = NULL,
   num_iteration = NULL, pred_latent = FALSE, predleaf = FALSE,
@@ -70,10 +70,10 @@ for the latent process and observed data is ordered first and neighbors are sele
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 for making predictions}
 
-\item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior / conditional) 
-predictive covariance is calculated in addition to the (posterior / conditional) predictive mean}
+\item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior) 
+predictive covariance is calculated in addition to the (posterior) predictive mean}
 
-\item{predict_var}{A \code{boolean}. If TRUE, the (posterior / conditional) 
+\item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
 predictive variances are calculated}
 
 \item{ignore_gp_model}{A \code{boolean}. If TRUE, predictions are only made for the tree ensemble part
@@ -102,7 +102,7 @@ whether there is a \code{gp_model} or not
     are TRUE, the result contains predictions from the tree-booster only.
 }
 \description{
-Predicted values based on class \code{gpb.Booster}
+Prediction function for \code{gpb.Booster} objects
 }
 \examples{
 

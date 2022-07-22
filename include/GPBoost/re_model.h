@@ -131,6 +131,8 @@ namespace GPBoost {
 		* \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
 		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
 		* \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
+		* \param num_rand_vec_trace Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
+		* \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
 		*/
 		void SetOptimConfig(double* init_cov_pars,
 			double lr,
@@ -152,7 +154,9 @@ namespace GPBoost {
 			const char* matrix_inversion_method,
 			int cg_max_num_it,
 			int cg_max_num_it_tridiag,
-			double cg_delta_conv);
+			double cg_delta_conv,
+			int num_rand_vec_trace,
+			bool reuse_rand_vec_trace);
 
 		/*!
 		* \brief Reset cov_pars_ (to their initial values).
@@ -293,7 +297,7 @@ namespace GPBoost {
 		*			   or num_data_pred * 2 if predictive variances are also calculated (predict_var==true)
 		* \param y_obs Response variable for observed data
 		* \param num_data_pred Number of data points for which predictions are made
-		* \param[out] out_predict Predictive/conditional mean at prediciton points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
+		* \param[out] out_predict Predictive mean at prediction points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
 		* \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated (default=false) (predict_var and predict_cov_mat cannot be both true
 		* \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 		* \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects (this is only relevant for non-Gaussian data) (default=false)
@@ -380,7 +384,8 @@ namespace GPBoost {
 		int num_it_ = 0; //Number of iterations done for covariance and linear regression parameter estimation
 		vec_t coef_;//linear regression coefficients for fixed effects (in case there are any)
 		bool has_covariates_ = false;
-		bool coef_initialized_ = false;
+		bool init_coef_given_ = false;
+		bool coef_given_or_estimated_ = false;
 		vec_t std_dev_coef_;
 		bool calc_std_dev_ = false;
 		/*! \brief List of covariance functions wtih compact support */

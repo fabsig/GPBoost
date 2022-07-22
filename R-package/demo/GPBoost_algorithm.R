@@ -68,11 +68,11 @@ params <- list(objective = likelihood, learning_rate = 0.01, max_depth = 3)
 nrounds <- 250
 if (likelihood=="gaussian") {
   nrounds <- 50
-  params$objective="regression_l2"
+  params$objective <- "regression_l2"
 }
 if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
   nrounds <- 500
-  params$objective="binary"
+  params$objective <- "binary"
 } 
 # Note: these parameters are not necessarily optimal for all situations considered here
 
@@ -144,7 +144,7 @@ print(paste0("Best parameters: ",paste0(unlist(lapply(seq_along(opt_params$best_
 print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
 # Note: other scoring / evaluation metrics can be chosen using the 
-#       'eval' argument
+#       'params$metric' argument. E.g., params$metric = "l1" uses the l1 loss
 
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model <- GPModel(group_data = group, likelihood = likelihood)

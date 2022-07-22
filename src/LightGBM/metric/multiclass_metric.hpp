@@ -53,7 +53,7 @@ class MulticlassMetric: public Metric {
     return -1.0f;
   }
 
-  std::vector<double> Eval(const double* score, const ObjectiveFunction* objective) const override {
+  std::vector<double> Eval(const double* score, const ObjectiveFunction* objective, const double*) const override {
     double sum_loss = 0.0;
     int num_tree_per_iteration = num_class_;
     int num_pred_per_row = num_class_;
@@ -235,7 +235,7 @@ class AucMuMetric : public Metric {
     }
   }
 
-  std::vector<double> Eval(const double* score, const ObjectiveFunction*) const override {
+  std::vector<double> Eval(const double* score, const ObjectiveFunction*, const double*) const override {
     // the notation follows that used in the paper introducing the auc-mu metric:
     // http://proceedings.mlr.press/v97/kleiman19a/kleiman19a.pdf
 

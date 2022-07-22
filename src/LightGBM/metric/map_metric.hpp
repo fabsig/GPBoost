@@ -102,7 +102,7 @@ class MapMetric:public Metric {
       cur_left = cur_k;
     }
   }
-  std::vector<double> Eval(const double* score, const ObjectiveFunction*) const override {
+  std::vector<double> Eval(const double* score, const ObjectiveFunction*, const double*) const override {
     // some buffers for multi-threading sum up
     int num_threads = OMP_NUM_THREADS();
     std::vector<std::vector<double>> result_buffer_;

@@ -120,9 +120,9 @@
 #' (set to NULL if you have not specified this when creating the \code{GPModel})
 #' @param X_pred A \code{matrix} with prediction covariate data for the 
 #' fixed effects linear regression term (if there is one in the \code{GPModel})
-#' @param predict_cov_mat A \code{boolean}. If TRUE, the (posterior / conditional) 
-#' predictive covariance is calculated in addition to the (posterior / conditional) predictive mean
-#' @param predict_var A \code{boolean}. If TRUE, the (posterior / conditional) 
+#' @param predict_cov_mat A \code{boolean}. If TRUE, the (posterior) 
+#' predictive covariance is calculated in addition to the (posterior) predictive mean
+#' @param predict_var A \code{boolean}. If TRUE, the (posterior) 
 #' predictive variances are calculated
 
 
@@ -714,6 +714,8 @@ gpb.GPModel <- R6::R6Class(
       cg_max_num_it <- private$params[["cg_max_num_it"]]
       cg_max_num_it_tridiag <- private$params[["cg_max_num_it_tridiag"]]
       cg_delta_conv <- private$params[["cg_delta_conv"]]
+      num_rand_vec_trace <- private$params[["num_rand_vec_trace"]]
+      reuse_rand_vec_trace <- private$params[["reuse_rand_vec_trace"]]
       .Call(
         GPB_SetOptimConfig_R
         , private$handle
@@ -738,6 +740,8 @@ gpb.GPModel <- R6::R6Class(
         , cg_max_num_it
         , cg_max_num_it_tridiag
         , cg_delta_conv
+        , num_rand_vec_trace
+        , reuse_rand_vec_trace
       )
       return(invisible(self))
     },
@@ -1686,9 +1690,11 @@ gpb.GPModel <- R6::R6Class(
                   convergence_criterion = "relative_change_in_log_likelihood",
                   std_dev = FALSE,
                   matrix_inversion_method = "cholesky",
-                  cg_max_num_it = 100L,
+                  cg_max_num_it = 1000L,
                   cg_max_num_it_tridiag = 20L,
-                  cg_delta_conv = 1.),
+                  cg_delta_conv = 1.,
+                  num_rand_vec_trace = 10L,
+                  reuse_rand_vec_trace = TRUE),
     
     determine_num_cov_pars = function(likelihood) {
       if (private$cov_function == "wendland") {
@@ -1712,10 +1718,11 @@ gpb.GPModel <- R6::R6Class(
       numeric_params <- c("lr_cov", "acc_rate_cov", "delta_rel_conv",
                           "lr_coef", "acc_rate_coef", "cg_delta_conv")
       integer_params <- c("maxit", "nesterov_schedule_version",
-                          "momentum_offset", "cg_max_num_it", "cg_max_num_it_tridiag")
+                          "momentum_offset", "cg_max_num_it", "cg_max_num_it_tridiag",
+                          "num_rand_vec_trace")
       character_params <- c("optimizer_cov", "convergence_criterion",
                             "optimizer_coef", "matrix_inversion_method")
-      logical_params <- c("use_nesterov_acc", "trace", "std_dev")
+      logical_params <- c("use_nesterov_acc", "trace", "std_dev", "reuse_rand_vec_trace")
       if (!is.null(params[["init_cov_pars"]])) {
         if (is.vector(params[["init_cov_pars"]])) {
           if (storage.mode(params[["init_cov_pars"]]) != "double") {
@@ -2091,10 +2098,16 @@ summary.GPModel <- function(object, ...){
 #' Make predictions for a \code{GPModel}
 #'
 #' @param object a \code{GPModel}
-#' @param y Observed data (can be NULL, e.g. when the model has been estimated already and the same data is used for making predictions)#' @param cov_pars A \code{vector} containing covariance parameters (used if the \code{GPModel} has not been trained or if predictions should be made for other parameters than the estimated ones)
-#' @param cov_pars A \code{vector} containing covariance parameters (used if the \code{GPModel} has not been trained or if predictions should be made for other parameters than the trained ones
-#' @param use_saved_data A \code{boolean}. If TRUE, predictions are done using a priory set data via the function '$set_prediction_data'  (this option is not used by users directly)
-#' @param predict_response A \code{boolean}. If TRUE, the response variable (label) is predicted, otherwise the latent random effects (this is only relevant for non-Gaussian data)
+#' @param y Observed data (can be NULL, e.g. when the model has been estimated 
+#' already and the same data is used for making predictions)
+#' @param cov_pars A \code{vector} containing covariance parameters which are used if the 
+#' \code{GPModel} has not been trained or if predictions should be made for other 
+#' parameters than the trained ones
+#' @param use_saved_data A \code{boolean}. If TRUE, predictions are done using 
+#' a priory set data via the function '$set_prediction_data' (this option is not used by users directly)
+#' @param predict_response A \code{boolean}. If TRUE, the response variable (label) 
+#' is predicted, otherwise the latent random effects 
+#' (this is only relevant for non-Gaussian data)
 #' @param ... (not used, ignore this, simply here that there is no CRAN warning)
 #' @inheritParams GPModel_shared_params 
 #'

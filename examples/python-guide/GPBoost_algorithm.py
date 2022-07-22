@@ -201,7 +201,7 @@ bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
 gpb.plot_metric(evals_result, figsize=(10, 5)) # plot validation scores
 plt.show(block=False)
 # Note: other scoring / evaluation metrics can be chosen using the 
-#       'eval' argument
+#       params['metric'] argument. E.g., params['metric'] = 'l1' uses the l1 loss
 
 #--------------------Do Newton updates for tree leaves (only for Gaussian data)----------------
 if likelihood == "gaussian":

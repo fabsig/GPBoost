@@ -497,6 +497,8 @@ namespace GPBoost {
 		* \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
 		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
 		* \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
+		* \param num_rand_vec_trace Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
+		* \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
 		*/
 		void SetOptimConfig(double lr,
 			double acc_rate_cov,
@@ -513,7 +515,9 @@ namespace GPBoost {
 			const char* matrix_inversion_method,
 			int cg_max_num_it,
 			int cg_max_num_it_tridiag,
-			double cg_delta_conv) {
+			double cg_delta_conv,
+			int num_rand_vec_trace,
+			bool reuse_rand_vec_trace) {
 			lr_cov_ = lr;
 			lr_cov_init_ = lr;
 			acc_rate_cov_ = acc_rate_cov;
@@ -550,6 +554,8 @@ namespace GPBoost {
 				cg_max_num_it_ = cg_max_num_it;
 				cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
 				cg_delta_conv_ = cg_delta_conv;
+				num_rand_vec_trace_ = num_rand_vec_trace;
+				reuse_rand_vec_trace_ = reuse_rand_vec_trace;
 			}
 		}
 
@@ -726,6 +732,7 @@ namespace GPBoost {
 						}
 					}
 					if (has_intercept) {
+						loc_transf[intercept_col] = 0.;
 						scale_transf[intercept_col] = 1.;
 					}
 				}
@@ -736,7 +743,7 @@ namespace GPBoost {
 				else {
 					beta = Eigen::Map<const vec_t>(init_coef, num_covariates);
 				}
-				if ((beta.array().abs().sum() < EPSILON_VECTORS)) { // beta is vector of 0's (-> assume that no intial values are provided and the intercept is thus appropriately chosen)
+				if (init_coef == nullptr || only_intercept_for_GPBoost_algo){
 					if (has_intercept) {
 						if (y_data == nullptr) {
 							vec_t y_aux_temp(num_data_);
@@ -774,7 +781,7 @@ namespace GPBoost {
 			for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars[i]); }
 			if (has_covariates_) {
 				Log::REDebug("Initial linear regression coefficients");
-				for (int i = 0; i < std::min((int)beta.size(), 3); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
+				for (int i = 0; i < std::min((int)beta.size(), 5); ++i) { Log::REDebug("beta[%d]: %g", i, beta[i]); }
 			}
 			// Initialize optimizer:
 			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian data)
@@ -2683,13 +2690,17 @@ namespace GPBoost {
 		/*! \brief Supported matrix inversion methods */
 		const std::set<string_t> SUPPORTED_MATRIX_INVERSION_METHODS_{ "cholesky", "cg" };
 		/*! \brief Maximal number of iterations for conjugate gradient algorithm */
-		int cg_max_num_it_ = 100;
+		int cg_max_num_it_ = 1000;
 		/*! \brief Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization */
 		int cg_max_num_it_tridiag_ = 20;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation */
 		double cg_delta_conv_ = 1.;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
 		double cg_delta_conv_pred_ = 0.01;
+		/*! \brief Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix */
+		int num_rand_vec_trace_ = 10;
+		/*! \brief If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated */
+		bool reuse_rand_vec_trace_ = true;
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
 		/*! \brief Collects matrices Z^T (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */

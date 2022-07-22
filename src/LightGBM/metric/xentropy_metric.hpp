@@ -103,7 +103,7 @@ class CrossEntropyMetric : public Metric {
     Log::Info("[%s:%s]: sum-of-weights = %f", GetName()[0].c_str(), __func__, sum_weights_);
   }
 
-  std::vector<double> Eval(const double* score, const ObjectiveFunction* objective) const override {
+  std::vector<double> Eval(const double* score, const ObjectiveFunction* objective, const double*) const override {
     double sum_loss = 0.0f;
     if (objective == nullptr) {
       if (weights_ == nullptr) {
@@ -188,7 +188,7 @@ class CrossEntropyLambdaMetric : public Metric {
     }
   }
 
-  std::vector<double> Eval(const double* score, const ObjectiveFunction* objective) const override {
+  std::vector<double> Eval(const double* score, const ObjectiveFunction* objective, const double*) const override {
     double sum_loss = 0.0f;
     if (objective == nullptr) {
       if (weights_ == nullptr) {
@@ -297,7 +297,7 @@ class KullbackLeiblerDivergence : public Metric {
     Log::Info("%s offset term = %f", GetName()[0].c_str(), presum_label_entropy_);
   }
 
-  std::vector<double> Eval(const double* score, const ObjectiveFunction* objective) const override {
+  std::vector<double> Eval(const double* score, const ObjectiveFunction* objective, const double*) const override {
     double sum_loss = 0.0f;
     if (objective == nullptr) {
       if (weights_ == nullptr) {

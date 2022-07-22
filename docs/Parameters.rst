@@ -1120,6 +1120,8 @@ Metric Parameters
 
       -  ``kullback_leibler``, `Kullback-Leibler divergence <https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence>`__, aliases: ``kldiv``
 
+      -  ``gaussian_neg_log_likelihood``, (univariate) Gaussian negative log-likelihood, aliases: ``normal_neg_log_likelihood``, ``normal_nll``, ``gaussian_nll``
+
    -  support multiple metrics, separated by ``,``
 
 -  ``metric_freq`` :raw-html:`<a id="metric_freq" title="Permalink to this parameter" href="#metric_freq">&#x1F517;&#xFE0E;</a>`, default = ``1``, type = int, aliases: ``output_freq``, constraints: ``metric_freq > 0``

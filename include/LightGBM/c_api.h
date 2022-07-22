@@ -1400,6 +1400,8 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
 * \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
 * \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
+* \param num_rand_vec_trace Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
+* \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
@@ -1423,7 +1425,9 @@ GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
     const char* matrix_inversion_method,
     int cg_max_num_it,
     int cg_max_num_it_tridiag,
-    double cg_delta_conv);
+    double cg_delta_conv,
+    int num_rand_vec_trace,
+    bool reuse_rand_vec_trace);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)
@@ -1553,7 +1557,7 @@ GPBOOST_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
 * \param handle Handle of REModel
 * \param y_data Response variable for observed data
 * \param num_data_pred Number of data points for which predictions are made
-* \param[out] out_predict Predictive/conditional mean at prediciton points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
+* \param[out] out_predict Predictive mean at prediction points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
 * \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 * \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 * \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects (this is only relevant for non-Gaussian data) (default=false)

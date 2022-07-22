@@ -41,8 +41,10 @@ namespace LightGBM {
 		/*!
 		* \brief Calculating and printing metric result
 		* \param score Current prediction score
+		* \param objective Objective function
+		* \param residual_variance Current residual variance
 		*/
-		virtual std::vector<double> Eval(const double* score, const ObjectiveFunction* objective) const = 0;
+		virtual std::vector<double> Eval(const double* score, const ObjectiveFunction* objective, const double* residual_variance) const = 0;
 
 		Metric() = default;
 		/*! \brief Disable copy */

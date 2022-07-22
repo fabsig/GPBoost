@@ -66,6 +66,8 @@ Metric* Metric::CreateMetric(const std::string& type, const Config& config) {
       return new LatenGaussianLaplace(config);
   } else if (type == std::string("neg_log_likelihood")) {
       return new NegLogLikelihood(config);
+  } else if (type == std::string("gaussian_neg_log_likelihood")) {
+      return new GaussianNegLogLikelihood(config);
   }
   return nullptr;
 }

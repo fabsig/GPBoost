@@ -248,7 +248,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- fitGPModel(group_data = group_L,
                            y = y_L, X = X_L,
                            params = list(optimizer_cov = "gradient_descent", maxit=1000, std_dev = TRUE,
-                                         optimizer_coef = "gradient_descent", lr_coef=0.1, use_nesterov_acc=TRUE, trace=TRUE))
+                                         optimizer_coef = "gradient_descent", lr_coef=0.1, use_nesterov_acc=TRUE))
     cov_pars <- c(0.5005173784, 0.0007461273, 0.9983076514, 0.0046889994)
     coef <- c(1.995527352, 0.003484790, 2.001518751, 0.002577176)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_STRICT)

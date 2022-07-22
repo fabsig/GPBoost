@@ -313,7 +313,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      use_gp_model_for_validation = TRUE)
     expect_equal(bst$best_iter, 59)
     expect_lt(abs(bst$best_score - 0.04753591),TOLERANCE)
-    # Same thing using the S3 set_prediction_data method 
+    # Same thing using the set_prediction_data method 
     gp_model <- GPModel(group_data = group_data_train)
     gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
     set_prediction_data(gp_model, group_data_pred = group_data_test)
@@ -368,6 +368,47 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     eval = l4_loss, metric = "l4")
     expect_equal(cvbst$best_iter, 52)
     expect_lt(abs(cvbst$best_score - 2.932338),TOLERANCE)
+    
+    # Use of validation data and gaussian_neg_log_likelihood as metric
+    gp_model <- GPModel(group_data = group_data_train)
+    set_prediction_data(gp_model, group_data_pred = group_data_test)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 10,
+                     learning_rate = 0.01, max_depth = 6, min_data_in_leaf = 5,
+                     objective = "regression_l2", verbose = 0,
+                     valids = valids, early_stopping_rounds = 5,
+                     use_gp_model_for_validation = TRUE, metric = "gaussian_neg_log_likelihood")
+    expect_equal(bst$best_iter, 10)
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test, 
+                    pred_latent = FALSE, predict_var = TRUE)
+    nll <- 0.5 * mean((y_test - pred[['response_mean']])^2 / 
+                        pred[['response_var']] + log(pred[['response_var']] * 2 * pi))
+    expect_lt(abs(bst$best_score - nll),TOLERANCE)
+    # Use of validation data and gaussian_neg_log_likelihood as metric but set use_gp_model_for_validation = FALSE
+    gp_model <- GPModel(group_data = group_data_train)
+    gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 10,
+                     learning_rate = 0.01, max_depth = 6, min_data_in_leaf = 5,
+                     objective = "regression_l2", verbose = 0,
+                     valids = valids, early_stopping_rounds = 5,
+                     use_gp_model_for_validation = FALSE, metric = "gaussian_neg_log_likelihood")
+    expect_equal(bst$best_iter, 10)
+    predtrain <- predict(bst, data = X_train, group_data_pred = group_data_train, pred_latent = TRUE)
+    var_est <- var(y_train - predtrain$fixed_effect)
+    pred <- predict(bst, data = X_test, group_data_pred = group_data_test, pred_latent = TRUE)
+    nll <- 0.5 * mean((y_test - pred[['fixed_effect']])^2 / var_est + log(var_est * 2 * pi))
+    expect_lt(abs(bst$best_score - nll),TOLERANCE)
+    # Use of validation data and gaussian_neg_log_likelihood as metric without a GPModel
+    bst <- gpb.train(data = dtrain, nrounds = 10, learning_rate = 0.01, max_depth = 6, min_data_in_leaf = 5,
+                     objective = "regression_l2", verbose = 0,
+                     valids = valids, early_stopping_rounds = 5,
+                     metric = "gaussian_neg_log_likelihood")
+    expect_equal(bst$best_iter, 10)
+    predtrain <- predict(bst, data = X_train, pred_latent = TRUE)
+    var_est <- var(y_train - predtrain)
+    pred <- predict(bst, data = X_test, pred_latent = TRUE)
+    nll <- 0.5 * mean((y_test - pred)^2 / var_est + log(var_est * 2 * pi))
+    expect_lt(abs(bst$best_score - nll),TOLERANCE)
     
     # Use Nelder-Mead for training
     gp_model <- GPModel(group_data = group_data_train)

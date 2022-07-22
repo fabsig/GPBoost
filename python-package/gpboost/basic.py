@@ -3366,11 +3366,11 @@ class Booster:
             IDs / labels indicating independent realizations of random effects / Gaussian processes
             (same values = same process realization). Used only if the Booster has a gp_model
         predict_cov_mat : bool, optional (default=False)
-            If True, the (posterior / conditional) predictive covariance is calculated in addition to the
-            (posterior / conditional) predictive mean. Used only if the Booster has a gp_model
+            If True, the (posterior) predictive covariance is calculated in addition to the
+            (posterior) predictive mean. Used only if the Booster has a gp_model
         predict_var : bool, optional (default=False)
-            If True, (posterior / conditional) predictive variances are calculated in addition to the
-            (posterior / conditional) predictive mean. Used only if the Booster has a gp_model
+            If True, (posterior) predictive variances are calculated in addition to the
+            (posterior) predictive mean. Used only if the Booster has a gp_model
         ignore_gp_model : bool, optional (default=False)
             If True, predictions are only made for the tree ensemble part and the gp_model is ignored
         raw_score : bool, deprecated
@@ -4085,9 +4085,11 @@ class GPModel(object):
                        "convergence_criterion": "relative_change_in_log_likelihood",
                        "std_dev": False,
                        "matrix_inversion_method": "cholesky",
-                       "cg_max_num_it": 100,
+                       "cg_max_num_it": 1000,
                        "cg_max_num_it_tridiag": 20,
-                       "cg_delta_conv": 1.
+                       "cg_delta_conv": 1.,
+                       "num_rand_vec_trace": 10,
+                       "reuse_rand_vec_trace": True
         }
         self.prediction_data_is_set = False
         self.model_has_been_loaded_from_saved_file = False
@@ -4688,7 +4690,9 @@ class GPModel(object):
             c_str(self.params["matrix_inversion_method"]),
             ctypes.c_int(self.params["cg_max_num_it"]),
             ctypes.c_int(self.params["cg_max_num_it_tridiag"]),
-            ctypes.c_double(self.params["cg_delta_conv"])))
+            ctypes.c_double(self.params["cg_delta_conv"]),
+            ctypes.c_int(self.params["num_rand_vec_trace"]),
+            ctypes.c_bool(self.params["reuse_rand_vec_trace"])))
         return self
 
     def _get_optim_params(self):
@@ -4906,10 +4910,10 @@ class GPModel(object):
                 The elements indicating independent realizations of random effects / Gaussian processes for which
                 predictions are made (set to None if you have not specified this when creating the model)
             predict_cov_mat : bool (default=False)
-                If True, the (posterior / conditional) predictive covariance is calculated in addition to the
-                (posterior / conditional) predictive mean
+                If True, the (posterior) predictive covariance is calculated in addition to the
+                (posterior) predictive mean
             predict_var : bool (default=False)
-                If True, the (posterior / conditional) predictive variances are calculated
+                If True, the (posterior) predictive variances are calculated
             cov_pars : numpy array or None, optional (default = None)
                 A vector containing covariance parameters (used if the GPModel has not been trained or if predictions
                 should be made for other parameters than the estimated ones)

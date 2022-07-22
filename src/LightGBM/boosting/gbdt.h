@@ -1,6 +1,7 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See LICENSE file in the project root for license information.
+* Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+* Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
  */
 #ifndef LIGHTGBM_BOOSTING_GBDT_H_
 #define LIGHTGBM_BOOSTING_GBDT_H_
@@ -502,6 +503,10 @@ class GBDT : public GBDTBase {
   std::vector<std::unique_ptr<Tree>> models_;
   /*! \brief Max feature index of training data*/
   int max_feature_idx_;
+  /*! \brief If true, the residual variance is calculated on the training data */
+  bool calculate_residual_variance_ = false;
+  /*! \brief Variance of residuals, used for 'gausssian_log_likelihood' metric */
+  double residual_variance_;
 
 #ifdef USE_CUDA
   /*! \brief First order derivative of training data */

@@ -694,6 +694,8 @@ GPBOOST_C_EXPORT SEXP GPB_REModelFree_R(
 * \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
 * \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
 * \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
+* \param num_rand_vec_trace Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
+* \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
@@ -718,7 +720,9 @@ GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
 	SEXP matrix_inversion_method,
 	SEXP cg_max_num_it,
 	SEXP cg_max_num_it_tridiag,
-	SEXP cg_delta_conv
+	SEXP cg_delta_conv,
+	SEXP num_rand_vec_trace,
+	SEXP reuse_rand_vec_trace
 );
 
 /*!

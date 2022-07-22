@@ -163,6 +163,10 @@ namespace LightGBM {
 		valid_metrics_.emplace_back();
 		for (const auto& metric : valid_metrics) {
 			valid_metrics_.back().push_back(metric);
+			if (metric->GetName()[0] == std::string("Gaussian negative log-likelihood") && 
+				!(objective_function_->UseGPModelForValidation())) {
+				calculate_residual_variance_ = true;
+			}
 		}
 		valid_metrics_.back().shrink_to_fit();
 
@@ -478,6 +482,25 @@ namespace LightGBM {
 					}
 				}
 			}
+			// Calculate residual variance if needed
+			if (calculate_residual_variance_) {
+				int64_t num_score = 0;
+				const double* train_score = GetTrainingScore(&num_score);
+				CHECK(num_score == num_data_);
+				auto label_ptr = train_data_->metadata().label();
+				double residual_mean = 0.;
+#pragma omp parallel for schedule(static) reduction(+:residual_mean)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					residual_mean += (label_ptr[i] - train_score[i]);
+				}
+				residual_mean /= num_data_;
+				double residual_variance = 0.;
+#pragma omp parallel for schedule(static) reduction(+:residual_variance)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					residual_variance += std::pow(label_ptr[i] - train_score[i] - residual_mean, 2);
+				}
+				residual_variance_ = residual_variance / (num_data_ - 1);
+			}
 			if (objective_function_->HasGPModel() && !(objective_function_->UseGPModelForValidation() && use_nesterov_acc_)) {
 				// Calculate gradients & find optimal covariance parameters if if there is a GP model
 				// When there is Nesterov acceleration and the re_model is not used for validation, it is not necessary to calculate this here
@@ -565,7 +588,7 @@ namespace LightGBM {
 	}
 
 	std::vector<double> GBDT::EvalOneMetric(const Metric* metric, const double* score) const {
-		return metric->Eval(score, objective_function_);
+		return metric->Eval(score, objective_function_, &residual_variance_);
 	}
 
 	std::string GBDT::OutputMetric(int iter) {

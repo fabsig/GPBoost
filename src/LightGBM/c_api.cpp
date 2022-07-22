@@ -2757,7 +2757,9 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	const char* matrix_inversion_method,
 	int cg_max_num_it,
 	int cg_max_num_it_tridiag,
-	double cg_delta_conv) {
+	double cg_delta_conv,
+	int num_rand_vec_trace,
+	bool reuse_rand_vec_trace) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetOptimConfig(init_cov_pars,
@@ -2780,7 +2782,9 @@ int GPB_SetOptimConfig(REModelHandle handle,
 		matrix_inversion_method,
 		cg_max_num_it,
 		cg_max_num_it_tridiag,
-		cg_delta_conv);
+		cg_delta_conv,
+		num_rand_vec_trace,
+		reuse_rand_vec_trace);
 	API_END();
 }
 

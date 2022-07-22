@@ -170,7 +170,9 @@ namespace GPBoost {
 		const char* matrix_inversion_method,
 		int cg_max_num_it,
 		int cg_max_num_it_tridiag,
-		double cg_delta_conv) {
+		double cg_delta_conv,
+		int num_rand_vec_trace,
+		bool reuse_rand_vec_trace) {
 		// Initial covariance parameters
 		if (init_cov_pars != nullptr) {
 			vec_t init_cov_pars_orig = Eigen::Map<const vec_t>(init_cov_pars, num_cov_pars_);
@@ -181,16 +183,19 @@ namespace GPBoost {
 			else {
 				re_model_den_->TransformCovPars(init_cov_pars_orig, init_cov_pars_);
 			}
+			cov_pars_ = init_cov_pars_;
+			cov_pars_initialized_ = true;
 			init_cov_pars_provided_ = true;
 			covariance_matrix_has_been_factorized_ = false;
 		}
 		// Iniutial linear regression coefficients
 		if (init_coef != nullptr) {
 			coef_ = Eigen::Map<const vec_t>(init_coef, num_covariates);
-			coef_initialized_ = true;
+			init_coef_given_ = true;
+			coef_given_or_estimated_ = true;
 		}
 		else {
-			coef_initialized_ = false;
+			init_coef_given_ = false;
 		}
 		// Logging level
 		if (trace) {
@@ -203,12 +208,12 @@ namespace GPBoost {
 		if (sparse_) {
 			re_model_sp_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
-				matrix_inversion_method, cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv);
+				matrix_inversion_method, cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace);
 		}
 		else {
 			re_model_den_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
-				matrix_inversion_method, cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv);
+				matrix_inversion_method, cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace);
 		}
 	}
 
@@ -267,10 +272,13 @@ namespace GPBoost {
 
 	void REModel::OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates) {
 		InitializeCovParsIfNotDefined(y_data);
-		if (!coef_initialized_) {
+		double* coef_ptr;;
+		if (init_coef_given_) {
+			coef_ptr = coef_.data();
+		}
+		else {
+			coef_ptr = nullptr;
 			coef_ = vec_t(num_covariates);
-			coef_.setZero();
-			coef_initialized_ = true;
 		}
 		double* std_dev_cov_par;
 		double* std_dev_coef;
@@ -292,7 +300,7 @@ namespace GPBoost {
 				coef_.data(),
 				num_it_,
 				cov_pars_.data(),
-				coef_.data(),
+				coef_ptr,
 				std_dev_cov_par,
 				std_dev_coef,
 				calc_std_dev_,
@@ -307,7 +315,7 @@ namespace GPBoost {
 				coef_.data(),
 				num_it_,
 				cov_pars_.data(),
-				coef_.data(),
+				coef_ptr,
 				std_dev_cov_par,
 				std_dev_coef,
 				calc_std_dev_,
@@ -315,6 +323,7 @@ namespace GPBoost {
 				true);
 		}
 		has_covariates_ = true;
+		coef_given_or_estimated_ = true;
 		covariance_matrix_has_been_factorized_ = true;
 	}
 
@@ -654,7 +663,7 @@ namespace GPBoost {
 			}
 		}// end use saved cov_pars
 		if (has_covariates_) {
-			CHECK(coef_initialized_ == true);
+			CHECK(coef_given_or_estimated_ == true);
 		}
 		if (suppress_calc_cov_factor) {
 			calc_cov_factor = false;
@@ -733,7 +742,7 @@ namespace GPBoost {
 			}
 		}// end use saved cov_pars
 		if (has_covariates_) {
-			CHECK(coef_initialized_ == true);
+			CHECK(coef_given_or_estimated_ == true);
 		}
 		if (sparse_) {
 			re_model_sp_->PredictTrainingDataRandomEffects(cov_pars_pred_trans.data(),
@@ -778,20 +787,15 @@ namespace GPBoost {
 
 	void REModel::InitializeCovParsIfNotDefined(const double* y_data) {
 		if (!cov_pars_initialized_) {
-			if (init_cov_pars_provided_) {
-				cov_pars_ = init_cov_pars_;
+			cov_pars_ = vec_t(num_cov_pars_);
+			if (sparse_) {
+				re_model_sp_->FindInitCovPar(y_data, cov_pars_.data());
 			}
 			else {
-				cov_pars_ = vec_t(num_cov_pars_);
-				if (sparse_) {
-					re_model_sp_->FindInitCovPar(y_data, cov_pars_.data());
-				}
-				else {
-					re_model_den_->FindInitCovPar(y_data, cov_pars_.data());
-				}
-				covariance_matrix_has_been_factorized_ = false;
-				init_cov_pars_ = cov_pars_;
+				re_model_den_->FindInitCovPar(y_data, cov_pars_.data());
 			}
+			covariance_matrix_has_been_factorized_ = false;
+			init_cov_pars_ = cov_pars_;
 			cov_pars_initialized_ = true;
 		}
 	}

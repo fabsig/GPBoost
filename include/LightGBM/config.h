@@ -956,6 +956,7 @@ namespace LightGBM {
 		// descl2 = ``cross_entropy``, cross-entropy (with optional linear weights), aliases: ``xentropy``
 		// descl2 = ``cross_entropy_lambda``, "intensity-weighted" cross-entropy, aliases: ``xentlambda``
 		// descl2 = ``kullback_leibler``, `Kullback-Leibler divergence <https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence>`__, aliases: ``kldiv``
+		// descl2 = ``gaussian_neg_log_likelihood``, (univariate) Gaussian negative log-likelihood, aliases: ``normal_neg_log_likelihood``, ``normal_nll``, ``gaussian_nll``
 		// desc = support multiple metrics, separated by ``,``
 		std::vector<std::string> metric;
 
@@ -1244,6 +1245,9 @@ namespace LightGBM {
 		}
 		else if (type == std::string("mean_absolute_percentage_error") || type == std::string("mape")) {
 			return "mape";
+		}
+		else if (type == std::string("normal_neg_log_likelihood") || type == std::string("normal_nll") || type == std::string("gaussian_nll")) {
+			return "gaussian_neg_log_likelihood";
 		}
 		else if (type == std::string("none") || type == std::string("null") || type == std::string("custom") || type == std::string("na")) {
 			return "custom";

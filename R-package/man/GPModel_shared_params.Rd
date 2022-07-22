@@ -147,10 +147,10 @@ random effects / Gaussian processes for which predictions are made
 \item{X_pred}{A \code{matrix} with prediction covariate data for the 
 fixed effects linear regression term (if there is one in the \code{GPModel})}
 
-\item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior / conditional) 
-predictive covariance is calculated in addition to the (posterior / conditional) predictive mean}
+\item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior) 
+predictive covariance is calculated in addition to the (posterior) predictive mean}
 
-\item{predict_var}{A \code{boolean}. If TRUE, the (posterior / conditional) 
+\item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
 predictive variances are calculated}
 }
 \description{

@@ -1118,8 +1118,8 @@ Booster <- R6::R6Class(
 )
 
 #' @name predict.gpb.Booster
-#' @title Predict method for GPBoost model
-#' @description Predicted values based on class \code{gpb.Booster}
+#' @title Prediction function for \code{gpb.Booster} objects
+#' @description Prediction function for \code{gpb.Booster} objects
 #' @inheritParams GPModel_shared_params
 #' @param object Object of class \code{gpb.Booster}
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename

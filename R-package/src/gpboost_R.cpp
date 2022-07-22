@@ -905,7 +905,9 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP matrix_inversion_method,
 	SEXP cg_max_num_it,
 	SEXP cg_max_num_it_tridiag,
-	SEXP cg_delta_conv) {
+	SEXP cg_delta_conv,
+	SEXP num_rand_vec_trace,
+	SEXP reuse_rand_vec_trace) {
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
 	SEXP convergence_criterion_aux = PROTECT(Rf_asChar(convergence_criterion));
 	SEXP optimizer_coef_aux = PROTECT(Rf_asChar(optimizer_coef));
@@ -936,7 +938,9 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		matrix_inversion_method_ptr,
 		Rf_asInteger(cg_max_num_it),
 		Rf_asInteger(cg_max_num_it_tridiag),
-		Rf_asReal(cg_delta_conv)));
+		Rf_asReal(cg_delta_conv),
+		Rf_asInteger(num_rand_vec_trace),
+		Rf_asLogical(reuse_rand_vec_trace)));
 	R_API_END();
 	UNPROTECT(4);
 	return R_NilValue;
@@ -1246,7 +1250,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 22},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 22},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 24},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
   {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 4},
   {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},
