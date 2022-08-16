@@ -58,7 +58,8 @@ b1 <- sqrt(0.5) * rnorm(m)
 rand_eff <- b1[group]
 rand_eff <- rand_eff - mean(rand_eff)
 # Simulate fixed effects
-X <- matrix(runif(2*n),ncol=2)
+p <- 5 # number of predictor variables
+X <- matrix(runif(p*n), ncol=p)
 f <- f1d(X[,1])
 y <- simulate_response_variable(lp=f, rand_eff=rand_eff, likelihood=likelihood)
 hist(y, breaks=20)  # visualize response variable
@@ -96,8 +97,8 @@ bst <- gpb.train(data = dataset, gp_model = gp_model, nrounds = nrounds,
 
 #--------------------Prediction----------------
 group_test <- 1:m
-x_test <- seq(from=0,to=1,length.out=m)
-Xtest <- cbind(x_test,rep(0,length(x_test)))
+x_test <- seq(from=0, to=1, length.out=m)
+Xtest <- cbind(x_test, matrix(0, ncol=p-1 , nrow=length(x_test)))
 # 1. Predict latent variable (pred_latent=TRUE) and variance
 pred <- predict(bst, data = Xtest, group_data_pred = group_test, 
                 predict_var = TRUE, pred_latent = TRUE)
@@ -113,14 +114,13 @@ pred_resp <- predict(bst, data = Xtest, group_data_pred = group_test,
 # pred_resp[["response_var"]]: predictive variances (if predict_var=True)
 
 # Visualize fitted response variable
-plot(X[,1],y,col=rgb(0,0,0,alpha=0.1),main="Data and predicted response variable")
-lines(Xtest[,1],pred_resp$response_mean,col=3,lwd=3)
+plot(X[,1], y, col=rgb(0,0,0,alpha=0.1), main="Data and predicted response variable")
+lines(Xtest[,1], pred_resp$response_mean, col=3, lwd=3)
 # Visualize fitted (latent) fixed effects function
-x <- seq(from=0,to=1,length.out=200)
-plot(x,f1d(x),type="l",lwd=3,col=2,main="Data, true and predicted latent function F")
-points(X[,1],y,col=rgb(0,0,0,alpha=0.1))
-lines(Xtest[,1],pred$fixed_effect,col=4,lwd=3)
-legend(legend=c("True F","Pred F"),"bottomright",bty="n",lwd=3,col=c(2,4))
+x <- seq(from=0, to=1, length.out=200)
+plot(x, f1d(x), type="l",lwd=3, col=2, main="True and predicted latent function F")
+lines(Xtest[,1], pred$fixed_effect, col=4, lwd=3)
+legend(legend=c("True F","Pred F"), "bottomright", bty="n", lwd=3, col=c(2,4))
 # Compare true and predicted random effects
 plot(b1, pred$random_effect_mean, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
@@ -151,7 +151,7 @@ gp_model <- GPModel(group_data = group, likelihood = likelihood)
 dataset <- gpb.Dataset(data = X, label = y)
 bst <- gpb.cv(data = dataset, gp_model = gp_model,
               use_gp_model_for_validation = TRUE, params = params,
-              nrounds = 1000, nfold = 4, early_stopping_rounds = 5)
+              nrounds = 1000, nfold = 4, early_stopping_rounds = 10)
 print(paste0("Optimal number of iterations: ", bst$best_iter))
 
 #--------------------Using a validation set for finding number of iterations----------------
@@ -206,7 +206,7 @@ if (likelihood == "gaussian") {
 #--------------------Model interpretation----------------
 # Note: for the SHAPforxgboost package, the data matrix X needs to have column names
 # We add them first:
-X <- matrix(as.vector(X), ncol=ncol(X), dimnames=list(NULL,paste0("Covariate_",1:2)))
+X <- matrix(as.vector(X), ncol=ncol(X), dimnames=list(NULL, paste0("Covariate_",1:dim(X)[2])))
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
 bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = nrounds, 
                params = params, verbose = 0)
@@ -217,9 +217,17 @@ gpb.plot.importance(feature_importances, top_n = 5L, measure = "Gain")
 gpb.plot.partial.dependence(bst, X, variable = 1)
 # Interaction plot
 gpb.plot.part.dep.interact(bst, X, variables = c(1,2))
+# H-statistic for interactions
+library(flashlight)
+cols <- paste0("Covariate_",1:p)
+fl <- flashlight(model = bst, data = data.frame(y, X), y = "y", label = "xgb",
+                 predict_fun = function(m, X) predict(m, data.matrix(X[, cols]), 
+                                                      group_data_pred = rep(-1, dim(X)[1]),
+                                                      pred_latent = TRUE)$fixed_effect)
+plot(imp <- light_interaction(fl, v = cols, pairwise = TRUE))
 
 # SHAP values and dependence plots
-library("SHAPforxgboost")
+library(SHAPforxgboost)
 shap.plot.summary.wrap1(bst, X = X)
 shap_long <- shap.prep(bst, X_train = X)
 shap.plot.dependence(data_long = shap_long, x = "Covariate_1",

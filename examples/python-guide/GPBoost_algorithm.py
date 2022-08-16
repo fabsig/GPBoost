@@ -48,7 +48,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", or "gamma"
-likelihood = "gaussian"
+likelihood = "bernoulli_probit"
 
 """
 Combine tree-boosting and grouped random effects model
@@ -65,7 +65,8 @@ b1 = np.sqrt(0.5) * np.random.normal(size=m)  # simulate random effects
 rand_eff = b1[group]
 rand_eff = rand_eff - np.mean(rand_eff)
 # Simulate fixed effects
-X = np.random.rand(n, 2)
+p = 5 # number of predictor variables
+X = np.random.rand(n, p)
 f = f1d(X[:, 0])
 y = simulate_response_variable(lp=f, rand_eff=rand_eff, likelihood=likelihood)
 hst = plt.hist(y, bins=20)  # visualize response variable
@@ -105,7 +106,7 @@ gp_model.summary() # Estimated random effects model
 
 #--------------------Prediction----------------
 group_test = np.arange(m)
-Xtest = np.zeros((m, 2))
+Xtest = np.zeros((m, p))
 Xtest[:, 0] = np.linspace(0, 1, m)
 # 1. Predict latent variable (pred_latent=True) and variance
 pred = bst.predict(data=Xtest, group_data_pred=group_test, predict_var=True, 
@@ -131,9 +132,7 @@ plt.show(block=False)
 fig1, ax1 = plt.subplots()
 ax1.plot(Xtest[:, 0], f1d(Xtest[:, 0]), linewidth=2, label="True F")
 ax1.plot(Xtest[:, 0], pred['fixed_effect'], linewidth=2, label="Pred F")
-if likelihood in ("gaussian", "bernoulli_probit", "bernoulli_logit"):
-    ax1.scatter(X[:, 0], y, linewidth=2, color="black", alpha=0.02)
-ax1.set_title("Data, true and predicted latent function F")
+ax1.set_title("Tue and predicted latent function F")
 ax1.legend()
 plt.show(block=False)
 # Compare true and predicted random effects
@@ -170,7 +169,7 @@ gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(X, y)
 cvbst = gpb.cv(params=params, train_set=data_train,
                gp_model=gp_model, use_gp_model_for_validation=True,
-               num_boost_round=1000, early_stopping_rounds=5,
+               num_boost_round=1000, early_stopping_rounds=10,
                nfold=4, verbose_eval=True, show_stdv=False, seed=1)
 metric_name = list(cvbst.keys())[0]
 print("Best number of iterations: " + str(np.argmin(cvbst[metric_name])))
@@ -225,23 +224,28 @@ plt_imp = gpb.plot_importance(bst, importance_type='gain')
 from pdpbox import pdp
 import pandas as pd
 # Note: for the pdpbox package, the data needs to be a pandas DataFrame
-Xpd = pd.DataFrame(X,columns=['variable_1','variable_2'])
+Xpd = pd.DataFrame(X, columns=['variable_' + str(i) for i in range(p)])
 pdp_dist = pdp.pdp_isolate(model=bst, dataset=Xpd, model_features=Xpd.columns,
-                           feature='variable_1', num_grid_points=50,
+                           feature='variable_0', num_grid_points=50,
                            predict_kwds={"ignore_gp_model": True})
-ax = pdp.pdp_plot(pdp_dist, 'variable_1', plot_lines=True, frac_to_plot=0.1)
+ax = pdp.pdp_plot(pdp_dist, 'variable_0', plot_lines=True, frac_to_plot=0.1)
 # Interaction plot
 interact = pdp.pdp_interact(model=bst, dataset=Xpd, model_features=Xpd.columns,
-                             features=['variable_1','variable_2'],
+                             features=['variable_0','variable_1'],
                              predict_kwds={"ignore_gp_model": True})
-pdp.pdp_interact_plot(interact, ['variable_1','variable_2'], x_quantile=True,
-                      plot_type='contour', plot_pdp=True)# ignore any error message
+pdp.pdp_interact_plot(interact, ['variable_0','variable_1'], x_quantile=True,
+                      plot_type='contour', plot_pdp=True)
+print("The error message can be ignored")
 
-# SHAP values and dependence plots (note: you need shap version>=0.36.0)
+# SHAP values and dependence plots (note: shap version>=0.36.0 is required)
 import shap
 shap_values = shap.TreeExplainer(bst).shap_values(X)
 shap.summary_plot(shap_values, X)
 shap.dependence_plot("Feature 0", shap_values, X)
+# SHAP interaction values
+shap_interaction_values = shap.TreeExplainer(bst).shap_interaction_values(shap_values)
+shap.summary_plot(shap_interaction_values, X)
+shap.dependence_plot(("Feature 0", "Feature 1"), shap_interaction_values, X, display_features=X)
 
 #--------------------Saving a booster with a gp_model and loading it from a file----------------
 # Train model and make prediction
@@ -250,7 +254,7 @@ data_train = gpb.Dataset(X, y)
 bst = gpb.train(params=params, train_set=data_train,
                 gp_model=gp_model, num_boost_round=num_boost_round)
 group_test = np.array([1,2,-1])
-Xtest = np.random.rand(len(group_test), 2)
+Xtest = np.random.rand(len(group_test), p)
 pred = bst.predict(data=Xtest, group_data_pred=group_test, 
                    predict_var=True, pred_latent=True)
 # Save model

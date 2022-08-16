@@ -104,7 +104,8 @@ internal::gd_basic_impl(
         settings = *settings_inp;
     }
 
-    const int print_level = settings.print_level;
+    //ChangedForGPBoost
+    //const int print_level = settings.print_level;
     
     const uint_t conv_failure_switch = settings.conv_failure_switch;
     const size_t iter_max = settings.iter_max;
