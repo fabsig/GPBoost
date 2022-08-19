@@ -31,7 +31,7 @@ print(np.sum(y==yu) / n)
 print(np.sum(y==yl) / n)
 
 # train model and make predictions
-params = {'objective': 'tobit', 'verbose': 0, 'yl': yl, 'yu': yu}
+params = {'objective': 'tobit', 'verbose': 0, 'yl': yl, 'yu': yu, 'sigma': 1.}
 dtrain = gpb.Dataset(X, y)
 bst = gpb.train(params=params, train_set=dtrain, num_boost_round=100)
 y_pred = bst.predict(X_test)
@@ -45,8 +45,6 @@ print("Test error of standard least squares gradient boosting: " + str(((y_pred_
 
 # measure time
 import time
-params = {'objective': 'tobit', 'verbose': 0, 'yl': yl, 'yu': yu}
-dtrain = gpb.Dataset(X, y)
 start = time.time()
 bst = gpb.train(params=params, train_set=dtrain, num_boost_round=100)
 end = time.time()

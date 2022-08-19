@@ -38,7 +38,7 @@ sum(y==yl) / n
 # train model and make predictions
 dtrain <- gpb.Dataset(data = X, label = y)
 bst <- gpb.train(data = dtrain, nrounds = 100, objective = "tobit",
-                 verbose = 0, yl = yl, yu = yu)
+                 verbose = 0, yl = yl, yu = yu, sigma = 1)
 y_pred <- predict(bst, data = X_test)
 # mean square error (approx. 1.0 for n=10'000)
 print(paste0("Test error of Grabit: ", mean((y_pred - y_test)^2)))
