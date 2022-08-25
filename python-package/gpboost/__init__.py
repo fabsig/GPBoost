@@ -3,7 +3,7 @@
  Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
  Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
 """
-from .basic import Booster, Dataset, register_logger, GPModel
+from .basic import Booster, Dataset, register_logger, GPModel, get_nested_categories
 from .callback import (early_stopping, print_evaluation, record_evaluation,
                        reset_parameter)
 from .engine import cv, train, CVBooster, grid_search_tune_parameters

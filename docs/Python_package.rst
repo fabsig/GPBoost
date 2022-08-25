@@ -67,3 +67,4 @@ Utilities
     :toctree: pythonapi/
 
     register_logger
+    get_nested_categories

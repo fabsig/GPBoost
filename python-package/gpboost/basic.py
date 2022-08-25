@@ -50,6 +50,35 @@ def register_logger(logger):
     _LOGGER = logger
 
 
+def get_nested_categories(outer_var, inner_var):
+    """Auxiliary function to create categorical variables for nested grouped random effects.
+
+    Parameters
+    ----------
+    outer_var : list, numpy array or pandas Series with numeric or string data
+        A categorical grouping variable within which the inner_var is nested in.
+    inner_var : list, numpy array or pandas Series with numeric or string data
+        The inner nested categorical grouping variable
+
+    Returns
+    -------
+    nested_var : numpy array
+        A categorical variable such that inner_var is nested in outer_var
+
+    :Authors:
+        Fabio Sigrist
+    """
+    nested_var = np.arange(len(outer_var))
+    nb_groups = 0
+    for i in np.unique(outer_var):# loop over outer variable
+        aux_var = np.array(inner_var[outer_var == i])
+        aux_var_unique = list(np.unique(aux_var))
+        # TODO: make the following line faster
+        nested_var[outer_var == i] = [ aux_var_unique.index(x) + nb_groups for x in aux_var ]
+        nb_groups= nb_groups + len(aux_var_unique)
+    return nested_var
+
+
 def _normalize_native_string(func):
     """Join log messages from native library which come by chunks."""
     msg_normalized = []

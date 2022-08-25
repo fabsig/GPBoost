@@ -52,7 +52,7 @@ likelihood = "gaussian"
 Grouped random effects
 """
 # --------------------Simulate data----------------
-# Single level grouped random effects
+# Single-level grouped random effects
 n = 1000  # number of samples
 m = 100  # number of categories / levels for grouping variable
 group = np.arange(n)  # grouping variable
@@ -69,7 +69,7 @@ lp = X.dot(beta)
 y = simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
 hst = plt.hist(y, bins=20)  # visualize response variable
 plt.show(block=False)
-# Two crossed grouped random effects and a random slope
+# Crossed grouped random effects and a random slope
 x = np.random.uniform(size=n)  # covariate data for random slope
 n_obs_gr = int(n / m)  # number of sampels per group
 group_crossed = np.arange(n)  # grouping variable for second random effect
@@ -80,7 +80,7 @@ b_random_slope = 0.75 * np.random.normal(size=m)
 rand_eff = b[group] + b_crossed[group_crossed] + x * b_random_slope[group]
 rand_eff = rand_eff - np.mean(rand_eff)
 y_crossed_random_slope = simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
-# Two nested grouped random effects
+# Nested grouped random effects
 m_nested = 200  # number of categories / levels for the second nested grouping variable
 group_nested = np.arange(n)  # grouping variable for nested lower level random effects
 for i in range(m_nested):

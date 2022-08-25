@@ -2423,5 +2423,44 @@ predict_training_data_random_effects.GPModel <- function(gp_model) {
   
   return(gp_model$predict_training_data_random_effects())
 }
+predict_training_data_random_effects <- function(gp_model) UseMethod("predict_training_data_random_effects")
 
+#' Auxiliary function to create categorical variables for nested grouped random effects
+#' 
+#' Auxiliary function to create categorical variables for nested grouped random effects 
+#' 
+#' @param outer_var A \code{vector} containing the outer categorical grouping variable
+#' within which the \code{inner_var is} nested in. Can be of type integer, double, or character.
+#' @param inner_var A \code{vector} containing the inner nested categorical grouping variable
+#'
+#' @return A \code{vector} containing a categorical variable such that inner_var is nested in outer_var
+#'
+#' @examples
+#' \donttest{
+#' # Fit a model with Time as categorical fixed effects variables and Diet and Chick
+#' #   as random effects, where Chick is nested in Diet using lme4
+#' chick_nested_diet <- get_nested_categories(ChickWeight$Diet, ChickWeight$Chick)
+#' fixed_effects_matrix <- model.matrix(weight ~ as.factor(Time), data = ChickWeight)
+#' mod_gpb <- fitGPModel(X = fixed_effects_matrix, 
+#'                       group_data = cbind(diet=ChickWeight$Diet, chick_nested_diet), 
+#'                       y = ChickWeight$weight, params = list(std_dev = TRUE))
+#' summary(mod_gpb)
+#' # This does (almost) the same thing as the following code using lme4:
+#' # mod_lme4 <-  lmer(weight ~ as.factor(Time) + (1 | Diet/Chick), data = ChickWeight, REML = FALSE)
+#' # summary(mod_lme4)
+#' }
+#' @rdname get_nested_categories
+#' @author Fabio Sigrist
+#' @export 
+#' 
+get_nested_categories <- function(outer_var, inner_var) {
+  nested_var <- rep(NA, length(outer_var))
+  nb_groups <- 0
+  for(i in unique(outer_var)) {# loop over outer variable
+    aux_var <- as.numeric(inner_var[outer_var == i])
+    nested_var[outer_var == i] <- match(aux_var, unique(aux_var)) + nb_groups
+    nb_groups <- nb_groups + length(unique(aux_var))
+  }
+  return(nested_var)
+}
 
