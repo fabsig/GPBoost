@@ -54,7 +54,11 @@ pip install gpboost -U
 
 * For **Windows** users, [VC runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads) is needed if **Visual Studio** (2015 or newer) is not installed.
 
-* For **Linux** users, **glibc** >= 2.14 is required. Also, in some rare cases, when you get the ``OSError: libgomp.so.1: cannot open shared object file: No such file or directory`` error when importing GPBoost, you need to install the OpenMP runtime library separately (use your package manager and search for ``lib[g|i]omp`` for doing this).
+* For **Linux** users, **glibc** >= 2.14 is required. 
+
+  * If you get an error message ``version `GLIBC_2.27' not found``, you need to [install from source](#installation-from-source).
+  
+  * In rare cases, when you get the ``OSError: libgomp.so.1: cannot open shared object file: No such file or directory`` error when importing GPBoost, you need to install the OpenMP runtime library separately (use your package manager and search for ``lib[g|i]omp`` for doing this).
 
 * For **macOS** users:
 
@@ -68,7 +72,9 @@ Installation from source can be either done from PyPI or GitHub.
 
 * Installation from source requires that you have installed [**CMake**](https://cmake.org/).
 
-* For **Linux** users, **glibc** >= 2.14 is required. Also, in some rare cases you may need to install OpenMP runtime library separately (use your package manager and search for ``lib[g|i]omp`` for doing this).
+* For **Linux** users, **glibc** >= 2.14 is required. 
+
+  * In rare cases, you may need to install the OpenMP runtime library separately (use your package manager and search for ``lib[g|i]omp`` for doing this).
 
 * For **macOS** users, you can perform installation either with **Apple Clang** or **gcc**.
 
