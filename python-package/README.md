@@ -48,8 +48,6 @@ This is the Python package implementation of the GPBoost library. See https://gi
 pip install gpboost -U
 ```
 
-* You may need to install [wheel](https://pythonwheels.com) via ``pip install wheel`` first.
-
 #### Requirements
 
 * For **Windows** users, [VC runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads) is needed if **Visual Studio** (2015 or newer) is not installed.
@@ -62,7 +60,14 @@ pip install gpboost -U
 
 * For **macOS** users:
 
-  * The library file in distribution wheels is built by the **Apple Clang** (Xcode version 12.3 is used starting from GPBoost version 0.3.0) compiler. You need to install the **OpenMP** library. You can install the **OpenMP** library by the following command: ``brew install libomp``.
+  * The library file in distribution wheels is built by the **Apple Clang** compiler. You need to install the **OpenMP** library. You can install the **OpenMP** library by the following command: ``brew install libomp``. <!-- (Xcode version 12.3 is used starting from GPBoost version 0.3.0) -->
+  
+  * If you have an **arm64 Apple silicon** processor and experience problems, try the following steps:
+    
+    * [uninstall homebrew](https://stackoverflow.com/questions/72890277/i-cant-uninstall-brew-on-macos-apple-silicon) (in case you have migrated from an older non-arm64 Mac)
+    * [install homebrew](https://treehouse.github.io/installation-guides/mac/homebrew) (to make sure that you have an arm64 version of libomp)
+    * install OpenMP (``brew install libomp``)
+    * remove existing python environments and install Miniforge (``brew install miniforge`` and ``conda init "$(basename "${SHELL}")"``)
 
 ### Installation from source
 
