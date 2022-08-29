@@ -81,11 +81,14 @@ rand_eff = b[group] + b_crossed[group_crossed] + x * b_random_slope[group]
 rand_eff = rand_eff - np.mean(rand_eff)
 y_crossed_random_slope = simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
 # Nested grouped random effects
-m_nested = 200  # number of categories / levels for the second nested grouping variable
-group_nested = np.arange(n)  # grouping variable for nested lower level random effects
-for i in range(m_nested):
-    group_nested[int(i * n / m_nested):int((i + 1) * n / m_nested)] = i
-b_nested = 1. * np.random.normal(size=m_nested)  # nested lower level random effects
+group_inner = np.arange(n)  # grouping variable for nested lower level random effects
+for i in range(m):
+    group_inner[int(i * n / m):int((i + 0.5) * n / m)] = 0
+    group_inner[int((i + 0.5) * n / m):int((i + 1) * n / m)] = 1
+# Create nested grouping variable 
+# Note: you need version 0.7.9 or later to use the function 'get_nested_categories'
+group_nested = gpb.get_nested_categories(group, group_inner)
+b_nested = 1. * np.random.normal(size=len(np.unique(group_nested)))  # nested lower level random effects
 rand_eff = b[group] + b_nested[group_nested]
 rand_eff = rand_eff - np.mean(rand_eff)
 y_nested = simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
@@ -200,6 +203,8 @@ gp_model.fit(y=y_crossed_random_slope, X=X, params={"std_dev": True})
 gp_model.summary()
 
 # --------------------Two nested random effects----------------
+# First create nested random effects variable
+group_nested = gpb.get_nested_categories(group, group_inner)
 group_data = np.column_stack((group, group_nested))
 gp_model = gpb.GPModel(group_data=group_data, likelihood=likelihood)
 gp_model.fit(y=y_nested, X=X, params={"std_dev": True})

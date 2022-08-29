@@ -71,10 +71,13 @@ rand_eff <- b[group] + b_crossed[group_crossed] + x * b_random_slope[group]
 rand_eff <- rand_eff - mean(rand_eff)
 y_crossed_random_slope <- simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
 # Nested grouped random effects
-m_nested <- 200 # number of categories / levels for the second nested grouping variable
-group_nested <- rep(1,n)  # grouping variable for nested lower level random effects
-for(i in 1:m_nested) group_nested[((i-1)*n/m_nested+1):(i*n/m_nested)] <- i
-b_nested <- 1. * rnorm(m_nested) # nested lower level random effects
+group_inner <- rep(1,n)  # grouping variable for nested lower level random effects
+for(i in 1:m) {
+  group_inner[((i-1)*n/m+1):((i-0.5)*n/m)] <- 1
+  group_inner[((i-0.5)*n/m + 1):((i)*n/m)] <- 2
+}
+group_nested <- get_nested_categories(group, group_inner)
+b_nested <- 1. * rnorm(length(group_nested)) # nested lower level random effects
 rand_eff <- b[group] + b_nested[group_nested]
 rand_eff <- rand_eff - mean(rand_eff)
 y_nested <- simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
@@ -185,6 +188,8 @@ gp_model <- fitGPModel(group_data = cbind(group,group_crossed), group_rand_coef_
 summary(gp_model)
 
 # --------------------Two nested random effects----------------
+# First create nested random effects variable
+group_nested <- get_nested_categories(group, group_inner)
 group_data <- cbind(group, group_nested)
 gp_model <- fitGPModel(group_data = group_data, y = y_nested, 
                        likelihood = likelihood, params = list(std_dev = TRUE))
