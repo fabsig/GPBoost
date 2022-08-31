@@ -126,9 +126,9 @@ Rscript build_r.R
 The `build_r.R` script builds the package in a temporary directory called `gpboost_r`. It will destroy and recreate that directory each time you run the script. That script supports the following command-line options:
 
 - `--skip-install`: Build the package tarball, but do not install it.
-- `--use-gpu`: Build a GPU-enabled version of the library.
 - `--use-mingw`: Force the use of MinGW toolchain, regardless of R version.
 - `--use-msys2`: Force the use of MSYS2 toolchain, regardless of R version.
+<-- - `--use-gpu`: Build a GPU-enabled version of the library. -->
 
 Note: for the build with Visual Studio/VS Build Tools in Windows, you should use the Windows CMD or PowerShell.
 
