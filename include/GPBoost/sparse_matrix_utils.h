@@ -34,7 +34,7 @@ namespace GPBoost {
 	void L_t_solve(const double* val, const int ncol, double* x);
 
 	/*!
-	* \brief Solve equation system with a sparse lower triangular matrix as left-hand side (Lx=b)
+	* \brief Solve equation system with a sparse lower triangular matrix in column-major format as left-hand side (Lx=b)
 	* \param val Values of sparse lower triangular matrix L
 	* \param row_idx Row indices corresponding to the values ('InnerIndices' in Eigen)
 	* \param col_ptr val indexes where each column starts ('OuterStarts' in Eigen)
@@ -44,8 +44,8 @@ namespace GPBoost {
 	void sp_L_solve(const double* val, const int* row_idx, const int* col_ptr, const int ncol, double* x);
 
 	/*!
-	* \brief Solve equation system with the transpose of a sparse lower triangular matrix as left-hand side: (L'x=b)
-	* \param val Values of sparse lower triangular matrix L
+	* \brief Solve equation system with the transpose of a sparse lower triangular matrix in column-major format as left-hand side: (L'x=b)
+	* \param val Values of sparse lower triangular matrix L 
 	* \param row_idx Row indices corresponding to the values ('InnerIndices' in Eigen)
 	* \param col_ptr val indexes where each column starts ('OuterStarts' in Eigen)
 	* \param ncol Number of columns
@@ -64,8 +64,8 @@ namespace GPBoost {
 
 	/*!
 	* \brief Solve equation system with a sparse left-hand side and a sparse right-hand side (Ax=B) using CSparse function cs_spsolve
-	* \param A left-hand side. Sparse Eigen matrix is column major format
-	* \param B right-hand side. Sparse Eigen matrix is column major format
+	* \param A left-hand side. Sparse Eigen matrix is column-major format
+	* \param B right-hand side. Sparse Eigen matrix is column-major format
 	* \param[out] Solution A^(-1)B
 	* \param lower true if A is a lower triangular matrix
 	*/
@@ -73,8 +73,8 @@ namespace GPBoost {
 
 	/*!
 	* \brief Solve equation system with a sparse left-hand side and a sparse right-hand side (Ax=B)
-	* \param A left-hand side. Sparse Eigen matrix is column major format
-	* \param B right-hand side. Sparse Eigen matrix is column major format
+	* \param A left-hand side. Sparse Eigen matrix is column-major format
+	* \param B right-hand side. Sparse Eigen matrix is column-major format
 	* \param[out] Solution A^(-1)B
 	* \param lower true if A is a lower triangular matrix
 	*/

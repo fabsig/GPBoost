@@ -2192,7 +2192,7 @@ namespace GPBoost {
 			}
 			pred_mean = Cross_Cov * first_deriv_ll_;
 			if (calc_pred_cov || calc_pred_var) {
-				T_mat SigmaI_CrossCovT = B.transpose() * D_inv * B * Cross_Cov.transpose();
+				T_mat SigmaI_CrossCovT = B.transpose() * (D_inv * (B * Cross_Cov.transpose()));
 				T_mat Maux = SigmaI_CrossCovT; //Maux = L\(Sigma^-1 * Cross_Cov^T), L = Chol(Sigma^-1 + W)
 				if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().size() > 0) {//Permutation is only used when having an ordering
 					Maux = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * Maux;
