@@ -9,7 +9,7 @@ This page contains a summary of the most important parameters. We distinguish be
 - (Tuning-) parameters for the tree-boosting part 
 - Model specification and optimization parameters for the Gaussian process and random effects part
 
-Currently, the GPBoost and LaGaBoost algorithms are supported for the following likelihoods: "gaussian", "bernoulli_probit" (="binary"), "bernoulli_logit", "poisson", "gamma". This distribution of the data can be specified through the ``likelihood`` parameter for the random effects model and the ``objective`` paramter for the tree-boosting part.
+**Currently, the GPBoost library supports the following likelihoods**: ``gaussian``, ``bernoulli_probit`` (= ``binary``), ``bernoulli_logit``, ``poisson``, ``gamma``. This distribution of the data can be specified through the ``likelihood`` parameter for the random effects model and the ``objective`` paramter for the tree-boosting part.
 
 .. contents:: **Contents**
     :depth: 2
@@ -106,67 +106,67 @@ used in the R and Python package. The C API works slightly different.
 Model specification parameters
 ------------------------------
 
--  ``likelihood`` : string, (default="gaussian")
+-  ``likelihood`` : string, (default = ``gaussian``)
 
    -  Likelihood function of the response variable = distribution of the label variable
 
-   -  Currently supported values: "gaussian", "bernoulli_probit" (="binary"), "bernoulli_logit", "poisson", "gamma"
+   -  Currently supported values: ``gaussian``, ``bernoulli_probit`` (= ``binary``), ``bernoulli_logit``, ``poisson``, ``gamma``
 
--  ``group_data`` : two dimensional array / matrix of doubles or strings, optional (default=None)
+-  ``group_data`` : two dimensional array / matrix of doubles or strings, optional (default = None)
 
    -  Labels of group levels for grouped random effects
 
--  ``group_rand_coef_data`` : two dimensional array / matrix of doubles or None, optional (default=None)
+-  ``group_rand_coef_data`` : two dimensional array / matrix of doubles or None, optional (default = None)
 
    -  Covariate data for grouped random coefficients
 
--  ``ind_effect_group_rand_coef`` : integer vector / array of integers or None, optional (default=None)
+-  ``ind_effect_group_rand_coef`` : integer vector / array of integers or None, optional (default = None)
 
    -  Indices that relate every random coefficients to a "base" intercept grouped random effect. Counting starts at 1.
 
--  ``gp_coords`` : two dimensional array / matrix of doubles or None, optional (default=None)
+-  ``gp_coords`` : two dimensional array / matrix of doubles or None, optional (default = None)
 
    -  Coordinates (features) for Gaussian process
 
--  ``gp_rand_coef_data`` : two dimensional array / matrix of doubles or None, optional (default=None)
+-  ``gp_rand_coef_data`` : two dimensional array / matrix of doubles or None, optional (default = None)
 
    -  Covariate data for Gaussian process random coefficients
 
--  ``cov_function`` : string, (default="exponential")
+-  ``cov_function`` : string, (default = ``exponential``)
 
-   -  Covariance function for the Gaussian process. The following covariance functions are available: "exponential", "gaussian", "matern", "powered_exponential", "wendland", and "exponential_tapered". For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization of Diggle and Ribeiro (2007). For "matern", we follow the notation of Rassmusen and Williams (2006). For "wendland", we follow the notation of Bevilacqua et al. (2019). A covariance function with the suffix "_tapered" refers to a covariance function that is multiplied by a compactly supported Wendland covariance function (= tapering)
+   -  Covariance function for the Gaussian process. The following covariance functions are available: ``exponential``, ``gaussian``, ``matern``, ``powered_exponential``, ``wendland``, ``exponential_tapered``. For ``exponential``, ``gaussian``, and ``powered_exponential``, we follow the notation and parametrization of Diggle and Ribeiro (2007). For ``matern``, we follow the notation of Rassmusen and Williams (2006). For ``wendland``, we follow the notation of Bevilacqua et al. (2019). A covariance function with the suffix ``_tapered`` refers to a covariance function that is multiplied by a compactly supported Wendland covariance function (= tapering)
 
--  ``cov_fct_shape`` : double, (default=0.)
+-  ``cov_fct_shape`` : double, (default = 0.)
 
    -  Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance). For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2019). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
 
--  ``cov_fct_taper_range`` : double, (default=1.)
+-  ``cov_fct_taper_range`` : double, (default = 1.)
 
    -  Range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019).
 
--  ``vecchia_approx`` : bool, (default=False)
+-  ``vecchia_approx`` : bool, (default = False)
 
    -  If true, the Vecchia approximation is used
 
--  ``num_neighbors`` : integer, (default=30)
+-  ``num_neighbors`` : integer, (default = 30)
 
    -  Number of neighbors for the Vecchia approximation
 
--  ``vecchia_ordering`` : string, (default="none")
+-  ``vecchia_ordering`` : string, (default = ``none``)
 
-   -  Ordering used in the Vecchia approximation. "none" means the default ordering is used, "random" uses a random ordering
+   -  Ordering used in the Vecchia approximation. ``none`` means the default ordering is used, ``random`` uses a random ordering
 
--  ``vecchia_pred_type`` : string, (default="order_obs_first_cond_obs_only")
+-  ``vecchia_pred_type`` : string, (default = ``order_obs_first_cond_obs_only``)
 
    -  Type of Vecchia approximation used for making predictions.
 
-   -  "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
+   -  ``order_obs_first_cond_obs_only`` = observed data is ordered first and the neighbors are only observed points, ``order_obs_first_cond_all`` = observed data is ordered first and the neighbors are selected among all points (observed + predicted), ``order_pred_first`` = predicted data is ordered first for making predictions, ``latent_order_obs_first_cond_obs_only`` = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, ``latent_order_obs_first_cond_all`` = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 
--  ``num_neighbors_pred`` : integer or Null, (default=Null)
+-  ``num_neighbors_pred`` : integer or Null, (default = Null)
 
    -  Number of neighbors for the Vecchia approximation for making predictions
 
--  ``cluster_ids`` : one dimensional numpy array (vector) with integer data or Null, (default=Null)
+-  ``cluster_ids`` : one dimensional numpy array (vector) with integer data or Null, (default = Null)
 
    -  IDs / labels indicating independent realizations of random effects / Gaussian processes (same values = same process realization)
 
@@ -176,19 +176,19 @@ Optimization parameters
 
 The following list shows options for the optimization of the variance and covariance parameters of ``gp_model`` objects which contain Gaussian process and/or grouped random effects models. These parameters are passed to either the ``fit`` function of a ``gp_model`` object in Python and R or to the ``set_optim_params`` function prior to running the GPBoost algorithm.
 
--  ``optimizer_cov`` : string, optional (default = "gradient_descent")
+-  ``optimizer_cov`` : string, optional (default = ``gradient_descent``)
 
    -  Optimizer used for estimating covariance parameters
 
-   -  Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam"
+   -  Options: ``gradient_descent``, ``fisher_scoring``, ``nelder_mead``, ``bfgs``, ``adam``
 
--  ``optimizer_coef`` : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
+-  ``optimizer_coef`` : string, optional (default = ``wls`` for Gaussian data and ``gradient_descent`` for other likelihoods)
 
    -  Optimizer used for estimating linear regression coefficients, if there are any (for the GPBoost algorithm there are usually none)
 
-   -  Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares
+   -  Options: ``gradient_descent``, ``wls``, ``nelder_mead``, ``bfgs``, ``adam``. Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. ``wls`` refers to doing coordinate descent for the regression coefficients using weighted least squares
 
-   - If ``optimizer_cov`` is set to "nelder_mead", "bfgs", or "adam", ``optimizer_coef`` is automatically also set to the same value
+   - If ``optimizer_cov`` is set to ``nelder_mead``, ``bfgs``, or ``adam``, ``optimizer_coef`` is automatically also set to the same value
 
 -  ``maxit`` : integer, optional (default = 1000)
 
@@ -196,11 +196,11 @@ The following list shows options for the optimization of the variance and covari
 
 -  ``delta_rel_conv`` : double, optional (default = 1e-6)
 
-   -  Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
+   -  Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For ``bfgs`` and ``adam``, the L2 norm of the gradient is used instead of the relative change in the log-likelihood
 
--  ``convergence_criterion`` : string, optional (default = "relative_change_in_log_likelihood")
+-  ``convergence_criterion`` : string, optional (default = ``relative_change_in_log_likelihood``)
 
-   -  The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
+   -  The convergence criterion used for terminating the optimization algorithm. Options: ``relative_change_in_log_likelihood`` or ``relative_change_in_parameters``
 
 -  ``init_cov_pars`` : numeric vector / array of doubles, optional (default = Null)
 
@@ -214,7 +214,7 @@ The following list shows options for the optimization of the variance and covari
 
    -  Learning rate for covariance parameters
    
-   - If <= 0, internal default values are used. Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
+   - If <= 0, internal default values are used. Default value = 0.1 for ``gradient_descent`` and 1. for ``fisher_scoring``
 
 -  ``lr_coef`` : double, optional (default = 0.1)
 

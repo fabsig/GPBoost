@@ -20,7 +20,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 **For more information**, you may want to have a look at:
 
 * The [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package) including installation instructions
-* The companion articles [**Sigrist (2020)**](http://arxiv.org/abs/2004.02653) and [**Sigrist (2021)**](https://arxiv.org/abs/2105.08966) for background on the methodology
+* The companion articles [**Sigrist (2022, JMLR)**](https://www.jmlr.org/papers/v23/20-322.html) and [**Sigrist (2022, TPAMI)**](https://ieeexplore.ieee.org/document/9759834) for background on the methodology
 * Detailed [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst): the most important parameters / settings for the GPBoost library
 * [Detailed tree-boosting parameters](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst): a comprehensive list of all tree-boosting (i.e., not random effects) related parameters
@@ -41,8 +41,8 @@ The GPBoost library allows for combining tree-boosting with Gaussian process (GP
 
 The GPBoost library implements two algorithms for combining tree-boosting with Gaussian process and grouped random effects models: 
 
-* The **GPBoost algorithm** [(Sigrist, 2020)](http://arxiv.org/abs/2004.02653) for data with a Gaussian likelihood (conditional distribution of data)
-* The **LaGaBoost algorithm** [(Sigrist, 2021)](https://arxiv.org/abs/2105.08966) for data with non-Gaussian likelihoods
+* The **GPBoost algorithm** [(Sigrist, 2022, JMLR)](https://www.jmlr.org/papers/v23/20-322.html) for data with a Gaussian likelihood (conditional distribution of data)
+* The **LaGaBoost algorithm** [(Sigrist, 2022, TPAMI)](https://ieeexplore.ieee.org/document/9759834) for data with non-Gaussian likelihoods
 
 **For Gaussian likelihoods (GPBoost algorithm)**, it is assumed that the response variable (aka label) y is the sum of a potentially non-linear mean function F(X) and random effects Zb:
 ```
@@ -55,17 +55,15 @@ where xi is an independent error term and X are predictor variables (aka covaria
 y ~ p(y|m)
 m = G(F(X) + Zb)
 ```
-where G() is a so-called link function.
+where G() is a so-called link function. See [here](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) for a list of **currently supported likelihoods** p(y|m).
 
-In the GPBoost library, the **random effects** can consist of
+In the GPBoost library, the **random effects** Zb can consist of:
 
 - Gaussian processes (including random coefficient processes)
 - Grouped random effects (including nested, crossed, and random coefficient effects)
 - Combinations of the above
 
-Learning the above-mentioned models means **learning both the covariance parameters** (aka hyperparameters) of the random effects and the **predictor function F(X)**. Both the GPBoost and the LaGaBoost algorithms iteratively learn the covariance parameters and add a tree to the ensemble of trees F(X) using a [gradient and/or a Newton boosting](https://www.sciencedirect.com/science/article/abs/pii/S0957417420308381) step. In the GPBoost library, covariance parameters can (currently) be learned using (Nesterov accelerated) gradient descent, Fisher scoring (aka natural gradient descent), and Nelder-Mead. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. 
-
-See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) and [Sigrist (2021)](https://arxiv.org/abs/2105.08966) for more details.
+Learning the above-mentioned models means **learning both the covariance parameters** (aka hyperparameters) of the random effects and the **predictor function F(X)**. Both the GPBoost and the LaGaBoost algorithms iteratively learn the covariance parameters and add a tree to the ensemble of trees F(X) using a [gradient and/or a Newton boosting](https://www.sciencedirect.com/science/article/abs/pii/S0957417420308381) step. In the GPBoost library, covariance parameters can (currently) be learned using (Nesterov accelerated) gradient descent, Fisher scoring (aka natural gradient descent), and Nelder-Mead. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See [Sigrist (2022, JMLR)](https://www.jmlr.org/papers/v23/20-322.html) and [Sigrist (2022, TPAMI)](https://ieeexplore.ieee.org/document/9759834) for more details.
 
 ### Background on Gaussian process and grouped random effects models
 
@@ -91,13 +89,17 @@ See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) and [Sigrist (2021)](https
 ## News
 
 * See the [GitHub releases](https://github.com/fabsig/GPBoost/releases) page
+* October 2022: Glad to announce that the two companion articles are published in the [Journal of Machine Learning Research (JMLR)](https://www.jmlr.org/papers/v23/20-322.html) and [IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)](https://ieeexplore.ieee.org/document/9759834)
 * 04/06/2020 : First release of GPBoost
 
 ## Open issues - contribute
 
+- See the open issues on GitHub with an *enhancement* label
+
 #### Software issues
 - Add [Python tests](https://github.com/fabsig/GPBoost/tree/master/tests) (see corresponding [R tests](https://github.com/fabsig/GPBoost/tree/master/R-package/tests))
 - Setting up a CI environment 
+- Support conversion of GPBoost models to [ONNX model format](https://onnx.ai/)
 
 #### Computational issues
 - Add GPU support for Gaussian processes
@@ -106,15 +108,18 @@ See [Sigrist (2020)](http://arxiv.org/abs/2004.02653) and [Sigrist (2021)](https
 #### Methodological issues
 - Add multivariate models, e.g., using coregionalization
 - Add spatio-temporal Gaussian process models
-- Add possibility to predict latent Gaussian processes and random effects (e.g., random coefficients)
+- Add possibility to predict separate latent Gaussian processes and random effects (e.g., random coefficients)
 - Implement more approaches such that computations scale well (memory and time) for Gaussian process models and mixed effects models with more than one grouping variable for non-Gaussian data
 - Support sample weights
+- Support other distances besides the Euclidean distance (e.g., great circle distance) for Gaussian processes
 
 ## References
 
-- Sigrist Fabio. "[Gaussian Process Boosting](http://arxiv.org/abs/2004.02653)". Preprint (2020).
-- Sigrist Fabio. "[Latent Gaussian Model Boosting](https://arxiv.org/abs/2105.08966)". Preprint (2021).
-- Guolin Ke, Qi Meng, Thomas Finley, Taifeng Wang, Wei Chen, Weidong Ma, Qiwei Ye, Tie-Yan Liu. "[LightGBM: A Highly Efficient Gradient Boosting Decision Tree](https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree)". Advances in Neural Information Processing Systems 30 (NIPS 2017), pp. 3149-3157.
+- Sigrist Fabio. "[Gaussian Process Boosting](https://www.jmlr.org/papers/v23/20-322.html)". *Journal of Machine Learning Research* (2022).
+- Sigrist Fabio. "[Latent Gaussian Model Boosting](https://ieeexplore.ieee.org/document/9759834)". *IEEE Transactions on Pattern Analysis and Machine Intelligence* (2022, in press).
+- Guolin Ke, Qi Meng, Thomas Finley, Taifeng Wang, Wei Chen, Weidong Ma, Qiwei Ye, Tie-Yan Liu. "[LightGBM: A Highly Efficient Gradient Boosting Decision Tree](https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree)". *Advances in Neural Information Processing Systems* 30 (2017).
+- Williams, Christopher KI, and Carl Edward Rasmussen. *Gaussian processes for machine learning*. MIT press, 2006.
+- Pinheiro, Jose, and Douglas Bates. *Mixed-effects models in S and S-PLUS*. Springer science & business media, 2006.
 
 ## License
 
