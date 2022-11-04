@@ -631,7 +631,7 @@ namespace GPBoost {
 		double cg_delta_conv_pred,
 		const double* fixed_effects,
 		const double* fixed_effects_pred,
-		bool suppress_calc_cov_factor) const {
+		bool suppress_calc_cov_factor) {
 		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
 		if (cov_pars_pred != nullptr) {
@@ -643,6 +643,7 @@ namespace GPBoost {
 			else {
 				re_model_den_->TransformCovPars(cov_pars_pred_orig, cov_pars_pred_trans);
 			}
+			cov_pars_have_been_provided_for_prediction_ = true;
 		}//end if cov_pars_pred != nullptr
 		else {// use saved cov_pars
 			if (!cov_pars_initialized_) {
@@ -653,13 +654,14 @@ namespace GPBoost {
 			cov_pars_pred_trans = cov_pars_;
 			if (GaussLikelihood()) {
 				// We don't factorize the covariance matrix for Gaussian data in case this has already been done (e.g. at the end of the estimation)
+				// If cov_pars_have_been_provided_for_prediction_, we redo the factorization since the saved factorization will likely not correspond to the parameters in cov_pars_
 				// For non-Gaussian, we always calculate the Laplace approximation to guarantee that all calls to predict() return the same values
 				//	Otherwise, there can be (very) small difference between (i) calculating predictions using an estimated a model and
 				//	(ii) loading / initializing an empty a model, providing the same covariance paramters, and thus recalculating the mode.
 				//	This is due to very small differences in the mode which are found differently: for an estimated model, the mode has been iteratively found during the estimation,
 				//	in particular, in the last optimization round the mode has been initialized at the previous value,
 				//	where as when the covariance parameters are provided here, the mode is found using these parameters but initilized from 0.
-				calc_cov_factor = !covariance_matrix_has_been_factorized_;
+				calc_cov_factor = !covariance_matrix_has_been_factorized_ || cov_pars_have_been_provided_for_prediction_;
 			}
 		}// end use saved cov_pars
 		if (has_covariates_) {

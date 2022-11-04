@@ -335,7 +335,7 @@ namespace GPBoost {
 			double cg_delta_conv_pred,
 			const double* fixed_effects,
 			const double* fixed_effects_pred,
-			bool suppress_calc_cov_factor) const;
+			bool suppress_calc_cov_factor);
 
 		/*!
 		* \brief Predict ("estimate") training data random effects
@@ -376,9 +376,10 @@ namespace GPBoost {
 		std::unique_ptr < REModelTemplate<den_mat_t, chol_den_mat_t> > re_model_den_;
 		vec_t cov_pars_; //Covariance paramters
 		vec_t init_cov_pars_; //Initial values for covariance parameters
-		bool cov_pars_initialized_ = false; //This is true of InitializeCovParsIfNotDefined() has been called
+		bool cov_pars_initialized_ = false; //This is true if InitializeCovParsIfNotDefined() has been called
 		bool covariance_matrix_has_been_factorized_ = false; //If true, the covariance matrix Psi has been factorized for the cov_pars_ (either through OptimCovPar/OptimLinRegrCoefCovPar or EvalNegLogLikelihood) and will not be factorized anew when making predictions in Predict
 		bool init_cov_pars_provided_ = false;
+		bool cov_pars_have_been_provided_for_prediction_ = false; //This is true if Predict() has been called once with cov_pars_pred != nullptr (saved in order to determine whether covariance matrix needs to be factorized again or not)
 		vec_t std_dev_cov_pars_;
 		int num_cov_pars_;
 		int num_it_ = 0; //Number of iterations done for covariance and linear regression parameter estimation

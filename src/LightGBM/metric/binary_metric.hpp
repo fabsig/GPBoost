@@ -84,7 +84,7 @@ namespace LightGBM {
 						if (metric_for_train_data_) {
 							Log::Fatal("Cannot use the option 'use_gp_model_for_validation = true' for calculating this validation metric on the training data. Either (i) set 'use_gp_model_for_validation = false' or (ii) choose the metric 'neg_log_likelihood' and/or use only the training data as validation data.");
 						}
-						const REModel* re_model = objective->GetGPModel();
+						REModel* re_model = objective->GetGPModel();
 						if (re_model->GaussLikelihood()) {//Gaussian data (this is rarely used)
 							std::vector<double> minus_gp_pred(num_data_);
 							re_model->Predict(nullptr, num_data_, minus_gp_pred.data(), false, false, false,
