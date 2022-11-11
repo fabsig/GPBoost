@@ -96,22 +96,22 @@ bst <- gpb.train(data = dataset, gp_model = gp_model, nrounds = nrounds,
                  params = params, verbose = 0)
 
 #--------------------Prediction----------------
-group_test <- 1:m
+group_test <- 1:m # Predictions for existing groups
+group_test_new <- rep(-1,m) # Can also do predictions for new/unobserved groups
 x_test <- seq(from=0, to=1, length.out=m)
-Xtest <- cbind(x_test, matrix(0, ncol=p-1 , nrow=length(x_test)))
+Xtest <- cbind(x_test, matrix(0, ncol=p-1 , nrow=m))
 # 1. Predict latent variable (pred_latent=TRUE) and variance
 pred <- predict(bst, data = Xtest, group_data_pred = group_test, 
                 predict_var = TRUE, pred_latent = TRUE)
-# pred[["fixed_effect"]]: predictions from the tree-ensemble.
-# pred[["random_effect_mean"]]: predicted means of the gp_model.
+# pred[["fixed_effect"]]: predictions from the tree-ensemble
+# pred[["random_effect_mean"]]: predicted means of the gp_model
 # pred["random_effect_cov"]]: predicted (co-)variances of the gp_model
 # 2. Predict response variable (pred_latent=FALSE)
-group_test <- rep(-1,m) # only new groups since we are only interested in the fixed effects for visualization
-pred_resp <- predict(bst, data = Xtest, group_data_pred = group_test, 
-                     pred_latent = FALSE)
+pred_resp <- predict(bst, data = Xtest, group_data_pred = group_test_new, 
+                     predict_var = TRUE, pred_latent = FALSE)
 # pred_resp[["response_mean"]]: mean predictions of the response variable 
 #   which combines predictions from the tree ensemble and the random effects
-# pred_resp[["response_var"]]: predictive variances (if predict_var=True)
+# pred_resp[["response_var"]]: predictive (co-)variances (if predict_var=True)
 
 # Visualize fitted response variable
 plot(X[,1], y, col=rgb(0,0,0,alpha=0.1), main="Data and predicted response variable")
@@ -259,9 +259,9 @@ dataset <- gpb.Dataset(X, label = y)
 # Stage 1: run cross-validation to (i) determine to optimal number of iterations
 #           and (ii) to estimate the GPModel on the out-of-sample data
 cvbst <- gpb.cv(data = dataset, gp_model = gp_model,
-              use_gp_model_for_validation = TRUE, params = params,
-              nrounds = 1000, nfold = 4, early_stopping_rounds = 5,
-              fit_GP_cov_pars_OOS = TRUE, verbose = 0)
+                use_gp_model_for_validation = TRUE, params = params,
+                nrounds = 1000, nfold = 4, early_stopping_rounds = 5,
+                fit_GP_cov_pars_OOS = TRUE, verbose = 0)
 print(paste0("Optimal number of iterations: ", cvbst$best_iter))
 # Fitted model (note: ideally, one would have to find the optimal combination of 
 #               other tuning parameters such as the learning rate, tree depth, etc.)
@@ -296,7 +296,7 @@ coords <- rbind(coords_train, coords_test)
 ntest <- nx * nx
 n <- ntrain + ntest
 # Simulate spatial Gaussian process
-sigma2_1 <- 1 # marginal variance of GP
+sigma2_1 <- 0.25 # marginal variance of GP
 rho <- 0.1 # range parameter
 D <- as.matrix(dist(coords))
 Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
@@ -339,18 +339,37 @@ bst <- gpb.train(data = dtrain, gp_model = gp_model,
 # Takes a few seconds
 summary(gp_model)# Trained GP model
 
-# Prediction of latent variable
+#--------------------Prediction----------------
+# 1. Predict response variable (pred_latent = FALSE)
+pred_resp <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
+                     predict_var = TRUE, pred_latent = FALSE)
+# pred_resp[["response_mean"]]: mean predictions of the response variable 
+#   which combines predictions from the tree ensemble and the Gaussian process
+# pred_resp[["response_var"]]: predictive (co-)variances (if predict_var=True)
+# 2. Prediction of latent variables (pred_latent = TRUE)
 pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                 predict_var = TRUE, pred_latent = TRUE)
-# Predict response variable (label)
-pred_resp <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
-                     pred_latent = FALSE)
+# pred[["fixed_effect"]]: predictions for the latent fixed effects / tree ensemble
+# pred[["random_effect_mean"]]: mean predictions for the random effects
+# pred[["random_effect_cov"]]: predictive (co-)variances (if predict_var=True) of the (latent) Gaussian process
+# 3. Can also calculate predictive covariances
+pred_cov = predict(bst, data=X_test[1:3,], gp_coords_pred=coords_test[1:3,],
+                   predict_cov_mat=TRUE, pred_latent=TRUE)
+# pred_cov[["random_effect_cov"]]: predictive covariances of the (latent) Gaussian process
+if (likelihood == "gaussian") {
+  # Predictive covariances for the response variable are currently only supported for Gaussian likelihoods
+  pred_resp_cov = predict(bst, data=X_test[1:3,], gp_coords_pred=coords_test[1:3,],
+                          predict_cov_mat=TRUE, pred_latent=FALSE)
+  # pred_resp_cov[["response_var"]]: predictive covariances of the response variable
+}
+
+# Evaluate predictions
 if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
   print(paste0("Test error: ", 
                mean(as.numeric(pred_resp$response_mean>0.5) != y_test)))
 } else {
   print(paste0("Test root mean square error: ",
-        sqrt(mean((pred_resp$response_mean - y_test)^2))))
+               sqrt(mean((pred_resp$response_mean - y_test)^2))))
 }
 print(paste0("Test root mean square error for latent GP: ", 
              sqrt(mean((pred$random_effect_mean - b_1_test)^2))))

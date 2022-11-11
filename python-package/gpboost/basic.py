@@ -3419,7 +3419,7 @@ class Booster:
                 result['random_effect_mean'] : numpy array
                     Predicted means of the gp_model.
                 result['random_effect_cov'] : numpy array
-                    Predicted covariances or variances of the gp_model (only if 'predict_var' or 'predict_cov' is True).
+                    Predicted covariances or variances of the gp_model (only if 'predict_var' or 'predict_cov' is True)
 
             2. If 'pred_latent' is False, the dict contains the following 2 entries:
 
@@ -3427,7 +3427,7 @@ class Booster:
                     Predicted means of the response variable (Label) taking into account both the fixed effects
                     (tree-ensemble) and the random effects (gp_model)
                 result['response_var'] : numpy array
-                    Predicted variances of the response variable
+                    Predicted covariances or variances of the response variable (only if 'predict_var' or 'predict_cov' is True)
 
             If there is no gp_model or 'pred_contrib' or 'ignore_gp_model' are True, the result contains
             predictions from the tree-booster only.
@@ -3497,7 +3497,8 @@ class Booster:
                                                            vecchia_pred_type=vecchia_pred_type,
                                                            num_neighbors_pred=num_neighbors_pred,
                                                            predict_cov_mat=predict_cov_mat,
-                                                           predict_var=predict_var)
+                                                           predict_var=predict_var,
+                                                           predict_response=(not pred_latent))
                 fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
                                                  num_iteration=num_iteration, raw_score=True, pred_leaf=pred_leaf,
                                                  pred_contrib=False, data_has_header=data_has_header,
@@ -4902,7 +4903,7 @@ class GPModel(object):
                 cov_pars=None,
                 X_pred=None,
                 use_saved_data=False,
-                predict_response=False,
+                predict_response=True,
                 fixed_effects=None,
                 fixed_effects_pred=None):
         """Make predictions for a GPModel.
@@ -4953,7 +4954,6 @@ class GPModel(object):
                 (this option is not used by users directly)
             predict_response : bool (default=False)
                 If True, the response variable (label) is predicted, otherwise the latent random effects
-                (this is only relevant for non-Gaussian data)
             fixed_effects : numpy 1-D array or None, optional (default=None)
                 Additional fixed effects component of location parameter for observed data.
                 Used only for non-Gaussian data. For Gaussian data, this is ignored

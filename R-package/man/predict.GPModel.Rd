@@ -10,7 +10,7 @@
   predict_cov_mat = FALSE, predict_var = FALSE, cov_pars = NULL,
   X_pred = NULL, use_saved_data = FALSE, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
-  predict_response = FALSE, ...)
+  predict_response = TRUE, ...)
 }
 \arguments{
 \item{object}{a \code{GPModel}}
@@ -65,8 +65,7 @@ for making predictions}
 checking convergence in conjugate gradient algorithm when being used for prediction}
 
 \item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) 
-is predicted, otherwise the latent random effects 
-(this is only relevant for non-Gaussian data)}
+is predicted, otherwise the latent random effects}
 
 \item{...}{(not used, ignore this, simply here that there is no CRAN warning)}
 }

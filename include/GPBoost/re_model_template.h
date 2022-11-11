@@ -684,6 +684,9 @@ namespace GPBoost {
 				if (!only_intercept_for_GPBoost_algo) {
 					Eigen::ColPivHouseholderQR<den_mat_t> qr_decomp(X_);
 					int rank = (int)qr_decomp.rank();
+					// If X_ was a sparse matrix, use the following code:
+					//Eigen::SparseQR<sp_mat_t, Eigen::COLAMDOrdering<int>> qr_decomp;
+					//qr_decomp.compute(X_);
 					if (rank < num_coef_) {
 						Log::REWarning("The linear regression covariate data matrix (fixed effect) is rank deficient. "
 							"This is not necessarily a problem when using gradient descent. "
@@ -1686,7 +1689,7 @@ namespace GPBoost {
 		* \param calc_cov_factor If true, the covariance matrix of the observed data is factorized otherwise a previously done factorization is used (default=true)
 		* \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 		* \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
-		* \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects (this is only relevant for non-Gaussian data) (default=false)
+		* \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects
 		* \param covariate_data_pred Covariate data (=independent variables, features) for prediction
 		* \param coef_pred Coefficients for linear covariates
 		* \param cluster_ids_data_pred IDs / labels indicating independent realizations of Gaussian processes (same values = same process realization) for which predictions are to be made
@@ -1924,7 +1927,7 @@ namespace GPBoost {
 								num_REs_pred = num_data_per_cluster_pred[cluster_i];
 							}
 							psi = T_mat(num_REs_pred, num_REs_pred);
-							if (gauss_likelihood_) {
+							if (gauss_likelihood_ && predict_response) {
 								psi.setIdentity();//nugget effect
 							}
 							else {
@@ -2118,6 +2121,24 @@ namespace GPBoost {
 							CalcPredVecchiaLatentObservedFirstOrder(false, cluster_i, num_data_per_cluster_pred,
 								re_comp->coords_, gp_coords_mat_pred, predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
 						}
+						if (predict_var_or_cov_mat) {
+							// subtract / add nugget variance in case latent / observable process is predicted
+							if (!predict_response && (vecchia_pred_type_ == "order_obs_first_cond_obs_only" ||
+								vecchia_pred_type_ == "order_obs_first_cond_all" ||
+								vecchia_pred_type_ == "order_pred_first")) {
+#pragma omp parallel for schedule(static)
+								for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+									cov_mat_pred_id.coeffRef(i, i) -= 1.;
+								}
+							}
+							else if (predict_response && (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only" ||
+								vecchia_pred_type_ == "latent_order_obs_first_cond_all")) {
+#pragma omp parallel for schedule(static)
+								for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+									cov_mat_pred_id.coeffRef(i, i) += 1.;
+								}
+							}
+						}
 						if (predict_var) {
 							var_pred_id = cov_mat_pred_id.diagonal();
 							if (!predict_cov_mat) {
@@ -2128,7 +2149,7 @@ namespace GPBoost {
 					else {// not vecchia_approx_ or not gauss_likelihood_
 						// General case: either non-Gaussian data or Gaussian data without the Vecchia approximation
 						// NOTE: if vecchia_approx_==true and gauss_likelihood_==false, the cross-covariance matrix Sigma_{1,2} = cov(x_pred,x) is not approximated but the exact version is used
-						bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);//variance needs to be available for resposne prediction for non-Gaussian data 
+						bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);//variance needs to be available for response prediction for non-Gaussian data 
 						CalcPred(cluster_i,
 							num_data_pred,
 							num_data_per_cluster_pred,
@@ -2139,6 +2160,7 @@ namespace GPBoost {
 							gp_rand_coef_data_pred,
 							predict_cov_mat,
 							predict_var_or_response,
+							predict_response,
 							mean_pred_id,
 							cov_mat_pred_id,
 							var_pred_id);
@@ -5353,6 +5375,7 @@ namespace GPBoost {
 		 * \param gp_rand_coef_data_pred Random coefficient data for GPs
 		 * \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 		 * \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
+		 * \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects
 		 * \param[out] mean_pred_id Predictive mean
 		 * \param[out] cov_mat_pred_id Predictive covariance matrix
 		 * \param[out] var_pred_id Predictive variances
@@ -5367,6 +5390,7 @@ namespace GPBoost {
 			const double* gp_rand_coef_data_pred,
 			bool predict_cov_mat,
 			bool predict_var,
+			bool predict_response,
 			vec_t& mean_pred_id,
 			T_mat& cov_mat_pred_id,
 			vec_t& var_pred_id) {
@@ -5384,7 +5408,7 @@ namespace GPBoost {
 				num_REs_obs = num_data_per_cluster_[cluster_i];
 			}
 			if (predict_var) {
-				if (gauss_likelihood_) {
+				if (gauss_likelihood_ && predict_response) {
 					var_pred_id = vec_t::Ones(num_REs_pred);//nugget effect
 				}
 				else {
@@ -5393,7 +5417,7 @@ namespace GPBoost {
 			}
 			if (predict_cov_mat) {
 				cov_mat_pred_id = T_mat(num_REs_pred, num_REs_pred);
-				if (gauss_likelihood_) {
+				if (gauss_likelihood_ && predict_response) {
 					cov_mat_pred_id.setIdentity();//nugget effect
 				}
 				else {

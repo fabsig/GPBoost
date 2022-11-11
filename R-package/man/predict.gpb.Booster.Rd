@@ -93,11 +93,12 @@ whether there is a \code{gp_model} or not
       - result["fixed_effect"] are the predictions from the tree-ensemble.
       - result["random_effect_mean"] are the predicted means of the \code{gp_model}.
       - result["random_effect_cov"] are the predicted covariances or variances of the \code{gp_model}
-  (only if 'predict_var' or 'predict_cov' is True).
+  (only if 'predict_var' or 'predict_cov' is TRUE).
     2. If \code{pred_latent} is FALSE, the dict contains the following 2 entries:
       - result["response_mean"] are the predicted means of the response variable (Label) taking into account
     both the fixed effects (tree-ensemble) and the random effects (\code{gp_model})
-      - result["response_var"] are the predicted variances of the response variable
+      - result["response_var"] are the predicted  covariances or variances of the response variable
+  (only if 'predict_var' or 'predict_cov' is TRUE)
   If there is no \code{gp_model} or \code{predcontrib} or \code{ignore_gp_model} 
     are TRUE, the result contains predictions from the tree-booster only.
 }

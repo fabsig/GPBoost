@@ -1025,7 +1025,7 @@ gpb.GPModel <- R6::R6Class(
                        cov_pars = NULL,
                        X_pred = NULL,
                        use_saved_data = FALSE,
-                       predict_response = FALSE,
+                       predict_response = TRUE,
                        fixed_effects = NULL,
                        fixed_effects_pred = NULL) {
       if (private$model_has_been_loaded_from_saved_file) {
@@ -2106,8 +2106,7 @@ summary.GPModel <- function(object, ...){
 #' @param use_saved_data A \code{boolean}. If TRUE, predictions are done using 
 #' a priory set data via the function '$set_prediction_data' (this option is not used by users directly)
 #' @param predict_response A \code{boolean}. If TRUE, the response variable (label) 
-#' is predicted, otherwise the latent random effects 
-#' (this is only relevant for non-Gaussian data)
+#' is predicted, otherwise the latent random effects
 #' @param ... (not used, ignore this, simply here that there is no CRAN warning)
 #' @inheritParams GPModel_shared_params 
 #'
@@ -2170,7 +2169,7 @@ predict.GPModel <- function(object,
                             vecchia_pred_type = NULL,
                             num_neighbors_pred = NULL,
                             cg_delta_conv_pred = NULL,
-                            predict_response = FALSE,...){
+                            predict_response = TRUE,...){
   return(object$predict(y = y,
                         group_data_pred = group_data_pred,
                         group_rand_coef_data_pred = group_rand_coef_data_pred,

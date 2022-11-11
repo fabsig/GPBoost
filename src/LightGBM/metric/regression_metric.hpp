@@ -422,7 +422,7 @@ namespace LightGBM {
 						REModel* re_model = objective->GetGPModel();
 						if (re_model->GaussLikelihood()) {//Gaussian data
 							std::vector<double> re_pred(num_data_ * 2); // the first num_data_ are the negative predictive means followed by num_data_ predictive variances
-							re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, false,
+							re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true,
 								nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 								true, nullptr, -1, -1., nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated response data score - label = F_t - y 

@@ -3,3 +3,4 @@ parameter_tuning               Parameter tuning using deterministic or random gr
 generalized_linear_Gaussian_process_mixed_effects_models           Generalized linear Gaussian process and mixed effects model examples for various likelihoods
 examples_in_R_package_documentation           Examples used in the R package documentation
 Grabit               Grabit model of Sigrist and Hirnschall (2019)
+compare_usage_lme4_gpboost           Comparison of gpboost and lme4

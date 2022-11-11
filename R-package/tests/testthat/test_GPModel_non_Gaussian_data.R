@@ -130,7 +130,7 @@ test_that("Binary classification with Gaussian process model ", {
   
   # Predict training data random effects
   training_data_random_effects <- predict_training_data_random_effects(gp_model)
-  pred_random_effects <- predict(gp_model, gp_coords_pred = coords)
+  pred_random_effects <- predict(gp_model, gp_coords_pred = coords, predict_response = FALSE)
   expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
   
   # Evaluate approximate negative marginal log-likelihood
@@ -230,7 +230,7 @@ test_that("Binary classification with Gaussian process model with
   
   # Predict training data random effects
   training_data_random_effects <- predict_training_data_random_effects(gp_model)
-  pred_random_effects <- predict(gp_model, gp_coords_pred = coords_multiple)
+  pred_random_effects <- predict(gp_model, gp_coords_pred = coords_multiple, predict_response = FALSE)
   expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
   
   # Multiple cluster IDs and multiple observations
@@ -324,7 +324,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     first_occurences <- match(unique(group), group)
     training_data_random_effects <- all_training_data_random_effects[first_occurences] 
     group_unique <- unique(group)
-    pred_random_effects <- predict(gp_model, group_data_pred = group_unique)
+    pred_random_effects <- predict(gp_model, group_data_pred = group_unique, predict_response = FALSE)
     expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
     
     # Estimation using Nelder-Mead
@@ -381,17 +381,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     group_unique <- unique(group)
     group_data_pred = cbind(group_unique,rep(-1,length(group_unique)))
     x_pr = rep(0,length(group_unique))
-    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
+                     predict_response = FALSE)
     expect_lt(sum(abs(pred_random_effects - preds$mu)),1E-6)
     # Check whether random slopes are correct
     x_pr = rep(1,length(group_unique))
-    preds2 <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    preds2 <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
+                      predict_response = FALSE)
     expect_lt(sum(abs(pred_random_slopes - (preds2$mu-preds$mu))),1E-6)
     # Check whether crossed random effects are correct
     group_unique <- unique(group2)
     group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
     x_pr = rep(0,length(group_unique))
-    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
+                     predict_response = FALSE)
     expect_lt(sum(abs(pred_random_effects_crossed - preds$mu)),1E-6)
     
     # Prediction
@@ -400,7 +403,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     group_data_pred = cbind(c(1,1,77),c(2,1,98))
     group_rand_coef_data_pred = c(0,0.1,0.3)
     pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
-                             cov_pars = c(0.9,0.8,1.2), predict_cov_mat = TRUE)
+                             cov_pars = c(0.9,0.8,1.2), predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(0.5195889, -0.6411954, 0.0000000)
     expected_cov <- c(0.3422367, 0.1554011, 0.0000000, 0.1554011,
                       0.3457334, 0.0000000, 0.0000000, 0.0000000, 1.8080000)
@@ -408,7 +411,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
     # Predict variances
     pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
-                             cov_pars = c(0.9,0.8,1.2), predict_var = TRUE)
+                             cov_pars = c(0.9,0.8,1.2), predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE2)
     # Multiple random effects: training with Nelder-Mead
@@ -438,7 +441,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- GPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                         cluster_ids = cluster_ids, likelihood = "bernoulli_probit")
     pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
-                             cov_pars = c(0.9,0.8,1.2), cluster_ids_pred = cluster_ids_pred, predict_cov_mat = TRUE)
+                             cov_pars = c(0.9,0.8,1.2), cluster_ids_pred = cluster_ids_pred, predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(-0.2159939, 0.0000000, 0.0000000)
     expected_cov <- c(0.4547941, 0.0000000, 0.0000000, 0.0000000,
                       1.7120000, 0.0000000, 0.0000000, 0.0000000, 1.8080000)
@@ -476,13 +479,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     group_data_pred = cbind(group_unique,rep(-1,length(group_unique)))
     # Check whether random slopes are correct
     x_pr = rep(1,length(group_unique))
-    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, predict_response = FALSE)
     expect_lt(sum(abs(pred_random_slopes - preds$mu)),1E-6)
     # Check whether crossed random effects are correct
     group_unique <- unique(group2)
     group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
     x_pr = rep(0,length(group_unique))
-    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr)
+    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, predict_response = FALSE)
     expect_lt(sum(abs(pred_random_effects_crossed - preds$mu)),1E-6)
     # Prediction
     gp_model <- GPModel(likelihood = "bernoulli_probit", group_data = cbind(group,group2),
@@ -491,7 +494,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     group_data_pred = cbind(c(1,1,77),c(2,1,98))
     group_rand_coef_data_pred = c(0,0.1,0.3)
     pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
-                             cov_pars = c(0.8,1.2), predict_cov_mat = TRUE)
+                             cov_pars = c(0.8,1.2), predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(0.8493404, -0.2338359, 0.0000000)
     expected_cov <- c(0.206019606, -0.001276366, 0.0000000, -0.001276366,
                       0.155209578, 0.0000000, 0.0000000, 0.0000000, 0.908000000)
@@ -499,7 +502,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
     # Predict variances
     pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
-                             cov_pars = c(0.8,1.2), predict_var = TRUE)
+                             cov_pars = c(0.8,1.2), predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE2)
   })
@@ -526,14 +529,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                                     use_nesterov_acc = FALSE, lr_cov = 0.2))
     coord_test <- cbind(c(0.1,0.21,0.7),c(0.9,0.91,0.55))
     group_test <- c(1,3,9999)
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, group_data_pred = group_test, predict_cov_mat = TRUE, predict_response = FALSE)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, group_data_pred = group_test,
+                    predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(0.1217634, -0.9592585, -0.2694489)
     expected_cov <- c(1.0745455607, 0.2190063794, 0.0040797451, 0.2190063794,
                       1.0089298170, 0.0000629706, 0.0040797451, 0.0000629706, 1.0449941968)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
     # Predict variances
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, group_data_pred = group_test, predict_var = TRUE, predict_response = FALSE)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, group_data_pred = group_test,
+                    predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE2)
     # Predict response
@@ -543,10 +548,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Predict training data random effects
     training_data_random_effects <- predict_training_data_random_effects(gp_model)
-    pred_GP <- predict(gp_model, gp_coords_pred = coords, group_data_pred=rep(-1,dim(coords)[1]))
+    pred_GP <- predict(gp_model, gp_coords_pred = coords, group_data_pred=rep(-1,dim(coords)[1]), predict_response = FALSE)
     expect_lt(sum(abs(training_data_random_effects[,2] - pred_GP$mu)),1E-6)
     # Grouped REs
-    preds <- predict(gp_model, group_data_pred = group, gp_coords_pred = coords)
+    preds <- predict(gp_model, group_data_pred = group, gp_coords_pred = coords, predict_response = FALSE)
     pred_RE <- preds$mu - pred_GP$mu
     expect_lt(sum(abs(training_data_random_effects[,1] - pred_RE)),1E-6)
     
@@ -598,7 +603,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                              gp_rand_coef_data_pred=Z_SVC_test,
                              group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
-                             cov_pars = c(0.9,0.8,1.2,1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE)
+                             cov_pars = c(0.9,0.8,1.2,1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(1.612451, 1.147407, -1.227187)
     expected_cov <- c(1.63468526, 1.02982815, -0.01916993, 1.02982815,
                       1.43601348, -0.03404720, -0.01916993, -0.03404720, 1.55017397)
@@ -631,7 +636,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                         cluster_ids = cluster_ids,likelihood = "bernoulli_probit")
     pred <- gp_model$predict(y = y, gp_coords_pred = coord_test, group_data_pred = group_data_pred,
                              cluster_ids_pred = cluster_ids_pred,
-                             cov_pars = c(1.5,1,0.15), predict_cov_mat = TRUE)
+                             cov_pars = c(1.5,1,0.15), predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(0.1074035, 0.0000000, 0.2945508)
     expected_cov <- c(0.98609786, 0.00000000, -0.02013244, 0.00000000,
                       2.50000000, 0.00000000, -0.02013244, 0.00000000, 2.28927616)
@@ -731,7 +736,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
     Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
     pred <- gp_model$predict(y = y, gp_coords_pred = coord_test, gp_rand_coef_data_pred=Z_SVC_test,
-                             cov_pars = c(1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE)
+                             cov_pars = c(1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(0.18346008, 0.03479258, -0.17247579)
     expected_cov <- c(1.039879e+00, 7.521981e-01, -3.256500e-04, 7.521981e-01,
                       8.907289e-01, -6.719282e-05, -3.256500e-04, -6.719282e-05, 9.147899e-01)
@@ -760,7 +765,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         cluster_ids = cluster_ids,likelihood = "bernoulli_probit"), file='NUL')
     pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                              cluster_ids_pred = cluster_ids_pred,
-                             cov_pars = c(1.5,0.15), predict_cov_mat = TRUE)
+                             cov_pars = c(1.5,0.15), predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(0.1509569, 0.0000000, 0.9574946)
     expected_cov <- c(1.2225959453, 0.0000000000, 0.0003074858, 0.0000000000,
                       1.5000000000, 0.0000000000, 0.0003074858, 0.0000000000, 1.0761874845)
@@ -874,7 +879,7 @@ test_that("Binary classification with linear predictor and grouped random effect
   training_data_random_effects <- all_training_data_random_effects[first_occurences] 
   group_unique <- unique(group)
   X_zero <- cbind(rep(0,length(group_unique)),rep(0,length(group_unique)))
-  pred_random_effects <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero)
+  pred_random_effects <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero, predict_response = FALSE)
   expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
   
   # Standard deviations

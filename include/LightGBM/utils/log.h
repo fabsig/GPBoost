@@ -121,12 +121,13 @@ namespace LightGBM {
 		}
 		static void Fatal(const char* format, ...) {
 			va_list val;
-			char str_buf[1024];
+			const size_t kBufSize = 1024;
+			char str_buf[kBufSize];
 			va_start(val, format);
 #ifdef _MSC_VER
-			vsprintf_s(str_buf, format, val);
+			vsnprintf_s(str_buf, kBufSize, format, val);
 #else
-			vsprintf(str_buf, format, val);
+			vsnprintf(str_buf, kBufSize, format, val);
 #endif
 			va_end(val);
 			// R code should write back to R's error stream,
@@ -161,12 +162,13 @@ namespace LightGBM {
 		}
 		static void REFatal(const char* format, ...) {
 			va_list val;
-			char str_buf[1024];
+			const size_t kBufSize = 1024;
+			char str_buf[kBufSize];
 			va_start(val, format);
 #ifdef _MSC_VER
-			vsprintf_s(str_buf, format, val);
+			vsnprintf_s(str_buf, kBufSize, format, val);
 #else
-			vsprintf(str_buf, format, val);
+			vsnprintf(str_buf, kBufSize, format, val);
 #endif
 			va_end(val);
 			// R code should write back to R's error stream,

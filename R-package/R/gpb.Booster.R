@@ -51,7 +51,7 @@ Booster <- R6::R6Class(
       }
       
       # Create a handle for the dataset
-      ## Note: this was previously in a try({}) statement
+      # Note: this was previously in a try({}) statement
       
       # Check if training dataset is not null
       if (!is.null(train_set)) {
@@ -732,18 +732,19 @@ Booster <- R6::R6Class(
           
           # Note: we need to provide the response variable y as this was not saved
           #   in the gp_model ("in C++") for Gaussian data but was overwritten during training
-          random_effect_pred = private$gp_model$predict(y=residual,
-                                                        group_data_pred = group_data_pred,
-                                                        group_rand_coef_data_pred = group_rand_coef_data_pred,
-                                                        gp_coords_pred = gp_coords_pred,
-                                                        gp_rand_coef_data_pred = gp_rand_coef_data_pred,
-                                                        cluster_ids_pred = cluster_ids_pred,
-                                                        predict_cov_mat = predict_cov_mat,
-                                                        predict_var = predict_var,
-                                                        cov_pars = NULL,
-                                                        X_pred = NULL,
-                                                        vecchia_pred_type = vecchia_pred_type,
-                                                        num_neighbors_pred = num_neighbors_pred)
+          random_effect_pred = private$gp_model$predict( y = residual
+                                                         , group_data_pred = group_data_pred
+                                                         , group_rand_coef_data_pred = group_rand_coef_data_pred
+                                                         , gp_coords_pred = gp_coords_pred
+                                                         , gp_rand_coef_data_pred = gp_rand_coef_data_pred
+                                                         , cluster_ids_pred = cluster_ids_pred
+                                                         , predict_cov_mat = predict_cov_mat
+                                                         , predict_var = predict_var
+                                                         , cov_pars = NULL
+                                                         , X_pred = NULL
+                                                         , vecchia_pred_type = vecchia_pred_type
+                                                         , num_neighbors_pred = num_neighbors_pred
+                                                         , predict_response = !pred_latent)
           fixed_effect = predictor$predict( data = data
                                             , start_iteration = start_iteration
                                             , num_iteration = num_iteration
@@ -775,8 +776,8 @@ Booster <- R6::R6Class(
             fixed_effect <- NULL
           }
 
-        }##end Gaussian data
-        else{## non-Gaussian data
+        }# end Gaussian data
+        else{# non-Gaussian data
           
           y <- NULL
           # Either use raw_data or data loaded from file for determining fixed_effect_train
@@ -841,8 +842,8 @@ Booster <- R6::R6Class(
             }
             random_effect_mean <- random_effect_pred$mu
             
-          }##end pred_latent
-          else {##predict response variable
+          }# end pred_latent
+          else {# predict response variable for non-Gaussian data
             
             pred_resp <- private$gp_model$predict(group_data_pred = group_data_pred,
                                                   group_rand_coef_data_pred = group_rand_coef_data_pred,
@@ -864,9 +865,9 @@ Booster <- R6::R6Class(
             response_var <-  pred_resp$var
             fixed_effect <- NA
             
-          }##end not pred_latent
+          }# end not pred_latent
           
-        }##end non-Gaussian data
+        }# end non-Gaussian data
         
         return(list(fixed_effect = fixed_effect,
                     random_effect_mean = random_effect_mean,
@@ -874,8 +875,8 @@ Booster <- R6::R6Class(
                     response_mean = response_mean,
                     response_var = response_var))
         
-      }##end GPBoost prediction
-      else {##no gp_model or predcontrib or ignore_gp_model
+      }# end GPBoost prediction
+      else {# no gp_model or predcontrib or ignore_gp_model
         return(
           predictor$predict(
             data = data
@@ -1154,11 +1155,12 @@ Booster <- R6::R6Class(
 #'       - result["fixed_effect"] are the predictions from the tree-ensemble.
 #'       - result["random_effect_mean"] are the predicted means of the \code{gp_model}.
 #'       - result["random_effect_cov"] are the predicted covariances or variances of the \code{gp_model}
-#'   (only if 'predict_var' or 'predict_cov' is True).
+#'   (only if 'predict_var' or 'predict_cov' is TRUE).
 #'     2. If \code{pred_latent} is FALSE, the dict contains the following 2 entries:
 #'       - result["response_mean"] are the predicted means of the response variable (Label) taking into account
 #'     both the fixed effects (tree-ensemble) and the random effects (\code{gp_model})
-#'       - result["response_var"] are the predicted variances of the response variable
+#'       - result["response_var"] are the predicted  covariances or variances of the response variable
+#'   (only if 'predict_var' or 'predict_cov' is TRUE)
 #'   If there is no \code{gp_model} or \code{predcontrib} or \code{ignore_gp_model} 
 #'     are TRUE, the result contains predictions from the tree-booster only.
 #' 

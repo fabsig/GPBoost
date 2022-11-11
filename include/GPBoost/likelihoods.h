@@ -797,11 +797,8 @@ namespace GPBoost {
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
-				////Only for debugging
-				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g", it, approx_marginal_ll, approx_marginal_ll_new);
-				//for (int i = 0; i < 10; ++i) {
-				//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
-				//}
+				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g, mode_[0:4]: %g, %g, %g, %g, %g", 
+				//	it, approx_marginal_ll, approx_marginal_ll_new, mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);//only for debugging
 				// Check convergence
 				if (it == 0) {
 					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
@@ -1045,11 +1042,8 @@ namespace GPBoost {
 				}
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-				//// Only for debugging
-				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g", it, approx_marginal_ll, approx_marginal_ll_new);
-				//for (int i = 0; i < 10; ++i) {
-				//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
-				//}
+				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g, mode_[0:4]: %g, %g, %g, %g, %g",
+				//	it, approx_marginal_ll, approx_marginal_ll_new, mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);//only for debugging
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
@@ -1183,6 +1177,8 @@ namespace GPBoost {
 					}
 					approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				}
+				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g, mode_[0:4]: %g, %g, %g, %g, %g",
+				//	it, approx_marginal_ll, approx_marginal_ll_new, mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);//only for debugging
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
@@ -2458,7 +2454,7 @@ namespace GPBoost {
 										0.64909798155426670071,
 										0.83424747101276179534 };
 
-		const char* NA_OR_INF_WARNING_ = "Mode finding algorithm for Laplace approximation: NA or Inf occurred. This is not necessary a problem as it might have been the cause of a too large learning rate which, consequently, has been decreased by the algorithm";
+		const char* NA_OR_INF_WARNING_ = "Mode finding algorithm for Laplace approximation: NA or Inf occurred. This is not necessary a problem as it might have been the cause of a too large learning rate which, consequently, might have been decreased by the optimization algorithm";
 		const char* NO_INCREASE_IN_MLL_WARNING_ = "Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated.";
 		const char* NO_CONVERGENCE_WARNING_ = "Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations";
 

@@ -105,21 +105,22 @@ gp_model.summary() # Estimated random effects model
 #                num_boost_round=num_boost_round, valid_sets=data_train)
 
 #--------------------Prediction----------------
-group_test = np.arange(m)
+group_test = np.arange(m) # Predictions for existing groups
+group_test_new = -np.ones(m) # Can also do predictions for new/unobserved groups
 Xtest = np.zeros((m, p))
 Xtest[:, 0] = np.linspace(0, 1, m)
 # 1. Predict latent variable (pred_latent=True) and variance
-pred = bst.predict(data=Xtest, group_data_pred=group_test, predict_var=True, 
-                   pred_latent=True)
-# pred_resp['fixed_effect']: predictions for the latent fixed effects / tree ensemble
-# pred_resp['random_effect_mean']: mean predictions for the random effects
-# pred_resp['random_effect_cov']: predictive (co-)variances (if predict_var=True) of the random effects
+pred = bst.predict(data=Xtest, group_data_pred=group_test, 
+                   predict_var=True, pred_latent=True)
+# pred['fixed_effect']: predictions for the latent fixed effects / tree ensemble
+# pred['random_effect_mean']: mean predictions for the random effects
+# pred['random_effect_cov']: predictive (co-)variances (if predict_var=True) of the random effects
 # 2. Predict response variable (pred_latent=False)
-group_test = -np.ones(m) # only new groups since we are only interested in the fixed effects for visualization
-pred_resp = bst.predict(data=Xtest, group_data_pred=group_test, pred_latent=False)
+pred_resp = bst.predict(data=Xtest, group_data_pred=group_test_new,
+                        predict_var=True, pred_latent=False)
 # pred_resp['response_mean']: mean predictions of the response variable 
 #   which combines predictions from the tree ensemble and the random effects
-# pred_resp['response_var']: predictive variances (if predict_var=True)
+# pred_resp['response_var']: predictive (co-)variances (if predict_var=True)
 
 # Visualize fitted response variable
 fig1, ax1 = plt.subplots()
@@ -334,13 +335,29 @@ bst = gpb.train(params=params, train_set=data_train, gp_model=gp_model,
 gp_model.summary() # Estimated random effects model
 
 #--------------------Prediction----------------
-# Predict response variable
+# 1. Predict response variable (pred_latent=False)
 pred_resp = bst.predict(data=X_test, gp_coords_pred=coords_test, 
-                        pred_latent=False)
-# Predict latent variable including variance
-pred = bst.predict(data=X_test, gp_coords_pred=coords_test, predict_var=True, 
-                   pred_latent=True)
+                        predict_var=True, pred_latent=False)
+# pred_resp['response_mean']: mean predictions of the response variable 
+#   which combines predictions from the tree ensemble and the Gaussian process
+# pred_resp['response_var']: predictive (co-)variances (if predict_var=True)
+# 2. Predict latent variables (pred_latent=True)
+pred = bst.predict(data=X_test, gp_coords_pred=coords_test, 
+                   predict_var=True, pred_latent=True)
+# pred['fixed_effect']: predictions for the latent fixed effects / tree ensemble
+# pred['random_effect_mean']: mean predictions for the random effects
+# pred['random_effect_cov']: predictive (co-)variances (if predict_var=True) of the (latent) Gaussian process
+# 3. Can also calculate predictive covariances
+pred_cov = bst.predict(data=X_test[0:3,], gp_coords_pred=coords_test[0:3,],
+                       predict_cov_mat=True, pred_latent=True)
+# pred_cov['random_effect_cov']: predictive covariances of the (latent) Gaussian process
+if likelihood == "gaussian":
+    # Predictive covariances for the response variable are currently only supported for Gaussian likelihoods
+    pred_resp_cov = bst.predict(data=X_test[0:3,], gp_coords_pred=coords_test[0:3,],
+                                predict_cov_mat=True, pred_latent=False)
+    # pred_resp_cov['response_var']: predictive covariances of the response variable
 
+# Evaluate predictions
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     print("Test error:")
     pred_binary = pred_resp['response_mean'] > 0.5
