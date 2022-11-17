@@ -230,6 +230,8 @@ def train(params, train_set, num_boost_round=100,
 
     if gp_model is not None:
         # some checks
+        if gp_model.has_covariates:
+            raise ValueError("The 'gp_model' cannot have covariates 'X' (a linear predictor) in the GPBoost algorithm.")
         if use_gp_model_for_validation and not not valid_sets and not not feval:
             raise ValueError("use_gp_model_for_validation=True is currently "
                              "not supported for custom validation functions. If you need this feature, contact the "

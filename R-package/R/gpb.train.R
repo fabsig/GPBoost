@@ -191,8 +191,6 @@ gpb.train <- function(params = list(),
   params <- gpb.check.eval(params = params, eval = eval)
   fobj <- NULL
   eval_functions <- list(NULL)
-  
-  params$train_gp_model_cov_pars <- train_gp_model_cov_pars
 
   # set some parameters, resolving the way they were passed in with other parameters
   # in `params`.
@@ -309,6 +307,10 @@ gpb.train <- function(params = list(),
   }
   
   if (!is.null(gp_model)) {
+    # some checks
+    if (gp_model$.__enclos_env__$private$has_covariates) {
+      stop(paste0("The ", sQuote("gp_model"), " cannot have covariates ", sQuote("X"), " (a linear predictor) in the GPBoost algorithm."))
+    }
     if (is.function(eval) & use_gp_model_for_validation) {
       # Note: if this option should be added, it can be done similarly as in gpb.cv using booster$add_valid(..., valid_set_gp = valid_set_gp, ...)
       stop("use_gp_model_for_validation=TRUE is currently not supported for custom validation functions.
@@ -322,6 +324,9 @@ gpb.train <- function(params = list(),
        This needs to be set prior to trainig when having a validation set and ", sQuote("use_gp_model_for_validation=TRUE"), ". 
        Either call ", sQuote("set_prediction_data(gp_model, ...)"), " first or use ", sQuote("use_gp_model_for_validation=FALSE"),"."))
     }
+    # update gp_model related parameters
+    params$train_gp_model_cov_pars <- train_gp_model_cov_pars
+    params$use_gp_model_for_validation <- use_gp_model_for_validation
     # Set the default metric to the (approximate marginal) negative log-likelihood if only the training loss should be calculated
     if (valid_contain_train & length(reduced_valid_sets) == 0 & length(params$metric)==0) {
       if (gp_model$get_likelihood_name() != "gaussian") {
@@ -332,8 +337,6 @@ gpb.train <- function(params = list(),
       }
     }
   }
-  
-  params$use_gp_model_for_validation <- use_gp_model_for_validation
 
   # Add printing log callback
   if (verbose > 0L && eval_freq > 0L) {
