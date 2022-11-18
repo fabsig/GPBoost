@@ -1,7 +1,8 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See LICENSE file in the project root for license information.
- */
+* Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2022 Fabio Sigrist. All rights reserved.
+* Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+*/
 #include <LightGBM/dataset.h>
 #include <LightGBM/utils/common.h>
 
@@ -290,12 +291,17 @@ void Metadata::SetInitScore(const double* init_score, data_size_t len) {
   if ((len % num_data_) != 0) {
     Log::Fatal("Initial score size doesn't match data size");
   }
+  if (init_score != nullptr && len > 0) {
+      if (Common::HasNAOrInf(init_score, len)) {
+          Log::Fatal("NaN or Inf in init_score");
+      }
+  }
   if (init_score_.empty()) { init_score_.resize(len); }
   num_init_score_ = len;
 
   #pragma omp parallel for schedule(static, 512) if (num_init_score_ >= 1024)
   for (int64_t i = 0; i < num_init_score_; ++i) {
-    init_score_[i] = Common::AvoidInf(init_score[i]);
+    init_score_[i] = Common::AvoidVeryLargeValue(init_score[i]);
   }
   init_score_load_from_file_ = false;
 }
@@ -308,11 +314,14 @@ void Metadata::SetLabel(const label_t* label, data_size_t len) {
   if (num_data_ != len) {
     Log::Fatal("Length of label is not same with #data");
   }
+  if (Common::HasNAOrInf(label, len)) {
+      Log::Fatal("NaN or Inf in label");
+  }
   if (label_.empty()) { label_.resize(num_data_); }
 
   #pragma omp parallel for schedule(static, 512) if (num_data_ >= 1024)
   for (data_size_t i = 0; i < num_data_; ++i) {
-    label_[i] = Common::AvoidInf(label[i]);
+    label_[i] = Common::AvoidVeryLargeValue(label[i]);
   }
 }
 
@@ -327,12 +336,17 @@ void Metadata::SetWeights(const label_t* weights, data_size_t len) {
   if (num_data_ != len) {
     Log::Fatal("Length of weights is not same with #data");
   }
+  if (weights != nullptr && len > 0) {
+      if (Common::HasNAOrInf(weights, len)) {
+          Log::Fatal("NaN or Inf in weights");
+      }
+  }
   if (weights_.empty()) { weights_.resize(num_data_); }
   num_weights_ = num_data_;
 
   #pragma omp parallel for schedule(static, 512) if (num_weights_ >= 1024)
   for (data_size_t i = 0; i < num_weights_; ++i) {
-    weights_[i] = Common::AvoidInf(weights[i]);
+    weights_[i] = Common::AvoidVeryLargeValue(weights[i]);
   }
   LoadQueryWeights();
   weight_load_from_file_ = false;
@@ -381,7 +395,10 @@ void Metadata::LoadWeights() {
   for (data_size_t i = 0; i < num_weights_; ++i) {
     double tmp_weight = 0.0f;
     Common::Atof(reader.Lines()[i].c_str(), &tmp_weight);
-    weights_[i] = Common::AvoidInf(static_cast<label_t>(tmp_weight));
+    weights_[i] = Common::AvoidVeryLargeValue(static_cast<label_t>(tmp_weight));
+  }
+  if (Common::HasNAOrInf(weights_.data(), num_weights_)) {
+      Log::Fatal("NaN or Inf in weights");
   }
   weight_load_from_file_ = true;
 }
@@ -410,7 +427,7 @@ void Metadata::LoadInitialScore() {
     for (data_size_t i = 0; i < num_line; ++i) {
       double tmp = 0.0f;
       Common::Atof(reader.Lines()[i].c_str(), &tmp);
-      init_score_[i] = Common::AvoidInf(static_cast<double>(tmp));
+      init_score_[i] = Common::AvoidVeryLargeValue(static_cast<double>(tmp));
     }
   } else {
     std::vector<std::string> oneline_init_score;
@@ -423,9 +440,12 @@ void Metadata::LoadInitialScore() {
       }
       for (int k = 0; k < num_class; ++k) {
         Common::Atof(oneline_init_score[k].c_str(), &tmp);
-        init_score_[static_cast<size_t>(k) * num_line + i] = Common::AvoidInf(static_cast<double>(tmp));
+        init_score_[static_cast<size_t>(k) * num_line + i] = Common::AvoidVeryLargeValue(static_cast<double>(tmp));
       }
     }
+  }
+  if (Common::HasNAOrInf(init_score_.data(), (data_size_t)num_init_score_)) {
+      Log::Fatal("NaN or Inf in init_score");
   }
   init_score_load_from_file_ = true;
 }

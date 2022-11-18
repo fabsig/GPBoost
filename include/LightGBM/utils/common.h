@@ -1,7 +1,8 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See LICENSE file in the project root for license information.
- */
+* Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2022 Fabio Sigrist. All rights reserved.
+* Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+*/
 #ifndef LIGHTGBM_UTILS_COMMON_H_
 #define LIGHTGBM_UTILS_COMMON_H_
 
@@ -10,6 +11,7 @@
 #endif
 #include <LightGBM/utils/log.h>
 #include <LightGBM/utils/openmp_wrapper.h>
+#include <LightGBM/meta.h>
 
 #include <limits>
 #include <string>
@@ -630,6 +632,62 @@ inline static float AvoidInf(float x) {
   } else {
     return x;
   }
+}
+
+inline static double AvoidVeryLargeValue(double x) {
+    if (x >= 1e300 && !std::isinf(x)) {
+        return 1e300;
+    }
+    else if (x <= -1e300 && !std::isinf(x)) {
+        return -1e300;
+    }
+    else {
+        return x;
+    }
+}
+
+inline static float AvoidVeryLargeValue(float x) {
+    if (x >= 1e38 && !std::isinf(x)) {
+        return 1e38f;
+    }
+    else if (x <= -1e38 && !std::isinf(x)) {
+        return -1e38f;
+    }
+    else {
+        return x;
+    }
+}
+
+inline static bool HasNAOrInf(const double* x, data_size_t num_data) {
+    bool has_na_or_inf = false;
+#pragma omp parallel for schedule(static) if (num_data >= 1024)
+    for (int i = 0; i < num_data; ++i) {
+        if (std::isnan(x[i]) || std::isinf(x[i])) {
+            if (!has_na_or_inf) {
+#pragma omp critical
+                {
+                    has_na_or_inf = true;
+                }
+            }
+        }
+    }
+    return(has_na_or_inf);
+}
+
+inline static bool HasNAOrInf(const float* x, data_size_t num_data) {
+    bool has_na_or_inf = false;
+#pragma omp parallel for schedule(static) if (num_data >= 1024)
+    for (int i = 0; i < num_data; ++i) {
+        if (std::isnan(x[i]) || std::isinf(x[i])) {
+            if (!has_na_or_inf) {
+#pragma omp critical
+                {
+                    has_na_or_inf = true;
+                }
+            }
+        }
+    }
+    return(has_na_or_inf);
 }
 
 template<typename _Iter> inline

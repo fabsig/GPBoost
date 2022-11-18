@@ -238,19 +238,21 @@ shap.plot.dependence(data_long = shap_long, x = "Covariate_1",
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
 bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = nrounds, 
                params = params, verbose = 0)
+group_test <- c(1,2,-1)
+Xtest <- matrix(runif(p*length(group_test)), ncol=p , nrow=length(group_test))
 pred <- predict(bst, data = Xtest, group_data_pred = group_test, 
                 predict_var = TRUE, pred_latent = TRUE)
 # Save model to file
 filename <- tempfile(fileext = ".json")
-gpb.save(bst,filename = filename)
+gpb.save(bst, filename = filename)
 # Load from file and make predictions again (note: on older R versions, this can sometimes crash)
 bst_loaded <- gpb.load(filename = filename)
 pred_loaded <- predict(bst_loaded, data = Xtest, group_data_pred = group_test, 
                        predict_var = TRUE, pred_latent = TRUE)
 # Check equality
-sum(abs(pred$fixed_effect - pred_loaded$fixed_effect))
-sum(abs(pred$random_effect_mean - pred_loaded$random_effect_mean))
-sum(abs(pred$random_effect_cov - pred_loaded$random_effect_cov))
+pred$fixed_effect - pred_loaded$fixed_effect
+pred$random_effect_mean - pred_loaded$random_effect_mean
+pred$random_effect_cov - pred_loaded$random_effect_cov
 
 #--------------------GPBoostOOS algorithm: Hyperparameters estimated out-of-sample----------------
 # Create random effects model and dataset

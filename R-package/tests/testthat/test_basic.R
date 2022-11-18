@@ -1273,6 +1273,10 @@ test_that("when early stopping is not activated, best_iter and best_score come f
     "feat1" = rep(50.0, 4L)
     , "target" = rep(50.0, 4L)
   )
+  validDF2 <- data.frame(
+    "feat1" = rep(c(50.0,10), 4L)
+    , "target" = rep(c(50.0,-50.), 4L)
+  )
   dtrain <- gpb.Dataset(
     data = as.matrix(trainDF[["feat1"]], drop = FALSE)
     , label = trainDF[["target"]]
@@ -1282,8 +1286,8 @@ test_that("when early stopping is not activated, best_iter and best_score come f
     , label = validDF[["target"]]
   )
   dvalid2 <- gpb.Dataset(
-    data = as.matrix(validDF[1L:10L, "feat1"], drop = FALSE)
-    , label = validDF[1L:10L, "target"]
+    data = as.matrix(validDF2[["feat1"]], drop = FALSE)
+    , label = validDF2[["target"]]
   )
   nrounds <- 10L
   train_params <- list(
@@ -1771,138 +1775,6 @@ test_that("gpb.train() fit on linearly-relatead data improves when using linear 
 #     )
 #   }, regexp = "Cannot change linear_tree after constructed Dataset handle")
 # })
-
-test_that("gpb.train() works with linear learners even if Dataset has missing values", {
-  set.seed(708L)
-  .new_dataset <- function() {
-    values <- rnorm(100L)
-    values[sample(seq_len(length(values)), size = 10L)] <- NA_real_
-    X <- matrix(
-      data = sample(values, size = 100L)
-      , ncol = 1L
-    )
-    return(gpb.Dataset(
-      data = X
-      , label = 2L * X + runif(nrow(X), 0L, 0.1)
-    ))
-  }
-  
-  params <- list(
-    objective = "regression"
-    , verbose = -1L
-    , metric = "mse"
-    , seed = 0L
-    , num_leaves = 2L
-  )
-  
-  dtrain <- .new_dataset()
-  bst <- gpb.train(
-    data = dtrain
-    , nrounds = 10L
-    , params = params
-    , valids = list("train" = dtrain)
-    , verbose = 0
-  )
-  expect_true(gpboost:::gpb.is.Booster(bst))
-  
-  dtrain <- .new_dataset()
-  bst_linear <- gpb.train(
-    data = dtrain
-    , nrounds = 10L
-    , params = modifyList(params, list(linear_tree = TRUE))
-    , valids = list("train" = dtrain)
-    , verbose = 0
-  )
-  expect_true(gpboost:::gpb.is.Booster(bst_linear))
-  
-  bst_last_mse <- bst$record_evals[["train"]][["l2"]][["eval"]][[10L]]
-  bst_lin_last_mse <- bst_linear$record_evals[["train"]][["l2"]][["eval"]][[10L]]
-  expect_true(bst_lin_last_mse <  bst_last_mse)
-})
-
-test_that("gpb.train() works with linear learners, bagging, and a Dataset that has missing values", {
-  set.seed(708L)
-  .new_dataset <- function() {
-    values <- rnorm(100L)
-    values[sample(seq_len(length(values)), size = 10L)] <- NA_real_
-    X <- matrix(
-      data = sample(values, size = 100L)
-      , ncol = 1L
-    )
-    return(gpb.Dataset(
-      data = X
-      , label = 2L * X + runif(nrow(X), 0L, 0.1)
-    ))
-  }
-  
-  params <- list(
-    objective = "regression"
-    , verbose = -1L
-    , metric = "mse"
-    , seed = 0L
-    , num_leaves = 2L
-    , bagging_freq = 1L
-    , subsample = 0.8
-  )
-  
-  dtrain <- .new_dataset()
-  bst <- gpb.train(
-    data = dtrain
-    , nrounds = 10L
-    , params = params
-    , valids = list("train" = dtrain)
-    , verbose = 0
-  )
-  expect_true(gpboost:::gpb.is.Booster(bst))
-  
-  dtrain <- .new_dataset()
-  bst_linear <- gpb.train(
-    data = dtrain
-    , nrounds = 10L
-    , params = modifyList(params, list(linear_tree = TRUE))
-    , valids = list("train" = dtrain)
-    , verbose = 0
-  )
-  expect_true(gpboost:::gpb.is.Booster(bst_linear))
-  
-  bst_last_mse <- bst$record_evals[["train"]][["l2"]][["eval"]][[10L]]
-  bst_lin_last_mse <- bst_linear$record_evals[["train"]][["l2"]][["eval"]][[10L]]
-  expect_true(bst_lin_last_mse <  bst_last_mse)
-})
-
-test_that("gpb.train() works with linear learners and data where a feature has only 1 non-NA value", {
-  set.seed(708L)
-  .new_dataset <- function() {
-    values <- rep(NA_real_, 100L)
-    values[18L] <- rnorm(1L)
-    X <- matrix(
-      data = values
-      , ncol = 1L
-    )
-    return(gpb.Dataset(
-      data = X
-      , label = 2L * X + runif(nrow(X), 0L, 0.1)
-    ))
-  }
-  
-  params <- list(
-    objective = "regression"
-    , verbose = -1L
-    , metric = "mse"
-    , seed = 0L
-    , num_leaves = 2L
-  )
-  
-  dtrain <- .new_dataset()
-  capture.output( 
-    bst_linear <- gpb.train(
-      data = dtrain
-      , nrounds = 10L
-      , params = modifyList(params, list(linear_tree = TRUE))
-    )
-    , file='NUL')
-  expect_true(gpboost:::gpb.is.Booster(bst_linear))
-})
 
 test_that("gpb.train() works with linear learners when Dataset has categorical features", {
   set.seed(708L)

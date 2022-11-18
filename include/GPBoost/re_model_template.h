@@ -41,6 +41,7 @@
 #endif
 
 #include <LightGBM/utils/log.h>
+#include <LightGBM/utils/common.h>
 using LightGBM::Log;
 
 namespace GPBoost {
@@ -613,17 +614,8 @@ namespace GPBoost {
 			}
 			// Check response variable data
 			if (y_data != nullptr) {
-				bool has_na_or_inf = false;
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data_; ++i) {
-					if (std::isnan(y_data[i]) || std::isinf(y_data[i])) {
-						if (!has_na_or_inf) {
-							has_na_or_inf = true;
-						}
-					}
-				}
-				if (has_na_or_inf) {
-					Log::REFatal("NaN or Inf in response variable data");
+				if (LightGBM::Common::HasNAOrInf(y_data, num_data_)) {
+					Log::REFatal("NaN or Inf in response variable / label");
 				}
 			}
 			// Initialization of variables
@@ -1816,6 +1808,12 @@ namespace GPBoost {
 			if (y_obs == nullptr) {
 				if (!y_has_been_set_) {
 					Log::REFatal("Response variable data is not provided and has not been set before");
+				}
+			}
+			else {
+				// Check response variable data
+				if (LightGBM::Common::HasNAOrInf(y_obs, num_data_)) {
+					Log::REFatal("NaN or Inf in response variable / label");
 				}
 			}
 			if (num_data_pred > 10000 && predict_cov_mat) {

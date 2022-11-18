@@ -240,7 +240,7 @@ test_that("Combined GP and grouped random effects model with cluster_id's not co
 
 # Avoid being tested on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
-  test_that("Saving a GPModel and loading from filw works ", {
+  test_that("Saving a GPModel and loading from file works ", {
     
     y <- eps + X%*%beta + xi
     # Fit model
@@ -256,7 +256,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     X_pred = X_test, predict_cov_mat = TRUE)
     # Save model to file
     filename <- tempfile(fileext = ".json")
-    saveGPModel(gp_model,filename = filename)
+    saveGPModel(gp_model, filename = filename)
     # Delete model
     rm(gp_model)
     # Load from file and make predictions again
