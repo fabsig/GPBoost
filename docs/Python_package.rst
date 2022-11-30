@@ -5,16 +5,16 @@ Below is the official documentation of the Python package. See also the `Python 
 
 .. currentmodule:: gpboost
 
-Data Structure and GPModel
---------------------------
+GPModel, booster, and data structure
+------------------------------------
 
 .. autosummary::
     :toctree: pythonapi/
 
-    Dataset
-    Booster
     GPModel
-    CVBooster
+    Booster
+    Dataset
+
 
 GPBoost Algorithm Training and Choosing Tuning Parameters
 ---------------------------------------------------------
@@ -37,8 +37,10 @@ Scikit-learn API
     GPBoostRegressor
     GPBoostRanker
 
+Various
+-------
+
 Callbacks
----------
 
 .. autosummary::
     :toctree: pythonapi/
@@ -49,7 +51,6 @@ Callbacks
     reset_parameter
 
 Plotting
---------
 
 .. autosummary::
     :toctree: pythonapi/
@@ -61,10 +62,10 @@ Plotting
     create_tree_digraph
 
 Utilities
----------
 
 .. autosummary::
     :toctree: pythonapi/
 
     register_logger
     get_nested_categories
+    CVBooster
