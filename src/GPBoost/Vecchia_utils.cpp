@@ -7,6 +7,7 @@
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 */
 #include <GPBoost/Vecchia_utils.h>
+#include <GPBoost/utils.h>
 #include <numeric>      // std::iota
 #include <algorithm>    // std::sort
 #include <mutex>
@@ -44,7 +45,7 @@ namespace GPBoost {
 			[&v](int i1, int i2) {return v[i1] < v[i2]; });
 	}
 
-	void find_nearest_neighbors_Veccia(den_mat_t& dist, int num_data, int num_neighbors,
+	void find_nearest_neighbors_Vecchia(den_mat_t& dist, int num_data, int num_neighbors,
 		std::vector<std::vector<int>>& nearest_neighbors) {
 		CHECK((int)nearest_neighbors.size() == num_data);
 		CHECK((int)dist.rows() == num_data && (int)dist.cols() == num_data);
@@ -75,16 +76,12 @@ namespace GPBoost {
 				}
 			}
 		}
-	}
+	}//end find_nearest_neighbors_Vecchia
 
-	void find_nearest_neighbors_Veccia_fast(const den_mat_t& coords,
-		int num_data,
-		int num_neighbors,
-		std::vector<std::vector<int>>& nearest_neighbors,
-		std::vector<den_mat_t>& dist_obs_neighbors,
-		std::vector<den_mat_t>& dist_between_neighbors,
-		int start_at,
-		int end_search_at) {
+	void find_nearest_neighbors_Vecchia_fast(const den_mat_t& coords, int num_data, int num_neighbors,
+		std::vector<std::vector<int>>& nearest_neighbors, std::vector<den_mat_t>& dist_obs_neighbors,
+		std::vector<den_mat_t>& dist_between_neighbors, int start_at, int end_search_at, bool& check_has_duplicates) {
+		bool has_duplicates = false;
 		if (end_search_at < 0) {
 			end_search_at = num_data - 2;
 		}
@@ -116,6 +113,13 @@ namespace GPBoost {
 				for (int j = 0; j < i; ++j) {
 					nearest_neighbors[i - start_at][j] = j;
 					dist_obs_neighbors[i - start_at](0, j) = (coords(j, Eigen::all) - coords(i, Eigen::all)).lpNorm<2>();
+					if (check_has_duplicates) {
+						if (!has_duplicates) {
+							if (dist_obs_neighbors[i - start_at](0, j) < EPSILON_NUMBERS) {
+								has_duplicates = true;
+							}
+						}
+					}//end check_has_duplicates
 				}
 			}
 			else if (i > num_neighbors) {
@@ -184,6 +188,16 @@ namespace GPBoost {
 				for (int j = 0; j < num_neighbors; ++j) {
 					dist_obs_neighbors[i - start_at].resize(1, num_neighbors);
 					dist_obs_neighbors[i - start_at](0, j) = sqrt(nn_square_dist[j]);
+					if (check_has_duplicates) {
+						if (!has_duplicates) {
+							if (dist_obs_neighbors[i - start_at](0, j) < EPSILON_NUMBERS) {
+#pragma omp critical
+								{
+									has_duplicates = true;
+								}
+							}
+						}
+					}//end check_has_duplicates
 				}
 			}//end parallel for loop
 		}
@@ -197,10 +211,24 @@ namespace GPBoost {
 				dist_between_neighbors[i - start_at](j, j) = 0.;
 				for (int k = j + 1; k < nn_i; ++k) {
 					dist_between_neighbors[i - start_at](j, k) = (coords(nearest_neighbors[i - start_at][j], Eigen::all) - coords(nearest_neighbors[i - start_at][k], Eigen::all)).lpNorm<2>();
+					if (check_has_duplicates) {
+						if (!has_duplicates){
+							if (dist_between_neighbors[i - start_at](j, k) < EPSILON_NUMBERS) {
+#pragma omp critical
+								{
+									has_duplicates = true;
+								}
+							}
+						}
+					}//end check_has_duplicates
 				}
 			}
 			dist_between_neighbors[i - start_at].triangularView<Eigen::StrictlyLower>() = dist_between_neighbors[i - start_at].triangularView<Eigen::StrictlyUpper>().transpose();
 		}
-	}
+
+		if (check_has_duplicates) {
+			check_has_duplicates = has_duplicates;
+		}
+	}//end find_nearest_neighbors_Vecchia_fast
 
 }  // namespace GPBoost

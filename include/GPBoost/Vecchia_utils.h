@@ -20,7 +20,7 @@ namespace GPBoost {
   * \param num_neighbors Maximal number of neighbors
   * \param[out] nearest_neighbor Vector with indices of nearest neighbors for every observations
   */
-  void find_nearest_neighbors_Veccia(den_mat_t& dist, int num_data, int num_neighbors,
+  void find_nearest_neighbors_Vecchia(den_mat_t& dist, int num_data, int num_neighbors,
     std::vector<std::vector<int>>& nearest_neighbors);
 
   /*!
@@ -32,10 +32,11 @@ namespace GPBoost {
 * \param[out] dist All distances needed for the Vecchia approxiamtion (distances between locations and their neighbors as well as distances between all neighbors) (length = num_data - start_at)
 * \param start_at Index of first point for which nearest neighbors should be found (useful for prediction, otherwise = 0)
 * \param end_search_at Index of last point which can be a nearest neighbor (useful for prediction when the nearest neighbors are only to be found among the observed data, otherwise = num_data - 1 (if end_search_at < 0, we set end_search_at = num_data - 1)
+* \param[out] check_has_duplicates If true, it is checked whether there are duplicates in coords among the neighbors (result written on output)
 */
-  void find_nearest_neighbors_Veccia_fast(const den_mat_t& coords, int num_data, int num_neighbors,
+  void find_nearest_neighbors_Vecchia_fast(const den_mat_t& coords, int num_data, int num_neighbors,
     std::vector<std::vector<int>>& nearest_neighbors, std::vector<den_mat_t>& dist_obs_neighbors,
-    std::vector<den_mat_t>& dist_between_neighbors, int start_at = 0, int end_search_at = -1);
+    std::vector<den_mat_t>& dist_between_neighbors, int start_at, int end_search_at, bool& check_has_duplicates);
 
 /*!
 * \brief Sorts vectors a and b of length n based on decreasing values of a (this is taken from the suplementary code of Finley et al. (2019), JASA)

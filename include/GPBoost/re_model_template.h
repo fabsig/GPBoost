@@ -348,21 +348,11 @@ namespace GPBoost {
 					std::vector<Triplet_t> entries_init_B_cluster_i;
 					std::vector<Triplet_t> entries_init_B_grad_cluster_i;
 					std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_per_cluster_[cluster_i]);
-					CreateREComponentsVecchia(num_data_,
-						data_indices_per_cluster_,
-						cluster_i,
-						num_data_per_cluster_,
-						gp_coords_data,
-						gp_rand_coef_data,
-						re_comps_cluster_i,
-						nearest_neighbors_cluster_i,
-						dist_obs_neighbors_cluster_i,
-						dist_between_neighbors_cluster_i,
-						entries_init_B_cluster_i,
-						entries_init_B_grad_cluster_i,
-						z_outer_z_obs_neighbors_cluster_i,
-						vecchia_ordering_,
-						num_neighbors_);
+					CreateREComponentsVecchia(num_data_, data_indices_per_cluster_, cluster_i,
+						num_data_per_cluster_, gp_coords_data, gp_rand_coef_data,
+						re_comps_cluster_i, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
+						entries_init_B_cluster_i, entries_init_B_grad_cluster_i, z_outer_z_obs_neighbors_cluster_i,
+						vecchia_ordering_, num_neighbors_, true);
 					nearest_neighbors_.insert({ cluster_i, nearest_neighbors_cluster_i });
 					dist_obs_neighbors_.insert({ cluster_i, dist_obs_neighbors_cluster_i });
 					dist_between_neighbors_.insert({ cluster_i, dist_between_neighbors_cluster_i });
@@ -472,6 +462,9 @@ namespace GPBoost {
 				Id_ = std::map<data_size_t, T_mat>();
 				P_Id_ = std::map<data_size_t, T_mat>();
 				//Id_cs_ = std::map<data_size_t, cs>();//currently not used
+				if (vecchia_approx_ && has_duplicates_coords_) {
+					Log::REFatal(DUPLICATES_COORDS_VECCHIA_NONGAUSS_);
+				}
 			}
 			InitializeLikelihoods(likelihood);
 			DetermineCovarianceParameterIndicesNumCovPars();
@@ -1899,7 +1892,7 @@ namespace GPBoost {
 								gp_rand_coef_data_pred, re_comps_cluster_i,
 								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
 								entries_init_B_cluster_i, entries_init_B_grad_cluster_i, z_outer_z_obs_neighbors_cluster_i,
-								"none", num_neighbors_pred_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
+								"none", num_neighbors_pred_, false);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_cluster_i[j]->SetCovPars(pars);
@@ -2634,6 +2627,8 @@ namespace GPBoost {
 		double cov_fct_shape_ = 0.;
 		/*! \brief Range parameter of Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018) */
 		double cov_fct_taper_range_ = 1.;
+		/*! \brief If true, there are duplicates in coords among the neighbors (currently only used for the Vecchia approximation for non-Gaussian data) */
+		bool has_duplicates_coords_ = false;
 
 		// RANDOM EFFECT / GP COMPONENTS
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components */
@@ -2870,6 +2865,8 @@ namespace GPBoost {
 		/*! \brief Number of prediction points */
 		data_size_t num_data_pred_;
 
+		// ERROR MESSAGES
+		const char* DUPLICATES_COORDS_VECCHIA_NONGAUSS_ = "Duplicates found in the coordinates for the Gaussian process. This is currently not supported for the Vecchia approximation for non-Gaussian likelihoods ";
 
 		/*! \brief Nesterov schedule */
 		double NesterovSchedule(int iter, int momentum_schedule_version = 0,
@@ -3963,11 +3960,12 @@ namespace GPBoost {
 			std::vector<std::vector<int>>& nearest_neighbors_cluster_i,
 			std::vector<den_mat_t>& dist_obs_neighbors_cluster_i,
 			std::vector<den_mat_t>& dist_between_neighbors_cluster_i,
-			std::vector<Triplet_t >& entries_init_B_cluster_i,
-			std::vector<Triplet_t >& entries_init_B_grad_cluster_i,
+			std::vector<Triplet_t>& entries_init_B_cluster_i,
+			std::vector<Triplet_t>& entries_init_B_grad_cluster_i,
 			std::vector<std::vector<den_mat_t>>& z_outer_z_obs_neighbors_cluster_i,
-			string_t vecchia_ordering = "none",
-			int num_neighbors = 30) {
+			string_t vecchia_ordering,
+			int num_neighbors,
+			bool check_has_duplicates) {
 			int ind_intercept_gp = (int)re_comps_cluster_i.size();
 			if (vecchia_ordering == "random") {
 				unsigned seed = 0;
@@ -3987,14 +3985,15 @@ namespace GPBoost {
 				cov_fct_taper_range_,
 				false,
 				false)));
-			find_nearest_neighbors_Veccia_fast(gp_coords_mat,
-				num_data_per_cluster[cluster_i],
-				num_neighbors,
-				nearest_neighbors_cluster_i,
-				dist_obs_neighbors_cluster_i,
-				dist_between_neighbors_cluster_i,
-				0,
-				-1);
+			bool has_duplicates = check_has_duplicates;
+			find_nearest_neighbors_Vecchia_fast(gp_coords_mat, num_data_per_cluster[cluster_i], num_neighbors,
+				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates);
+			if (check_has_duplicates) {
+				has_duplicates_coords_ = has_duplicates_coords_ || has_duplicates;
+				if (!gauss_likelihood_ && has_duplicates_coords_) {
+					Log::REFatal(DUPLICATES_COORDS_VECCHIA_NONGAUSS_);
+				}
+			}
 			for (int i = 0; i < num_data_per_cluster[cluster_i]; ++i) {
 				for (int j = 0; j < (int)nearest_neighbors_cluster_i[i].size(); ++j) {
 					entries_init_B_cluster_i.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.));
@@ -5792,13 +5791,14 @@ namespace GPBoost {
 			std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_data_pred_cli);
 			std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_data_pred_cli);
 			std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_pred_cli);
+			bool check_has_duplicates = false;
 			if (CondObsOnly) {
-				find_nearest_neighbors_Veccia_fast(coords_all, num_data_cli + num_data_pred_cli, num_neighbors_pred_,
-					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, num_data_cli - 1);
+				find_nearest_neighbors_Vecchia_fast(coords_all, num_data_cli + num_data_pred_cli, num_neighbors_pred_,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, num_data_cli - 1, check_has_duplicates);
 			}
 			else {//find neighbors among both the observed and prediction locations
-				find_nearest_neighbors_Veccia_fast(coords_all, num_data_cli + num_data_pred_cli, num_neighbors_pred_,
-					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, -1);
+				find_nearest_neighbors_Vecchia_fast(coords_all, num_data_cli + num_data_pred_cli, num_neighbors_pred_,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, -1, check_has_duplicates);
 			}
 			//Random coefficients
 			std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_pred_cli);
@@ -5952,8 +5952,9 @@ namespace GPBoost {
 			std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_data_tot);
 			std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_data_tot);
 			std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_tot);
-			find_nearest_neighbors_Veccia_fast(coords_all, num_data_tot, num_neighbors_pred_,
-				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1);
+			bool check_has_duplicates = false;
+			find_nearest_neighbors_Vecchia_fast(coords_all, num_data_tot, num_neighbors_pred_,
+				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates);
 			//Prepare data for random coefficients
 			std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_tot);
 			if (num_gp_rand_coef_ > 0) {
@@ -6159,13 +6160,14 @@ namespace GPBoost {
 			std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_coord_unique);
 			std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_coord_unique);
 			std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_coord_unique);
+			bool check_has_duplicates = false;
 			if (CondObsOnly) {//find neighbors among both the observed locations only
-				find_nearest_neighbors_Veccia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred_,
-					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1);
+				find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred_,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1, check_has_duplicates);
 			}
 			else {//find neighbors among both the observed and prediction locations
-				find_nearest_neighbors_Veccia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred_,
-					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1);
+				find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred_,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates);
 			}
 			// Determine Triplet for initializing Bpo and Bp
 			std::vector<Triplet_t> entries_init_B;

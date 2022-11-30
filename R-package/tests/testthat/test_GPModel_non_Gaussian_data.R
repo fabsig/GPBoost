@@ -827,6 +827,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                       1.5000000000, 0.0000000000, 0.0003074858, 0.0000000000, 1.0761874845)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
+    
+    ## Cannot have duplicate coordinates
+    coords_dupl <- coords
+    coords_dupl[2:20,] <- matrix(rep(coords_dupl[1,],19), ncol=2)
+    expect_error( capture.output( gp_model <- GPModel(gp_coords = coords_dupl, cov_function = "exponential",
+                           likelihood = "bernoulli_probit", vecchia_approx = TRUE) , file='NUL') )
+    
   })
   
   test_that("Binary classification Gaussian process model with Wendland covariance function", {
