@@ -2156,15 +2156,18 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param num_data Number of data points
-		* \param B Matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
-		* \param D_inv Diagonal matrix D^-1 in Vecchia approximation Sigma^-1 = B^T D^-1 B
-		* \param Cross_Cov Cross covariance matrix between predicted and obsreved random effects ("=Cov(y_p,y)")
+		* \param B Matrix B in Vecchia approximation for observed locations, Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
+		* \param D_inv Diagonal matrix D^-1 in Vecchia approximation for observed locations
+		* \param Bpo Lower left part of matrix B in joint Vecchia approximation for observed and prediction locations with non-zero off-diagonal entries corresponding to the nearest neighbors of the prediction locations among the observed locations
+		* \param Bp Lower right part of matrix B in joint Vecchia approximation for observed and prediction locations with non-zero off-diagonal entries corresponding to the nearest neighbors of the prediction locations among the prediction locations
+		* \param Dp Diagonal matrix with lower right part of matrix D in joint Vecchia approximation for observed and prediction locations
 		* \param pred_mean[out] Predicted mean
 		* \param pred_cov[out] Predicted covariance matrix
 		* \param pred_var[out] Predicted variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param CondObsOnly If true, the nearest neighbors for the predictions are found only among the observed data and Bp is an identity matrix
 		*/
 		void PredictLAApproxVecchia(const double* y_data,
 			const int* y_data_int,
@@ -2172,13 +2175,16 @@ namespace GPBoost {
 			const data_size_t num_data,
 			const sp_mat_t& B,
 			const sp_mat_t& D_inv,
-			const T_mat& Cross_Cov,
+			const sp_mat_t& Bpo,
+			sp_mat_t& Bp,
+			const sp_mat_t& Dp,
 			vec_t& pred_mean,
 			T_mat& pred_cov,
 			vec_t& pred_var,
 			bool calc_pred_cov,
 			bool calc_pred_var,
-			bool calc_mode) {
+			bool calc_mode,
+			bool CondObsOnly) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, mll);
@@ -2186,27 +2192,70 @@ namespace GPBoost {
 			else {
 				CHECK(mode_has_been_calculated_);
 			}
-			pred_mean = Cross_Cov * first_deriv_ll_;
+			int num_pred = (int)Bp.cols();
+			CHECK((int)Dp.cols() == num_pred);
+			if (CondObsOnly) {
+				pred_mean = -Bpo * mode_;
+			}
+			else {
+				vec_t Bpo_mode = Bpo * mode_;
+				pred_mean = -Bp.triangularView<Eigen::UpLoType::UnitLower>().solve(Bpo_mode);
+			}
 			if (calc_pred_cov || calc_pred_var) {
-				T_mat SigmaI_CrossCovT = B.transpose() * (D_inv * (B * Cross_Cov.transpose()));
-				T_mat Maux = SigmaI_CrossCovT; //Maux = L\(Sigma^-1 * Cross_Cov^T), L = Chol(Sigma^-1 + W)
+				sp_mat_t Bp_inv, Bp_inv_Dp;
+				sp_mat_t Maux; //Maux = L\(Bpo^T * Bp^-1), L = Chol(Sigma^-1 + W)
+				if (CondObsOnly) {
+					Maux = Bpo.transpose();//Bp = Id
+				}
+				else {
+					Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
+					Bp_inv.setIdentity();
+					eigen_sp_Lower_sp_RHS_solve(Bp, Bp_inv, Bp_inv, true);
+					//Bp.triangularView<Eigen::UpLoType::UnitLower>().solveInPlace(Bp_inv);//much slower
+					vec_t Dp_sqrt(num_pred), Dp_inv_sqrt(num_pred);
+					Dp_sqrt.array() = Dp.diagonal().array().sqrt();
+					Dp_inv_sqrt.array() = 1. / Dp_sqrt.array();
+					Maux = Bpo.transpose() * Bp_inv.transpose();
+					Bp_inv_Dp = Bp_inv * Dp;
+				}
 				if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().size() > 0) {//Permutation is only used when having an ordering
 					Maux = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * Maux;
 				}
-				chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL().solveInPlace(Maux);
-				if (calc_pred_cov) {
-					pred_cov += -Cross_Cov * SigmaI_CrossCovT + Maux.transpose() * Maux;
+				if (Bp.cols() <= 100) {
+					sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL();
+					eigen_sp_Lower_sp_RHS_solve(L, Maux, Maux, true);
 				}
-				if (calc_pred_var) {
-					Maux = Maux.cwiseProduct(Maux);
-#pragma omp parallel for schedule(static)
-					for (int i = 0; i < (int)pred_mean.size(); ++i) {
-						pred_var[i] += Maux.col(i).sum() - (Cross_Cov.row(i)).dot(SigmaI_CrossCovT.col(i));
+				else {
+					chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL().solveInPlace(Maux);
+					//Note: this slower for small Bp.cols(), for larger number of prediction points, the differences is small. 
+					//		Since 'eigen_sp_Lower_sp_RHS_solve' converts Maux to den_mat_t, we use this version to avoid memory issues if Bp.cols() is large
+				}
+				if (calc_pred_cov) {
+					if (CondObsOnly) {
+						pred_cov = Dp + Maux.transpose() * Maux;
+					}
+					else {
+						pred_cov = Bp_inv_Dp * Bp_inv.transpose() + Maux.transpose() * Maux;
 					}
 				}
-			}
+				if (calc_pred_var) {
+					pred_var = vec_t(num_pred);
+					Maux = Maux.cwiseProduct(Maux);
+					if (CondObsOnly) {
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_pred; ++i) {
+							pred_var[i] = Dp.coeff(i,i) + Maux.col(i).sum();
+						}
+					}
+					else {
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_pred; ++i) {
+							pred_var[i] = (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i)) + Maux.col(i).sum();
+						}
+					}
+				}
+			}//end calc_pred_cov || calc_pred_var
 		}//end PredictLAApproxVecchia
-
 
 		/*!
 		* \brief Make predictions for the response variable (label) based on predictions for the mean and variance of the latent random effects

@@ -15,11 +15,11 @@
 \item{X}{A \code{matrix} with numeric covariate data for the 
 fixed effects linear regression term (if there is one)}
 
-\item{params}{A \code{list} with parameters for the model fitting / optimization
+\item{params}{A \code{list} with parameters for the estimation / optimization
  \itemize{
     \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
     Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam".
-    Default= gradient_descent"}
+    Default="gradient_descent"}
     \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
     (for the GPBoost algorithm there are usually none). 
     Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously 

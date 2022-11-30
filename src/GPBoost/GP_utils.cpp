@@ -25,7 +25,6 @@ namespace GPBoost {
 		unique_idx.push_back(0);
 		for (int i = 1; i < num_data; ++i) {//identify duplicates in coordinates
 			bool is_duplicate = false;
-			//for (const auto& j : uniques) {
 			for (int j = 0; j < (int)uniques.size(); ++j) {
 				if ((coords.row(uniques[j]) - coords.row(i)).norm() == 0.) {
 					unique_idx.push_back(j);

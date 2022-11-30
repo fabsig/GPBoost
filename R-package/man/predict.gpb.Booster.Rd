@@ -59,16 +59,26 @@ Gaussian process random coefficients (if there are some in the \code{GPModel})}
 random effects / Gaussian processes for which predictions are made 
 (set to NULL if you have not specified this when creating the \code{GPModel})}
 
-\item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions. 
-"order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed points, 
-"order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected among all points 
-(observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, 
-"latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent process and observed data is 
-ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all" = Vecchia approximation 
-for the latent process and observed data is ordered first and neighbors are selected among all points}
+\item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
+Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+The following options are available:
+\itemize{
+\item{"order_obs_first_cond_obs_only"}{ Vecchia approximation for the observable process and observed training data is 
+ordered first and the neighbors are only observed training data points. 
+This option is only available for Gaussian likelihoods }
+\item{"order_obs_first_cond_all"}{ Vecchia approximation for the observable process and observed training data is 
+ordered first and the neighbors are selected among all points (training + prediction). 
+This option is only available for Gaussian likelihoods }
+\item{"latent_order_obs_first_cond_obs_only"}{ Vecchia approximation for the latent process and observed data is 
+ordered first and neighbors are only observed points}
+\item{"latent_order_obs_first_cond_all"}{ Vecchia approximation 
+for the latent process and observed data is ordered first and neighbors are selected among all points }
+\item{"order_pred_first"}{ Vecchia approximation for the observable process and prediction data is 
+ordered first for making predictions. This option is only available for Gaussian likelihoods }
+}}
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-for making predictions}
+for making predictions (default value if NULL: num_neighbors_pred = num_neighbors)}
 
 \item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior) 
 predictive covariance is calculated in addition to the (posterior) predictive mean}

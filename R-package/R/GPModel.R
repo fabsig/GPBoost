@@ -46,16 +46,26 @@
 #' @param num_neighbors An \code{integer} specifying the number of neighbors for the Vecchia approximation
 #' @param vecchia_ordering A \code{string} specifying the ordering used in the Vecchia approximation. 
 #' "none" means the default ordering is used, "random" uses a random ordering
-#' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions. 
-#' "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed points, 
-#' "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected among all points 
-#' (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, 
-#' "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent process and observed data is 
-#' ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all" = Vecchia approximation 
-#' for the latent process and observed data is ordered first and neighbors are selected among all points
+#' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions.
+#' Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+#' The following options are available:
+#' \itemize{
+#' \item{"order_obs_first_cond_obs_only"}{ Vecchia approximation for the observable process and observed training data is 
+#' ordered first and the neighbors are only observed training data points. 
+#' This option is only available for Gaussian likelihoods }
+#' \item{"order_obs_first_cond_all"}{ Vecchia approximation for the observable process and observed training data is 
+#' ordered first and the neighbors are selected among all points (training + prediction). 
+#' This option is only available for Gaussian likelihoods }
+#' \item{"latent_order_obs_first_cond_obs_only"}{ Vecchia approximation for the latent process and observed data is 
+#' ordered first and neighbors are only observed points}
+#' \item{"latent_order_obs_first_cond_all"}{ Vecchia approximation 
+#' for the latent process and observed data is ordered first and neighbors are selected among all points }
+#' \item{"order_pred_first"}{ Vecchia approximation for the observable process and prediction data is 
+#' ordered first for making predictions. This option is only available for Gaussian likelihoods }
+#' }
 #' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-#' for making predictions
-#' @param cg_delta_conv_pred a \code{numeric} specifying the olerance level for L2 norm of residuals for 
+#' for making predictions (default value if NULL: num_neighbors_pred = num_neighbors)
+#' @param cg_delta_conv_pred a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
 #' checking convergence in conjugate gradient algorithm when being used for prediction
 #' @param cluster_ids A \code{vector} with elements indicating independent realizations of 
 #' random effects / Gaussian processes (same values = same process realization).
@@ -65,11 +75,11 @@
 #' @param y A \code{vector} with response variable data
 #' @param X A \code{matrix} with numeric covariate data for the 
 #' fixed effects linear regression term (if there is one)
-#' @param params A \code{list} with parameters for the model fitting / optimization
+#' @param params A \code{list} with parameters for the estimation / optimization
 #'             \itemize{
 #'                \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
 #'                Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam".
-#'                Default= gradient_descent"}
+#'                Default="gradient_descent"}
 #'                \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
 #'                (for the GPBoost algorithm there are usually none). 
 #'                Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously 
@@ -161,7 +171,7 @@ gpb.GPModel <- R6::R6Class(
                           vecchia_approx = FALSE,
                           num_neighbors = 30L,
                           vecchia_ordering = "none",
-                          vecchia_pred_type = "order_obs_first_cond_obs_only",
+                          vecchia_pred_type = NULL,
                           num_neighbors_pred = num_neighbors,
                           cluster_ids = NULL,
                           free_raw_data = FALSE,
@@ -1660,7 +1670,7 @@ gpb.GPModel <- R6::R6Class(
     vecchia_approx = FALSE,
     num_neighbors = 30L,
     vecchia_ordering = "none",
-    vecchia_pred_type = "order_obs_first_cond_obs_only",
+    vecchia_pred_type = NULL,
     num_neighbors_pred = 30L,
     cg_delta_conv_pred = 0.01,
     cov_par_names = NULL,
@@ -1831,7 +1841,7 @@ GPModel <- function(group_data = NULL,
                     vecchia_approx = FALSE,
                     num_neighbors = 30L,
                     vecchia_ordering = "none",
-                    vecchia_pred_type = "order_obs_first_cond_obs_only",
+                    vecchia_pred_type = NULL,
                     num_neighbors_pred = num_neighbors,
                     cluster_ids = NULL,
                     free_raw_data = FALSE,
@@ -2020,7 +2030,7 @@ fitGPModel <- function(group_data = NULL,
                        vecchia_approx = FALSE,
                        num_neighbors = 30L,
                        vecchia_ordering = "none",
-                       vecchia_pred_type = "order_obs_first_cond_obs_only",
+                       vecchia_pred_type = NULL,
                        num_neighbors_pred = num_neighbors,
                        cluster_ids = NULL,
                        free_raw_data = FALSE,

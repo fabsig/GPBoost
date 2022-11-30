@@ -3380,17 +3380,48 @@ class Booster:
             Coordinates (features) for Gaussian process. Used only if the Booster has a gp_model
         gp_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
             Covariate data for Gaussian process random coefficients. Used only if the Booster has a gp_model
-        vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
-            Type of Vecchia approximation used for making predictions. Used only if the Booster has a gp_model.
-            "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
-            points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected
-            among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for
-            making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent
-            process and observed data is ordered first and neighbors are only observed points,
-            "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is
-            ordered first and neighbors are selected among all points
-        num_neighbors_pred : integer or None, optional (default=None)
-            Number of neighbors for the Vecchia approximation for making predictions. Used only if the Booster has a gp_model
+            vecchia_pred_type : string, optional (default=None)
+                Type of Vecchia approximation used for making predictions
+
+                Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+
+                Used only if the Booster has a gp_model
+
+                The following options are available:
+
+                    - "order_obs_first_cond_obs_only":
+
+                        Vecchia approximation for the observable process and observed training data is
+                        ordered first and the neighbors are only observed training data points.
+                        This option is only available for Gaussian likelihoods
+
+                    - "order_obs_first_cond_all":
+
+                        Vecchia approximation for the observable process and observed training data is
+                        ordered first and the neighbors are selected among all points (training + prediction).
+                        This option is only available for Gaussian likelihoods
+
+                    - "latent_order_obs_first_cond_obs_only":
+
+                        Vecchia approximation for the latent process and observed data is
+                        ordered first and neighbors are only observed points}
+
+                    - "latent_order_obs_first_cond_all":
+
+                        Vecchia approximation or the latent process and observed data is
+                        ordered first and neighbors are selected among all points
+
+                    - "order_pred_first":
+
+                        Vecchia approximation for the observable process and prediction data is
+                        ordered first for making predictions. This option is only available for Gaussian likelihoods
+
+            num_neighbors_pred : integer or None, optional (default=None)
+                Number of neighbors for the Vecchia approximation for making predictions
+
+                (default values if None: num_neighbors_pred=num_neighbors)
+
+                Used only if the Booster has a gp_model
         cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
             IDs / labels indicating independent realizations of random effects / Gaussian processes
             (same values = same process realization). Used only if the Booster has a gp_model
@@ -3975,7 +4006,7 @@ class GPModel(object):
                  vecchia_approx=False,
                  num_neighbors=30,
                  vecchia_ordering="none",
-                 vecchia_pred_type="order_obs_first_cond_obs_only",
+                 vecchia_pred_type=None,
                  num_neighbors_pred=None,
                  cluster_ids=None,
                  free_raw_data=False,
@@ -4032,18 +4063,44 @@ class GPModel(object):
             vecchia_ordering : string, optional (default="none")
                 Ordering used in the Vecchia approximation. "none" means the default ordering is used,
                 "random" uses a random ordering
-            vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
-                Type of Vecchia approximation used for making predictions.
-                "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
-                points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected
-                among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for
-                making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent
-                process and observed data is ordered first and neighbors are only observed points,
-                "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data
-                is ordered first and neighbors are selected among all points
+            vecchia_pred_type : string, optional (default=None)
+                Type of Vecchia approximation used for making predictions
+
+                Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+
+                The following options are available:
+
+                    - "order_obs_first_cond_obs_only":
+
+                        Vecchia approximation for the observable process and observed training data is
+                        ordered first and the neighbors are only observed training data points.
+                        This option is only available for Gaussian likelihoods
+
+                    - "order_obs_first_cond_all":
+
+                        Vecchia approximation for the observable process and observed training data is
+                        ordered first and the neighbors are selected among all points (training + prediction).
+                        This option is only available for Gaussian likelihoods
+
+                    - "latent_order_obs_first_cond_obs_only":
+
+                        Vecchia approximation for the latent process and observed data is
+                        ordered first and neighbors are only observed points}
+
+                    - "latent_order_obs_first_cond_all":
+
+                        Vecchia approximation or the latent process and observed data is
+                        ordered first and neighbors are selected among all points
+
+                    - "order_pred_first":
+
+                        Vecchia approximation for the observable process and prediction data is
+                        ordered first for making predictions. This option is only available for Gaussian likelihoods
+
             num_neighbors_pred : integer or None, optional (default=None)
-                Number of neighbors for the Vecchia approximation for making predictions. If num_neighbors_pred is
-                None, it is set to num_neighbors
+                Number of neighbors for the Vecchia approximation for making predictions
+
+                (default values if None: num_neighbors_pred=num_neighbors)
             cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data
             or None, optional (default=None)
                 The elements indicate independent realizations of  random effects / Gaussian processes
@@ -4088,7 +4145,7 @@ class GPModel(object):
         self.vecchia_approx = False
         self.num_neighbors = 30
         self.vecchia_ordering = "none"
-        self.vecchia_pred_type = "order_obs_first_cond_obs_only"
+        self.vecchia_pred_type = None
         self.num_neighbors_pred = 30
         self.cg_delta_conv_pred = 0.01
         if likelihood == "gaussian":
@@ -4187,6 +4244,7 @@ class GPModel(object):
         gp_coords_c = ctypes.c_void_p()
         gp_rand_coef_data_c = ctypes.c_void_p()
         cluster_ids_c = ctypes.c_void_p()
+        vecchia_pred_type_c = ctypes.c_void_p()
         # Set data for grouped random effects
         if group_data is not None:
             group_data, group_data_names = _format_check_data(data=group_data, get_variable_names=True,
@@ -4349,6 +4407,9 @@ class GPModel(object):
             cluster_ids = cluster_ids.astype(np.int32)
             cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
+        if self.vecchia_pred_type is not None:
+            vecchia_pred_type_c = c_str(self.vecchia_pred_type)
+
         self.__determine_num_cov_pars(likelihood=likelihood)
 
         _safe_call(_LIB.GPB_CreateREModel(
@@ -4371,7 +4432,7 @@ class GPModel(object):
             ctypes.c_bool(self.vecchia_approx),
             ctypes.c_int(self.num_neighbors),
             c_str(self.vecchia_ordering),
-            c_str(self.vecchia_pred_type),
+            vecchia_pred_type_c,
             ctypes.c_int(self.num_neighbors_pred),
             c_str(likelihood),
             ctypes.byref(self.handle)))
@@ -4446,11 +4507,12 @@ class GPModel(object):
         X : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
             Covariate data for the fixed effects linear regression term (if there is one)
         params : dict or None, optional (default=None)
-            Parameters for fitting / optimization:
-                optimizer_cov : string, optional (default = "gradient_descent")
+            Parameters for the estimation / optimization
+
+                - optimizer_cov : string, optional (default = "gradient_descent")
                     Optimizer used for estimating covariance parameters.
                     Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam"
-                optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
+                - optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
                     Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously with
@@ -4458,41 +4520,42 @@ class GPModel(object):
                     for the regression coefficients using weighted least squares
                     If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 'optimizer_coef' is automatically also set to
                     the same value.
-                maxit : integer, optional (default = 1000)
+                - maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
-                delta_rel_conv : double, optional (default = 1e-6)
+                - delta_rel_conv : double, optional (default = 1e-6)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
                     gradient is used instead of the relative change in the log-likelihood
-                convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
+                - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
-                init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
+                - init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for covariance parameters of Gaussian process and random effects (can be None)
-                init_coef : numpy array or pandas DataFrame, optional (default = None)
+                - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
-                lr_cov : double, optional (default = -1.)
+                - lr_cov : double, optional (default = -1.)
                     If <= 0, internal default values are used.
                     Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
-                lr_coef : double, optional (default = 0.1)
+                - lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
-                use_nesterov_acc : bool, optional (default = True)
+                - use_nesterov_acc : bool, optional (default = True)
                     If True, Nesterov acceleration is used for gradient descent
-                acc_rate_cov : double, optional (default = 0.5)
+                - acc_rate_cov : double, optional (default = 0.5)
                     Acceleration rate for covariance parameters for Nesterov acceleration
-                acc_rate_coef : double, optional (default = 0.5)
+                - acc_rate_coef : double, optional (default = 0.5)
                     Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
-                momentum_offset : integer, optional (default = 2)
+                - momentum_offset : integer, optional (default = 2)
                     Number of iterations for which no momentum is applied in the beginning
-                trace : bool, optional (default = False)
+                - trace : bool, optional (default = False)
                     If True, information on the progress of the parameter optimization is printed.
-                std_dev : bool (default=False)
+                - std_dev : bool (default=False)
                     If True, approximate standard deviations are calculated for the covariance parameters
                     (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
                     square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
-            fixed_effects : numpy 1-D array or None, optional (default=None)
-                Additional fixed effects component of location parameter for observed data.
-                Used only for non-Gaussian data. For Gaussian data, this is ignored
+
+        fixed_effects : numpy 1-D array or None, optional (default=None)
+            Additional fixed effects component of location parameter for observed data.
+            Used only for non-Gaussian data. For Gaussian data, this is ignored
 
         Example
         -------
@@ -4626,50 +4689,51 @@ class GPModel(object):
         Parameters
         ----------
         params : dict
-        Parameters for fitting / optimization:
-            optimizer_cov : string, optional (default = "gradient_descent")
-                Optimizer used for estimating covariance parameters.
-                Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam"
-            maxit : integer, optional (default = 1000)
-                Maximal number of iterations for optimization algorithm
-            delta_rel_conv : double, optional (default = 1e-6)
-                Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
-                log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
-                gradient is used instead of the relative change in the log-likelihood
-            convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
-                The convergence criterion used for terminating the optimization algorithm.
-                Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
-            init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
-                Initial values for covariance parameters of Gaussian process and random effects (can be None)
-            lr_cov : double, optional (default = -1.)
-                If <= 0, internal default values are used.
-                Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
-            use_nesterov_acc : bool, optional (default = True)
-                If True, Nesterov acceleration is used for gradient descent
-            acc_rate_cov : double, optional (default = 0.5)
-                Acceleration rate for covariance parameters for Nesterov acceleration
-            momentum_offset : integer, optional (default = 2)
-                Number of iterations for which no momentum is applied in the beginning
-            trace : bool, optional (default = False)
-                If True, information on the progress of the parameter optimization is printed.
-            std_dev : bool (default=False)
-                If True, approximate standard deviations are calculated for the covariance parameters
-                (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
-                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
-            optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
-                Optimizer used for estimating linear regression coefficients, if there are any
-                (for the GPBoost algorithm there are usually none).
-                Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done
-                simultaneously with gradient descent steps for the covariance paramters. "wls" refers to doing
-                coordinate descent for the regression coefficients using weighted least squares
-                If 'optimizer_cov' is set to "nelder_mead", "bfgs" or "adam", 'optimizer_coef' is automatically also set to
-                the same value.
-            init_coef : numpy array or pandas DataFrame, optional (default = None)
-                Initial values for the regression coefficients (if there are any, can be None)
-            lr_coef : double, optional (default = 0.1)
-                Learning rate for fixed effect regression coefficients
-            acc_rate_coef : double, optional (default = 0.5)
-                Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
+            Parameters for the estimation / optimization
+
+                - optimizer_cov : string, optional (default = "gradient_descent")
+                    Optimizer used for estimating covariance parameters.
+                    Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam"
+                - optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
+                    Optimizer used for estimating linear regression coefficients, if there are any
+                    (for the GPBoost algorithm there are usually none).
+                    Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously with
+                    gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
+                    for the regression coefficients using weighted least squares
+                    If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 'optimizer_coef' is automatically also set to
+                    the same value.
+                - maxit : integer, optional (default = 1000)
+                    Maximal number of iterations for optimization algorithm
+                - delta_rel_conv : double, optional (default = 1e-6)
+                    Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
+                    log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
+                    gradient is used instead of the relative change in the log-likelihood
+                - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
+                    The convergence criterion used for terminating the optimization algorithm.
+                    Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
+                - init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for covariance parameters of Gaussian process and random effects (can be None)
+                - init_coef : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for the regression coefficients (if there are any, can be None)
+                - lr_cov : double, optional (default = -1.)
+                    If <= 0, internal default values are used.
+                    Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
+                - lr_coef : double, optional (default = 0.1)
+                    Learning rate for fixed effect regression coefficients
+                - use_nesterov_acc : bool, optional (default = True)
+                    If True, Nesterov acceleration is used for gradient descent
+                - acc_rate_cov : double, optional (default = 0.5)
+                    Acceleration rate for covariance parameters for Nesterov acceleration
+                - acc_rate_coef : double, optional (default = 0.5)
+                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
+                - momentum_offset : integer, optional (default = 2)
+                    Number of iterations for which no momentum is applied in the beginning
+                - trace : bool, optional (default = False)
+                    If True, information on the progress of the parameter optimization is printed.
+                - std_dev : bool (default=False)
+                    If True, approximate standard deviations are calculated for the covariance parameters
+                    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
+                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
 
         Example
         -------
@@ -4922,17 +4986,44 @@ class GPModel(object):
                 Prediction coordinates (=features) for Gaussian process (if there is a GP in the model)
             gp_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for Gaussian process random coefficients (if there are some in the model)
-            vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
-                Type of Vecchia approximation used for making predictions.
-                "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
-                points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected
-                among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for
-                making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent
-                process and observed data is ordered first and neighbors are only observed points,
-                "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is
-                ordered first and neighbors are selected among all points
+            vecchia_pred_type : string, optional (default=None)
+                Type of Vecchia approximation used for making predictions
+
+                Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+
+                The following options are available:
+
+                    - "order_obs_first_cond_obs_only":
+
+                        Vecchia approximation for the observable process and observed training data is
+                        ordered first and the neighbors are only observed training data points.
+                        This option is only available for Gaussian likelihoods
+
+                    - "order_obs_first_cond_all":
+
+                        Vecchia approximation for the observable process and observed training data is
+                        ordered first and the neighbors are selected among all points (training + prediction).
+                        This option is only available for Gaussian likelihoods
+
+                    - "latent_order_obs_first_cond_obs_only":
+
+                        Vecchia approximation for the latent process and observed data is
+                        ordered first and neighbors are only observed points}
+
+                    - "latent_order_obs_first_cond_all":
+
+                        Vecchia approximation or the latent process and observed data is
+                        ordered first and neighbors are selected among all points
+
+                    - "order_pred_first":
+
+                        Vecchia approximation for the observable process and prediction data is
+                        ordered first for making predictions. This option is only available for Gaussian likelihoods
+
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
+
+                (default values if None: num_neighbors_pred=num_neighbors)
             cg_delta_conv_pred : double or None, optional (default=None)
                 Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                 when being used for prediction
@@ -5224,17 +5315,44 @@ class GPModel(object):
                 predictions are made (set to None if you have not specified this when creating the model)
             X_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Prediction covariate data for the fixed effects linear regression term (if there is one)
-            vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
-                Type of Vecchia approximation used for making predictions.
-                "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
-                points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected
-                among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for
-                making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent
-                process and observed data is ordered first and neighbors are only observed points,
-                "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is
-                ordered first and neighbors are selected among all points
+            vecchia_pred_type : string, optional (default=None)
+                Type of Vecchia approximation used for making predictions
+
+                Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+
+                The following options are available:
+
+                    - "order_obs_first_cond_obs_only":
+
+                        Vecchia approximation for the observable process and observed training data is
+                        ordered first and the neighbors are only observed training data points.
+                        This option is only available for Gaussian likelihoods
+
+                    - "order_obs_first_cond_all":
+
+                        Vecchia approximation for the observable process and observed training data is
+                        ordered first and the neighbors are selected among all points (training + prediction).
+                        This option is only available for Gaussian likelihoods
+
+                    - "latent_order_obs_first_cond_obs_only":
+
+                        Vecchia approximation for the latent process and observed data is
+                        ordered first and neighbors are only observed points}
+
+                    - "latent_order_obs_first_cond_all":
+
+                        Vecchia approximation or the latent process and observed data is
+                        ordered first and neighbors are selected among all points
+
+                    - "order_pred_first":
+
+                        Vecchia approximation for the observable process and prediction data is
+                        ordered first for making predictions. This option is only available for Gaussian likelihoods
+
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
+
+                (default values if None: num_neighbors_pred=num_neighbors)
             cg_delta_conv_pred : double or None, optional (default=None)
                 Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                 when being used for prediction
