@@ -127,7 +127,7 @@ gpb.plot.partial.dependence <- function(model, data, variable, n.pt = 100,
 #' @export
 gpb.plot.part.dep.interact <- function(model, data, variables, n.pt.per.var = 20,
                                        subsample = pmin(1, n.pt.per.var^2 * 100 / nrow(data)), 
-                                       discrete.variables = c(FALSE,FALSE), which.class = NULL,
+                                       discrete.variables = c(FALSE, FALSE), which.class = NULL,
                                        type = "filled.contour", nlevels = 20, 
                                        xlab = variables[1], ylab = variables[2],
                                        zlab = "", main = "", 
@@ -150,12 +150,14 @@ gpb.plot.part.dep.interact <- function(model, data, variables, n.pt.per.var = 20
   } else {
     x <- quantile(data[, variables[1]],
                   seq(0.01, 0.99, length.out = n.pt.per.var), names = FALSE)
+    x <- unique(x)
   }
   if (discrete.variables[2]) {
     y <- unique(data[, variables[2]])
   } else {
     y <- quantile(data[, variables[2]],
                   seq(0.01, 0.99, length.out = n.pt.per.var), names = FALSE)
+    y <- unique(y)
   }
   z <- matrix(nrow = length(x), ncol = length(y))
   
