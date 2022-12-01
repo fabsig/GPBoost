@@ -19,6 +19,7 @@
 
 #include <Eigen/Sparse>
 #include <Eigen/Dense>
+#include <random> //for RNG_t
 //#ifdef _MSC_VER
 #pragma warning( disable : 4127) // Suppress unnecessary warning (conditional expression is constant)
 //#endif
@@ -46,6 +47,9 @@ namespace GPBoost {
 
 	/*! \brief Type of data size */
 	typedef int32_t data_size_t;
+
+	/*! \brief Type of random number generator */
+	typedef std::mt19937 RNG_t;
 
 	// For LightGBM Enable following marco to use double for score_t
 	// THIS NEEDS TO BE ACTIVATED. Need to use double since the Eigen objects also use double. If float should be used, the Eigen objects below need to be changed.

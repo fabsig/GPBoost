@@ -658,12 +658,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars <- c(0.9419234, 0.1866877)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
     expect_equal(gp_model$get_num_optim_iter(), 40)
+    # Vecchia approximation with random ordering
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", vecchia_ordering="random",
+                                        likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=n-1,
+                                        y = y, params = list(optimizer_cov = "gradient_descent", 
+                                                             lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                                             convergence_criterion = "relative_change_in_parameters")), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
+    expect_equal(gp_model$get_num_optim_iter(), 40)
     # Same estimation without Vecchia approximation
-    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                                        likelihood = "bernoulli_probit", vecchia_approx=FALSE), file='NUL')
-    fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", 
-                                       lr_cov = 0.1, use_nesterov_acc = FALSE,
-                                       convergence_criterion = "relative_change_in_parameters"))
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                        likelihood = "bernoulli_probit", vecchia_approx=FALSE,
+                                        y = y, params = list(optimizer_cov = "gradient_descent", 
+                                                             lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                                             convergence_criterion = "relative_change_in_parameters") ), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
     expect_equal(gp_model$get_num_optim_iter(), 40)
     
@@ -718,6 +726,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars <- c(1.101290, 0.207112)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
     expect_equal(gp_model$get_num_optim_iter(), 41)
+    # Random ordering
+    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", vecchia_ordering="random",
+                                        likelihood = "bernoulli_probit", vecchia_approx=TRUE, num_neighbors=30), file='NUL')
+    fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", 
+                                       lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                       convergence_criterion = "relative_change_in_parameters"))
+    cov_pars <- c(0.7978078, 0.2130397)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
+    expect_equal(gp_model$get_num_optim_iter(), 44)
     
     # Prediction
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",

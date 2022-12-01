@@ -27,7 +27,6 @@
 #include <mutex>
 #include <vector>
 #include <algorithm>    // std::shuffle
-#include <random>       // std::default_random_engine
 #include <chrono>  // only for debugging
 #include <thread> // only for debugging
 //std::this_thread::sleep_for(std::chrono::milliseconds(200));// Only for debugging
@@ -3969,7 +3968,7 @@ namespace GPBoost {
 			int ind_intercept_gp = (int)re_comps_cluster_i.size();
 			if (vecchia_ordering == "random") {
 				unsigned seed = 0;
-				std::shuffle(data_indices_per_cluster[cluster_i].begin(), data_indices_per_cluster[cluster_i].end(), std::default_random_engine(seed));
+				std::shuffle(data_indices_per_cluster[cluster_i].begin(), data_indices_per_cluster[cluster_i].end(), RNG_t(seed));
 			}
 			std::vector<double> gp_coords;
 			for (int j = 0; j < dim_gp_coords_; ++j) {

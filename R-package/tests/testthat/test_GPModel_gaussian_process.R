@@ -420,13 +420,24 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(dim(gp_model$get_cov_pars())[1], 2)
     expect_equal(gp_model$get_num_optim_iter(), 382)
     
+    # Random ordering
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                           vecchia_approx=TRUE, num_neighbors=n-1, vecchia_ordering="random", y = y,
+                           params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
+                                         lr_cov = 0.1, use_nesterov_acc = TRUE,
+                                         delta_rel_conv=1E-6, convergence_criterion = "relative_change_in_parameters"))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_equal(dim(gp_model$get_cov_pars())[2], 3)
+    expect_equal(dim(gp_model$get_cov_pars())[1], 2)
+    expect_equal(gp_model$get_num_optim_iter(), 382)
+    
     # Prediction using given parameters
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                        vecchia_approx=TRUE, num_neighbors=n+2), file='NUL')
+                        vecchia_approx=TRUE, num_neighbors=n-1), file='NUL')
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     cov_pars = c(0.02,1.2,0.9)
     pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
-                    cov_pars = cov_pars, predict_cov_mat = TRUE,
+                    cov_pars = cov_pars, predict_cov_mat = TRUE, num_neighbors_pred=n+2,
                     vecchia_pred_type = "order_obs_first_cond_all", predict_response = TRUE)
     expected_mu <- c(0.08704577, 1.63875604, 0.48513581)
     expected_cov <- c(1.189093e-01, 1.171632e-05, -4.172444e-07, 1.171632e-05,
@@ -441,47 +452,55 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
     expect_lt(sum(abs(as.vector(pred$cov)-exp_cov_no_nugget)),1E-6)
     # Prediction of variances only
-    pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, 
+    pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, num_neighbors_pred=n+2, 
                     cov_pars = cov_pars, predict_var = TRUE, predict_response = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
     # Predict latent process
-    pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, 
+    pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, num_neighbors_pred=n+2, 
                     cov_pars = cov_pars, predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(as.vector(pred$var)-exp_cov_no_nugget[c(1,5,9)])),1E-6)
     
-    # Vechia approximation with 30 neighbors
+    # Vecchia approximation with 30 neighbors
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                         vecchia_approx=TRUE, num_neighbors=30), file='NUL')
     fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
                                        lr_cov = 0.1, use_nesterov_acc = TRUE,
                                        acc_rate_cov = 0.5, delta_rel_conv=1E-6,
-                                       maxit=100, convergence_criterion = "relative_change_in_parameters"))
-    cov_pars <- c(.02497660, 0.07397023, 1.06118556, 0.23247546, 0.11465662, 0.03571354)
+                                       maxit=1000, convergence_criterion = "relative_change_in_parameters"))
+    cov_pars <- c(0.01836578, 0.07047080, 1.06569263, 0.23039271, 0.11337414, 0.03485905)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 100)
+    expect_equal(gp_model$get_num_optim_iter(), 1000)
     
     # Prediction from fitted model
     coord_test <- cbind(c(0.1,0.10001,0.7),c(0.9,0.90001,0.55))
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE,
                     vecchia_pred_type = "order_obs_first_cond_obs_only")
-    expected_mu <- c(.07181468, 0.07181190, 0.89344823)
-    expected_cov <- c(0.5994359, 0.0000000, 0.0000000, 0.0000000, 0.5994472,
-                      0.0000000, 0.0000000, 0.0000000, 0.566383)
+    expected_mu <- c(0.07272558, 0.07272311, 0.89224890)
+    expected_cov <- c(0.5985135, 0.0000000, 0.0000000, 0.0000000, 0.5985250,
+                      0.0000000, 0.0000000, 0.0000000, 0.5644097)
     expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
     
-    ## Not tested anymore. Can give different results on different compilers (even NAs)
-    # # Fisher scoring & random ordering
-    # gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-    #                        vecchia_approx=TRUE, num_neighbors=30, vecchia_ordering="random", y = y,
-    #                        params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
-    #                                      use_nesterov_acc = FALSE,
-    #                                      delta_rel_conv=1E-6, maxit=100,
-    #                                      convergence_criterion = "relative_change_in_parameters"))
-    # cov_pars <- c(0.01692036, 0.06802553, 1.15762655, 0.26474644, 0.12429916, 0.03962540)
-    # expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-    # expect_equal(gp_model$get_num_optim_iter(), 17)
+    # Vecchia approximation with 30 neighbors and random ordering
+    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                        vecchia_approx=TRUE, num_neighbors=30, vecchia_ordering="random"), file='NUL')
+    fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
+                                       lr_cov = 0.1, use_nesterov_acc = TRUE,
+                                       acc_rate_cov = 0.5, delta_rel_conv=1E-6,
+                                       maxit=1000, convergence_criterion = "relative_change_in_parameters"))
+    cov_pars <- c(0.01692218, 0.06802646, 1.15762525, 0.26474702, 0.12429957, 0.03962567)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 920)
+    
+    # Prediction from fitted model
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE,
+                    vecchia_pred_type = "order_obs_first_cond_obs_only")
+    expected_mu <- c(0.07848313, 0.07848112, 0.95991103)
+    expected_cov <- c(0.6017199, 0.0000000, 0.0000000, 0.0000000, 0.6017322,
+                      0.0000000, 0.0000000, 0.0000000, 0.5100582)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
     
     # Fisher scoring & default ordering
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
