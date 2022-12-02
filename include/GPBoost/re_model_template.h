@@ -273,7 +273,7 @@ namespace GPBoost {
 							drop_intercept_group_rand_effect_[j] = drop_intercept_group_rand_effect[j] > 0;
 						}
 						for (int j = 0; j < num_re_group_; ++j) { // check that all dropped intercept random effects have at least on random slope
-							if (drop_intercept_group_rand_effect_[j] && 
+							if (drop_intercept_group_rand_effect_[j] &&
 								std::find(ind_effect_group_rand_coef_.begin(), ind_effect_group_rand_coef_.end(), j) != ind_effect_group_rand_coef_.end()) {
 								Log::REFatal("Cannot drop intercept random effect number %d as this random effect has no corresponding random coefficients", j);
 							}
@@ -659,7 +659,7 @@ namespace GPBoost {
 			}
 			bool terminate_optim = false;
 			num_it = max_iter_;
-			bool profile_out_marginal_variance = gauss_likelihood_ && 
+			bool profile_out_marginal_variance = gauss_likelihood_ &&
 				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam");
 			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data 
 			//	(the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
@@ -747,7 +747,7 @@ namespace GPBoost {
 				else {
 					beta = Eigen::Map<const vec_t>(init_coef, num_covariates);
 				}
-				if (init_coef == nullptr || only_intercept_for_GPBoost_algo){
+				if (init_coef == nullptr || only_intercept_for_GPBoost_algo) {
 					if (has_intercept) {
 						if (y_data == nullptr) {
 							vec_t y_aux_temp(num_data_);
@@ -2073,8 +2073,8 @@ namespace GPBoost {
 					}//end only_one_GP_calculations_on_RE_scale_
 					// Initialize predictive mean and covariance
 					vec_t mean_pred_id;
-					if (only_one_GP_calculations_on_RE_scale_ ||
-						only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+					if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_ || 
+						only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
 						mean_pred_id = vec_t(num_REs_pred);
 					}
 					else {
@@ -2082,86 +2082,83 @@ namespace GPBoost {
 					}
 					T_mat cov_mat_pred_id;
 					vec_t var_pred_id;
-					sp_mat_t Bpo, Bp, Dp; // used only if vecchia_approx_ && !gauss_likelihood_ 
-					// Calculate predictions
+					sp_mat_t Bpo, Bp, Dp; // used only if vecchia_approx_ && !gauss_likelihood_
 					std::shared_ptr<RECompGP<T_mat>> re_comp;
 					if (vecchia_approx_) {
 						re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][ind_intercept_gp_]);
 					}
-					// Special case: Vecchia aproximation for Gaussian data if vecchia_approx_ && !gauss_likelihood_
-					if (vecchia_approx_ && gauss_likelihood_) {//TODO: move this code to another function for better readability
-						int num_data_tot = num_data_per_cluster_[cluster_i] + num_data_per_cluster_pred[cluster_i];
-						double num_mem_d = ((double)num_neighbors_pred_) * ((double)num_neighbors_pred_) * (double)(num_data_tot)+(double)(num_neighbors_pred_) * (double)(num_data_tot);
-						int mem_size = (int)(num_mem_d * 8. / 1000000.);
-						if (mem_size > 4000) {
-							Log::REDebug("The current implementation of the Vecchia approximation needs a lot of memory if the number of neighbors is large. "
-								"In your case (nb. of neighbors = %d, nb. of observations = %d, nb. of predictions = %d), "
-								"this needs at least approximately %d mb of memory.", 
-								num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
-						}
-						//TODO: implement a more efficient version when only predictive variances are required and not full covariance matrices
-						bool predict_var_or_cov_mat = predict_var || predict_cov_mat;
-						if (vecchia_pred_type_ == "order_obs_first_cond_obs_only") {
-							CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
-								re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-								predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id, Bpo, Bp, Dp);
-						}
-						else if (vecchia_pred_type_ == "order_obs_first_cond_all") {
-							CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
-								re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-								predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id, Bpo, Bp, Dp);
-						}
-						else if (vecchia_pred_type_ == "order_pred_first") {
-							CalcPredVecchiaPredictedFirstOrder(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
-								re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-								predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
-						}
-						else if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
-							CalcPredVecchiaLatentObservedFirstOrder(true, cluster_i, num_data_per_cluster_pred,
-								re_comp->coords_, gp_coords_mat_pred, predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
-							// Note: we use the function 'CalcPredVecchiaLatentObservedFirstOrder' instead of the function 'CalcPredVecchiaObservedFirstOrder' since 
-							//	the current implementation cannot handle duplicate values in gp_coords (coordinates / input features) for Vecchia approximations
-							//	for latent processes (as matrices that need to be inverted will be singular due to the duplicate values).
-							//	The function 'CalcPredVecchiaLatentObservedFirstOrder' avoids this singularity problem by using incidence matrices Z and 
-							//	and applying a Vecchia approximation to the GP of all unique gp_coords
-						}
-						else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
-							CalcPredVecchiaLatentObservedFirstOrder(false, cluster_i, num_data_per_cluster_pred,
-								re_comp->coords_, gp_coords_mat_pred, predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
-						}
-						else {
-							Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
-						}
-						if (predict_var_or_cov_mat) {
-							// subtract / add nugget variance in case latent / observable process is predicted
-							if (!predict_response && (vecchia_pred_type_ == "order_obs_first_cond_obs_only" ||
-								vecchia_pred_type_ == "order_obs_first_cond_all" ||
-								vecchia_pred_type_ == "order_pred_first")) {
+					bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);//variance needs to be available for response prediction for non-Gaussian data
+					// Calculate predictions
+					if (vecchia_approx_) {
+						if (gauss_likelihood_) {
+							int num_data_tot = num_data_per_cluster_[cluster_i] + num_data_per_cluster_pred[cluster_i];
+							double num_mem_d = ((double)num_neighbors_pred_) * ((double)num_neighbors_pred_) * (double)(num_data_tot)+(double)(num_neighbors_pred_) * (double)(num_data_tot);
+							int mem_size = (int)(num_mem_d * 8. / 1000000.);
+							if (mem_size > 4000) {
+								Log::REDebug("The current implementation of the Vecchia approximation needs a lot of memory if the number of neighbors is large. "
+									"In your case (nb. of neighbors = %d, nb. of observations = %d, nb. of predictions = %d), "
+									"this needs at least approximately %d mb of memory.",
+									num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
+							}
+							//TODO: implement a more efficient version when only predictive variances are required and not full covariance matrices
+							bool predict_var_or_cov_mat = predict_var || predict_cov_mat;
+							if (vecchia_pred_type_ == "order_obs_first_cond_obs_only") {
+								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
+									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
+									predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id, Bpo, Bp, Dp);
+							}
+							else if (vecchia_pred_type_ == "order_obs_first_cond_all") {
+								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
+									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
+									predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id, Bpo, Bp, Dp);
+							}
+							else if (vecchia_pred_type_ == "order_pred_first") {
+								CalcPredVecchiaPredictedFirstOrder(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
+									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
+									predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
+							}
+							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
+								CalcPredVecchiaLatentObservedFirstOrder(true, cluster_i, num_data_per_cluster_pred,
+									re_comp->coords_, gp_coords_mat_pred, predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
+								// Note: we use the function 'CalcPredVecchiaLatentObservedFirstOrder' instead of the function 'CalcPredVecchiaObservedFirstOrder' since 
+								//	the current implementation cannot handle duplicate values in gp_coords (coordinates / input features) for Vecchia approximations
+								//	for latent processes (as matrices that need to be inverted will be singular due to the duplicate values).
+								//	The function 'CalcPredVecchiaLatentObservedFirstOrder' avoids this singularity problem by using incidence matrices Z and 
+								//	and applying a Vecchia approximation to the GP of all unique gp_coords
+							}
+							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
+								CalcPredVecchiaLatentObservedFirstOrder(false, cluster_i, num_data_per_cluster_pred,
+									re_comp->coords_, gp_coords_mat_pred, predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
+							}
+							else {
+								Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
+							}
+							if (predict_var_or_cov_mat) {
+								// subtract / add nugget variance in case latent / observable process is predicted
+								if (!predict_response && (vecchia_pred_type_ == "order_obs_first_cond_obs_only" ||
+									vecchia_pred_type_ == "order_obs_first_cond_all" ||
+									vecchia_pred_type_ == "order_pred_first")) {
 #pragma omp parallel for schedule(static)
-								for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-									cov_mat_pred_id.coeffRef(i, i) -= 1.;
+									for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+										cov_mat_pred_id.coeffRef(i, i) -= 1.;
+									}
+								}
+								else if (predict_response && (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only" ||
+									vecchia_pred_type_ == "latent_order_obs_first_cond_all")) {
+#pragma omp parallel for schedule(static)
+									for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+										cov_mat_pred_id.coeffRef(i, i) += 1.;
+									}
 								}
 							}
-							else if (predict_response && (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only" ||
-								vecchia_pred_type_ == "latent_order_obs_first_cond_all")) {
-#pragma omp parallel for schedule(static)
-								for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-									cov_mat_pred_id.coeffRef(i, i) += 1.;
+							if (predict_var) {
+								var_pred_id = cov_mat_pred_id.diagonal();
+								if (!predict_cov_mat) {
+									cov_mat_pred_id.resize(0, 0);
 								}
 							}
-						}
-						if (predict_var) {
-							var_pred_id = cov_mat_pred_id.diagonal();
-							if (!predict_cov_mat) {
-								cov_mat_pred_id.resize(0, 0);
-							}
-						}
-					}//end (vecchia_approx_ && gauss_likelihood_)
-					else {// not vecchia_approx_ or not gauss_likelihood_
-						// General case: either non-Gaussian data or Gaussian data without the Vecchia approximation
-						// NOTE: if vecchia_approx_==true and gauss_likelihood_==false, the cross-covariance matrix Sigma_{1,2} = cov(x_pred,x) is not approximated but the exact version is used
-						bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);//variance needs to be available for response prediction for non-Gaussian data
-						if (vecchia_approx_) {
+						}//end gauss_likelihood_
+						else {//not gauss_likelihood_
 							const double* fixed_effects_cluster_i_ptr = nullptr;
 							// Note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
 							// The mode has been calculated already before in the Predict() function above
@@ -2187,44 +2184,43 @@ namespace GPBoost {
 							else {
 								Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
 							}
-						} // end if vecchia_approx_ && !gauss_likelihood_
-						else {// not vecchia_approx_ && gauss_likelihood_
-							CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
-								re_group_levels_pred, re_group_rand_coef_data_pred, gp_coords_mat_pred, gp_rand_coef_data_pred,
-								predict_cov_mat, predict_var_or_response, predict_response,
-								mean_pred_id, cov_mat_pred_id, var_pred_id);
+						}//end not gauss_likelihood_
+					}//end vecchia_approx_
+					else {// not vecchia_approx_
+						CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
+							re_group_levels_pred, re_group_rand_coef_data_pred, gp_coords_mat_pred, gp_rand_coef_data_pred,
+							predict_cov_mat, predict_var_or_response, predict_response,
+							mean_pred_id, cov_mat_pred_id, var_pred_id);
+					}//end not vecchia_approx_
+					//map from predictions from random effects scale b to "data scale" Zb
+					if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_ ||
+						only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+						vec_t mean_pred_id_on_RE_scale = mean_pred_id;
+						mean_pred_id = vec_t(num_data_per_cluster_pred[cluster_i]);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+							mean_pred_id[i] = mean_pred_id_on_RE_scale[random_effects_indices_of_data_pred[i]];
 						}
-
-						//map from predictions from random effects scale b to "data scale" Zb
-						if (only_one_GP_calculations_on_RE_scale_ ||
-							only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
-							vec_t mean_pred_id_on_RE_scale = mean_pred_id;
-							mean_pred_id = vec_t(num_data_per_cluster_pred[cluster_i]);
+						if (predict_var_or_response) {
+							vec_t var_pred_id_on_RE_scale = var_pred_id;
+							var_pred_id = vec_t(num_data_per_cluster_pred[cluster_i]);
 #pragma omp parallel for schedule(static)
 							for (data_size_t i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-								mean_pred_id[i] = mean_pred_id_on_RE_scale[random_effects_indices_of_data_pred[i]];
+								var_pred_id[i] = var_pred_id_on_RE_scale[random_effects_indices_of_data_pred[i]];
 							}
-							if (predict_var_or_response) {
-								vec_t var_pred_id_on_RE_scale = var_pred_id;
-								var_pred_id = vec_t(num_data_per_cluster_pred[cluster_i]);
+						}
+						if (predict_cov_mat) {
+							T_mat cov_mat_pred_id_on_RE_scale = cov_mat_pred_id;
+							sp_mat_t Zpred(num_data_per_cluster_pred[cluster_i], num_REs_pred);
+							std::vector<Triplet_t> triplets(num_data_per_cluster_pred[cluster_i]);
 #pragma omp parallel for schedule(static)
-								for (data_size_t i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-									var_pred_id[i] = var_pred_id_on_RE_scale[random_effects_indices_of_data_pred[i]];
-								}
+							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+								triplets[i] = Triplet_t(i, random_effects_indices_of_data_pred[i], 1.);
 							}
-							if (predict_cov_mat) {
-								T_mat cov_mat_pred_id_on_RE_scale = cov_mat_pred_id;
-								sp_mat_t Zpred(num_data_per_cluster_pred[cluster_i], num_REs_pred);
-								std::vector<Triplet_t> triplets(num_data_per_cluster_pred[cluster_i]);
-#pragma omp parallel for schedule(static)
-								for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-									triplets[i] = Triplet_t(i, random_effects_indices_of_data_pred[i], 1.);
-								}
-								Zpred.setFromTriplets(triplets.begin(), triplets.end());
-								cov_mat_pred_id = Zpred * cov_mat_pred_id_on_RE_scale * Zpred.transpose();
-							}
-						}//end only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
-					}//end not vecchia_approx_ or not gauss_likelihood_
+							Zpred.setFromTriplets(triplets.begin(), triplets.end());
+							cov_mat_pred_id = Zpred * cov_mat_pred_id_on_RE_scale * Zpred.transpose();
+						}
+					}//end only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
 					// Add externaly provided fixed effects
 					if (fixed_effects_pred != nullptr) {
 #pragma omp parallel for schedule(static)
@@ -2797,7 +2793,7 @@ namespace GPBoost {
 		* "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points & Vecchia approximation is done for observable process (only for Gaussian likelihoods)
 		* "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted) & Vecchia approximation is done for observable process (only for Gaussian likelihoods)
 		* "order_pred_first" = predicted data is ordered first for making prediction & Vecchia approximation is done for observable process (only for Gaussian likelihoods)
-		* "latent_order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points & Vecchia approximation is done for latent process 
+		* "latent_order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points & Vecchia approximation is done for latent process
 		* "latent_order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted) & Vecchia approximation is done for latent process
 		* See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not
 		*/
