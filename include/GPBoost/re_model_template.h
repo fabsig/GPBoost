@@ -2082,7 +2082,8 @@ namespace GPBoost {
 					}
 					T_mat cov_mat_pred_id;
 					vec_t var_pred_id;
-					sp_mat_t Bpo, Bp, Dp; // used only if vecchia_approx_ && !gauss_likelihood_
+					sp_mat_t Bpo, Bp; // used only if vecchia_approx_ && !gauss_likelihood_
+					vec_t Dp;
 					std::shared_ptr<RECompGP<T_mat>> re_comp;
 					if (vecchia_approx_) {
 						re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][ind_intercept_gp_]);
@@ -5799,7 +5800,7 @@ namespace GPBoost {
 			vec_t& pred_var,
 			sp_mat_t& Bpo,
 			sp_mat_t& Bp,
-			sp_mat_t& Dp) {
+			vec_t& Dp) {
 			int num_data_cli = num_data_per_cluster_[cluster_i];
 			int num_data_pred_cli = num_data_per_cluster_pred[cluster_i];
 			//Find nearest neighbors
@@ -5857,12 +5858,14 @@ namespace GPBoost {
 			}
 			Bpo = sp_mat_t(num_data_pred_cli, num_data_cli);
 			Bp = sp_mat_t(num_data_pred_cli, num_data_pred_cli);
-			Dp = sp_mat_t(num_data_pred_cli, num_data_pred_cli);
+			Dp = vec_t(num_data_pred_cli);
 			Bpo.setFromTriplets(entries_init_Bpo.begin(), entries_init_Bpo.end());//initialize matrices (in order that the code below can be run in parallel)
 			Bp.setFromTriplets(entries_init_Bp.begin(), entries_init_Bp.end());
-			Dp.setIdentity();//Put 1 on the diagonal (for nugget effect if gauss_likelihood_, see comment below on why we add the nugget effect variance irrespective of 'predict_response')
-			if (!gauss_likelihood_) {
-				Dp.diagonal().array() = 0.;
+			if (gauss_likelihood_) {
+				Dp.setOnes();//Put 1 on the diagonal (for nugget effect if gauss_likelihood_, see comment below on why we add the nugget effect variance irrespective of 'predict_response')
+			}
+			else {
+				Dp.setZero();
 			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_data_pred_cli; ++i) {
@@ -5898,7 +5901,7 @@ namespace GPBoost {
 					if (j > 0) {//random coefficient
 						d_comp_j *= z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
 					}
-					Dp.coeffRef(i, i) += d_comp_j;
+					Dp[i] += d_comp_j;
 				}
 				//2. remaining terms
 				if (gauss_likelihood_) {
@@ -5917,7 +5920,7 @@ namespace GPBoost {
 						Bp.coeffRef(i, nearest_neighbors_cluster_i[i][inn] - num_data_cli) -= A_i(0, inn);
 					}
 				}
-				Dp.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
+				Dp[i] -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
 			}//end loop over data i
 			if (gauss_likelihood_) {
 				pred_mean = -Bpo * y_[cluster_i];
@@ -5930,13 +5933,10 @@ namespace GPBoost {
 					}
 					if (CondObsOnly) {
 						if (calc_pred_cov) {
-							pred_cov = Dp;
+							pred_cov = Dp.asDiagonal();
 						}
 						if (calc_pred_var) {
-#pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_data_pred_cli; ++i) {
-								pred_var[i] = Dp.coeff(i, i);
-							}
+							pred_var = Dp;
 						}
 					}
 					else {
@@ -5944,7 +5944,7 @@ namespace GPBoost {
 						Identity.setIdentity();
 						sp_mat_t Bp_inv;
 						eigen_sp_Lower_sp_RHS_cs_solve(Bp, Identity, Bp_inv, true);
-						sp_mat_t Bp_inv_Dp = Bp_inv * Dp;
+						sp_mat_t Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 						if (calc_pred_cov) {
 							pred_cov = T_mat(Bp_inv_Dp * Bp_inv.transpose());
 						}
@@ -5959,7 +5959,7 @@ namespace GPBoost {
 				//release matrices that are not needed anymore
 				Bpo.resize(0, 0);
 				Bp.resize(0, 0);
-				Dp.resize(0, 0);
+				Dp.resize(0);
 			}//end if gauss_likelihood_
 		}//end CalcPredVecchiaObservedFirstOrder
 
@@ -6057,10 +6057,10 @@ namespace GPBoost {
 			Bo.setFromTriplets(entries_init_Bo.begin(), entries_init_Bo.end());//initialize matrices (in order that the code below can be run in parallel)
 			Bop.setFromTriplets(entries_init_Bop.begin(), entries_init_Bop.end());
 			Bp.setFromTriplets(entries_init_Bp.begin(), entries_init_Bp.end());
-			sp_mat_t Do_inv(num_data_cli, num_data_cli);
-			sp_mat_t Dp_inv(num_data_pred_cli, num_data_pred_cli);
-			Do_inv.setIdentity();//Put 1 on the diagonal (for nugget effect)
-			Dp_inv.setIdentity();
+			vec_t Do_inv(num_data_cli);
+			vec_t Dp_inv(num_data_pred_cli);
+			Do_inv.setOnes();//Put 1 on the diagonal (for nugget effect)
+			Dp_inv.setOnes();
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_data_tot; ++i) {
 				int num_nn = (int)nearest_neighbors_cluster_i[i].size();
@@ -6099,10 +6099,10 @@ namespace GPBoost {
 						d_comp_j *= z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
 					}
 					if (i < num_data_pred_cli) {
-						Dp_inv.coeffRef(i, i) += d_comp_j;
+						Dp_inv[i] += d_comp_j;
 					}
 					else {
-						Do_inv.coeffRef(i - num_data_pred_cli, i - num_data_pred_cli) += d_comp_j;
+						Do_inv[i - num_data_pred_cli] += d_comp_j;
 					}
 				}
 				//2. remaining terms
@@ -6124,23 +6124,23 @@ namespace GPBoost {
 						}
 					}
 					if (i < num_data_pred_cli) {
-						Dp_inv.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
+						Dp_inv[i] -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
 					}
 					else {
-						Do_inv.coeffRef(i - num_data_pred_cli, i - num_data_pred_cli) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
+						Do_inv[i - num_data_pred_cli] -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
 					}
 				}
 				if (i < num_data_pred_cli) {
-					Dp_inv.coeffRef(i, i) = 1 / Dp_inv.coeffRef(i, i);
+					Dp_inv[i] = 1 / Dp_inv[i];
 				}
 				else {
-					Do_inv.coeffRef(i - num_data_pred_cli, i - num_data_pred_cli) = 1 / Do_inv.coeffRef(i - num_data_pred_cli, i - num_data_pred_cli);
+					Do_inv[i - num_data_pred_cli] = 1 / Do_inv[i - num_data_pred_cli];
 				}
 			}//end loop over data i
-			sp_mat_t cond_prec = Bp.transpose() * Dp_inv * Bp + Bop.transpose() * Do_inv * Bop;
+			sp_mat_t cond_prec = Bp.transpose() * Dp_inv.asDiagonal() * Bp + Bop.transpose() * Do_inv.asDiagonal() * Bop;
 			chol_sp_mat_t CholFact;
 			CholFact.compute(cond_prec);
-			vec_t y_aux = Bop.transpose() * (Do_inv * (Bo * y_[cluster_i]));
+			vec_t y_aux = Bop.transpose() * (Do_inv.asDiagonal() * (Bo * y_[cluster_i]));
 			pred_mean = -CholFact.solve(y_aux);
 			if (calc_pred_cov || calc_pred_var) {
 				sp_mat_t Identity(num_data_pred_cli, num_data_pred_cli);
@@ -6241,9 +6241,7 @@ namespace GPBoost {
 			}
 			sp_mat_t B(num_coord_unique, num_coord_unique);
 			B.setFromTriplets(entries_init_B.begin(), entries_init_B.end());//initialize matrices (in order that the code below can be run in parallel)
-			sp_mat_t D(num_coord_unique, num_coord_unique);
-			D.setIdentity();
-			D.diagonal().array() = 0.;
+			vec_t D(num_coord_unique);
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_coord_unique; ++i) {
 				int num_nn = (int)nearest_neighbors_cluster_i[i].size();
@@ -6259,7 +6257,7 @@ namespace GPBoost {
 				}
 				//Calculate matrices A and D as well as their derivatives
 				//1. add first summand of matrix D (ZCZ^T_{ii})
-				D.coeffRef(i, i) = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
+				D[i] = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
 				//2. remaining terms
 				if (i > 0) {
 					den_mat_t A_i(1, num_nn);//dim = 1 x nn
@@ -6267,21 +6265,19 @@ namespace GPBoost {
 					for (int inn = 0; inn < num_nn; ++inn) {
 						B.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) -= A_i(0, inn);
 					}
-					D.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
+					D[i] -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
 				}
 
 			}//end loop over data i
 			//Calculate D_inv and B_inv in order to calcualte Sigma and Sigma^-1
-			sp_mat_t D_inv(num_coord_unique, num_coord_unique);
-			D_inv.setIdentity();
-			D_inv.diagonal().array() = D.diagonal().array().pow(-1);
+			vec_t D_inv = D.cwiseInverse();
 			sp_mat_t Identity_all(num_coord_unique, num_coord_unique);
 			Identity_all.setIdentity();
 			sp_mat_t B_inv;
 			eigen_sp_Lower_sp_RHS_cs_solve(B, Identity_all, B_inv, true);
 			//Calculate inverse of covariance matrix for observed data using the Woodbury identity
 			sp_mat_t Z_o_T = Z_o.transpose();
-			sp_mat_t M_aux_Woodbury = B.transpose() * D_inv * B + Z_o_T * Z_o;
+			sp_mat_t M_aux_Woodbury = B.transpose() * D_inv.asDiagonal() * B + Z_o_T * Z_o;
 			chol_sp_mat_t CholFac_M_aux_Woodbury;
 			CholFac_M_aux_Woodbury.compute(M_aux_Woodbury);
 			if (calc_pred_cov || calc_pred_var) {
@@ -6291,7 +6287,7 @@ namespace GPBoost {
 				Identity_obs.setIdentity();
 				sp_mat_t ZoSigmaZoT_plusI_Inv = -Z_o * M_aux_Woodbury2 + Identity_obs;
 				sp_mat_t Z_p_B_inv = Z_p * B_inv;
-				sp_mat_t Z_p_B_inv_D = Z_p_B_inv * D;;
+				sp_mat_t Z_p_B_inv_D = Z_p_B_inv * D.asDiagonal();
 				sp_mat_t ZpSigmaZoT = Z_p_B_inv_D * (B_inv.transpose() * Z_o_T);
 				sp_mat_t M_aux = ZpSigmaZoT * ZoSigmaZoT_plusI_Inv;
 				pred_mean = M_aux * y_[cluster_i];
@@ -6311,7 +6307,7 @@ namespace GPBoost {
 				vec_t resp_aux = Z_o_T * y_[cluster_i];
 				vec_t resp_aux2 = CholFac_M_aux_Woodbury.solve(resp_aux);
 				resp_aux = y_[cluster_i] - Z_o * resp_aux2;
-				pred_mean = Z_p * (B_inv * (D * (B_inv.transpose() * (Z_o_T * resp_aux))));
+				pred_mean = Z_p * (B_inv * (D.asDiagonal() * (B_inv.transpose() * (Z_o_T * resp_aux))));
 			}
 		}//end CalcPredVecchiaLatentObservedFirstOrder
 

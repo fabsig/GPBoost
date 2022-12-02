@@ -2177,7 +2177,7 @@ namespace GPBoost {
 			const sp_mat_t& D_inv,
 			const sp_mat_t& Bpo,
 			sp_mat_t& Bp,
-			const sp_mat_t& Dp,
+			const vec_t& Dp,
 			vec_t& pred_mean,
 			T_mat& pred_cov,
 			vec_t& pred_var,
@@ -2193,7 +2193,7 @@ namespace GPBoost {
 				CHECK(mode_has_been_calculated_);
 			}
 			int num_pred = (int)Bp.cols();
-			CHECK((int)Dp.cols() == num_pred);
+			CHECK((int)Dp.size() == num_pred);
 			if (CondObsOnly) {
 				pred_mean = -Bpo * mode_;
 			}
@@ -2212,11 +2212,8 @@ namespace GPBoost {
 					Bp_inv.setIdentity();
 					eigen_sp_Lower_sp_RHS_solve(Bp, Bp_inv, Bp_inv, true);
 					//Bp.triangularView<Eigen::UpLoType::UnitLower>().solveInPlace(Bp_inv);//much slower
-					vec_t Dp_sqrt(num_pred), Dp_inv_sqrt(num_pred);
-					Dp_sqrt.array() = Dp.diagonal().array().sqrt();
-					Dp_inv_sqrt.array() = 1. / Dp_sqrt.array();
 					Maux = Bpo.transpose() * Bp_inv.transpose();
-					Bp_inv_Dp = Bp_inv * Dp;
+					Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 				}
 				if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().size() > 0) {//Permutation is only used when having an ordering
 					Maux = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * Maux;
@@ -2232,7 +2229,8 @@ namespace GPBoost {
 				}
 				if (calc_pred_cov) {
 					if (CondObsOnly) {
-						pred_cov = Dp + Maux.transpose() * Maux;
+						pred_cov = Maux.transpose() * Maux;
+						pred_cov.diagonal().array() += Dp.array();
 					}
 					else {
 						pred_cov = Bp_inv_Dp * Bp_inv.transpose() + Maux.transpose() * Maux;
@@ -2244,7 +2242,7 @@ namespace GPBoost {
 					if (CondObsOnly) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_pred; ++i) {
-							pred_var[i] = Dp.coeff(i,i) + Maux.col(i).sum();
+							pred_var[i] = Dp[i] + Maux.col(i).sum();
 						}
 					}
 					else {
