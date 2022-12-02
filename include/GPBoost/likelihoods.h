@@ -1826,9 +1826,9 @@ namespace GPBoost {
 		* \param num_data Number of data points
 		* \param ZSigmaZt Covariance matrix of latent random effect (can be den_mat_t or sp_mat_t)
 		* \param Cross_Cov Cross covariance matrix between predicted and obsreved random effects ("=Cov(y_p,y)")
-		* \param pred_mean[out] Predicted mean
-		* \param pred_cov[out] Predicted covariance matrix
-		* \param pred_var[out] Predicted variances
+		* \param pred_mean[out] Predictive mean
+		* \param pred_cov[out] Predictive covariance matrix
+		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
@@ -1901,9 +1901,9 @@ namespace GPBoost {
 		* \param Sigma Covariance matrix of latent random effect (can be den_mat_t or sp_mat_t)
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param Cross_Cov Cross covariance matrix between predicted and obsreved random effects ("=Cov(y_p,y)")
-		* \param pred_mean[out] Predicted mean
-		* \param pred_cov[out] Predicted covariance matrix
-		* \param pred_var[out] Predicted variances
+		* \param pred_mean[out] Predictive mean
+		* \param pred_cov[out] Predictive covariance matrix
+		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
@@ -1988,9 +1988,9 @@ namespace GPBoost {
 		* \param Zt Transpose Z^T of random effect design matrix that relates latent random effects to observations/likelihoods
 		* \param Ztilde matrix which relates existing random effects to prediction samples
 		* \param Sigma Covariance matrix of random effects
-		* \param pred_mean[out] Predicted mean
-		* \param pred_cov[out] Predicted covariance matrix
-		* \param pred_var[out] Predicted variances
+		* \param pred_mean[out] Predictive mean
+		* \param pred_cov[out] Predictive covariance matrix
+		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
@@ -2073,9 +2073,9 @@ namespace GPBoost {
 		* \param sigma2 Variance of random effects
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param Cross_Cov Cross covariance matrix between predicted and obsreved random effects ("=Cov(y_p,y)")
-		* \param pred_mean[out] Predicted mean
-		* \param pred_cov[out] Predicted covariance matrix
-		* \param pred_var[out] Predicted variances
+		* \param pred_mean[out] Predictive mean
+		* \param pred_cov[out] Predictive covariance matrix
+		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
@@ -2161,9 +2161,9 @@ namespace GPBoost {
 		* \param Bpo Lower left part of matrix B in joint Vecchia approximation for observed and prediction locations with non-zero off-diagonal entries corresponding to the nearest neighbors of the prediction locations among the observed locations
 		* \param Bp Lower right part of matrix B in joint Vecchia approximation for observed and prediction locations with non-zero off-diagonal entries corresponding to the nearest neighbors of the prediction locations among the prediction locations
 		* \param Dp Diagonal matrix with lower right part of matrix D in joint Vecchia approximation for observed and prediction locations
-		* \param pred_mean[out] Predicted mean
-		* \param pred_cov[out] Predicted covariance matrix
-		* \param pred_var[out] Predicted variances
+		* \param pred_mean[out] Predictive mean
+		* \param pred_cov[out] Predictive covariance matrix
+		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
@@ -2259,8 +2259,8 @@ namespace GPBoost {
 
 		/*!
 		* \brief Make predictions for the response variable (label) based on predictions for the mean and variance of the latent random effects
-		* \param pred_mean[out] Predicted mean of latent random effects. The predicted mean for the response variables is written on this
-		* \param pred_var[out] Predicted variances of latent random effects. The predicted variance for the response variables is written on this
+		* \param pred_mean[out] Predictive mean of latent random effects. The Predictive mean for the response variables is written on this
+		* \param pred_var[out] Predictive variances of latent random effects. The predicted variance for the response variables is written on this
 		* \param predict_var If true, predictive variances are also calculated
 		*/
 		void PredictResponse(vec_t& pred_mean, vec_t& pred_var, bool predict_var) {
@@ -2314,8 +2314,8 @@ namespace GPBoost {
 
 		/*!
 		* \brief Adaptive GH quadrature to calculate predictive mean of response variable
-		* \param latent_mean Predicted mean of latent random effects
-		* \param latent_var Predicted variances of latent random effects
+		* \param latent_mean Predictive mean of latent random effects
+		* \param latent_var Predictive variances of latent random effects
 		*/
 		double RespMeanAdaptiveGHQuadrature(const double latent_mean, const double latent_var) {
 			// Find mode of integrand

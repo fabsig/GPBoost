@@ -421,11 +421,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 382)
     
     # Random ordering
-    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            vecchia_approx=TRUE, num_neighbors=n-1, vecchia_ordering="random", y = y,
                            params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
                                          lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                         delta_rel_conv=1E-6, convergence_criterion = "relative_change_in_parameters"))
+                                         delta_rel_conv=1E-6, convergence_criterion = "relative_change_in_parameters")), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_equal(dim(gp_model$get_cov_pars())[2], 3)
     expect_equal(dim(gp_model$get_cov_pars())[1], 2)

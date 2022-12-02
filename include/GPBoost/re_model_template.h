@@ -2100,26 +2100,24 @@ namespace GPBoost {
 									"this needs at least approximately %d mb of memory.",
 									num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
 							}
-							//TODO: implement a more efficient version when only predictive variances are required and not full covariance matrices
-							bool predict_var_or_cov_mat = predict_var || predict_cov_mat;
 							if (vecchia_pred_type_ == "order_obs_first_cond_obs_only") {
 								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-									predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id, Bpo, Bp, Dp);
+									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
 							}
 							else if (vecchia_pred_type_ == "order_obs_first_cond_all") {
 								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-									predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id, Bpo, Bp, Dp);
+									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
 							}
 							else if (vecchia_pred_type_ == "order_pred_first") {
 								CalcPredVecchiaPredictedFirstOrder(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-									predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
+									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id);
 							}
 							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
 								CalcPredVecchiaLatentObservedFirstOrder(true, cluster_i, num_data_per_cluster_pred,
-									re_comp->coords_, gp_coords_mat_pred, predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
+									re_comp->coords_, gp_coords_mat_pred, predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id);
 								// Note: we use the function 'CalcPredVecchiaLatentObservedFirstOrder' instead of the function 'CalcPredVecchiaObservedFirstOrder' since 
 								//	the current implementation cannot handle duplicate values in gp_coords (coordinates / input features) for Vecchia approximations
 								//	for latent processes (as matrices that need to be inverted will be singular due to the duplicate values).
@@ -2128,33 +2126,43 @@ namespace GPBoost {
 							}
 							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 								CalcPredVecchiaLatentObservedFirstOrder(false, cluster_i, num_data_per_cluster_pred,
-									re_comp->coords_, gp_coords_mat_pred, predict_var_or_cov_mat, mean_pred_id, cov_mat_pred_id);
+									re_comp->coords_, gp_coords_mat_pred, predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id);
 							}
 							else {
 								Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
 							}
-							if (predict_var_or_cov_mat) {
+							if (predict_var || predict_cov_mat) {
 								// subtract / add nugget variance in case latent / observable process is predicted
 								if (!predict_response && (vecchia_pred_type_ == "order_obs_first_cond_obs_only" ||
 									vecchia_pred_type_ == "order_obs_first_cond_all" ||
 									vecchia_pred_type_ == "order_pred_first")) {
+									if (predict_cov_mat) {
 #pragma omp parallel for schedule(static)
-									for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-										cov_mat_pred_id.coeffRef(i, i) -= 1.;
+										for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+											cov_mat_pred_id.coeffRef(i, i) -= 1.;
+										}
+									}
+									if (predict_var) {
+#pragma omp parallel for schedule(static)
+										for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+											var_pred_id[i] -= 1.;
+										}
 									}
 								}
 								else if (predict_response && (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only" ||
 									vecchia_pred_type_ == "latent_order_obs_first_cond_all")) {
+									if (predict_cov_mat) {
 #pragma omp parallel for schedule(static)
-									for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-										cov_mat_pred_id.coeffRef(i, i) += 1.;
+										for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+											cov_mat_pred_id.coeffRef(i, i) += 1.;
+										}
 									}
-								}
-							}
-							if (predict_var) {
-								var_pred_id = cov_mat_pred_id.diagonal();
-								if (!predict_cov_mat) {
-									cov_mat_pred_id.resize(0, 0);
+									if (predict_var) {
+#pragma omp parallel for schedule(static)
+										for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+											var_pred_id[i] += 1.;
+										}
+									}
 								}
 							}
 						}//end gauss_likelihood_
@@ -2166,7 +2174,7 @@ namespace GPBoost {
 							if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
 								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-									false, mean_pred_id, cov_mat_pred_id, Bpo, Bp, Dp);
+									false, false, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
 								likelihood_[cluster_i]->PredictLAApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
 									B_[cluster_i], D_inv_[cluster_i], Bpo, Bp, Dp,
 									mean_pred_id, cov_mat_pred_id, var_pred_id,
@@ -2175,7 +2183,7 @@ namespace GPBoost {
 							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
-									false, mean_pred_id, cov_mat_pred_id, Bpo, Bp, Dp);
+									false, false, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
 								likelihood_[cluster_i]->PredictLAApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
 									B_[cluster_i], D_inv_[cluster_i], Bpo, Bp, Dp,
 									mean_pred_id, cov_mat_pred_id, var_pred_id,
@@ -5766,18 +5774,32 @@ namespace GPBoost {
 		* \param gp_coords_mat_obs Coordinates for observed locations
 		* \param gp_coords_mat_pred Coordinates for prediction locations
 		* \param gp_rand_coef_data_pred Random coefficient data for GPs
-		* \param predict_cov_mat If true, the covariance matrix is also calculated
-		* \param[out] mean_pred_id Predicted mean (only for Gaussian likelihoods)
-		* \param[out] cov_mat_pred_id Predicted covariance matrix (only for Gaussian likelihoods)
+		* \param calc_pred_cov If true, the covariance matrix is also calculated
+		* \param calc_pred_var If true, predictive variances are also calculated
+		* \param[out] pred_mean Predictive mean (only for Gaussian likelihoods)
+		* \param[out] pred_cov Predictive covariance matrix (only for Gaussian likelihoods)
+		* \param[out] pred_var Predictive variances (only for Gaussian likelihoods)
 		* \param[out] Bpo Lower left part of matrix B in joint Vecchia approximation for observed and prediction locations with non-zero off-diagonal entries corresponding to the nearest neighbors of the prediction locations among the observed locations (only for non-Gaussian likelihoods)
 		* \param[out] Bp Lower right part of matrix B in joint Vecchia approximation for observed and prediction locations with non-zero off-diagonal entries corresponding to the nearest neighbors of the prediction locations among the prediction locations (only for non-Gaussian likelihoods)
 		* \param[out] Dp Diagonal matrix with lower right part of matrix D in joint Vecchia approximation for observed and prediction locations (only for non-Gaussian likelihoods)
 		*/
-		void CalcPredVecchiaObservedFirstOrder(bool CondObsOnly, data_size_t cluster_i, int num_data_pred,
-			std::map<data_size_t, int>& num_data_per_cluster_pred, std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
-			const den_mat_t& gp_coords_mat_obs, const den_mat_t& gp_coords_mat_pred, const double* gp_rand_coef_data_pred,
-			bool predict_cov_mat, vec_t& mean_pred_id, T_mat& cov_mat_pred_id,
-			sp_mat_t& Bpo, sp_mat_t& Bp, sp_mat_t& Dp) {
+		void CalcPredVecchiaObservedFirstOrder(bool CondObsOnly,
+			data_size_t cluster_i,
+			int num_data_pred,
+			std::map<data_size_t,
+			int>& num_data_per_cluster_pred,
+			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
+			const den_mat_t& gp_coords_mat_obs,
+			const den_mat_t& gp_coords_mat_pred,
+			const double* gp_rand_coef_data_pred,
+			bool calc_pred_cov,
+			bool calc_pred_var,
+			vec_t& pred_mean,
+			T_mat& pred_cov,
+			vec_t& pred_var,
+			sp_mat_t& Bpo,
+			sp_mat_t& Bp,
+			sp_mat_t& Dp) {
 			int num_data_cli = num_data_per_cluster_[cluster_i];
 			int num_data_pred_cli = num_data_per_cluster_pred[cluster_i];
 			//Find nearest neighbors
@@ -5898,27 +5920,47 @@ namespace GPBoost {
 				Dp.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
 			}//end loop over data i
 			if (gauss_likelihood_) {
-				mean_pred_id = -Bpo * y_[cluster_i];
+				pred_mean = -Bpo * y_[cluster_i];
 				if (!CondObsOnly) {
-					sp_L_solve(Bp.valuePtr(), Bp.innerIndexPtr(), Bp.outerIndexPtr(), num_data_pred_cli, mean_pred_id.data());
+					sp_L_solve(Bp.valuePtr(), Bp.innerIndexPtr(), Bp.outerIndexPtr(), num_data_pred_cli, pred_mean.data());
 				}
-				if (predict_cov_mat) {
+				if (calc_pred_cov || calc_pred_var) {
+					if (calc_pred_var) {
+						pred_var = vec_t(num_data_pred_cli);
+					}
 					if (CondObsOnly) {
-						cov_mat_pred_id = Dp;
+						if (calc_pred_cov) {
+							pred_cov = Dp;
+						}
+						if (calc_pred_var) {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_data_pred_cli; ++i) {
+								pred_var[i] = Dp.coeff(i, i);
+							}
+						}
 					}
 					else {
 						sp_mat_t Identity(num_data_pred_cli, num_data_pred_cli);
 						Identity.setIdentity();
 						sp_mat_t Bp_inv;
 						eigen_sp_Lower_sp_RHS_cs_solve(Bp, Identity, Bp_inv, true);
-						cov_mat_pred_id = T_mat(Bp_inv * Dp * Bp_inv.transpose());
+						sp_mat_t Bp_inv_Dp = Bp_inv * Dp;
+						if (calc_pred_cov) {
+							pred_cov = T_mat(Bp_inv_Dp * Bp_inv.transpose());
+						}
+						if (calc_pred_var) {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_data_pred_cli; ++i) {
+								pred_var[i] = (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i));
+							}
+						}
 					}
-				}
+				}//end calc_pred_cov || calc_pred_var
 				//release matrices that are not needed anymore
 				Bpo.resize(0, 0);
 				Bp.resize(0, 0);
 				Dp.resize(0, 0);
-			}
+			}//end if gauss_likelihood_
 		}//end CalcPredVecchiaObservedFirstOrder
 
 		/*!
@@ -5930,14 +5972,24 @@ namespace GPBoost {
 		* \param gp_coords_mat_obs Coordinates for observed locations
 		* \param gp_coords_mat_pred Coordinates for prediction locations
 		* \param gp_rand_coef_data_pred Random coefficient data for GPs
-		* \param predict_cov_mat If true, the covariance matrix is also calculated
-		* \param[out] mean_pred_id Predicted mean
-		* \param[out] cov_mat_pred_id Predicted covariance matrix
+		* \param calc_pred_cov If true, the covariance matrix is also calculated
+		* \param calc_pred_var If true, predictive variances are also calculated
+		* \param[out] pred_mean Predictive mean
+		* \param[out] pred_cov Predictive covariance matrix
+		* \param[out] pred_var Predictive variances
 		*/
-		void CalcPredVecchiaPredictedFirstOrder(data_size_t cluster_i, int num_data_pred,
-			std::map<data_size_t, int>& num_data_per_cluster_pred, std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
-			const den_mat_t& gp_coords_mat_obs, const den_mat_t& gp_coords_mat_pred, const double* gp_rand_coef_data_pred,
-			bool predict_cov_mat, vec_t& mean_pred_id, T_mat& cov_mat_pred_id) {
+		void CalcPredVecchiaPredictedFirstOrder(data_size_t cluster_i,
+			int num_data_pred,
+			std::map<data_size_t, int>& num_data_per_cluster_pred,
+			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
+			const den_mat_t& gp_coords_mat_obs,
+			const den_mat_t& gp_coords_mat_pred,
+			const double* gp_rand_coef_data_pred,
+			bool calc_pred_cov,
+			bool calc_pred_var,
+			vec_t& pred_mean,
+			T_mat& pred_cov,
+			vec_t& pred_var) {
 			int num_data_cli = num_data_per_cluster_[cluster_i];
 			int num_data_pred_cli = num_data_per_cluster_pred[cluster_i];
 			int num_data_tot = num_data_cli + num_data_pred_cli;
@@ -6088,18 +6140,25 @@ namespace GPBoost {
 			sp_mat_t cond_prec = Bp.transpose() * Dp_inv * Bp + Bop.transpose() * Do_inv * Bop;
 			chol_sp_mat_t CholFact;
 			CholFact.compute(cond_prec);
-			if (predict_cov_mat) {
+			vec_t y_aux = Bop.transpose() * (Do_inv * (Bo * y_[cluster_i]));
+			pred_mean = -CholFact.solve(y_aux);
+			if (calc_pred_cov || calc_pred_var) {
 				sp_mat_t Identity(num_data_pred_cli, num_data_pred_cli);
 				Identity.setIdentity();
 				sp_mat_t cond_prec_chol = CholFact.matrixL();
 				sp_mat_t cond_prec_chol_inv;
 				eigen_sp_Lower_sp_RHS_cs_solve(cond_prec_chol, Identity, cond_prec_chol_inv, true);
-				cov_mat_pred_id = T_mat(cond_prec_chol_inv.transpose() * cond_prec_chol_inv);
-				mean_pred_id = -cov_mat_pred_id * Bop.transpose() * Do_inv * Bo * y_[cluster_i];
-			}
-			else {
-				mean_pred_id = -CholFact.solve(Bop.transpose() * Do_inv * Bo * y_[cluster_i]);
-			}
+				if (calc_pred_cov) {
+					pred_cov = T_mat(cond_prec_chol_inv.transpose() * cond_prec_chol_inv);
+				}
+				if (calc_pred_var) {
+					pred_var = vec_t(num_data_pred_cli);
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_pred_cli; ++i) {
+						pred_var[i] = (cond_prec_chol_inv.col(i)).dot(cond_prec_chol_inv.col(i));
+					}
+				}
+			}//end calc_pred_cov || calc_pred_var
 		}//end CalcPredVecchiaPredictedFirstOrder
 
 		/*!
@@ -6109,14 +6168,22 @@ namespace GPBoost {
 		 * \param num_data_per_cluster_pred Keys: Labels of independent realizations of REs/GPs, values: number of prediction locations per independent realization
 		 * \param gp_coords_mat_obs Coordinates for observed locations
 		 * \param gp_coords_mat_pred Coordinates for prediction locations
-		 * \param predict_cov_mat If true, the covariance matrix is also calculated
-		 * \param[out] mean_pred_id Predicted mean
-		 * \param[out] cov_mat_pred_id Predicted covariance matrix
+		* \param calc_pred_cov If true, the covariance matrix is also calculated
+		* \param calc_pred_var If true, predictive variances are also calculated
+		* \param[out] pred_mean Predictive mean
+		* \param[out] pred_cov Predictive covariance matrix
+		* \param[out] pred_var Predictive variances
 		 */
-		void CalcPredVecchiaLatentObservedFirstOrder(bool CondObsOnly, data_size_t cluster_i,
+		void CalcPredVecchiaLatentObservedFirstOrder(bool CondObsOnly,
+			data_size_t cluster_i,
 			std::map<data_size_t, int>& num_data_per_cluster_pred,
-			const den_mat_t& gp_coords_mat_obs, const den_mat_t& gp_coords_mat_pred,
-			bool predict_cov_mat, vec_t& mean_pred_id, T_mat& cov_mat_pred_id) {
+			const den_mat_t& gp_coords_mat_obs,
+			const den_mat_t& gp_coords_mat_pred,
+			bool calc_pred_cov,
+			bool calc_pred_var,
+			vec_t& pred_mean,
+			T_mat& pred_cov,
+			vec_t& pred_var) {
 			if (num_gp_rand_coef_ > 0) {
 				Log::REFatal("The Vecchia approximation for latent process(es) is currently not implemented when having random coefficients");
 			}
@@ -6217,24 +6284,34 @@ namespace GPBoost {
 			sp_mat_t M_aux_Woodbury = B.transpose() * D_inv * B + Z_o_T * Z_o;
 			chol_sp_mat_t CholFac_M_aux_Woodbury;
 			CholFac_M_aux_Woodbury.compute(M_aux_Woodbury);
-			if (predict_cov_mat) {
+			if (calc_pred_cov || calc_pred_var) {
 				//Using Eigen's solver
 				sp_mat_t M_aux_Woodbury2 = CholFac_M_aux_Woodbury.solve(Z_o_T);
 				sp_mat_t Identity_obs(num_data_cli, num_data_cli);
 				Identity_obs.setIdentity();
 				sp_mat_t ZoSigmaZoT_plusI_Inv = -Z_o * M_aux_Woodbury2 + Identity_obs;
-				sp_mat_t ZpSigmaZoT = Z_p * B_inv * D * B_inv.transpose() * Z_o_T;
+				sp_mat_t Z_p_B_inv = Z_p * B_inv;
+				sp_mat_t Z_p_B_inv_D = Z_p_B_inv * D;;
+				sp_mat_t ZpSigmaZoT = Z_p_B_inv_D * (B_inv.transpose() * Z_o_T);
 				sp_mat_t M_aux = ZpSigmaZoT * ZoSigmaZoT_plusI_Inv;
-				mean_pred_id = M_aux * y_[cluster_i];
-				sp_mat_t Identity_pred(num_data_pred_cli, num_data_pred_cli);
-				Identity_pred.setIdentity();
-				cov_mat_pred_id = T_mat(Z_p * B_inv * D * B_inv.transpose() * Z_p.transpose() + Identity_pred - M_aux * ZpSigmaZoT.transpose());
-			}
+				pred_mean = M_aux * y_[cluster_i];
+				if (calc_pred_cov) {
+					pred_cov = T_mat(Z_p_B_inv_D * Z_p_B_inv.transpose() - M_aux * ZpSigmaZoT.transpose());
+					pred_cov.diagonal().array() += 1.;
+				}
+				if (calc_pred_var) {
+					pred_var = vec_t(num_data_pred_cli);
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_pred_cli; ++i) {
+						pred_var[i] = (Z_p_B_inv.row(i)).dot(Z_p_B_inv.row(i)) + 1. + (M_aux.row(i)).dot(ZpSigmaZoT.row(i));
+					}
+				}
+			}//end calc_pred_cov || calc_pred_var
 			else {
 				vec_t resp_aux = Z_o_T * y_[cluster_i];
 				vec_t resp_aux2 = CholFac_M_aux_Woodbury.solve(resp_aux);
 				resp_aux = y_[cluster_i] - Z_o * resp_aux2;
-				mean_pred_id = Z_p * B_inv * D * B_inv.transpose() * Z_o_T * resp_aux;
+				pred_mean = Z_p * (B_inv * (D * (B_inv.transpose() * (Z_o_T * resp_aux))));
 			}
 		}//end CalcPredVecchiaLatentObservedFirstOrder
 
