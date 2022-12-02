@@ -6276,11 +6276,11 @@ namespace GPBoost {
 			sp_mat_t B_inv;
 			eigen_sp_Lower_sp_RHS_cs_solve(B, Identity_all, B_inv, true);
 			//Calculate inverse of covariance matrix for observed data using the Woodbury identity
-			sp_mat_t Z_o_T = Z_o.transpose();
-			sp_mat_t M_aux_Woodbury = B.transpose() * D_inv.asDiagonal() * B + Z_o_T * Z_o;
+			sp_mat_t M_aux_Woodbury = B.transpose() * D_inv.asDiagonal() * B + Z_o.transpose() * Z_o;
 			chol_sp_mat_t CholFac_M_aux_Woodbury;
 			CholFac_M_aux_Woodbury.compute(M_aux_Woodbury);
 			if (calc_pred_cov || calc_pred_var) {
+				sp_mat_t Z_o_T = Z_o.transpose();
 				//Using Eigen's solver
 				sp_mat_t M_aux_Woodbury2 = CholFac_M_aux_Woodbury.solve(Z_o_T);
 				sp_mat_t Identity_obs(num_data_cli, num_data_cli);
@@ -6304,10 +6304,10 @@ namespace GPBoost {
 				}
 			}//end calc_pred_cov || calc_pred_var
 			else {
-				vec_t resp_aux = Z_o_T * y_[cluster_i];
+				vec_t resp_aux = Z_o.transpose() * y_[cluster_i];
 				vec_t resp_aux2 = CholFac_M_aux_Woodbury.solve(resp_aux);
 				resp_aux = y_[cluster_i] - Z_o * resp_aux2;
-				pred_mean = Z_p * (B_inv * (D.asDiagonal() * (B_inv.transpose() * (Z_o_T * resp_aux))));
+				pred_mean = Z_p * (B_inv * (D.asDiagonal() * (B_inv.transpose() * (Z_o.transpose() * resp_aux))));
 			}
 		}//end CalcPredVecchiaLatentObservedFirstOrder
 
