@@ -3380,48 +3380,48 @@ class Booster:
             Coordinates (features) for Gaussian process. Used only if the Booster has a gp_model
         gp_rand_coef_data_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
             Covariate data for Gaussian process random coefficients. Used only if the Booster has a gp_model
-            vecchia_pred_type : string, optional (default=None)
-                Type of Vecchia approximation used for making predictions
+        vecchia_pred_type : string, optional (default=None)
+            Type of Vecchia approximation used for making predictions
 
-                Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+            Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
 
-                Used only if the Booster has a gp_model
+            Used only if the Booster has a gp_model
 
-                The following options are available:
+            The following options are available:
 
-                    - "order_obs_first_cond_obs_only":
+                - "order_obs_first_cond_obs_only":
 
-                        Vecchia approximation for the observable process and observed training data is
-                        ordered first and the neighbors are only observed training data points.
-                        This option is only available for Gaussian likelihoods
+                    Vecchia approximation for the observable process and observed training data is
+                    ordered first and the neighbors are only observed training data points.
+                    This option is only available for Gaussian likelihoods
 
-                    - "order_obs_first_cond_all":
+                - "order_obs_first_cond_all":
 
-                        Vecchia approximation for the observable process and observed training data is
-                        ordered first and the neighbors are selected among all points (training + prediction).
-                        This option is only available for Gaussian likelihoods
+                    Vecchia approximation for the observable process and observed training data is
+                    ordered first and the neighbors are selected among all points (training + prediction).
+                    This option is only available for Gaussian likelihoods
 
-                    - "latent_order_obs_first_cond_obs_only":
+                - "latent_order_obs_first_cond_obs_only":
 
-                        Vecchia approximation for the latent process and observed data is
-                        ordered first and neighbors are only observed points}
+                    Vecchia approximation for the latent process and observed data is
+                    ordered first and neighbors are only observed points}
 
-                    - "latent_order_obs_first_cond_all":
+                - "latent_order_obs_first_cond_all":
 
-                        Vecchia approximation or the latent process and observed data is
-                        ordered first and neighbors are selected among all points
+                    Vecchia approximation or the latent process and observed data is
+                    ordered first and neighbors are selected among all points
 
-                    - "order_pred_first":
+                - "order_pred_first":
 
-                        Vecchia approximation for the observable process and prediction data is
-                        ordered first for making predictions. This option is only available for Gaussian likelihoods
+                    Vecchia approximation for the observable process and prediction data is
+                    ordered first for making predictions. This option is only available for Gaussian likelihoods
 
-            num_neighbors_pred : integer or None, optional (default=None)
-                Number of neighbors for the Vecchia approximation for making predictions
+        num_neighbors_pred : integer or None, optional (default=None)
+            Number of neighbors for the Vecchia approximation for making predictions
 
-                (default values if None: num_neighbors_pred=num_neighbors)
+            (default values if None: num_neighbors_pred=num_neighbors)
 
-                Used only if the Booster has a gp_model
+            Used only if the Booster has a gp_model
         cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
             IDs / labels indicating independent realizations of random effects / Gaussian processes
             (same values = same process realization). Used only if the Booster has a gp_model
