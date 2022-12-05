@@ -4350,7 +4350,6 @@ class GPModel(object):
             self.cov_fct_taper_range = cov_fct_taper_range
             self.vecchia_approx = vecchia_approx
             self.vecchia_ordering = vecchia_ordering
-            self.vecchia_pred_type = vecchia_pred_type
             self.num_neighbors = num_neighbors
             self.num_neighbors_pred = num_neighbors_pred
             if self.cov_function == "wendland":
@@ -4387,6 +4386,10 @@ class GPModel(object):
                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
                                  "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range"])
                         self.re_comp_names.append("GP_rand_coef_" + gp_rand_coef_data_names[ii])
+            # Prediction type for Vecchia approximation
+            if vecchia_pred_type is not None:
+                self.vecchia_pred_type = vecchia_pred_type
+                vecchia_pred_type_c = c_str(vecchia_pred_type)
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids is not None:
             cluster_ids = _format_check_1D_data(cluster_ids, data_name="cluster_ids", check_data_type=False,
@@ -4406,9 +4409,6 @@ class GPModel(object):
                     cluster_ids = np.array([self.cluster_ids_map_to_int[cl_name] for cl_name in cluster_ids])
             cluster_ids = cluster_ids.astype(np.int32)
             cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-
-        if self.vecchia_pred_type is not None:
-            vecchia_pred_type_c = c_str(self.vecchia_pred_type)
 
         self.__determine_num_cov_pars(likelihood=likelihood)
 
@@ -5086,8 +5086,6 @@ class GPModel(object):
         if predict_cov_mat and predict_var:
             predict_cov_mat = True
             predict_var = False
-        if vecchia_pred_type is not None:
-            self.vecchia_pred_type = vecchia_pred_type
         if num_neighbors_pred is not None:
             self.num_neighbors_pred = num_neighbors_pred
         if cg_delta_conv_pred is not None:
@@ -5113,6 +5111,7 @@ class GPModel(object):
         gp_rand_coef_data_pred_c = ctypes.c_void_p()
         cluster_ids_pred_c = ctypes.c_void_p()
         X_pred_c = ctypes.c_void_p()
+        vecchia_pred_type_c = ctypes.c_void_p()
         num_data_pred = 0
         if not use_saved_data:
             # Set data for grouped random effects
@@ -5165,6 +5164,10 @@ class GPModel(object):
                     if gp_rand_coef_data_pred.shape[1] != self.num_gp_rand_coef:
                         raise ValueError("Incorrect number of covariates in gp_rand_coef_data_pred")
                     gp_rand_coef_data_pred_c, _, _ = c_float_array(gp_rand_coef_data_pred.flatten(order='F'))
+            # Prediction type for Vecchia approximation
+            if vecchia_pred_type is not None:
+                self.vecchia_pred_type = vecchia_pred_type
+                vecchia_pred_type_c = c_str(vecchia_pred_type)
             # Set IDs for independent processes (cluster_ids)
             if cluster_ids_pred is not None:
                 cluster_ids_pred = _format_check_1D_data(cluster_ids_pred, data_name="cluster_ids_pred",
@@ -5193,6 +5196,7 @@ class GPModel(object):
                     cluster_ids_pred = np.array([cluster_ids_pred_map_to_int[x] for x in cluster_ids_pred])
                 cluster_ids_pred = cluster_ids_pred.astype(np.int32)
                 cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+
             # Set data for linear fixed-effects
             if self.has_covariates:
                 if X_pred is None:
@@ -5270,7 +5274,7 @@ class GPModel(object):
             cov_pars_c,
             X_pred_c,
             ctypes.c_bool(use_saved_data),
-            c_str(self.vecchia_pred_type),
+            vecchia_pred_type_c,
             ctypes.c_int(self.num_neighbors_pred),
             ctypes.c_double(self.cg_delta_conv_pred),
             fixed_effects_c,
@@ -5368,6 +5372,7 @@ class GPModel(object):
         gp_rand_coef_data_pred_c = ctypes.c_void_p()
         cluster_ids_pred_c = ctypes.c_void_p()
         X_pred_c = ctypes.c_void_p()
+        vecchia_pred_type_c = ctypes.c_void_p()
         num_data_pred = 0
         # Set data for grouped random effects
         if group_data_pred is not None:
@@ -5419,6 +5424,11 @@ class GPModel(object):
                 if gp_rand_coef_data_pred.shape[1] != self.num_gp_rand_coef:
                     raise ValueError("Incorrect number of covariates in gp_rand_coef_data_pred")
                 gp_rand_coef_data_pred_c, _, _ = c_float_array(gp_rand_coef_data_pred.flatten(order='F'))
+        # Prediction type for Vecchia approximation
+        # Prediction type for Vecchia approximation
+        if vecchia_pred_type is not None:
+            self.vecchia_pred_type = vecchia_pred_type
+            vecchia_pred_type_c = c_str(vecchia_pred_type)
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids_pred is not None:
             cluster_ids_pred = _format_check_1D_data(cluster_ids_pred, data_name="cluster_ids_pred",
@@ -5462,8 +5472,6 @@ class GPModel(object):
                 raise ValueError("Incorrect number of covariates in X_pred")
             X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
         self.num_data_pred = num_data_pred
-        if vecchia_pred_type is not None:
-            self.vecchia_pred_type = vecchia_pred_type
         if num_neighbors_pred is not None:
             self.num_neighbors_pred = num_neighbors_pred
         if cg_delta_conv_pred is not None:
@@ -5479,7 +5487,7 @@ class GPModel(object):
             gp_coords_pred_c,
             gp_rand_coef_data_pred_c,
             X_pred_c,
-            c_str(self.vecchia_pred_type),
+            vecchia_pred_type_c,
             ctypes.c_int(self.num_neighbors_pred),
             ctypes.c_double(self.cg_delta_conv_pred)))
         return self
