@@ -328,12 +328,14 @@ axs[0, 1].set_title("Predicted latent GP mean")
 pred_var_plot = pred['var'].reshape((nx, nx))
 CS = axs[1, 0].contourf(coords_test_x1, coords_test_x2, pred_var_plot)
 axs[1, 0].set_title("Predicted latent GP standard deviation")
+plt.show(block=False)
 
 # Predict latent GP at training data locations (=smoothing)
 GP_smooth = gp_model.predict_training_data_random_effects()
 # Compare true and predicted random effects
 plt.scatter(b_train, GP_smooth)
 plt.title("Comparison of true and smoothed GP")
+plt.show(block=False)
 # The above is equivalent to the following
 #GP_smooth2 = gp_model.predict(gp_coords_pred=coords_train)
 #np.sum(np.abs(GP_smooth['GP'] - GP_smooth2['mu']))
@@ -350,6 +352,14 @@ gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
                        vecchia_approx=True, num_neighbors=30, likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
+# Prediction: setting 'num_neighbors_pred' to a larger value than 'num_neighbors' for training
+#   can lead to better predictions
+pred_vecchia = gp_model.predict(gp_coords_pred=coords_test, num_neighbors_pred=100,
+                                predict_var=True, predict_response=False)
+pred_vecchia = pred_vecchia['mu'].reshape((nx, nx))
+plt.contourf(coords_test_x1, coords_test_x2, pred_vecchia)
+plt.title("Predicted latent GP mean with Vecchia approxmation")
+plt.show(block=False)
 
 #--------------------Gaussian process model with Wendland covariance function----------------
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="wendland",
@@ -375,6 +385,7 @@ plt.scatter(b2, GP_smooth['GP_rand_coef_nb_1'], label="1. random coef. GP", alph
 plt.scatter(b3, GP_smooth['GP_rand_coef_nb_2'], label="2. random coef. GP", alpha=0.5)
 plt.legend()
 plt.title("Comparison of true and smoothed GP")
+plt.show(block=False)
 
 # --------------------Using cluster_ids for independent realizations of GPs----------------
 cluster_ids = np.zeros(ntrain)

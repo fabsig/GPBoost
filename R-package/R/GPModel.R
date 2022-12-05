@@ -997,7 +997,6 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(vecchia_pred_type)) {
         private$vecchia_pred_type <- vecchia_pred_type
       }
-      vecchia_pred_type_c_str <- private$vecchia_pred_type
       if (!is.null(num_neighbors_pred)) {
         private$num_neighbors_pred <- as.integer(num_neighbors_pred)
       }
@@ -1014,7 +1013,7 @@ gpb.GPModel <- R6::R6Class(
         , gp_coords_pred
         , gp_rand_coef_data_pred
         , X_pred
-        , vecchia_pred_type_c_str
+        , private$vecchia_pred_type
         , private$num_neighbors_pred
         , private$cg_delta_conv_pred
       )
@@ -1057,7 +1056,6 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(vecchia_pred_type)) {
         private$vecchia_pred_type <- vecchia_pred_type
       }
-      vecchia_pred_type_c_str <- private$vecchia_pred_type
       if (!is.null(num_neighbors_pred)) {
         private$num_neighbors_pred <- as.integer(num_neighbors_pred)
       }
@@ -1336,7 +1334,7 @@ gpb.GPModel <- R6::R6Class(
         , cov_pars
         , X_pred
         , use_saved_data
-        , vecchia_pred_type_c_str
+        , private$vecchia_pred_type
         , private$num_neighbors_pred
         , private$cg_delta_conv_pred
         , fixed_effects
