@@ -672,8 +672,9 @@ namespace GPBoost {
 		* \param cov_fct Type of covariance function
 		* \param shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2018)). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
 		* \param taper_range Range parameter of Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)
-		* \param save_dist_use_Z_for_duplicates If true, distances are calculated and saved here, and an incidendce matrix Z_ is used for duplicate locations.
-		*           save_dist_use_Z_for_duplicates = false is used for the Vecchia approximation which saves the required distances in the REModel (REModelTemplate)
+		* \param save_dist If true, distances are calculated and saved here
+		* \param use_Z_for_duplicates If true, an incidendce matrix Z_ is used for duplicate locations
+		*           use_Z_for_duplicates = false is used for the Vecchia approximation which saves the required distances in the REModel (REModelTemplate)
 		* \param save_random_effects_indices_of_data_and_no_Z If true a vector random_effects_indices_of_data_, which relates random effects b to samples Zb, is used (the matrix Z_ is then not constructed)
 		*           save_random_effects_indices_of_data_and_no_Z = true is currently only used when doing calculations on the random effects scale b and not on the "data scale" Zb for non-Gaussian data
 		*			This option can only be selected when save_dist_use_Z_for_duplicates = true
@@ -819,6 +820,44 @@ namespace GPBoost {
 				this->Z_.insert(i, i) = this->rand_coef_data_[i];
 			}
 			num_random_effects_ = this->num_data_;
+		}
+
+		/*!
+		* \brief Constructor for cross-covariance Gaussian process used, e.g., in predictive processes
+		* \param coords Coordinates of all data points
+		* \param coords_ind_point Coordinates of inducing points
+		* \param cov_fct Type of covariance function
+		* \param shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2018)). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
+		* \param taper_range Range parameter of Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)
+		*/
+		RECompGP(const den_mat_t& coords,
+			const den_mat_t& coords_ind_point,
+			string_t cov_fct,
+			double shape,
+			double taper_range) {
+			this->num_data_ = (data_size_t)coords.rows();
+			this->is_rand_coef_ = false;
+			this->has_Z_ = false;
+			double taper_mu = 2.;
+			if (cov_fct == "wendland" || cov_fct == "exponential_tapered") {
+				taper_mu = (1. + coords.cols()) / 2. + shape + 0.5;
+				// taper_mu is chosen such that for coords.cols() = 2, the Wendland covariance functions coincide with the ones from Furrer et al. (2006) (Table 1)
+			}
+			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_mu));
+			this->num_cov_par_ = cov_function_->num_cov_par_;
+			coords_ = coords;
+			coords_ind_point_ = coords_ind_point;
+			//Calculate distances
+			T_mat dist;
+			if (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) {//compactly suported covariance
+				CalculateDistances(coords_ind_point_, coords_, true, cov_function_->taper_range_, true, dist);
+			}
+			else {
+				CalculateDistances(coords_ind_point_, coords_, true, dist);
+			}
+			dist_ = std::make_shared<T_mat>(dist);
+			dist_saved_ = true;
+			coord_saved_ = true;
 		}
 
 		/*! \brief Destructor */
@@ -1198,9 +1237,40 @@ namespace GPBoost {
 			return(cov_function_->taper_mu_);
 		}
 
+		/*!
+		* \brief Checks whether there are duplicates in the coordinates
+		*/
+		bool HasDuplicatedCoords() const {
+			bool has_duplicates = false;
+			if (this->has_Z_) {
+				has_duplicates = (this->Z_).cols() != (this->Z_).rows();
+			}
+			else {
+				if (dist_saved_) {
+#pragma omp for schedule(static)
+					for (int i = 0; i < (int)dist_.rows(); ++i) {
+						for (int j = i + 1; j < (int)dist_.cols(); ++j) {
+							if (dist_(i, j) < EPSILON_NUMBERS) {
+#pragma omp critical
+								{
+									has_duplicates = true;
+								}
+							}
+						}
+					}
+				}//end dist_saved_
+				else {
+					Log::REFatal("HasDuplicatedCoords: not implemented if !has_Z_ &&  !dist_saved_");
+				}
+			}
+			return(has_duplicates);
+		}
+
 	private:
 		/*! \brief Coordinates (=features) */
 		den_mat_t coords_;
+		/*! \brief Coordinates of inducint points */
+		den_mat_t coords_ind_point_;
 		/*! \brief Distance matrix (between unique coordinates in coords_) */
 		std::shared_ptr<T_mat> dist_;
 		/*! \brief If true, the distancess among all observations are calculated and saved here (false for Vecchia approximation) */
