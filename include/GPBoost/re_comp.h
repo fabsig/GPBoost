@@ -682,10 +682,14 @@ namespace GPBoost {
 			string_t cov_fct,
 			double shape,
 			double taper_range,
-			bool save_dist_use_Z_for_duplicates,
+			bool save_dist,
+			bool use_Z_for_duplicates,
 			bool save_random_effects_indices_of_data_and_no_Z) {
-			if (save_random_effects_indices_of_data_and_no_Z && !save_dist_use_Z_for_duplicates) {
-				Log::REFatal("'save_dist_use_Z_for_duplicates' cannot be 'false' when 'save_random_effects_indices_of_data_and_no_Z' is 'true'");
+			if (save_random_effects_indices_of_data_and_no_Z && !use_Z_for_duplicates) {
+				Log::REFatal("RECompGP: 'use_Z_for_duplicates' cannot be 'false' when 'save_random_effects_indices_of_data_and_no_Z' is 'true'");
+			}
+			if (use_Z_for_duplicates && !save_dist) {
+				Log::REFatal("RECompGP: 'save_dist' cannot be 'false' when 'use_Z_for_duplicates' is 'true'");
 			}
 			this->num_data_ = (data_size_t)coords.rows();
 			this->is_rand_coef_ = false;
@@ -697,7 +701,7 @@ namespace GPBoost {
 			}
 			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_mu));
 			this->num_cov_par_ = cov_function_->num_cov_par_;
-			if (save_dist_use_Z_for_duplicates) {
+			if (use_Z_for_duplicates) {
 				std::vector<int> uniques;//unique points
 				std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
 				DetermineUniqueDuplicateCoords(coords, this->num_data_, uniques, unique_idx);
@@ -723,6 +727,13 @@ namespace GPBoost {
 					}
 					this->has_Z_ = true;
 				}
+			}//end use_Z_for_duplicates
+			else {//not use_Z_for_duplicates (ignore duplicates)
+				//this option is used for, e.g., the Vecchia approximation
+				coords_ = coords;
+				num_random_effects_ = (data_size_t)coords_.rows();
+			}
+			if (save_dist) {
 				//Calculate distances
 				T_mat dist;
 				if (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) {//compactly suported covariance
@@ -733,11 +744,9 @@ namespace GPBoost {
 				}
 				dist_ = std::make_shared<T_mat>(dist);
 				dist_saved_ = true;
-			}//end save_dist_use_Z_for_duplicates
-			else {//this option is used for the Vecchia approximation
-				coords_ = coords;
+			}
+			else {
 				dist_saved_ = false;
-				num_random_effects_ = (data_size_t)coords_.rows();
 			}
 			coord_saved_ = true;
 		}

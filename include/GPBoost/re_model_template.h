@@ -3913,6 +3913,7 @@ namespace GPBoost {
 					cov_fct_shape_,
 					cov_fct_taper_range_,
 					true,
+					true,
 					only_one_GP_calculations_on_RE_scale_)));
 				//Random slope GPs
 				if (num_gp_rand_coef_ > 0) {
@@ -3987,6 +3988,7 @@ namespace GPBoost {
 				cov_fct_,
 				cov_fct_shape_,
 				cov_fct_taper_range_,
+				false,
 				false,
 				false)));
 			bool has_duplicates = check_has_duplicates;
@@ -4944,9 +4946,9 @@ namespace GPBoost {
 		*/
 		void CalcFisherInformation(const vec_t& cov_pars,
 			den_mat_t& FI,
-			bool transf_scale = true,
-			bool include_error_var = false,
-			bool use_saved_psi_inv = false) {
+			bool transf_scale,
+			bool include_error_var,
+			bool use_saved_psi_inv) {
 			if (include_error_var) {
 				FI = den_mat_t(num_cov_par_, num_cov_par_);
 			}
@@ -4965,7 +4967,7 @@ namespace GPBoost {
 					sp_mat_t B_inv;
 					eigen_sp_Lower_sp_RHS_solve(B_[cluster_i], Identity, B_inv, true);//No noticeable difference in (n=500, nn=100/30) compared to using eigen_sp_Lower_sp_RHS_cs_solve()
 					//eigen_sp_Lower_sp_RHS_cs_solve(B_[cluster_i], Identity, B_inv, true);
-					sp_mat_t D = sp_mat_t(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
+					sp_mat_t D(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 					D.setIdentity();
 					D.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(-1);
 					sp_mat_t D_inv_2 = sp_mat_t(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
