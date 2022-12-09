@@ -1248,9 +1248,9 @@ namespace GPBoost {
 			else {
 				if (dist_saved_) {
 #pragma omp for schedule(static)
-					for (int i = 0; i < (int)dist_.rows(); ++i) {
-						for (int j = i + 1; j < (int)dist_.cols(); ++j) {
-							if (dist_(i, j) < EPSILON_NUMBERS) {
+					for (int i = 0; i < (int)dist_->rows(); ++i) {
+						for (int j = i + 1; j < (int)dist_->cols(); ++j) {
+							if ((*dist_).coeffRef(i, j) < EPSILON_NUMBERS) {
 #pragma omp critical
 								{
 									has_duplicates = true;
