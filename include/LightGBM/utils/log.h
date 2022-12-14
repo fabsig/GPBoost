@@ -182,6 +182,11 @@ namespace LightGBM {
 			throw std::runtime_error(std::string(str_buf));
 		}
 
+		static LogLevelRE& GetLevelRE() {
+			static THREAD_LOCAL LogLevelRE level = LogLevelRE::Info;
+			return level;
+		}
+
 	private:
 		static void Write(LogLevel level, const char* level_str, const char* format,
 			va_list val) {
@@ -245,10 +250,6 @@ namespace LightGBM {
 		// May be not good, but avoid to use an additional cpp file
 		static LogLevel& GetLevel() {
 			static THREAD_LOCAL LogLevel level = LogLevel::Info;
-			return level;
-		}
-		static LogLevelRE& GetLevelRE() {
-			static THREAD_LOCAL LogLevelRE level = LogLevelRE::Info;
 			return level;
 		}
 		static Callback& GetLogCallBack() {
