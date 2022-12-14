@@ -607,7 +607,7 @@ namespace GPBoost {
 				}
 				approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			}
-			double approx_marginal_ll_new;
+			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t rhs, v_aux;//auxiliary variables
 			sp_mat_t Wsqrt(num_data, num_data);//diagonal matrix with square root of negative second derivatives on the diagonal (sqrt of negative Hessian of log-likelihood)
 			Wsqrt.setIdentity();
@@ -617,6 +617,7 @@ namespace GPBoost {
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
+			bool has_NA_or_Inf = false;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				if (no_fixed_effects) {
@@ -649,6 +650,7 @@ namespace GPBoost {
 					approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				}
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
@@ -677,19 +679,24 @@ namespace GPBoost {
 			if (it == MAXIT_MODE_NEWTON_) {
 				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
-			if (no_fixed_effects) {
-				CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				CalcSecondDerivNegLogLik(y_data, y_data_int, mode_.data(), num_data);
+			if (has_NA_or_Inf) {
+				approx_marginal_ll = approx_marginal_ll_new;
 			}
 			else {
-				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
+				if (no_fixed_effects) {
+					CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
+					CalcSecondDerivNegLogLik(y_data, y_data_int, mode_.data(), num_data);
+				}
+				else {
+					CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
+					CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
+				}
+				Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
+				Id_plus_Wsqrt_ZSigmaZt_Wsqrt = Id + Wsqrt * (*ZSigmaZt) * Wsqrt;
+				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
+				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
+				mode_has_been_calculated_ = true;
 			}
-			Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
-			Id_plus_Wsqrt_ZSigmaZt_Wsqrt = Id + Wsqrt * (*ZSigmaZt) * Wsqrt;
-			CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
-			approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
-			mode_has_been_calculated_ = true;
 			////Only for debugging
 			//Log::REInfo("FindModePostRandEffCalcMLLStable");
 			//Log::REInfo("Number of iterations: %d", it);
@@ -751,7 +758,7 @@ namespace GPBoost {
 			}
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-			double approx_marginal_ll_new;
+			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t diag_sqrt_ZtWZ(num_re_);//sqrt of diagonal matrix ZtWZ
 			T_mat Id(num_re_, num_re_);
 			Id.setIdentity();
@@ -759,6 +766,7 @@ namespace GPBoost {
 			vec_t rhs, v_aux;
 			int it;
 			bool terminate_optim = false;
+			bool has_NA_or_Inf = false;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -794,6 +802,7 @@ namespace GPBoost {
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
@@ -824,14 +833,19 @@ namespace GPBoost {
 			if (it == MAXIT_MODE_NEWTON_) {
 				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
-			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
-			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_sqrt_ZtWZ, true);
-			diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
-			Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
-			CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
-			approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
-			mode_has_been_calculated_ = true;
+			if (has_NA_or_Inf) {
+				approx_marginal_ll = approx_marginal_ll_new;
+			}
+			else {
+				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
+				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_sqrt_ZtWZ, true);
+				diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
+				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
+				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
+				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
+				mode_has_been_calculated_ = true;
+			}
 			////Only for debugging
 			//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale");
 			//Log::REInfo("Number of iterations: %d", it);
@@ -886,12 +900,13 @@ namespace GPBoost {
 			}
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-			double approx_marginal_ll_new;
+			double approx_marginal_ll_new = approx_marginal_ll;
 			sp_mat_t SigmaI_plus_ZtWZ;
 			vec_t rhs;
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
+			bool has_NA_or_Inf = false;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -917,6 +932,7 @@ namespace GPBoost {
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
@@ -945,13 +961,18 @@ namespace GPBoost {
 			if (it == MAXIT_MODE_NEWTON_) {
 				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
-			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
-			SigmaI_plus_ZtWZ = SigmaI + Zt * second_deriv_neg_ll_.asDiagonal() * Z;
-			SigmaI_plus_ZtWZ.makeCompressed();
-			chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
-			approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
-			mode_has_been_calculated_ = true;
+			if (has_NA_or_Inf) {
+				approx_marginal_ll = approx_marginal_ll_new;
+			}
+			else {
+				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
+				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
+				SigmaI_plus_ZtWZ = SigmaI + Zt * second_deriv_neg_ll_.asDiagonal() * Z;
+				SigmaI_plus_ZtWZ.makeCompressed();
+				chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
+				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
+				mode_has_been_calculated_ = true;
+			}
 			////Only for debugging
 			//Log::REInfo("FindModePostRandEffCalcMLLGroupedRE");
 			//Log::REInfo("Number of iterations: %d", it);
@@ -1010,12 +1031,13 @@ namespace GPBoost {
 			}
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-			double approx_marginal_ll_new;
+			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t rhs;
 			diag_SigmaI_plus_ZtWZ_ = vec_t(num_re_);
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
+			bool has_NA_or_Inf = false;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);
@@ -1045,6 +1067,7 @@ namespace GPBoost {
 				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g, mode_[0:4]: %g, %g, %g, %g, %g",
 				//	it, approx_marginal_ll, approx_marginal_ll_new, mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);//only for debugging
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
@@ -1073,12 +1096,17 @@ namespace GPBoost {
 			if (it == MAXIT_MODE_NEWTON_) {
 				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
-			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-			CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
-			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_SigmaI_plus_ZtWZ_, true);
-			diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
-			approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * num_re_ * std::log(sigma2);
-			mode_has_been_calculated_ = true;
+			if (has_NA_or_Inf) {
+				approx_marginal_ll = approx_marginal_ll_new;
+			}
+			else {
+				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
+				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_SigmaI_plus_ZtWZ_, true);
+				diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
+				approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * num_re_ * std::log(sigma2);
+				mode_has_been_calculated_ = true;
+			}
 			////Only for debugging
 			//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale");
 			//Log::REInfo("Number of iterations: %d", it);
@@ -1121,7 +1149,6 @@ namespace GPBoost {
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			sp_mat_t SigmaI = B.transpose() * D_inv * B;
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
-			double approx_marginal_ll_new;
 			sp_mat_t SigmaI_plus_W;
 			vec_t rhs, B_mode;
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
@@ -1137,9 +1164,11 @@ namespace GPBoost {
 				}
 				approx_marginal_ll = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			}
+			double approx_marginal_ll_new = approx_marginal_ll;
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
+			bool has_NA_or_Inf = false;
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				if (no_fixed_effects) {
@@ -1180,6 +1209,7 @@ namespace GPBoost {
 				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g, mode_[0:4]: %g, %g, %g, %g, %g",
 				//	it, approx_marginal_ll, approx_marginal_ll_new, mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);//only for debugging
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
@@ -1208,20 +1238,25 @@ namespace GPBoost {
 			if (it == MAXIT_MODE_NEWTON_) {
 				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
-			if (no_fixed_effects) {
-				CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				CalcSecondDerivNegLogLik(y_data, y_data_int, mode_.data(), num_data);
+			if (has_NA_or_Inf) {
+				approx_marginal_ll = approx_marginal_ll_new;
 			}
 			else {
-				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
+				if (no_fixed_effects) {
+					CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
+					CalcSecondDerivNegLogLik(y_data, y_data_int, mode_.data(), num_data);
+				}
+				else {
+					CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
+					CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
+				}
+				SigmaI_plus_W = SigmaI;
+				SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
+				SigmaI_plus_W.makeCompressed();
+				chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
+				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
+				mode_has_been_calculated_ = true;
 			}
-			SigmaI_plus_W = SigmaI;
-			SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
-			SigmaI_plus_W.makeCompressed();
-			chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
-			approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
-			mode_has_been_calculated_ = true;
 			////Only for debugging
 			//Log::REInfo("FindModePostRandEffCalcMLLVecchia");
 			//Log::REInfo("Number of iterations: %d", it);
