@@ -461,20 +461,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   test_that("not constant cluster_id's for grouped random effects ", {
     
     y <- Z1 %*% b1 + xi
-    gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids,
+    capture.output( gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids,
                            y = y,
                            params = list(optimizer_cov = "fisher_scoring", maxit=100, std_dev = TRUE,
                                          convergence_criterion = "relative_change_in_parameters"))
+                    , file='NUL')
     expected_values <- c(0.49348532, 0.02326312, 1.22299521, 0.17995161)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOL_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 6)
     
     # gradient descent
-    gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids,
+    capture.output( gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids,
                            y = y,
                            params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
                                          lr_cov = 0.1, use_nesterov_acc = FALSE, maxit = 1000,
                                          convergence_criterion = "relative_change_in_parameters"))
+                    , file='NUL')
     cov_pars_expected <- c(0.49348532, 0.02326312, 1.22299520, 0.17995161)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_expected)),TOL_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 9)
@@ -505,10 +507,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # cluster_ids can be string 
     cluster_ids_string <- paste0(as.character(cluster_ids),"_s")
-    gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids_string,
+    capture.output( gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids_string,
                            y = y,
                            params = list(optimizer_cov = "fisher_scoring", maxit=100, std_dev = TRUE,
                                          convergence_criterion = "relative_change_in_parameters"))
+                    , file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_expected)),TOL_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 6)
     # Prediction
@@ -543,7 +546,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
     # cluster_ids and random coefficients
     y <- Z1%*%b1 + Z3%*%b3 + xi
-    gp_model <- fitGPModel(group_data = group,
+    capture.output( gp_model <- fitGPModel(group_data = group,
                            cluster_ids = cluster_ids,
                            group_rand_coef_data = x,
                            ind_effect_group_rand_coef = 1,
@@ -551,6 +554,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
                                          lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 1000,
                                          convergence_criterion = "relative_change_in_parameters"))
+                    , file='NUL')
     expected_values <- c(0.4927786, 1.2565095, 1.1333656)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOL_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 14)

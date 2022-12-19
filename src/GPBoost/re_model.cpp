@@ -222,7 +222,9 @@ namespace GPBoost {
 		cov_pars_initialized_ = false;
 	}
 
-	void REModel::OptimCovPar(const double* y_data, const double* fixed_effects) {
+	void REModel::OptimCovPar(const double* y_data,
+		const double* fixed_effects,
+		bool called_in_GPBoost_algorithm) {
 		if (y_data != nullptr) {
 			InitializeCovParsIfNotDefined(y_data);
 			// Note: y_data can be null_ptr for non-Gaussian data. For non-Gaussian data, the function 'InitializeCovParsIfNotDefined' is called in 'SetY'
@@ -249,7 +251,8 @@ namespace GPBoost {
 				nullptr,
 				calc_std_dev_,
 				fixed_effects,
-				true);
+				true,
+				called_in_GPBoost_algorithm);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(y_data,
@@ -264,13 +267,16 @@ namespace GPBoost {
 				nullptr,
 				calc_std_dev_,
 				fixed_effects,
-				true);
+				true,
+				called_in_GPBoost_algorithm);
 		}
 		has_covariates_ = false;
 		covariance_matrix_has_been_factorized_ = true;
 	}
 
-	void REModel::OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates) {
+	void REModel::OptimLinRegrCoefCovPar(const double* y_data,
+		const double* covariate_data,
+		int num_covariates) {
 		InitializeCovParsIfNotDefined(y_data);
 		double* coef_ptr;;
 		if (init_coef_given_) {
@@ -305,7 +311,8 @@ namespace GPBoost {
 				std_dev_coef,
 				calc_std_dev_,
 				nullptr,
-				true);
+				true,
+				false);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(y_data,
@@ -320,7 +327,8 @@ namespace GPBoost {
 				std_dev_coef,
 				calc_std_dev_,
 				nullptr,
-				true);
+				true,
+				false);
 		}
 		has_covariates_ = true;
 		coef_given_or_estimated_ = true;
@@ -345,7 +353,8 @@ namespace GPBoost {
 				nullptr,
 				false,
 				nullptr,
-				false);//learn_covariance_parameters=false
+				false,//learn_covariance_parameters=false
+				true);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(nullptr,
@@ -360,7 +369,8 @@ namespace GPBoost {
 				nullptr,
 				false,
 				nullptr,
-				false);//learn_covariance_parameters=false
+				false,//learn_covariance_parameters=false
+				true);
 		}
 	}
 

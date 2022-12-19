@@ -169,8 +169,11 @@ namespace GPBoost {
 		*		For the GPBoost algorithm for Gaussian data, this equals F - y where F is the fitted value of the ensemble at the training data and y the response data.
 		*		For the GPBoost algorithm for non-Gaussian data, this is ignored (and can be nullptr) as the response data has been set before.
 		* \param fixed_effects Fixed effects component F of location parameter (only used for non-Gaussian data). For Gaussian data, this is ignored
+		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
 		*/
-		void OptimCovPar(const double* y_data, const double* fixed_effects);
+		void OptimCovPar(const double* y_data,
+			const double* fixed_effects,
+			bool called_in_GPBoost_algorithm);
 
 		/*!
 		* \brief Find covariance parameters and linear regression coefficients (if there are any) that minimize the (approximate) negative log-ligelihood
@@ -179,7 +182,9 @@ namespace GPBoost {
 		* \param covariate_data Covariate data (=independent variables, features)
 		* \param num_covariates Number of covariates
 		*/
-		void OptimLinRegrCoefCovPar(const double* y_data, const double* covariate_data, int num_covariates);
+		void OptimLinRegrCoefCovPar(const double* y_data,
+			const double* covariate_data,
+			int num_covariates);
 
 		/*!
 		* \brief Find constant initial value of ensenmble for boosting (used only for non-Gaussian data). 

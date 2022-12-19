@@ -146,7 +146,7 @@ namespace LightGBM {
 							hessians[i] = 1.0f;
 						}
 						if (train_gp_model_cov_pars_) {//also train covariance parameters
-							re_model_->OptimCovPar(gradients, nullptr);
+							re_model_->OptimCovPar(gradients, nullptr, true);
 							re_model_->CalcGradient(gradients, nullptr, false);//calc_cov_factor = false since this has already been done in OptimCovPar()
 						}
 						else {//don't train covariance parameters
@@ -160,7 +160,7 @@ namespace LightGBM {
 							hessians[i] = 1.0f;
 						}
 						if (train_gp_model_cov_pars_) {//also train covariance parameters
-							re_model_->OptimCovPar(nullptr, score);
+							re_model_->OptimCovPar(nullptr, score, true);
 							re_model_->CalcGradient(gradients, score, false);//calc_cov_factor = false since this has already been done in OptimCovPar()
 						}
 						else {//don't train covariance parameters

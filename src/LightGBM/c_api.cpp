@@ -2793,7 +2793,7 @@ int GPB_OptimCovPar(REModelHandle handle,
 	const double* fixed_effects) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->OptimCovPar(y_data, fixed_effects);
+	ref_remodel->OptimCovPar(y_data, fixed_effects, false);
 	API_END();
 }
 

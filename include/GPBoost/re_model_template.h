@@ -583,6 +583,7 @@ namespace GPBoost {
 		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 		* \param fixed_effects Externally provided fixed effects component of location parameter (can be nullptr, only used for non-Gaussian data)
 		* \param learn_covariance_parameters If true, covariance parameters are estimated
+		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data,
 			const double* covariate_data,
@@ -596,7 +597,8 @@ namespace GPBoost {
 			double* std_dev_coef,
 			bool calc_std_dev,
 			const double* fixed_effects,
-			bool learn_covariance_parameters) {
+			bool learn_covariance_parameters,
+			bool called_in_GPBoost_algorithm) {
 			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov_pars_) == SUPPORTED_OPTIM_COV_PAR_.end()) {
@@ -683,6 +685,9 @@ namespace GPBoost {
 					Log::REWarning("The covariate data contains no column of ones, i.e., no intercept is included.");
 				}
 				only_intercept_for_GPBoost_algo = has_intercept && num_coef_ == 1 && !learn_covariance_parameters;
+				if (only_intercept_for_GPBoost_algo) {
+					CHECK(called_in_GPBoost_algorithm);
+				}
 				if (!only_intercept_for_GPBoost_algo) {
 					Eigen::ColPivHouseholderQR<den_mat_t> qr_decomp(X_);
 					int rank = (int)qr_decomp.rank();
@@ -772,6 +777,13 @@ namespace GPBoost {
 					fixed_effects_ptr = fixed_effects_vec.data();
 				}
 			}//end if has_covariates_
+			else if(!called_in_GPBoost_algorithm && fixed_effects == nullptr) {//!has_covariates_ && !called_in_GPBoost_algorithm && fixed_effects == nullptr
+				CHECK(y_data != nullptr);
+				if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_)) {
+					Log::REWarning("There is no intercept for modeling a potential non-zero mean of the random effects. "
+						"Consider including an intercept (= a column of 1's) in the covariates 'X' " );
+				}
+			}
 			Log::REDebug("GPModel: initial parameters: ");
 			PrintTraceParameters(cov_pars, beta, has_intercept, intercept_col, loc_transf, scale_transf);
 			// Initialize optimizer:
@@ -1045,17 +1057,6 @@ namespace GPBoost {
 			if (has_covariates_) {
 				if (scale_covariables) {
 					//// transform coefficients back to original scale
-					//if (has_intercept) {
-					//	beta[intercept_col] /= scale_transf[intercept_col];
-					//}
-					//for (int icol = 0; icol < num_coef_; ++icol) {
-					//	if (!has_intercept || icol != intercept_col) {
-					//		beta[icol] /= scale_transf[icol];
-					//		if (has_intercept) {
-					//			beta[intercept_col] -= beta[icol] * loc_transf[icol];
-					//		}
-					//	}
-					//}
 					TransformBackCoef(beta, beta, has_intercept, intercept_col, loc_transf, scale_transf);
 					//transform covariates back
 					for (int icol = 0; icol < num_coef_; ++icol) {

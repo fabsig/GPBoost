@@ -65,9 +65,9 @@ test_that("Combined Gaussian process and grouped random effects model ", {
   y <- eps + xi
   # Estimation using gradient descent and Nesterov acceleration
   gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group)
-  fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
+  capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
                                      lr_cov = 0.15, use_nesterov_acc = TRUE,
-                                     acc_rate_cov = 0.8, delta_rel_conv=1E-6))
+                                     acc_rate_cov = 0.8, delta_rel_conv=1E-6)), file='NUL')
   cov_pars <- c(0.02924971, 0.09509924, 0.61463579, 0.30619763, 1.02189002, 0.25932007, 0.11327419, 0.04276286)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
   expect_equal(dim(gp_model$get_cov_pars())[2], 4)
@@ -75,8 +75,8 @@ test_that("Combined Gaussian process and grouped random effects model ", {
   expect_equal(gp_model$get_num_optim_iter(), 33)
   
   # Fisher scoring
-  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
-                         params = list(optimizer_cov = "fisher_scoring", std_dev = FALSE))
+  capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
+                         params = list(optimizer_cov = "fisher_scoring", std_dev = FALSE)), file='NUL')
   cov_pars <- c(0.02262645, 0.61471473, 1.02446559, 0.11177327)
   cov_pars_est <- as.vector(gp_model$get_cov_pars())
   expect_lt(sum(abs(cov_pars_est-cov_pars)),1E-5)
@@ -85,8 +85,8 @@ test_that("Combined Gaussian process and grouped random effects model ", {
   expect_equal(gp_model$get_num_optim_iter(), 8)
   
   # Prediction from fitted model
-  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
-                         params = list(optimizer_cov = "fisher_scoring", std_dev = FALSE))
+  capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
+                         params = list(optimizer_cov = "fisher_scoring", std_dev = FALSE)), file='NUL')
   coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
   group_test <- c(1,2,9999)
   pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
@@ -139,7 +139,7 @@ test_that("Combined GP and grouped random effects model with linear regression t
   y <- eps + X%*%beta + xi
   # Fit model
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group,
-                         y = y, X=X,
+                         y = y, X = X,
                          params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls", std_dev = TRUE))
   cov_pars <- c(0.02258493, 0.09172947, 0.61704845, 0.30681934, 1.01910740, 0.25561489, 0.11202133, 0.04174140)
   coef <- c(2.06686646, 0.34643130, 1.92847425, 0.09983966)
@@ -213,9 +213,9 @@ test_that("Combined GP and grouped random effects model with cluster_id's not co
   
   y <- eps + xi
   # Fisher scoring
-  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group,
+  capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group,
                          y = y, cluster_ids = cluster_ids,
-                         params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE))
+                         params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE)), file='NUL')
   cov_pars <- c(0.005306836, 0.087915468, 0.615012714, 0.315022228,
                 1.043024690, 0.228236254, 0.113716679, 0.039839629)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)

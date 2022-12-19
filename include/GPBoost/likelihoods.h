@@ -229,7 +229,27 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate normalizing constant for (log-)likelihood calculation
+		* \brief Determine initial value for intercept (=constant)
+		* \param y_data Response variable data
+		* \param num_data Number of data points
+		*/
+		bool ShouldHaveIntercept(const double* y_data, 
+			const data_size_t num_data) const {
+			bool ret_val = false;
+			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma") {
+				ret_val = true;
+			}
+			else {
+				double beta_zero = FindInitialIntercept(y_data, num_data_);
+				if (std::abs(beta_zero) > 0.1) {
+					ret_val = true;
+				}
+			}
+			return(ret_val);
+		}
+
+		/*!
+		* \brief Calculate normalizing constant of negative log-likelihood
 		* \param y_data Response variable data
 		* \param num_data Number of data points
 		*/
@@ -2428,7 +2448,7 @@ namespace GPBoost {
 		int MAXIT_MODE_NEWTON_ = 1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
 		double DELTA_REL_CONV_ = 1e-6;
-		/*! \brief Additional parameters for likelihoods. For gamma, auxiliary_pars_[0] = shape parameter  */
+		/*! \brief Additional parameters for likelihoods. For gamma, aux_pars_[0] = shape parameter  */
 		std::vector<double> aux_pars_;
 
 		string_t ParseLikelihoodAlias(const string_t& likelihood) {
