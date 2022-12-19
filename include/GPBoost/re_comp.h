@@ -850,10 +850,10 @@ namespace GPBoost {
 			//Calculate distances
 			T_mat dist;
 			if (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) {//compactly suported covariance
-				CalculateDistances(coords_ind_point_, coords_, true, cov_function_->taper_range_, true, dist);
+				CalculateDistances(coords_ind_point_, coords_, false, cov_function_->taper_range_, false, dist);
 			}
 			else {
-				CalculateDistances(coords_ind_point_, coords_, true, dist);
+				CalculateDistances(coords_ind_point_, coords_, false, dist);
 			}
 			dist_ = std::make_shared<T_mat>(dist);
 			dist_saved_ = true;

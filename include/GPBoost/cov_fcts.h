@@ -411,15 +411,20 @@ namespace GPBoost {
 		* \return Wendland correlation 
 		*/
 		inline double WendlandCorrelation(const double dist) const {
-			if (AreSame(shape_, 0.)) {
-				return(std::pow((1. - dist / taper_range_), taper_mu_));
-			}
-			else if (AreSame(shape_, 1.)) {
-				return(std::pow((1. - dist / taper_range_), taper_mu_ + 1.) * (1. + dist / taper_range_ * (taper_mu_ + 1.)));
-			}
-			else if (AreSame(shape_, 2.)) {
-				return(std::pow((1. - dist / taper_range_), taper_mu_ + 2.) *
-					(1. + dist / taper_range_ * (taper_mu_ + 2.) + std::pow(dist / taper_range_, 2) * (taper_mu_ * taper_mu_ + 4 * taper_mu_ + 3.) / 3.));
+			if (dist > 0) {
+				if (AreSame(shape_, 0.)) {
+					return(std::pow((1. - dist / taper_range_), taper_mu_));
+				}
+				else if (AreSame(shape_, 1.)) {
+					return(std::pow((1. - dist / taper_range_), taper_mu_ + 1.) * (1. + dist / taper_range_ * (taper_mu_ + 1.)));
+				}
+				else if (AreSame(shape_, 2.)) {
+					return(std::pow((1. - dist / taper_range_), taper_mu_ + 2.) *
+						(1. + dist / taper_range_ * (taper_mu_ + 2.) + std::pow(dist / taper_range_, 2) * (taper_mu_ * taper_mu_ + 4 * taper_mu_ + 3.) / 3.));
+				}
+				else {
+					return 0.;
+				}
 			}
 			else {
 				return 0.;

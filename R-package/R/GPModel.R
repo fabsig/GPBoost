@@ -1610,7 +1610,7 @@ gpb.GPModel <- R6::R6Class(
           outstr <- paste0(outstr,"\n")
           cat(outstr)
         }
-        cat("---------------------------------------------------\n")
+        cat("-----------------------------------------------------\n")
       }
       cat("Covariance parameters (random effects):\n")
       if (is.matrix(cov_pars)) {
@@ -1622,7 +1622,7 @@ gpb.GPModel <- R6::R6Class(
       }
       if (private$has_covariates) {
         coefs <- self$get_coef()
-        cat("---------------------------------------------------\n")
+        cat("-----------------------------------------------------\n")
         cat("Linear regression coefficients (fixed effects):\n")
         if (private$params$std_dev) {
           z_values <- coefs[1,] / coefs[2,]

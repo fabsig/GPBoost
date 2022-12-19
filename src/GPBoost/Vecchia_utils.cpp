@@ -18,33 +18,6 @@ using LightGBM::Log;
 
 namespace GPBoost {
 
-	void sort_vectors_decreasing(double* a, int* b, int n) {
-		int j, k, l;
-		double v;
-		for (j = 1; j <= n - 1; j++) {
-			k = j;
-			while (k > 0 && a[k] < a[k - 1]) {
-				v = a[k]; l = b[k];
-				a[k] = a[k - 1]; b[k] = b[k - 1];
-				a[k - 1] = v; b[k - 1] = l;
-				k--;
-			}
-		}
-	}
-
-	/*!
-	* \brief Finds the sorting index of vector v and saves it in idx
-	*/
-	template <typename T>
-	void sort_indexes(const std::vector<T>& v, std::vector<int>& idx) {
-		// initialize original index locations
-		idx.resize(v.size());
-		std::iota(idx.begin(), idx.end(), 0);
-		// sort indexes based on comparing values in v
-		std::sort(idx.begin(), idx.end(),
-			[&v](int i1, int i2) {return v[i1] < v[i2]; });
-	}
-
 	void find_nearest_neighbors_Vecchia(den_mat_t& dist, int num_data, int num_neighbors,
 		std::vector<std::vector<int>>& nearest_neighbors) {
 		CHECK((int)nearest_neighbors.size() == num_data);
@@ -71,7 +44,7 @@ namespace GPBoost {
 					if (dist(i, j) < nn_dist[num_neighbors - 1]) {
 						nn_dist[num_neighbors - 1] = dist(i, j);
 						nearest_neighbors[i][num_neighbors - 1] = j;
-						sort_vectors_decreasing(nn_dist.data(), nearest_neighbors[i].data(), num_neighbors);
+						SortVectorsDecreasing(nn_dist.data(), nearest_neighbors[i].data(), num_neighbors);
 					}
 				}
 			}
@@ -99,7 +72,7 @@ namespace GPBoost {
 			coords_sum[i] = coords(i, Eigen::all).sum();
 		}
 		std::vector<int> sort_sum(num_data);
-		sort_indexes<double>(coords_sum, sort_sum);
+		SortIndeces<double>(coords_sum, sort_sum);
 		std::vector<int> sort_inv_sum(num_data);
 #pragma omp parallel for schedule(static)
 		for (int i = 0; i < num_data; ++i) {
@@ -160,7 +133,7 @@ namespace GPBoost {
 								if (sed < nn_square_dist[num_neighbors - 1]) {
 									nn_square_dist[num_neighbors - 1] = sed;
 									nearest_neighbors[i - start_at][num_neighbors - 1] = sort_inv_sum[down_i];
-									sort_vectors_decreasing(nn_square_dist.data(), nearest_neighbors[i - start_at].data(), num_neighbors);
+									SortVectorsDecreasing(nn_square_dist.data(), nearest_neighbors[i - start_at].data(), num_neighbors);
 								}
 							}
 						}
@@ -178,7 +151,7 @@ namespace GPBoost {
 								if (sed < nn_square_dist[num_neighbors - 1]) {
 									nn_square_dist[num_neighbors - 1] = sed;
 									nearest_neighbors[i - start_at][num_neighbors - 1] = sort_inv_sum[up_i];
-									sort_vectors_decreasing(nn_square_dist.data(), nearest_neighbors[i - start_at].data(), num_neighbors);
+									SortVectorsDecreasing(nn_square_dist.data(), nearest_neighbors[i - start_at].data(), num_neighbors);
 								}
 							}
 						}

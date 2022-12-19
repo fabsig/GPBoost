@@ -44,7 +44,33 @@ namespace GPBoost {
 		else {
 			return -INFINITY;
 		}
-	}
+	};
+
+	/*!
+	* \brief Finds the sorting index of vector v and saves it in idx
+	* \param v Vector with values
+	* \param idx Vector where sorting index is written to
+	*/
+	template <typename T>
+	void SortIndeces(const std::vector<T>& v,
+		std::vector<int>& idx) {
+		// initialize original index locations
+		idx.resize(v.size());
+		std::iota(idx.begin(), idx.end(), 0);
+		// sort indexes based on comparing values in v
+		std::sort(idx.begin(), idx.end(),
+			[&v](int i1, int i2) {return v[i1] < v[i2]; });
+	};
+
+	/*!
+	* \brief Sorts vectors a and b of length n based on decreasing values of a (source: suplementary code of Finley et al., 2019, JASA)
+	* \param a Vector which determines sorting order and which is also ordered
+	* \param b Vector which is ordered based on order in a
+	* \param n Length of vectors
+	*/
+	void SortVectorsDecreasing(double* a,
+		int* b,
+		int n);
 
 }  // namespace GPBoost
 

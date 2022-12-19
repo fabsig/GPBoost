@@ -4910,7 +4910,7 @@ class GPModel(object):
         >>> gp_model.summary()
         """
         cov_pars = self.get_cov_pars(format_pandas=True)
-        print("===================================================")
+        print("=====================================================")
         if self.model_fitted:
             print("Model summary:")
             ll = -self.get_current_neg_log_likelihood()
@@ -4932,11 +4932,11 @@ class GPModel(object):
                         outstr = outstr + ", "
                     outstr = outstr + str(self.nb_groups[i]) + " (" + self.re_comp_names[i] + ")"
                 print(outstr)
-            print("---------------------------------------------------")
+            print("-----------------------------------------------------")
         print("Covariance parameters (random effects):")
         print(round(cov_pars.transpose(),4))
         if self.has_covariates:
-            print("---------------------------------------------------")
+            print("-----------------------------------------------------")
             print("Linear regression coefficients (fixed effects):")
             coefs = self.get_coef(format_pandas=True)
             if self.params["std_dev"]:
@@ -4949,7 +4949,7 @@ class GPModel(object):
                print(round(coefs.transpose(),4))
         if self.params["maxit"] == self._get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
             print("Note: no convergence after the maximal number of iterations")
-        print("===================================================")
+        print("=====================================================")
         return self
 
     def predict(self,
