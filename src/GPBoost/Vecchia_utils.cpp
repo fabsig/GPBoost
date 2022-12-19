@@ -15,7 +15,6 @@
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
 
-
 namespace GPBoost {
 
 	void find_nearest_neighbors_Vecchia(den_mat_t& dist, int num_data, int num_neighbors,

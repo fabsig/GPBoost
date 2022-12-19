@@ -906,23 +906,13 @@ test_that("Binary classification with linear predictor and grouped random effect
   probs <- pnorm(Z1 %*% b_gr_1 + X%*%beta)
   y <- as.numeric(sim_rand_unif(n=n, init_c=0.542) < probs)
   
-  # Estimation using gradient descent
-  gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
-  fit(gp_model, y = y, X=X, params = list(optimizer_cov = "gradient_descent",
-                                          optimizer_coef = "gradient_descent", 
-                                          use_nesterov_acc = FALSE, lr_cov = 0.05, lr_coef = 1))
-  cov_pars <- c(0.408371)
-  coef <- c(-0.1113766, 1.5182602)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
-  expect_equal(gp_model$get_num_optim_iter(), 52)
   # Estimation using gradient descent and Nesterov acceleration
   gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
                          y = y, X=X, params = list(optimizer_cov = "gradient_descent",
                                                    optimizer_coef = "gradient_descent", lr_cov = 0.05, lr_coef = 1,
                                                    use_nesterov_acc = TRUE, acc_rate_cov = 0.2, acc_rate_coef = 0.1))
-  cov_pars <- c(0.4072038)
-  coef <- c(-0.1113238, 1.5178344)
+  cov_pars <- c(0.4072025)
+  coef <- c(-0.1113238, 1.5178339)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
   expect_equal(gp_model$get_num_optim_iter(), 43)
@@ -931,11 +921,11 @@ test_that("Binary classification with linear predictor and grouped random effect
   gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
                          y = y, X=X, params = list(optimizer_cov = "nelder_mead",
                                                    optimizer_coef = "nelder_mead", delta_rel_conv=1e-12))
-  cov_pars <- c(0.3999745)
-  coef <- c(-0.1109537, 1.5149593)
+  cov_pars <- c(0.399973)
+  coef <- c(-0.1109516, 1.5149596)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
-  expect_equal(gp_model$get_num_optim_iter(), 178)
+  expect_equal(gp_model$get_num_optim_iter(), 188)
   
   # # Estimation using BFGS
   # Does not converge to correct solution (version 0.7.2, 21.02.2022)
@@ -957,13 +947,14 @@ test_that("Binary classification with linear predictor and grouped random effect
   group_test <- c(1,3,3,9999)
   pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
                   predict_cov_mat = TRUE, predict_response = FALSE)
-  expected_mu <- c(-0.81132177, -0.08574621, 0.21768660, 1.40591471)
-  expected_cov <- c(0.1380239, 0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.1688251, 0.1688251, 0.0000000, 0.0000000, 0.1688251, 0.1688251, 0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.4051196)
+  expected_mu <- c(-0.81132150, -0.08574588, 0.21768684, 1.40591430)
+  expected_cov <- c(0.1380238, 0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.1688248, 0.1688248, 
+                    0.0000000, 0.0000000, 0.1688248, 0.1688248, 0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.4051185)
   expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
   # Predict response
   pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, predict_response = TRUE)
-  expected_mu <- c(0.2234684, 0.4683921, 0.5797885, 0.8821984)
+  expected_mu <- c(0.2234684, 0.4683923, 0.5797886, 0.8821984)
   expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
   
   # Predict training data random effects
@@ -981,8 +972,8 @@ test_that("Binary classification with linear predictor and grouped random effect
                                                                    optimizer_coef = "gradient_descent", 
                                                                    use_nesterov_acc = TRUE, lr_cov = 0.1, lr_coef = 1)),
                   file='NUL')
-  cov_pars <- c(0.4004722 )
-  coef <- c(-0.1112265, 0.2565839, 1.5155559, 0.2636460)
+  cov_pars <- c(0.4006247)
+  coef <- c(-0.1112284, 0.2566224, 1.5160319, 0.2636918)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
   
@@ -1010,17 +1001,17 @@ test_that("Binary classification with linear predictor and grouped random effect
                            y = y_L, X=X_L, params = list(optimizer_cov = "gradient_descent",
                                                          optimizer_coef = "gradient_descent", lr_cov = 0.05, lr_coef = 0.1,
                                                          use_nesterov_acc = TRUE))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9771949)),TOLERANCE)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.09784701, 1.99437261))),TOLERANCE)
-    expect_equal(gp_model$get_num_optim_iter(), 6)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9758361)),TOLERANCE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.09815202, 1.99443574))),TOLERANCE)
+    expect_equal(gp_model$get_num_optim_iter(), 7)
     
     # Estimation using Nelder-Mead
     gp_model <- fitGPModel(group_data = group_L, likelihood = "bernoulli_probit",
                            y = y_L, X=X_L, params = list(optimizer_cov = "nelder_mead",
                                                          optimizer_coef = "nelder_mead"))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9812891)),TOLERANCE)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.09880008, 1.99563966))),TOLERANCE)
-    expect_equal(gp_model$get_num_optim_iter(), 117)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9712287)),TOLERANCE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.09758098, 1.99473498))),TOLERANCE)
+    expect_equal(gp_model$get_num_optim_iter(), 109)
   }
   
 })
@@ -1034,17 +1025,17 @@ test_that("Binary classification with linear predictor and Gaussian process mode
                          y = y, X=X, params = list(optimizer_cov = "gradient_descent",
                                                    optimizer_coef = "gradient_descent",
                                                    use_nesterov_acc = TRUE, lr_cov=0.1, lr_coef = 0.1, maxit=100))
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.2665345, 0.2855689))),TOLERANCE)
-  expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.203884, 1.466401))),TOLERANCE)
-  expect_equal(gp_model$get_num_optim_iter(), 17)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.3992407, 0.261976))),TOLERANCE)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.2764603, 1.5556477))),TOLERANCE)
+  expect_equal(gp_model$get_num_optim_iter(), 11)
   
   # Prediction
   coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
   X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
   pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                   predict_var = TRUE, predict_response = FALSE)
-  expected_mu <- c(-0.7241663, 0.2901968, 2.5453020)
-  expected_var <- c(0.7541041, 0.7511734, 0.4414069)
+  expected_mu <- c(-0.7480014, 0.3297389, 2.7039005)
+  expected_var <- c(0.8596074, 0.8574038, 0.5016189)
   expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
   expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
   
@@ -1052,9 +1043,9 @@ test_that("Binary classification with linear predictor and Gaussian process mode
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
                          y = y, X=X, params = list(optimizer_cov = "nelder_mead",
                                                    optimizer_coef = "nelder_mead", maxit=1000, delta_rel_conv=1e-12))
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.271740, 0.287552 ))),TOLERANCE)
-  expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.199947, 1.466620 ))),TOLERANCE)
-  expect_equal(gp_model$get_num_optim_iter(), 343)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.2717516, 0.2875537))),TOLERANCE)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.1999365, 1.4666199))),TOLERANCE)
+  expect_equal(gp_model$get_num_optim_iter(), 325)
   
   # Standard deviations
   capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit", 
@@ -1062,7 +1053,7 @@ test_that("Binary classification with linear predictor and Gaussian process mode
                                                                    optimizer_coef = "gradient_descent", 
                                                                    use_nesterov_acc = TRUE, lr_cov = 0.1, lr_coef = 0.1, maxit=100)),
                   file='NUL')
-  coef <- c(0.2038840, 0.5404603, 1.4664012, 0.3028299)
+  coef <- c(0.2764603, 0.5420554, 1.5556477, 0.3146670)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
   
 })
@@ -1176,6 +1167,19 @@ test_that("Poisson regression ", {
   # Evaluate approximate negative marginal log-likelihood
   nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
   expect_lt(abs(nll-195.03708036),TOLERANCE2)
+  
+  ## Grouped random effects model with a linear predictor
+  mu_lin <- exp(Z1 %*% b_gr_1 + X%*%beta)
+  y_lin <- qpois(sim_rand_unif(n=n, init_c=0.84532), lambda = mu_lin)
+  gp_model <- fitGPModel(group_data = group, likelihood = "poisson",
+                         y = y_lin, X=X, params = list(optimizer_cov = "gradient_descent",
+                                                   optimizer_coef = "gradient_descent", lr_cov = 0.1, lr_coef = 0.1,
+                                                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5))
+  cov_pars <- c(0.2993371)
+  coef <- c(-0.1526089, 2.1267601)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
+  expect_equal(gp_model$get_num_optim_iter(), 29)
 })
 
 
@@ -1253,6 +1257,19 @@ test_that("Gamma regression ", {
   # Evaluate approximate negative marginal log-likelihood
   nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
   expect_lt(abs(nll-154.4561783),TOLERANCE2)
+  
+  ## Grouped random effects model with a linear predictor
+  mu_lin <- exp(Z1 %*% b_gr_1 + X%*%beta)
+  y_lin <- qgamma(sim_rand_unif(n=n, init_c=0.532), scale = mu_lin/shape, shape = shape)
+  gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
+                         y = y_lin, X=X, params = list(optimizer_cov = "gradient_descent",
+                                                       optimizer_coef = "gradient_descent", lr_cov = 0.1, lr_coef = 0.1,
+                                                       use_nesterov_acc = TRUE, acc_rate_cov = 0.5))
+  cov_pars <- c(0.474273)
+  coef <- c(-0.07802971, 1.89766436)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
+  expect_equal(gp_model$get_num_optim_iter(), 11)
 })
 
 

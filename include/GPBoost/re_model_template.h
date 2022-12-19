@@ -755,14 +755,15 @@ namespace GPBoost {
 				}
 				if (init_coef == nullptr || only_intercept_for_GPBoost_algo) {
 					if (has_intercept) {
+						double tot_var = GetTotalVarComps(cov_pars);
 						if (y_data == nullptr) {
 							vec_t y_aux_temp(num_data_);
 							GetY(y_aux_temp.data());
-							beta[intercept_col] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_aux_temp.data(), num_data_);
+							beta[intercept_col] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_aux_temp.data(), num_data_, tot_var);
 							y_aux_temp.resize(0);
 						}
 						else {
-							beta[intercept_col] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_);
+							beta[intercept_col] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_, tot_var);
 						}
 					}
 				}
@@ -779,7 +780,8 @@ namespace GPBoost {
 			}//end if has_covariates_
 			else if(!called_in_GPBoost_algorithm && fixed_effects == nullptr) {//!has_covariates_ && !called_in_GPBoost_algorithm && fixed_effects == nullptr
 				CHECK(y_data != nullptr);
-				if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_)) {
+				double tot_var = GetTotalVarComps(cov_pars);
+				if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_, tot_var)) {
 					Log::REWarning("There is no intercept for modeling a potential non-zero mean of the random effects. "
 						"Consider including an intercept (= a column of 1's) in the covariates 'X' " );
 				}
@@ -4040,6 +4042,25 @@ namespace GPBoost {
 					re_comps_[cluster_i][j]->SetCovPars(pars);
 				}
 			}
+		}
+
+		/*!
+		* \brief Calculate the total variance of all random effects
+		*		Note: for random coefficients processes, we ignore the covariates and simply use the marginal variance for simplicity (this function is used for calling 'FindInitialIntercept' for non-Gaussian data)
+		* \param cov_pars Covariance parameters
+		*/
+		double GetTotalVarComps(const vec_t& cov_pars) {
+			CHECK(cov_pars.size() == num_cov_par_);
+			vec_t cov_pars_orig;
+			TransformBackCovPars(cov_pars, cov_pars_orig);
+			double tot_var = 0.;
+			for (int j = 0; j < num_comps_total_; ++j) {
+				tot_var += cov_pars_orig[ind_par_[j]];
+			}
+			if (gauss_likelihood_) {
+				tot_var += cov_pars_orig[0];
+			}
+			return(tot_var);
 		}
 
 		/*!

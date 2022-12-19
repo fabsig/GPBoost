@@ -53,6 +53,29 @@ namespace GPBoost {
 	*/
 	double normalLogCDF(double value);
 
+	/*!
+	* \brief Quantile function of a normal distribution
+	* \param p Probability for which the quantile is calculated
+	* source: https://gist.github.com/kmpm/1211922/6b7fcd0155b23c3dc71e6f4969f2c48785371292 and http://www.wilmott.com/messageview.cfm?catid=10&threadid=38771
+	*
+	*     For small to moderate probabilities, algorithm referenced
+	*     below is used to obtain an initial approximation which is
+	*     polished with a final Newton step.
+	*
+	*     For very large arguments, an algorithm of Wichura is used.
+	*
+	*  REFERENCE
+	*
+	*     Beasley, J. D. and S. G. Springer (1977).
+	*     Algorithm AS 111: The percentage points of the normal distribution,
+	*     Applied Statistics, 26, 118-121.
+	*
+	*      Wichura, M.J. (1988).
+	*      Algorithm AS 241: The Percentage Points of the Normal Distribution.
+	*      Applied Statistics, 37, 477-484.
+	*/
+	double normalQF(double p);
+
 }  // namespace GPBoost
 
 #endif   // GPB_DF_UTIL_H_

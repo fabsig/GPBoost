@@ -5,6 +5,15 @@
 * Copyright (c) 2020 Fabio Sigrist. All rights reserved.
 *
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
+* 
+* 
+*  EXPLANATIONS ON PARAMETERIZATIONS USED
+* 
+* For a "gamma" likelihood, the following density is used:
+*	f(y) = lambda^gamma / Gamma(gamma) * y^(gamma - 1) * exp(-lambda * y)
+*		- lambda = gamma * exp(-location_par) (i.e., mean(y) = exp(-location_par)
+*		- lambda = rate parameter, gamma = rate parameter, location_par = random plus fixed effects
+*		
 */
 #ifndef GPB_LIKELIHOODS_
 #define GPB_LIKELIHOODS_
@@ -192,8 +201,12 @@ namespace GPBoost {
 		* \brief Determine initial value for intercept (=constant)
 		* \param y_data Response variable data
 		* \param num_data Number of data points
+		* param rand_eff_var Variance of random effects
 		*/
-		double FindInitialIntercept(const double* y_data, const data_size_t num_data) const {
+		double FindInitialIntercept(const double* y_data, 
+			const data_size_t num_data,
+			double rand_eff_var) const {
+			CHECK(rand_eff_var > 0.);
 			double init_intercept = 0.;
 			if (likelihood_type_ == "gaussian") {
 #pragma omp parallel for schedule(static) reduction(+:init_intercept)
@@ -211,7 +224,12 @@ namespace GPBoost {
 				pavg /= num_data;
 				pavg = std::min(pavg, 1.0 - 1e-15);
 				pavg = std::max<double>(pavg, 1e-15);
-				init_intercept = std::log(pavg / (1.0 - pavg));
+				if (likelihood_type_ == "bernoulli_logit") {
+					init_intercept = std::log(pavg / (1.0 - pavg));
+				}
+				else {
+					init_intercept = normalQF(pavg);
+				}
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma") {
 				double avg = 0.;
@@ -220,7 +238,7 @@ namespace GPBoost {
 					avg += y_data[i];
 				}
 				avg /= num_data;
-				init_intercept = SafeLog(avg);
+				init_intercept = SafeLog(avg) - 0.5 * rand_eff_var; // log-normal distribution: mean of exp(beta_0 + Zb) = exp(beta_0 + 0.5 * sigma^2) => use beta_0 = mean(y) - 0.5 * sigma^2
 			}
 			else {
 				Log::REFatal("FindInitialIntercept: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
@@ -232,15 +250,17 @@ namespace GPBoost {
 		* \brief Determine initial value for intercept (=constant)
 		* \param y_data Response variable data
 		* \param num_data Number of data points
+		* \param rand_eff_var Variance of random effects
 		*/
 		bool ShouldHaveIntercept(const double* y_data, 
-			const data_size_t num_data) const {
+			const data_size_t num_data,
+			double rand_eff_var) const {
 			bool ret_val = false;
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma") {
 				ret_val = true;
 			}
 			else {
-				double beta_zero = FindInitialIntercept(y_data, num_data_);
+				double beta_zero = FindInitialIntercept(y_data, num_data, rand_eff_var);
 				if (std::abs(beta_zero) > 0.1) {
 					ret_val = true;
 				}
