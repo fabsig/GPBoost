@@ -35,39 +35,62 @@ Only random effects with random slopes can be dropped.}
 Gaussian process random coefficients}
 
 \item{cov_function}{A \code{string} specifying the covariance function for the Gaussian process. 
-The following covariance functions are available:
-"exponential", "gaussian", "matern", "powered_exponential", "wendland", and "exponential_tapered".
+Available options:
+"exponential", "gaussian", "matern", "powered_exponential", "wendland"
 For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization of Diggle and Ribeiro (2007).
 For "matern", we follow the notation of Rassmusen and Williams (2006).
-For "wendland", we follow the notation of Bevilacqua et al. (2019).
-A covariance function with the suffix "_tapered" refers to a covariance function that is multiplied by 
-a compactly supported Wendland covariance function (= tapering)}
+For "wendland", we follow the notation of Bevilacqua et al. (2019, AOS)}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
-(=smoothness parameter for Matern and Wendland covariance). For the Wendland covariance function, 
-we follow the notation of Bevilacqua et al. (2019)). 
+(=smoothness parameter for Matern covariance)  
 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian}
 
-\item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter of the Wendland covariance function / taper. 
-We follow the notation of Bevilacqua et al. (2019)}
+\item{gp_approx}{A \code{string} specifying the large data approximation
+for Gaussian processes. Available options: 
+\itemize{
+\item{"none"}{ No approximation }
+\item{"vecchia"}{ A Vecchia approximation; see Sigrist (2022, JMLR for more details) }
+\item{"tapering"}{ The covariance function is multiplied by 
+a compactly supported Wendland correlation function }
+}}
 
-\item{vecchia_approx}{A \code{boolean}. If TRUE, the Vecchia approximation is used}
+\item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter 
+of the Wendland covariance function and Wendland correlation taper function. 
+We follow the notation of Bevilacqua et al. (2019, AOS)}
+
+\item{cov_fct_taper_shape}{A \code{numeric} specifying the shape (=smoothness) parameter 
+of the Wendland covariance function and Wendland correlation taper function. 
+We follow the notation of Bevilacqua et al. (2019, AOS)}
 
 \item{num_neighbors}{An \code{integer} specifying the number of neighbors for the Vecchia approximation}
 
 \item{vecchia_ordering}{A \code{string} specifying the ordering used in the Vecchia approximation. 
-"none" means the default ordering is used, "random" uses a random ordering}
+Available options:
+#' \itemize{
+\item{"none"} { the default ordering in the data is used }
+\item{"random"} { a random ordering }
+}}
+
+\item{num_ind_points}{An \code{integer} specifying the number of inducing 
+points / knots for, e.g., a predictive process approximation}
+
+\item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices
+Available options:
+\itemize{
+\item{"cholesky"}{ Cholesky factorization }
+}}
+
+\item{seed}{An \code{integer} specifying the seed used for model creation 
+(e.g., random ordering in Vecchia approximation)}
 
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
-Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
-The following options are available:
+Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only"
+Available options:
 \itemize{
 \item{"order_obs_first_cond_obs_only"}{ Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are only observed training data points. 
-This option is only available for Gaussian likelihoods }
+ordered first and the neighbors are only observed training data points }
 \item{"order_obs_first_cond_all"}{ Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are selected among all points (training + prediction). 
-This option is only available for Gaussian likelihoods }
+ordered first and the neighbors are selected among all points (training + prediction) }
 \item{"latent_order_obs_first_cond_obs_only"}{ Vecchia approximation for the latent process and observed data is 
 ordered first and neighbors are only observed points}
 \item{"latent_order_obs_first_cond_all"}{ Vecchia approximation 
@@ -77,7 +100,7 @@ ordered first for making predictions. This option is only available for Gaussian
 }}
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-for making predictions (default value if NULL: num_neighbors_pred = num_neighbors)}
+for making predictions. Default value if NULL: num_neighbors_pred = num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
 checking convergence in conjugate gradient algorithm when being used for prediction}
@@ -162,6 +185,8 @@ predictive covariance is calculated in addition to the (posterior) predictive me
 
 \item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
 predictive variances are calculated}
+
+\item{vecchia_approx}{This is discontinued. Use the argument \code{gp_approx} instead}
 }
 \description{
 Parameter docs shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}

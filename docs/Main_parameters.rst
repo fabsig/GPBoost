@@ -134,37 +134,79 @@ Model specification parameters
 
 -  ``cov_function`` : string, (default = ``exponential``)
 
-   -  Covariance function for the Gaussian process. The following covariance functions are available: ``exponential``, ``gaussian``, ``matern``, ``powered_exponential``, ``wendland``, ``exponential_tapered``. For ``exponential``, ``gaussian``, and ``powered_exponential``, we follow the notation and parametrization of Diggle and Ribeiro (2007). For ``matern``, we follow the notation of Rassmusen and Williams (2006). For ``wendland``, we follow the notation of Bevilacqua et al. (2019). A covariance function with the suffix ``_tapered`` refers to a covariance function that is multiplied by a compactly supported Wendland covariance function (= tapering)
+   -  Covariance function for the Gaussian process. The following covariance functions are available: ``exponential``, ``gaussian``, ``matern``, ``powered_exponential``, ``wendland``, ``exponential_tapered``. For ``exponential``, ``gaussian``, and ``powered_exponential``, we follow the notation and parametrization of Diggle and Ribeiro (2007). For ``matern``, we follow the notation of Rassmusen and Williams (2006). For ``wendland``, we follow the notation of Bevilacqua et al. (2019, AOS). A covariance function with the suffix ``_tapered`` refers to a covariance function that is multiplied by a compactly supported Wendland covariance function (= tapering)
 
--  ``cov_fct_shape`` : double, (default = 0.)
+-  ``cov_fct_shape`` : double, (default = 0.5)
 
-   -  Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance). For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2019). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
+   -  Shape parameter of the covariance function (=smoothness parameter for Matern covariance). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
+
+-  ``gp_approx`` : string, (default = ``none``)
+
+   -  Specifies the use of a large data approximation for Gaussian processes. Available options:
+
+      - ``none`` : No approximation
+
+      - ``vecchia`` : A Vecchia approximation; see Sigrist (2022, JMLR for more details)
+
+      - ``tapering`` : The covariance function is multiplied by a compactly supported Wendland correlation function
 
 -  ``cov_fct_taper_range`` : double, (default = 1.)
 
-   -  Range parameter of the Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2019).
+   -  Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 
--  ``vecchia_approx`` : bool, (default = False)
+-  ``cov_fct_taper_shape`` : double, (default = 0.)
 
-   -  If true, the Vecchia approximation is used
+   -  Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 
 -  ``num_neighbors`` : integer, (default = 30)
 
    -  Number of neighbors for the Vecchia approximation
 
--  ``vecchia_ordering`` : string, (default = ``none``)
+-  ``vecchia_ordering`` : string, (default = ``random``)
 
-   -  Ordering used in the Vecchia approximation. ``none`` means the default ordering is used, ``random`` uses a random ordering
+   -  Ordering used in the Vecchia approximation. Available options: 
 
--  ``vecchia_pred_type`` : string, (default = ``order_obs_first_cond_obs_only``)
+      - ``none``: the default ordering in the data is used
 
-   -  Type of Vecchia approximation used for making predictions.
+      - ``random``: a random ordering
 
-   -  ``order_obs_first_cond_obs_only`` = observed data is ordered first and the neighbors are only observed points, ``order_obs_first_cond_all`` = observed data is ordered first and the neighbors are selected among all points (observed + predicted), ``order_pred_first`` = predicted data is ordered first for making predictions, ``latent_order_obs_first_cond_obs_only`` = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, ``latent_order_obs_first_cond_all`` = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
+-  ``vecchia_pred_type`` : string, (default = Null)
 
--  ``num_neighbors_pred`` : integer or Null, (default = Null)
+   -  Type of Vecchia approximation used for making predictions
 
-   -  Number of neighbors for the Vecchia approximation for making predictions
+   - Default value if ``vecchia_pred_type`` = Null : ``order_obs_first_cond_obs_only``
+
+   - Available options:
+
+      -  ``order_obs_first_cond_obs_only`` : observed data is ordered first and the neighbors are only observed points
+
+      - ``order_obs_first_cond_all`` : observed data is ordered first and the neighbors are selected among all points (observed + predicted)
+
+      - ``latent_order_obs_first_cond_obs_only`` : Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points
+
+      - ``latent_order_obs_first_cond_all`` : Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
+
+      - ``order_pred_first`` : predicted data is ordered first for making predictions. This option is only available for Gaussian likelihoods
+
+-  ``num_neighbors_pred`` : integer, (default = Null)
+
+   - Number of neighbors for the Vecchia approximation for making predictions. 
+
+   - Default value if ``num_neighbors_pred`` = Null: ``num_neighbors_pred`` = ``num_neighbors``
+
+-  ``num_ind_points`` : integer, (default = 500)
+
+   -  Number of inducing points / knots for, e.g., a predictive process approximation
+
+-  ``matrix_inversion_method`` : string, (default = ``cholesky``)
+
+   -  Method used for inverting covariance matrices. Available options:
+
+      -  ``cholesky`` : Cholesky factorization
+
+-  ``seed`` : integer, (default = 0)
+
+   -  The seed used for model creation (e.g., random ordering in Vecchia approximation)
 
 -  ``cluster_ids`` : one dimensional numpy array (vector) with integer data or Null, (default = Null)
 

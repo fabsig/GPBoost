@@ -2694,13 +2694,17 @@ int GPB_CreateREModel(int32_t num_data,
 	int32_t num_gp_rand_coef,
 	const char* cov_fct,
 	double cov_fct_shape,
+	const char* gp_approx,
 	double cov_fct_taper_range,
-	bool vecchia_approx,
+	double cov_fct_taper_shape,
 	int num_neighbors,
 	const char* vecchia_ordering,
 	const char* vecchia_pred_type,
 	int num_neighbors_pred,
+	int num_ind_points,
 	const char* likelihood,
+	const char* matrix_inversion_method,
+	int seed,
 	REModelHandle* out) {
 	API_BEGIN();
 	std::unique_ptr<REModel> ret;
@@ -2719,13 +2723,17 @@ int GPB_CreateREModel(int32_t num_data,
 		num_gp_rand_coef,
 		cov_fct,
 		cov_fct_shape,
+		gp_approx,
 		cov_fct_taper_range,
-		vecchia_approx,
+		cov_fct_taper_shape,
 		num_neighbors,
 		vecchia_ordering,
 		vecchia_pred_type,
 		num_neighbors_pred,
-		likelihood));
+		num_ind_points,
+		likelihood,
+		matrix_inversion_method,
+		seed));
 	*out = ret.release();
 	API_END();
 }
@@ -2754,12 +2762,14 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	double lr_coef,
 	double acc_rate_coef,
 	const char* optimizer_coef,
-	const char* matrix_inversion_method,
 	int cg_max_num_it,
 	int cg_max_num_it_tridiag,
 	double cg_delta_conv,
 	int num_rand_vec_trace,
-	bool reuse_rand_vec_trace) {
+	bool reuse_rand_vec_trace,
+	const char* cg_preconditioner_type,
+	int seed_rand_vec_trace,
+	int piv_chol_rank) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetOptimConfig(init_cov_pars,
@@ -2779,12 +2789,14 @@ int GPB_SetOptimConfig(REModelHandle handle,
 		lr_coef,
 		acc_rate_coef,
 		optimizer_coef,
-		matrix_inversion_method,
 		cg_max_num_it,
 		cg_max_num_it_tridiag,
 		cg_delta_conv,
 		num_rand_vec_trace,
-		reuse_rand_vec_trace);
+		reuse_rand_vec_trace,
+		cg_preconditioner_type,
+		seed_rand_vec_trace,
+		piv_chol_rank);
 	API_END();
 }
 

@@ -335,10 +335,11 @@ library(gridExtra)
 plot1 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=b_1_test),aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + 
   ggtitle("True latent GP and training locations") + 
-  geom_point(data = data.frame(s_1=coords_train[,1],s_2=coords_train[,2],y=y_train),aes(x=s_1,y=s_2),size=3, col="white", alpha=1, shape=43)
-plot2 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=pred$mu),aes(x=s_1,y=s_2,color=b)) +
+  geom_point(data = data.frame(s_1=coords_train[,1], s_2=coords_train[,2],y=y_train), 
+             aes(x=s_1,y=s_2), size=3, col="white", alpha=1, shape=43)
+plot2 <- ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], b=pred$mu), aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + ggtitle("Predicted latent GP mean")
-plot3 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=sqrt(pred$var)),aes(x=s_1,y=s_2,color=b)) +
+plot3 <- ggplot(data = data.frame(s_1=coords_test[,1] ,s_2=coords_test[,2], b=sqrt(pred$var)), aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + 
   labs(title="Predicted latent GP standard deviation", subtitle=" = prediction uncertainty")
 grid.arrange(plot1, plot2, plot3, ncol=2)
@@ -360,20 +361,27 @@ summary(gp_model)
 
 #--------------------Gaussian process model with Vecchia approximation----------------
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential", 
-                       vecchia_approx = TRUE, num_neighbors = 30, y = y_train,
+                       gp_approx = "vecchia", num_neighbors = 30, y = y_train,
                        likelihood = likelihood)
 summary(gp_model)
 # Prediction: setting 'num_neighbors_pred' to a larger value than 'num_neighbors' for training
 #   can lead to better predictions
 pred_vecchia <- predict(gp_model, gp_coords_pred = coords_test, num_neighbors_pred = 100,
                 predict_var = TRUE, predict_response = FALSE)
-ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=pred_vecchia$mu),aes(x=s_1,y=s_2,color=b)) +
-  geom_point(size=8, shape=15) + scale_color_viridis(option = "B") + ggtitle("Predicted latent GP mean with Vecchia approxmation")
+ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], 
+                         b=pred_vecchia$mu), aes(x=s_1,y=s_2,color=b)) +
+  geom_point(size=8, shape=15) + scale_color_viridis(option = "B") + 
+  ggtitle("Predicted latent GP mean with Vecchia approxmation")
 
+#--------------------Gaussian process model with tapering applied----------------
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential", 
+                       gp_approx = "tapering", cov_fct_taper_shape = 0., cov_fct_taper_range = 0.5, 
+                       y = y_train, likelihood = likelihood)
+summary(gp_model)
 
 #--------------------Gaussian process model with Wendland covariance function----------------
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "wendland", 
-                       cov_fct_shape=1, cov_fct_taper_range=0.1, y = y_train,
+                       cov_fct_taper_shape = 1, cov_fct_taper_range = 0.1, y = y_train,
                        likelihood = likelihood)
 summary(gp_model)
 

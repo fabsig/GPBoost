@@ -349,7 +349,7 @@ gp_model.summary()
 
 # --------------------Gaussian process model with Vecchia approximation----------------
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
-                       vecchia_approx=True, num_neighbors=30, likelihood=likelihood)
+                       gp_approx = "vecchia", num_neighbors=30, likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
 # Prediction: setting 'num_neighbors_pred' to a larger value than 'num_neighbors' for training
@@ -361,9 +361,16 @@ plt.contourf(coords_test_x1, coords_test_x2, pred_vecchia)
 plt.title("Predicted latent GP mean with Vecchia approxmation")
 plt.show(block=False)
 
+#--------------------Gaussian process model with tapering applied----------------
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+                       gp_approx = "tapering", cov_fct_taper_shape=0., 
+                       cov_fct_taper_range=0.5, likelihood=likelihood)
+gp_model.fit(y=y_train)
+gp_model.summary()
+
 #--------------------Gaussian process model with Wendland covariance function----------------
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="wendland",
-                       cov_fct_shape=1, cov_fct_taper_range=0.1, likelihood=likelihood)
+                       cov_fct_taper_shape=1, cov_fct_taper_range=0.1, likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
 

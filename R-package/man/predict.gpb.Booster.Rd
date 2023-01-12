@@ -11,7 +11,7 @@
   gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
   cluster_ids_pred = NULL, vecchia_pred_type = NULL,
   num_neighbors_pred = -1, predict_cov_mat = FALSE, predict_var = FALSE,
-  ignore_gp_model = FALSE, rawscore = NULL, ...)
+  cov_pars = NULL, ignore_gp_model = FALSE, rawscore = NULL, ...)
 }
 \arguments{
 \item{object}{Object of class \code{gpb.Booster}}
@@ -60,15 +60,13 @@ random effects / Gaussian processes for which predictions are made
 (set to NULL if you have not specified this when creating the \code{GPModel})}
 
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
-Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
-The following options are available:
+Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only"
+Available options:
 \itemize{
 \item{"order_obs_first_cond_obs_only"}{ Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are only observed training data points. 
-This option is only available for Gaussian likelihoods }
+ordered first and the neighbors are only observed training data points }
 \item{"order_obs_first_cond_all"}{ Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are selected among all points (training + prediction). 
-This option is only available for Gaussian likelihoods }
+ordered first and the neighbors are selected among all points (training + prediction) }
 \item{"latent_order_obs_first_cond_obs_only"}{ Vecchia approximation for the latent process and observed data is 
 ordered first and neighbors are only observed points}
 \item{"latent_order_obs_first_cond_all"}{ Vecchia approximation 
@@ -78,7 +76,7 @@ ordered first for making predictions. This option is only available for Gaussian
 }}
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-for making predictions (default value if NULL: num_neighbors_pred = num_neighbors)}
+for making predictions. Default value if NULL: num_neighbors_pred = num_neighbors}
 
 \item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior) 
 predictive covariance is calculated in addition to the (posterior) predictive mean}
@@ -86,10 +84,14 @@ predictive covariance is calculated in addition to the (posterior) predictive me
 \item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
 predictive variances are calculated}
 
+\item{cov_pars}{A \code{vector} containing covariance parameters which are used if the 
+\code{gp_model} has not been trained or if predictions should be made for other 
+parameters than the trained ones}
+
 \item{ignore_gp_model}{A \code{boolean}. If TRUE, predictions are only made for the tree ensemble part
 and the \code{gp_model} is ignored}
 
-\item{rawscore}{This is deprecated, use the renamed equivalent argument 
+\item{rawscore}{This is discontinued. Use the renamed equivalent argument 
 \code{pred_latent} instead}
 
 \item{...}{Additional named arguments passed to the \code{predict()} method of

@@ -666,12 +666,13 @@ Booster <- R6::R6Class(
                        num_neighbors_pred = -1,
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
+                       cov_pars = NULL,
                        ignore_gp_model = FALSE,
                        rawscore = NULL,
                        ...) {
       
       if (!is.null(rawscore)) {
-        stop("predict: The argument 'raw_score' is deprecated and ignored. 
+        stop("predict: The argument 'raw_score' is discontinued. 
              Use the renamed equivalent argument 'pred_latent' instead")
       }
       
@@ -740,7 +741,7 @@ Booster <- R6::R6Class(
                                                          , cluster_ids_pred = cluster_ids_pred
                                                          , predict_cov_mat = predict_cov_mat
                                                          , predict_var = predict_var
-                                                         , cov_pars = NULL
+                                                         , cov_pars = cov_pars
                                                          , X_pred = NULL
                                                          , vecchia_pred_type = vecchia_pred_type
                                                          , num_neighbors_pred = num_neighbors_pred
@@ -823,7 +824,7 @@ Booster <- R6::R6Class(
                                                           cluster_ids_pred = cluster_ids_pred,
                                                           predict_cov_mat = predict_cov_mat,
                                                           predict_var = predict_var,
-                                                          cov_pars = NULL,
+                                                          cov_pars = cov_pars,
                                                           X_pred = NULL,
                                                           vecchia_pred_type = vecchia_pred_type,
                                                           num_neighbors_pred = num_neighbors_pred,
@@ -852,7 +853,7 @@ Booster <- R6::R6Class(
                                                   cluster_ids_pred = cluster_ids_pred,
                                                   predict_cov_mat = predict_cov_mat,
                                                   predict_var = predict_var,
-                                                  cov_pars = NULL,
+                                                  cov_pars = cov_pars,
                                                   X_pred = NULL,
                                                   vecchia_pred_type = vecchia_pred_type,
                                                   num_neighbors_pred = num_neighbors_pred,
@@ -1142,9 +1143,12 @@ Booster <- R6::R6Class(
 #' @param header only used for prediction for text file. True if text file has header
 #' @param reshape whether to reshape the vector of predictions to a matrix form when there are several
 #'                prediction outputs per case.
+#' @param cov_pars A \code{vector} containing covariance parameters which are used if the 
+#' \code{gp_model} has not been trained or if predictions should be made for other 
+#' parameters than the trained ones
 #' @param ignore_gp_model A \code{boolean}. If TRUE, predictions are only made for the tree ensemble part
 #' and the \code{gp_model} is ignored
-#' @param rawscore This is deprecated, use the renamed equivalent argument 
+#' @param rawscore This is discontinued. Use the renamed equivalent argument 
 #' \code{pred_latent} instead
 #' @param ... Additional named arguments passed to the \code{predict()} method of
 #'            the \code{gpb.Booster} object passed to \code{object}. 
@@ -1247,6 +1251,7 @@ predict.gpb.Booster <- function(object,
                                 num_neighbors_pred = -1,
                                 predict_cov_mat = FALSE,
                                 predict_var = FALSE,
+                                cov_pars = NULL,
                                 ignore_gp_model = FALSE,
                                 rawscore = NULL,
                                 ...) {
@@ -1275,6 +1280,7 @@ predict.gpb.Booster <- function(object,
       , num_neighbors_pred = num_neighbors_pred
       , predict_cov_mat = predict_cov_mat
       , predict_var = predict_var
+      , cov_pars = cov_pars
       , ignore_gp_model = ignore_gp_model
       , rawscore = rawscore
       , ...

@@ -8,10 +8,7 @@
 */
 #include <GPBoost/Vecchia_utils.h>
 #include <GPBoost/utils.h>
-#include <numeric>      // std::iota
-#include <algorithm>    // std::sort
-#include <mutex>
-#include<cmath>
+#include <cmath>
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
 
@@ -43,7 +40,7 @@ namespace GPBoost {
 					if (dist(i, j) < nn_dist[num_neighbors - 1]) {
 						nn_dist[num_neighbors - 1] = dist(i, j);
 						nearest_neighbors[i][num_neighbors - 1] = j;
-						SortVectorsDecreasing(nn_dist.data(), nearest_neighbors[i].data(), num_neighbors);
+						SortVectorsDecreasing<double>(nn_dist.data(), nearest_neighbors[i].data(), num_neighbors);
 					}
 				}
 			}
@@ -132,7 +129,7 @@ namespace GPBoost {
 								if (sed < nn_square_dist[num_neighbors - 1]) {
 									nn_square_dist[num_neighbors - 1] = sed;
 									nearest_neighbors[i - start_at][num_neighbors - 1] = sort_inv_sum[down_i];
-									SortVectorsDecreasing(nn_square_dist.data(), nearest_neighbors[i - start_at].data(), num_neighbors);
+									SortVectorsDecreasing<double>(nn_square_dist.data(), nearest_neighbors[i - start_at].data(), num_neighbors);
 								}
 							}
 						}
@@ -150,7 +147,7 @@ namespace GPBoost {
 								if (sed < nn_square_dist[num_neighbors - 1]) {
 									nn_square_dist[num_neighbors - 1] = sed;
 									nearest_neighbors[i - start_at][num_neighbors - 1] = sort_inv_sum[up_i];
-									SortVectorsDecreasing(nn_square_dist.data(), nearest_neighbors[i - start_at].data(), num_neighbors);
+									SortVectorsDecreasing<double>(nn_square_dist.data(), nearest_neighbors[i - start_at].data(), num_neighbors);
 								}
 							}
 						}

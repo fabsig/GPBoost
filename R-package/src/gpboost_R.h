@@ -625,15 +625,19 @@ GPBOOST_C_EXPORT SEXP LGBM_BoosterDumpModel_R(
 * \param dim_gp_coords Dimension of the coordinates (=number of features) for Gaussian process
 * \param gp_rand_coef_data Covariate data for Gaussian process random coefficients
 * \param num_gp_rand_coef Number of Gaussian process random coefficients
-* \param cov_fct Type of covariance (kernel) function for Gaussian processes. We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance where we follow Rassmusen and Williams (2006)
-* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2018)). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
-* \param cov_fct_taper_range Range parameter of Wendland covariance function / taper. We follow the notation of Bevilacqua et al. (2018)
-* \param vecchia_approx If true, the Veccia approximation is used for the Gaussian process
+* \param cov_fct Type of covariance function for Gaussian process (GP). We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance where we follow Rassmusen and Williams (2006)
+* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+* \param gp_approx Type of GP-approximation for handling large data
+* \param cov_fct_taper_range Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
+* \param cov_fct_taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 * \param num_neighbors The number of neighbors used in the Vecchia approximation
 * \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
 * \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 * \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions
-* \param likelihood Likelihood function for the observed response variable. Default = "gaussian"
+* \param num_ind_points Number of inducing points / knots for, e.g., a predictive process approximation
+* \param likelihood Likelihood function for the observed response variable
+* \param matrix_inversion_method Method which is used for matrix inversion
+* \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
 * \return REModel handle
 */
 GPBOOST_C_EXPORT SEXP GPB_CreateREModel_R(
@@ -652,13 +656,17 @@ GPBOOST_C_EXPORT SEXP GPB_CreateREModel_R(
 	SEXP num_gp_rand_coef,
 	SEXP cov_fct,
 	SEXP cov_fct_shape,
+	SEXP gp_approx,
 	SEXP cov_fct_taper_range,
-	SEXP vecchia_approx,
+	SEXP cov_fct_taper_shape,
 	SEXP num_neighbors,
 	SEXP vecchia_ordering,
 	SEXP vecchia_pred_type,
 	SEXP num_neighbors_pred,
-	SEXP likelihood
+	SEXP num_ind_points,
+	SEXP likelihood,
+	SEXP matrix_inversion_method,
+	SEXP seed
 );
 
 /*!
@@ -690,12 +698,14 @@ GPBOOST_C_EXPORT SEXP GPB_REModelFree_R(
 * \param lr_coef Learning rate for fixed-effect linear coefficients
 * \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
 * \param optimizer_coef Optimizer for linear regression coefficients
-* \param matrix_inversion_method Method which is used for matrix inversion
 * \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
 * \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
 * \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
 * \param num_rand_vec_trace Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
 * \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
+* \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
+* \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
+* \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
@@ -717,12 +727,14 @@ GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
 	SEXP lr_coef,
 	SEXP acc_rate_coef,
 	SEXP optimizer_coef,
-	SEXP matrix_inversion_method,
 	SEXP cg_max_num_it,
 	SEXP cg_max_num_it_tridiag,
 	SEXP cg_delta_conv,
 	SEXP num_rand_vec_trace,
-	SEXP reuse_rand_vec_trace
+	SEXP reuse_rand_vec_trace,
+	SEXP cg_preconditioner_type,
+	SEXP seed_rand_vec_trace,
+	SEXP piv_chol_rank
 );
 
 /*!

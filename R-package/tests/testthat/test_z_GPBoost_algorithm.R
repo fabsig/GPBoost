@@ -89,7 +89,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       Z2 <- model.matrix(rep(1,n)~factor(group2)-1)
       b2 <- sqrt(sigma2_2) * qnorm(sim_rand_unif(n=length(unique(group2)), init_c=0.2354))
       eps <- Z1 %*% b1 + Z2 %*% b2
-      group_data <- cbind(group,group2)
+      group_data <- cbind(group, group2)
       # Error term
       xi <- sqrt(sigma2) * qnorm(sim_rand_unif(n=n, init_c=0.756))
       # Observed data
@@ -479,12 +479,10 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       })
     })
     
-    
     test_that("Combine tree-boosting and Gaussian process model ", {
       
       ntrain <- ntest <- 500
       n <- ntrain + ntest
-      
       # Simulate fixed effects
       sim_data <- sim_friedman3(n=n, n_irrelevant=5)
       f <- sim_data$f
@@ -530,7 +528,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       cov_pars_est <- c(0.1358229, 0.9099908, 0.1115316)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
       # Prediction
-      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
+      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
+                      predict_var=TRUE, pred_latent = TRUE)
       pred_re <- c(0.19200894, 0.08380017, 0.59402383, -0.75484438)
       pred_fe <- c(3.920440, 3.641091, 4.536346, 4.951052)
       pred_cov <- c(0.3612252, 0.1596113, 0.1664702, 0.2577366)
@@ -544,6 +543,19 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = FALSE)
       expect_lt(sum(abs(tail(pred$response_mean, n=4)-(pred_re+pred_fe))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$response_var, n=4)-pred_cov_no_nugget)),TOLERANCE)
+      # Use other covariance parameters for prediction
+      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
+                      predict_var=TRUE, pred_latent = TRUE, cov_pars = c(0.1358229, 0.9099908, 0.1115316))
+      expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-pred_re)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_cov)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-pred_fe)),TOLERANCE)
+      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
+                      predict_var=TRUE, pred_latent = TRUE, cov_pars = c(0.2, 1.5, 0.2))
+      pred_re2 <- c(0.2182825, 0.1131264, 0.5737999, -0.7441675)
+      pred_cov2 <- c(0.3540400, 0.1704857, 0.1720302, 0.2562620)
+      expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-pred_re2)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_cov2)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-pred_fe)),TOLERANCE)
       
       # Train model using Nelder-Mead
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
@@ -556,7 +568,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                        min_data_in_leaf = 5,
                        objective = "regression_l2",
                        verbose = 0)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c( 0.1286928, 0.9140254, 0.1097192))),TOLERANCE)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.1286928, 0.9140254, 0.1097192))),TOLERANCE)
       # Prediction
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.17291900, 0.09483055, 0.64271850, -0.78676614))),TOLERANCE)
@@ -576,7 +588,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                        verbose = 0,
                        valids = valids,
                        early_stopping_rounds = 5,
-                       use_gp_model_for_validation = FALSE)
+                       use_gp_model_for_validation = FALSE,
+                       seed = 0)
       expect_equal(bst$best_iter, 27)
       expect_lt(abs(bst$best_score - 1.293498),TOLERANCE)
       
@@ -594,16 +607,16 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                        verbose = 0,
                        valids = valids,
                        early_stopping_rounds = 5,
-                       use_gp_model_for_validation = TRUE)
+                       use_gp_model_for_validation = TRUE,
+                       seed = 0)
       expect_equal(bst$best_iter, 27)
-      expect_lt(abs(bst$best_score - 0.550003),TOLERANCE)
+      expect_lt(abs(bst$best_score - 0.5485127),TOLERANCE)
     })
     
-    
     test_that("GPBoost algorithm with Vecchia approximation and Wendland covariance", {
+      
       ntrain <- ntest <- 100
       n <- ntrain + ntest
-      
       # Simulate fixed effects
       sim_data <- sim_friedman3(n=n, n_irrelevant=5)
       f <- sim_data$f
@@ -652,8 +665,23 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Same thing with Vecchia approximation
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                                          vecchia_approx =TRUE, num_neighbors = ntrain-1, 
-                                          num_neighbors_pred = ntrain+ntest-1,
+                                          gp_approx = "vecchia", num_neighbors = ntrain-1, 
+                                          num_neighbors_pred = ntrain+ntest-1, vecchia_ordering = "none",
+                                          vecchia_pred_type = "order_obs_first_cond_all"), file='NUL')
+      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+      bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
+                       learning_rate = 0.05, max_depth = 6,
+                       min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
+      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
+      expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-pred_re)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_cov)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-pred_fe)),TOLERANCE)
+      
+      # Same thing with Vecchia approximation and random ordering
+      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                                          gp_approx = "vecchia", num_neighbors = ntrain-1, 
+                                          num_neighbors_pred = ntrain+ntest-1, vecchia_ordering = "random",
                                           vecchia_pred_type = "order_obs_first_cond_all"), file='NUL')
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
@@ -667,8 +695,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Same thing with Vecchia approximation and Nelder-Mead
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                                          vecchia_approx =TRUE, num_neighbors = ntrain-1,
-                                          num_neighbors_pred = ntrain+ntest-1,
+                                          gp_approx = "vecchia", num_neighbors = ntrain-1,
+                                          num_neighbors_pred = ntrain+ntest-1, vecchia_ordering = "none",
                                           vecchia_pred_type = "order_obs_first_cond_all"), file='NUL')
       gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
@@ -682,7 +710,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Same thing with Wendland covariance function
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
-                                          cov_fct_shape=1, cov_fct_taper_range=0.2), file='NUL')
+                                          cov_fct_taper_shape = 1, cov_fct_taper_range = 0.2), file='NUL')
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
@@ -693,7 +721,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.01965535, -0.01853082, -0.53218816, -0.98668655, -0.60581078, -0.03390602))),TOLERANCE)
       # Wendland covariance and Nelder-Mead
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
-                                          cov_fct_shape=1, cov_fct_taper_range=0.2), file='NUL')
+                                          cov_fct_taper_shape = 1, cov_fct_taper_range = 0.2), file='NUL')
       gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
@@ -704,8 +732,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.01963911, -0.01852577, -0.53242988, -0.98747505, -0.60616534, -0.03392700))),TOLERANCE)
       
       # Tapering
-      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential_tapered",
-                                          cov_fct_shape=1, cov_fct_taper_range=20), file='NUL')
+      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                                          gp_approx = "tapering",
+                                          cov_fct_taper_shape = 1, cov_fct_taper_range = 20), file='NUL')
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
@@ -716,8 +745,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.4767139, 0.5949467, 0.6214302, 0.8377825))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(4.683095, 4.534749, 4.602275, 4.457237))),TOLERANCE)
       # Tapering and Nelder-Mead
-      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential_tapered",
-                                          cov_fct_shape=1, cov_fct_taper_range=10), file='NUL')
+      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                                          gp_approx = "tapering",
+                                          cov_fct_taper_shape = 1, cov_fct_taper_range = 10), file='NUL')
       gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
@@ -727,7 +757,6 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4893557, -0.7984212, -0.5994199, -0.2511335))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(4.650092, 4.574518, 4.618443, 4.409184))),TOLERANCE)
     })
-    
     
     test_that("GPBoost algorithm with Nesterov acceleration for grouped random effects model ", {
       
@@ -881,7 +910,6 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_equal(bst$best_iter, 19)
       expect_lt(abs(bst$best_score - 0.05520368),TOLERANCE)
     })
-    
     
     test_that("Saving and loading a booster with a gp_model from a file works", {
       ntrain <- ntest <- 1000

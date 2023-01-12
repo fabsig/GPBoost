@@ -30,15 +30,14 @@ namespace GPBoost {
 	typedef Eigen::MatrixXd den_mat_t;
 	typedef Eigen::VectorXd vec_t;
 	typedef Eigen::VectorXi vec_int_t;
-	typedef Eigen::SparseMatrix<double> sp_mat_t; // column-major sparse matrix type of double
-	typedef Eigen::SparseMatrix<double, Eigen::RowMajor> sp_mat_rm_t; // row-major sparse matrix type of double
+	typedef Eigen::SparseMatrix<double> sp_mat_t; // column-major sparse matrix
+	typedef Eigen::SparseMatrix<double, Eigen::RowMajor> sp_mat_rm_t; // row-major sparse matrix
 	typedef Eigen::Triplet<double> Triplet_t;
-	typedef Eigen::SparseVector<double> sp_vec_t;
 	typedef Eigen::LLT<Eigen::MatrixXd, Eigen::Lower> chol_den_mat_t;
-	typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::AMDOrdering<int>> chol_sp_mat_t;// The default cholesky factor for sparse matrices. AMDOrdering is faster than NaturalOrdering for sparse matrices for GPs (e.g. tapering) but slightly slower than no ordering for grouped random effects
-	//typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::NaturalOrdering<int>> chol_sp_mat_t; // sparse Cholesky factor.
-	typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::AMDOrdering<int>> chol_sp_mat_AMDOrder_t; // sparse Cholesky factor with AMD ordering
-	typedef Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::COLAMDOrdering<int>> chol_sp_mat_COLAMDOrder_t; // sparse Cholesky factor with COLAMD ordering
+	typedef Eigen::SimplicialLLT<sp_mat_t, Eigen::Lower, Eigen::AMDOrdering<int>> chol_sp_mat_t;
+	typedef Eigen::SimplicialLLT<sp_mat_rm_t, Eigen::Lower, Eigen::AMDOrdering<int>> chol_sp_mat_rm_t;
+	// AMDOrdering is faster than NaturalOrdering for sparse matrices for GPs (e.g. tapering) but slightly slower than no ordering for grouped random effects for Gaussian data
+	// COLAMDOrdering is slower than NaturalOrdering or AMDOrdering for both grouped random effects and the Vecchia approximation for non-Gaussian data
 
 	typedef std::string string_t;
 

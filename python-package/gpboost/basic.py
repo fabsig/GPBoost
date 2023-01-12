@@ -3185,7 +3185,7 @@ class Booster:
             ctypes.c_int(end_iteration)))
         return self
 
-    def model_from_string(self, model_str, verbose=True):
+    def model_from_string(self, model_str, verbose=False):
         """Load Booster from a string.
 
         Parameters
@@ -3333,7 +3333,7 @@ class Booster:
                 gp_coords_pred=None, gp_rand_coef_data_pred=None,
                 cluster_ids_pred=None, vecchia_pred_type=None,
                 num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False,
-                ignore_gp_model=False, raw_score=None, **kwargs):
+                cov_pars=None, ignore_gp_model=False, raw_score=None, **kwargs):
         """Make a prediction.
 
         Parameters
@@ -3383,38 +3383,34 @@ class Booster:
         vecchia_pred_type : string, optional (default=None)
             Type of Vecchia approximation used for making predictions
 
-            Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+            Default value if vecchia_pred_type = None: "order_obs_first_cond_obs_only"
 
-            Used only if the Booster has a gp_model
+                Available options:
 
-            The following options are available:
+                    - "order_obs_first_cond_obs_only":
 
-                - "order_obs_first_cond_obs_only":
+                        Vecchia approximation for the observable process and observed training data is
+                        ordered first and the neighbors are only observed training data points
 
-                    Vecchia approximation for the observable process and observed training data is
-                    ordered first and the neighbors are only observed training data points.
-                    This option is only available for Gaussian likelihoods
+                    - "order_obs_first_cond_all":
 
-                - "order_obs_first_cond_all":
+                        Vecchia approximation for the observable process and observed training data is
+                        ordered first and the neighbors are selected among all points (training + prediction)
 
-                    Vecchia approximation for the observable process and observed training data is
-                    ordered first and the neighbors are selected among all points (training + prediction).
-                    This option is only available for Gaussian likelihoods
+                    - "latent_order_obs_first_cond_obs_only":
 
-                - "latent_order_obs_first_cond_obs_only":
+                        Vecchia approximation for the latent process and observed data is
+                        ordered first and neighbors are only observed points}
 
-                    Vecchia approximation for the latent process and observed data is
-                    ordered first and neighbors are only observed points}
+                    - "latent_order_obs_first_cond_all":
 
-                - "latent_order_obs_first_cond_all":
+                        Vecchia approximation or the latent process and observed data is
+                        ordered first and neighbors are selected among all points
 
-                    Vecchia approximation or the latent process and observed data is
-                    ordered first and neighbors are selected among all points
+                    - "order_pred_first":
 
-                - "order_pred_first":
-
-                    Vecchia approximation for the observable process and prediction data is
-                    ordered first for making predictions. This option is only available for Gaussian likelihoods
+                        Vecchia approximation for the observable process and prediction data is
+                        ordered first for making predictions. This option is only available for Gaussian likelihoods
 
         num_neighbors_pred : integer or None, optional (default=None)
             Number of neighbors for the Vecchia approximation for making predictions
@@ -3431,10 +3427,13 @@ class Booster:
         predict_var : bool, optional (default=False)
             If True, (posterior) predictive variances are calculated in addition to the
             (posterior) predictive mean. Used only if the Booster has a gp_model
+        cov_pars : numpy array or None, optional (default = None)
+            A vector containing covariance parameters which are used if the gp_model has not been trained or
+            if predictions should be made for other parameters than the estimated ones
         ignore_gp_model : bool, optional (default=False)
             If True, predictions are only made for the tree ensemble part and the gp_model is ignored
-        raw_score : bool, deprecated
-            This is deprecated, use the renamed equivalent argument 'pred_latent' instead
+        raw_score : bool or None, discontinued (default=None)
+            This is discontinued. Use the renamed equivalent argument 'pred_latent' instead
         **kwargs
             Other parameters for the prediction.
 
@@ -3482,9 +3481,10 @@ class Booster:
         >>> #   which combines predictions from the tree ensemble and the random effects
         >>> # pred_resp['response_var']: predictive variances (if predict_var=True)
         """
+
         if raw_score is not None:
-            GPBoostError("The argument 'raw_score' is deprecated and ignored. "
-                          "Use the renamed equivalent argument 'pred_latent' instead")
+            raise GPBoostError("The argument 'raw_score' is discontinued. " 
+                               "Use the renamed equivalent argument 'pred_latent' instead")
         predictor = self._to_predictor(deepcopy(kwargs))
         if num_iteration is None:
             if start_iteration <= 0:
@@ -3529,6 +3529,7 @@ class Booster:
                                                            num_neighbors_pred=num_neighbors_pred,
                                                            predict_cov_mat=predict_cov_mat,
                                                            predict_var=predict_var,
+                                                           cov_pars=cov_pars,
                                                            predict_response=(not pred_latent))
                 fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
                                                  num_iteration=num_iteration, raw_score=True, pred_leaf=pred_leaf,
@@ -3579,6 +3580,7 @@ class Booster:
                                                                num_neighbors_pred=num_neighbors_pred,
                                                                predict_cov_mat=predict_cov_mat,
                                                                predict_var=predict_var,
+                                                               cov_pars=cov_pars,
                                                                predict_response=False,
                                                                fixed_effects=fixed_effect_train,
                                                                y=y)
@@ -3600,6 +3602,7 @@ class Booster:
                                                       num_neighbors_pred=num_neighbors_pred,
                                                       predict_cov_mat=predict_cov_mat,
                                                       predict_var=predict_var,
+                                                      cov_pars=cov_pars,
                                                       predict_response=True,
                                                       fixed_effects=fixed_effect_train,
                                                       fixed_effects_pred=fixed_effect,
@@ -3993,7 +3996,8 @@ class GPModel(object):
         Fabio Sigrist
     """
 
-    def __init__(self, likelihood="gaussian",
+    def __init__(self,
+                 likelihood="gaussian",
                  group_data=None,
                  group_rand_coef_data=None,
                  ind_effect_group_rand_coef=None,
@@ -4002,16 +4006,21 @@ class GPModel(object):
                  gp_rand_coef_data=None,
                  cov_function="exponential",
                  cov_fct_shape=0.,
+                 gp_approx="none",
                  cov_fct_taper_range=1.,
-                 vecchia_approx=False,
+                 cov_fct_taper_shape=0.,
                  num_neighbors=30,
-                 vecchia_ordering="none",
+                 vecchia_ordering="random",
                  vecchia_pred_type=None,
                  num_neighbors_pred=None,
+                 num_ind_points=500,
+                 matrix_inversion_method="cholesky",
+                 seed=0,
                  cluster_ids=None,
                  free_raw_data=False,
                  model_file=None,
-                 model_dict=None):
+                 model_dict=None,
+                 vecchia_approx=None):
         """Initialize a GPModel.
 
         Parameters
@@ -4041,46 +4050,67 @@ class GPModel(object):
             gp_rand_coef_data : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Covariate data for Gaussian process random coefficients
             cov_function : string, optional (default="exponential")
-                Covariance function for the Gaussian process. The following covariance functions are available:
+                Covariance function for the Gaussian process. Available options:
                 "exponential", "gaussian", "matern", "powered_exponential", "wendland", and "exponential_tapered".
                 For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization
                 of Diggle and Ribeiro (2007).
                 For "matern", we follow the notation of Rassmusen and Williams (2006).
-                For "wendland", we follow the notation of Bevilacqua et al. (2019).
+                For "wendland", we follow the notation of Bevilacqua et al. (2019, AOS).
                 A covariance function with the suffix "_tapered" refers to a covariance function that is multiplied by
                 a compactly supported Wendland covariance function (= tapering)
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance).
-                For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2019).
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
+            gp_approx : string, optional (default="none")
+                Specifies the use of a large data approximation for Gaussian processes. Available options:
+
+                    - "none":
+
+                        No approximation
+
+                    - "vecchia":
+
+                        A Vecchia approximation; see Sigrist (2022, JMLR for more details)
+
+                    - "tapering":
+
+                        The covariance function is multiplied by a compactly supported Wendland correlation function
+
             cov_fct_taper_range : float, optional (default=1.)
-                Range parameter of the Wendland covariance function / taper. We follow the notation of
-                Bevilacqua et al. (2019)
-            vecchia_approx : bool, optional (default=False)
-                If true, the Vecchia approximation is used
+                Range parameter of the Wendland covariance function and Wendland correlation taper function.
+                We follow the notation of Bevilacqua et al. (2019, AOS)
+            cov_fct_taper_shape : float, optional (default=0.)
+                Shape (=smoothness) parameter of the Wendland covariance function and Wendland correlation taper function.
+                We follow the notation of Bevilacqua et al. (2019, AOS)
             num_neighbors : integer, optional (default=30)
                 Number of neighbors for the Vecchia approximation
-            vecchia_ordering : string, optional (default="none")
-                Ordering used in the Vecchia approximation. "none" means the default ordering is used,
-                "random" uses a random ordering
+            vecchia_ordering : string, optional (default="random")
+                Ordering used in the Vecchia approximation. Available options:
+
+                    - "none":
+
+                        the default ordering in the data is used
+
+                    - "random":
+
+                        a random ordering
+
             vecchia_pred_type : string, optional (default=None)
                 Type of Vecchia approximation used for making predictions
 
-                Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+                Default value if vecchia_pred_type = None: "order_obs_first_cond_obs_only"
 
-                The following options are available:
+                Available options:
 
                     - "order_obs_first_cond_obs_only":
 
                         Vecchia approximation for the observable process and observed training data is
-                        ordered first and the neighbors are only observed training data points.
-                        This option is only available for Gaussian likelihoods
+                        ordered first and the neighbors are only observed training data points
 
                     - "order_obs_first_cond_all":
 
                         Vecchia approximation for the observable process and observed training data is
-                        ordered first and the neighbors are selected among all points (training + prediction).
-                        This option is only available for Gaussian likelihoods
+                        ordered first and the neighbors are selected among all points (training + prediction)
 
                     - "latent_order_obs_first_cond_obs_only":
 
@@ -4100,7 +4130,18 @@ class GPModel(object):
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
 
-                (default values if None: num_neighbors_pred=num_neighbors)
+                Default value if None: num_neighbors_pred=num_neighbors
+            num_ind_points : integer, optional (default=500)
+                Number of inducing points / knots for, e.g., a predictive process approximation
+            matrix_inversion_method : string, optional (default="cholesky")
+                Method used for inverting covariance matrices. Available options:
+
+                    - "cholesky":
+
+                        Cholesky factorization
+
+            seed : integer, optional (default=0)
+                The seed used for model creation (e.g., random ordering in Vecchia approximation)
             cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data
             or None, optional (default=None)
                 The elements indicate independent realizations of  random effects / Gaussian processes
@@ -4112,6 +4153,8 @@ class GPModel(object):
                 Path to the model file.
             model_dict : dict or None, optional (default=None)
                 Dict with model file
+            vecchia_approx : bool or None, discontinued (default=None)
+                This is discontinued. Use gp_approx = "none" instead
 
         Example
         -------
@@ -4121,6 +4164,9 @@ class GPModel(object):
         >>> gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential", likelihood="gaussian")
         """
 
+        if vecchia_approx is not None:
+            raise GPBoostError("The argument 'vecchia_approx' is discontinued. " 
+                               "Use the argument 'gp_approx' instead")
         # Initialize variables with default values
         self.handle = ctypes.c_void_p()
         self.num_data = None
@@ -4140,13 +4186,20 @@ class GPModel(object):
         self.gp_coords = None
         self.gp_rand_coef_data = None
         self.cov_function = "exponential"
-        self.cov_fct_shape = 0.
+        self.cov_fct_shape = 0.5
+        self.gp_approx = "none"
         self.cov_fct_taper_range = 1.
-        self.vecchia_approx = False
+        self.cov_fct_taper_shape= 0.
         self.num_neighbors = 30
-        self.vecchia_ordering = "none"
+        self.vecchia_ordering = "random"
         self.vecchia_pred_type = None
         self.num_neighbors_pred = 30
+        self.num_ind_points = 500
+        self.matrix_inversion_method = "cholesky"
+        self.seed = 0
+        self.cluster_ids = None
+        self.cluster_ids_map_to_int = None
+        self.free_raw_data = False
         self.cg_delta_conv_pred = 0.01
         if likelihood == "gaussian":
             self.cov_par_names = ["Error_term"]
@@ -4154,10 +4207,14 @@ class GPModel(object):
             self.cov_par_names = []
         self.re_comp_names = []
         self.coef_names = None
-        self.cluster_ids = None
-        self.cluster_ids_map_to_int = None
-        self.free_raw_data = False
         self.num_data_pred = 0
+        self.prediction_data_is_set = False
+        self.model_has_been_loaded_from_saved_file = False
+        self.y_loaded_from_file = None
+        self.cov_pars_loaded_from_file = None
+        self.coefs_loaded_from_file = None
+        self.X_loaded_from_file = None
+        self.model_fitted = False
         self.params = {"maxit": 1000,
                        "delta_rel_conv": 1e-6,
                        "init_coef": None,
@@ -4171,20 +4228,15 @@ class GPModel(object):
                        "trace": False,
                        "convergence_criterion": "relative_change_in_log_likelihood",
                        "std_dev": False,
-                       "matrix_inversion_method": "cholesky",
                        "cg_max_num_it": 1000,
                        "cg_max_num_it_tridiag": 20,
                        "cg_delta_conv": 1.,
                        "num_rand_vec_trace": 10,
-                       "reuse_rand_vec_trace": True
+                       "reuse_rand_vec_trace": True,
+                       "cg_preconditioner_type": "none",
+                       "seed_rand_vec_trace": 0,
+                       "piv_chol_rank": 100
         }
-        self.prediction_data_is_set = False
-        self.model_has_been_loaded_from_saved_file = False
-        self.cov_pars_loaded_from_file = None
-        self.y_loaded_from_file = None
-        self.coefs_loaded_from_file = None
-        self.X_loaded_from_file = None
-        self.model_fitted = False
 
         if (model_file is not None) or (model_dict is not None):
             if model_file is not None:
@@ -4207,15 +4259,19 @@ class GPModel(object):
                 gp_rand_coef_data = np.array(model_dict.get("gp_rand_coef_data"))
             cov_function = model_dict.get("cov_function")
             cov_fct_shape = model_dict.get("cov_fct_shape")
+            gp_approx = model_dict.get("gp_approx")
             cov_fct_taper_range = model_dict.get("cov_fct_taper_range")
-            vecchia_approx = model_dict.get("vecchia_approx")
+            cov_fct_taper_shape = model_dict.get("cov_fct_taper_shape")
             num_neighbors = model_dict.get("num_neighbors")
             vecchia_ordering = model_dict.get("vecchia_ordering")
             vecchia_pred_type = model_dict.get("vecchia_pred_type")
             num_neighbors_pred = model_dict.get("num_neighbors_pred")
+            num_ind_points = model_dict.get("num_ind_points")
+            seed = model_dict.get("seed")
             if model_dict.get("cluster_ids") is not None:
                 cluster_ids = np.array(model_dict.get("cluster_ids"))
             likelihood = model_dict.get("likelihood")
+            matrix_inversion_method = model_dict.get("matrix_inversion_method")
             # Set additionaly required data
             self.model_has_been_loaded_from_saved_file = True
             if model_dict.get("cov_pars") is not None:
@@ -4236,6 +4292,8 @@ class GPModel(object):
         if group_data is None and gp_coords is None:
             raise ValueError("Both group_data and gp_coords are None. Provide at least one of them")
 
+        self.matrix_inversion_method = matrix_inversion_method
+        self.seed = seed
         # Define default NULL values for calling C function
         group_data_c = ctypes.c_void_p()
         group_rand_coef_data_c = ctypes.c_void_p()
@@ -4347,11 +4405,14 @@ class GPModel(object):
             self.dim_coords = gp_coords.shape[1]
             self.cov_function = cov_function
             self.cov_fct_shape = cov_fct_shape
+            self.gp_approx = gp_approx
             self.cov_fct_taper_range = cov_fct_taper_range
+            self.cov_fct_taper_shape = cov_fct_taper_shape
             self.vecchia_approx = vecchia_approx
             self.vecchia_ordering = vecchia_ordering
             self.num_neighbors = num_neighbors
             self.num_neighbors_pred = num_neighbors_pred
+            self.num_ind_points = num_ind_points
             if self.cov_function == "wendland":
                 self.cov_par_names.extend(["GP_var"])
             else:
@@ -4428,13 +4489,17 @@ class GPModel(object):
             ctypes.c_int(self.num_gp_rand_coef),
             c_str(self.cov_function),
             ctypes.c_double(self.cov_fct_shape),
+            c_str(self.gp_approx),
             ctypes.c_double(self.cov_fct_taper_range),
-            ctypes.c_bool(self.vecchia_approx),
+            ctypes.c_double(self.cov_fct_taper_shape),
             ctypes.c_int(self.num_neighbors),
             c_str(self.vecchia_ordering),
             vecchia_pred_type_c,
             ctypes.c_int(self.num_neighbors_pred),
+            ctypes.c_int(self.num_ind_points),
             c_str(likelihood),
+            c_str(self.matrix_inversion_method),
+            ctypes.c_int(self.seed),
             ctypes.byref(self.handle)))
 
         # Should we free raw data?
@@ -4748,7 +4813,6 @@ class GPModel(object):
         optimizer_cov_c = ctypes.c_void_p()
         init_coef_c = ctypes.c_void_p()
         optimizer_coef_c = ctypes.c_void_p()
-        matrix_inversion_method_c = ctypes.c_void_p()
         if params is not None:
             if "init_cov_pars" in params:
                 if params["init_cov_pars"] is not None:
@@ -4781,12 +4845,14 @@ class GPModel(object):
             ctypes.c_double(self.params["lr_coef"]),
             ctypes.c_double(self.params["acc_rate_coef"]),
             optimizer_coef_c,
-            c_str(self.params["matrix_inversion_method"]),
             ctypes.c_int(self.params["cg_max_num_it"]),
             ctypes.c_int(self.params["cg_max_num_it_tridiag"]),
             ctypes.c_double(self.params["cg_delta_conv"]),
             ctypes.c_int(self.params["num_rand_vec_trace"]),
-            ctypes.c_bool(self.params["reuse_rand_vec_trace"])))
+            ctypes.c_bool(self.params["reuse_rand_vec_trace"]),
+            c_str(self.params["cg_preconditioner_type"]),
+            ctypes.c_int(self.params["seed_rand_vec_trace"]),
+            ctypes.c_int(self.params["piv_chol_rank"])))
         return self
 
     def _get_optim_params(self):
@@ -4989,21 +5055,19 @@ class GPModel(object):
             vecchia_pred_type : string, optional (default=None)
                 Type of Vecchia approximation used for making predictions
 
-                Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+                Default value if vecchia_pred_type = None: "order_obs_first_cond_obs_only"
 
-                The following options are available:
+                Available options:
 
                     - "order_obs_first_cond_obs_only":
 
                         Vecchia approximation for the observable process and observed training data is
-                        ordered first and the neighbors are only observed training data points.
-                        This option is only available for Gaussian likelihoods
+                        ordered first and the neighbors are only observed training data points
 
                     - "order_obs_first_cond_all":
 
                         Vecchia approximation for the observable process and observed training data is
-                        ordered first and the neighbors are selected among all points (training + prediction).
-                        This option is only available for Gaussian likelihoods
+                        ordered first and the neighbors are selected among all points (training + prediction)
 
                     - "latent_order_obs_first_cond_obs_only":
 
@@ -5023,7 +5087,7 @@ class GPModel(object):
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
 
-                (default values if None: num_neighbors_pred=num_neighbors)
+                Default value if None: num_neighbors_pred=num_neighbors
             cg_delta_conv_pred : double or None, optional (default=None)
                 Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                 when being used for prediction
@@ -5036,8 +5100,8 @@ class GPModel(object):
             predict_var : bool (default=False)
                 If True, the (posterior) predictive variances are calculated
             cov_pars : numpy array or None, optional (default = None)
-                A vector containing covariance parameters (used if the GPModel has not been trained or if predictions
-                should be made for other parameters than the estimated ones)
+                A vector containing covariance parameters which are used if the gp_model has not been trained or
+                if predictions should be made for other parameters than the estimated ones
             X_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Prediction covariate data for the fixed effects linear regression term (if there is one)
             use_saved_data : bool (default=False)
@@ -5322,21 +5386,19 @@ class GPModel(object):
             vecchia_pred_type : string, optional (default=None)
                 Type of Vecchia approximation used for making predictions
 
-                Default value: "order_obs_first_cond_obs_only" for Gaussian likelihoods and "latent_order_obs_first_cond_obs_only" for non-Gaussian likelihoods
+                Default value if vecchia_pred_type = None: "order_obs_first_cond_obs_only"
 
-                The following options are available:
+                Available options:
 
                     - "order_obs_first_cond_obs_only":
 
                         Vecchia approximation for the observable process and observed training data is
-                        ordered first and the neighbors are only observed training data points.
-                        This option is only available for Gaussian likelihoods
+                        ordered first and the neighbors are only observed training data points
 
                     - "order_obs_first_cond_all":
 
                         Vecchia approximation for the observable process and observed training data is
-                        ordered first and the neighbors are selected among all points (training + prediction).
-                        This option is only available for Gaussian likelihoods
+                        ordered first and the neighbors are selected among all points (training + prediction)
 
                     - "latent_order_obs_first_cond_obs_only":
 
@@ -5356,7 +5418,7 @@ class GPModel(object):
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
 
-                (default values if None: num_neighbors_pred=num_neighbors)
+                Default value if None: num_neighbors_pred=num_neighbors
             cg_delta_conv_pred : double or None, optional (default=None)
                 Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                 when being used for prediction
@@ -5581,7 +5643,7 @@ class GPModel(object):
         # Response data
         if include_response_data:
             model_dict["y"] = self._get_response_data()
-        # Feature data
+        # Random effects / GP data
         model_dict["group_data"] = self.group_data
         model_dict["nb_groups"] = self.nb_groups
         model_dict["group_rand_coef_data"] = self.group_rand_coef_data
@@ -5590,14 +5652,18 @@ class GPModel(object):
         model_dict["ind_effect_group_rand_coef"] = self.ind_effect_group_rand_coef
         model_dict["drop_intercept_group_rand_effect"] = self.drop_intercept_group_rand_effect
         model_dict["cluster_ids"] = self.cluster_ids
-        model_dict["vecchia_approx"] = self.vecchia_approx
         model_dict["num_neighbors"] = self.num_neighbors
         model_dict["vecchia_ordering"] = self.vecchia_ordering
         model_dict["vecchia_pred_type"] = self.vecchia_pred_type
         model_dict["num_neighbors_pred"] = self.num_neighbors_pred
         model_dict["cov_function"] = self.cov_function
         model_dict["cov_fct_shape"] = self.cov_fct_shape
+        model_dict["gp_approx"] = self.gp_approx
         model_dict["cov_fct_taper_range"] = self.cov_fct_taper_range
+        model_dict["cov_fct_taper_shape"] = self.cov_fct_taper_shape
+        model_dict["num_ind_points"] = self.num_ind_points
+        model_dict["matrix_inversion_method"] = self.matrix_inversion_method
+        model_dict["seed"] = self.seed
         # Covariate data
         model_dict["has_covariates"] = self.has_covariates
         if self.has_covariates:

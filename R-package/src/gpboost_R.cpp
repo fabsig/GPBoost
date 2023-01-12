@@ -819,13 +819,17 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	SEXP num_gp_rand_coef,
 	SEXP cov_fct,
 	SEXP cov_fct_shape,
+	SEXP gp_approx,
 	SEXP cov_fct_taper_range,
-	SEXP vecchia_approx,
+	SEXP cov_fct_taper_shape,
 	SEXP num_neighbors,
 	SEXP vecchia_ordering,
 	SEXP vecchia_pred_type,
 	SEXP num_neighbors_pred,
-	SEXP likelihood) {
+	SEXP num_ind_points,
+	SEXP likelihood,
+	SEXP matrix_inversion_method,
+	SEXP seed) {
 	SEXP ret;
 	REModelHandle handle = nullptr;
 	int32_t num_data = static_cast<int32_t>(Rf_asInteger(ndata));
@@ -839,10 +843,14 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	SEXP vecchia_ordering_aux = PROTECT(Rf_asChar(vecchia_ordering));
 	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
 	SEXP likelihood_aux = PROTECT(Rf_asChar(likelihood));
+	SEXP gp_approx_aux = PROTECT(Rf_asChar(gp_approx));
+	SEXP matrix_inversion_method_aux = PROTECT(Rf_asChar(matrix_inversion_method));
 	const char* cov_fct_ptr = (Rf_isNull(cov_fct)) ? nullptr : CHAR(cov_fct_aux);
 	const char* vecchia_ordering_ptr = (Rf_isNull(vecchia_ordering)) ? nullptr : CHAR(vecchia_ordering_aux);
 	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
 	const char* likelihood_ptr = (Rf_isNull(likelihood)) ? nullptr : CHAR(likelihood_aux);
+	const char* gp_approx_ptr = (Rf_isNull(gp_approx)) ? nullptr : CHAR(gp_approx_aux);
+	const char* matrix_inversion_method_ptr = (Rf_isNull(matrix_inversion_method)) ? nullptr : CHAR(matrix_inversion_method_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_CreateREModel(num_data,
 		cluster_ids,
@@ -859,18 +867,22 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 		num_gprand_coef,
 		cov_fct_ptr,
 		Rf_asReal(cov_fct_shape),
+		gp_approx_ptr,
 		Rf_asReal(cov_fct_taper_range),
-		Rf_asLogical(vecchia_approx),
+		Rf_asReal(cov_fct_taper_shape),
 		Rf_asInteger(num_neighbors),
 		vecchia_ordering_ptr,
 		vecchia_pred_type_ptr,
 		Rf_asInteger(num_neighbors_pred),
+		Rf_asInteger(num_ind_points),
 		likelihood_ptr,
+		matrix_inversion_method_ptr,
+		Rf_asInteger(seed),
 		&handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
 	R_RegisterCFinalizerEx(ret, _REModelFinalizer, TRUE);
-	UNPROTECT(5);
+	UNPROTECT(7);
 	return ret;
 }
 
@@ -902,20 +914,22 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP lr_coef,
 	SEXP acc_rate_coef,
 	SEXP optimizer_coef,
-	SEXP matrix_inversion_method,
 	SEXP cg_max_num_it,
 	SEXP cg_max_num_it_tridiag,
 	SEXP cg_delta_conv,
 	SEXP num_rand_vec_trace,
-	SEXP reuse_rand_vec_trace) {
+	SEXP reuse_rand_vec_trace,
+	SEXP cg_preconditioner_type,
+	SEXP seed_rand_vec_trace,
+	SEXP piv_chol_rank) {
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
 	SEXP convergence_criterion_aux = PROTECT(Rf_asChar(convergence_criterion));
 	SEXP optimizer_coef_aux = PROTECT(Rf_asChar(optimizer_coef));
-	SEXP matrix_inversion_method_aux = PROTECT(Rf_asChar(matrix_inversion_method));
+	SEXP cg_preconditioner_type_aux = PROTECT(Rf_asChar(cg_preconditioner_type));
 	const char* optimizer_ptr = (Rf_isNull(optimizer)) ? nullptr : CHAR(optimizer_aux);
 	const char* convergence_criterion_ptr = (Rf_isNull(convergence_criterion)) ? nullptr : CHAR(convergence_criterion_aux);
 	const char* optimizer_coef_ptr = (Rf_isNull(optimizer_coef)) ? nullptr : CHAR(optimizer_coef_aux);
-	const char* matrix_inversion_method_ptr = (Rf_isNull(matrix_inversion_method)) ? nullptr : CHAR(matrix_inversion_method_aux);
+	const char* cg_preconditioner_type_ptr = (Rf_isNull(cg_preconditioner_type)) ? nullptr : CHAR(cg_preconditioner_type_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetOptimConfig(R_ExternalPtrAddr(handle),
 		R_REAL_PTR(init_cov_pars),
@@ -935,12 +949,14 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		Rf_asReal(lr_coef),
 		Rf_asReal(acc_rate_coef),
 		optimizer_coef_ptr,
-		matrix_inversion_method_ptr,
 		Rf_asInteger(cg_max_num_it),
 		Rf_asInteger(cg_max_num_it_tridiag),
 		Rf_asReal(cg_delta_conv),
 		Rf_asInteger(num_rand_vec_trace),
-		Rf_asLogical(reuse_rand_vec_trace)));
+		Rf_asLogical(reuse_rand_vec_trace),
+		cg_preconditioner_type_ptr,
+		Rf_asInteger(seed_rand_vec_trace),
+		Rf_asInteger(piv_chol_rank)));
 	R_API_END();
 	UNPROTECT(4);
 	return R_NilValue;
@@ -1248,9 +1264,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterSaveModel_R"          , (DL_FUNC)&LGBM_BoosterSaveModel_R          , 4},
   {"LGBM_BoosterSaveModelToString_R"  , (DL_FUNC)&LGBM_BoosterSaveModelToString_R  , 4},
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
-  {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 22},
+  {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 26},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 24},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 26},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
   {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 4},
   {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},

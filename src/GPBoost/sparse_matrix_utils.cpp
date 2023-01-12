@@ -7,8 +7,6 @@
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 */
 #include <GPBoost/sparse_matrix_utils.h>
-#include <LightGBM/utils/log.h>
-using LightGBM::Log;
 
 namespace GPBoost {
 
@@ -278,82 +276,17 @@ namespace GPBoost {
 
 #else
 
-		eigen_sp_Lower_sp_RHS_solve(A, B, A_inv_B, lower);
+		eigen_sp_Lower_sp_RHS_solve<sp_mat_t, sp_mat_t>(A, B, A_inv_B, lower);
 
 #endif
 
-	}
+	}//end eigen_sp_Lower_sp_RHS_cs_solve
 
-	void eigen_sp_Lower_sp_RHS_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower) {
-		//Convert Eigen matrices to correct format
-		A.makeCompressed();
-		B.makeCompressed();
-
-		const double* val = A.valuePtr();
-		const int* row_idx = A.innerIndexPtr();
-		const int* col_ptr = A.outerIndexPtr();
-
-		if (lower) {
-			den_mat_t L_inv_dens = den_mat_t(B);
-#pragma omp parallel for schedule(static)
-			for (int j = 0; j < B.cols(); ++j) {
-				sp_L_solve(val, row_idx, col_ptr, (int)A.cols(), L_inv_dens.data() + j * B.rows());
-			}
-			A_inv_B = L_inv_dens.sparseView();
-		}
-		else {
-			den_mat_t U_inv_dens = den_mat_t(B);
-#pragma omp parallel for schedule(static)
-			for (int j = 0; j < B.cols(); ++j) {
-				sp_L_t_solve(val, row_idx, col_ptr, (int)A.cols(), U_inv_dens.data() + j * B.rows());
-			}
-			A_inv_B = U_inv_dens.sparseView();
-		}
-	}
-
-	void CalcLInvH(sp_mat_t& L, sp_mat_t& H, sp_mat_t& LInvH, bool lower) {
-		eigen_sp_Lower_sp_RHS_solve(L, H, LInvH, lower);
-		//TODO: use eigen_sp_Lower_sp_RHS_cs_solve -> faster (currently this crashes due to Eigen bug, see the definition of sp_Lower_sp_RHS_cs_solve for more details)
-		//eigen_sp_Lower_sp_RHS_cs_solve(L, H, LInvH, lower);
-	}
-
-	void CalcLInvH(sp_mat_t& L, den_mat_t& H, den_mat_t& LInvH, bool lower) {
-		L.makeCompressed();
-		const double* val = L.valuePtr();
-		const int* row_idx = L.innerIndexPtr();
-		const int* col_ptr = L.outerIndexPtr();
-		LInvH = den_mat_t((int)L.cols(), (int)H.cols());
-
-		if (lower) {
-#pragma omp parallel for schedule(static)
-			for (int j = 0; j < H.cols(); ++j) {
-				vec_t col_j = H.col(j);
-				sp_L_solve(val, row_idx, col_ptr, (int)L.cols(), col_j.data());
-				LInvH.col(j) = col_j;
-			}
-		}
-		else {
-#pragma omp parallel for schedule(static)
-			for (int j = 0; j < H.cols(); ++j) {
-				vec_t col_j = H.col(j);
-				sp_L_t_solve(val, row_idx, col_ptr, (int)L.cols(), col_j.data());
-				LInvH.col(j) = col_j;
-			}
-		}
-	}
-
-	void CalcLInvH(den_mat_t& L, den_mat_t& H, den_mat_t& LInvH, bool lower) {
-		LInvH = H;
-		int ncols = (int)L.cols();
-#pragma omp parallel for schedule(static)
-		for (int j = 0; j < (int)H.cols(); ++j) {
-			if (lower) {
-				L_solve(L.data(), ncols, LInvH.data() + j * ncols);
-			}
-			else {
-				L_t_solve(L.data(), ncols, LInvH.data() + j * ncols);
-			}
-		}
+	void eigen_sp_Lower_sp_RHS_cs_solve(sp_mat_rm_t& A, sp_mat_rm_t& B, sp_mat_rm_t& A_inv_B, bool lower) {//not used, place-holder for compiler
+		sp_mat_t A_inv_B_cm = sp_mat_t(B);
+		sp_mat_t A_cm = sp_mat_t(A);
+		eigen_sp_Lower_sp_RHS_cs_solve(A_cm, A_inv_B_cm, A_inv_B_cm, lower);
+		A_inv_B = sp_mat_rm_t(A_inv_B_cm);
 	}
 
 	void CalcZtVGivenIndices(const data_size_t num_data,

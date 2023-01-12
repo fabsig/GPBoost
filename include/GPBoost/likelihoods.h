@@ -52,7 +52,7 @@ namespace GPBoost {
 
 	/*!
 	* \brief This class implements the likelihoods for the Gaussian proceses
-	* The template parameters <T_mat, T_chol> can be either <den_mat_t, chol_den_mat_t> or <sp_mat_t, chol_sp_mat_t>
+	* The template parameters <T_mat, T_chol> can be <den_mat_t, chol_den_mat_t> , <sp_mat_t, chol_sp_mat_t>, <sp_mat_rm_t, chol_sp_mat_rm_t>
 	*/
 	template<typename T_mat, typename T_chol>
 	class Likelihood {
@@ -579,7 +579,8 @@ namespace GPBoost {
 		* \param[out] chol_fact Cholesky factor
 		* \param psi Matrix for which the Cholesky decomposition should be done
 		*/
-		template <class T_mat_1,  typename std::enable_if< std::is_same<sp_mat_t, T_mat_1>::value>::type * = nullptr  >
+		template <class T_mat_1,  typename std::enable_if <std::is_same<sp_mat_t, T_mat_1>::value ||
+			std::is_same<sp_mat_rm_t, T_mat_1>::value>::type * = nullptr >
 		void CalcChol(T_chol& chol_fact, const T_mat_1& psi) {
 			if (!chol_fact_pattern_analyzed_) {
 				chol_fact.analyzePattern(psi);
@@ -587,24 +588,9 @@ namespace GPBoost {
 			}
 			chol_fact.factorize(psi);
 		}
-		template <class T_mat_1, typename std::enable_if< std::is_same<den_mat_t, T_mat_1>::value>::type * = nullptr  >
+		template <class T_mat_1, typename std::enable_if <std::is_same<den_mat_t, T_mat_1>::value>::type * = nullptr  >
 		void CalcChol(T_chol& chol_fact, const T_mat_1& psi) {
 			chol_fact.compute(psi);
-		}
-
-		/*!
-		* \brief Apply permutation matrix of Cholesky factor (if it exists)
-		* \param chol_fact Cholesky factor
-		* \param M[out] Matrix to which the permutation is applied to
-		*/
-		template <class T_mat_1, typename std::enable_if< std::is_same<sp_mat_t, T_mat_1>::value>::type * = nullptr  >
-		void ApplyPermutationCholeskyFactor(const T_chol& chol_fact, T_mat_1& M) {
-			if (chol_fact.permutationP().size() > 0) {//Apply permutation if an ordering is used
-				M = chol_fact.permutationP() * M;
-			}
-		}
-		template <class T_mat_1, typename std::enable_if< std::is_same<den_mat_t, T_mat_1>::value>::type * = nullptr  >
-		void ApplyPermutationCholeskyFactor(const T_chol&, T_mat_1&) {
 		}
 
 		/*!
@@ -649,11 +635,8 @@ namespace GPBoost {
 			}
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t rhs, v_aux;//auxiliary variables
-			sp_mat_t Wsqrt(num_data, num_data);//diagonal matrix with square root of negative second derivatives on the diagonal (sqrt of negative Hessian of log-likelihood)
-			Wsqrt.setIdentity();
-			T_mat Id(num_data, num_data);
-			Id.setIdentity();
-			T_mat Id_plus_Wsqrt_ZSigmaZt_Wsqrt;
+			vec_t Wsqrt(num_data);//diagonal matrix with square root of negative second derivatives on the diagonal (sqrt of negative Hessian of log-likelihood)
+			T_mat Id_plus_Wsqrt_ZSigmaZt_Wsqrt(num_data, num_data);
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
@@ -669,13 +652,14 @@ namespace GPBoost {
 					CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 				}
 				// Calculate Cholesky factor of matrix B = Id + Wsqrt * Z*Sigma*Zt * Wsqrt
-				Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
-				Id_plus_Wsqrt_ZSigmaZt_Wsqrt = Id + Wsqrt * (*ZSigmaZt) * Wsqrt;
+				Wsqrt.array() = second_deriv_neg_ll_.array().sqrt();
+				Id_plus_Wsqrt_ZSigmaZt_Wsqrt.setIdentity();
+				Id_plus_Wsqrt_ZSigmaZt_Wsqrt += (Wsqrt.asDiagonal() * (*ZSigmaZt) * Wsqrt.asDiagonal());
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
 				// Update mode and a_vec_
 				rhs.array() = second_deriv_neg_ll_.array() * mode_.array() + first_deriv_ll_.array();
-				v_aux = Wsqrt * (*ZSigmaZt) * rhs;
-				a_vec_ = rhs - Wsqrt * (chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(v_aux));
+				v_aux = Wsqrt.asDiagonal() * (*ZSigmaZt) * rhs;
+				a_vec_ = rhs - Wsqrt.asDiagonal() * (chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(v_aux));
 				mode_ = (*ZSigmaZt) * a_vec_;
 				// Calculate new objective function
 				if (no_fixed_effects) {
@@ -731,8 +715,9 @@ namespace GPBoost {
 					CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 					CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 				}
-				Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
-				Id_plus_Wsqrt_ZSigmaZt_Wsqrt = Id + Wsqrt * (*ZSigmaZt) * Wsqrt;
+				Wsqrt.array() = second_deriv_neg_ll_.array().sqrt();
+				Id_plus_Wsqrt_ZSigmaZt_Wsqrt.setIdentity();
+				Id_plus_Wsqrt_ZSigmaZt_Wsqrt += (Wsqrt.asDiagonal() * (*ZSigmaZt) * Wsqrt.asDiagonal());
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
 				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
@@ -800,9 +785,7 @@ namespace GPBoost {
 			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t diag_sqrt_ZtWZ(num_re_);//sqrt of diagonal matrix ZtWZ
-			T_mat Id(num_re_, num_re_);
-			Id.setIdentity();
-			T_mat Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt;
+			T_mat Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt(num_re_, num_re_);
 			vec_t rhs, v_aux;
 			int it;
 			bool terminate_optim = false;
@@ -817,7 +800,8 @@ namespace GPBoost {
 				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, rhs, false);
 				// Calculate Cholesky factor of matrix B = Id + ZtWZsqrt * Sigma * ZtWZsqrt
 				diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
-				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
+				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt.setIdentity();
+				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt += diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);//this is the bottleneck (for large data and sparse matrices)
 				// Update mode and a_vec_
 				v_aux = (*Sigma) * rhs;
@@ -881,7 +865,8 @@ namespace GPBoost {
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_sqrt_ZtWZ, true);
 				diag_sqrt_ZtWZ.array() = diag_sqrt_ZtWZ.array().sqrt();
-				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt = Id + diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
+				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt.setIdentity();
+				Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt += diag_sqrt_ZtWZ.asDiagonal() * (*Sigma) * diag_sqrt_ZtWZ.asDiagonal();
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
 				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
@@ -1361,8 +1346,8 @@ namespace GPBoost {
 				}
 				CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
 			}
-			ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt);
-			chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL().solveInPlace(L_inv_Wsqrt);//L_inv_Wsqrt = L\Wsqrt
+			ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt, false);
+			TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt);//L_inv_Wsqrt = L\Wsqrt
 			T_mat L_inv_Wsqrt_ZSigmaZt = L_inv_Wsqrt * (*ZSigmaZt);
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
@@ -1478,8 +1463,8 @@ namespace GPBoost {
 			CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
 			vec_t diag_ZtThirdDerivZ;
 			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, third_deriv, diag_ZtThirdDerivZ, true);
-			ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZsqrt);
-			chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL().solveInPlace(L_inv_ZtWZsqrt);//L_inv_ZtWZsqrt = L\ZtWZsqrt //This is the bottleneck (in this first part) for large data when using sparse matrices
+			ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZsqrt, false);
+			TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZsqrt);//L_inv_ZtWZsqrt = L\ZtWZsqrt //This is the bottleneck (in this first part) for large data when using sparse matrices
 			T_mat L_inv_ZtWZsqrt_Sigma = L_inv_ZtWZsqrt * (*Sigma);
 			////Only for debugging
 			//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale: L_inv_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt));//Only for debugging
@@ -1596,7 +1581,7 @@ namespace GPBoost {
 			if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
 				L_inv = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * L_inv;
 			}
-			chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL().solveInPlace(L_inv);
+			TriangularSolveInPlaceGivenCholesky<sp_mat_t, chol_sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, L_inv);
 			sp_mat_t SigmaI_plus_ZtWZ_inv = L_inv.transpose() * L_inv;
 			// calculate gradient of approx. marginal likeligood wrt the mode
 			//Note: the calculation of d_mll_d_mode is the bottleneck of this function (corresponding lines below are indicated with * and, in particular, **)
@@ -1840,7 +1825,7 @@ namespace GPBoost {
 			if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().size() > 0) {//Permutation is only used when having an ordering
 				L_inv = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * L_inv;
 			}
-			chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL().solveInPlace(L_inv);
+			TriangularSolveInPlaceGivenCholesky<sp_mat_t, chol_sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv);
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
 				sp_mat_t SigmaI_plus_W_inv = L_inv.transpose() * L_inv;//Note: this is the computational bottleneck for large data
@@ -1933,10 +1918,10 @@ namespace GPBoost {
 				Wsqrt.setIdentity();
 				Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
 				T_mat Maux = Wsqrt * Cross_Cov.transpose();
-				ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux);
-				chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL().solveInPlace(Maux);
+				ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux, false);
+				TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux);
 				if (calc_pred_cov) {
-					pred_cov -= Maux.transpose() * Maux;
+					pred_cov -= (T_mat)(Maux.transpose() * Maux);
 				}
 				if (calc_pred_var) {
 					Maux = Maux.cwiseProduct(Maux);
@@ -2014,10 +1999,10 @@ namespace GPBoost {
 				ZtWZsqrt.setIdentity();
 				ZtWZsqrt.diagonal().array() = diag_ZtWZ.array().sqrt();
 				T_mat Maux = ZtWZsqrt * Cross_Cov.transpose();
-				ApplyPermutationCholeskyFactor<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux);
-				chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL().solveInPlace(Maux);//Maux = L\(ZtWZsqrt * Cross_Cov^T)
+				ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux, false);
+				TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux);//Maux = L\(ZtWZsqrt * Cross_Cov^T)
 				if (calc_pred_cov) {
-					pred_cov -= Maux.transpose() * Maux;
+					pred_cov -= (T_mat)(Maux.transpose() * Maux);
 				}
 				if (calc_pred_var) {
 					Maux = Maux.cwiseProduct(Maux);
@@ -2101,9 +2086,10 @@ namespace GPBoost {
 				if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
 					Maux = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * Maux;
 				}
-				chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL().solveInPlace(Maux);
+				TriangularSolveInPlaceGivenCholesky<sp_mat_t, chol_sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux);
 				if (calc_pred_cov) {
-					pred_cov += T_mat(Maux.transpose() * Maux - (T_mat)(Cross_Cov * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose()));
+					pred_cov += (T_mat)(Maux.transpose() * Maux); 
+					pred_cov -= (T_mat)(Cross_Cov * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose());
 				}
 				if (calc_pred_var) {
 					sp_mat_t Maux3 = Cross_Cov.cwiseProduct(Cross_Cov * second_deriv_neg_ll_.asDiagonal());
@@ -2285,7 +2271,7 @@ namespace GPBoost {
 				else {
 					Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
 					Bp_inv.setIdentity();
-					eigen_sp_Lower_sp_RHS_solve(Bp, Bp_inv, Bp_inv, true);
+					eigen_sp_Lower_sp_RHS_solve<sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, true);
 					//Bp.triangularView<Eigen::UpLoType::UnitLower>().solveInPlace(Bp_inv);//much slower
 					Maux = Bpo.transpose() * Bp_inv.transpose();
 					Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
@@ -2295,11 +2281,11 @@ namespace GPBoost {
 				}
 				if (Bp.cols() <= 100) {
 					sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL();
-					eigen_sp_Lower_sp_RHS_solve(L, Maux, Maux, true);
+					eigen_sp_Lower_sp_RHS_solve<sp_mat_t, sp_mat_t>(L, Maux, Maux, true);
 				}
 				else {
-					chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL().solveInPlace(Maux);
-					//Note: this slower for small Bp.cols(), for larger number of prediction points, the differences is small. 
+					TriangularSolveInPlaceGivenCholesky<sp_mat_t, chol_sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux);
+					//Note: this is slower for small Bp.cols(), for larger number of prediction points, the differences is small. 
 					//		Since 'eigen_sp_Lower_sp_RHS_solve' converts Maux to den_mat_t, we use this version to avoid memory issues if Bp.cols() is large
 				}
 				if (calc_pred_cov) {
@@ -2439,11 +2425,9 @@ namespace GPBoost {
 		/*! \brief Diagonal of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'GroupedRE' when there is only one random effect and ZtWZ is diagonal. Otherwise 'diag_SigmaI_plus_ZtWZ_' is used for grouped REs) */
 		vec_t diag_SigmaI_plus_ZtWZ_;
 		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version'GroupedRE' if there is more than one random effect). */
-		chol_sp_mat_AMDOrder_t chol_fact_SigmaI_plus_ZtWZ_grouped_;
+		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_grouped_;
 		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'Vecchia') */
-		chol_sp_mat_AMDOrder_t chol_fact_SigmaI_plus_ZtWZ_vecchia_;
-		//Note: chol_sp_mat_AMDOrder_t (AMD permutation) is faster than chol_sp_mat_t (no permutation) for the Vecchia approcimation but for the grouped random effects the difference is small.
-		//			chol_sp_mat_COLAMDOrder_t is slower than no ordering or chol_sp_mat_AMDOrder_t for both grouped random effects and the Vecchia approximation
+		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_vecchia_;
 		/*! 
 		* \brief Cholesky factors of matrix B = I + Wsqrt *  Z * Sigma * Zt * Wsqrt in Laplace approximation (for version 'Stable') 
 		*		or of matrix B = Id + ZtWZsqrt * Sigma * ZtWZsqrt (for version 'OnlyOneGPCalculationsOnREScale')

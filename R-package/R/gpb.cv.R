@@ -476,33 +476,25 @@ gpb.cv <- function(params = list()
           cluster_ids <- cluster_ids[train_indexDT$indices]
         }
         
-        vecchia_approx <- gp_model$.__enclos_env__$private$vecchia_approx
-        num_neighbors <- gp_model$.__enclos_env__$private$num_neighbors
-        vecchia_ordering <- gp_model$.__enclos_env__$private$vecchia_ordering
-        vecchia_pred_type <- gp_model$.__enclos_env__$private$vecchia_pred_type
-        num_neighbors_pred <- gp_model$.__enclos_env__$private$num_neighbors_pred
-        cg_delta_conv_pred <- gp_model$.__enclos_env__$private$cg_delta_conv_pred
-        cov_function <- gp_model$get_cov_function()
-        cov_fct_shape <- gp_model$get_cov_fct_shape()
-        cov_fct_taper_range <- gp_model$get_cov_fct_taper_range()
-        ind_effect_group_rand_coef <- gp_model$get_ind_effect_group_rand_coef()
-        drop_intercept_group_rand_effect <- gp_model$get_drop_intercept_group_rand_effect()
-        
-        gp_model_train <- gpb.GPModel$new(group_data = group_data,
-                                          group_rand_coef_data = group_rand_coef_data,
-                                          ind_effect_group_rand_coef = ind_effect_group_rand_coef,
-                                          drop_intercept_group_rand_effect = drop_intercept_group_rand_effect,
-                                          gp_coords = gp_coords,
-                                          gp_rand_coef_data = gp_rand_coef_data,
-                                          cov_function = cov_function,
-                                          cov_fct_shape = cov_fct_shape,
-                                          cov_fct_taper_range = cov_fct_taper_range,
-                                          vecchia_approx = vecchia_approx,
-                                          num_neighbors = num_neighbors,
-                                          vecchia_ordering = vecchia_ordering,
-                                          cluster_ids = cluster_ids,
-                                          likelihood = gp_model$get_likelihood_name(),
-                                          free_raw_data = TRUE)
+        gp_model_train <- gpb.GPModel$new(likelihood = gp_model$get_likelihood_name()
+                                          , group_data = group_data
+                                          , group_rand_coef_data = group_rand_coef_data
+                                          , ind_effect_group_rand_coef = gp_model$.__enclos_env__$private$ind_effect_group_rand_coef
+                                          , drop_intercept_group_rand_effect = gp_model$.__enclos_env__$private$drop_intercept_group_rand_effect
+                                          , gp_coords = gp_coords
+                                          , gp_rand_coef_data = gp_rand_coef_data
+                                          , cov_function = gp_model$.__enclos_env__$private$cov_function
+                                          , cov_fct_shape = gp_model$.__enclos_env__$private$cov_fct_shape
+                                          , gp_approx = gp_model$.__enclos_env__$private$gp_approx
+                                          , cov_fct_taper_range = gp_model$.__enclos_env__$private$cov_fct_taper_range
+                                          , cov_fct_taper_shape = gp_model$.__enclos_env__$private$cov_fct_taper_shape
+                                          , num_neighbors = gp_model$.__enclos_env__$private$num_neighbors
+                                          , vecchia_ordering = gp_model$.__enclos_env__$private$vecchia_ordering
+                                          , num_ind_points = gp_model$.__enclos_env__$private$num_ind_points
+                                          , matrix_inversion_method = gp_model$.__enclos_env__$private$matrix_inversion_method
+                                          , seed = gp_model$.__enclos_env__$private$seed
+                                          , cluster_ids = cluster_ids
+                                          , free_raw_data = TRUE)
         valid_set_gp <- NULL
         if (use_gp_model_for_validation) {
           gp_model_train$set_prediction_data(group_data_pred = group_data_pred,
@@ -510,9 +502,9 @@ gpb.cv <- function(params = list()
                                              gp_coords_pred = gp_coords_pred,
                                              gp_rand_coef_data_pred = gp_rand_coef_data_pred,
                                              cluster_ids_pred = cluster_ids_pred,
-                                             vecchia_pred_type = vecchia_pred_type,
-                                             num_neighbors_pred = num_neighbors_pred,
-                                             cg_delta_conv_pred = cg_delta_conv_pred)
+                                             vecchia_pred_type = gp_model$.__enclos_env__$private$vecchia_pred_type,
+                                             num_neighbors_pred = gp_model$.__enclos_env__$private$num_neighbors_pred,
+                                             cg_delta_conv_pred = gp_model$.__enclos_env__$private$cg_delta_conv_pred)
           if (has_custom_eval_functions) {
             # Note: Validation using the GP model is only done in R if there are custom evaluation functions in eval_functions, 
             #        otherwise it is directly done in C++. See the function Eval() in regression_metric.hpp
