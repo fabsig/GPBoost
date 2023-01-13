@@ -1,13 +1,14 @@
 context("GPModel_gaussian_process")
 
+TOLERANCE_LOOSE <- 1E-2
+TOLERANCE_STRICT <- 1E-6
+
 DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent",
                              lr_cov = 0.1, use_nesterov_acc = TRUE,
                              acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
                              optimizer_coef = "gradient_descent", lr_coef = 0.1,
                              convergence_criterion = "relative_change_in_log_likelihood")
 DEFAULT_OPTIM_PARAMS_STD <- c(DEFAULT_OPTIM_PARAMS, list(std_dev = TRUE))
-TOLERANCE_LOOSE <- 1E-2
-TOLERANCE_STRICT <- 1E-6
 
 # Function that simulates uniform random variables
 sim_rand_unif <- function(n, init_c=0.1){
@@ -190,15 +191,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
                                            cov_fct_shape = 1.5,
                                            y = y, params = DEFAULT_OPTIM_PARAMS_STD) , file='NUL')
-    cov_pars_other <- c(0.22912036, 0.08482545, 0.87876886, 0.24053588, 0.10725076, 0.01542466)
+    cov_pars_other <- c(0.22926543, 0.08486055, 0.87886348, 0.24059253, 0.10726402, 0.01542898)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 16)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
                                            cov_fct_shape = 2.5,
                                            y = y, params = DEFAULT_OPTIM_PARAMS_STD) , file='NUL')
-    cov_pars_other <- c(.27467781, 0.08345405, 0.82842693, 0.23533957, 0.10567129, 0.01069569)
+    cov_pars_other <- c(0.27251105, 0.08316755, 0.83205621, 0.23561744, 0.10536460, 0.01062167)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 17)
+    expect_equal(gp_model$get_num_optim_iter(), 13)
   })
   
   test_that("Gaussian process model with linear regression term ", {
@@ -891,6 +892,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   test_that("Tapering ", {
+    
     y <- eps + X%*%beta + xi
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
@@ -914,8 +916,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # With tapering and very large tapering range
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                           gp_approx = "tapering",
-                                           y = y, X = X, cov_fct_taper_shape = 0, cov_fct_taper_range = 1e6,
+                                           gp_approx = "tapering", cov_fct_taper_shape = 0, cov_fct_taper_range = 1e6,
+                                           y = y, X = X, 
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
@@ -928,14 +930,55 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # With tapering and smaller tapering range
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                           gp_approx = "tapering",
-                                           y = y, X = X, cov_fct_taper_shape = 0, cov_fct_taper_range = 0.5,
+                                           gp_approx = "tapering", cov_fct_taper_shape = 0, cov_fct_taper_range = 0.5,
+                                           y = y, X = X,
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     cov_pars_tap <- c(0.02593993, 0.07560715, 0.99435221, 0.21816716, 0.17712808, 0.09797175)
     coef_tap <- c(2.32410488, 0.20610507, 1.89498931, 0.09533541)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 75)
+    
+    # Same thing with matern covariance
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                           y = y, X = X, params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
+    cov_pars <- c(0.17369771, 0.07950745, 0.84098718, 0.20889907, 0.08839526, 0.01190858)
+    coef <- c(2.33980860, 0.19481950, 1.88058081, 0.09786326)
+    num_it <- 21
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it)
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_cov_mat = TRUE)
+    expected_mu <- c(1.253044, 4.063322, 3.104536)
+    expected_cov <- c(5.880651e-01, 3.732173e-05, 4.443229e-08, 3.732173e-05, 
+                      3.627280e-01, 1.497245e-06, 4.443229e-08, 1.497245e-06, 3.796592e-01)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    
+    # With tapering and very large tapering range
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                           gp_approx = "tapering", cov_fct_taper_shape = 1, cov_fct_taper_range = 1e6,
+                                           y = y, X = X,
+                                           params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it)
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    
+    # With tapering and smaller tapering range
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                           gp_approx = "tapering", cov_fct_taper_shape = 1, cov_fct_taper_range = 0.5,
+                                           y = y, X = X,
+                                           params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
+    cov_pars_tap <- c(0.21355413, 0.08709298, 0.80448797, 0.20623566, 0.12988850, 0.03404072)
+    coef_tap <- c(2.3533920, 0.1896204, 1.8720682, 0.0988744)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 25)
   })
   
   test_that("Saving a GPModel and loading from file works ", {

@@ -3,6 +3,10 @@ context("GPModel_non_Gaussian_data")
 TOLERANCE <- 1e-3
 TOLERANCE2 <- 1E-6
 
+DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent",
+                             use_nesterov_acc = TRUE, lr_cov=0.1, lr_coef = 0.1, maxit = 1000)
+DEFAULT_OPTIM_PARAMS_STD <- c(DEFAULT_OPTIM_PARAMS, list(std_dev = TRUE))
+
 # Function that simulates uniform random variables
 sim_rand_unif <- function(n, init_c=0.1){
   mod_lcg <- 2^32 # modulus for linear congruential generator (random0 used)
@@ -205,53 +209,52 @@ test_that("Binary classification with Gaussian process model ", {
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
 })
 
-test_that("Binary classification with Gaussian process model with 
-          multiple observations at the same location", {
-            
-            eps_multiple <- as.vector(L_multiple %*% b_multiple)
-            probs <- pnorm(eps_multiple)
-            y <- as.numeric(sim_rand_unif(n=n, init_c=0.9341) < probs)
-            
-            capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential",
-                                                   y = y,likelihood = "bernoulli_probit",
-                                                   params = list(optimizer_cov = "gradient_descent",
-                                                                 lr_cov=0.1, use_nesterov_acc = TRUE)), file='NUL')
-            cov_pars <- c(0.6857065, 0.2363754)
-            expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-            expect_equal(gp_model$get_num_optim_iter(), 8)
-            # Prediction
-            coord_test <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
-            pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-                                     cov_pars = c(1.5,0.15), predict_cov_mat = TRUE, predict_response = FALSE)
-            expected_mu <- c(-0.2633282, -0.2637633, -0.2637633)
-            expected_cov <- c(0.9561355, 0.8535206, 0.8535206, 0.8535206, 1.0180227,
-                              1.0180227, 0.8535206, 1.0180227, 1.0180227)
-            expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
-            expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
-            pred_resp <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-                                          cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = TRUE)
-            expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.4263502, 0.4263502))),TOLERANCE2)
-            expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2445757, 0.2445757))),TOLERANCE2)
-            
-            # Predict training data random effects
-            training_data_random_effects <- predict_training_data_random_effects(gp_model)
-            pred_random_effects <- predict(gp_model, gp_coords_pred = coords_multiple, predict_response = FALSE)
-            expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
-            
-            # Multiple cluster IDs and multiple observations
-            coord_test <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
-            cluster_ids_pred = c(0L,3L,3L)
-            pred <- gp_model$predict(y = y, gp_coords_pred = coord_test, cluster_ids_pred = cluster_ids_pred,
-                                     cov_pars = c(1.5,0.15), predict_cov_mat = TRUE, predict_response = FALSE)
-            expected_cov <- c(0.9561355, 0.0000000, 0.0000000, 0.0000000, 1.5000000,
-                              1.5000000, 0.0000000, 1.5000000, 1.5000000)
-            expect_lt(sum(abs(pred$mu-c(-0.2633282, rep(0,2)))),TOLERANCE2)
-            expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
-            pred_resp <- gp_model$predict(y = y, gp_coords_pred = coord_test, cluster_ids_pred = cluster_ids_pred,
-                                          cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = TRUE)
-            expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.5000000, 0.5000000))),TOLERANCE2)
-            expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2500000, 0.2500000))),TOLERANCE2)
-          })
+test_that("Binary classification with Gaussian process model with multiple observations at the same location", {
+  
+  eps_multiple <- as.vector(L_multiple %*% b_multiple)
+  probs <- pnorm(eps_multiple)
+  y <- as.numeric(sim_rand_unif(n=n, init_c=0.9341) < probs)
+  
+  capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential",
+                                         y = y,likelihood = "bernoulli_probit",
+                                         params = list(optimizer_cov = "gradient_descent",
+                                                       lr_cov=0.1, use_nesterov_acc = TRUE)), file='NUL')
+  cov_pars <- c(0.6857065, 0.2363754)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+  expect_equal(gp_model$get_num_optim_iter(), 8)
+  # Prediction
+  coord_test <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
+  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                           cov_pars = c(1.5,0.15), predict_cov_mat = TRUE, predict_response = FALSE)
+  expected_mu <- c(-0.2633282, -0.2637633, -0.2637633)
+  expected_cov <- c(0.9561355, 0.8535206, 0.8535206, 0.8535206, 1.0180227,
+                    1.0180227, 0.8535206, 1.0180227, 1.0180227)
+  expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE2)
+  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
+  pred_resp <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                                cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = TRUE)
+  expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.4263502, 0.4263502))),TOLERANCE2)
+  expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2445757, 0.2445757))),TOLERANCE2)
+  
+  # Predict training data random effects
+  training_data_random_effects <- predict_training_data_random_effects(gp_model)
+  pred_random_effects <- predict(gp_model, gp_coords_pred = coords_multiple, predict_response = FALSE)
+  expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
+  
+  # Multiple cluster IDs and multiple observations
+  coord_test <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
+  cluster_ids_pred = c(0L,3L,3L)
+  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test, cluster_ids_pred = cluster_ids_pred,
+                           cov_pars = c(1.5,0.15), predict_cov_mat = TRUE, predict_response = FALSE)
+  expected_cov <- c(0.9561355, 0.0000000, 0.0000000, 0.0000000, 1.5000000,
+                    1.5000000, 0.0000000, 1.5000000, 1.5000000)
+  expect_lt(sum(abs(pred$mu-c(-0.2633282, rep(0,2)))),TOLERANCE2)
+  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE2)
+  pred_resp <- gp_model$predict(y = y, gp_coords_pred = coord_test, cluster_ids_pred = cluster_ids_pred,
+                                cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = TRUE)
+  expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.5000000, 0.5000000))),TOLERANCE2)
+  expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2500000, 0.2500000))),TOLERANCE2)
+})
 
 # Avoid that long tests get executed on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
@@ -1036,9 +1039,7 @@ test_that("Binary classification with linear predictor and Gaussian process mode
   y <- as.numeric(sim_rand_unif(n=n, init_c=0.199) < probs)
   # Estimation
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
-                         y = y, X=X, params = list(optimizer_cov = "gradient_descent",
-                                                   optimizer_coef = "gradient_descent",
-                                                   use_nesterov_acc = TRUE, lr_cov=0.1, lr_coef = 0.1, maxit=100))
+                         y = y, X=X, params = DEFAULT_OPTIM_PARAMS)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.3992407, 0.261976))),TOLERANCE)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.2764603, 1.5556477))),TOLERANCE)
   expect_equal(gp_model$get_num_optim_iter(), 11)
@@ -1063,15 +1064,64 @@ test_that("Binary classification with linear predictor and Gaussian process mode
   
   # Standard deviations
   capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit", 
-                                         y = y, X=X, params = list(std_dev = TRUE, optimizer_cov = "gradient_descent",
-                                                                   optimizer_coef = "gradient_descent", 
-                                                                   use_nesterov_acc = TRUE, lr_cov = 0.1, lr_coef = 0.1, maxit=100)),
+                                         y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD),
                   file='NUL')
   coef <- c(0.2764603, 0.5420554, 1.5556477, 0.3146670)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE2)
   
 })
 
+test_that("Tapering ", {
+  
+  probs <- pnorm(L %*% b_1 + X%*%beta)
+  y <- as.numeric(sim_rand_unif(n=n, init_c=0.199) < probs)
+  # No tapering
+  gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                         y = y, X=X, params = DEFAULT_OPTIM_PARAMS)
+  cov_pars <- c(1.3992407, 0.261976)
+  coefs <- c(0.2764603, 1.5556477)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE)
+  expect_equal(gp_model$get_num_optim_iter(), 11)
+  # Prediction
+  coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+  X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
+  pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                  predict_var = TRUE, predict_response = FALSE)
+  expected_mu <- c(-0.7480014, 0.3297389, 2.7039005)
+  expected_var <- c(0.8596074, 0.8574038, 0.5016189)
+  expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
+  expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+  
+  # With tapering and very large tapering range 
+  capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                         gp_approx = "tapering", cov_fct_taper_shape = 0, cov_fct_taper_range = 1e6,
+                         y = y, X=X, params = DEFAULT_OPTIM_PARAMS), file='NUL')
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE)
+  expect_equal(gp_model$get_num_optim_iter(), 11)
+  pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                  predict_var = TRUE, predict_response = FALSE)
+  expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
+  expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+  
+  # With tapering and small tapering range 
+  capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", likelihood = "bernoulli_probit",
+                                         cov_fct_shape = 2.5,
+                                         gp_approx = "tapering", cov_fct_taper_shape = 1, cov_fct_taper_range = 0.5,
+                                         y = y, X=X, params = DEFAULT_OPTIM_PARAMS), file='NUL')
+  cov_pars <- c(.9397216, 0.1193397)
+  coefs <- c(0.4465991, 1.4398973)
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+  expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE)
+  expect_equal(gp_model$get_num_optim_iter(), 16)
+  pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                  predict_var = TRUE, predict_response = FALSE)
+  expected_mu <- c(-0.3887768, 0.6451925, 2.5398402)
+  expected_var <- c(0.7738142, 0.7868789, 0.4606071)
+  expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
+  expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+})
 
 test_that("Binary classification with Gaussian process model and logit link function", {
   

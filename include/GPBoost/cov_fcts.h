@@ -1092,8 +1092,15 @@ namespace GPBoost {
 				}
 				mean_dist /= (num_data_find_init * (num_data_find_init - 1) / 2.);
 				//Set the range parameter such that the correlation is down to 0.05 at the mean distance
-				if (cov_fct_type_ == "exponential" || cov_fct_type_ == "matern") {//TODO: find better intial values for matern covariance for shape = 1.5 and shape = 2.5
+				if (cov_fct_type_ == "exponential" ||
+					(cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 0.5))) {
 					pars[1] = 3. / mean_dist;
+				}
+				else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 1.5)) {
+					pars[1] = 4.7 / mean_dist;
+				}
+				else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 2.5)) {
+					pars[1] = 5.9 / mean_dist;
 				}
 				else if (cov_fct_type_ == "gaussian") {
 					pars[1] = 3. / std::pow(mean_dist, 2.);
