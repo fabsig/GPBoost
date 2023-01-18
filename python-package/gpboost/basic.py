@@ -4216,7 +4216,7 @@ class GPModel(object):
         self.X_loaded_from_file = None
         self.model_fitted = False
         self.params = {"maxit": 1000,
-                       "delta_rel_conv": 1e-6,
+                       "delta_rel_conv": None,# the default is set in '__update_params'
                        "init_coef": None,
                        "lr_coef": 0.1,
                        "lr_cov": -1.,
@@ -4529,9 +4529,26 @@ class GPModel(object):
             self.num_cov_pars = self.num_cov_pars + 1
 
     def __update_params(self, params):
-        if params is not None:
+        # Set default value for 'delta_rel_conv'
+        if params is None:
+            self.params['delta_rel_conv'] = 1e-6
+        else:
             if not isinstance(params, dict):
                 raise ValueError("params needs to be a dict")
+            set_default_delta_rel_conv = False
+            if 'delta_rel_conv' not in params:
+                set_default_delta_rel_conv = True
+            elif params['delta_rel_conv'] is None:
+                set_default_delta_rel_conv = True
+            if set_default_delta_rel_conv:
+                if 'optimizer_cov' in params:
+                    if params['optimizer_cov'] == 'nelder_mead':
+                        params['delta_rel_conv'] = 1e-8
+                    else:
+                        params['delta_rel_conv'] = 1e-6
+                else:
+                    params['delta_rel_conv'] = 1e-6
+            # Update self.params
             for param in params:
                 if param == "init_cov_pars":
                     if params[param] is not None:
@@ -4547,8 +4564,8 @@ class GPModel(object):
                                                               check_data_type=True, check_must_be_int=False,
                                                               convert_to_type=np.float64)
                         if self.num_coef is None or self.num_coef==0:
-                            self.num_coef = params[param].shape[0]
-                        if params[param].shape[0] != self.num_coef:
+                            self.num_coef = params["init_coef"].shape[0]
+                        if params["init_coef"].shape[0] != self.num_coef:
                             raise ValueError("params['init_coef'] does not contain the correct number of parameters")
                 if param in self.params:
                     self.params[param] = params[param]
@@ -4587,7 +4604,7 @@ class GPModel(object):
                     the same value.
                 - maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
-                - delta_rel_conv : double, optional (default = 1e-6)
+                - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
                     gradient is used instead of the relative change in the log-likelihood
@@ -4769,7 +4786,7 @@ class GPModel(object):
                     the same value.
                 - maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
-                - delta_rel_conv : double, optional (default = 1e-6)
+                - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
                     gradient is used instead of the relative change in the log-likelihood
@@ -4825,7 +4842,7 @@ class GPModel(object):
                     init_coef_c = self.params["init_coef"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
             if "optimizer_coef" in params:
                 if params["optimizer_coef"] is not None:
-                    optimizer_coef_c = c_str(params["optimizer_coef"])
+                    optimizer_coef_c = c_str(params["optimizer_coef"])      
         _safe_call(_LIB.GPB_SetOptimConfig(
             self.handle,
             init_cov_pars_c,

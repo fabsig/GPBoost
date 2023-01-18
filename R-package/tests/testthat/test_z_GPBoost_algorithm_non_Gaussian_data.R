@@ -433,7 +433,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Training using Nelder-Mead
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
+      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6))
       bst <- gpboost(data = X_train,
                      label = y_train,
                      gp_model = gp_model,
@@ -654,7 +654,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Training using Nelder-Mead
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
+      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6))
       bst <- gpboost(data = X_train,
                      label = y_train,
                      gp_model = gp_model,
@@ -816,7 +816,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
                                           cov_fct_taper_shape = 1, cov_fct_taper_range = 0.2,
                                           likelihood = "bernoulli_probit"), file='NUL')
-      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead"))
+      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6))
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
                        nrounds = 9,

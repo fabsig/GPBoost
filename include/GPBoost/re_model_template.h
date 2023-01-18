@@ -606,6 +606,7 @@ namespace GPBoost {
 					}
 				}
 			}
+			set_optim_config_has_been_called_ = true;
 		}//end SetOptimConfig
 
 		/*!
@@ -684,6 +685,14 @@ namespace GPBoost {
 				}
 			}
 			lr_cov_init_after_default_ = lr_cov_;
+			if (!set_optim_config_has_been_called_) {
+				if (optimizer_cov_pars_ == "nelder_mead") {
+					delta_rel_conv_ = 1e-8;
+				}
+				else {
+					delta_rel_conv_ = 1e-6;
+				}
+			}
 			if (covariate_data == nullptr) {
 				has_covariates_ = false;
 			}
@@ -766,11 +775,11 @@ namespace GPBoost {
 			}
 			// Initialization of linear regression coefficients related variables
 			vec_t beta, beta_lag1, beta_init, beta_after_grad_aux, beta_after_grad_aux_lag1, beta_before_lr_cov_small, fixed_effects_vec, loc_transf, scale_transf;
-			bool scale_covariables = false;
+			bool scale_covariates = false;
 			if (has_covariates_) {
-				scale_covariables = (optimizer_coef_ == "gradient_descent" || (optimizer_cov_pars_ == "bfgs" && !gauss_likelihood_)) && !only_intercept_for_GPBoost_algo;
+				scale_covariates = (optimizer_coef_ == "gradient_descent" || (optimizer_cov_pars_ == "bfgs" && !gauss_likelihood_)) && !only_intercept_for_GPBoost_algo;
 				// Scale covariates (in order that the gradient is less sample-size dependent)
-				if (scale_covariables) {
+				if (scale_covariates) {
 					loc_transf = vec_t(num_coef_);
 					scale_transf = vec_t(num_coef_);
 					vec_t col_i_centered;
@@ -788,7 +797,7 @@ namespace GPBoost {
 						scale_transf[intercept_col] = 1.;
 					}
 				}
-				beta = vec_t(num_covariates);
+				beta = vec_t(num_coef_);
 				if (init_coef == nullptr) {
 					beta.setZero();
 				}
@@ -809,7 +818,7 @@ namespace GPBoost {
 						}
 					}
 				}
-				else if (scale_covariables) {
+				else if (scale_covariates) {
 					// transform initial coefficients
 					TransformCoef(beta, beta, has_intercept, intercept_col, loc_transf, scale_transf);
 				}
@@ -829,7 +838,7 @@ namespace GPBoost {
 				}
 			}
 			Log::REDebug("GPModel: initial parameters: ");
-			PrintTraceParameters(cov_pars, beta, has_intercept, intercept_col, loc_transf, scale_transf);
+			PrintTraceParameters(cov_pars, beta, has_intercept, intercept_col, scale_covariates, loc_transf, scale_transf);
 			// Initialize optimizer:
 			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian data)
 			// - calculate initial value of objective function
@@ -1033,7 +1042,7 @@ namespace GPBoost {
 						if ((it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) ||
 							((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) && (it != (max_iter_ - 1)) && !terminate_optim) {
 							Log::REDebug("GPModel: parameters after optimization iteration number %d: ", it + 1);
-							PrintTraceParameters(cov_pars, beta, has_intercept, intercept_col, loc_transf, scale_transf);
+							PrintTraceParameters(cov_pars, beta, has_intercept, intercept_col, scale_covariates, loc_transf, scale_transf);
 							if (gauss_likelihood_) {
 								Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
 							}
@@ -1088,7 +1097,7 @@ namespace GPBoost {
 			else {
 				Log::REDebug("GPModel: parameter estimation finished after %d iteration ", num_it);
 			}
-			PrintTraceParameters(cov_pars, beta, has_intercept, intercept_col, loc_transf, scale_transf);
+			PrintTraceParameters(cov_pars, beta, has_intercept, intercept_col, scale_covariates, loc_transf, scale_transf);
 			if (gauss_likelihood_) {
 				Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
 			}
@@ -1099,7 +1108,7 @@ namespace GPBoost {
 				optim_cov_pars[i] = cov_pars[i];
 			}
 			if (has_covariates_) {
-				if (scale_covariables) {
+				if (scale_covariates) {
 					//// transform coefficients back to original scale
 					TransformBackCoef(beta, beta, has_intercept, intercept_col, loc_transf, scale_transf);
 					//transform covariates back
@@ -2739,7 +2748,7 @@ namespace GPBoost {
 		/*! \brief Maximal number of iterations for covariance parameter and linear regression parameter estimation */
 		int max_iter_ = 1000;
 		/*! \brief Convergence tolerance for covariance and linear regression coefficient estimation. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood */
-		double delta_rel_conv_ = 1e-6;
+		double delta_rel_conv_;//The default value is set in 'OptimLinRegrCoefCovPar' if 'SetOptimConfig' has not been called
 		/*! \brief Learning rate for covariance parameters. If lr <= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring") */
 		double lr_cov_ = -1.;
 		/*! \brief Initial learning rate for covariance parameters (lr_cov_ can be decreased) */
@@ -2810,6 +2819,8 @@ namespace GPBoost {
 		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_{ "none" };
 		/*! \brief Rank of the pivoted cholseky decomposition used for the preconditioner of the conjugate gradient algorithm */
 		int piv_chol_rank_ = 100;
+		/*! \brief true if 'SetOptimConfig' has been called */
+		bool set_optim_config_has_been_called_ = false;
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
 		/*! \brief Collects matrices Z^T (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
@@ -4059,6 +4070,7 @@ namespace GPBoost {
 		* \param beta Regression coefficients on transformed scale
 		* \param has_intercept If true, the covariates contain an intercept column
 		* \param intercept_col Index of column with intercept
+		* \param scale_covariates If true, the linear regression covariates are scaled
 		* \param loc_transf Location transformation
 		* \param scale_transf Scale transformation
 		*/
@@ -4066,6 +4078,7 @@ namespace GPBoost {
 			const vec_t& beta,
 			bool has_intercept,
 			int intercept_col,
+			bool scale_covariates,
 			const vec_t& loc_transf,
 			const vec_t& scale_transf) {
 			vec_t cov_pars_orig, beta_orig;
@@ -4073,7 +4086,14 @@ namespace GPBoost {
 				TransformBackCovPars(cov_pars, cov_pars_orig);
 				for (int i = 0; i < (int)cov_pars.size(); ++i) { Log::REDebug("cov_pars[%d]: %g", i, cov_pars_orig[i]); }
 				if (has_covariates_) {
-					TransformBackCoef(beta, beta_orig, has_intercept, intercept_col, loc_transf, scale_transf);
+					if (scale_covariates) {
+						CHECK(loc_transf.size() == beta.size());
+						CHECK(scale_transf.size() == beta.size());
+						TransformBackCoef(beta, beta_orig, has_intercept, intercept_col, loc_transf, scale_transf);
+					}
+					else {
+						beta_orig = beta;
+					}
 					for (int i = 0; i < std::min((int)beta.size(), NUM_COEF_PRINT_TRACE_); ++i) { Log::REDebug("beta[%d]: %g", i, beta_orig[i]); }
 					if (has_covariates_ && beta.size() > NUM_COEF_PRINT_TRACE_) {
 						Log::REDebug("Note: only the first %d linear regression coefficients are shown ", NUM_COEF_PRINT_TRACE_);

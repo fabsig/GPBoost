@@ -96,7 +96,8 @@ test_that("Binary classification with Gaussian process model ", {
   expect_equal(gp_model$get_num_optim_iter(), 26)
   # Estimation using Nelder-Mead
   gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit")
-  capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "nelder_mead")), file='NUL')
+  capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "nelder_mead", delta_rel_conv=1e-6))
+                  , file='NUL')
   cov_pars3 <- c(0.9998047, 0.1855072)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars3)),TOLERANCE2)
   expect_equal(gp_model$get_num_optim_iter(), 6)
@@ -337,7 +338,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Estimation using Nelder-Mead
     gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
-    fit(gp_model, y = y, params = list(optimizer_cov = "nelder_mead"))
+    fit(gp_model, y = y, params = list(optimizer_cov = "nelder_mead", delta_rel_conv=1e-6))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.4027452)),TOLERANCE2)
     # Prediction
     group_test <- c(1,3,3,9999)
@@ -426,7 +427,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Multiple random effects: training with Nelder-Mead
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                                            y = y, likelihood = "bernoulli_probit",
-                                           params = list(optimizer_cov = "nelder_mead")), file='NUL')
+                                           params = list(optimizer_cov = "nelder_mead", delta_rel_conv=1e-6))
+                    , file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3055487, 0.9300562, 0.3048811))),TOLERANCE2)
     # Multiple random effects: training with BFGS
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
@@ -1025,7 +1027,8 @@ test_that("Binary classification with linear predictor and grouped random effect
     # Estimation using Nelder-Mead
     gp_model <- fitGPModel(group_data = group_L, likelihood = "bernoulli_probit",
                            y = y_L, X=X_L, params = list(optimizer_cov = "nelder_mead",
-                                                         optimizer_coef = "nelder_mead"))
+                                                         optimizer_coef = "nelder_mead", 
+                                                         delta_rel_conv=1e-6))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9712287)),TOLERANCE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.09758098, 1.99473498))),TOLERANCE)
     expect_equal(gp_model$get_num_optim_iter(), 109)
@@ -1057,7 +1060,8 @@ test_that("Binary classification with linear predictor and Gaussian process mode
   # Estimation using Nelder-Mead
   gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
                          y = y, X=X, params = list(optimizer_cov = "nelder_mead",
-                                                   optimizer_coef = "nelder_mead", maxit=1000, delta_rel_conv=1e-12))
+                                                   optimizer_coef = "nelder_mead", 
+                                                   maxit=1000, delta_rel_conv=1e-12))
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.2717516, 0.2875537))),TOLERANCE)
   expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.1999365, 1.4666199))),TOLERANCE)
   expect_equal(gp_model$get_num_optim_iter(), 325)

@@ -87,7 +87,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 5)
     # Nelder-Mead
     gp_model <- fitGPModel(group_data = group, y = y,
-                           params = list(optimizer_cov = "nelder_mead", std_dev = TRUE))
+                           params = list(optimizer_cov = "nelder_mead", std_dev = TRUE, delta_rel_conv=1e-6))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
     expect_equal(gp_model$get_num_optim_iter(), 12)
     # Adam
@@ -166,6 +166,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   test_that("linear mixed effects model with grouped random effects ", {
     
     y <- Z1 %*% b1 + X%*%beta + xi
+    # Fitting with trace = TRUE works
+    expect_error( capture.output( 
+      gp_model <- fitGPModel(group_data = group, y = y, X = X,
+                                        params = list(std_dev = TRUE, maxit = 1, trace = TRUE))
+                      , file='NUL'), NA)
     # Fit model
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
@@ -258,7 +263,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     gp_model <- fitGPModel(group_data = group_L,
                            y = y_L, X = X_L,
-                           params = list(optimizer_cov = "nelder_mead", maxit=1000))
+                           params = list(optimizer_cov = "nelder_mead", maxit=1000, delta_rel_conv=1e-6))
     cov_pars <- c(0.5004681, 0.9988288)
     coef <- c(2.000747, 1.999343)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_STRICT)
@@ -382,7 +387,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            group_rand_coef_data = x,
                            ind_effect_group_rand_coef = 1,
                            y = y,
-                           params = list(optimizer_cov = "nelder_mead", std_dev = FALSE))
+                           params = list(optimizer_cov = "nelder_mead", std_dev = FALSE, delta_rel_conv=1e-6))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_VERY_LOOSE)
     # BFGS
     gp_model <- fitGPModel(group_data = cbind(group,group2),

@@ -110,7 +110,7 @@
 #'                \item{delta_rel_conv}{ Convergence tolerance. The algorithm stops if the relative change 
 #'                in eiher the (approximate) log-likelihood or the parameters is below this value. 
 #'                For "bfgs" and "adam", the L2 norm of the gradient is used instead of the relative change in the log-likelihood. 
-#'                Default=1E-6}
+#'                Default=1E-6 except for "nelder_mead" for which the default is 1E-8}
 #'                \item{convergence_criterion}{ The convergence criterion used for terminating the optimization algorithm.
 #'                Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"}
 #'                \item{init_coef}{ Initial values for the regression coefficients (if there are any, can be NULL).
@@ -1698,7 +1698,7 @@ gpb.GPModel <- R6::R6Class(
     X_loaded_from_file = NULL,
     model_fitted = FALSE,
     params = list(maxit = 1000L,
-                  delta_rel_conv = 1E-6,
+                  delta_rel_conv = NULL,# the default is set in 'update_params'
                   init_coef = NULL,
                   lr_coef = 0.1,
                   lr_cov = -1.,
@@ -1737,7 +1737,7 @@ gpb.GPModel <- R6::R6Class(
     },
     
     update_params = function(params) {
-      ##Check format of parameters
+      ## Check format of parameters
       numeric_params <- c("lr_cov", "acc_rate_cov", "delta_rel_conv",
                           "lr_coef", "acc_rate_coef", "cg_delta_conv")
       integer_params <- c("maxit", "nesterov_schedule_version",
@@ -1777,6 +1777,25 @@ gpb.GPModel <- R6::R6Class(
           stop("GPModel: Number of parameters in ", sQuote("init_coef"), " does not correspond to numbers of covariates in ", sQuote("X"))
         }
       }
+      ## Set default value for 'delta_rel_conv'
+      set_default_delta_rel_conv = FALSE
+      if (!("delta_rel_conv" %in% names(params))) {
+        set_default_delta_rel_conv = TRUE
+      } else if (is.null(params[["delta_rel_conv"]])) {
+        set_default_delta_rel_conv = TRUE
+      }
+      if (set_default_delta_rel_conv) {
+        if ("optimizer_cov" %in% names(params)) {
+          if (params[["optimizer_cov"]] == "nelder_mead") {
+            params[["delta_rel_conv"]] <- 1E-8
+          } else {
+            params[["delta_rel_conv"]] <- 1E-6
+          }
+        } else {
+          params[["delta_rel_conv"]] <- 1E-6
+        }
+      }
+      ## Update private$params
       for (param in names(params)) {
         if (param %in% numeric_params & !is.null(params[[param]])) {
           params[[param]] <- as.numeric(params[[param]])
