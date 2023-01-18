@@ -29,11 +29,18 @@
 #include <algorithm>    // std::shuffle
 #include <chrono>  // only for debugging
 #include <thread> // only for debugging
-//std::this_thread::sleep_for(std::chrono::milliseconds(200));// Only for debugging
-//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();// Only for debugging
-//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();// Only for debugging
-//double el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;// Only for debugging
-//Log::REInfo("Time for : %g", el_time);// Only for debugging
+
+//std::this_thread::sleep_for(std::chrono::milliseconds(200));//only for debugging
+// 
+//Log::REInfo("start");//only for debugging
+//std::chrono::steady_clock::time_point begin, end;//only for debugging
+//double el_time;//only for debugging
+//begin = std::chrono::steady_clock::now();//only for debugging
+//
+//end = std::chrono::steady_clock::now();//only for debugging
+//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;//only for debugging
+//Log::REInfo(" time until = %g ", el_time);
+//begin = std::chrono::steady_clock::now();//only for debugging
 
 #ifndef M_PI
 #define M_PI      3.1415926535897932384626433832795029
@@ -491,7 +498,6 @@ namespace GPBoost {
 				//Delete not required matrices
 				Id_ = std::map<data_size_t, T_mat>();
 				P_Id_ = std::map<data_size_t, T_mat>();
-				//Id_cs_ = std::map<data_size_t, cs>();//currently not used
 				if (gp_approx_ == "vecchia" && has_duplicates_coords_) {
 					Log::REFatal(DUPLICATES_COORDS_VECCHIA_NONGAUSS_);
 				}
@@ -916,7 +922,7 @@ namespace GPBoost {
 						else if (optimizer_coef_ == "wls") {// coordinate descent using generalized least squares (only for Gaussian data)
 							CHECK(gauss_likelihood_);
 							SetY(y_vec_.data());
-							CalcYAux();
+							CalcYAux(1.);
 							UpdateCoefGLS(X_, beta);
 							// Set resid for updating covariance parameters
 							vec_t resid = y_vec_ - (X_ * beta);
@@ -1214,7 +1220,7 @@ namespace GPBoost {
 					CalcYtilde(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
 				}
 				else {
-					CalcYAux();//y_aux = Psi^-1 * y
+					CalcYAux(1.);//y_aux = Psi^-1 * y
 				}
 				EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_likelihood_, true, true, true);
 			}//end gauss_likelihood_
@@ -1292,7 +1298,7 @@ namespace GPBoost {
 							log_det_Psi_ += (2. * sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().log().sum());
 						}
 						else {
-							log_det_Psi_ += (2. * chol_facts_[cluster_i].diagonal().array().log().sum());
+							log_det_Psi_ += (2. * chol_facts_solve_[cluster_i].CholFactMatrix().diagonal().array().log().sum());
 						}
 						for (int j = 0; j < num_comps_total_; ++j) {
 							int num_rand_eff = cum_num_rand_eff_[cluster_i][j + 1] - cum_num_rand_eff_[cluster_i][j];
@@ -1300,7 +1306,7 @@ namespace GPBoost {
 						}
 					}
 					else {
-						log_det_Psi_ += (2. * chol_facts_[cluster_i].diagonal().array().log().sum());
+						log_det_Psi_ += (2. * chol_facts_solve_[cluster_i].CholFactMatrix().diagonal().array().log().sum());
 					}
 				}
 			}
@@ -1330,7 +1336,7 @@ namespace GPBoost {
 				CalcYtilde(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
 			}
 			else {
-				CalcYAux();//y_aux = Psi^-1 * y
+				CalcYAux(1.);//y_aux = Psi^-1 * y
 			}
 			//Calculate quadratic form y^T Psi^-1 y
 			CalcYTPsiIInvY(yTPsiInvy_, true, 1, false, false);
@@ -1392,11 +1398,14 @@ namespace GPBoost {
 		* \param cov_pars Covariance parameters
 		* \param[out] grad Gradient w.r.t. covariance parameters
 		* \param include_error_var If true, the gradient with respect to the error variance parameter (=nugget effect) is also calculated, otherwise not (set this to true if the nugget effect is not calculated by using the closed-form solution)
-		* \param save_psi_inv If true, the inverse covariance matrix Psi^-1 is saved for reuse later (e.g. when calculating the Fisher information in Fisher scoring). This option is ignored if the Vecchia approximation is used.
+		* \param save_psi_inv_for_FI If true, the inverse covariance matrix Psi^-1 is saved for reuse later (e.g. when calculating the Fisher information in Fisher scoring). This option is ignored if the Vecchia approximation is used.
 		* \param fixed_effects Fixed effects component of location parameter (used only for non-Gaussian data)
 		*/
-		void CalcCovParGrad(vec_t& cov_pars, vec_t& cov_grad, bool include_error_var = false,
-			bool save_psi_inv = false, const double* fixed_effects = nullptr) {
+		void CalcCovParGrad(vec_t& cov_pars,
+			vec_t& cov_grad,
+			bool include_error_var,
+			bool save_psi_inv_for_FI,
+			const double* fixed_effects) {
 			if (gauss_likelihood_) {//Gaussian data
 				if (include_error_var) {
 					cov_grad = vec_t::Zero(num_cov_par_);
@@ -1434,7 +1443,7 @@ namespace GPBoost {
 								cov_grad[0] += -1. * yTPsiInvy / cov_pars[0] / 2. + num_data_per_cluster_[cluster_i] / 2.;
 							}
 							std::vector<T_mat> LInvZtZj_cluster_i;
-							if (save_psi_inv) {
+							if (save_psi_inv_for_FI) {
 								LInvZtZj_[cluster_i].clear();
 								LInvZtZj_cluster_i = std::vector<T_mat>(num_comps_total_);
 							}
@@ -1450,28 +1459,28 @@ namespace GPBoost {
 									LInvZtZj.diagonal().array() /= sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array();
 								}
 								else {
-									if (chol_fact_has_permutation_) {
-										CalcPsiInvSqrtH(P_ZtZj_[cluster_i][j], LInvZtZj, cluster_i, true, false);
+									if (CholeskyHasPermutation<T_chol>(chol_facts_solve_[cluster_i])) {
+										TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_solve_[cluster_i].CholFactMatrix(), P_ZtZj_[cluster_i][j], LInvZtZj, false);
 									}
 									else {
-										CalcPsiInvSqrtH(ZtZj_[cluster_i][j], LInvZtZj, cluster_i, true, false);
+										TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_solve_[cluster_i].CholFactMatrix(), ZtZj_[cluster_i][j], LInvZtZj, false);
 									}
 								}
-								if (save_psi_inv) {//save for latter use when e.g. calculating the Fisher information
+								if (save_psi_inv_for_FI) {//save for latter use when calculating the Fisher information
 									LInvZtZj_cluster_i[j] = LInvZtZj;
 								}
 								double trace_PsiInvGradPsi = Zj_square_sum_[cluster_i][j] - LInvZtZj.squaredNorm();
 								trace_PsiInvGradPsi *= cov_pars[j + 1];
 								cov_grad[first_cov_par + j] += -1. * yTPsiIGradPsiPsiIy / cov_pars[0] / 2. + trace_PsiInvGradPsi / 2.;
 							}
-							if (save_psi_inv) {
+							if (save_psi_inv_for_FI) {
 								LInvZtZj_[cluster_i] = LInvZtZj_cluster_i;
 							}
 						}//end only_grouped_REs_use_woodbury_identity_
 						else {//not only_grouped_REs_use_woodbury_identity_
 							T_mat psi_inv;
-							CalcPsiInv(psi_inv, cluster_i);
-							if (save_psi_inv) {//save for latter use when e.g. calculating the Fisher information
+							CalcPsiInv(psi_inv, cluster_i, !save_psi_inv_for_FI);
+							if (save_psi_inv_for_FI) {//save for latter use when calculating the Fisher information
 								psi_inv_[cluster_i] = psi_inv;
 							}
 							if (include_error_var) {
@@ -1603,7 +1612,7 @@ namespace GPBoost {
 			if (gauss_likelihood_) {
 				const vec_t resid = y_vec_ - (X_ * beta);
 				SetY(resid.data());
-				CalcYAux();
+				CalcYAux(1.);
 				vec_t y_aux(num_data_);
 				GetYAux(y_aux);
 				grad_beta = (-1. / marg_var) * (X_.transpose()) * y_aux;
@@ -2529,7 +2538,9 @@ namespace GPBoost {
 		* \param marg_variance The marginal variance. Default = 1. Can be used to multiply values by it since Newton updates do not depend on it but 'CalcYAux' might have been called using marg_variance!=1.
 		*/
 		void NewtonUpdateLeafValues(const int* data_leaf_index,
-			const int num_leaves, double* leaf_values, double marg_variance = 1.) {
+			const int num_leaves,
+			double* leaf_values,
+			double marg_variance) {
 			if (!gauss_likelihood_) {
 				Log::REFatal("Newton updates for leaf values is only supported for Gaussian data");
 			}
@@ -2565,19 +2576,19 @@ namespace GPBoost {
 						}
 						else {
 							sp_mat_t ZtH_cluster_i;
-							if (chol_fact_has_permutation_) {
+							if (CholeskyHasPermutation<T_chol>(chol_facts_solve_[cluster_i])) {
 								ZtH_cluster_i = P_Zt_[cluster_i] * H_cluster_i;
 							}
 							else {
 								ZtH_cluster_i = Zt_[cluster_i] * H_cluster_i;
 							}
-							CalcPsiInvSqrtH(ZtH_cluster_i, MInvSqrtZtH, cluster_i, true, false);
+							TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_solve_[cluster_i].CholFactMatrix(), ZtH_cluster_i, MInvSqrtZtH, false);
 						}
 						HTPsiInvH_cluster_i = H_cluster_i.transpose() * H_cluster_i - MInvSqrtZtH.transpose() * MInvSqrtZtH;
 					}
 					else {
 						T_mat PsiInvSqrtH;
-						CalcPsiInvSqrtH(H_cluster_i, PsiInvSqrtH, cluster_i, true, true);
+						TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_solve_[cluster_i], H_cluster_i, PsiInvSqrtH, false);
 						HTPsiInvH_cluster_i = PsiInvSqrtH.transpose() * PsiInvSqrtH;
 					}
 				}
@@ -2687,25 +2698,18 @@ namespace GPBoost {
 		bool only_one_GP_calculations_on_RE_scale_ = false;
 
 		// COVARIANCE MATRIX AND CHOLESKY FACTORS OF IT
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decomposition solver of covariance matrices Psi (for Gaussian data) */
+		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decomposition of covariance matrices */
 		std::map<data_size_t, T_chol> chol_facts_solve_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky factors of Psi matrices */
-		std::map<data_size_t, T_mat> chol_facts_;
-		//TODO: do not (doubly) save chol_facts_, current issue: the matrix 'chol_facts_solve_.matrixL()' needs to be in compressed format (.makeCompressed())
 		/*! \brief  Key: labels of independent realizations of REs/GPs, values: Square root of diagonal of matrix Sigma^-1 + Zt * Z  (used only if there is only one grouped random effect and ZtZ is diagonal) */
 		std::map<data_size_t, vec_t> sqrt_diag_SigmaI_plus_ZtZ_;
 		/*! \brief Indicates whether the covariance matrix has been factorized or not */
 		bool covariance_matrix_has_been_factorized_ = false;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Idendity matrices used for calculation of inverse covariance matrix */
 		std::map<data_size_t, T_mat> Id_;
-		///*! \brief Key: labels of independent realizations of REs/GPs, values: Idendity matrices used for calculation of inverse covariance matrix */
-		//std::map<data_size_t, cs> Id_cs_;//currently not used
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Permuted idendity matrices used for calculation of inverse covariance matrix when Cholesky factors have a permutation matrix */
 		std::map<data_size_t, T_mat> P_Id_;
 		/*! \brief Indicates whether a symbolic decomposition for calculating the Cholesky factor of the covariance matrix has been done or not (only for sparse matrices) */
 		bool chol_fact_pattern_analyzed_ = false;
-		/*! \brief Indicates whether the Cholesky factor has an associated permutation matrix (only for sparse matrices) */
-		bool chol_fact_has_permutation_ = false;
 		/*! \brief Collects inverse covariance matrices Psi^{-1} (usually not saved, but used e.g. in Fisher scoring without the Vecchia approximation) */
 		std::map<data_size_t, T_mat> psi_inv_;
 		/*! \brief Inverse covariance matrices Sigma^-1 of random effects. This is only used if only_grouped_REs_use_woodbury_identity_==true (if there are only grouped REs) */
@@ -2849,11 +2853,11 @@ namespace GPBoost {
 		*/
 		string_t vecchia_pred_type_; //This is saved and not simply set in the prediction function since it needs to be used repeatedly in the GPBoost algorithm when making predictions in "regression_metric.hpp" and the way predictions are done for the Vecchia approximation should be decoupled from the boosting algorithm
 		/*! \brief List of supported options for prediction with a Vecchia approximation for Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_VECCHIA_PRED_TYPES_GAUSS_{ "order_obs_first_cond_obs_only", 
-			"order_obs_first_cond_all", "order_pred_first", 
+		const std::set<string_t> SUPPORTED_VECCHIA_PRED_TYPES_GAUSS_{ "order_obs_first_cond_obs_only",
+			"order_obs_first_cond_all", "order_pred_first",
 			"latent_order_obs_first_cond_obs_only", "latent_order_obs_first_cond_all" };
 		/*! \brief List of supported options for prediction with a Vecchia approximation for non-Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_VECCHIA_PRED_TYPES_NONGAUSS_{ "latent_order_obs_first_cond_obs_only", 
+		const std::set<string_t> SUPPORTED_VECCHIA_PRED_TYPES_NONGAUSS_{ "latent_order_obs_first_cond_obs_only",
 			"latent_order_obs_first_cond_all", "order_obs_first_cond_obs_only", "order_obs_first_cond_all" };
 		/*! \brief Collects indices of nearest neighbors (used for Vecchia approximation) */
 		std::map<data_size_t, std::vector<std::vector<int>>> nearest_neighbors_;
@@ -2940,30 +2944,20 @@ namespace GPBoost {
 		std::mutex mutex_;
 
 		/*! \brief Constructs identity matrices if sparse matrices are used (used for calculating inverse covariance matrix) */
-		template <class T3, typename std::enable_if <std::is_same<sp_mat_t, T3>::value ||
-			std::is_same<sp_mat_rm_t, T3>::value>::type* = nullptr >
-			void ConstructI(data_size_t cluster_i) {
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
+		void ConstructI(data_size_t cluster_i) {
 			int dim_I = only_grouped_REs_use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_re_group_total_] : num_data_per_cluster_[cluster_i];
-			T3 I(dim_I, dim_I);//identity matrix for calculating precision matrix
+			T_mat I(dim_I, dim_I);//identity matrix for calculating precision matrix
 			I.setIdentity();
+			I.makeCompressed();
 			Id_.insert({ cluster_i, I });
-			//cs Id_cs = cs();//same for cs type
-			//Id_cs.nzmax = dim_I;
-			//Id_cs.m = dim_I;
-			//Id_cs.n = dim_I;
-			//Id_[cluster_i].makeCompressed();
-			//Id_cs.p = reinterpret_cast<csi*>(Id_[cluster_i].outerIndexPtr());//currently not used
-			//Id_cs.i = reinterpret_cast<csi*>(Id_[cluster_i].innerIndexPtr());
-			//Id_cs.x = Id_[cluster_i].valuePtr();
-			//Id_cs.nz = -1;
-			//Id_cs_.insert({ cluster_i, Id_cs });
 		}
 
 		/*! \brief Constructs identity matrices if dense matrices are used (used for calculating inverse covariance matrix) */
-		template <class T3, typename std::enable_if <std::is_same<den_mat_t, T3>::value>::type* = nullptr >
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
 		void ConstructI(data_size_t cluster_i) {
 			int dim_I = only_grouped_REs_use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_re_group_total_] : num_data_per_cluster_[cluster_i];
-			T3 I(dim_I, dim_I);//identity matrix for calculating precision matrix
+			den_mat_t I(dim_I, dim_I);//identity matrix for calculating precision matrix
 			I.setIdentity();
 			Id_.insert({ cluster_i, I });
 		}
@@ -3252,20 +3246,20 @@ namespace GPBoost {
 		}//end CalcGradFLaplace
 
 		/*!
-		* \brief Do Cholesky decomposition and save in chol_facts_ (actual matrix) and chol_facts_solve_ (Eigen solver) if sparse matrices are used
-		* \param psi Covariance matrix for which the Cholesky decomposition should be done
+		* \brief Calculate Cholesky decomposition
+		* \param psi Covariance matrix for which the Cholesky decomposition is calculated
 		* \param cluster_i Cluster index for which the Cholesky factor is calculated
 		*/
-		template <class T3, typename std::enable_if <std::is_same<sp_mat_t, T3>::value || std::is_same<sp_mat_rm_t, T3>::value>::type* = nullptr >
-		void CalcChol(T3& psi, data_size_t cluster_i) {
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
+		void CalcChol(T_mat& psi, data_size_t cluster_i) {
 			if (!chol_fact_pattern_analyzed_) {
 				chol_facts_solve_[cluster_i].analyzePattern(psi);
 				if (cluster_i == unique_clusters_.back()) {
 					chol_fact_pattern_analyzed_ = true;
 				}
-				if (chol_facts_solve_[cluster_i].permutationP().size() > 0) {//Apply permutation if an ordering is used
-					chol_fact_has_permutation_ = true;
+				if (CholeskyHasPermutation<T_chol>(chol_facts_solve_[cluster_i])) {
 					P_Id_[cluster_i] = chol_facts_solve_[cluster_i].permutationP() * Id_[cluster_i];
+					P_Id_[cluster_i].makeCompressed();
 					if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 						P_Zt_[cluster_i] = chol_facts_solve_[cluster_i].permutationP() * Zt_[cluster_i];
 						std::vector<sp_mat_t> P_ZtZj_cluster_i(num_comps_total_);
@@ -3275,264 +3269,90 @@ namespace GPBoost {
 						P_ZtZj_[cluster_i] = P_ZtZj_cluster_i;
 					}
 				}
-				else {
-					chol_fact_has_permutation_ = false;
-				}
 			}
 			chol_facts_solve_[cluster_i].factorize(psi);
-			chol_facts_[cluster_i] = chol_facts_solve_[cluster_i].matrixL();
-			chol_facts_[cluster_i].makeCompressed();
 		}
-
-		/*!
-		* \brief Do Cholesky decomposition and save in chol_facts_ (actual matrix) and chol_facts_solve_ (Eigen solver) if dense matrices are used
-		* \param psi Covariance matrix for which the Cholesky decomposition should be done
-		* \param cluster_i Cluster index for which the Cholesky factor is calculated
-		*/
-		template <class T3, typename std::enable_if <std::is_same<den_mat_t, T3>::value>::type* = nullptr >
-		void CalcChol(T3& psi, data_size_t cluster_i) {
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
+		void CalcChol(den_mat_t& psi, data_size_t cluster_i) {
 			chol_facts_solve_[cluster_i].compute(psi);
-			chol_facts_[cluster_i] = chol_facts_solve_[cluster_i].matrixL();
-			chol_fact_has_permutation_ = false;
 		}
 
 		/*!
 		* \brief Caclulate Psi^(-1) if sparse matrices are used
 		* \param psi_inv[out] Inverse covariance matrix
 		* \param cluster_i Cluster index for which Psi^(-1) is calculated
+		* \param only_at_non_zeroes_of_psi If true, psi_inv is calculated only at non-zero entries of psi, e.g., since it is used for calculating gradients afterwards
 		*/
-		template <class T3, typename std::enable_if <std::is_same<sp_mat_t, T3>::value || std::is_same<sp_mat_rm_t, T3>::value>::type* = nullptr >
-		void CalcPsiInv(T3& psi_inv, data_size_t cluster_i) {
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
+		void CalcPsiInv(T_mat& psi_inv, data_size_t cluster_i, bool only_at_non_zeros_of_psi) {
 			if (only_grouped_REs_use_woodbury_identity_) {
 				sp_mat_t MInvSqrtZt;
 				if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 					MInvSqrtZt = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * Zt_[cluster_i];
 				}
 				else {
-					T3 L_inv;
-					if (chol_fact_has_permutation_) {
-						eigen_sp_Lower_sp_RHS_cs_solve(chol_facts_[cluster_i], P_Id_[cluster_i], L_inv, true);
+					T_mat L_inv;
+					if (CholeskyHasPermutation<T_chol>(chol_facts_solve_[cluster_i])) {
+						TriangularSolve<T_mat, T_mat, T_mat>(chol_facts_solve_[cluster_i].CholFactMatrix(), P_Id_[cluster_i], L_inv, false);
 					}
 					else {
-						eigen_sp_Lower_sp_RHS_cs_solve(chol_facts_[cluster_i], Id_[cluster_i], L_inv, true);
+						TriangularSolve<T_mat, T_mat, T_mat>(chol_facts_solve_[cluster_i].CholFactMatrix(), Id_[cluster_i], L_inv, false);
 					}
 					MInvSqrtZt = L_inv * Zt_[cluster_i];
 				}
-				psi_inv = -MInvSqrtZt.transpose() * MInvSqrtZt;//this is slow since n can be large (O(n^2*m))
+				if (only_at_non_zeros_of_psi) {
+					CalcZSigmaZt(psi_inv, cluster_i);//find out sparsity pattern where psi_inv is needed for gradient
+					CalcLtLGivenSparsityPattern<T_mat>(MInvSqrtZt, psi_inv);
+					psi_inv *= -1.;
+				}
+				else {
+					psi_inv = -MInvSqrtZt.transpose() * MInvSqrtZt;//this is slow since n can be large (O(n^2*m)) (but its usually not run, only when calculating the Fisher information)
+				}
 				psi_inv.diagonal().array() += 1.0;
 			}
 			else {
-
-				////Using CSparse function 'cs_spsolve'
-				//cs L_cs = cs();//Prepare LHS
-				//L_cs.nzmax = (int)chol_facts_[cluster_i].nonZeros();
-				//L_cs.m = num_data_per_cluster_[cluster_i];
-				//L_cs.n = num_data_per_cluster_[cluster_i];
-				//L_cs.p = reinterpret_cast<csi*>(chol_facts_[cluster_i].outerIndexPtr());
-				//L_cs.i = reinterpret_cast<csi*>(chol_facts_[cluster_i].innerIndexPtr());
-				//L_cs.x = chol_facts_[cluster_i].valuePtr();
-				//L_cs.nz = -1;
-				////Invert Cholesky factor
-				//sp_mat_t L_inv;
-				//sp_Lower_sp_RHS_cs_solve(&L_cs, &Id_cs_[cluster_i], L_inv, true);
-				//psi_inv = L_inv.transpose() * L_inv;
-
-				// Alternative version that avoids the use of CSparse function 'cs_spsolve' on OS's (e.g. Linux) on which this can cause problems
-				T3 L_inv;
-				if (chol_fact_has_permutation_) {
-					eigen_sp_Lower_sp_RHS_solve<T_mat, T_mat>(chol_facts_[cluster_i], P_Id_[cluster_i], L_inv, true);
+				T_mat L_inv;
+				if (CholeskyHasPermutation<T_chol>(chol_facts_solve_[cluster_i])) {
+					TriangularSolve<T_mat, T_mat, T_mat>(chol_facts_solve_[cluster_i].CholFactMatrix(), P_Id_[cluster_i], L_inv, false);
 				}
 				else {
-					eigen_sp_Lower_sp_RHS_solve<T_mat, T_mat>(chol_facts_[cluster_i], Id_[cluster_i], L_inv, true);
+					TriangularSolve<T_mat, T_mat, T_mat>(chol_facts_solve_[cluster_i].CholFactMatrix(), Id_[cluster_i], L_inv, false);
 				}
-				psi_inv = L_inv.transpose() * L_inv;//Note: this is the computational bottleneck for large data when psi=ZSigmaZt and its Cholesky factor is sparse e.g. when having a Wendland covariance function
-
-				////Version 2: doing sparse solving "by hand" but ignoring sparse RHS
-				//const double* val = chol_facts_[cluster_i].valuePtr();
-				//const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
-				//const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
-				//den_mat_t L_inv_dens = den_mat_t(Id_[cluster_i]);
-				//for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-				//	sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], L_inv_dens.data() + j * num_data_per_cluster_[cluster_i]);
-				//}
-				//const sp_mat_t L_inv = L_inv_dens.sparseView();
-				//psi_inv = L_inv.transpose() * L_inv;
-
-				////Version 3: let Eigen do the solving
-				//psi_inv = chol_facts_solve_[cluster_i].solve(Id_[cluster_i]);
+				if (only_at_non_zeros_of_psi) {
+					//find out sparsity pattern where psi_inv is needed for gradient
+					if (num_re_group_total_ == 0) {
+						std::shared_ptr<T_mat> psi = re_comps_[cluster_i][0]->GetZSigmaZt();
+						psi_inv = *psi;
+					}
+					else {
+						CalcZSigmaZt(psi_inv, cluster_i);
+					}
+					CalcLtLGivenSparsityPattern<T_mat>(L_inv, psi_inv);
+				}
+				else {
+					psi_inv = L_inv.transpose() * L_inv;//Note: this is the computational bottleneck for large data when psi=ZSigmaZt and its Cholesky factor is sparse (but its usually not run, only when calculating the Fisher information)
+				}
 			}
 		}// end CalcPsiInv for sparse matrices
-
-		/*!
-		* \brief Caclulate Psi^(-1) if dense matrices are used
-		* \param psi_inv[out] Inverse covariance matrix
-		* \param cluster_i Cluster index for which Psi^(-1) is calculated
-		*/
-		template <class T3, typename std::enable_if <std::is_same<den_mat_t, T3>::value>::type* = nullptr >
-		void CalcPsiInv(T3& psi_inv, data_size_t cluster_i) {
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
+		void CalcPsiInv(den_mat_t& psi_inv, data_size_t cluster_i, bool) {
 			if (only_grouped_REs_use_woodbury_identity_) {//typically currently not called as only_grouped_REs_use_woodbury_identity_ is only true for grouped REs only i.e. sparse matrices
-				T3 MInvSqrtZt;
+				den_mat_t MInvSqrtZt;
 				if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 					MInvSqrtZt = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * Zt_[cluster_i];
 				}
 				else {
-					MInvSqrtZt = Zt_[cluster_i];
-#pragma omp parallel for schedule(static)
-					for (int j = 0; j < (int)MInvSqrtZt.cols(); ++j) {
-						L_solve(chol_facts_[cluster_i].data(), (int)chol_facts_[cluster_i].cols(), MInvSqrtZt.data() + j * (int)MInvSqrtZt.cols());
-					}
+					TriangularSolve<den_mat_t, sp_mat_t, den_mat_t>(chol_facts_solve_[cluster_i].CholFactMatrix(), Zt_[cluster_i], MInvSqrtZt, false);
 				}
 				psi_inv = -MInvSqrtZt.transpose() * MInvSqrtZt;
 				psi_inv.diagonal().array() += 1.0;
 			}
 			else {
-
-				//Version 1: solving by hand
-				T3 L_inv = Id_[cluster_i];
-#pragma omp parallel for schedule(static)
-				for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-					L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], L_inv.data() + j * num_data_per_cluster_[cluster_i]);
-				}
-				//chol_facts_[cluster_i].triangularView<Eigen::Lower>().solveInPlace(L_inv); //slower
+				den_mat_t L_inv;
+				TriangularSolve<den_mat_t, den_mat_t, den_mat_t>(chol_facts_solve_[cluster_i].CholFactMatrix(), Id_[cluster_i], L_inv, false);
 				psi_inv = L_inv.transpose() * L_inv;
-
-				////Version 2
-				//psi_inv = chol_facts_solve_[cluster_i].solve(Id_[cluster_i]);
-
-				// Using dpotri from LAPACK does not work since LAPACK is not installed
-				//int info = 0;
-				//int n = num_data_per_cluster_[cluster_i];
-				//int lda = num_data_per_cluster_[cluster_i];
-				//char* uplo = "L";
-				//den_mat_t M = chol_facts_[cluster_i];
-				//BLASFUNC(dpotri)(uplo, &n, M.data(), &lda, &info);
 			}
 		}// end CalcPsiInv for dense matrices
-
-		/*!
-		* \brief Caclulate Psi^(-0.5)H if sparse matrices are used. Used in 'NewtonUpdateLeafValues' and if only_grouped_REs_use_woodbury_identity_ == true
-		* \param H Right-hand side matrix H
-		* \param PsiInvSqrtH[out] Psi^(-0.5)H = solve(chol(Psi),H)
-		* \param cluster_i Cluster index for which Psi^(-0.5)H is calculated
-		* \param lower true if chol_facts_[cluster_i] is a lower triangular matrix
-		* \param permute_H If true, a permutation is applied on H (overwritten) in case the Cholesky factor has a permutation matrix
-		*/
-		template <class T3, typename std::enable_if <std::is_same<sp_mat_t, T3>::value || std::is_same<sp_mat_rm_t, T3>::value>::type* = nullptr >
-		void CalcPsiInvSqrtH(sp_mat_t& H, T3& PsiInvSqrtH, data_size_t cluster_i, bool lower, bool permute_H) {
-			if (permute_H) {
-				if (chol_fact_has_permutation_) {
-					H = chol_facts_solve_[cluster_i].permutationP() * H;
-				}
-			}
-			eigen_sp_Lower_sp_RHS_solve<T_mat, sp_mat_t>(chol_facts_[cluster_i], H, PsiInvSqrtH, lower);
-			//TODO: use eigen_sp_Lower_sp_RHS_cs_solve -> faster? (currently this crashes due to Eigen bug, see the definition of sp_Lower_sp_RHS_cs_solve for more details)
-		}
-
-		/*!
-		* \brief Caclulate Psi^(-0.5)H if dense matrices are used. Used in 'NewtonUpdateLeafValues' and if only_grouped_REs_use_woodbury_identity_ == true
-		* \param H Right-hand side matrix H
-		* \param PsiInvSqrtH[out] Psi^(-0.5)H = solve(chol(Psi),H)
-		* \param cluster_i Cluster index for which Psi^(-0.5)H is calculated
-		* \param lower true if chol_facts_[cluster_i] is a lower triangular matrix
-		* \param permute_H Not used
-		*/
-		template <class T3, typename std::enable_if <std::is_same<den_mat_t, T3>::value>::type* = nullptr >
-		void CalcPsiInvSqrtH(sp_mat_t& H, T3& PsiInvSqrtH, data_size_t cluster_i, bool lower, bool) {
-			PsiInvSqrtH = den_mat_t(H);
-#pragma omp parallel for schedule(static)
-			for (int j = 0; j < H.cols(); ++j) {
-				if (lower) {
-					L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], PsiInvSqrtH.data() + j * num_data_per_cluster_[cluster_i]);
-				}
-				else {
-					L_t_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], PsiInvSqrtH.data() + j * num_data_per_cluster_[cluster_i]);
-				}
-			}
-		}
-
-		///*!
-		//* \brief Caclulate X^TPsi^(-1)X
-		//* \param X Covariate data matrix X
-		//* \param[out] XT_psi_inv_X X^TPsi^(-1)X
-		//*/
-		//  template <class T3, typename std::enable_if <std::is_same<den_mat_t, T3>::value>::type * = nullptr  >
-		//  void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
-		//    den_mat_t BX;
-		//    if (num_clusters_ == 1) {
-		//      data_size_t cluster0 = unique_clusters_[0];
-		//      if (gp_approx_ == "vecchia") {
-		//        BX = B_[cluster0] * X;
-		//        XT_psi_inv_X = BX.transpose() * D_inv_[cluster0] * BX;
-		//      }
-		//      else {
-		//        BX = X;
-		//        #pragma omp parallel for schedule(static)
-		//        for (int j = 0; j < num_data_per_cluster_[cluster0]; ++j) {
-		//          L_solve(chol_facts_[cluster0].data(), num_data_per_cluster_[cluster0], BX.data() + j * num_data_per_cluster_[cluster0]);
-		//        }
-		//        XT_psi_inv_X = BX.transpose() * BX;
-		//      }
-		//    }
-		//    else {
-		//      XT_psi_inv_X = den_mat_t(X.cols(), X.cols());
-		//      XT_psi_inv_X.setZero();
-		//      for (const auto& cluster_i : unique_clusters_) {
-		//        if (gp_approx_ == "vecchia") {
-		//          BX = B_[cluster_i] * X(data_indices_per_cluster_[cluster_i], Eigen::all);
-		//          XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
-		//        }
-		//        else {
-		//          BX = X(data_indices_per_cluster_[cluster_i], Eigen::all);
-		//          #pragma omp parallel for schedule(static)
-		//          for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-		//            L_solve(chol_facts_[cluster_i].data(), num_data_per_cluster_[cluster_i], BX.data() + j * num_data_per_cluster_[cluster_i]);
-		//          }
-		//          XT_psi_inv_X += (BX.transpose() * BX);
-		//        }
-		//      }
-		//    }
-		//  }
-		//  //same for sparse matrices
-		//  template <class T3, typename std::enable_if <std::is_same<sp_mat_t, T3>::value || 
-		// std::is_same<sp_mat_rm_t, T3>::value>::type * = nullptr  >
-		//  void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
-		//    den_mat_t BX;
-		//    if (num_clusters_ == 1) {
-		//      data_size_t cluster0 = unique_clusters_[0];
-		//      if (gp_approx_ == "vecchia") {
-		//        BX = B_[cluster0] * X;
-		//        XT_psi_inv_X = BX.transpose() * D_inv_[cluster0] * BX;
-		//      }
-		//      else {
-		//        BX = X;
-		//        #pragma omp parallel for schedule(static)
-		//        for (int j = 0; j < num_data_per_cluster_[cluster0]; ++j) {
-		//          sp_L_solve(chol_facts_[cluster0].valuePtr(), chol_facts_[cluster0].innerIndexPtr(), chol_facts_[cluster0].outerIndexPtr(),
-		//            num_data_per_cluster_[cluster0], BX.data() + j * num_data_per_cluster_[cluster0]);
-		//        }
-		//        XT_psi_inv_X = BX.transpose() * BX;
-		//      }
-		//    }
-		//    else {
-		//      XT_psi_inv_X = den_mat_t(X.cols(), X.cols());
-		//      XT_psi_inv_X.setZero();
-		//      for (const auto& cluster_i : unique_clusters_) {
-		//        if (gp_approx_ == "vecchia") {
-		//          BX = B_[cluster_i] * X(data_indices_per_cluster_[cluster_i], Eigen::all);
-		//          XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
-		//        }
-		//        else {
-		//          BX = X(data_indices_per_cluster_[cluster_i], Eigen::all);
-		//          #pragma omp parallel for schedule(static)
-		//          for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-		//            sp_L_solve(chol_facts_[cluster_i].valuePtr(), chol_facts_[cluster_i].innerIndexPtr(), chol_facts_[cluster_i].outerIndexPtr(),
-		//              num_data_per_cluster_[cluster_i], BX.data() + j * num_data_per_cluster_[cluster_i]);
-		//          }
-		//          XT_psi_inv_X += (BX.transpose() * BX);
-		//        }
-		//      }
-		//    }
-		//  }
 
 		/*!
 		* \brief Caclulate X^TPsi^(-1)X
@@ -3548,17 +3368,19 @@ namespace GPBoost {
 				else {
 					if (only_grouped_REs_use_woodbury_identity_) {
 						den_mat_t ZtX = Zt_[unique_clusters_[0]] * X;
+						den_mat_t MInvSqrtZtX;
 						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
-							den_mat_t MInvSqrtZtX = sqrt_diag_SigmaI_plus_ZtZ_[unique_clusters_[0]].array().inverse().matrix().asDiagonal() * ZtX;
-							XT_psi_inv_X = X.transpose() * X - MInvSqrtZtX.transpose() * MInvSqrtZtX;
+							MInvSqrtZtX = sqrt_diag_SigmaI_plus_ZtZ_[unique_clusters_[0]].array().inverse().matrix().asDiagonal() * ZtX;
 						}
 						else {
-							//TODO: use only one forward solve (sp_L_solve for sparse and sp_L_solve for dense matrices) instead of using Eigens solver which does two solves. But his requires a templace function since the Cholesky factor is T_mat
-							XT_psi_inv_X = X.transpose() * X - ZtX.transpose() * chol_facts_solve_[unique_clusters_[0]].solve(ZtX);
+							TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_facts_solve_[unique_clusters_[0]], ZtX, MInvSqrtZtX, false);
 						}
+						XT_psi_inv_X = X.transpose() * X - MInvSqrtZtX.transpose() * MInvSqrtZtX;
 					}
 					else {
-						XT_psi_inv_X = X.transpose() * chol_facts_solve_[unique_clusters_[0]].solve(X);
+						den_mat_t MInvSqrtX;
+						TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_facts_solve_[unique_clusters_[0]], X, MInvSqrtX, false);
+						XT_psi_inv_X = MInvSqrtX.transpose() * MInvSqrtX;
 					}
 				}
 			}//end only one cluster / idependent GP realization
@@ -3574,23 +3396,25 @@ namespace GPBoost {
 					else {
 						if (only_grouped_REs_use_woodbury_identity_) {
 							den_mat_t ZtX = Zt_[cluster_i] * (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all);
+							den_mat_t MInvSqrtZtX;
 							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
-								den_mat_t MInvSqrtZtX = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * ZtX;
-								XT_psi_inv_X += ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all) -
-									MInvSqrtZtX.transpose() * MInvSqrtZtX;
+								MInvSqrtZtX = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * ZtX;
 							}
 							else {
-								XT_psi_inv_X += ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all) -
-									ZtX.transpose() * chol_facts_solve_[cluster_i].solve(ZtX);
+								TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_facts_solve_[cluster_i], ZtX, MInvSqrtZtX, false);
 							}
+							XT_psi_inv_X += ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all) -
+								MInvSqrtZtX.transpose() * MInvSqrtZtX;
 						}
 						else {
-							XT_psi_inv_X += ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * chol_facts_solve_[cluster_i].solve((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all));
+							den_mat_t MInvSqrtX;
+							TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_facts_solve_[cluster_i], (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all), MInvSqrtX, false);
+							XT_psi_inv_X += MInvSqrtX.transpose() * MInvSqrtX;
 						}
 					}
 				}
 			}//end more than one cluster
-		}
+		}//end CalcXTPsiInvX
 
 		/*!
 		* \brief Initialize data structures for handling independent realizations of the Gaussian processes
@@ -3601,9 +3425,12 @@ namespace GPBoost {
 		* \param[out] unique_clusters Unique labels of independent realizations
 		* \param[out] num_clusters Number of independent clusters
 		*/
-		void SetUpGPIds(data_size_t num_data, const data_size_t* cluster_ids_data,
-			std::map<data_size_t, int>& num_data_per_cluster, std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
-			std::vector<data_size_t>& unique_clusters, data_size_t& num_clusters) {
+		void SetUpGPIds(data_size_t num_data,
+			const data_size_t* cluster_ids_data,
+			std::map<data_size_t, int>& num_data_per_cluster,
+			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
+			std::vector<data_size_t>& unique_clusters,
+			data_size_t& num_clusters) {
 			if (cluster_ids_data != nullptr) {
 				for (int i = 0; i < num_data; ++i) {
 					if (num_data_per_cluster.find(cluster_ids_data[i]) == num_data_per_cluster.end()) {//first occurrence of cluster_ids_data[i]
@@ -3630,7 +3457,7 @@ namespace GPBoost {
 				}
 				data_indices_per_cluster.insert({ 0, gp_id_vec });
 			}
-		}
+		}//end SetUpGPIds
 
 		/*!
 		* \brief Convert characters in 'const char* re_group_data' to matrix (num_re_group x num_data) with strings of group labels
@@ -3807,7 +3634,7 @@ namespace GPBoost {
 		void InitializeIdentityMatricesForGaussianData() {
 			if (gauss_likelihood_ && gp_approx_ != "vecchia") {
 				for (const auto& cluster_i : unique_clusters_) {
-					ConstructI<T_mat>(cluster_i);//Idendity matrices needed for computing inverses of covariance matrices used in gradient descent for Gaussian data
+					ConstructI(cluster_i);//Idendity matrices needed for computing inverses of covariance matrices used in gradient descent for Gaussian data
 				}
 			}
 		}
@@ -4800,13 +4627,13 @@ namespace GPBoost {
 							sp_mat_t SigmaI;
 							CalcSigmaIGroupedREsOnly(SigmaI, cluster_i, true);
 							T_mat SigmaIplusZtZ = SigmaI + ZtZ_[cluster_i];
-							CalcChol<T_mat>(SigmaIplusZtZ, cluster_i);
+							CalcChol(SigmaIplusZtZ, cluster_i);
 						}
 					}//end only_grouped_REs_use_woodbury_identity_
 					else {//not only_grouped_REs_use_woodbury_identity_
 						T_mat psi;
 						CalcZSigmaZt(psi, cluster_i);
-						CalcChol<T_mat>(psi, cluster_i);
+						CalcChol(psi, cluster_i);
 					}//end not only_grouped_REs_use_woodbury_identity_
 				}
 			}
@@ -4817,7 +4644,7 @@ namespace GPBoost {
 		* \brief Calculate Psi^-1*y (and save in y_aux_)
 		* \param marg_variance The marginal variance. Default = 1.
 		*/
-		void CalcYAux(double marg_variance = 1.) {
+		void CalcYAux(double marg_variance) {
 			for (const auto& cluster_i : unique_clusters_) {
 				if (y_.find(cluster_i) == y_.end()) {
 					Log::REFatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first.");
@@ -4840,18 +4667,10 @@ namespace GPBoost {
 						y_aux_[cluster_i] = y_[cluster_i] - Zt_[cluster_i].transpose() * MInvZty;
 					}
 					else {
-						//Version 1: let Eigen do the computation
 						y_aux_[cluster_i] = chol_facts_solve_[cluster_i].solve(y_[cluster_i]);
-						//// Version 2 'do-it-yourself' (for sparse matrices)
-						//y_aux_[cluster_i] = y_[cluster_i];
-						//const double* val = chol_facts_[cluster_i].valuePtr();
-						//const int* row_idx = chol_facts_[cluster_i].innerIndexPtr();
-						//const int* col_ptr = chol_facts_[cluster_i].outerIndexPtr();
-						//sp_L_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_[cluster_i].data());
-						//sp_L_t_solve(val, row_idx, col_ptr, num_data_per_cluster_[cluster_i], y_aux_[cluster_i].data());
 					}
 				}//end non-Vecchia
-				if (marg_variance != 1.) {
+				if (!TwoNumbersAreEqual<double>(marg_variance, 1.)) {
 					y_aux_[cluster_i] /= marg_variance;
 				}
 			}
@@ -4874,13 +4693,10 @@ namespace GPBoost {
 					}
 				}
 				else {
-					y_tilde_[cluster_i] = Zty_[cluster_i];
-					ApplyPermutationCholeskyFactor<vec_t, T_chol>(chol_facts_solve_[cluster_i], y_tilde_[cluster_i], false);
-					chol_facts_solve_[cluster_i].matrixL().solveInPlace(y_tilde_[cluster_i]);
+					TriangularSolveGivenCholesky<T_chol, T_mat, vec_t, vec_t>(chol_facts_solve_[cluster_i], Zty_[cluster_i], y_tilde_[cluster_i], false);
 					if (also_calculate_ytilde2) {
-						vec_t ytilde_aux = y_tilde_[cluster_i];
-						chol_facts_solve_[cluster_i].matrixL().adjoint().solveInPlace(ytilde_aux);
-						ApplyPermutationCholeskyFactor<vec_t, T_chol>(chol_facts_solve_[cluster_i], ytilde_aux, true);
+						vec_t ytilde_aux;
+						TriangularSolveGivenCholesky<T_chol, T_mat, vec_t, vec_t>(chol_facts_solve_[cluster_i], y_tilde_[cluster_i], ytilde_aux, true);
 						y_tilde2_[cluster_i] = Zt_[cluster_i].transpose() * ytilde_aux;
 					}
 				}
@@ -4940,9 +4756,8 @@ namespace GPBoost {
 							yTPsiInvy += (y_[cluster_i].transpose() * y_aux_[cluster_i])(0, 0);
 						}
 						else {
-							vec_t y_aux_sqrt = y_[cluster_i];
-							ApplyPermutationCholeskyFactor<vec_t, T_chol>(chol_facts_solve_[cluster_i], y_aux_sqrt, false);
-							chol_facts_solve_[cluster_i].matrixL().solveInPlace(y_aux_sqrt);
+							vec_t y_aux_sqrt;
+							TriangularSolveGivenCholesky<T_chol, T_mat, vec_t, vec_t>(chol_facts_solve_[cluster_i], y_[cluster_i], y_aux_sqrt, false);
 							yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
 						}
 					}//end not only_grouped_REs_use_woodbury_identity_
@@ -5023,7 +4838,7 @@ namespace GPBoost {
 					sp_mat_t Identity(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 					Identity.setIdentity();
 					sp_mat_t B_inv;
-					eigen_sp_Lower_sp_RHS_solve<sp_mat_t, sp_mat_t>(B_[cluster_i], Identity, B_inv, true);//No noticeable difference in (n=500, nn=100/30) compared to using eigen_sp_Lower_sp_RHS_cs_solve()
+					TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B_[cluster_i], Identity, B_inv, false);//No noticeable difference in (n=500, nn=100/30) compared to using eigen_sp_Lower_sp_RHS_cs_solve()
 					//eigen_sp_Lower_sp_RHS_cs_solve(B_[cluster_i], Identity, B_inv, true);
 					sp_mat_t D(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 					D.setIdentity();
@@ -5082,11 +4897,11 @@ namespace GPBoost {
 							}
 							else {
 								for (int j = 0; j < num_comps_total_; ++j) {
-									if (chol_fact_has_permutation_) {
-										CalcPsiInvSqrtH(P_ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], cluster_i, true, false);
+									if (CholeskyHasPermutation<T_chol>(chol_facts_solve_[cluster_i])) {
+										TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_solve_[cluster_i].CholFactMatrix(), P_ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], false);
 									}
 									else {
-										CalcPsiInvSqrtH(ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], cluster_i, true, false);
+										TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_solve_[cluster_i].CholFactMatrix(), ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], false);
 									}
 								}
 							}
@@ -5108,7 +4923,8 @@ namespace GPBoost {
 									MInv_ZtZ.diagonal().array() = ZtZ_[cluster_i].diagonal().array() / (sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().square());
 								}
 								else {
-									SolveWithSparseRHSGivenCholesky<T_mat>(chol_facts_solve_[cluster_i], ZtZ_[cluster_i], MInv_ZtZ);
+									SolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_solve_[cluster_i], ZtZ_[cluster_i], MInv_ZtZ);
+
 								}
 								T_mat MInv_ZtZ_t = MInv_ZtZ.transpose();
 								FI(0, 0) += (num_data_per_cluster_[cluster_i] - 2. * MInv_ZtZ.diagonal().sum() + (double)(MInv_ZtZ.cwiseProduct(MInv_ZtZ_t)).sum()) / (cov_pars[0] * cov_pars[0] * 2.);
@@ -5117,7 +4933,7 @@ namespace GPBoost {
 									double trace_PsiInvGradPsi;
 									if (num_comps_total_ > 1) {
 										T_mat MInv_ZtZj;
-										SolveWithSparseRHSGivenCholesky<T_mat>(chol_facts_solve_[cluster_i], ZtZj_[cluster_i][j], MInv_ZtZj);
+										SolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_solve_[cluster_i], ZtZj_[cluster_i][j], MInv_ZtZj);
 										trace_PsiInvGradPsi = Zj_square_sum_[cluster_i][j] - 2. * (double)(LInvZtZj_[cluster_i][j].squaredNorm()) +
 											(double)(ZjZ_MInv_ZtZ_t.cwiseProduct(MInv_ZtZj)).sum();
 									}
@@ -5153,7 +4969,7 @@ namespace GPBoost {
 							psi_inv = psi_inv_[cluster_i];
 						}
 						else {
-							CalcPsiInv(psi_inv, cluster_i);
+							CalcPsiInv(psi_inv, cluster_i, false);
 						}
 						if (!transf_scale) {
 							psi_inv /= cov_pars[0];//psi_inv has been calculated with a transformed parametrization, so we need to divide everything by cov_pars[0] to obtain the covariance matrix
@@ -5473,7 +5289,7 @@ namespace GPBoost {
 					}//end not gauss_likelihood_
 				}//end if calc_cov_factor
 				if (gauss_likelihood_) {
-					CalcYAux();//note: in some cases a call to CalcYAux() could be avoided (e.g. no covariates and not GPBoost algorithm)...
+					CalcYAux(1.);//note: in some cases a call to CalcYAux() could be avoided (e.g. no covariates and not GPBoost algorithm)...
 				}
 			}//end not (gp_approx_ == "vecchia" && gauss_likelihood_)
 		}// end SetYCalcCovCalcYAux
@@ -5700,9 +5516,8 @@ namespace GPBoost {
 							cov_mat_pred_id += (T_mat)(ZtM_aux.transpose() * ZtM_aux);
 						}
 						else {
-							T_mat M_aux = T_mat(ZtZ_[cluster_i]);
-							ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_facts_solve_[cluster_i], M_aux, false);
-							TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_facts_solve_[cluster_i], M_aux);
+							T_mat M_aux;
+							TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_solve_[cluster_i], ZtZ_[cluster_i], M_aux, false);
 							sp_mat_t ZtildeSigma = Ztilde * Sigma;
 							T_mat M_aux2 = M_aux * ZtildeSigma.transpose();
 							M_aux.resize(0, 0);
@@ -5711,9 +5526,8 @@ namespace GPBoost {
 						}
 					}
 					else {
-						T_mat M_aux = cross_cov.transpose();
-						ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_facts_solve_[cluster_i], M_aux, false);
-						TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_facts_solve_[cluster_i], M_aux);
+						T_mat M_aux;
+						TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_facts_solve_[cluster_i], cross_cov.transpose(), M_aux, false);
 						cov_mat_pred_id -= (T_mat)(M_aux.transpose() * M_aux);
 					}
 				}//end predict_cov_mat
@@ -5730,9 +5544,8 @@ namespace GPBoost {
 							}
 						}
 						else {//more than one grouped RE component
-							T_mat M_aux = T_mat(ZtZ_[cluster_i]);
-							ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_facts_solve_[cluster_i], M_aux, false);
-							TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_facts_solve_[cluster_i], M_aux);
+							T_mat M_aux;
+							TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_solve_[cluster_i], ZtZ_[cluster_i], M_aux, false);
 							sp_mat_t ZtildeSigma = Ztilde * Sigma;
 							T_mat M_aux2 = M_aux * ZtildeSigma.transpose();
 							M_aux.resize(0, 0);
@@ -5746,9 +5559,8 @@ namespace GPBoost {
 						}
 					}//end only_grouped_REs_use_woodbury_identity_
 					else {//not only_grouped_REs_use_woodbury_identity_
-						T_mat M_aux2 = cross_cov.transpose();
-						ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_facts_solve_[cluster_i], M_aux2, false);
-						TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_facts_solve_[cluster_i], M_aux2);
+						T_mat M_aux2;
+						TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_facts_solve_[cluster_i], cross_cov.transpose(), M_aux2, false);
 						M_aux2 = M_aux2.cwiseProduct(M_aux2);
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_REs_pred; ++i) {
@@ -6342,15 +6154,14 @@ namespace GPBoost {
 			chol_sp_mat_t CholFac_M_aux_Woodbury;
 			CholFac_M_aux_Woodbury.compute(M_aux_Woodbury);
 			if (calc_pred_cov || calc_pred_var) {
-				sp_mat_t Z_o_T = Z_o.transpose();
-				//Using Eigen's solver
-				sp_mat_t M_aux_Woodbury2 = CholFac_M_aux_Woodbury.solve(Z_o_T);
 				sp_mat_t Identity_obs(num_data_cli, num_data_cli);
 				Identity_obs.setIdentity();
-				sp_mat_t ZoSigmaZoT_plusI_Inv = -Z_o * M_aux_Woodbury2 + Identity_obs;
+				sp_mat_t MInvSqrtX_Z_o_T;
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(CholFac_M_aux_Woodbury, Z_o.transpose(), MInvSqrtX_Z_o_T, false);
+				sp_mat_t ZoSigmaZoT_plusI_Inv = -MInvSqrtX_Z_o_T.transpose() * MInvSqrtX_Z_o_T + Identity_obs;
 				sp_mat_t Z_p_B_inv = Z_p * B_inv;
 				sp_mat_t Z_p_B_inv_D = Z_p_B_inv * D.asDiagonal();
-				sp_mat_t ZpSigmaZoT = Z_p_B_inv_D * (B_inv.transpose() * Z_o_T);
+				sp_mat_t ZpSigmaZoT = Z_p_B_inv_D * (B_inv.transpose() * Z_o.transpose());
 				sp_mat_t M_aux = ZpSigmaZoT * ZoSigmaZoT_plusI_Inv;
 				pred_mean = M_aux * y_[cluster_i];
 				if (calc_pred_cov) {
@@ -6401,4 +6212,3 @@ namespace GPBoost {
 }  // end namespace GPBoost
 
 #endif   // GPB_RE_MODEL_TEMPLATE_H_
-

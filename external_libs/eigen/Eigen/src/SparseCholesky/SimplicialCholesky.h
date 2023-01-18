@@ -101,6 +101,13 @@ class SimplicialCholeskyBase : public SparseSolverBase<Derived>
     {
     }
 
+    //ChangedForGPBoost
+    /** \returns Cholesky factor matrix */
+    const CholMatrixType& CholFactMatrix() const
+    {
+        return m_matrix;
+    }
+
     Derived& derived() { return *static_cast<Derived*>(this); }
     const Derived& derived() const { return *static_cast<const Derived*>(this); }
     

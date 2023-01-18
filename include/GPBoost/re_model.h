@@ -379,7 +379,8 @@ namespace GPBoost {
 		* \param[out] leaf_values Leaf values when performing a Newton update step (array of size num_leaves)
 		*/
 		void NewtonUpdateLeafValues(const int* data_leaf_index,
-			const int num_leaves, double* leaf_values) const;
+			const int num_leaves,
+			double* leaf_values) const;
 
 		/*!
 		* \brief If cov_pars_ is is not defined, define them as init_cov_pars_ or if init_cov_pars_ is not given, find "reasonable" default values for the intial values of the covariance parameters

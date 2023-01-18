@@ -124,6 +124,13 @@ template<typename _MatrixType, int _UpLo> class LLT
       compute(matrix.derived());
     }
 
+    //ChangedForGPBoost
+    /** \returns Cholesky factor matrix */
+    const MatrixType& CholFactMatrix() const
+    {
+        return m_matrix;
+    }
+
     /** \returns a view of the upper triangular matrix U */
     inline typename Traits::MatrixU matrixU() const
     {

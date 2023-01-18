@@ -33,7 +33,7 @@ namespace GPBoost {
 	typedef Eigen::SparseMatrix<double> sp_mat_t; // column-major sparse matrix
 	typedef Eigen::SparseMatrix<double, Eigen::RowMajor> sp_mat_rm_t; // row-major sparse matrix
 	typedef Eigen::Triplet<double> Triplet_t;
-	typedef Eigen::LLT<Eigen::MatrixXd, Eigen::Lower> chol_den_mat_t;
+	typedef Eigen::LLT<den_mat_t, Eigen::Lower> chol_den_mat_t;
 	typedef Eigen::SimplicialLLT<sp_mat_t, Eigen::Lower, Eigen::AMDOrdering<int>> chol_sp_mat_t;
 	typedef Eigen::SimplicialLLT<sp_mat_rm_t, Eigen::Lower, Eigen::AMDOrdering<int>> chol_sp_mat_rm_t;
 	// AMDOrdering is faster than NaturalOrdering for sparse matrices for GPs (e.g. tapering) but slightly slower than no ordering for grouped random effects for Gaussian data

@@ -527,7 +527,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                          convergence_criterion = "relative_change_in_parameters")), file='NUL')
     cov_pars <- c(0.01829104, 0.07043221, 1.06577048, 0.23037437, 0.11335918, 0.03484927)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 20)
+    expect_equal(gp_model$get_num_optim_iter(), 19)
     
     # Prediction using given parameters
     cov_pars_pred <- c(0.02,1.2,0.9)
@@ -880,7 +880,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
                                                          lr_cov = 0.1, use_nesterov_acc = TRUE,
                                                          acc_rate_cov = 0.5)), file='NUL')
-    cov_pars <- c(0.00327103, 0.06579668, 1.08812978, 0.18151366)
+    cov_pars <- c(0.00327103, 0.06579671, 1.08812978, 0.18151366)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 187)
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
@@ -939,7 +939,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 75)
     
-    # Same thing with matern covariance
+    # Same thing with Matern covariance
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                                            y = y, X = X, params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     cov_pars <- c(0.17369771, 0.07950745, 0.84098718, 0.20889907, 0.08839526, 0.01190858)
@@ -974,7 +974,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            gp_approx = "tapering", cov_fct_taper_shape = 1, cov_fct_taper_range = 0.5,
                                            y = y, X = X,
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-    cov_pars_tap <- c(0.21355413, 0.08709298, 0.80448797, 0.20623566, 0.12988850, 0.03404072)
+    cov_pars_tap <- c(0.21355413, 0.08709305, 0.80448797, 0.20623554, 0.12988850, 0.03404038)
     coef_tap <- c(2.3533920, 0.1896204, 1.8720682, 0.0988744)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_STRICT)

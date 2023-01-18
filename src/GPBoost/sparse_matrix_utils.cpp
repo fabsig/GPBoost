@@ -21,7 +21,6 @@ namespace GPBoost {
 		}
 	}
 
-	//Note: the following has not been tested on data (it's a simple function, so it's unlikely that there is an error, though)
 	void L_t_solve(const double* val, const int ncol, double* x) {
 		for (int j = ncol - 1; j >= 0; --j) {
 			if (x[j] != 0) {
@@ -53,7 +52,7 @@ namespace GPBoost {
 		}
 	}
 
-	void sp_Lower_sp_RHS_cs_solve(cs* A, cs* B, sp_mat_t& A_inv_B, bool lower) {
+	void sp_Lower_sp_RHS_cs_solve(cs* A, const cs* B, sp_mat_t& A_inv_B, bool lower) {
 		if (A->m != A->n || B->n < 1 || A->n < 1 || A->n != B->m) {
 			Log::REFatal("Dimensions of system to be solved are inconsistent");
 		}
@@ -243,14 +242,15 @@ namespace GPBoost {
 
 	}
 
-	void eigen_sp_Lower_sp_RHS_cs_solve(sp_mat_t& A, sp_mat_t& B, sp_mat_t& A_inv_B, bool lower) {
+	void eigen_sp_Lower_sp_RHS_cs_solve(const sp_mat_t& A_const, const sp_mat_t& B_const, sp_mat_t& A_inv_B, bool lower) {
 
 		 //Prepocessor flag: Workaround since problems can occurr when calling 'sp_Lower_sp_RHS_cs_solve' from certain gcc versions (e.g. gcc 7.5.0 on Ubuntu 18.04); see comment above in sp_Lower_sp_RHS_cs_solve.
 #if defined(_WIN32) && !defined(__GNUC__)
 
-		//Convert Eigen matrices to correct format
-		A.makeCompressed();
-		B.makeCompressed();
+		sp_mat_t A = sp_mat_t(A_const);//need to copy since 'A_const' is const because 'CholFactMatrix()' returns const, but L_cs needs to be non-const for 'cs_spsolve' / 'sp_Lower_sp_RHS_cs_solve'
+		sp_mat_t B = sp_mat_t(B_const);
+		CHECK(A.isCompressed());
+		CHECK(B.isCompressed());
 
 		//This is faster than the version below (in particular if B is very sparse) but it can crash on Linux. Update 23.04.2020: Problems can also occur on Windows
 		//Prepare LHS
@@ -276,13 +276,13 @@ namespace GPBoost {
 
 #else
 
-		eigen_sp_Lower_sp_RHS_solve<sp_mat_t, sp_mat_t>(A, B, A_inv_B, lower);
+		TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(A_const, B_const, A_inv_B, !lower);
 
 #endif
 
 	}//end eigen_sp_Lower_sp_RHS_cs_solve
 
-	void eigen_sp_Lower_sp_RHS_cs_solve(sp_mat_rm_t& A, sp_mat_rm_t& B, sp_mat_rm_t& A_inv_B, bool lower) {//not used, place-holder for compiler
+	void eigen_sp_Lower_sp_RHS_cs_solve(const sp_mat_rm_t& A, const sp_mat_rm_t& B, sp_mat_rm_t& A_inv_B, bool lower) {//not used, place-holder for compiler
 		sp_mat_t A_inv_B_cm = sp_mat_t(B);
 		sp_mat_t A_cm = sp_mat_t(A);
 		eigen_sp_Lower_sp_RHS_cs_solve(A_cm, A_inv_B_cm, A_inv_B_cm, lower);

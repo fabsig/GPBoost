@@ -20,7 +20,7 @@
 #undef csi
 #define csi mwSignedIndex
 #endif
-// Changed in GPBoost
+//ChangedForGPBoost
 #define csi int
 #ifndef csi
 #define csi int
@@ -68,6 +68,7 @@ typedef struct cs_dmperm_results    /* cs_dmperm or cs_scc output */
     csi cc [5] ;    /* coarse column decomposition */
 } csd ;
 
+//ChangedForGPBoost
 //Only the following three functions are needed for GPBoost
 csi cs_dfs(csi j, cs* G, csi top, csi* xi, csi* pstack, const csi* pinv);
 csi cs_reach(cs* G, const cs* B, csi k, csi* xi, const csi* pinv);

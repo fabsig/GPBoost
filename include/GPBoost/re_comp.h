@@ -1003,7 +1003,7 @@ namespace GPBoost {
 		*/
 		void CalcSigma() override {
 			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
-			cov_function_->GetCovMat(*dist_, this->cov_pars_, sigma_, sigma_symmetric_);
+			cov_function_->GetCovMat<T_mat>(*dist_, this->cov_pars_, sigma_, sigma_symmetric_);
 			sigma_defined_ = true;
 			if (apply_tapering_) {
 				tapering_has_been_applied_ = false;
@@ -1020,7 +1020,7 @@ namespace GPBoost {
 			CHECK(sigma_defined_);
 			CHECK(apply_tapering_);
 			CHECK(!tapering_has_been_applied_);
-			cov_function_->MultiplyWendlandCorrelationTaper(*dist_, sigma_, sigma_symmetric_);
+			cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(*dist_, sigma_, sigma_symmetric_);
 			tapering_has_been_applied_ = true;
 		}
 
@@ -1060,9 +1060,9 @@ namespace GPBoost {
 			double nugget_var,
 			bool is_symmmetric) const override {
 			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
-			cov_function_->GetCovMat(dist, this->cov_pars_, cov_mat, is_symmmetric);
+			cov_function_->GetCovMat<den_mat_t>(dist, this->cov_pars_, cov_mat, is_symmmetric);
 			if (apply_tapering_ && !apply_tapering_manually_) {
-				cov_function_->MultiplyWendlandCorrelationTaper(dist, cov_mat, is_symmmetric);
+				cov_function_->MultiplyWendlandCorrelationTaper<den_mat_t>(dist, cov_mat, is_symmmetric);
 			}
 			if (calc_gradient) {
 				//gradient wrt to variance parameter
@@ -1072,7 +1072,7 @@ namespace GPBoost {
 				}
 				if (cov_function_->cov_fct_type_ != "wendland") {
 					//gradient wrt to range parameter
-					cov_function_->GetCovMatGradRange(dist, cov_mat, this->cov_pars_, cov_grad_2, transf_scale, nugget_var);
+					cov_function_->GetCovMatGradRange<den_mat_t>(dist, cov_mat, this->cov_pars_, cov_grad_2, transf_scale, nugget_var);
 				}
 			}
 			if (!transf_scale) {
@@ -1115,11 +1115,11 @@ namespace GPBoost {
 				T_mat Z_sigma_grad_Zt;
 				if (this->has_Z_) {
 					T_mat sigma_grad;
-					cov_function_->GetCovMatGradRange(*dist_, sigma_, this->cov_pars_, sigma_grad, transf_scale, nugget_var);
+					cov_function_->GetCovMatGradRange<T_mat>(*dist_, sigma_, this->cov_pars_, sigma_grad, transf_scale, nugget_var);
 					Z_sigma_grad_Zt = this->Z_ * sigma_grad * this->Z_.transpose();
 				}
 				else {
-					cov_function_->GetCovMatGradRange(*dist_, sigma_, this->cov_pars_, Z_sigma_grad_Zt, transf_scale, nugget_var);
+					cov_function_->GetCovMatGradRange<T_mat>(*dist_, sigma_, this->cov_pars_, Z_sigma_grad_Zt, transf_scale, nugget_var);
 				}
 				return(std::make_shared<T_mat>(Z_sigma_grad_Zt));
 			}
@@ -1204,9 +1204,9 @@ namespace GPBoost {
 				T_mat ZstarSigmatildeTZT;
 				if (has_Zstar || this->has_Z_) {
 					T_mat Sigmatilde;
-					cov_function_->GetCovMat(cross_dist, this->cov_pars_, Sigmatilde, false);
+					cov_function_->GetCovMat<T_mat>(cross_dist, this->cov_pars_, Sigmatilde, false);
 					if (apply_tapering_ && !apply_tapering_manually_) {
-						cov_function_->MultiplyWendlandCorrelationTaper(cross_dist, Sigmatilde, false);
+						cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(cross_dist, Sigmatilde, false);
 					}
 					if (has_Zstar && this->has_Z_) {
 						ZstarSigmatildeTZT = Zstar * Sigmatilde * this->Z_.transpose();
@@ -1219,9 +1219,9 @@ namespace GPBoost {
 					}
 				}//end has_Zstar || this->has_Z_
 				else { //no Zstar and no Z_
-					cov_function_->GetCovMat(cross_dist, this->cov_pars_, ZstarSigmatildeTZT, false);
+					cov_function_->GetCovMat<T_mat>(cross_dist, this->cov_pars_, ZstarSigmatildeTZT, false);
 					if (apply_tapering_ && !apply_tapering_manually_) {
-						cov_function_->MultiplyWendlandCorrelationTaper(cross_dist, ZstarSigmatildeTZT, false);
+						cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(cross_dist, ZstarSigmatildeTZT, false);
 					}
 				}
 				if (dont_add_but_overwrite) {
@@ -1242,16 +1242,16 @@ namespace GPBoost {
 				T_mat ZstarSigmastarZstarT;
 				if (has_Zstar) {
 					T_mat Sigmastar;
-					cov_function_->GetCovMat(dist, this->cov_pars_, Sigmastar, true);
+					cov_function_->GetCovMat<T_mat>(dist, this->cov_pars_, Sigmastar, true);
 					if (apply_tapering_ && !apply_tapering_manually_) {
-						cov_function_->MultiplyWendlandCorrelationTaper(dist, Sigmastar, true);
+						cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(dist, Sigmastar, true);
 					}
 					ZstarSigmastarZstarT = Zstar * Sigmastar * Zstar.transpose();
 				}
 				else {
-					cov_function_->GetCovMat(dist, this->cov_pars_, ZstarSigmastarZstarT, true);
+					cov_function_->GetCovMat<T_mat>(dist, this->cov_pars_, ZstarSigmastarZstarT, true);
 					if (apply_tapering_ && !apply_tapering_manually_) {
-						cov_function_->MultiplyWendlandCorrelationTaper(dist, ZstarSigmastarZstarT, true);
+						cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(dist, ZstarSigmastarZstarT, true);
 					}
 				}
 				uncond_pred_cov += ZstarSigmastarZstarT;

@@ -1037,7 +1037,8 @@ namespace GPBoost {
 	}
 
 	void REModel::NewtonUpdateLeafValues(const int* data_leaf_index,
-		const int num_leaves, double* leaf_values) const {
+		const int num_leaves,
+		double* leaf_values) const {
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->NewtonUpdateLeafValues(data_leaf_index, num_leaves, leaf_values, cov_pars_[0]);
 		}

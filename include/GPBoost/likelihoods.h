@@ -41,12 +41,6 @@ using LightGBM::Log;
 
 #include <chrono>  // only for debugging
 #include <thread> // only for debugging
-//std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();// only for debugging
-//std::chrono::steady_clock::time_point begin, end;// only for debugging
-//double el_time;
-//end = std::chrono::steady_clock::now();// only for debugging
-//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - beginall).count()) / 1000000.;// Only for debugging
-//Log::REInfo("TOTAL TIME for mode calculation: %g", el_time);// Only for debugging
 
 namespace GPBoost {
 
@@ -602,7 +596,7 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param num_data Number of data points
-		* \param ZSigmaZt Covariance matrix of latent random effect (can be den_mat_t or sp_mat_t)
+		* \param ZSigmaZt Covariance matrix of latent random effect
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
 		void FindModePostRandEffCalcMLLStable(const double* y_data,
@@ -722,18 +716,6 @@ namespace GPBoost {
 				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
 			}
-			////Only for debugging
-			//Log::REInfo("FindModePostRandEffCalcMLLStable");
-			//Log::REInfo("Number of iterations: %d", it);
-			//Log::REInfo("approx_marginal_ll: %g", approx_marginal_ll);
-			//Log::REInfo("Mode");
-			//for (int i = 0; i < 10; ++i) {
-			//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
-			//}
-			//Log::REInfo("a");
-			//for (int i = 0; i < 5; ++i) {
-			//	Log::REInfo("a[%d]: %g", i, a_vec_[i]);
-			//}
 		}//end FindModePostRandEffCalcMLLStable
 
 		/*!
@@ -746,7 +728,7 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param num_data Number of data points
-		* \param Sigma Covariance matrix of latent random effect (can be den_mat_t or sp_mat_t)
+		* \param Sigma Covariance matrix of latent random effect
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
@@ -757,9 +739,6 @@ namespace GPBoost {
 			const std::shared_ptr<T_mat> Sigma,
 			const data_size_t * const random_effects_indices_of_data,
 			double& approx_marginal_ll) {
-			//std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();// only for debugging
-			//std::chrono::steady_clock::time_point begin, end;// only for debugging
-			//double el_time;
 			// Initialize variables
 			if (!mode_initialized_) {
 				InitializeModeAvec();
@@ -830,8 +809,6 @@ namespace GPBoost {
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
-				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g, mode_[0:4]: %g, %g, %g, %g, %g", 
-				//	it, approx_marginal_ll, approx_marginal_ll_new, mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);//only for debugging
 				// Check convergence
 				if (it == 0) {
 					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
@@ -871,21 +848,6 @@ namespace GPBoost {
 				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
 			}
-			////Only for debugging
-			//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale");
-			//Log::REInfo("Number of iterations: %d", it);
-			//Log::REInfo("approx_marginal_ll: %g", approx_marginal_ll);
-			//Log::REInfo("Mode");
-			//for (int i = 0; i < 10; ++i) {
-			//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
-			//}
-			//Log::REInfo("a");
-			//for (int i = 0; i < 5; ++i) {
-			//	Log::REInfo("a[%d]: %g", i, a_vec_[i]);
-			//}
-			//end = std::chrono::steady_clock::now();// only for debugging
-			//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - beginall).count()) / 1000000.;// Only for debugging
-			//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale: TOTAL TIME for mode calculation: %g", el_time);// Only for debugging
 		}//end FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale
 
 		/*!
@@ -998,21 +960,6 @@ namespace GPBoost {
 				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
 			}
-			////Only for debugging
-			//Log::REInfo("FindModePostRandEffCalcMLLGroupedRE");
-			//Log::REInfo("Number of iterations: %d", it);
-			//Log::REInfo("Mode");
-			//for (int i = 0; i < 10; ++i) {
-			//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
-			//}
-			//Log::REInfo("approx_marginal_ll: %g", approx_marginal_ll);
-			//double approx_marginal_ll_1 = -0.5 * (mode_.dot(SigmaI * mode_)); 
-			//double approx_marginal_ll_2 = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-			//double approx_marginal_ll_3 = 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() - 0.5 * SigmaI.diagonal().array().log().sum();
-			//Log::REInfo("approx_marginal_ll_1: %g", approx_marginal_ll_1);
-			//Log::REInfo("approx_marginal_ll_2: %g", approx_marginal_ll_2);
-			//Log::REInfo("approx_marginal_ll_3: %g", approx_marginal_ll_3);
-			//std::this_thread::sleep_for(std::chrono::milliseconds(200));
 		}//end FindModePostRandEffCalcMLLGroupedRE
 
 		/*!
@@ -1089,8 +1036,6 @@ namespace GPBoost {
 				}
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g, mode_[0:4]: %g, %g, %g, %g, %g",
-				//	it, approx_marginal_ll, approx_marginal_ll_new, mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);//only for debugging
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
@@ -1132,15 +1077,6 @@ namespace GPBoost {
 				approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * num_re_ * std::log(sigma2);
 				mode_has_been_calculated_ = true;
 			}
-			////Only for debugging
-			//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale");
-			//Log::REInfo("Number of iterations: %d", it);
-			//Log::REInfo("Mode");
-			//for (int i = 0; i < 10; ++i) {
-			//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
-			//}
-			//Log::REInfo("approx_marginal_ll: %g", approx_marginal_ll);
-			//std::this_thread::sleep_for(std::chrono::milliseconds(200));
 		}//end FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale
 
 		/*!
@@ -1231,8 +1167,6 @@ namespace GPBoost {
 					}
 					approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 				}
-				//Log::REInfo("it = %d, approx_marginal_ll = %g, approx_marginal_ll_new = %g, mode_[0:4]: %g, %g, %g, %g, %g",
-				//	it, approx_marginal_ll, approx_marginal_ll_new, mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);//only for debugging
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
@@ -1282,15 +1216,6 @@ namespace GPBoost {
 				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
 			}
-			////Only for debugging
-			//Log::REInfo("FindModePostRandEffCalcMLLVecchia");
-			//Log::REInfo("Number of iterations: %d", it);
-			//Log::REInfo("approx_marginal_ll: %g", approx_marginal_ll);
-			//Log::REInfo("Mode");
-			//for (int i = 0; i < 10; ++i) {
-			//	Log::REInfo("mode_[%d]: %g", i, mode_[i]);
-			//}
-			//std::this_thread::sleep_for(std::chrono::milliseconds(200));
 		}//end FindModePostRandEffCalcMLLVecchia
 
 		/*!
@@ -1302,7 +1227,7 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param num_data Number of data points
-		* \param ZSigmaZt Covariance matrix of latent random effect (can be den_mat_t or sp_mat_t)
+		* \param ZSigmaZt Covariance matrix of latent random effect
 		* \param re_comps_cluster_i Vector with different random effects components. We pass the component pointers to save memory in order to avoid passing a large collection of gardient covariance matrices in memory//TODO: better way than passing this? (relying on all gradients in a vector can lead to large memory consumption)
 		* \param calc_cov_grad If true, the gradient wrt the covariance parameters are calculated
 		* \param calc_F_grad If true, the gradient wrt the fixed effects mean function F are calculated
@@ -1346,49 +1271,41 @@ namespace GPBoost {
 				}
 				CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
 			}
-			ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt, false);
-			TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt);//L_inv_Wsqrt = L\Wsqrt
+			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt, L_inv_Wsqrt, false);//L_inv_Wsqrt = L\Wsqrt
 			T_mat L_inv_Wsqrt_ZSigmaZt = L_inv_Wsqrt * (*ZSigmaZt);
+			// Calculate gradient of approx. marginal log-likelihood wrt the mode
+			//		Note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = ZSigmaZt - L_inv_Wsqrt_ZSigmaZt^T*L_inv_Wsqrt_ZSigmaZt and (ii) "Z=Id"N
+			T_mat L_inv_Wsqrt_ZSigmaZt_sqr = L_inv_Wsqrt_ZSigmaZt.cwiseProduct(L_inv_Wsqrt_ZSigmaZt);
+			vec_t ZSigmaZtI_plus_W_inv_diag = (*ZSigmaZt).diagonal() - L_inv_Wsqrt_ZSigmaZt_sqr.transpose() * vec_t::Ones(L_inv_Wsqrt_ZSigmaZt_sqr.rows());// diagonal of (ZSigmaZt^-1 + W) ^ -1
+			vec_t d_mll_d_mode = (-0.5 * ZSigmaZtI_plus_W_inv_diag.array() * third_deriv.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
-				T_mat WI_plus_Sigma_inv = L_inv_Wsqrt.transpose() * L_inv_Wsqrt;//WI_plus_Sigma_inv = Wsqrt * L^T\(L\Wsqrt) = (W^-1 + Sigma)^-1
-				// calculate gradient of approx. marginal log-likelihood wrt the mode
-				// note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = ZSigmaZt - L_inv_Wsqrt_ZSigmaZt^T*L_inv_Wsqrt_ZSigmaZt and (ii) "Z=Id"
-				vec_t d_mll_d_mode = (-0.5 * ((*ZSigmaZt).diagonal() - ((T_mat)(L_inv_Wsqrt_ZSigmaZt.transpose() * L_inv_Wsqrt_ZSigmaZt)).diagonal()).array() * third_deriv.array()).matrix();
-				vec_t d_mode_d_par;//derivative of mode wrt to a covariance parameter
-				vec_t v_aux;//auxiliary variable for caclulating d_mode_d_par
+				T_mat WI_plus_Sigma_inv;//WI_plus_Sigma_inv = Wsqrt * L^T\(L\Wsqrt) = (W^-1 + Sigma)^-1
+				vec_t d_mode_d_par, SigmaDeriv_first_deriv_ll;
 				int par_count = 0;
 				double explicit_derivative;
 				for (int j = 0; j < (int)re_comps_cluster_i.size(); ++j) {
 					for (int ipar = 0; ipar < re_comps_cluster_i[j]->NumCovPar(); ++ipar) {
 						std::shared_ptr<T_mat> SigmaDeriv = re_comps_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 1.);
+						if (ipar == 0) {
+							WI_plus_Sigma_inv = *SigmaDeriv;
+							CalcLtLGivenSparsityPattern<T_mat>(L_inv_Wsqrt, WI_plus_Sigma_inv);
+							//TODO (low-prio): calculate WI_plus_Sigma_inv only once for all relevant non-zero entries as in Gaussian case (see 'CalcPsiInv')
+							//					This is only relevant for multiple random effects and/or GPs
+						}
 						// calculate explicit derivative of approx. mariginal log-likelihood
 						explicit_derivative = -0.5 * (double)(a_vec_.transpose() * (*SigmaDeriv) * a_vec_) + 0.5 * (WI_plus_Sigma_inv.cwiseProduct(*SigmaDeriv)).sum();
 						// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-						v_aux = (*SigmaDeriv) * first_deriv_ll_;
-						d_mode_d_par = (v_aux.array() - ((*ZSigmaZt) * WI_plus_Sigma_inv * v_aux).array()).matrix();
+						SigmaDeriv_first_deriv_ll = (*SigmaDeriv) * first_deriv_ll_;//auxiliary variable for caclulating d_mode_d_par
+						d_mode_d_par = SigmaDeriv_first_deriv_ll;//derivative of mode wrt to a covariance parameter
+						d_mode_d_par -= ((*ZSigmaZt) * (L_inv_Wsqrt.transpose() * (L_inv_Wsqrt * SigmaDeriv_first_deriv_ll)));
 						cov_grad[par_count] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
 						par_count++;
 					}
 				}
-				////Only for debugging
-				//Log::REInfo("explicit_derivative: %g", explicit_derivative);
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
-				//}
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
-				//}
-				//Log::REInfo("cov_grad");
-				//for (int i = 0; i < par_count; ++i) {
-				//	Log::REInfo("cov_grad[%d]: %g", i, cov_grad[i]);
-				//}
 			}//end calc_cov_grad
 			// calculate gradient wrt fixed effects
 			if (calc_F_grad) {
-				T_mat L_inv_Wsqrt_ZSigmaZt_sqr = L_inv_Wsqrt_ZSigmaZt.cwiseProduct(L_inv_Wsqrt_ZSigmaZt);
-				vec_t ZSigmaZtI_plus_W_inv_diag = (*ZSigmaZt).diagonal() - L_inv_Wsqrt_ZSigmaZt_sqr.transpose() * vec_t::Ones(L_inv_Wsqrt_ZSigmaZt_sqr.rows());// diagonal of (ZSigmaZt^-1 + W) ^ -1
-				vec_t d_mll_d_mode = (-0.5 * ZSigmaZtI_plus_W_inv_diag.array() * third_deriv.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
 				vec_t L_inv_Wsqrt_ZSigmaZt_d_mll_d_mode = L_inv_Wsqrt_ZSigmaZt * d_mll_d_mode;// for implicit derivative
 				vec_t ZSigmaZtI_plus_W_inv_d_mll_d_mode = (*ZSigmaZt) * d_mll_d_mode - L_inv_Wsqrt_ZSigmaZt.transpose() * L_inv_Wsqrt_ZSigmaZt_d_mll_d_mode;
 				vec_t d_mll_d_F_implicit = (ZSigmaZtI_plus_W_inv_d_mll_d_mode.array() * second_deriv_neg_ll_.array()).matrix();// implicit derivative
@@ -1406,7 +1323,7 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param num_data Number of data points
-		* \param Sigma Covariance matrix of latent random effect (can be den_mat_t or sp_mat_t)
+		* \param Sigma Covariance matrix of latent random effect
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param re_comps_cluster_i Vector with different random effects components. We pass the component pointers to save memory in order to avoid passing a large collection of gardient covariance matrices in memory//TODO: better way than passing this? (relying on all gradients in a vector can lead to large memory consumption)
 		* \param calc_cov_grad If true, the gradient wrt the covariance parameters are calculated
@@ -1427,9 +1344,6 @@ namespace GPBoost {
 			double* cov_grad,
 			vec_t & fixed_effect_grad,
 			bool calc_mode) {
-			//std::chrono::steady_clock::time_point beginall = std::chrono::steady_clock::now();// only for debugging
-			//std::chrono::steady_clock::time_point begin, end;// only for debugging
-			//double el_time;
 			CHECK(re_comps_cluster_i.size() == 1);
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
@@ -1463,55 +1377,46 @@ namespace GPBoost {
 			CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), num_data, third_deriv.data());
 			vec_t diag_ZtThirdDerivZ;
 			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, third_deriv, diag_ZtThirdDerivZ, true);
-			ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZsqrt, false);
-			TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZsqrt);//L_inv_ZtWZsqrt = L\ZtWZsqrt //This is the bottleneck (in this first part) for large data when using sparse matrices
+			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZsqrt, L_inv_ZtWZsqrt, false);//L_inv_ZtWZsqrt = L\ZtWZsqrt
 			T_mat L_inv_ZtWZsqrt_Sigma = L_inv_ZtWZsqrt * (*Sigma);
-			////Only for debugging
 			//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale: L_inv_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt));//Only for debugging
 			//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale: L_inv_ZtWZsqrt_Sigma: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt_Sigma));//Only for debugging
+			// Calculate gradient of approx. marginal log-likelihood wrt the mode
+			//		Note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = ZSigmaZt - L_inv_ZtWZsqrt_Sigma^T*L_inv_ZtWZsqrt_Sigma
+			T_mat L_inv_ZtWZsqrt_Sigma_sqr = L_inv_ZtWZsqrt_Sigma.cwiseProduct(L_inv_ZtWZsqrt_Sigma);
+			vec_t SigmaI_plus_ZtWZ_inv_diag = (*Sigma).diagonal() - L_inv_ZtWZsqrt_Sigma_sqr.transpose() * vec_t::Ones(L_inv_ZtWZsqrt_Sigma_sqr.rows());// diagonal of (Sigma^-1 + ZtWZ) ^ -1
+			vec_t d_mll_d_mode = (-0.5 * SigmaI_plus_ZtWZ_inv_diag.array() * diag_ZtThirdDerivZ.array()).matrix();// gradient of approx. marginal likelihood wrt the mode
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
 				vec_t ZtFirstDeriv;
 				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, ZtFirstDeriv, true);
-				T_mat ZtWZI_Sigma_inv = L_inv_ZtWZsqrt.transpose() * L_inv_ZtWZsqrt;//ZtWZI_Sigma_inv = ZtWZsqrt * L^T\(L\ZtWZsqrt) = ((ZtWZ)^-1 + Sigma)^-1
-				// calculate gradient of approx. marginal log-likelihood wrt the mode
-				// note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = ZSigmaZt - L_inv_ZtWZsqrt_Sigma^T*L_inv_ZtWZsqrt_Sigma
-				vec_t d_mll_d_mode = (-0.5 * ((*Sigma).diagonal() - ((T_mat)(L_inv_ZtWZsqrt_Sigma.transpose() * L_inv_ZtWZsqrt_Sigma)).diagonal()).array() * diag_ZtThirdDerivZ.array()).matrix();
-				vec_t d_mode_d_par;//derivative of mode wrt to a covariance parameter
-				vec_t v_aux;//auxiliary variable for caclulating d_mode_d_par
+				T_mat ZtWZI_Sigma_inv;//ZtWZI_Sigma_inv = ZtWZsqrt * L^T\(L\ZtWZsqrt) = ((ZtWZ)^-1 + Sigma)^-1
+				vec_t d_mode_d_par, SigmaDeriv_ZtFirstDeriv;
 				int par_count = 0;
 				double explicit_derivative;
 				for (int j = 0; j < (int)re_comps_cluster_i.size(); ++j) {
 					for (int ipar = 0; ipar < re_comps_cluster_i[j]->NumCovPar(); ++ipar) {
 						std::shared_ptr<T_mat> SigmaDeriv = re_comps_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 1.);
+						if (ipar == 0) {
+							ZtWZI_Sigma_inv = *SigmaDeriv;
+							CalcLtLGivenSparsityPattern<T_mat>(L_inv_ZtWZsqrt, ZtWZI_Sigma_inv);
+							//TODO (low-prio): calculate ZtWZI_Sigma_inv only once for all relevant non-zero entries as in Gaussian case (see 'CalcPsiInv')
+							//					This is only relevant for multiple random effects and/or GPs
+						}
 						// calculate explicit derivative of approx. mariginal log-likelihood
 						explicit_derivative = -0.5 * (double)(a_vec_.transpose() * (*SigmaDeriv) * a_vec_) +
 							0.5 * (ZtWZI_Sigma_inv.cwiseProduct(*SigmaDeriv)).sum();
 						// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-						v_aux = (*SigmaDeriv) * ZtFirstDeriv;
-						d_mode_d_par = (v_aux.array() - ((*Sigma) * ZtWZI_Sigma_inv * v_aux).array()).matrix();
+						SigmaDeriv_ZtFirstDeriv = (*SigmaDeriv) * ZtFirstDeriv;//auxiliary variable for caclulating d_mode_d_par
+						d_mode_d_par = SigmaDeriv_ZtFirstDeriv;//derivative of mode wrt to a covariance parameter
+						d_mode_d_par -= ((*Sigma) * (L_inv_ZtWZsqrt.transpose() * (L_inv_ZtWZsqrt * SigmaDeriv_ZtFirstDeriv)));
 						cov_grad[par_count] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
 						par_count++;
 					}
 				}
-				////Only for debugging
-				//Log::REInfo("explicit_derivative: %g", explicit_derivative);
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
-				//}
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
-				//}
-				//Log::REInfo("cov_grad");
-				//for (int i = 0; i < par_count; ++i) {
-				//	Log::REInfo("cov_grad[%d]: %g", i, cov_grad[i]);
-				//}
 			}//end calc_cov_grad
 			// calculate gradient wrt fixed effects
 			if (calc_F_grad) {
-				T_mat L_inv_ZtWZsqrt_Sigma_sqr = L_inv_ZtWZsqrt_Sigma.cwiseProduct(L_inv_ZtWZsqrt_Sigma);
-				vec_t SigmaI_plus_ZtWZ_inv_diag = (*Sigma).diagonal() - L_inv_ZtWZsqrt_Sigma_sqr.transpose() * vec_t::Ones(L_inv_ZtWZsqrt_Sigma_sqr.rows());// diagonal of (Sigma^-1 + ZtWZ) ^ -1
-				vec_t d_mll_d_mode = (-0.5 * SigmaI_plus_ZtWZ_inv_diag.array() * diag_ZtThirdDerivZ.array()).matrix();// gradient of approx. marginal likelihood wrt the mode
 				vec_t L_inv_ZtWZsqrt_Sigma_d_mll_d_mode = L_inv_ZtWZsqrt_Sigma * d_mll_d_mode;// for implicit derivative
 				vec_t SigmaI_plus_ZtWZ_inv_d_mll_d_mode = (*Sigma) * d_mll_d_mode - L_inv_ZtWZsqrt_Sigma.transpose() * L_inv_ZtWZsqrt_Sigma_d_mll_d_mode;
 				fixed_effect_grad = -first_deriv_ll_;
@@ -1521,9 +1426,6 @@ namespace GPBoost {
 						second_deriv_neg_ll_[i] * SigmaI_plus_ZtWZ_inv_d_mll_d_mode[random_effects_indices_of_data[i]];
 				}
 			}//end calc_F_grad
-			//end = std::chrono::steady_clock::now();// only for debugging
-			//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - beginall).count()) / 1000000.;// Only for debugging
-			//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale: TOTAL TIME: %g", el_time);// Only for debugging
 		}//end CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale
 
 		/*!
@@ -1581,7 +1483,9 @@ namespace GPBoost {
 			if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
 				L_inv = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * L_inv;
 			}
-			TriangularSolveInPlaceGivenCholesky<sp_mat_t, chol_sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, L_inv);
+			sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL();
+			TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(L, L_inv, L_inv, false);
+			L.resize(0, 0);
 			sp_mat_t SigmaI_plus_ZtWZ_inv = L_inv.transpose() * L_inv;
 			// calculate gradient of approx. marginal likeligood wrt the mode
 			//Note: the calculation of d_mll_d_mode is the bottleneck of this function (corresponding lines below are indicated with * and, in particular, **)
@@ -1641,22 +1545,9 @@ namespace GPBoost {
 					I_j_ZtWZ = I_j * ZtWZ;
 					explicit_derivative += 0.5 * (SigmaI_plus_ZtWZ_inv.cwiseProduct(I_j_ZtWZ)).sum();
 					// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-					d_mode_d_par = SigmaI_plus_ZtWZ_inv * I_j * Zt * first_deriv_ll_;
+					d_mode_d_par = SigmaI_plus_ZtWZ_inv * (I_j * (Zt * first_deriv_ll_));
 					cov_grad[j] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
 				}
-				////Only for debugging
-				//Log::REInfo("CalcGradNegMargLikelihoodLAApproxGroupedRE");
-				//Log::REInfo("explicit_derivative: %g", explicit_derivative);
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
-				//}
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
-				//}
-				//Log::REInfo("cov_grad");
-				//for (int i = 0; i < num_comps; ++i) {
-				//	Log::REInfo("cov_grad[%d]: %g", i, cov_grad[i]);
-				//}
 			}//end calc_cov_grad
 			// calculate gradient wrt fixed effects
 			if (calc_F_grad) {
@@ -1666,7 +1557,7 @@ namespace GPBoost {
 					sp_mat_t zi_zit = Zt.col(i) * Z.row(i);//=Z.row(i) * (Z.row(i)).transpose()
 					d_detmll_d_F[i] = -0.5 * third_deriv[i] * (SigmaI_plus_ZtWZ_inv.cwiseProduct(zi_zit)).sum();
 				}
-				vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = d_mll_d_mode.transpose() * SigmaI_plus_ZtWZ_inv * Zt * second_deriv_neg_ll_.asDiagonal();
+				vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = ((d_mll_d_mode.transpose() * SigmaI_plus_ZtWZ_inv) * Zt) * second_deriv_neg_ll_.asDiagonal();
 				fixed_effect_grad = -first_deriv_ll_ + d_detmll_d_F - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
 			}//end calc_F_grad
 		}//end CalcGradNegMargLikelihoodLAApproxGroupedRE
@@ -1737,16 +1628,6 @@ namespace GPBoost {
 				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, d_mode_d_par, true);
 				d_mode_d_par.array() /= diag_SigmaI_plus_ZtWZ_.array();
 				cov_grad[0] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
-				////Only for debugging
-				//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGroupedRECalculationsOnREScale");
-				//Log::REInfo("explicit_derivative: %g", explicit_derivative);
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
-				//}
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
-				//}
-				//Log::REInfo("cov_grad[0]: %g", cov_grad[0]);
 			}//end calc_cov_grad
 			// calculate gradient wrt fixed effects
 			if (calc_F_grad) {
@@ -1756,11 +1637,6 @@ namespace GPBoost {
 						0.5 * third_deriv[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data[i]] - //=d_detmll_d_F
 						d_mll_d_mode[random_effects_indices_of_data[i]] * second_deriv_neg_ll_[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data[i]];//=implicit derivative = d_mll_d_mode * d_mode_d_F
 				}
-				////Only for debugging
-				//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGroupedRECalculationsOnREScale");
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("fixed_effect_grad[%d]: %g", i, fixed_effect_grad[i]);
-				//}
 			}//end calc_F_grad
 		}//end CalcGradNegMargLikelihoodLAApproxOnlyOneGroupedRECalculationsOnREScale
 
@@ -1822,54 +1698,37 @@ namespace GPBoost {
 			// Calculate (Sigma^-1 + W)^-1
 			sp_mat_t L_inv(num_data, num_data);
 			L_inv.setIdentity();
-			if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().size() > 0) {//Permutation is only used when having an ordering
-				L_inv = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * L_inv;
-			}
-			TriangularSolveInPlaceGivenCholesky<sp_mat_t, chol_sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv);
+			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
-				sp_mat_t SigmaI_plus_W_inv = L_inv.transpose() * L_inv;//Note: this is the computational bottleneck for large data
-				vec_t d_mll_d_mode = -0.5 * (SigmaI_plus_W_inv.diagonal().array() * third_deriv.array()).matrix();// gradient of approx. marginal likeligood wrt the mode
-				vec_t d_mode_d_par;//derivative of mode wrt to a covariance parameter
+				vec_t d_mll_d_mode, d_mode_d_par;
 				double explicit_derivative;
 				int num_par = (int)B_grad.size();
-				sp_mat_t SigmaI_deriv;
-				sp_mat_t BgradT_Dinv_B;
-				sp_mat_t Bt_Dinv_Bgrad;
+				sp_mat_t SigmaI_plus_W_inv,  SigmaI_deriv,  BgradT_Dinv_B, Bt_Dinv_Bgrad;
 				for (int j = 0; j < num_par; ++j) {
 					SigmaI_deriv = B_grad[j].transpose() * D_inv * B;
 					Bt_Dinv_Bgrad = SigmaI_deriv.transpose();
 					SigmaI_deriv += Bt_Dinv_Bgrad - B.transpose() * D_inv * D_grad[j] * D_inv * B;
-					d_mode_d_par = -SigmaI_plus_W_inv * SigmaI_deriv * mode_;
+					Bt_Dinv_Bgrad.resize(0, 0);
+					if (j == 0) {
+						// calculate SigmaI_plus_W_inv = L_inv.transpose() * L_inv at non-zero entries of SigmaI_deriv
+						//	Note: fully calculating SigmaI_plus_W_inv = L_inv.transpose() * L_inv is very slow
+						SigmaI_plus_W_inv = SigmaI_deriv;
+						CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv);
+						d_mll_d_mode = -0.5 * (SigmaI_plus_W_inv.diagonal().array() * third_deriv.array()).matrix();
+					}//end if j == 0
+					d_mode_d_par = -(L_inv.transpose() * (L_inv * (SigmaI_deriv * mode_)));//derivative of mode wrt to a covariance parameter
 					explicit_derivative = 0.5 * mode_.dot(SigmaI_deriv * mode_) +
 						0.5 * ((D_inv.diagonal().array() * D_grad[j].diagonal().array()).sum() + (SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
-					// Alternative version (not faster)
-					//vec_t u = D_inv * B * mode_;
-					//vec_t uk = B_grad[j] * mode_;
-					//explicit_derivative = uk.dot(u) - 0.5 * u.dot(D_grad[j] * u) +
-					//	0.5 * ((D_inv.diagonal().array() * D_grad[j].diagonal().array()).sum() + (SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
 					cov_grad[j] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
 				}
-				////Only for debugging			
-				//Log::REInfo("explicit_derivative: %g", explicit_derivative);
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("d_mll_d_mode[%d]: %g", i, d_mll_d_mode[i]);
-				//}
-				//for (int i = 0; i < 5; ++i) {
-				//	Log::REInfo("d_mode_d_par[%d]: %g", i, d_mode_d_par[i]);
-				//}
-				//Log::REInfo("cov_grad");
-				//for (int i = 0; i < num_par; ++i) {
-				//	Log::REInfo("cov_grad[%d]: %g", i, cov_grad[i]);
-				//}
 			}//end calc_cov_grad
 			// calculate gradient wrt fixed effects
 			if (calc_F_grad) {
 				sp_mat_t L_inv_sqr = L_inv.cwiseProduct(L_inv);
 				vec_t SigmaI_plus_W_inv_diag = L_inv_sqr.transpose() * vec_t::Ones(L_inv_sqr.rows());// diagonal of (Sigma^-1 + W) ^ -1
 				vec_t d_mll_d_mode = (-0.5 * SigmaI_plus_W_inv_diag.array() * third_deriv.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
-				vec_t L_inv_d_mll_d_mode = L_inv * d_mll_d_mode;// for implicit derivative
-				vec_t SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * L_inv_d_mll_d_mode;
+				vec_t SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
 				vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * second_deriv_neg_ll_.array()).matrix();// implicit derivative
 				fixed_effect_grad = -first_deriv_ll_ + d_mll_d_mode + d_mll_d_F_implicit;
 			}//end calc_F_grad
@@ -1884,7 +1743,7 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param num_data Number of data points
-		* \param ZSigmaZt Covariance matrix of latent random effect (can be den_mat_t or sp_mat_t)
+		* \param ZSigmaZt Covariance matrix of latent random effect
 		* \param Cross_Cov Cross covariance matrix between predicted and obsreved random effects ("=Cov(y_p,y)")
 		* \param pred_mean[out] Predictive mean
 		* \param pred_cov[out] Predictive covariance matrix
@@ -1918,8 +1777,7 @@ namespace GPBoost {
 				Wsqrt.setIdentity();
 				Wsqrt.diagonal().array() = second_deriv_neg_ll_.array().sqrt();
 				T_mat Maux = Wsqrt * Cross_Cov.transpose();
-				ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux, false);
-				TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux);
+				TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux, Maux, false);
 				if (calc_pred_cov) {
 					pred_cov -= (T_mat)(Maux.transpose() * Maux);
 				}
@@ -1931,22 +1789,6 @@ namespace GPBoost {
 					}
 				}
 			}
-			////Only for debugging
-			//Log::REInfo("PredictLAApproxStable");
-			//for (int i = 0; i < 3; ++i) {
-			//	Log::REInfo("Cross_Cov[0:1,%d]: %g, %g", i, Cross_Cov.coeff(0, i), Cross_Cov.coeff(1, i));
-			//}
-			//for (int i = 0; i < 3; ++i) {
-			//	Log::REInfo("first_deriv_ll_[%d]: %g", i, first_deriv_ll_[i]);
-			//}
-			//for (int i = 0; i < 3; ++i) {
-			//	Log::REInfo("pred_mean[%d]: %g", i, pred_mean[i]);
-			//}
-			//if (calc_pred_var) {
-			//	for (int i = 0; i < 3; ++i) {
-			//		Log::REInfo("pred_var[%d]: %g", i, pred_var[i]);
-			//	}
-			//}
 		}//end PredictLAApproxStable
 
 		/*!
@@ -1958,7 +1800,7 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued (only one of these two is used)
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param num_data Number of data points
-		* \param Sigma Covariance matrix of latent random effect (can be den_mat_t or sp_mat_t)
+		* \param Sigma Covariance matrix of latent random effect
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param Cross_Cov Cross covariance matrix between predicted and obsreved random effects ("=Cov(y_p,y)")
 		* \param pred_mean[out] Predictive mean
@@ -1999,8 +1841,7 @@ namespace GPBoost {
 				ZtWZsqrt.setIdentity();
 				ZtWZsqrt.diagonal().array() = diag_ZtWZ.array().sqrt();
 				T_mat Maux = ZtWZsqrt * Cross_Cov.transpose();
-				ApplyPermutationCholeskyFactor<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux, false);
-				TriangularSolveInPlaceGivenCholesky<T_mat, T_chol>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux);//Maux = L\(ZtWZsqrt * Cross_Cov^T)
+				TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux, Maux, false);//Maux = L\(ZtWZsqrt * Cross_Cov^T)
 				if (calc_pred_cov) {
 					pred_cov -= (T_mat)(Maux.transpose() * Maux);
 				}
@@ -2012,27 +1853,6 @@ namespace GPBoost {
 					}
 				}
 			}
-			////Only for debugging
-			//Log::REInfo("PredictLAApproxOnlyOneGPCalculationsOnREScale");
-			//for (int i = 0; i < 3; ++i) {
-			//	if (Cross_Cov.rows() > 1) {
-			//		Log::REInfo("Cross_Cov[0:1,%d]: %g, %g", i, Cross_Cov.coeff(0, i), Cross_Cov.coeff(1, i));
-			//	}
-			//	else {
-			//		Log::REInfo("Cross_Cov[0,%d]: %g", i, Cross_Cov.coeff(0, i));
-			//	}
-			//}
-			//for (int i = 0; i < 3; ++i) {
-			//	Log::REInfo("ZtFirstDeriv[%d]: %g", i, ZtFirstDeriv[i]);
-			//}
-			//for (int i = 0; i < std::min((int)pred_mean.size(),3); ++i) {
-			//	Log::REInfo("pred_mean[%d]: %g", i, pred_mean[i]);
-			//}
-			//if (calc_pred_var) {
-			//	for (int i = 0; i < 3; ++i) {
-			//		Log::REInfo("pred_var[%d]: %g", i, pred_var[i]);
-			//	}
-			//}
 		}//end PredictLAApproxOnlyOneGPCalculationsOnREScale
 
 		/*!
@@ -2083,10 +1903,7 @@ namespace GPBoost {
 				// calculate Maux = L\(Z^T * second_deriv_neg_ll_.asDiagonal() * Cross_Cov^T)
 				sp_mat_t Cross_Cov = Ztilde * Sigma * Zt;
 				sp_mat_t Maux = Zt * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose();
-				if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
-					Maux = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * Maux;
-				}
-				TriangularSolveInPlaceGivenCholesky<sp_mat_t, chol_sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux);
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux, Maux, false);
 				if (calc_pred_cov) {
 					pred_cov += (T_mat)(Maux.transpose() * Maux); 
 					pred_cov -= (T_mat)(Cross_Cov * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose());
@@ -2100,27 +1917,6 @@ namespace GPBoost {
 					}
 				}
 			}
-			////Only for debugging
-			//Log::REInfo("PredictLAApproxGroupedRE");
-			//for (int i = 0; i < 3; ++i) {
-			//	if (Cross_Cov.rows() > 1) {
-			//		Log::REInfo("Cross_Cov[0:1,%d]: %g, %g", i, Cross_Cov.coeff(0, i), Cross_Cov.coeff(1, i));
-			//	}
-			//	else {
-			//		Log::REInfo("Cross_Cov[0,%d]: %g", i, Cross_Cov.coeff(0, i));
-			//	}
-			//}
-			//for (int i = 0; i < 3; ++i) {
-			//	Log::REInfo("first_deriv_ll_[%d]: %g", i, first_deriv_ll_[i]);
-			//}
-			//for (int i = 0; i < std::min((int)pred_mean.size(), 3); ++i) {
-			//	Log::REInfo("pred_mean[%d]: %g", i, pred_mean[i]);
-			//}
-			//if (calc_pred_var) {
-			//	for (int i = 0; i < 3; ++i) {
-			//		Log::REInfo("pred_var[%d]: %g", i, pred_var[i]);
-			//	}
-			//}
 		}//end PredictLAApproxGroupedRE
 
 		/*!
@@ -2184,27 +1980,6 @@ namespace GPBoost {
 					}
 				}
 			}
-			////Only for debugging
-			//Log::REInfo("PredictLAApproxOnlyOneGroupedRECalculationsOnREScale");
-			//for (int i = 0; i < 3; ++i) {
-			//	if (Cross_Cov.rows() > 1) {
-			//		Log::REInfo("Cross_Cov[0:1,%d]: %g, %g", i, Cross_Cov.coeff(0, i), Cross_Cov.coeff(1, i));
-			//	}
-			//	else {
-			//		Log::REInfo("Cross_Cov[0,%d]: %g", i, Cross_Cov.coeff(0, i));
-			//	}
-			//}
-			//for (int i = 0; i < 3; ++i) {
-			//	Log::REInfo("ZtFirstDeriv[%d]: %g", i, ZtFirstDeriv[i]);
-			//}
-			//for (int i = 0; i < std::min((int)pred_mean.size(),3); ++i) {
-			//	Log::REInfo("pred_mean[%d]: %g", i, pred_mean[i]);
-			//}
-			//if (calc_pred_var) {
-			//	for (int i = 0; i < 3; ++i) {
-			//		Log::REInfo("pred_var[%d]: %g", i, pred_var[i]);
-			//	}
-			//}
 		}//end PredictLAApproxOnlyOneGroupedRECalculationsOnREScale
 
 		/*!
@@ -2271,23 +2046,12 @@ namespace GPBoost {
 				else {
 					Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
 					Bp_inv.setIdentity();
-					eigen_sp_Lower_sp_RHS_solve<sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, true);
+					TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
 					//Bp.triangularView<Eigen::UpLoType::UnitLower>().solveInPlace(Bp_inv);//much slower
 					Maux = Bpo.transpose() * Bp_inv.transpose();
 					Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 				}
-				if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().size() > 0) {//Permutation is only used when having an ordering
-					Maux = chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP() * Maux;
-				}
-				if (Bp.cols() <= 100) {
-					sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL();
-					eigen_sp_Lower_sp_RHS_solve<sp_mat_t, sp_mat_t>(L, Maux, Maux, true);
-				}
-				else {
-					TriangularSolveInPlaceGivenCholesky<sp_mat_t, chol_sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux);
-					//Note: this is slower for small Bp.cols(), for larger number of prediction points, the differences is small. 
-					//		Since 'eigen_sp_Lower_sp_RHS_solve' converts Maux to den_mat_t, we use this version to avoid memory issues if Bp.cols() is large
-				}
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
 				if (calc_pred_cov) {
 					if (CondObsOnly) {
 						pred_cov = Maux.transpose() * Maux;

@@ -167,6 +167,9 @@ void SimplicialCholeskyBase<Derived>::factorize_preordered(const CholMatrixType&
 
   m_info = ok ? Success : NumericalIssue;
   m_factorizationIsOk = true;
+
+  //ChangedForGPBoost
+  m_matrix.makeCompressed();//compressed format since external triangular solvers are used
 }
 
 } // end namespace Eigen

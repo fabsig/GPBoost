@@ -31,9 +31,6 @@ namespace GPBoost {
 
 	/*!
 	* \brief This class implements the covariance functions used for the Gaussian proceses
-	*
-	*   Some details:
-	*		 1. The template parameter <T_mat> can be <den_mat_t>, <sp_mat_t>, <sp_mat_rm_t>
 	*/
 	class CovFunction {
 	public:
@@ -154,18 +151,18 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculates covariance matrix
-		*		Note: this is the version for dense matrices
 		* \param dist Distance matrix
 		* \param pars Vector with covariance parameters
 		* \param[out] sigma Covariance matrix
 		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g., for training data)
 		*/
-		void GetCovMat(const den_mat_t& dist,
+		template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
+		void GetCovMat(const T_mat& dist,
 			const vec_t& pars,
-			den_mat_t& sigma,
+			T_mat& sigma,
 			bool is_symmmetric) const {
 			CHECK(pars.size() == num_cov_par_);
-			sigma = den_mat_t(dist.rows(), dist.cols());
+			sigma = T_mat(dist.rows(), dist.cols());
 			if (cov_fct_type_ == "exponential" ||
 				(cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 0.5))) {
 				if (is_symmmetric) {
@@ -281,24 +278,16 @@ namespace GPBoost {
 						}
 					}
 				}
-				MultiplyWendlandCorrelationTaper(dist, sigma, is_symmmetric);
+				MultiplyWendlandCorrelationTaper<T_mat>(dist, sigma, is_symmmetric);
 			}//end cov_fct_type_ == "wendland"
 			else {
 				Log::REFatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
 		}//end GetCovMat (dense)
-
-		/*!
-		* \brief Calculates covariance matrix
-		*		Note: this is the version for sparse matrices
-		* \param dist Distance matrix
-		* \param pars Vector with covariance parameters
-		* \param[out] sigma Covariance matrix
-		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g., for training data)
-		*/
-		void GetCovMat(const sp_mat_t& dist,
+		template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
+		void GetCovMat(const T_mat& dist,
 			const vec_t& pars,
-			sp_mat_t& sigma,
+			T_mat& sigma,
 			bool is_symmmetric) const {
 			CHECK(pars.size() == num_cov_par_);
 			sigma = dist;
@@ -307,7 +296,7 @@ namespace GPBoost {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							if (i == j) {
@@ -323,7 +312,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							it.valueRef() = MaternCovarianceShape0_5(dist.coeff(i, j), pars[0], pars[1]);
@@ -335,7 +324,7 @@ namespace GPBoost {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							if (i == j) {
@@ -351,7 +340,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							it.valueRef() = MaternCovarianceShape1_5(dist.coeff(i, j), pars[0], pars[1]);
@@ -363,7 +352,7 @@ namespace GPBoost {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							if (i == j) {
@@ -379,7 +368,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							it.valueRef() = MaternCovarianceShape2_5(dist.coeff(i, j), pars[0], pars[1]);
@@ -391,7 +380,7 @@ namespace GPBoost {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							if (i == j) {
@@ -407,7 +396,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							it.valueRef() = GaussianCovariance(dist.coeff(i, j), pars[0], pars[1]);
@@ -419,7 +408,7 @@ namespace GPBoost {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							if (i == j) {
@@ -435,7 +424,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							it.valueRef() = PoweredExponentialCovariance(dist.coeff(i, j), pars[0], pars[1]);
@@ -445,186 +434,22 @@ namespace GPBoost {
 			}//end cov_fct_type_ == "powered_exponential"
 			else if (cov_fct_type_ == "wendland") {
 				sigma.coeffs() = pars[0];
-				MultiplyWendlandCorrelationTaper(dist, sigma, is_symmmetric);
+				MultiplyWendlandCorrelationTaper<T_mat>(dist, sigma, is_symmmetric);
 			}
 			else {
 				Log::REFatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
-		}//end GetCovMat (sparse, sp_mat_t)
-
-		/*!
-		* \brief Calculates covariance matrix
-		*		Note: this is the version for sparse matrices in row-major format (copy-paste from 'sp_mat_t' above)
-		* \param dist Distance matrix
-		* \param pars Vector with covariance parameters
-		* \param[out] sigma Covariance matrix
-		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g., for training data)
-		*/
-		void GetCovMat(const sp_mat_rm_t& dist,
-			const vec_t& pars,
-			sp_mat_rm_t& sigma,
-			bool is_symmmetric) const {
-			CHECK(pars.size() == num_cov_par_);
-			sigma = dist;
-			if (cov_fct_type_ == "exponential" ||
-				(cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 0.5))) {
-				if (is_symmmetric) {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							if (i == j) {
-								it.valueRef() = pars[0];
-							}
-							else if (i < j) {
-								it.valueRef() = MaternCovarianceShape0_5(dist.coeff(i, j), pars[0], pars[1]);
-								sigma.coeffRef(j, i) = it.value();
-							}
-						}
-					}
-				}
-				else {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							it.valueRef() = MaternCovarianceShape0_5(dist.coeff(i, j), pars[0], pars[1]);
-						}
-					}
-				}
-			}//end cov_fct_type_ == "exponential"
-			else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 1.5)) {
-				if (is_symmmetric) {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							if (i == j) {
-								it.valueRef() = pars[0];
-							}
-							else if (i < j) {
-								it.valueRef() = MaternCovarianceShape1_5(dist.coeff(i, j), pars[0], pars[1]);
-								sigma.coeffRef(j, i) = it.value();
-							}
-						}
-					}
-				}
-				else {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							it.valueRef() = MaternCovarianceShape1_5(dist.coeff(i, j), pars[0], pars[1]);
-						}
-					}
-				}
-			}
-			else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 2.5)) {
-				if (is_symmmetric) {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							if (i == j) {
-								it.valueRef() = pars[0];
-							}
-							else if (i < j) {
-								it.valueRef() = MaternCovarianceShape2_5(dist.coeff(i, j), pars[0], pars[1]);
-								sigma.coeffRef(j, i) = it.value();
-							}
-						}
-					}
-				}
-				else {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							it.valueRef() = MaternCovarianceShape2_5(dist.coeff(i, j), pars[0], pars[1]);
-						}
-					}
-				}
-			}//end cov_fct_type_ == "matern"
-			else if (cov_fct_type_ == "gaussian") {
-				if (is_symmmetric) {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							if (i == j) {
-								it.valueRef() = pars[0];
-							}
-							else if (i < j) {
-								it.valueRef() = GaussianCovariance(dist.coeff(i, j), pars[0], pars[1]);
-								sigma.coeffRef(j, i) = it.value();
-							}
-						}
-					}
-				}
-				else {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							it.valueRef() = GaussianCovariance(dist.coeff(i, j), pars[0], pars[1]);
-						}
-					}
-				}
-			}//end cov_fct_type_ == "gaussian"
-			else if (cov_fct_type_ == "powered_exponential") {
-				if (is_symmmetric) {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							if (i == j) {
-								it.valueRef() = pars[0];
-							}
-							else if (i < j) {
-								it.valueRef() = PoweredExponentialCovariance(dist.coeff(i, j), pars[0], pars[1]);
-								sigma.coeffRef(j, i) = it.value();
-							}
-						}
-					}
-				}
-				else {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							it.valueRef() = PoweredExponentialCovariance(dist.coeff(i, j), pars[0], pars[1]);
-						}
-					}
-				}
-			}//end cov_fct_type_ == "powered_exponential"
-			else if (cov_fct_type_ == "wendland") {
-				sigma.coeffs() = pars[0];
-				MultiplyWendlandCorrelationTaper(dist, sigma, is_symmmetric);
-			}
-			else {
-				Log::REFatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
-			}
-		}//end GetCovMat (sparse, sp_mat_rm_t)
+		}//end GetCovMat (sparse)
 
 		/*!
 		* \brief Multiply covariance matrix element-wise with Wendland correlation tapering function
-		*		Note: this is the version for dense matrices
 		* \param dist Distance matrix
 		* \param[out] sigma Covariance matrix
 		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g. for training data)
 		*/
-		void MultiplyWendlandCorrelationTaper(const den_mat_t& dist,
-			den_mat_t& sigma,
+		template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
+		void MultiplyWendlandCorrelationTaper(const T_mat& dist,
+			T_mat& sigma,
 			bool is_symmmetric) const {
 			CHECK(apply_tapering_);
 			if (TwoNumbersAreEqual<double>(taper_shape_, 0.)) {
@@ -688,23 +513,16 @@ namespace GPBoost {
 				Log::REFatal("'taper_shape' of %g is not supported for the 'wendland' covariance function or correlation tapering function. Only shape / smoothness parameters 0, 1, and 2 are currently implemented ", taper_shape_);
 			}
 		}//end MultiplyWendlandCorrelationTaper (dense)
-
-		/*!
-		* \brief Multiply covariance with taper function
-		*		Note: this is the version for sparse matrices
-		* \param dist Distance matrix
-		* \param[out] sigma Covariance matrix to which taper is applied to
-		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g. for training data)
-		*/
-		void MultiplyWendlandCorrelationTaper(const sp_mat_t& dist,
-			sp_mat_t& sigma,
+		template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
+		void MultiplyWendlandCorrelationTaper(const T_mat& dist,
+			T_mat& sigma,
 			bool is_symmmetric) const {
 			CHECK(apply_tapering_);
 			if (TwoNumbersAreEqual<double>(taper_shape_, 0.)) {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							if (i < j) {
@@ -717,7 +535,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							it.valueRef() *= WendlandCorrelationShape0(dist.coeff(i, j));
@@ -729,7 +547,7 @@ namespace GPBoost {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							if (i < j) {
@@ -742,7 +560,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							it.valueRef() *= WendlandCorrelationShape1(dist.coeff(i, j));
@@ -754,7 +572,7 @@ namespace GPBoost {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							if (i < j) {
@@ -767,7 +585,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(sigma, k); it; ++it) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							it.valueRef() *= WendlandCorrelationShape2(dist.coeff(i, j));
@@ -778,102 +596,10 @@ namespace GPBoost {
 			else {
 				Log::REFatal("'taper_shape' of %g is not supported for the 'wendland' covariance function or correlation tapering function. Only shape / smoothness parameters 0, 1, and 2 are currently implemented ", taper_shape_);
 			}
-		}//end MultiplyWendlandCorrelationTaper (sparse, sp_mat_t)
-
-		/*!
-		* \brief Multiply covariance with taper function
-		*		Note: this is the version for sparse matrices in row-major format (copy-paste from 'sp_mat_t' above)
-		* \param dist Distance matrix
-		* \param[out] sigma Covariance matrix to which taper is applied to
-		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g. for training data)
-		*/
-		void MultiplyWendlandCorrelationTaper(const sp_mat_rm_t& dist,
-			sp_mat_rm_t& sigma,
-			bool is_symmmetric) const {
-			CHECK(apply_tapering_);
-			if (TwoNumbersAreEqual<double>(taper_shape_, 0.)) {
-				if (is_symmmetric) {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							if (i < j) {
-								it.valueRef() *= WendlandCorrelationShape0(dist.coeff(i, j));
-								sigma.coeffRef(j, i) = it.value();
-							}
-						}
-					}
-				}
-				else {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							it.valueRef() *= WendlandCorrelationShape0(dist.coeff(i, j));
-						}
-					}
-				}
-			}
-			else if (TwoNumbersAreEqual<double>(taper_shape_, 1.)) {
-				if (is_symmmetric) {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							if (i < j) {
-								it.valueRef() *= WendlandCorrelationShape1(dist.coeff(i, j));
-								sigma.coeffRef(j, i) = it.value();
-							}
-						}
-					}
-				}
-				else {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							it.valueRef() *= WendlandCorrelationShape1(dist.coeff(i, j));
-						}
-					}
-				}
-			}
-			else if (TwoNumbersAreEqual<double>(taper_shape_, 2.)) {
-				if (is_symmmetric) {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							if (i < j) {
-								it.valueRef() *= WendlandCorrelationShape2(dist.coeff(i, j));
-								sigma.coeffRef(j, i) = it.value();
-							}
-						}
-					}
-				}
-				else {
-#pragma omp parallel for schedule(static)
-					for (int k = 0; k < sigma.outerSize(); ++k) {
-						for (sp_mat_rm_t::InnerIterator it(sigma, k); it; ++it) {
-							int i = (int)it.row();
-							int j = (int)it.col();
-							it.valueRef() *= WendlandCorrelationShape2(dist.coeff(i, j));
-						}
-					}
-				}
-			}
-			else {
-				Log::REFatal("'taper_shape' of %g is not supported for the 'wendland' covariance function or correlation tapering function. Only shape / smoothness parameters 0, 1, and 2 are currently implemented ", taper_shape_);
-			}
-		}//end MultiplyWendlandCorrelationTaper (sparse, sp_mat_rm_t)
+		}//end MultiplyWendlandCorrelationTaper (sparse)
 
 		/*!
 		* \brief Calculates derivatives of the covariance matrix with respect to the inverse range parameter
-		*		Note: this is the version for dense matrices
 		* \param dist Distance matrix
 		* \param sigma Covariance matrix
 		* \param pars Vector with covariance parameters
@@ -881,10 +607,11 @@ namespace GPBoost {
 		* \param transf_scale If true, the derivative is taken on the transformed scale otherwise with respect to the original range parameter (the parameters values pars are always given on the transformed scale). Optimiziation is done using transf_scale=true. transf_scale=false is needed, for instance, for calcualting the Fisher information on the original scale.
 		* \param marg_var Marginal variance parameters sigma^2 (used only if transf_scale = false to transform back)
 		*/
-		void GetCovMatGradRange(const den_mat_t& dist,
-			const den_mat_t& sigma,
+		template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
+		void GetCovMatGradRange(const T_mat& dist,
+			const T_mat& sigma,
 			const vec_t& pars,
-			den_mat_t& sigma_grad,
+			T_mat& sigma_grad,
 			bool transf_scale,
 			double marg_var) const {
 			CHECK(pars.size() == num_cov_par_);
@@ -914,21 +641,11 @@ namespace GPBoost {
 				Log::REFatal("GetCovMatGradRange: Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
 		}//end GetCovMatGradRange (dense)
-
-		/*!
-		* \brief Calculates derivatives of the covariance matrix with respect to the inverse range parameter
-		*		Note: this is the version for sparse matrices
-		* \param dist Distance matrix
-		* \param sigma Covariance matrix
-		* \param pars Vector with covariance parameters
-		* \param[out] sigma_grad Derivative of covariance matrix with respect to the inverse range parameter
-		* \param transf_scale If true, the derivative is taken on the transformed scale otherwise with respect to the original range parameter (the parameters values pars are always given on the transformed scale). Optimiziation is done using transf_scale=true. transf_scale=false is needed, for instance, for calcualting the Fisher information on the original scale.
-		* \param marg_var Marginal variance parameters sigma^2 (used only if transf_scale = false to transform back)
-		*/
-		void GetCovMatGradRange(const sp_mat_t& dist,
-			const sp_mat_t& sigma,
+		template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
+		void GetCovMatGradRange(const T_mat& dist,
+			const T_mat& sigma,
 			const vec_t& pars,
-			sp_mat_t& sigma_grad,
+			T_mat& sigma_grad,
 			bool transf_scale,
 			double marg_var) const {
 			CHECK(pars.size() == num_cov_par_);
@@ -967,61 +684,7 @@ namespace GPBoost {
 			else {
 				Log::REFatal("GetCovMatGradRange: Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
-		}//end GetCovMatGradRange (sparse, sp_mat_t)
-
-				/*!
-		* \brief Calculates derivatives of the covariance matrix with respect to the inverse range parameter
-		*		Note: this is the version for sparse matrices in row-major format (copy-paste from 'sp_mat_t' above)
-		* \param dist Distance matrix
-		* \param sigma Covariance matrix
-		* \param pars Vector with covariance parameters
-		* \param[out] sigma_grad Derivative of covariance matrix with respect to the inverse range parameter
-		* \param transf_scale If true, the derivative is taken on the transformed scale otherwise with respect to the original range parameter (the parameters values pars are always given on the transformed scale). Optimiziation is done using transf_scale=true. transf_scale=false is needed, for instance, for calcualting the Fisher information on the original scale.
-		* \param marg_var Marginal variance parameters sigma^2 (used only if transf_scale = false to transform back)
-		*/
-		void GetCovMatGradRange(const sp_mat_rm_t& dist,
-			const sp_mat_rm_t& sigma,
-			const vec_t& pars,
-			sp_mat_rm_t& sigma_grad,
-			bool transf_scale,
-			double marg_var) const {
-			CHECK(pars.size() == num_cov_par_);
-			if (cov_fct_type_ == "exponential" ||
-				(cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 0.5))) {
-				double cm = transf_scale ? (-1. * pars[1]) : (marg_var * pars[1] * pars[1]);
-				sigma_grad = cm * sigma.cwiseProduct(dist);
-			}
-			else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 1.5)) {
-				double cm = transf_scale ? 1. : (-1. * marg_var * pars[1]);
-				sigma_grad = dist;
-				sigma_grad.coeffs() = pars[0] * pars[1] * sigma_grad.coeffs() * ((-pars[1] * sigma_grad.coeffs()).exp());
-				sigma_grad -= pars[1] * sigma.cwiseProduct(dist);
-				sigma_grad *= cm;
-			}
-			else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 2.5)) {
-				double cm = transf_scale ? 1. : (-1. * marg_var * pars[1]);
-				sigma_grad = dist;
-				sigma_grad.coeffs() = pars[0] * (pars[1] * sigma_grad.coeffs() + (2. / 3.) * pars[1] * pars[1] * sigma_grad.coeffs().square()) *
-					((-pars[1] * sigma_grad.coeffs()).exp());
-				sigma_grad -= pars[1] * sigma.cwiseProduct(dist);
-				sigma_grad *= cm;
-			}
-			else if (cov_fct_type_ == "gaussian") {
-				double cm = transf_scale ? (-1. * pars[1]) : (2. * marg_var * std::pow(pars[1], 3. / 2.));
-				sigma_grad = dist;
-				sigma_grad.coeffs() = sigma_grad.coeffs().square();
-				sigma_grad = cm * sigma.cwiseProduct(sigma_grad);
-			}
-			else if (cov_fct_type_ == "powered_exponential") {
-				double cm = transf_scale ? (-1. * pars[1]) : (shape_ * marg_var * std::pow(pars[1], (shape_ + 1.) / shape_));
-				sigma_grad = dist;
-				sigma_grad.coeffs() = sigma_grad.coeffs().pow(shape_);
-				sigma_grad = cm * sigma.cwiseProduct(sigma_grad);
-			}
-			else {
-				Log::REFatal("GetCovMatGradRange: Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
-			}
-		}//end GetCovMatGradRange (sparse, sp_mat_rm_t)
+		}//end GetCovMatGradRange (sparse)
 
 		/*!
 		* \brief Find "reasonable" default values for the intial values of the covariance parameters (on transformed scale)
