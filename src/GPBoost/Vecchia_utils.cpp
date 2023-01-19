@@ -14,7 +14,9 @@ using LightGBM::Log;
 
 namespace GPBoost {
 
-	void find_nearest_neighbors_Vecchia(den_mat_t& dist, int num_data, int num_neighbors,
+	void find_nearest_neighbors_Vecchia(den_mat_t& dist, 
+		int num_data,
+		int num_neighbors,
 		std::vector<std::vector<int>>& nearest_neighbors) {
 		CHECK((int)nearest_neighbors.size() == num_data);
 		CHECK((int)dist.rows() == num_data && (int)dist.cols() == num_data);
@@ -47,9 +49,15 @@ namespace GPBoost {
 		}
 	}//end find_nearest_neighbors_Vecchia
 
-	void find_nearest_neighbors_Vecchia_fast(const den_mat_t& coords, int num_data, int num_neighbors,
-		std::vector<std::vector<int>>& nearest_neighbors, std::vector<den_mat_t>& dist_obs_neighbors,
-		std::vector<den_mat_t>& dist_between_neighbors, int start_at, int end_search_at, bool& check_has_duplicates) {
+	void find_nearest_neighbors_Vecchia_fast(const den_mat_t& coords, 
+		int num_data, 
+		int num_neighbors,
+		std::vector<std::vector<int>>& nearest_neighbors, 
+		std::vector<den_mat_t>& dist_obs_neighbors,
+		std::vector<den_mat_t>& dist_between_neighbors, 
+		int start_at, 
+		int end_search_at, 
+		bool& check_has_duplicates) {
 		bool has_duplicates = false;
 		if (end_search_at < 0) {
 			end_search_at = num_data - 2;

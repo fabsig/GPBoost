@@ -116,7 +116,7 @@ Learning the above-mentioned models means **learning both the covariance paramet
 ## References
 
 - Sigrist Fabio. "[Gaussian Process Boosting](https://www.jmlr.org/papers/v23/20-322.html)". *Journal of Machine Learning Research* (2022).
-- Sigrist Fabio. "[Latent Gaussian Model Boosting](https://ieeexplore.ieee.org/document/9759834)". *IEEE Transactions on Pattern Analysis and Machine Intelligence* (2022, in press).
+- Sigrist Fabio. "[Latent Gaussian Model Boosting](https://ieeexplore.ieee.org/document/9759834)". *IEEE Transactions on Pattern Analysis and Machine Intelligence* (2023).
 - Guolin Ke, Qi Meng, Thomas Finley, Taifeng Wang, Wei Chen, Weidong Ma, Qiwei Ye, Tie-Yan Liu. "[LightGBM: A Highly Efficient Gradient Boosting Decision Tree](https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree)". *Advances in Neural Information Processing Systems* 30 (2017).
 - Williams, Christopher KI, and Carl Edward Rasmussen. *Gaussian processes for machine learning*. MIT press, 2006.
 - Pinheiro, Jose, and Douglas Bates. *Mixed-effects models in S and S-PLUS*. Springer science & business media, 2006.
