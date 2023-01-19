@@ -30,7 +30,7 @@ Authors@R: c(
 	person("Keith O'Hara", role = c("cph")),
 	person("Stephen L. Moshier", role = c("cph"))
     )
-Description: An R package that allows for combining tree-boosting with Gaussian process and mixed effects models. It also allows for independently doing tree-boosting as well as inference and prediction for Gaussian process and mixed effects models. See <https://github.com/fabsig/GPBoost> for more information on the software and Sigrist (2022, JMLR) <https://www.jmlr.org/papers/v23/20-322.html> and Sigrist (2022, TPAMI) <doi:10.1109/TPAMI.2022.3168152> for more information on the methodology.
+Description: An R package that allows for combining tree-boosting with Gaussian process and mixed effects models. It also allows for independently doing tree-boosting as well as inference and prediction for Gaussian process and mixed effects models. See <https://github.com/fabsig/GPBoost> for more information on the software and Sigrist (2022, JMLR) <https://www.jmlr.org/papers/v23/20-322.html> and Sigrist (2023, TPAMI) <doi:10.1109/TPAMI.2022.3168152> for more information on the methodology.
 Encoding: UTF-8
 License: Apache License (== 2.0) | file LICENSE
 URL: https://github.com/fabsig/GPBoost

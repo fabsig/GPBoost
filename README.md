@@ -20,7 +20,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 **For more information**, you may want to have a look at:
 
 * The [**Python package**](https://github.com/fabsig/GPBoost/tree/master/python-package) and [**R package**](https://github.com/fabsig/GPBoost/tree/master/R-package) including installation instructions
-* The companion articles [**Sigrist (2022, JMLR)**](https://www.jmlr.org/papers/v23/20-322.html) and [**Sigrist (2022, TPAMI)**](https://ieeexplore.ieee.org/document/9759834) for background on the methodology
+* The companion articles [**Sigrist (2022, JMLR)**](https://www.jmlr.org/papers/v23/20-322.html) and [**Sigrist (2023, TPAMI)**](https://ieeexplore.ieee.org/document/9759834) for background on the methodology
 * Detailed [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst): the most important parameters / settings for the GPBoost library
 * [Detailed tree-boosting parameters](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst): a comprehensive list of all tree-boosting (i.e., not random effects) related parameters
@@ -42,7 +42,7 @@ The GPBoost library allows for combining tree-boosting with Gaussian process (GP
 The GPBoost library implements two algorithms for combining tree-boosting with Gaussian process and grouped random effects models: 
 
 * The **GPBoost algorithm** [(Sigrist, 2022, JMLR)](https://www.jmlr.org/papers/v23/20-322.html) for data with a Gaussian likelihood (conditional distribution of data)
-* The **LaGaBoost algorithm** [(Sigrist, 2022, TPAMI)](https://ieeexplore.ieee.org/document/9759834) for data with non-Gaussian likelihoods
+* The **LaGaBoost algorithm** [(Sigrist, 2023, TPAMI)](https://ieeexplore.ieee.org/document/9759834) for data with non-Gaussian likelihoods
 
 **For Gaussian likelihoods (GPBoost algorithm)**, it is assumed that the response variable (aka label) y is the sum of a potentially non-linear mean function F(X) and random effects Zb:
 ```
@@ -63,7 +63,7 @@ In the GPBoost library, the **random effects** Zb can consist of:
 - Grouped random effects (including nested, crossed, and random coefficient effects)
 - Combinations of the above
 
-Learning the above-mentioned models means **learning both the covariance parameters** (aka hyperparameters) of the random effects and the **predictor function F(X)**. Both the GPBoost and the LaGaBoost algorithms iteratively learn the covariance parameters and add a tree to the ensemble of trees F(X) using a [gradient and/or a Newton boosting](https://www.sciencedirect.com/science/article/abs/pii/S0957417420308381) step. In the GPBoost library, covariance parameters can (currently) be learned using (Nesterov accelerated) gradient descent, Fisher scoring (aka natural gradient descent), and Nelder-Mead. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See [Sigrist (2022, JMLR)](https://www.jmlr.org/papers/v23/20-322.html) and [Sigrist (2022, TPAMI)](https://ieeexplore.ieee.org/document/9759834) for more details.
+Learning the above-mentioned models means **learning both the covariance parameters** (aka hyperparameters) of the random effects and the **predictor function F(X)**. Both the GPBoost and the LaGaBoost algorithms iteratively learn the covariance parameters and add a tree to the ensemble of trees F(X) using a [gradient and/or a Newton boosting](https://www.sciencedirect.com/science/article/abs/pii/S0957417420308381) step. In the GPBoost library, covariance parameters can (currently) be learned using (Nesterov accelerated) gradient descent, Fisher scoring (aka natural gradient descent), and Nelder-Mead. Further, trees are learned using the [LightGBM](https://github.com/microsoft/LightGBM/) library. See [Sigrist (2022, JMLR)](https://www.jmlr.org/papers/v23/20-322.html) and [Sigrist (2023, TPAMI)](https://ieeexplore.ieee.org/document/9759834) for more details.
 
 ### Background on Gaussian process and grouped random effects models
 
