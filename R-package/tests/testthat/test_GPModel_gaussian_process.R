@@ -107,11 +107,36 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 8)
     # Nelder-mead
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                           y = y, params = list(optimizer_cov = "nelder_mead", delta_rel_conv=1e-6))
+                                           y = y, params = list(optimizer_cov = "nelder_mead",
+                                                                delta_rel_conv=1e-6))
                     , file='NUL')
     cov_pars_est <- as.vector(gp_model$get_cov_pars())
     expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3,5)])),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 40)
+    # Test default values for delta_rel_conv for nelder_mead
+    capture.output( gp_model_default <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           y = y, params = list(optimizer_cov = "nelder_mead"))
+                    , file='NUL')
+    capture.output( gp_model_8 <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                   y = y, params = list(optimizer_cov = "nelder_mead",
+                                                                        delta_rel_conv=1e-8))
+                    , file='NUL')
+    expect_false(isTRUE(all.equal(gp_model_default$get_cov_pars(), gp_model$get_cov_pars())))
+    expect_true(isTRUE(all.equal(gp_model_default$get_cov_pars(), gp_model_8$get_cov_pars())))
+    # Test default values for delta_rel_conv for gradient_descent
+    capture.output( gp_model_default <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                   y = y, params = list(optimizer_cov = "gradient_descent"))
+                    , file='NUL')
+    capture.output( gp_model_8 <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                             y = y, params = list(optimizer_cov = "gradient_descent",
+                                                                  delta_rel_conv=1e-8))
+                    , file='NUL')
+    capture.output( gp_model_6 <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                             y = y, params = list(optimizer_cov = "gradient_descent",
+                                                                  delta_rel_conv=1e-6))
+                    , file='NUL')
+    expect_true(isTRUE(all.equal(gp_model_default$get_cov_pars(), gp_model_6$get_cov_pars())))
+    expect_false(isTRUE(all.equal(gp_model_default$get_cov_pars(), gp_model_8$get_cov_pars())))
     # BFGS
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            y = y, params = list(optimizer_cov = "bfgs")), file='NUL')

@@ -230,7 +230,7 @@ The following list shows options for the optimization of the variance and covari
 
    -  Options: ``gradient_descent``, ``wls``, ``nelder_mead``, ``bfgs``, ``adam``. Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. ``wls`` refers to doing coordinate descent for the regression coefficients using weighted least squares
 
-   - If ``optimizer_cov`` is set to ``nelder_mead``, ``bfgs``, or ``adam``, ``optimizer_coef`` is automatically also set to the same value
+   -  If ``optimizer_cov`` is set to ``nelder_mead``, ``bfgs``, or ``adam``, ``optimizer_coef`` is automatically also set to the same value
 
 -  ``maxit`` : integer, optional (default = 1000)
 
@@ -239,6 +239,8 @@ The following list shows options for the optimization of the variance and covari
 -  ``delta_rel_conv`` : double, optional (default = 1e-6 except for ``nelder_mead`` for which the default is 1e-8)
 
    -  Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For ``bfgs`` and ``adam``, the L2 norm of the gradient is used instead of the relative change in the log-likelihood
+
+   -  If < 0, internal default values are used (= 1e-6 except for ``nelder_mead`` for which the default is 1e-8)
 
 -  ``convergence_criterion`` : string, optional (default = ``relative_change_in_log_likelihood``)
 
@@ -252,11 +254,11 @@ The following list shows options for the optimization of the variance and covari
 
    -  Initial values for the regression coefficients (if there are any, can be Null)
 
--  ``lr_cov`` : double, optional (default = -1)
+-  ``lr_cov`` : double, optional (default = 0.1 for ``gradient_descent`` and 1. for ``fisher_scoring``)
 
    -  Learning rate for covariance parameters
    
-   - If <= 0, internal default values are used. Default value = 0.1 for ``gradient_descent`` and 1. for ``fisher_scoring``
+   -  If < 0, internal default values are used (0.1 for ``gradient_descent`` and 1. for ``fisher_scoring``)
 
 -  ``lr_coef`` : double, optional (default = 0.1)
 

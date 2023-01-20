@@ -4216,10 +4216,10 @@ class GPModel(object):
         self.X_loaded_from_file = None
         self.model_fitted = False
         self.params = {"maxit": 1000,
-                       "delta_rel_conv": None,# the default is set in '__update_params'
+                       "delta_rel_conv": -1, # default value is set in C++
                        "init_coef": None,
                        "lr_coef": 0.1,
-                       "lr_cov": -1.,
+                       "lr_cov": -1., # default value is set in C++
                        "use_nesterov_acc": True,
                        "acc_rate_coef": 0.5,
                        "acc_rate_cov": 0.5,
@@ -4529,26 +4529,9 @@ class GPModel(object):
             self.num_cov_pars = self.num_cov_pars + 1
 
     def __update_params(self, params):
-        # Set default value for 'delta_rel_conv'
-        if params is None:
-            self.params['delta_rel_conv'] = 1e-6
-        else:
+        if params is not None:
             if not isinstance(params, dict):
                 raise ValueError("params needs to be a dict")
-            set_default_delta_rel_conv = False
-            if 'delta_rel_conv' not in params:
-                set_default_delta_rel_conv = True
-            elif params['delta_rel_conv'] is None:
-                set_default_delta_rel_conv = True
-            if set_default_delta_rel_conv:
-                if 'optimizer_cov' in params:
-                    if params['optimizer_cov'] == 'nelder_mead':
-                        params['delta_rel_conv'] = 1e-8
-                    else:
-                        params['delta_rel_conv'] = 1e-6
-                else:
-                    params['delta_rel_conv'] = 1e-6
-            # Update self.params
             for param in params:
                 if param == "init_cov_pars":
                     if params[param] is not None:
@@ -4608,6 +4591,8 @@ class GPModel(object):
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
                     gradient is used instead of the relative change in the log-likelihood
+                    If < 0, internal default values are used.
+                    Default = 1e-6 except for "nelder_mead" for which the default is 1e-8
                 - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
@@ -4615,9 +4600,9 @@ class GPModel(object):
                     Initial values for covariance parameters of Gaussian process and random effects (can be None)
                 - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
-                - lr_cov : double, optional (default = -1.)
-                    If <= 0, internal default values are used.
-                    Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
+                - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring")
+                    If < 0, internal default values are used.
+                    Default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
                 - lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
                 - use_nesterov_acc : bool, optional (default = True)
@@ -4786,10 +4771,12 @@ class GPModel(object):
                     the same value.
                 - maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
-                - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
+- delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
                     gradient is used instead of the relative change in the log-likelihood
+                    If < 0, internal default values are used.
+                    Default = 1e-6 except for "nelder_mead" for which the default is 1e-8
                 - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
@@ -4797,9 +4784,9 @@ class GPModel(object):
                     Initial values for covariance parameters of Gaussian process and random effects (can be None)
                 - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
-                - lr_cov : double, optional (default = -1.)
-                    If <= 0, internal default values are used.
-                    Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
+                - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring")
+                    If < 0, internal default values are used.
+                    Default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
                 - lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
                 - use_nesterov_acc : bool, optional (default = True)

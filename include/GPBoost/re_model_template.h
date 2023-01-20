@@ -565,11 +565,10 @@ namespace GPBoost {
 			const char* cg_preconditioner_type,
 			int seed_rand_vec_trace,
 			int piv_chol_rank) {
-			lr_cov_ = lr;
 			lr_cov_init_ = lr;
 			acc_rate_cov_ = acc_rate_cov;
 			max_iter_ = max_iter;
-			delta_rel_conv_ = delta_rel_conv;
+			delta_rel_conv_init_ = delta_rel_conv;
 			use_nesterov_acc_ = use_nesterov_acc;
 			nesterov_schedule_version_ = nesterov_schedule_version;
 			if (optimizer != nullptr) {
@@ -583,7 +582,6 @@ namespace GPBoost {
 					Log::REFatal("Convergence criterion '%s' is not supported.", convergence_criterion_.c_str());
 				}
 			}
-			lr_coef_ = lr_coef;
 			lr_coef_init_ = lr_coef;
 			acc_rate_coef_ = acc_rate_coef;
 			if (optimizer_coef != nullptr) {
@@ -606,8 +604,47 @@ namespace GPBoost {
 					}
 				}
 			}
-			set_optim_config_has_been_called_ = true;
 		}//end SetOptimConfig
+
+		/*!
+		* \brief Set initial values for some of the optimizer parameters. 
+		* Internal default values are used if the corresponding parameters have not been set
+		*/
+		void OptimConfigSetInitialValues() {
+			lr_coef_ = lr_coef_init_;
+			SetInitialValueLRCov();
+			SetInitialValueDeltaRelConv();
+		}//end SetInternalDefaultValues
+
+		/*! * \brief Set initial values for lr_cov_ */
+		void SetInitialValueLRCov() {
+			if (lr_cov_init_ < 0.) {//A value below 0 indicates that default values should be used
+				if (optimizer_cov_pars_ == "fisher_scoring") {
+					lr_cov_ = 1.;
+				}
+				else if (optimizer_cov_pars_ == "gradient_descent") {
+					lr_cov_ = 0.1;
+				}
+			}
+			else {
+				lr_cov_ = lr_cov_init_;
+			}
+		}//end SetInitialValueLRCov
+
+		/*! * \brief Set initial values for delta_rel_conv_ */
+		void SetInitialValueDeltaRelConv() {
+			if (delta_rel_conv_init_ < 0) {
+				if (optimizer_cov_pars_ == "nelder_mead") {
+					delta_rel_conv_ = 1e-8;
+				}
+				else {
+					delta_rel_conv_ = 1e-6;
+				}
+			}
+			else {
+				delta_rel_conv_ = delta_rel_conv_init_;
+			}
+		}//end SetInitialValueDeltaRelConv
 
 		/*!
 		* \brief Find covariance parameters and linear regression coefficients (if there are any) that minimize the (approximate) negative log-ligelihood
@@ -674,25 +711,7 @@ namespace GPBoost {
 				}
 			}
 			// Initialization of variables
-			lr_cov_ = lr_cov_init_;
-			lr_coef_ = lr_coef_init_;
-			if (lr_cov_ < 0.) {//a value below 0 indicates that the default values should be used
-				if (optimizer_cov_pars_ == "fisher_scoring") {
-					lr_cov_ = 1.;
-				}
-				else if (optimizer_cov_pars_ == "gradient_descent") {
-					lr_cov_ = 0.1;
-				}
-			}
-			lr_cov_init_after_default_ = lr_cov_;
-			if (!set_optim_config_has_been_called_) {
-				if (optimizer_cov_pars_ == "nelder_mead") {
-					delta_rel_conv_ = 1e-8;
-				}
-				else {
-					delta_rel_conv_ = 1e-6;
-				}
-			}
+			OptimConfigSetInitialValues();
 			if (covariate_data == nullptr) {
 				has_covariates_ = false;
 			}
@@ -941,7 +960,7 @@ namespace GPBoost {
 						// Reset lr_cov_ to its initial value in case beta changes substantially after lr_cov_ is very small
 						if (lr_cov_is_small && learn_covariance_parameters) {
 							if ((beta - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
-								lr_cov_ = lr_cov_init_after_default_;
+								SetInitialValueLRCov();
 								lr_cov_is_small = false;
 								if (!gauss_likelihood_) {
 									//Reset the initial modes to 0. Otherwise, they can get stuck
@@ -1080,6 +1099,7 @@ namespace GPBoost {
 						likelihood_[cluster_i]->InitializeModeAvec();
 					}
 				}
+				SetInitialValueDeltaRelConv();
 				OptimExternal(cov_pars,
 					beta,
 					fixed_effects,
@@ -2747,14 +2767,19 @@ namespace GPBoost {
 		const std::set<string_t> SUPPORTED_CONV_CRIT_{ "relative_change_in_parameters", "relative_change_in_log_likelihood" };
 		/*! \brief Maximal number of iterations for covariance parameter and linear regression parameter estimation */
 		int max_iter_ = 1000;
-		/*! \brief Convergence tolerance for covariance and linear regression coefficient estimation. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood */
-		double delta_rel_conv_;//The default value is set in 'OptimLinRegrCoefCovPar' if 'SetOptimConfig' has not been called
-		/*! \brief Learning rate for covariance parameters. If lr <= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring") */
-		double lr_cov_ = -1.;
-		/*! \brief Initial learning rate for covariance parameters (lr_cov_ can be decreased) */
+		/*! 
+		\brief Convergence tolerance for covariance and linear regression coefficient estimation. 
+		The algorithm stops if the relative change in either the (approximate) log-likelihood or the parameters is below this value. 
+		For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood.
+		If delta_rel_conv_init_ < 0, internal default values are set in 'OptimConfigSetInitialValues'
+		*/
+		double delta_rel_conv_;
+		/*! \brief Initial convergence tolerance (to remember as default values for delta_rel_conv_ are different for 'nelder_mead' vs. other optimizers and the optimization might get restarted) */
+		double delta_rel_conv_init_ = -1;
+		/*! \brief Learning rate for covariance parameters. If lr_cov_init_ < 0, internal default values are set in 'OptimConfigSetInitialValues' */
+		double lr_cov_;
+		/*! \brief Initial learning rate for covariance parameters (to remember as lr_cov_ can be decreased) */
 		double lr_cov_init_ = -1;
-		/*! \brief Initial learning rate for covariance parameters (lr_cov_ can be decreased) after checking for default values */
-		double lr_cov_init_after_default_;
 		/*! \brief Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent") */
 		bool use_nesterov_acc_ = true;
 		/*! \brief Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
@@ -2774,8 +2799,8 @@ namespace GPBoost {
 		/*! \brief List of supported optimizers for regression coefficients for non-Gaussian likelihoods */
 		const std::set<string_t> SUPPORTED_OPTIM_COEF_NONGAUSS_{ "gradient_descent", "nelder_mead", "bfgs", "adam" };
 		/*! \brief Learning rate for fixed-effect linear coefficients */
-		double lr_coef_ = 0.1;
-		/*! \brief Initial learning rate for fixed-effect linear coefficients (lr_coef_ can be decreased) */
+		double lr_coef_;
+		/*! \brief Initial learning rate for fixed-effect linear coefficients (to remember as lr_coef_ can be decreased) */
 		double lr_coef_init_ = 0.1;
 		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
 		double acc_rate_coef_ = 0.5;
@@ -2819,8 +2844,6 @@ namespace GPBoost {
 		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_{ "none" };
 		/*! \brief Rank of the pivoted cholseky decomposition used for the preconditioner of the conjugate gradient algorithm */
 		int piv_chol_rank_ = 100;
-		/*! \brief true if 'SetOptimConfig' has been called */
-		bool set_optim_config_has_been_called_ = false;
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
 		/*! \brief Collects matrices Z^T (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
