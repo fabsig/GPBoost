@@ -1562,7 +1562,8 @@ namespace GPBoost {
 							false,
 							cov_grad_cluster_i.data(),
 							empty_unused_vec,
-							false);
+							false,
+							num_comps_total_);
 					}//end gp_approx_ == "vecchia"
 					else {//not gp_approx_ == "vecchia"
 						if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
@@ -3202,7 +3203,8 @@ namespace GPBoost {
 						true,
 						nullptr,
 						grad_F_cluster_i,
-						false);
+						false,
+						num_comps_total_);
 				}
 				else {//not gp_approx_ == "vecchia"
 					if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
@@ -4489,15 +4491,18 @@ namespace GPBoost {
 			if (!gauss_likelihood_) {
 				D_inv_cluster_i.diagonal().array() = 0.;
 			}
+			bool exclude_marg_var_grad = !gauss_likelihood_ && num_comps_total_ == 1;//gradient is not needed if there is only one GP for non-Gaussian data
 			if (calc_gradient) {
 				B_grad_cluster_i = std::vector<sp_mat_t>(num_par_gp);//derivative of B = derviateive of (-A)
 				D_grad_cluster_i = std::vector<sp_mat_t>(num_par_gp);//derivative of D
 				for (int ipar = 0; ipar < num_par_gp; ++ipar) {
-					B_grad_cluster_i[ipar] = sp_mat_t(num_data_cluster_i, num_data_cluster_i);
-					B_grad_cluster_i[ipar].setFromTriplets(entries_init_B_grad_cluster_i.begin(), entries_init_B_grad_cluster_i.end());
-					D_grad_cluster_i[ipar] = sp_mat_t(num_data_cluster_i, num_data_cluster_i);
-					D_grad_cluster_i[ipar].setIdentity();//Put 0 on the diagonal
-					D_grad_cluster_i[ipar].diagonal().array() = 0.;
+					if (!(exclude_marg_var_grad && ipar == 0)) {
+						B_grad_cluster_i[ipar] = sp_mat_t(num_data_cluster_i, num_data_cluster_i);
+						B_grad_cluster_i[ipar].setFromTriplets(entries_init_B_grad_cluster_i.begin(), entries_init_B_grad_cluster_i.end());
+						D_grad_cluster_i[ipar] = sp_mat_t(num_data_cluster_i, num_data_cluster_i);
+						D_grad_cluster_i[ipar].setIdentity();//Put 0 on the diagonal
+						D_grad_cluster_i[ipar].diagonal().array() = 0.;
+					}
 				}
 			}//end initialization
 #pragma omp parallel for schedule(static)
@@ -4554,15 +4559,17 @@ namespace GPBoost {
 					}
 					D_inv_cluster_i.coeffRef(i, i) += d_comp_j;
 					if (calc_gradient) {
-						if (transf_scale) {
-							D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = d_comp_j;//derivative of the covariance function wrt the variance. derivative of the covariance function wrt to range is zero on the diagonal
-						}
-						else {
-							if (j == 0) {
-								D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = 1.;//1's on the diagonal on the orignal scale
+						if (!(exclude_marg_var_grad && j == 0)) {
+							if (transf_scale) {
+								D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = d_comp_j;//derivative of the covariance function wrt the variance. derivative of the covariance function wrt to range is zero on the diagonal
 							}
 							else {
-								D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
+								if (j == 0) {
+									D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = 1.;//1's on the diagonal on the orignal scale
+								}
+								else {
+									D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
+								}
 							}
 						}
 					}
@@ -4609,19 +4616,21 @@ namespace GPBoost {
 						for (int j = 0; j < num_gp_total_; ++j) {
 							int ind_first_par = j * num_par_comp;
 							for (int ipar = 0; ipar < num_par_comp; ++ipar) {
-								A_i_grad = (cov_grad_mats_obs_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv) -
-									(cov_mat_obs_neighbors * cov_mat_between_neighbors_inv *
-										cov_grad_mats_between_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv);
-								for (int inn = 0; inn < num_nn; ++inn) {
-									B_grad_cluster_i[ind_first_par + ipar].coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i_grad(0, inn);
-								}
-								if (ipar == 0) {
-									D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) -= ((A_i_grad * cov_mat_obs_neighbors.transpose())(0, 0) +
-										(A_i * cov_grad_mats_obs_neighbors[ind_first_par + ipar].transpose())(0, 0));//add to derivative of diagonal elements for marginal variance 
-								}
-								else {
-									D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) = -((A_i_grad * cov_mat_obs_neighbors.transpose())(0, 0) +
-										(A_i * cov_grad_mats_obs_neighbors[ind_first_par + ipar].transpose())(0, 0));//don't add to existing values since derivative of diagonal is zero for range
+								if (!(exclude_marg_var_grad && ipar == 0)) {
+									A_i_grad = (cov_grad_mats_obs_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv) -
+										(cov_mat_obs_neighbors * cov_mat_between_neighbors_inv *
+											cov_grad_mats_between_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv);
+									for (int inn = 0; inn < num_nn; ++inn) {
+										B_grad_cluster_i[ind_first_par + ipar].coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i_grad(0, inn);
+									}
+									if (ipar == 0) {
+										D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) -= ((A_i_grad * cov_mat_obs_neighbors.transpose())(0, 0) +
+											(A_i * cov_grad_mats_obs_neighbors[ind_first_par + ipar].transpose())(0, 0));//add to derivative of diagonal elements for marginal variance 
+									}
+									else {
+										D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) = -((A_i_grad * cov_mat_obs_neighbors.transpose())(0, 0) +
+											(A_i * cov_grad_mats_obs_neighbors[ind_first_par + ipar].transpose())(0, 0));//don't add to existing values since derivative of diagonal is zero for range
+									}
 								}
 							}
 						}

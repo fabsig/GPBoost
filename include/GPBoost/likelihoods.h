@@ -1659,6 +1659,7 @@ namespace GPBoost {
 		* \param[out] cov_grad Gradient of approximate marginal log-likelihood wrt covariance parameters (needs to be preallocated of size num_cov_par)
 		* \param[out] fixed_effect_grad Gradient of approximate marginal log-likelihood wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param num_comps_total Total number of random effect components ( = number of GPs)
 		*/
 		void CalcGradNegMargLikelihoodLAApproxVecchia(const double* y_data,
 			const int* y_data_int,
@@ -1672,7 +1673,8 @@ namespace GPBoost {
 			bool calc_F_grad,
 			double* cov_grad,
 			vec_t& fixed_effect_grad,
-			bool calc_mode) {
+			bool calc_mode,
+			int num_comps_total) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, mll);
@@ -1699,31 +1701,43 @@ namespace GPBoost {
 			sp_mat_t L_inv(num_data, num_data);
 			L_inv.setIdentity();
 			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
-			// calculate gradient wrt covariance parameters
+			// Calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
 				vec_t d_mll_d_mode, d_mode_d_par;
 				double explicit_derivative;
 				int num_par = (int)B_grad.size();
 				sp_mat_t SigmaI_plus_W_inv,  SigmaI_deriv,  BgradT_Dinv_B, Bt_Dinv_Bgrad;
+				sp_mat_t D_inv_B = D_inv * B;
 				for (int j = 0; j < num_par; ++j) {
-					SigmaI_deriv = B_grad[j].transpose() * D_inv * B;
-					Bt_Dinv_Bgrad = SigmaI_deriv.transpose();
-					SigmaI_deriv += Bt_Dinv_Bgrad - B.transpose() * D_inv * D_grad[j] * D_inv * B;
-					Bt_Dinv_Bgrad.resize(0, 0);
+					// Calculate SigmaI_deriv
+					if (num_comps_total == 1 && j == 0) {
+						SigmaI_deriv = - B.transpose() * D_inv_B;//SigmaI_deriv = -SigmaI for variance paramters if there is only one GP
+					}
+					else {
+						SigmaI_deriv = B_grad[j].transpose() * D_inv_B;
+						Bt_Dinv_Bgrad = SigmaI_deriv.transpose();
+						SigmaI_deriv += Bt_Dinv_Bgrad - D_inv_B.transpose() * D_grad[j] * D_inv_B;
+						Bt_Dinv_Bgrad.resize(0, 0);
+					}
 					if (j == 0) {
-						// calculate SigmaI_plus_W_inv = L_inv.transpose() * L_inv at non-zero entries of SigmaI_deriv
+						// Calculate SigmaI_plus_W_inv = L_inv.transpose() * L_inv at non-zero entries of SigmaI_deriv
 						//	Note: fully calculating SigmaI_plus_W_inv = L_inv.transpose() * L_inv is very slow
 						SigmaI_plus_W_inv = SigmaI_deriv;
 						CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv);
 						d_mll_d_mode = -0.5 * (SigmaI_plus_W_inv.diagonal().array() * third_deriv.array()).matrix();
 					}//end if j == 0
 					d_mode_d_par = -(L_inv.transpose() * (L_inv * (SigmaI_deriv * mode_)));//derivative of mode wrt to a covariance parameter
-					explicit_derivative = 0.5 * mode_.dot(SigmaI_deriv * mode_) +
-						0.5 * ((D_inv.diagonal().array() * D_grad[j].diagonal().array()).sum() + (SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
+					explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv * mode_) + (SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
+					if (num_comps_total == 1 && j == 0) {
+						explicit_derivative += 0.5 * num_data;
+					}
+					else {
+						explicit_derivative += 0.5 * (D_inv.diagonal().array() * D_grad[j].diagonal().array()).sum();
+					}
 					cov_grad[j] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
 				}
 			}//end calc_cov_grad
-			// calculate gradient wrt fixed effects
+			// Calculate gradient wrt fixed effects
 			if (calc_F_grad) {
 				sp_mat_t L_inv_sqr = L_inv.cwiseProduct(L_inv);
 				vec_t SigmaI_plus_W_inv_diag = L_inv_sqr.transpose() * vec_t::Ones(L_inv_sqr.rows());// diagonal of (Sigma^-1 + W) ^ -1
