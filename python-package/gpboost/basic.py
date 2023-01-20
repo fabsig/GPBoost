@@ -4771,7 +4771,7 @@ class GPModel(object):
                     the same value.
                 - maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
-- delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
+                - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
                     gradient is used instead of the relative change in the log-likelihood
