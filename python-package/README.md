@@ -62,7 +62,7 @@ pip install gpboost -U
 
   * The library file in distribution wheels is built by the **Apple Clang** compiler. You need to install the **OpenMP** library. You can install the **OpenMP** library by the following command: ``brew install libomp``. <!-- (Xcode version 12.3 is used starting from GPBoost version 0.3.0) -->
   
-  * If you have an **arm64 Apple silicon** processor and experience problems, try the following steps:
+  * If you have an **arm64 Apple silicon** processor (e.g., M1 or M2) and experience problems, try the following steps:
     
     * [uninstall homebrew](https://stackoverflow.com/questions/72890277/i-cant-uninstall-brew-on-macos-apple-silicon) (in case you have migrated from an older non-arm64 Mac)
     * [install homebrew](https://treehouse.github.io/installation-guides/mac/homebrew) (to make sure that you have an arm64 version of libomp)
