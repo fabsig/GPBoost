@@ -121,7 +121,7 @@ The elements of 'cluster_ids' can be integer, double, or character.}
 \item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 is freed in R after initialization}
 
-\item{vecchia_approx}{This is discontinued. Use the argument \code{gp_approx} instead}
+\item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
 }
 \value{
 A \code{GPModel} containing ontains a Gaussian process and / or mixed effects model with grouped random effects

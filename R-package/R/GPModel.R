@@ -3,8 +3,8 @@
 # Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 
 #' @name GPModel_shared_params
-#' @title Shared parameter docs
-#' @description Parameter docs shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}
+#' @title Documentation for parameters shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}
+#' @description Documentation for parameters shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}
 #' @param likelihood A \code{string} specifying the likelihood function (distribution) of the response variable
 #' Default = "gaussian"
 #' @param group_data A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
@@ -155,7 +155,7 @@
 #' predictive covariance is calculated in addition to the (posterior) predictive mean
 #' @param predict_var A \code{boolean}. If TRUE, the (posterior) 
 #' predictive variances are calculated
-#' @param vecchia_approx This is discontinued. Use the argument \code{gp_approx} instead
+#' @param vecchia_approx Discontinued. Use the argument \code{gp_approx} instead
 
 
 NULL

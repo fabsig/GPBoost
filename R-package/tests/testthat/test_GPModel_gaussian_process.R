@@ -287,7 +287,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                      maxit=5000))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-2)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-2)
-    expect_equal(gp_model$get_num_optim_iter(), 1986)
+    expect_gt(gp_model$get_num_optim_iter(), 1985) # different compilers result in slightly different results
+    expect_lt(gp_model$get_num_optim_iter(), 2008)
     
   })
   
@@ -553,7 +554,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                          convergence_criterion = "relative_change_in_parameters")), file='NUL')
     cov_pars <- c(0.01829104, 0.07043221, 1.06577048, 0.23037437, 0.11335918, 0.03484927)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 19)
+    expect_gt(gp_model$get_num_optim_iter(), 18) # different compilers result in slightly different results
+    expect_lt(gp_model$get_num_optim_iter(), 21)
     
     # Prediction using given parameters
     cov_pars_pred <- c(0.02,1.2,0.9)

@@ -131,45 +131,47 @@ fixed effects linear regression term (if there is one)}
  \itemize{
     \item{optimizer_cov}{ Optimizer used for estimating covariance parameters. 
     Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam".
-    Default="gradient_descent"}
+    Default = "gradient_descent"}
     \item{optimizer_coef}{ Optimizer used for estimating linear regression coefficients, if there are any 
     (for the GPBoost algorithm there are usually none). 
     Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously 
     with gradient descent steps for the covariance parameters. 
     "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
-    Default="wls" for Gaussian data and "gradient_descent" for other likelihoods.
+    Default = "wls" for Gaussian data and "gradient_descent" for other likelihoods.
     If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 'optimizer_coef' is automatically also set to the same value.}
-    \item{maxit}{ Maximal number of iterations for optimization algorithm. Default=1000}
+    \item{maxit}{ Maximal number of iterations for optimization algorithm. Default = 1000}
     \item{delta_rel_conv}{ Convergence tolerance. The algorithm stops if the relative change 
     in eiher the (approximate) log-likelihood or the parameters is below this value. 
     For "bfgs" and "adam", the L2 norm of the gradient is used instead of the relative change in the log-likelihood. 
-    Default=1E-6}
+    If < 0, internal default values are used. 
+    Default = 1E-6 except for "nelder_mead" for which the default is 1E-8}
     \item{convergence_criterion}{ The convergence criterion used for terminating the optimization algorithm.
     Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"}
     \item{init_coef}{ Initial values for the regression coefficients (if there are any, can be NULL).
-    Default=NULL}
+    Default = NULL}
     \item{init_cov_pars}{ Initial values for covariance parameters of Gaussian process and 
-    random effects (can be NULL). Default=NULL}
+    random effects (can be NULL). Default = NULL}
     \item{lr_coef}{ Learning rate for fixed effect regression coefficients if gradient descent is used.
-    Default=0.1}
-    \item{lr_cov}{ Learning rate for covariance parameters. If <= 0, internal default values are used.
-    Default value = 0.1 for "gradient_descent" and 1. for "fisher_scoring"}
+    Default = 0.1}
+    \item{lr_cov}{ Learning rate for covariance parameters. 
+    If < 0, internal default values are used.
+    Default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"}
     \item{use_nesterov_acc}{ If TRUE Nesterov acceleration is used.
-    This is used only for gradient descent. Default=TRUE}
+    This is used only for gradient descent. Default = TRUE}
     \item{acc_rate_coef}{ Acceleration rate for regression coefficients (if there are any) 
-    for Nesterov acceleration. Default=0.5}
+    for Nesterov acceleration. Default = 0.5}
     \item{acc_rate_cov}{ Acceleration rate for covariance parameters for Nesterov acceleration.
-    Default=0.5}
+    Default = 0.5}
     \item{momentum_offset}{ Number of iterations for which no momentum is applied in the beginning.
-    Default=2}
+    Default = 2}
     \item{trace}{ If TRUE, information on the progress of the parameter
-    optimization is printed. Default=FALSE}
+    optimization is printed. Default = FALSE}
     \item{std_dev}{ If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
     (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
     square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
 }}
 
-\item{vecchia_approx}{This is discontinued. Use the argument \code{gp_approx} instead}
+\item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
 }
 \value{
 A fitted \code{GPModel}

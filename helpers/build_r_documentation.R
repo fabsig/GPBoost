@@ -9,9 +9,19 @@
 #  NEED TO RUN R VERSION 3.3.2 (to run this, since an old version Rcpp runs only on older R version)
 ###########
 
-# remotes::install_version("Rcpp", "0.12.9")##Need old version of Rcpp for old version of roxygen2
-# remotes::install_version("xml2", "1.0.0")##Need old version of xml2 for old version of Rcpp and roxygen2
+# install.packages("remotes")
+# remotes::install_version("Rcpp", "0.12.9") ## Need old version of Rcpp for old version of roxygen2
+# remotes::install_version("xml2", "1.0.0")
+# remotes::install_version("cli", "1.0.0")
+# remotes::install_version("magrittr", "1.5")
+# remotes::install_version("stringr", "1.1.0")
+# remotes::install_version("desc", "1.0.0")
+# remotes::install_version("glue", "1.0.0")
+# remotes::install_version("rlang", "0.1.1")
+# remotes::install_version("vctrs", "0.1.0")
 # remotes::install_version("roxygen2", "6.0.1")
+## Need old versions of the above packages for old version of Rcpp and roxygen2
+
 
 setwd("R-package")
 

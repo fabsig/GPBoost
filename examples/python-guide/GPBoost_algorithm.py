@@ -222,7 +222,9 @@ bst = gpb.train(params=params, train_set=data_train,
 feature_importances = bst.feature_importance(importance_type='gain')
 plt_imp = gpb.plot_importance(bst, importance_type='gain')
 # Partial dependence plot
-from pdpbox import pdp
+from pdpbox import pdp 
+# note: pdpbox can also be run with newer versions of matplotlib. In case 
+#       problems occurr during installation, try "pip install pdpbox --no-dependencies"
 import pandas as pd
 # Note: for the pdpbox package, the data needs to be a pandas DataFrame
 Xpd = pd.DataFrame(X, columns=['variable_' + str(i) for i in range(p)])
