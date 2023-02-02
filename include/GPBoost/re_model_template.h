@@ -589,7 +589,7 @@ namespace GPBoost {
 				coef_optimizer_has_been_set_ = true;
 			}
 			// Conjugate gradient algorithm related parameters
-			if (matrix_inversion_method_ == "cg") {
+			if (matrix_inversion_method_ == "iterative") {
 				cg_max_num_it_ = cg_max_num_it;
 				cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
 				cg_delta_conv_ = cg_delta_conv;
@@ -1727,7 +1727,7 @@ namespace GPBoost {
 					num_neighbors_pred_ = num_neighbors_pred;
 				}
 			}
-			if (matrix_inversion_method_ == "cg") {
+			if (matrix_inversion_method_ == "iterative") {
 				if (cg_delta_conv_pred > 0) {
 					cg_delta_conv_pred_ = cg_delta_conv_pred;
 				}
@@ -1896,7 +1896,7 @@ namespace GPBoost {
 					num_neighbors_pred_ = num_neighbors_pred;
 				}
 			}
-			if (matrix_inversion_method_ == "cg") {
+			if (matrix_inversion_method_ == "iterative") {
 				if (cg_delta_conv_pred > 0) {
 					cg_delta_conv_pred_ = cg_delta_conv_pred;
 				}
@@ -2824,7 +2824,7 @@ namespace GPBoost {
 		/*! \brief Matrix inversion method */
 		string_t matrix_inversion_method_ = "cholesky";
 		/*! \brief Supported matrix inversion methods */
-		const std::set<string_t> SUPPORTED_MATRIX_INVERSION_METHODS_{ "cholesky", "cg" };
+		const std::set<string_t> SUPPORTED_MATRIX_INVERSION_METHODS_{ "cholesky", "iterative" };
 		/*! \brief Maximal number of iterations for conjugate gradient algorithm */
 		int cg_max_num_it_ = 1000;
 		/*! \brief Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization */
@@ -3287,7 +3287,7 @@ namespace GPBoost {
 		* \param cluster_i Cluster index for which the Cholesky factor is calculated
 		*/
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
-		void CalcChol(T_mat& psi, data_size_t cluster_i) {
+		void CalcChol(const T_mat& psi, data_size_t cluster_i) {
 			if (!chol_fact_pattern_analyzed_) {
 				chol_facts_solve_[cluster_i].analyzePattern(psi);
 				if (cluster_i == unique_clusters_.back()) {
@@ -3309,7 +3309,7 @@ namespace GPBoost {
 			chol_facts_solve_[cluster_i].factorize(psi);
 		}
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
-		void CalcChol(den_mat_t& psi, data_size_t cluster_i) {
+		void CalcChol(const den_mat_t& psi, data_size_t cluster_i) {
 			chol_facts_solve_[cluster_i].compute(psi);
 		}
 

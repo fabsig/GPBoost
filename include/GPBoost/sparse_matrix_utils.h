@@ -108,7 +108,8 @@ namespace GPBoost {
 	* \param transpose If true, the permutation matrix is first transposed
 	*/
 	template <class T_mat, class T_chol, typename std::enable_if <std::is_same<chol_den_mat_t, T_chol>::value>::type* = nullptr >
-	void ApplyPermutationCholeskyFactor(const chol_den_mat_t&, const T_mat&, T_mat&, bool) {
+	void ApplyPermutationCholeskyFactor(const chol_den_mat_t&, const T_mat& M, T_mat& P_M, bool) {
+		P_M = M;
 	}
 	template <class T_mat, class T_chol, typename std::enable_if <std::is_same<chol_sp_mat_t, T_chol>::value || std::is_same<chol_sp_mat_rm_t, T_chol>::value>::type* = nullptr >
 	void ApplyPermutationCholeskyFactor(const T_chol& chol, const T_mat& M, T_mat& P_M, bool transpose) {
@@ -119,6 +120,9 @@ namespace GPBoost {
 			else {
 				P_M = chol.permutationP() * M;
 			}
+		}
+		else {
+			P_M = M;
 		}
 	}//end ApplyPermutationCholeskyFactor
 
@@ -316,7 +320,9 @@ namespace GPBoost {
 		// Covers all types except if chol is chol_den_mat_t and R is sp_mat_t (it would also cover chol chol_sp_mat_t and R den_mat_t which does not compile, but this is never used)
 		if (transpose) {
 			TriangularSolve<T_chol_mat, T_mat_R, T_mat_X>(chol.CholFactMatrix(), R, X, true);
-			ApplyPermutationCholeskyFactor<T_mat_X, T_chol>(chol, X, X, true);
+			if (CholeskyHasPermutation<T_chol>(chol)) {
+				ApplyPermutationCholeskyFactor<T_mat_X, T_chol>(chol, X, X, true);
+			}
 		}
 		else {
 			if (CholeskyHasPermutation<T_chol>(chol)) {

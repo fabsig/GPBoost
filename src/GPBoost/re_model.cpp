@@ -57,7 +57,7 @@ namespace GPBoost {
 		bool use_sparse_matrices = (num_gp + num_gp_rand_coef) == 0 || (COMPACT_SUPPORT_COVS_.find(cov_fct_str) != COMPACT_SUPPORT_COVS_.end()) || 
 			gp_approx_str == "tapering";
 		if (use_sparse_matrices) {
-			if (matrix_inversion_method_str == "cg") {
+			if (matrix_inversion_method_str == "iterative") {
 				matrix_format_ = "sp_mat_rm_t";
 			}
 			else {

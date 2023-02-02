@@ -12,7 +12,7 @@
 * For a "gamma" likelihood, the following density is used:
 *	f(y) = lambda^gamma / Gamma(gamma) * y^(gamma - 1) * exp(-lambda * y)
 *		- lambda = gamma * exp(-location_par) (i.e., mean(y) = exp(-location_par)
-*		- lambda = rate parameter, gamma = rate parameter, location_par = random plus fixed effects
+*		- lambda = rate parameter, gamma = shape parameter, location_par = random plus fixed effects
 *		
 */
 #ifndef GPB_LIKELIHOODS_
