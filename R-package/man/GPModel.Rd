@@ -49,9 +49,12 @@ Gaussian process random coefficients}
 \item{cov_function}{A \code{string} specifying the covariance function for the Gaussian process. 
 Available options:
 "exponential", "gaussian", "matern", "powered_exponential", "wendland"
-For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization of Diggle and Ribeiro (2007).
-For "matern", we follow the notation of Rassmusen and Williams (2006).
-For "wendland", we follow the notation of Bevilacqua et al. (2019, AOS)}
+\itemize{
+\item{ }{ For "exponential", "gaussian", and "powered_exponential", 
+we use parametrization of Diggle and Ribeiro (2007) }
+\item{ }{ For "matern", we use the parametrization of Rasmussen and Williams (2006) }
+\item{ }{ For "wendland", we use the parametrization of Bevilacqua et al. (2019, AOS) }
+}}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
 (=smoothness parameter for Matern covariance)  

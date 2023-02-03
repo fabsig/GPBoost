@@ -4051,13 +4051,14 @@ class GPModel(object):
                 Covariate data for Gaussian process random coefficients
             cov_function : string, optional (default="exponential")
                 Covariance function for the Gaussian process. Available options:
-                "exponential", "gaussian", "matern", "powered_exponential", "wendland", and "exponential_tapered".
-                For "exponential", "gaussian", and "powered_exponential", we follow the notation and parametrization
-                of Diggle and Ribeiro (2007).
-                For "matern", we follow the notation of Rassmusen and Williams (2006).
-                For "wendland", we follow the notation of Bevilacqua et al. (2019, AOS).
-                A covariance function with the suffix "_tapered" refers to a covariance function that is multiplied by
-                a compactly supported Wendland covariance function (= tapering)
+                "exponential", "gaussian", "matern", "powered_exponential", "wendland"
+
+                    - For "exponential", "gaussian", and "powered_exponential", we use the parametrization of Diggle and Ribeiro (2007)
+
+                    - For "matern", we use the parametrization of Rasmussen and Williams (2006) 
+
+                    - For "wendland", we use the parametrization of Bevilacqua et al. (2019, AOS).
+
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance).
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.

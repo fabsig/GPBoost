@@ -625,7 +625,7 @@ GPBOOST_C_EXPORT SEXP LGBM_BoosterDumpModel_R(
 * \param dim_gp_coords Dimension of the coordinates (=number of features) for Gaussian process
 * \param gp_rand_coef_data Covariate data for Gaussian process random coefficients
 * \param num_gp_rand_coef Number of Gaussian process random coefficients
-* \param cov_fct Type of covariance function for Gaussian process (GP). We follow the notation and parametrization of Diggle and Ribeiro (2007) except for the Matern covariance where we follow Rassmusen and Williams (2006)
+* \param cov_fct Type of covariance function for Gaussian process (GP)
 * \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
 * \param gp_approx Type of GP-approximation for handling large data
 * \param cov_fct_taper_range Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
