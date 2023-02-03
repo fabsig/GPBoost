@@ -2128,10 +2128,12 @@ namespace GPBoost {
 			else if (likelihood_type_ == "poisson") {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
-					double pm = RespMeanAdaptiveGHQuadrature(pred_mean[i], pred_var[i]);
+					double pm = std::exp(pred_mean[i] + 0.5 * pred_var[i]);
+					//double pm = RespMeanAdaptiveGHQuadrature(pred_mean[i], pred_var[i]);// alternative version using quadrature
 					if (predict_var) {
-						double psm = RespMeanAdaptiveGHQuadrature(2 * pred_mean[i], 4 * pred_var[i]);
-						pred_var[i] = psm - pm * pm + pm;
+						pred_var[i] = pm * ((std::exp(pred_var[i]) - 1.) * pm + 1.);
+						//double psm = RespMeanAdaptiveGHQuadrature(2 * pred_mean[i], 4 * pred_var[i]);// alternative version using quadrature
+						//pred_var[i] = psm - pm * pm + pm;
 					}
 					pred_mean[i] = pm;
 				}
@@ -2139,10 +2141,12 @@ namespace GPBoost {
 			else if (likelihood_type_ == "gamma") {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
-					double pm = RespMeanAdaptiveGHQuadrature(pred_mean[i], pred_var[i]);
+					double pm = std::exp(pred_mean[i] + 0.5 * pred_var[i]);
+					//double pm = RespMeanAdaptiveGHQuadrature(pred_mean[i], pred_var[i]);// alternative version using quadrature
 					if (predict_var) {
-						double psm = RespMeanAdaptiveGHQuadrature(2 * pred_mean[i], 4 * pred_var[i]);
-						pred_var[i] = psm - pm * pm + psm / aux_pars_[0];
+						pred_var[i] = (std::exp(pred_var[i]) - 1.) * pm * pm + std::exp(2 * pred_mean[i] + 2 * pred_var[i]) / aux_pars_[0];
+						//double psm = RespMeanAdaptiveGHQuadrature(2 * pred_mean[i], 4 * pred_var[i]);// alternative version using quadrature
+						//pred_var[i] = psm - pm * pm + psm / aux_pars_[0];
 					}
 					pred_mean[i] = pm;
 				}
