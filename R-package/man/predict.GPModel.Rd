@@ -54,15 +54,15 @@ a priory set data via the function '$set_prediction_data' (this option is not us
 Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only"
 Available options:
 \itemize{
-\item{"order_obs_first_cond_obs_only"}{ Vecchia approximation for the observable process and observed training data is 
+\item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
 ordered first and the neighbors are only observed training data points }
-\item{"order_obs_first_cond_all"}{ Vecchia approximation for the observable process and observed training data is 
+\item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
 ordered first and the neighbors are selected among all points (training + prediction) }
-\item{"latent_order_obs_first_cond_obs_only"}{ Vecchia approximation for the latent process and observed data is 
+\item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
 ordered first and neighbors are only observed points}
-\item{"latent_order_obs_first_cond_all"}{ Vecchia approximation 
+\item{"latent_order_obs_first_cond_all": Vecchia approximation 
 for the latent process and observed data is ordered first and neighbors are selected among all points }
-\item{"order_pred_first"}{ Vecchia approximation for the observable process and prediction data is 
+\item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
 ordered first for making predictions. This option is only available for Gaussian likelihoods }
 }}
 

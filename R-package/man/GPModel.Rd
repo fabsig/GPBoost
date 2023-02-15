@@ -16,8 +16,15 @@ GPModel(likelihood = "gaussian", group_data = NULL,
   free_raw_data = FALSE, vecchia_approx = NULL)
 }
 \arguments{
-\item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable
-Default = "gaussian"}
+\item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable.
+Available options:
+\itemize{
+\item{ "gaussian" }
+\item{ "bernoulli_probit": binary data with Bernoulli likelihood and a probit link function }
+\item{ "bernoulli_logit": binary data with Bernoulli likelihood and a logit link function }
+\item{ "gamma" }
+\item{ "poisson" }
+}}
 
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 The elements being group levels defining grouped random effects.
@@ -50,10 +57,10 @@ Gaussian process random coefficients}
 Available options:
 "exponential", "gaussian", "matern", "powered_exponential", "wendland"
 \itemize{
-\item{ }{ For "exponential", "gaussian", and "powered_exponential", 
+\item{ For "exponential", "gaussian", and "powered_exponential", 
 we use parametrization of Diggle and Ribeiro (2007) }
-\item{ }{ For "matern", we use the parametrization of Rasmussen and Williams (2006) }
-\item{ }{ For "wendland", we use the parametrization of Bevilacqua et al. (2019, AOS) }
+\item{ For "matern", we use the parametrization of Rasmussen and Williams (2006) }
+\item{ For "wendland", we use the parametrization of Bevilacqua et al. (2019, AOS) }
 }}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
@@ -63,9 +70,9 @@ This parameter is irrelevant for some covariance functions such as the exponenti
 \item{gp_approx}{A \code{string} specifying the large data approximation
 for Gaussian processes. Available options: 
 \itemize{
-\item{"none"}{ No approximation }
-\item{"vecchia"}{ A Vecchia approximation; see Sigrist (2022, JMLR for more details) }
-\item{"tapering"}{ The covariance function is multiplied by 
+\item{"none": No approximation }
+\item{"vecchia": A Vecchia approximation; see Sigrist (2022, JMLR for more details) }
+\item{"tapering": The covariance function is multiplied by 
 a compactly supported Wendland correlation function }
 }}
 
@@ -82,23 +89,23 @@ We follow the notation of Bevilacqua et al. (2019, AOS)}
 \item{vecchia_ordering}{A \code{string} specifying the ordering used in the Vecchia approximation. 
 Available options:
 #' \itemize{
-\item{"none"} { the default ordering in the data is used }
-\item{"random"} { a random ordering }
+\item{"none": the default ordering in the data is used }
+\item{"random": a random ordering }
 }}
 
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
 Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only"
 Available options:
 \itemize{
-\item{"order_obs_first_cond_obs_only"}{ Vecchia approximation for the observable process and observed training data is 
+\item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
 ordered first and the neighbors are only observed training data points }
-\item{"order_obs_first_cond_all"}{ Vecchia approximation for the observable process and observed training data is 
+\item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
 ordered first and the neighbors are selected among all points (training + prediction) }
-\item{"latent_order_obs_first_cond_obs_only"}{ Vecchia approximation for the latent process and observed data is 
+\item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
 ordered first and neighbors are only observed points}
-\item{"latent_order_obs_first_cond_all"}{ Vecchia approximation 
+\item{"latent_order_obs_first_cond_all": Vecchia approximation 
 for the latent process and observed data is ordered first and neighbors are selected among all points }
-\item{"order_pred_first"}{ Vecchia approximation for the observable process and prediction data is 
+\item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
 ordered first for making predictions. This option is only available for Gaussian likelihoods }
 }}
 
@@ -111,7 +118,7 @@ points / knots for, e.g., a predictive process approximation}
 \item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices
 Available options:
 \itemize{
-\item{"cholesky"}{ Cholesky factorization }
+\item{"cholesky": Cholesky factorization }
 }}
 
 \item{seed}{An \code{integer} specifying the seed used for model creation 

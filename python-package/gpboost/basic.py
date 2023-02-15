@@ -4026,7 +4026,22 @@ class GPModel(object):
         Parameters
         ----------
             likelihood : string, optional (default="gaussian")
-                likelihood function (distribution) of the response variable
+                likelihood function (distribution) of the response variable. Available options:
+
+                    - "gaussian"
+
+                    - "bernoulli_probit": 
+
+                        Binary data with a Bernoulli likelihood and a probit link function
+
+                    - "bernoulli_logit": 
+
+                        Binary data with a Bernoulli likelihood and a logit link function
+
+                    - "gamma"
+
+                    - "poisson"
+
             group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 Either a vector or a matrix whose columns are categorical grouping variables. The elements are group
                 levels defining grouped random effects. The number of columns corresponds to the number of grouped
