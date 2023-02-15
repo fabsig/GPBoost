@@ -22,6 +22,9 @@ namespace GPBoost {
 	/*! \brief Tolerance level when comparing two vectors for equality */
 	const double EPSILON_VECTORS = 1e-10;
 
+	/*! \brief Small number that is added in some cases to covariance matrices to make inversion numerically stable */
+	const double EPSILON_ADD_COVARIANCE_STABLE = 1e-10;
+
 	/*! \brief Comparing two numbers for equality, source: http://realtimecollisiondetection.net/blog/?p=89 */
 	template <typename T>//T can be double or float
 	inline bool TwoNumbersAreEqual(const T a, const T b) {

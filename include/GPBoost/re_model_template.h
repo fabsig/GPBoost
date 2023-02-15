@@ -4587,9 +4587,9 @@ namespace GPBoost {
 							cov_mat_between_neighbors.diagonal().array() += nugget_var;
 						}
 					}
-					//else {//Seems unnecessary
-					//	cov_mat_between_neighbors.diagonal().array() += 1e-10;//Avoid numerical problems when there is no nugget effect
-					//}
+					else {
+						cov_mat_between_neighbors.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE;//Avoid numerical problems when there is no nugget effect
+					}
 					den_mat_t A_i(1, num_nn);
 					den_mat_t cov_mat_between_neighbors_inv;
 					den_mat_t A_i_grad_sigma2;
