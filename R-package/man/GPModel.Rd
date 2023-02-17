@@ -9,9 +9,9 @@ GPModel(likelihood = "gaussian", group_data = NULL,
   drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
   gp_rand_coef_data = NULL, cov_function = "exponential",
   cov_fct_shape = 0.5, gp_approx = "none", cov_fct_taper_range = 1,
-  cov_fct_taper_shape = 0, num_neighbors = 30L,
+  cov_fct_taper_shape = 0, num_neighbors = 20L,
   vecchia_ordering = "random", vecchia_pred_type = NULL,
-  num_neighbors_pred = num_neighbors, num_ind_points = 500L,
+  num_neighbors_pred = 2 * num_neighbors, num_ind_points = 500L,
   matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
   free_raw_data = FALSE, vecchia_approx = NULL)
 }
@@ -84,10 +84,11 @@ We follow the notation of Bevilacqua et al. (2019, AOS)}
 of the Wendland covariance function and Wendland correlation taper function. 
 We follow the notation of Bevilacqua et al. (2019, AOS)}
 
-\item{num_neighbors}{An \code{integer} specifying the number of neighbors for the Vecchia approximation}
+\item{num_neighbors}{An \code{integer} specifying the number of neighbors for 
+the Vecchia approximation}
 
-\item{vecchia_ordering}{A \code{string} specifying the ordering used in the Vecchia approximation. 
-Available options:
+\item{vecchia_ordering}{A \code{string} specifying the ordering used in 
+the Vecchia approximation. Available options:
 #' \itemize{
 \item{"none": the default ordering in the data is used }
 \item{"random": a random ordering }
@@ -110,7 +111,7 @@ ordered first for making predictions. This option is only available for Gaussian
 }}
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-for making predictions. Default value if NULL: num_neighbors_pred = num_neighbors}
+for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{num_ind_points}{An \code{integer} specifying the number of inducing 
 points / knots for, e.g., a predictive process approximation}

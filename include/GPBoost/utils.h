@@ -89,6 +89,61 @@ namespace GPBoost {
 		}
 	}
 
+	/*!
+	* \brief Sample k integers from 0:(N-1) without replacement while excluding some indices
+	*		Source: see https://www.nowherenearithaca.com/2013/05/robert-floyds-tiny-and-beautiful.html and https://stackoverflow.com/questions/28287138/c-randomly-sample-k-numbers-from-range-0n-1-n-k-without-replacement
+	* \param N Total number of integers from which to sample
+	* \param k Size of integer set which is drawn
+	* \param gen RNG
+	* \param[out] indices Drawn integers
+	* \param exclude Excluded integers
+	*/
+	inline void SampleIntNoReplaceExcludeSomeIndices(int N,
+		int k,
+		RNG_t& gen,
+		std::vector<int>& indices,
+		const std::vector<int>& exclude) {
+		for (int r = N - k; r < N; ++r) {
+			int v = std::uniform_int_distribution<>(0, r)(gen);
+			int new_draw;
+			if (std::find(indices.begin(), indices.end(), v) == indices.end()) {
+				new_draw = v;
+			}
+			else {
+				new_draw = r;
+			}
+			if (std::find(exclude.begin(), exclude.end(), new_draw) == exclude.end()) {
+				indices.push_back(new_draw);
+			}
+			else {
+				r--;
+			}
+		}
+	}//end SampleIntNoReplaceExcludeSomeIndices
+
+		/*!
+	* \brief Sample k integers from 0:(N-1) without replacement
+	*		Source: see https://www.nowherenearithaca.com/2013/05/robert-floyds-tiny-and-beautiful.html and https://stackoverflow.com/questions/28287138/c-randomly-sample-k-numbers-from-range-0n-1-n-k-without-replacement
+	* \param N Total number of integers from which to sample
+	* \param k Size of integer set which is drawn
+	* \param gen RNG
+	* \param[out] indices Drawn integers
+	*/
+	inline void SampleIntNoReplace(int N,
+		int k,
+		RNG_t& gen,
+		std::vector<int>& indices) {
+		for (int r = N - k; r < N; ++r) {
+			int v = std::uniform_int_distribution<>(0, r)(gen);
+			if (std::find(indices.begin(), indices.end(), v) == indices.end()) {
+				indices.push_back(v);
+			}
+			else {
+				indices.push_back(r);
+			}
+		}
+	}//end SampleIntNoReplace
+
 }  // namespace GPBoost
 
 #endif   // GPB_UTILS_H_

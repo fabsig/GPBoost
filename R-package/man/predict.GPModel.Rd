@@ -67,7 +67,7 @@ ordered first for making predictions. This option is only available for Gaussian
 }}
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-for making predictions. Default value if NULL: num_neighbors_pred = num_neighbors}
+for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
 checking convergence in conjugate gradient algorithm when being used for prediction}

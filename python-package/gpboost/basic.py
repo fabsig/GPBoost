@@ -3415,7 +3415,7 @@ class Booster:
         num_neighbors_pred : integer or None, optional (default=None)
             Number of neighbors for the Vecchia approximation for making predictions
 
-            (default values if None: num_neighbors_pred=num_neighbors)
+            (default values if None: num_neighbors_pred = 2 * num_neighbors)
 
             Used only if the Booster has a gp_model
         cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
@@ -4009,10 +4009,10 @@ class GPModel(object):
                  gp_approx="none",
                  cov_fct_taper_range=1.,
                  cov_fct_taper_shape=0.,
-                 num_neighbors=30,
+                 num_neighbors=20,
                  vecchia_ordering="random",
                  vecchia_pred_type=None,
-                 num_neighbors_pred=None,
+                 num_neighbors_pred=40,
                  num_ind_points=500,
                  matrix_inversion_method="cholesky",
                  seed=0,
@@ -4098,7 +4098,7 @@ class GPModel(object):
             cov_fct_taper_shape : float, optional (default=0.)
                 Shape (=smoothness) parameter of the Wendland covariance function and Wendland correlation taper function.
                 We follow the notation of Bevilacqua et al. (2019, AOS)
-            num_neighbors : integer, optional (default=30)
+            num_neighbors : integer, optional (default=20)
                 Number of neighbors for the Vecchia approximation
             vecchia_ordering : string, optional (default="random")
                 Ordering used in the Vecchia approximation. Available options:
@@ -4146,7 +4146,7 @@ class GPModel(object):
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
 
-                Default value if None: num_neighbors_pred=num_neighbors
+                Default value if None: num_neighbors_pred = 2 * num_neighbors
             num_ind_points : integer, optional (default=500)
                 Number of inducing points / knots for, e.g., a predictive process approximation
             matrix_inversion_method : string, optional (default="cholesky")
@@ -4206,10 +4206,10 @@ class GPModel(object):
         self.gp_approx = "none"
         self.cov_fct_taper_range = 1.
         self.cov_fct_taper_shape= 0.
-        self.num_neighbors = 30
+        self.num_neighbors = 20
         self.vecchia_ordering = "random"
         self.vecchia_pred_type = None
-        self.num_neighbors_pred = 30
+        self.num_neighbors_pred = 40
         self.num_ind_points = 500
         self.matrix_inversion_method = "cholesky"
         self.seed = 0
@@ -5107,7 +5107,7 @@ class GPModel(object):
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
 
-                Default value if None: num_neighbors_pred=num_neighbors
+                Default value if None: num_neighbors_pred = 2 * num_neighbors
             cg_delta_conv_pred : double or None, optional (default=None)
                 Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                 when being used for prediction
@@ -5438,7 +5438,7 @@ class GPModel(object):
             num_neighbors_pred : integer or None, optional (default=None)
                 Number of neighbors for the Vecchia approximation for making predictions
 
-                Default value if None: num_neighbors_pred=num_neighbors
+                Default value if None: num_neighbors_pred = 2 * num_neighbors
             cg_delta_conv_pred : double or None, optional (default=None)
                 Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                 when being used for prediction

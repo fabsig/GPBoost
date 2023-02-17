@@ -782,14 +782,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                        min_data_in_leaf = 5,
                        objective = "binary",
                        verbose = 0)
-      cov_pars_est <- c(0.1545302, 0.2631829)
+      cov_pars_est <- c(0.1786872, 0.1902082)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
       # Prediction
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                       predict_var = TRUE, pred_latent = TRUE, vecchia_pred_type = "latent_order_obs_first_cond_all")
-      expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(0.04619833, 0.35623184, 0.18040507, 0.11332755))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.10575238, 0.11288868, 0.08873115, 0.08474581))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.2586964, -0.8518375, -0.8887175, 0.3031393))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.25123649, 0.07750260, 0.19457371, 0.04771122))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.09503200, 0.10440602, 0.09169082, 0.09131758))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4060860, -0.5598213, -0.7936279, 0.5029883))),TOLERANCE)
       
       # Training with Wendland covariance
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",

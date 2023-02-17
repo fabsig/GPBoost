@@ -55,7 +55,7 @@ pred$cov # Predicted (posterior) covariance matrix of GP
 
 #--------------------Gaussian process model with Vecchia approximation----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                       vecchia_approx = TRUE, num_neighbors = 30,
+                       vecchia_approx = TRUE, num_neighbors = 20,
                        likelihood="gaussian", y = y)
 summary(gp_model)
 

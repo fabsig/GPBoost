@@ -164,7 +164,7 @@ Model specification parameters
 
    -  Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 
--  ``num_neighbors`` : integer, (default = 30)
+-  ``num_neighbors`` : integer, (default = 20)
 
    -  Number of neighbors for the Vecchia approximation
 
@@ -198,7 +198,7 @@ Model specification parameters
 
    - Number of neighbors for the Vecchia approximation for making predictions. 
 
-   - Default value if ``num_neighbors_pred`` = Null: ``num_neighbors_pred`` = ``num_neighbors``
+   - Default value if ``num_neighbors_pred`` = Null: ``num_neighbors_pred`` = 2 * ``num_neighbors``
 
 -  ``num_ind_points`` : integer, (default = 500)
 

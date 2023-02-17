@@ -61,9 +61,10 @@
 #' @param cov_fct_taper_shape A \code{numeric} specifying the shape (=smoothness) parameter 
 #' of the Wendland covariance function and Wendland correlation taper function. 
 #' We follow the notation of Bevilacqua et al. (2019, AOS)
-#' @param num_neighbors An \code{integer} specifying the number of neighbors for the Vecchia approximation
-#' @param vecchia_ordering A \code{string} specifying the ordering used in the Vecchia approximation. 
-#' Available options:
+#' @param num_neighbors An \code{integer} specifying the number of neighbors for 
+#' the Vecchia approximation
+#' @param vecchia_ordering A \code{string} specifying the ordering used in 
+#' the Vecchia approximation. Available options:
 #' #' \itemize{
 #' \item{"none": the default ordering in the data is used }
 #' \item{"random": a random ordering }
@@ -93,7 +94,7 @@
 #' ordered first for making predictions. This option is only available for Gaussian likelihoods }
 #' }
 #' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-#' for making predictions. Default value if NULL: num_neighbors_pred = num_neighbors
+#' for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors
 #' @param cg_delta_conv_pred a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
 #' checking convergence in conjugate gradient algorithm when being used for prediction
 #' @param cluster_ids A \code{vector} with elements indicating independent realizations of 
@@ -202,10 +203,10 @@ gpb.GPModel <- R6::R6Class(
                           gp_approx = "none",
                           cov_fct_taper_range = 1.,
                           cov_fct_taper_shape = 0.,
-                          num_neighbors = 30L,
+                          num_neighbors = 20L,
                           vecchia_ordering = "random",
                           vecchia_pred_type = NULL,
-                          num_neighbors_pred = num_neighbors,
+                          num_neighbors_pred = 2 * num_neighbors,
                           num_ind_points = 500L,
                           matrix_inversion_method = "cholesky",
                           seed = 0L,
@@ -1688,10 +1689,10 @@ gpb.GPModel <- R6::R6Class(
     gp_approx = "none",
     cov_fct_taper_range = 1.,
     cov_fct_taper_shape = 0.,
-    num_neighbors = 30L,
+    num_neighbors = 20L,
     vecchia_ordering = "random",
     vecchia_pred_type = NULL,
-    num_neighbors_pred = 30L,
+    num_neighbors_pred = 40L,
     num_ind_points = 500L,
     matrix_inversion_method = "cholesky",
     seed = 0L,
@@ -1868,10 +1869,10 @@ GPModel <- function(likelihood = "gaussian",
                     gp_approx = "none",
                     cov_fct_taper_range = 1.,
                     cov_fct_taper_shape = 0.,
-                    num_neighbors = 30L,
+                    num_neighbors = 20L,
                     vecchia_ordering = "random",
                     vecchia_pred_type = NULL,
-                    num_neighbors_pred = num_neighbors,
+                    num_neighbors_pred = 2 * num_neighbors,
                     num_ind_points = 500L,
                     matrix_inversion_method = "cholesky",
                     seed = 0L,
@@ -2033,7 +2034,7 @@ fit.GPModel <- function(gp_model,
 #'
 #' #--------------------Gaussian process model with Vecchia approximation----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-#'                        gp_approx = "vecchia", num_neighbors = 30,
+#'                        gp_approx = "vecchia", num_neighbors = 20,
 #'                        likelihood="gaussian", y = y)
 #' summary(gp_model)
 #'
@@ -2067,10 +2068,10 @@ fitGPModel <- function(likelihood = "gaussian",
                        gp_approx = "none",
                        cov_fct_taper_range = 1.,
                        cov_fct_taper_shape = 0.,
-                       num_neighbors = 30L,
+                       num_neighbors = 20L,
                        vecchia_ordering = "random",
                        vecchia_pred_type = NULL,
-                       num_neighbors_pred = num_neighbors,
+                       num_neighbors_pred = 2 * num_neighbors,
                        num_ind_points = 500L,
                        matrix_inversion_method = "cholesky",
                        seed = 0L,

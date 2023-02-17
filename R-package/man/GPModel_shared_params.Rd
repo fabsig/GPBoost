@@ -72,10 +72,11 @@ We follow the notation of Bevilacqua et al. (2019, AOS)}
 of the Wendland covariance function and Wendland correlation taper function. 
 We follow the notation of Bevilacqua et al. (2019, AOS)}
 
-\item{num_neighbors}{An \code{integer} specifying the number of neighbors for the Vecchia approximation}
+\item{num_neighbors}{An \code{integer} specifying the number of neighbors for 
+the Vecchia approximation}
 
-\item{vecchia_ordering}{A \code{string} specifying the ordering used in the Vecchia approximation. 
-Available options:
+\item{vecchia_ordering}{A \code{string} specifying the ordering used in 
+the Vecchia approximation. Available options:
 #' \itemize{
 \item{"none": the default ordering in the data is used }
 \item{"random": a random ordering }
@@ -110,7 +111,7 @@ ordered first for making predictions. This option is only available for Gaussian
 }}
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-for making predictions. Default value if NULL: num_neighbors_pred = num_neighbors}
+for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
 checking convergence in conjugate gradient algorithm when being used for prediction}

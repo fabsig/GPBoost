@@ -366,7 +366,7 @@ namespace GPBoost {
 					else {
 						SetVecchiaPredType(vecchia_pred_type);
 					}
-				}
+				}//end if gp_approx_ == "vecchia"
 				if (num_gp_rand_coef > 0) {//Random slopes
 					CHECK(gp_rand_coef_data != nullptr);
 					num_gp_rand_coef_ = num_gp_rand_coef;
@@ -2875,6 +2875,8 @@ namespace GPBoost {
 		string_t vecchia_ordering_ = "random";
 		/*! \brief List of supported options for orderings of the Vecchia approximation */
 		const std::set<string_t> SUPPORTED_VECCHIA_ORDERING_{ "none", "random" };
+		/*! \brief The way how neighbors are selected */
+		string_t vecchia_neighbor_selection_ = "nearest";
 		/*! \brief The number of neighbors used in the Vecchia approximation for making predictions */
 		int num_neighbors_pred_;
 		/*!
@@ -3896,7 +3898,8 @@ namespace GPBoost {
 				false)));
 			bool has_duplicates = check_has_duplicates;
 			find_nearest_neighbors_Vecchia_fast(gp_coords_mat, num_data_per_cluster[cluster_i], num_neighbors,
-				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates);
+				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates,
+				vecchia_neighbor_selection_, rng_);
 			if (check_has_duplicates) {
 				has_duplicates_coords_ = has_duplicates_coords_ || has_duplicates;
 				if (!gauss_likelihood_ && has_duplicates_coords_) {
@@ -5735,11 +5738,13 @@ namespace GPBoost {
 			bool check_has_duplicates = false;
 			if (CondObsOnly) {
 				find_nearest_neighbors_Vecchia_fast(coords_all, num_data_cli + num_data_pred_cli, num_neighbors_pred_,
-					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, num_data_cli - 1, check_has_duplicates);
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, num_data_cli - 1, check_has_duplicates,
+					vecchia_neighbor_selection_, rng_);
 			}
 			else {//find neighbors among both the observed and prediction locations
 				find_nearest_neighbors_Vecchia_fast(coords_all, num_data_cli + num_data_pred_cli, num_neighbors_pred_,
-					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, -1, check_has_duplicates);
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, -1, check_has_duplicates,
+					vecchia_neighbor_selection_, rng_);
 			}
 			//Random coefficients
 			std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_pred_cli);
@@ -5924,7 +5929,8 @@ namespace GPBoost {
 			std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_tot);
 			bool check_has_duplicates = false;
 			find_nearest_neighbors_Vecchia_fast(coords_all, num_data_tot, num_neighbors_pred_,
-				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates);
+				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
+				vecchia_neighbor_selection_, rng_);
 			//Prepare data for random coefficients
 			std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_tot);
 			if (num_gp_rand_coef_ > 0) {
@@ -6151,11 +6157,13 @@ namespace GPBoost {
 			bool check_has_duplicates = false;
 			if (CondObsOnly) {//find neighbors among both the observed locations only
 				find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred_,
-					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1, check_has_duplicates);
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1, check_has_duplicates,
+					vecchia_neighbor_selection_, rng_);
 			}
 			else {//find neighbors among both the observed and prediction locations
 				find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred_,
-					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates);
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
+					vecchia_neighbor_selection_, rng_);
 			}
 			// Determine Triplet for initializing Bpo and Bp
 			std::vector<Triplet_t> entries_init_B;

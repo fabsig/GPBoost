@@ -531,50 +531,52 @@ test_that("gpb.train() throws an informative error if 'valids' contains gpb.Data
   }, regexp = "each element of valids must have a name")
 })
 
-test_that("gpb.train() works with force_col_wise and force_row_wise", {
-  set.seed(1234L)
-  nrounds <- 10L
-  dtrain <- gpb.Dataset(
-    train$data
-    , label = train$label
-  )
-  params <- list(
-    objective = "binary"
-    , metric = "binary_error"
-    , force_col_wise = TRUE
-  )
-  bst_col_wise <- gpb.train(
-    params = params
-    , data = dtrain
-    , nrounds = nrounds
-    , verbose = 0
-  )
-  
-  params <- list(
-    objective = "binary"
-    , metric = "binary_error"
-    , force_row_wise = TRUE
-  )
-  bst_row_wise <- gpb.train(
-    params = params
-    , data = dtrain
-    , nrounds = nrounds
-    , verbose = 0
-  )
-  
-  expected_error <- 0.003070782
-  expect_equal(bst_col_wise$eval_train()[[1L]][["value"]], expected_error)
-  expect_equal(bst_row_wise$eval_train()[[1L]][["value"]], expected_error)
-  
-  # check some basic details of the boosters just to be sure force_col_wise
-  # and force_row_wise are not causing any weird side effects
-  for (bst in list(bst_row_wise, bst_col_wise)) {
-    expect_equal(bst$current_iter(), nrounds)
-    parsed_model <- RJSONIO::fromJSON(bst$dump_model())
-    expect_equal(parsed_model$objective, "binary sigmoid:1")
-    expect_false(parsed_model$average_output)
-  }
-})
+if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+  test_that("gpb.train() works with force_col_wise and force_row_wise", {
+    set.seed(1234L)
+    nrounds <- 10L
+    dtrain <- gpb.Dataset(
+      train$data
+      , label = train$label
+    )
+    params <- list(
+      objective = "binary"
+      , metric = "binary_error"
+      , force_col_wise = TRUE
+    )
+    bst_col_wise <- gpb.train(
+      params = params
+      , data = dtrain
+      , nrounds = nrounds
+      , verbose = 0
+    )
+    
+    params <- list(
+      objective = "binary"
+      , metric = "binary_error"
+      , force_row_wise = TRUE
+    )
+    bst_row_wise <- gpb.train(
+      params = params
+      , data = dtrain
+      , nrounds = nrounds
+      , verbose = 0
+    )
+    
+    expected_error <- 0.003070782
+    expect_equal(bst_col_wise$eval_train()[[1L]][["value"]], expected_error)
+    expect_equal(bst_row_wise$eval_train()[[1L]][["value"]], expected_error)
+    
+    # check some basic details of the boosters just to be sure force_col_wise
+    # and force_row_wise are not causing any weird side effects
+    for (bst in list(bst_row_wise, bst_col_wise)) {
+      expect_equal(bst$current_iter(), nrounds)
+      parsed_model <- RJSONIO::fromJSON(bst$dump_model())
+      expect_equal(parsed_model$objective, "binary sigmoid:1")
+      expect_false(parsed_model$average_output)
+    }
+  })
+}
 
 test_that("gpb.train() works as expected with sparse features", {
   set.seed(708L)

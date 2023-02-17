@@ -76,7 +76,7 @@ ordered first for making predictions. This option is only available for Gaussian
 }}
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-for making predictions. Default value if NULL: num_neighbors_pred = num_neighbors}
+for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior) 
 predictive covariance is calculated in addition to the (posterior) predictive mean}
