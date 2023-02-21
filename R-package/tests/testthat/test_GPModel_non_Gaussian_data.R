@@ -695,18 +695,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            vecchia_ordering = "none",
                                            y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = FALSE, lr_cov=0.01)), file='NUL')
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
+    capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                    predict_cov_mat = TRUE, predict_response = FALSE), file='NUL')
     expected_mu <- c(-0.6595662, -0.6638940, 0.4997690)
     expected_cov <- c(0.6482223800, 0.5765285294, -0.0001030520, 0.5765285294, 
                       0.6478190560, -0.0001163496, -0.0001030520, -0.0001163496, 0.4435550921)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     # Predict variances
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, predict_response = FALSE)
+    capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                    predict_var = TRUE, predict_response = FALSE), file='NUL')
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
     # Predict response
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE, predict_var = TRUE)
+    capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                    predict_response = TRUE, predict_var = TRUE), file='NUL')
     expected_mu_resp <- c(0.3037139, 0.3025143, 0.6612807)
     expected_var_resp <- c(0.2114718, 0.2109994, 0.2239885)
     expect_lt(sum(abs(pred$mu-expected_mu_resp)),TOLERANCE_STRICT)

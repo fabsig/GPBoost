@@ -517,7 +517,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction from fitted model
     coord_test <- cbind(c(0.1,0.10001,0.7),c(0.9,0.90001,0.55))
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE,
-                    vecchia_pred_type = "order_obs_first_cond_obs_only")
+                    vecchia_pred_type = "order_obs_first_cond_obs_only", num_neighbors_pred = 30)
     expected_mu_vecchia <- c(0.06968068, 0.06967750, 0.44208925)
     expected_cov_vecchia <- c(0.6214955, 0.0000000, 0.0000000, 0.0000000, 0.6215069,
                       0.0000000, 0.0000000, 0.0000000, 0.4199531)
@@ -537,7 +537,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Prediction from fitted model
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE,
-                    vecchia_pred_type = "order_obs_first_cond_obs_only")
+                    vecchia_pred_type = "order_obs_first_cond_obs_only", num_neighbors_pred = 30)
     expect_lt(sum(abs(pred$mu-expected_mu_vecchia)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_vecchia)),TOLERANCE_LOOSE)
     
@@ -557,7 +557,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_pred <- c(0.02,1.2,0.9)
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE,
-                    vecchia_pred_type = "order_obs_first_cond_obs_only")
+                    vecchia_pred_type = "order_obs_first_cond_obs_only", num_neighbors_pred = 30)
     expected_mu <- c(0.08665472, 0.08664854, 0.49011216)
     expected_cov <- c(0.11891, 0.00000000, 0.00000000, 0.00000000,
                       0.1189129, 0.00000000, 0.00000000, 0.00000000, 0.08108126)
@@ -572,7 +572,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction with vecchia_pred_type = "order_obs_first_cond_all"
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE,
-                    vecchia_pred_type = "order_obs_first_cond_all")
+                    vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred = 30)
     expected_mu <- c(0.08665472, 0.08661259, 0.49011216)
     expected_cov <- c(0.11891004, 0.09889262, 0.00000000, 0.09889262, 0.11891291, 
                       0.00000000, 0.00000000, 0.00000000, 0.08108126)
@@ -587,7 +587,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction with vecchia_pred_type = "order_pred_first"
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE,
-                    vecchia_pred_type = "order_pred_first")
+                    vecchia_pred_type = "order_pred_first", num_neighbors_pred = 30)
     expected_mu <- c(0.08498682, 0.08502034, 0.49572748)
     expected_cov <- c(1.189037e-01, 9.888624e-02, -1.080005e-05, 9.888624e-02, 
                       1.189065e-01, -1.079431e-05, -1.080005e-05, -1.079431e-05, 8.101757e-02)
@@ -602,7 +602,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction with vecchia_pred_type = "latent_order_obs_first_cond_obs_only"
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE,
-                    vecchia_pred_type = "latent_order_obs_first_cond_obs_only", predict_response = FALSE)
+                    vecchia_pred_type = "latent_order_obs_first_cond_obs_only", 
+                    predict_response = FALSE, num_neighbors_pred = 30)
     expected_mu <- c(0.08616985, 0.08616384, 0.48721314)
     expected_cov <- c(1.189100e-01, 7.324225e-03, -5.851427e-07, 7.324225e-03, 
                       1.189129e-01, -5.850749e-07, -5.851427e-07, -5.850750e-07, 8.107749e-02)
@@ -610,14 +611,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
     pred_var <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                         cov_pars = cov_pars_pred, predict_var = TRUE,
-                        vecchia_pred_type = "latent_order_obs_first_cond_obs_only", predict_response = FALSE)
+                        vecchia_pred_type = "latent_order_obs_first_cond_obs_only", 
+                        predict_response = FALSE, num_neighbors_pred = 30)
     expect_lt(sum(abs(pred_var$mu-expected_mu)),1E-6)
     expect_lt(sum(abs(as.vector(pred_var$var)-expected_cov[c(1,5,9)])),1E-6)
     
     # Prediction with vecchia_pred_type = "latent_order_obs_first_cond_all"
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE,
-                    vecchia_pred_type = "latent_order_obs_first_cond_all", predict_response = FALSE)
+                    vecchia_pred_type = "latent_order_obs_first_cond_all", 
+                    predict_response = FALSE, num_neighbors_pred = 30)
     expected_mu <- c(0.08616985, 0.08616377, 0.48721314)
     expected_cov <- c(1.189100e-01, 9.889258e-02, -5.851418e-07, 9.889258e-02,
                       1.189129e-01, -5.850764e-07, -5.851418e-07, -5.850764e-07, 8.107749e-02)
@@ -625,7 +628,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
     pred_var <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                         cov_pars = cov_pars_pred, predict_var = TRUE,
-                        vecchia_pred_type = "latent_order_obs_first_cond_all", predict_response = FALSE)
+                        vecchia_pred_type = "latent_order_obs_first_cond_all", 
+                        predict_response = FALSE, num_neighbors_pred = 30)
     expect_lt(sum(abs(pred_var$mu-expected_mu)),1E-6)
     expect_lt(sum(abs(as.vector(pred_var$var)-expected_cov[c(1,5,9)])),1E-6)
     
@@ -653,9 +657,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction 
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
-    pred <- predict(gp_model, gp_coords_pred = coord_test,
+    capture.output( pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_cov_mat = TRUE,
                     vecchia_pred_type = "latent_order_obs_first_cond_all", predict_response = FALSE)
+                    , file='NUL')
     expected_mu <- c(1.196952, 4.063324, 3.156427)
     expected_cov <- c(6.305383e-01, 1.358861e-05, 8.317903e-08, 1.358861e-05,
                       3.469270e-01, 2.686334e-07, 8.317903e-08, 2.686334e-07, 4.255400e-01)
@@ -696,7 +701,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                                              cluster_ids_pred = cluster_ids_pred,
                                              vecchia_pred_type = "order_obs_first_cond_all",
-                                             cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE), file='NUL')
+                                             cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE,
+                                             num_neighbors_pred = 30), file='NUL')
     expected_mu <- c(-0.01438585, 0.00000000, -0.01500132)
     expected_cov <- c(0.7430552, 0.0000000, 0.6423148, 0.0000000,
                       1.1000000, 0.0000000, 0.6423148, 0.0000000, 0.7434589)
@@ -735,9 +741,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
               capture.output( gp_model <- GPModel(gp_coords = coords_multiple, cov_function = "exponential",
                                                   gp_approx = "vecchia", num_neighbors = n+2,
                                                   vecchia_ordering = "none"), file='NUL')
-              pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+              capture.output( pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                                        vecchia_pred_type = "order_obs_first_cond_all",
-                                       cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE)
+                                       cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE), file='NUL')
               expected_mu <- c(-0.1460550, 1.0042814, 0.7840301)
               expected_cov <- c(0.6739502109, 0.0008824337, -0.0003815281, 0.0008824337,
                                 0.6060039551, -0.0004157361, -0.0003815281, -0.0004157361, 0.7851787946)
@@ -768,10 +774,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         vecchia_ordering = "none"), file='NUL')
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
-    pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+    capture.output( pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                              gp_rand_coef_data_pred=Z_SVC_test,
                              cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08),
                              predict_cov_mat = TRUE, vecchia_pred_type = "order_obs_first_cond_all")
+                    , file='NUL')
     expected_mu <- c(-0.1669209, 1.6166381, 0.2861320)
     expected_cov <- c(9.643323e-01, 3.536846e-04, -1.783557e-04, 3.536846e-04,
                       5.155009e-01, 4.554321e-07, -1.783557e-04, 4.554321e-07, 7.701614e-01)
@@ -802,7 +809,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                              gp_rand_coef_data_pred=Z_SVC_test,
                              cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08),
-                             predict_cov_mat = TRUE, vecchia_pred_type = "order_obs_first_cond_all")
+                             predict_cov_mat = TRUE, vecchia_pred_type = "order_obs_first_cond_all",
+                             num_neighbors_pred = 30)
     expected_mu <- c(-0.1688452, 1.6181756, 0.2849745)
     expected_cov <- c(0.9643376, 0.0000000, 0.0000000, 0.0000000, 0.5155030, 
                       0.0000000, 0.0000000, 0.0000000, 0.7702683)

@@ -786,7 +786,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
       # Prediction
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-                      predict_var = TRUE, pred_latent = TRUE, vecchia_pred_type = "latent_order_obs_first_cond_all")
+                      predict_var = TRUE, pred_latent = TRUE, 
+                      vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = 30)
       expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.25123649, 0.07750260, 0.19457371, 0.04771122))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.09503200, 0.10440602, 0.09169082, 0.09131758))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4060860, -0.5598213, -0.7936279, 0.5029883))),TOLERANCE)
