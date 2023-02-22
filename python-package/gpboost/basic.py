@@ -5199,18 +5199,24 @@ class GPModel(object):
         num_data_pred = 0
         if not use_saved_data:
             # Set data for grouped random effects
-            if group_data_pred is not None:
-                group_data_pred, not_used = _format_check_data(data=group_data_pred, get_variable_names=False,
-                                                               data_name="group_data_pred", check_data_type=False,
-                                                               convert_to_type=None)
-                if group_data_pred.shape[1] != self.num_group_re:
-                    raise ValueError("Number of grouped random effects in group_data_pred is not correct")
-                num_data_pred = group_data_pred.shape[0]
-                group_data_pred_c = group_data_pred.astype(np.dtype(str))
-                group_data_pred_c = group_data_pred_c.flatten(order='F')
-                group_data_pred_c = string_array_c_str(group_data_pred_c)
-                # Set data for grouped random coefficients
-                if group_rand_coef_data_pred is not None:
+            if self.num_group_re > 0:
+                if group_data_pred is None:
+                    raise ValueError("The argument 'group_data_pred' is missing")
+                else:
+                    group_data_pred, not_used = _format_check_data(data=group_data_pred, get_variable_names=False,
+                                                                   data_name="group_data_pred", check_data_type=False,
+                                                                   convert_to_type=None)
+                    if group_data_pred.shape[1] != self.num_group_re:
+                        raise ValueError("Number of grouped random effects in group_data_pred is not correct")
+                    num_data_pred = group_data_pred.shape[0]
+                    group_data_pred_c = group_data_pred.astype(np.dtype(str))
+                    group_data_pred_c = group_data_pred_c.flatten(order='F')
+                    group_data_pred_c = string_array_c_str(group_data_pred_c)
+            # Set data for grouped random coefficients
+            if self.num_group_rand_coef > 0:
+                if group_rand_coef_data_pred is None:
+                    raise ValueError("The argument 'group_rand_coef_data_pred' is missing")
+                else:
                     group_rand_coef_data_pred, not_used = _format_check_data(data=group_rand_coef_data_pred,
                                                                              get_variable_names=False,
                                                                              data_name="group_rand_coef_data_pred",
@@ -5222,22 +5228,28 @@ class GPModel(object):
                         raise ValueError("Incorrect number of covariates in group_rand_coef_data_pred")
                     group_rand_coef_data_pred_c, _, _ = c_float_array(group_rand_coef_data_pred.flatten(order='F'))
             # Set data for Gaussian process
-            if gp_coords_pred is not None:
-                gp_coords_pred, not_used = _format_check_data(data=gp_coords_pred,
-                                                              get_variable_names=False,
-                                                              data_name="gp_coords_pred",
-                                                              check_data_type=True,
-                                                              convert_to_type=np.float64)
-                if num_data_pred == 0:
-                    num_data_pred = gp_coords_pred.shape[0]
+            if self.num_gp > 0:
+                if gp_coords_pred is None:
+                    raise ValueError("The argument 'gp_coords_pred' is missing")
                 else:
-                    if gp_coords_pred.shape[0] != num_data_pred:
-                        raise ValueError("Incorrect number of data points in gp_coords_pred")
-                if gp_coords_pred.shape[1] != self.dim_coords:
-                    raise ValueError("Incorrect dimension / number of coordinates (=features) in gp_coords_pred")
-                gp_coords_pred_c, _, _ = c_float_array(gp_coords_pred.flatten(order='F'))
-                # Set data for GP random coefficients
-                if gp_rand_coef_data_pred is not None:
+                    gp_coords_pred, not_used = _format_check_data(data=gp_coords_pred,
+                                                                  get_variable_names=False,
+                                                                  data_name="gp_coords_pred",
+                                                                  check_data_type=True,
+                                                                  convert_to_type=np.float64)
+                    if num_data_pred == 0:
+                        num_data_pred = gp_coords_pred.shape[0]
+                    else:
+                        if gp_coords_pred.shape[0] != num_data_pred:
+                            raise ValueError("Incorrect number of data points in gp_coords_pred")
+                    if gp_coords_pred.shape[1] != self.dim_coords:
+                        raise ValueError("Incorrect dimension / number of coordinates (=features) in gp_coords_pred")
+                    gp_coords_pred_c, _, _ = c_float_array(gp_coords_pred.flatten(order='F'))
+            # Set data for GP random coefficients
+            if self.num_gp_rand_coef > 0:
+                if gp_rand_coef_data_pred is None:
+                    raise ValueError("The argument 'gp_rand_coef_data_pred' is missing")
+                else:
                     gp_rand_coef_data_pred, not_used = _format_check_data(data=gp_rand_coef_data_pred,
                                                                           get_variable_names=False,
                                                                           data_name="gp_rand_coef_data_pred",

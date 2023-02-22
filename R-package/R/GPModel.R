@@ -1138,29 +1138,37 @@ gpb.GPModel <- R6::R6Class(
       if (!use_saved_data) {
         num_data_pred <- 0
         # Set data for grouped random effects
-        if (!is.null(group_data_pred)) {
-          # Check for correct format and set meta data
-          if (!(is.data.frame(group_data_pred) | is.matrix(group_data_pred) |
-                is.numeric(group_data_pred) | is.character(group_data_pred) |
-                is.factor(group_data_pred))) {
-            stop("predict.GPModel: Can only use the following types for as ", sQuote("group_data_pred"), ": ",
-                 sQuote("data.frame"), ", ", sQuote("matrix"), ", ", sQuote("character"),
-                 ", ", sQuote("numeric"), ", ", sQuote("factor"))
+        if (private$num_group_re > 0) {
+          if (is.null(group_data_pred)) {
+            stop("predict.GPModel: the argument ", sQuote("group_data_pred"), " is missing")
+          } else {
+            # Check for correct format and set meta data
+            if (!(is.data.frame(group_data_pred) | is.matrix(group_data_pred) |
+                  is.numeric(group_data_pred) | is.character(group_data_pred) |
+                  is.factor(group_data_pred))) {
+              stop("predict.GPModel: Can only use the following types for as ", sQuote("group_data_pred"), ": ",
+                   sQuote("data.frame"), ", ", sQuote("matrix"), ", ", sQuote("character"),
+                   ", ", sQuote("numeric"), ", ", sQuote("factor"))
+            }
+            if (is.data.frame(group_data_pred) | is.numeric(group_data_pred) |
+                is.character(group_data_pred) | is.factor(group_data_pred)) {
+              group_data_pred <- as.matrix(group_data_pred)
+            }
+            if (dim(group_data_pred)[2] != private$num_group_re) {
+              stop("predict.GPModel: Number of grouped random effects in ", sQuote("group_data_pred"), " does not correspond to the number of random effects in the training data")
+            }
+            num_data_pred <- as.integer(dim(group_data_pred)[1])
+            group_data_pred <- as.vector(group_data_pred)
+            group_data_pred_unique <- unique(group_data_pred)
+            group_data_pred_unique_c_str <- lapply(group_data_pred_unique,gpb.c_str)
+            group_data_pred_c_str <- unlist(group_data_pred_unique_c_str[match(group_data_pred,group_data_pred_unique)])
           }
-          if (is.data.frame(group_data_pred) | is.numeric(group_data_pred) |
-              is.character(group_data_pred) | is.factor(group_data_pred)) {
-            group_data_pred <- as.matrix(group_data_pred)
-          }
-          if (dim(group_data_pred)[2] != private$num_group_re) {
-            stop("predict.GPModel: Number of grouped random effects in ", sQuote("group_data_pred"), " does not correspond to the number of random effects in the training data")
-          }
-          num_data_pred <- as.integer(dim(group_data_pred)[1])
-          group_data_pred <- as.vector(group_data_pred)
-          group_data_pred_unique <- unique(group_data_pred)
-          group_data_pred_unique_c_str <- lapply(group_data_pred_unique,gpb.c_str)
-          group_data_pred_c_str <- unlist(group_data_pred_unique_c_str[match(group_data_pred,group_data_pred_unique)])
-          # Set data for grouped random coefficients
-          if (!is.null(group_rand_coef_data_pred)) {
+        } # End set data for grouped random coefficients
+        # Set data for grouped random coefficients
+        if (private$num_group_rand_coef > 0) {
+          if (is.null(group_rand_coef_data_pred)) {
+            stop("predict.GPModel: the argument ", sQuote("group_rand_coef_data_pred"), " is missing")
+          } else {
             if (is.numeric(group_rand_coef_data_pred)) {
               group_rand_coef_data_pred <- as.matrix(group_rand_coef_data_pred)
             }
@@ -1178,33 +1186,41 @@ gpb.GPModel <- R6::R6Class(
               stop("predict.GPModel: Number of covariates in ", sQuote("group_rand_coef_data_pred"), " is not correct")
             }
             group_rand_coef_data_pred <- as.vector(matrix(group_rand_coef_data_pred))
-          } # End set data for grouped random coefficients
+          }
         } # End set data for grouped random coefficients
         # Set data for Gaussian process
-        if (!is.null(gp_coords_pred)) {
-          if (is.numeric(gp_coords_pred)) {
-            gp_coords_pred <- as.matrix(gp_coords_pred)
-          }
-          if (is.matrix(gp_coords_pred)) {
-            if (storage.mode(gp_coords_pred) != "double") {
-              storage.mode(gp_coords_pred) <- "double"
-            }
+        if (private$num_gp > 0) {
+          if (is.null(gp_coords_pred)) {
+            stop("predict.GPModel: the argument ", sQuote("gp_coords_pred"), " is missing")
           } else {
-            stop("predict.GPModel: Can only use ", sQuote("matrix"), " as ", sQuote("gp_coords_pred"))
-          }
-          if (num_data_pred != 0) {
-            if (dim(gp_coords_pred)[1] != num_data_pred) {
-              stop("predict.GPModel: Number of data points in ", sQuote("gp_coords_pred"), " does not match number of data points in ", sQuote("group_data_pred"))
+            if (is.numeric(gp_coords_pred)) {
+              gp_coords_pred <- as.matrix(gp_coords_pred)
             }
+            if (is.matrix(gp_coords_pred)) {
+              if (storage.mode(gp_coords_pred) != "double") {
+                storage.mode(gp_coords_pred) <- "double"
+              }
+            } else {
+              stop("predict.GPModel: Can only use ", sQuote("matrix"), " as ", sQuote("gp_coords_pred"))
+            }
+            if (num_data_pred != 0) {
+              if (dim(gp_coords_pred)[1] != num_data_pred) {
+                stop("predict.GPModel: Number of data points in ", sQuote("gp_coords_pred"), " does not match number of data points in ", sQuote("group_data_pred"))
+              }
+            } else {
+              num_data_pred <- as.integer(dim(gp_coords_pred)[1])
+            }
+            if (dim(gp_coords_pred)[2] != private$dim_coords) {
+              stop("predict.GPModel: Dimension / number of coordinates in ", sQuote("gp_coords_pred"), " is not correct")
+            }
+            gp_coords_pred <- as.vector(matrix(gp_coords_pred))
+          }
+        } # End set data for Gaussian process
+        # Set data for GP random coefficients
+        if (private$num_gp_rand_coef > 0) {
+          if (is.null(gp_rand_coef_data_pred)) {
+            stop("predict.GPModel: the argument ", sQuote("gp_rand_coef_data_pred"), " is missing")
           } else {
-            num_data_pred <- as.integer(dim(gp_coords_pred)[1])
-          }
-          if (dim(gp_coords_pred)[2] != private$dim_coords) {
-            stop("predict.GPModel: Dimension / number of coordinates in ", sQuote("gp_coords_pred"), " is not correct")
-          }
-          gp_coords_pred <- as.vector(matrix(gp_coords_pred))
-          # Set data for GP random coefficients
-          if (!is.null(gp_rand_coef_data_pred)) {
             if (is.numeric(gp_rand_coef_data_pred)) {
               gp_rand_coef_data_pred <- as.matrix(gp_rand_coef_data_pred)
             }
@@ -1222,8 +1238,8 @@ gpb.GPModel <- R6::R6Class(
               stop("predict.GPModel: Number of covariates in ", sQuote("gp_rand_coef_data_pred"), " is not correct")
             }
             gp_rand_coef_data_pred <- as.vector(matrix(gp_rand_coef_data_pred))
-          } # End set data for GP random coefficients
-        } # End set data for Gaussian process
+          }
+        } # End set data for GP random coefficients
         # Set data for linear fixed-effects
         if(private$has_covariates){
           if(is.null(X_pred)){
