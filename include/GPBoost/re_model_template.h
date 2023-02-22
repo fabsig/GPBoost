@@ -2506,6 +2506,7 @@ namespace GPBoost {
 			double mean = 0;
 			double var = 0;
 			int ind_par;
+			double init_marg_var = 1.;
 			if (gauss_likelihood_) {
 				//determine initial value for nugget effect
 #pragma omp parallel for schedule(static) reduction(+:mean)
@@ -2523,12 +2524,16 @@ namespace GPBoost {
 			}//end Gaussian data
 			else {//non-Gaussian data
 				ind_par = 0;
+				if (optimizer_cov_pars_ == "nelder_mead") {
+					init_marg_var = 0.1;
+				}
+				//TODO: find better initial values depending on the likelihood (e.g., poisson, gamma, etc.)
 			}
 			if (gp_approx_ == "vecchia") {//Neither distances nor coordinates are saved for random coefficient GPs in the Vecchia approximation -> cannot find initial parameters -> just copy the ones from the intercept GP
 				// find initial values for intercept process
 				int num_par_j = ind_par_[1] - ind_par_[0];
 				vec_t pars = vec_t(num_par_j);
-				re_comps_[unique_clusters_[0]][0]->FindInitCovPar(rng_, pars);
+				re_comps_[unique_clusters_[0]][0]->FindInitCovPar(rng_, pars, init_marg_var);
 				for (int jj = 0; jj < num_par_j; ++jj) {
 					init_cov_pars[ind_par] = pars[jj];
 					ind_par++;
@@ -2546,7 +2551,8 @@ namespace GPBoost {
 				for (int j = 0; j < num_comps_total_; ++j) {
 					int num_par_j = ind_par_[j + 1] - ind_par_[j];
 					vec_t pars = vec_t(num_par_j);
-					re_comps_[unique_clusters_[0]][j]->FindInitCovPar(rng_, pars);
+					re_comps_[unique_clusters_[0]][j]->FindInitCovPar(rng_, pars, init_marg_var);
+					//TODO (low priority): find better initial estimates for grouped random effects for Gaussian likelihoods (as e.g. the variance of the group means)
 					for (int jj = 0; jj < num_par_j; ++jj) {
 						init_cov_pars[ind_par] = pars[jj];
 						ind_par++;

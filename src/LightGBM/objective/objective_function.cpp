@@ -112,8 +112,8 @@ void ObjectiveFunction::InitGPModel(REModel* re_model,
     train_gp_model_cov_pars_ = train_gp_model_cov_pars;
     use_gp_model_for_validation_ = use_gp_model_for_validation;
     if (!(re_model_->GaussLikelihood())) {
-        re_model->SetY(label);
-        re_model->InitializeCovParsIfNotDefined(nullptr);
+        re_model_->SetY(label);
+        re_model_->InitializeCovParsIfNotDefined(nullptr);
         likelihood_type_ = re_model_->GetLikelihood();
     }
 }

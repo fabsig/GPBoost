@@ -1052,18 +1052,23 @@ namespace GPBoost {
 
 	void REModel::InitializeCovParsIfNotDefined(const double* y_data) {
 		if (!cov_pars_initialized_) {
-			cov_pars_ = vec_t(num_cov_pars_);
-			if (matrix_format_ == "sp_mat_t") {
-				re_model_sp_->FindInitCovPar(y_data, cov_pars_.data());
-			}
-			else if (matrix_format_ == "sp_mat_rm_t") {
-				re_model_sp_rm_->FindInitCovPar(y_data, cov_pars_.data());
+			if (init_cov_pars_provided_) {
+				cov_pars_ = init_cov_pars_;
 			}
 			else {
-				re_model_den_->FindInitCovPar(y_data, cov_pars_.data());
+				cov_pars_ = vec_t(num_cov_pars_);
+				if (matrix_format_ == "sp_mat_t") {
+					re_model_sp_->FindInitCovPar(y_data, cov_pars_.data());
+				}
+				else if (matrix_format_ == "sp_mat_rm_t") {
+					re_model_sp_rm_->FindInitCovPar(y_data, cov_pars_.data());
+				}
+				else {
+					re_model_den_->FindInitCovPar(y_data, cov_pars_.data());
+				}
+				covariance_matrix_has_been_factorized_ = false;
+				init_cov_pars_ = cov_pars_;
 			}
-			covariance_matrix_has_been_factorized_ = false;
-			init_cov_pars_ = cov_pars_;
 			cov_pars_initialized_ = true;
 		}
 	}

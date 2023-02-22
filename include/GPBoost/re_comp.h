@@ -74,9 +74,11 @@ namespace GPBoost {
 		* \brief Find "reasonable" default values for the intial values of the covariance parameters (on transformed scale)
 		* \param rng Random number generator
 		* \param[out] pars Vector with covariance parameters
+		* \param marginal_variance Initial value for marginal variance
 		*/
 		virtual void FindInitCovPar(RNG_t& rng,
-			vec_t& pars) const = 0;
+			vec_t& pars,
+			double marginal_variance) const = 0;
 
 		/*!
 		* \brief Virtual function that calculates Sigma (not needed for grouped REs, at unique locations for GPs)
@@ -357,10 +359,12 @@ namespace GPBoost {
 		* \brief Find "reasonable" default values for the intial values of the covariance parameters (on transformed scale)
 		* \param rng Random number generator
 		* \param[out] pars Vector of length 1 with variance of the grouped random effect
+		* \param marginal_variance Initial value for marginal variance
 		*/
 		void FindInitCovPar(RNG_t&, 
-			vec_t& pars) const override {//TODO: find better initial estimates (as e.g. the variance of the group means)
-			pars[0] = 1;
+			vec_t& pars,
+			double marginal_variance) const override {
+			pars[0] = marginal_variance;
 		}
 
 		/*!
@@ -989,13 +993,15 @@ namespace GPBoost {
 		* \brief Find "reasonable" default values for the intial values of the covariance parameters (on transformed scale)
 		* \param rng Random number generator
 		* \param[out] pars Vector with covariance parameters
+		* \param marginal_variance Initial value for marginal variance
 		*/
 		void FindInitCovPar(RNG_t& rng,
-			vec_t& pars) const override {
+			vec_t& pars,
+			double marginal_variance) const override {
 			if (!dist_saved_ && !coord_saved_) {
 				Log::REFatal("Cannot determine initial covariance parameters if neither distances nor coordinates are given");
 			}
-			cov_function_->FindInitCovPar<T_mat>(*dist_, coords_, dist_saved_, rng,  pars);
+			cov_function_->FindInitCovPar<T_mat>(*dist_, coords_, dist_saved_, rng,  pars, marginal_variance);
 		}//end FindInitCovPar
 
 		/*!

@@ -71,15 +71,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
   lines(X_test_plot[,1],pred$fixed_effect,col=4,lwd=3)
   lines(X_test_plot[,1],pred_prob,col=3,lwd=3)
   legend(legend=c("True","Pred F","Pred p"),"bottomright",bty="n",lwd=3,col=c(2,4,3))
-  
+ 
   # ## Compare to standard, independent boosting
   # bst_std <- gpboost(data = sim_data$X, label = y,verbose=0,
   #                objective = "binary", nrounds=200, learning_rate=learning_rate,
   #                train_gp_model_cov_pars=FALSE, min_data_in_leaf=min_data_in_leaf)
   # pred <- predict(bst_std, data = X_test_plot, pred_latent=TRUE)
   # lines(X_test_plot[,1],pred,col=5,lwd=3, lty=2)
-  
-  
+
   
   # Avoid that long tests get executed on CRAN
   if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
@@ -433,7 +432,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Training using Nelder-Mead
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6))
+      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6,
+                                            init_cov_pars = c(1,1)))
       bst <- gpboost(data = X_train,
                      label = y_train,
                      gp_model = gp_model,
@@ -654,7 +654,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Training using Nelder-Mead
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6))
+      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6,
+                                            init_cov_pars = 1))
       bst <- gpboost(data = X_train,
                      label = y_train,
                      gp_model = gp_model,
@@ -826,13 +827,13 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                        min_data_in_leaf = 5,
                        objective = "binary",
                        verbose = 0)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.1633442)),TOLERANCE)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.1626625 )),TOLERANCE)
       # Prediction
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                       predict_var = TRUE, pred_latent = TRUE)
-      expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.26069987, -0.04457552, 0.19229076, 0.15268263))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.1364151, 0.1208361, 0.1170151, 0.1250687))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4510624, -0.6160705, -0.5842803, 0.4796462))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.25745441, -0.04200966, 0.19468910, 0.15492142))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.1359487, 0.1204699, 0.1166453, 0.1246189))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4443580, -0.6230536, -0.5912199, 0.4729334))),TOLERANCE)
       
       # Tapering
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",

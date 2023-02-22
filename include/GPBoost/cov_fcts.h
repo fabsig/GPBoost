@@ -693,14 +693,16 @@ namespace GPBoost {
 		* \param use_distances If true, 'dist' is used, otherwise 'coords' is used
 		* \param rng Random number generator
 		* \param[out] pars Vector with covariance parameters
+		* \param marginal_variance Initial value for marginal variance
 		*/
 		template <typename T_mat>
 		void FindInitCovPar(const T_mat& dist,
 			const den_mat_t& coords,
 			bool use_distances,
 			RNG_t& rng,
-			vec_t& pars) const {
-			pars[0] = 1;// marginal variance
+			vec_t& pars,
+			double marginal_variance) const {
+			pars[0] = marginal_variance;// marginal variance
 			if (cov_fct_type_ != "wendland") {
 				// range parameter
 				int MAX_POINTS_INIT_RANGE = 1000;//limit number of samples considered to save computational time
