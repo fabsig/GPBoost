@@ -74,8 +74,8 @@ bst = gpb.train(params=params,
 # Estimated random effects model (variances of random effects and range parameters)
 gp_model_ar1.summary()
 cov_pars = gp_model_ar1.get_cov_pars()
-phi_hat = np.exp(-1/cov_pars[3])
-sigma2_hat = cov_pars[2] * (1. - phi_hat ** 2)
+phi_hat = np.exp(-1 / cov_pars['GP_range'][0])
+sigma2_hat = cov_pars['GP_var'][0] * (1. - phi_hat ** 2)
 print("Estimated innovation variance and AR(1) coefficient of year effect:")
 print([sigma2_hat ,phi_hat])
 
@@ -98,8 +98,8 @@ bst = gpb.train(params=params,
 # Estimated random effects model (variances of random effects and range parameters)
 gp_model_ar1.summary()
 cov_pars = gp_model_ar1.get_cov_pars()
-phi_hat = np.exp(-1/cov_pars[3])
-sigma2_hat = cov_pars[2] * (1. - phi_hat ** 2)
+phi_hat = np.exp(-1 / cov_pars['GP_range'][0])
+sigma2_hat = cov_pars['GP_var'][0] * (1. - phi_hat ** 2)
 print("Estimated innovation variance and AR(1) coefficient of year effect:")
 print([sigma2_hat ,phi_hat])
 
