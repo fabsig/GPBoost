@@ -125,10 +125,10 @@ Rscript build_r.R
 
 The `build_r.R` script builds the package in a temporary directory called `gpboost_r`. It will destroy and recreate that directory each time you run the script. That script supports the following command-line options:
 
-- `--skip-install`: Build the package tarball, but do not install it.
-- `--use-mingw`: Force the use of MinGW toolchain, regardless of R version.
-- `--use-msys2`: Force the use of MSYS2 toolchain, regardless of R version.
-<-- - `--use-gpu`: Build a GPU-enabled version of the library. -->
+- `--skip-install`: Build the package tarball, but do not install it
+- `--use-mingw`: Force the use of MinGW toolchain, regardless of R version
+- `--use-msys2`: Force the use of MSYS2 toolchain, regardless of R version
+<!-- - `--use-gpu`: Build a GPU-enabled version of the library -->
 
 Note: for the build with Visual Studio/VS Build Tools in Windows, you should use the Windows CMD or PowerShell.
 
@@ -138,4 +138,4 @@ There is currently no integration service set up that automatically runs unit te
 ```R
 Sys.setenv(GPBOOST_ALL_TESTS = "GPBOOST_ALL_TESTS")
 ```
-before runing the tests in the `R-package/tests/testthat` directory.
+before running the tests in the `R-package/tests/testthat` directory.
