@@ -2769,7 +2769,9 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	bool reuse_rand_vec_trace,
 	const char* cg_preconditioner_type,
 	int seed_rand_vec_trace,
-	int piv_chol_rank) {
+	int piv_chol_rank,
+	double* init_aux_pars,
+	bool estimate_aux_pars) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetOptimConfig(init_cov_pars,
@@ -2796,7 +2798,9 @@ int GPB_SetOptimConfig(REModelHandle handle,
 		reuse_rand_vec_trace,
 		cg_preconditioner_type,
 		seed_rand_vec_trace,
-		piv_chol_rank);
+		piv_chol_rank,
+		init_aux_pars,
+		estimate_aux_pars);
 	API_END();
 }
 
@@ -3010,5 +3014,32 @@ int GPB_GetCovariateData(REModelHandle handle,
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->GetCovariateData(covariate_data);
+	API_END();
+}
+
+int GPB_GetAuxPars(REModelHandle handle,
+	double* aux_pars,
+	char* out_str) {
+	API_BEGIN();
+	std::string name;
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->GetAuxPars(aux_pars, name);
+	std::memcpy(out_str, name.c_str(), name.size() + 1);
+	API_END();
+}
+
+int GPB_GetNumAuxPars(BoosterHandle handle,
+	int* num_aux_pars) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	num_aux_pars[0] = ref_remodel->NumAuxPars();
+	API_END();
+}
+
+int GPB_GetInitAuxPars(REModelHandle handle,
+	double* aux_pars) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->GetInitAuxPars(aux_pars);
 	API_END();
 }

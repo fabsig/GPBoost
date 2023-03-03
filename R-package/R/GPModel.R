@@ -5,7 +5,7 @@
 #' @name GPModel_shared_params
 #' @title Documentation for parameters shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}
 #' @description Documentation for parameters shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}
-#' @param likelihood A \code{string} specifying the likelihood function (distribution) of the response variable.
+#' @param likelihood A \code{string} specifying the likelihood function (distribution) of the response variable. 
 #' Available options:
 #' \itemize{
 #' \item{ "gaussian" }
@@ -71,7 +71,7 @@
 #' }
 #' @param num_ind_points An \code{integer} specifying the number of inducing 
 #' points / knots for, e.g., a predictive process approximation
-#' @param matrix_inversion_method A \code{string} specifying the method used for inverting covariance matrices
+#' @param matrix_inversion_method A \code{string} specifying the method used for inverting covariance matrices. 
 #' Available options:
 #' \itemize{
 #' \item{"cholesky": Cholesky factorization }
@@ -79,7 +79,7 @@
 #' @param seed An \code{integer} specifying the seed used for model creation 
 #' (e.g., random ordering in Vecchia approximation)
 #' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions.
-#' Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only"
+#' Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
 #' Available options:
 #' \itemize{
 #' \item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
@@ -146,7 +146,12 @@
 #'                optimization is printed. Default = FALSE}
 #'                \item{std_dev: If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
 #'                (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
-#'                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
+#'                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods). 
+#'                Default = TRUE}
+#'                \item{init_aux_pars: Initial values for additional parameters for non-Gaussian likelihoods 
+#'                (e.g., shape parameter of gamma likelihood). Default = NULL}
+#'                \item{estimate_aux_pars: If TRUE, additional parameters for non-Gaussian likelihoods 
+#'                are also estimated (e.g., shape parameter of gamma likelihood). Default = TRUE}
 #'            }
 #' @param fixed_effects A \code{vector} of optional external fixed effects which are held fixed during training. 
 #' @param group_data_pred A \code{vector} or \code{matrix} with elements being group levels 
@@ -574,7 +579,7 @@ gpb.GPModel <- R6::R6Class(
         private$gp_rand_coef_data <- NULL
         private$cluster_ids <- NULL
       }
-      if (!is.null(modelfile)){
+      if (!is.null(modelfile)) {
         self$set_optim_params(params = model_list[["params"]])
       }
     }, # End initialize
@@ -681,7 +686,10 @@ gpb.GPModel <- R6::R6Class(
     },
     
     # Evaluate the negative log-likelihood
-    neg_log_likelihood = function(cov_pars, y, fixed_effects = NULL) {
+    neg_log_likelihood = function(cov_pars, 
+                                  y, 
+                                  fixed_effects = NULL,
+                                  aux_pars = NULL) {
       if (gpb.is.null.handle(private$handle)) {
         stop("GPModel: Gaussian process model has not been initialized")
       }
@@ -731,6 +739,9 @@ gpb.GPModel <- R6::R6Class(
           stop("GPModel.neg_log_likelihood: Length of ", sQuote("fixed_effects"), " does not match number of observed data points")
         }
       }# end fixed_effects
+      if (!is.null(aux_pars)) {
+        self$set_optim_params(params = list(init_aux_pars = aux_pars))
+      }
       negll <- 0.
       .Call(
         GPB_EvalNegLogLikelihood_R
@@ -762,6 +773,10 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(params[["optimizer_coef"]])) {
         optimizer_coef_c_str <- params[["optimizer_coef"]]
       }
+      init_aux_pars <- NULL
+      if (!is.null(params[["init_aux_pars"]])) {
+        init_aux_pars <- params[["init_aux_pars"]]
+      }
       .Call(
         GPB_SetOptimConfig_R
         , private$handle
@@ -790,6 +805,8 @@ gpb.GPModel <- R6::R6Class(
         , private$params[["cg_preconditioner_type"]]
         , private$params[["seed_rand_vec_trace"]]
         , private$params[["piv_chol_rank"]]
+        , init_aux_pars
+        , private$params[["estimate_aux_pars"]]
       )
       return(invisible(self))
     },
@@ -814,9 +831,23 @@ gpb.GPModel <- R6::R6Class(
       )
       if (sum(abs(init_cov_pars - rep(-1,private$num_cov_pars))) < 1E-6) {
         params["init_cov_pars"] <- list(NULL)
-      }
-      else{
+      } else {
         params$init_cov_pars <- init_cov_pars
+      }
+      if (self$get_num_aux_pars() > 0) {
+        init_aux_pars <- numeric(self$get_num_aux_pars())
+        .Call(
+          GPB_GetInitAuxPars_R
+          , private$handle
+          , init_aux_pars
+        )
+        if (sum(abs(init_aux_pars - rep(-1,self$get_num_aux_pars()))) < 1E-6) {
+          params["init_aux_pars"] <- list(NULL)
+        } else {
+          params$init_aux_pars <- init_aux_pars
+        }
+      } else {
+        params["init_aux_pars"] <- list(NULL)
       }
       return(params)
     },
@@ -874,6 +905,26 @@ gpb.GPModel <- R6::R6Class(
         }
       }
       return(coef)
+    },
+    
+    get_aux_pars = function() {
+      if (private$model_has_been_loaded_from_saved_file) {
+        aux_pars <- private$cov_pars_loaded_from_file
+      } else {
+        num_aux_pars <- self$get_num_aux_pars()
+        if (num_aux_pars > 0) {
+          aux_pars <- numeric(num_aux_pars)
+          aux_pars_name <- .Call(
+            GPB_GetAuxPars_R
+            , private$handle
+            , aux_pars
+          )
+          names(aux_pars) <- rep(aux_pars_name, num_aux_pars)
+        } else {
+          aux_pars <- NULL
+        }
+      }
+      return(aux_pars)
     },
     
     set_prediction_data = function(group_data_pred = NULL,
@@ -1509,6 +1560,16 @@ gpb.GPModel <- R6::R6Class(
       return(num_it)
     },
     
+    get_num_aux_pars = function() {
+      num_aux_pars <- integer(1)
+      .Call(
+        GPB_GetNumAuxPars_R
+        , private$handle
+        , num_aux_pars
+      )
+      return(num_aux_pars)
+    },
+    
     get_current_neg_log_likelihood = function() {
       negll <- 0.
       .Call(
@@ -1587,13 +1648,16 @@ gpb.GPModel <- R6::R6Class(
         model_list[["num_coef"]] <- private$num_coef
         model_list[["X"]] <- self$get_covariate_data()
       }
+      # Additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+      model_list[["params"]]["init_aux_pars"] <- self$get_aux_pars()
+      # Note: for simplicity, this is put into 'init_aux_pars'. When loading the model, 'init_aux_pars' are correctly set
       model_list[["model_fitted"]] <- private$model_fitted
       # Make sure that data is saved in correct format by RJSONIO::toJSON
       MAYBE_CONVERT_TO_VECTOR <- c("cov_pars","group_data", "group_rand_coef_data",
                                    "gp_coords", "gp_rand_coef_data",
                                    "ind_effect_group_rand_coef",
                                    "drop_intercept_group_rand_effect",
-                                   "cluster_ids","coefs","X","nb_groups")
+                                   "cluster_ids","coefs","X","nb_groups", "aux_pars")
       for (feature in MAYBE_CONVERT_TO_VECTOR) {
         if (!is.null(model_list[[feature]])) {
           if (is.vector(model_list[[feature]])) {
@@ -1673,8 +1737,16 @@ gpb.GPModel <- R6::R6Class(
           print(round(coefs,4))
         }
       }
+      if (self$get_num_aux_pars() > 0) {
+        aux_pars <- self$get_aux_pars()
+        aux_pars <- t(t(aux_pars))
+        colnames(aux_pars) <- "Param."
+        cat("-----------------------------------------------------\n")
+        cat("Additional parameters:\n")
+        print(round(aux_pars,4))
+      }
       if (private$params$maxit == self$get_num_optim_iter()) {
-        cat("\n")
+        cat("-----------------------------------------------------\n")
         cat("Note: no convergence after the maximal number of iterations\n")
       }
       cat("=====================================================\n")
@@ -1746,7 +1818,8 @@ gpb.GPModel <- R6::R6Class(
                   reuse_rand_vec_trace = TRUE,
                   cg_preconditioner_type = "none",
                   seed_rand_vec_trace = 0L,
-                  piv_chol_rank = 100L),
+                  piv_chol_rank = 100L,
+                  estimate_aux_pars = TRUE),
     
     determine_num_cov_pars = function(likelihood) {
       if (private$cov_function == "wendland") {
@@ -1775,7 +1848,8 @@ gpb.GPModel <- R6::R6Class(
                           "piv_chol_rank")
       character_params <- c("optimizer_cov", "convergence_criterion",
                             "optimizer_coef", "cg_preconditioner_type")
-      logical_params <- c("use_nesterov_acc", "trace", "std_dev", "reuse_rand_vec_trace")
+      logical_params <- c("use_nesterov_acc", "trace", "std_dev", 
+                          "reuse_rand_vec_trace", "estimate_aux_pars")
       if (!is.null(params[["init_cov_pars"]])) {
         if (is.vector(params[["init_cov_pars"]])) {
           if (storage.mode(params[["init_cov_pars"]]) != "double") {
@@ -1806,6 +1880,19 @@ gpb.GPModel <- R6::R6Class(
           stop("GPModel: Number of parameters in ", sQuote("init_coef"), " does not correspond to numbers of covariates in ", sQuote("X"))
         }
       }
+      if (!is.null(params[["init_aux_pars"]])) {
+        if (is.vector(params[["init_aux_pars"]])) {
+          if (storage.mode(params[["init_aux_pars"]]) != "double") {
+            storage.mode(params[["init_aux_pars"]]) <- "double"
+          }
+          params[["init_aux_pars"]] <- as.vector(params[["init_aux_pars"]])
+        } else {
+          stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("params$init_aux_pars"))
+        }
+        if (length(params[["init_aux_pars"]]) != self$get_num_aux_pars()) {
+          stop("GPModel: Number of parameters in ", sQuote("params$init_aux_pars"), " is not correct ")
+        }
+      }
       ## Update private$params
       for (param in names(params)) {
         if (param %in% numeric_params & !is.null(params[[param]])) {
@@ -1831,7 +1918,8 @@ gpb.GPModel <- R6::R6Class(
             private$params[[param]] <- params[[param]]
           }
         }
-        else if (!(param %in% c("optimizer_cov", "init_cov_pars", "optimizer_coef"))){
+        else if (!(param %in% c("optimizer_cov", "init_cov_pars", 
+                                "optimizer_coef", "init_aux_pars"))){
           stop(paste0("GPModel: Unknown parameter: ", param))
         }
       }

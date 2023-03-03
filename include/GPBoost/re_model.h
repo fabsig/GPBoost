@@ -143,7 +143,9 @@ namespace GPBoost {
 		* \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
 		* \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 		* \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
-		* \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm	
+		* \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
+		* \param init_aux_pars Initial values for values for aux_pars_ (e.g., shape parameter of gamma likelihood)
+		* \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 		*/
 		void SetOptimConfig(double* init_cov_pars,
 			double lr,
@@ -169,7 +171,9 @@ namespace GPBoost {
 			bool reuse_rand_vec_trace,
 			const char* cg_preconditioner_type,
 			int seed_rand_vec_trace,
-			int piv_chol_rank);
+			int piv_chol_rank,
+			double* init_aux_pars,
+			bool estimate_aux_pars);
 
 		/*!
 		* \brief Reset cov_pars_ (to their initial values).
@@ -263,16 +267,15 @@ namespace GPBoost {
 		void GetCovariateData(double* covariate_data) const;
 
 		/*!
-		* \brief Get covariance paramters
-		* \param[out] cov_par Covariance paramters stored in cov_pars_. This vector needs to be pre-allocated of length number of covariance paramters or twice this if calc_std_dev = true
+		* \brief Get covariance parameters
+		* \param[out] cov_par Covariance parameters stored in cov_pars_. This vector needs to be pre-allocated of length number of covariance parameters or twice this if calc_std_dev = true
 		* \param calc_std_dev If true, standard deviations are also exported
 		*/
 		void GetCovPar(double* cov_par, bool calc_std_dev) const;
 
 		/*!
-		* \brief Get initial values for covariance paramters
-		* \param[out] init_cov_par Initial covariance paramters stored in init_cov_pars_. This vector needs to be pre-allocated of length number of covariance paramters or twice this if calc_std_dev = true
-		* \param calc_std_dev If true, standard deviations are also exported
+		* \brief Get initial values for covariance parameters
+		* \param[out] init_cov_par Initial covariance parameters stored in init_cov_pars_
 		*/
 		void GetInitCovPar(double* init_cov_par) const;
 
@@ -388,13 +391,43 @@ namespace GPBoost {
 		*/
 		void InitializeCovParsIfNotDefined(const double* y_data);
 
+		/*!
+		* \brief Return number of additional likelihood parameters (aux_pars_)
+		*/
+		int NumAuxPars() const;
+
+		/*!
+		* \brief Get additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+		* \param[out] aux_pars Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated
+		* \param[out] name Name of the first parameter
+		*/
+		void GetAuxPars(double* aux_pars,
+			string_t& name) const;
+
+		/*!
+		* \brief Set aux_pars_
+		* \param aux_pars New values for aux_pars_
+		*/
+		void SetAuxPars(const double* aux_pars);
+
+		/*!
+		* \brief Get initial values for additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+		* \param[out] aux_pars Initial additional likelihood parameters stored in init_aux_pars_
+		*/
+		void GetInitAuxPars(double* aux_pars) const;
+
 	private:
 
 		string_t matrix_format_ = "den_mat_t";//den_mat_t, sp_mat_t, sp_mat_rm_t
 		std::unique_ptr<REModelTemplate<sp_mat_t, chol_sp_mat_t>> re_model_sp_;
 		std::unique_ptr<REModelTemplate<sp_mat_rm_t, chol_sp_mat_rm_t>> re_model_sp_rm_;
 		std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>> re_model_den_;
-		vec_t cov_pars_; //Covariance paramters
+		/*! \brief List of covariance functions wtih compact support */
+		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland", "exponential_tapered" };
+		int num_it_ = 0; //Number of iterations done for covariance and linear regression parameter estimation
+		bool calc_std_dev_ = false;
+		// Covariance parameters related variables
+		vec_t cov_pars_; //Covariance parameters
 		vec_t init_cov_pars_; //Initial values for covariance parameters
 		bool cov_pars_initialized_ = false; //This is true if InitializeCovParsIfNotDefined() has been called
 		bool covariance_matrix_has_been_factorized_ = false; //If true, the covariance matrix Psi has been factorized for the cov_pars_ (either through OptimCovPar/OptimLinRegrCoefCovPar or EvalNegLogLikelihood) and will not be factorized anew when making predictions in Predict
@@ -402,15 +435,15 @@ namespace GPBoost {
 		bool cov_pars_have_been_provided_for_prediction_ = false; //This is true if Predict() has been called once with cov_pars_pred != nullptr (saved in order to determine whether covariance matrix needs to be factorized again or not)
 		vec_t std_dev_cov_pars_;
 		int num_cov_pars_;
-		int num_it_ = 0; //Number of iterations done for covariance and linear regression parameter estimation
+		// Linear regression coefficients related variables
 		vec_t coef_;//linear regression coefficients for fixed effects (in case there are any)
 		bool has_covariates_ = false;
 		bool init_coef_given_ = false;
 		bool coef_given_or_estimated_ = false;
 		vec_t std_dev_coef_;
-		bool calc_std_dev_ = false;
-		/*! \brief List of covariance functions wtih compact support */
-		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland", "exponential_tapered" };
+		// Variables for additional parameters for non-Gaussian likelihoods
+		vec_t init_aux_pars_; // Additional parameters for non-Gaussian likelihoods
+		bool init_aux_pars_given_ = false;
 	};
 
 }  // namespace GPBoost

@@ -4251,7 +4251,8 @@ class GPModel(object):
                        "reuse_rand_vec_trace": True,
                        "cg_preconditioner_type": "none",
                        "seed_rand_vec_trace": 0,
-                       "piv_chol_rank": 100
+                       "piv_chol_rank": 100,
+                       "estimate_aux_pars": True
         }
 
         if (model_file is not None) or (model_dict is not None):
@@ -4530,6 +4531,8 @@ class GPModel(object):
         if model_file is not None:
             if model_dict["params"]['init_cov_pars'] is not None:
                 model_dict["params"]['init_cov_pars'] = np.array(model_dict["params"]['init_cov_pars'])
+            if model_dict["params"]['init_aux_pars'] is not None:
+                model_dict["params"]['init_aux_pars'] = np.array(model_dict["params"]['init_aux_pars'])
             self.set_optim_params(params=model_dict["params"])
 
     def __determine_num_cov_pars(self, likelihood):
@@ -4566,9 +4569,17 @@ class GPModel(object):
                             self.num_coef = params["init_coef"].shape[0]
                         if params["init_coef"].shape[0] != self.num_coef:
                             raise ValueError("params['init_coef'] does not contain the correct number of parameters")
+                if param == "init_aux_pars":
+                    if params[param] is not None:
+                        params[param] = _format_check_1D_data(params[param], data_name="params['init_aux_pars']",
+                                                              check_data_type=True, check_must_be_int=False,
+                                                              convert_to_type=np.float64)
+                        if params[param].shape[0] != self._get_num_aux_pars():
+                            raise ValueError("params['init_aux_pars'] does not contain the correct number"
+                                             "of parameters")
                 if param in self.params:
                     self.params[param] = params[param]
-                elif param not in ["optimizer_cov", "optimizer_coef", "init_cov_pars"]:
+                elif param not in ["optimizer_cov", "optimizer_coef", "init_cov_pars", "init_aux_pars"]:
                     raise ValueError("Unknown parameter: %s" % param)
 
     def __del__(self):
@@ -4597,7 +4608,7 @@ class GPModel(object):
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
                     Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously with
-                    gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
+                    gradient descent steps for the covariance parameters. "wls" refers to doing coordinate descent
                     for the regression coefficients using weighted least squares
                     If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 'optimizer_coef' is automatically also set to
                     the same value.
@@ -4635,6 +4646,12 @@ class GPModel(object):
                     If True, approximate standard deviations are calculated for the covariance parameters
                     (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
                     square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
+                - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for additional parameters for non-Gaussian likelihoods 
+                    (e.g., shape parameter of gamma likelihood) (can be None)
+                - estimate_aux_pars : bool, (default = True)
+                    If True, any additional parameters for non-Gaussian likelihoods are also estimated 
+                    (e.g., shape parameter of gamma likelihood)
 
         fixed_effects : numpy 1-D array or None, optional (default=None)
             Additional fixed effects component of location parameter for observed data.
@@ -4710,7 +4727,7 @@ class GPModel(object):
 
         return self
 
-    def neg_log_likelihood(self, cov_pars, y, fixed_effects=None):
+    def neg_log_likelihood(self, cov_pars, y, fixed_effects=None, aux_pars=None):
         """Evaluate the negative log-likelihood.
 
         Parameters
@@ -4755,6 +4772,8 @@ class GPModel(object):
                 raise ValueError("Incorrect number of data points in fixed_effects")
             fixed_effects_c = fixed_effects.astype(np.float64)
             fixed_effects_c = fixed_effects_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        if aux_pars is not None:
+            self.set_optim_params({"init_aux_pars": aux_pars})
 
         negll = ctypes.c_double(0)
         _safe_call(_LIB.GPB_EvalNegLogLikelihood(
@@ -4781,7 +4800,7 @@ class GPModel(object):
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
                     Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously with
-                    gradient descent steps for the covariance paramters. "wls" refers to doing coordinate descent
+                    gradient descent steps for the covariance parameters. "wls" refers to doing coordinate descent
                     for the regression coefficients using weighted least squares
                     If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 'optimizer_coef' is automatically also set to
                     the same value.
@@ -4819,6 +4838,12 @@ class GPModel(object):
                     If True, approximate standard deviations are calculated for the covariance parameters
                     (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
                     square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
+                - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for additional parameters for non-Gaussian likelihoods 
+                    (e.g., shape parameter of gamma likelihood) (can be None)
+                - estimate_aux_pars : bool, (default = True)
+                    If True, any additional parameters for non-Gaussian likelihoods are also estimated 
+                    (e.g., shape parameter of gamma likelihood)
 
         Example
         -------
@@ -4832,6 +4857,7 @@ class GPModel(object):
         init_cov_pars_c = ctypes.c_void_p()
         optimizer_cov_c = ctypes.c_void_p()
         init_coef_c = ctypes.c_void_p()
+        init_aux_pars_c = ctypes.c_void_p()
         optimizer_coef_c = ctypes.c_void_p()
         if params is not None:
             if "init_cov_pars" in params:
@@ -4843,6 +4869,9 @@ class GPModel(object):
             if "init_coef" in self.params:
                 if self.params["init_coef"] is not None:
                     init_coef_c = self.params["init_coef"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            if "init_aux_pars" in self.params:
+                if self.params["init_aux_pars"] is not None:
+                    init_aux_pars_c = self.params["init_aux_pars"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
             if "optimizer_coef" in params:
                 if params["optimizer_coef"] is not None:
                     optimizer_coef_c = c_str(params["optimizer_coef"])      
@@ -4872,7 +4901,9 @@ class GPModel(object):
             ctypes.c_bool(self.params["reuse_rand_vec_trace"]),
             c_str(self.params["cg_preconditioner_type"]),
             ctypes.c_int(self.params["seed_rand_vec_trace"]),
-            ctypes.c_int(self.params["piv_chol_rank"])))
+            ctypes.c_int(self.params["piv_chol_rank"]),
+            init_aux_pars_c,
+            ctypes.c_bool(self.params["estimate_aux_pars"])))
         return self
 
     def _get_optim_params(self):
@@ -4898,6 +4929,14 @@ class GPModel(object):
         init_cov_pars_none = -np.ones(self.num_cov_pars)
         if (init_cov_pars - init_cov_pars_none).sum() > 1e-6:
             params["init_cov_pars"] = init_cov_pars
+        if self._get_num_aux_pars() > 0:
+            init_aux_pars = np.zeros(self._get_num_aux_pars(), dtype=np.float64)
+            _safe_call(_LIB.GPB_GetInitAuxPars(
+                self.handle,
+                init_aux_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))))
+            init_aux_pars_none = -np.ones(self._get_num_aux_pars())
+            if (init_aux_pars - init_aux_pars_none).sum() > 1e-6:
+                params["init_aux_pars"] = init_aux_pars
         return params
 
     def get_cov_pars(self, format_pandas=True):
@@ -4986,6 +5025,27 @@ class GPModel(object):
                     coef = pd.DataFrame(coef.reshape((1, -1)), columns=self.coef_names, index=['Param.'])
         return coef
 
+    def get_aux_pars(self, format_pandas=True):
+        if self.model_has_been_loaded_from_saved_file:
+            cov_pars = self.cov_pars_loaded_from_file
+        else:
+            num_aux_pars = self._get_num_aux_pars()
+            if num_aux_pars > 0:
+                aux_pars = np.zeros(num_aux_pars, dtype=np.float64)
+                buffer_len = 1 << 20
+                string_buffer = ctypes.create_string_buffer(buffer_len)
+                ptr_string_buffer = ctypes.c_char_p(*[ctypes.addressof(string_buffer)])
+                _safe_call(_LIB.GPB_GetAuxPars(
+                    self.handle,
+                    aux_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+                    ptr_string_buffer))
+                name = string_buffer.value.decode()
+                if format_pandas:
+                    aux_pars = pd.DataFrame(aux_pars.reshape((1, -1)), columns=[name for i in range(num_aux_pars)], index=['Param.'])
+            else:
+                aux_pars = None
+        return aux_pars
+
     def summary(self):
         """Print summary of fitted model parameters.
 
@@ -5033,7 +5093,13 @@ class GPModel(object):
                                                            index=coefs.index)], axis=1),4))
             else:
                print(round(coefs.transpose(),4))
+        if self._get_num_aux_pars() > 0:
+            print("-----------------------------------------------------")
+            print("Additional parameters:")
+            aux_pars = self.get_aux_pars(format_pandas=True)
+            print(round(aux_pars.transpose(),4))
         if self.params["maxit"] == self._get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
+            print("-----------------------------------------------------")
             print("Note: no convergence after the maximal number of iterations")
         print("=====================================================")
         return self
@@ -5702,6 +5768,9 @@ class GPModel(object):
             model_dict["coefs"] = self.get_coef(format_pandas=False)
             model_dict["num_coef"] = self.num_coef
             model_dict["X"] = self._get_covariate_data()
+        # Additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+        model_dict["params"]["init_aux_pars"] = self.get_aux_pars(format_pandas=False) 
+        # Note: for simplicity, this is put into 'init_aux_pars'. When loading the model, 'init_aux_pars' are correctly set
         model_dict["model_fitted"] = self.model_fitted
         return model_dict
 
@@ -5760,6 +5829,13 @@ class GPModel(object):
             self.handle,
             ctypes.byref(num_it)))
         return num_it.value
+
+    def _get_num_aux_pars(self):
+        num_aux_pars = ctypes.c_int64(0)
+        _safe_call(_LIB.GPB_GetNumAuxPars(
+            self.handle,
+            ctypes.byref(num_aux_pars)))
+        return num_aux_pars.value
 
     def get_current_neg_log_likelihood(self):
         """Get the current value of the negative log-likelihood

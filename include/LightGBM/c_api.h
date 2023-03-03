@@ -1412,6 +1412,8 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 * \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
 * \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
+* \param init_aux_pars Initial values for values for aux_pars_ (e.g., shape parameter of gamma likelihood)
+* \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
@@ -1439,7 +1441,9 @@ GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
     bool reuse_rand_vec_trace,
     const char* cg_preconditioner_type,
     int seed_rand_vec_trace,
-    int piv_chol_rank);
+    int piv_chol_rank,
+    double* init_aux_pars,
+    bool estimate_aux_pars);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)
@@ -1491,7 +1495,7 @@ GPBOOST_C_EXPORT int GPB_GetCurrentNegLogLikelihood(REModelHandle handle,
     double* negll);
 
 /*!
-* \brief Get covariance paramters
+* \brief Get covariance parameters
 *		 Note: You should pre-allocate memory for optim_cov_pars. Its length equals the number of covariance parameters (num_cov_pars) or twice this if calc_std_dev = true
 * \param handle Handle of REModel
 * \param[out] optim_cov_pars Optimal covariance parameters
@@ -1503,7 +1507,7 @@ GPBOOST_C_EXPORT int GPB_GetCovPar(REModelHandle handle,
     bool calc_std_dev);
 
 /*!
-* \brief Get initial values for covariance paramters
+* \brief Get initial values for covariance parameters
 *		 Note: You should pre-allocate memory for optim_cov_pars. Its length equals the number of covariance parameters (num_cov_pars) or twice this if calc_std_dev = true
 * \param handle Handle of REModel
 * \param[out] init_cov_pars Initial covariance parameters
@@ -1683,6 +1687,35 @@ GPBOOST_C_EXPORT int GPB_GetResponseData(REModelHandle handle,
 */
 GPBOOST_C_EXPORT int GPB_GetCovariateData(REModelHandle handle,
     double* covariate_data);
+
+/*!
+* \brief Get additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+* \param handle Handle of REModel
+* \param[out] Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated
+* \param[out] out_str Name of the first parameter
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetAuxPars(REModelHandle handle,
+    double* aux_pars,
+    char* out_str);
+
+/*!
+* \brief Get number of additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+* \param handle Handle of booster
+* \param[out] num_aux_pars Number of additional likelihood parameters
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetNumAuxPars(BoosterHandle handle,
+    int* num_aux_pars);
+
+/*!
+* \brief Get initial values for additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+* \param handle Handle of booster
+* \param[out] aux_pars Initial values for additional likelihood parameters
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetInitAuxPars(REModelHandle handle,
+    double* aux_pars);
 
 #if defined(_MSC_VER)
 #define THREAD_LOCAL __declspec(thread)  /*!< \brief Thread local specifier. */

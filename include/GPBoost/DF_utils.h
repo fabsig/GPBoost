@@ -76,6 +76,27 @@ namespace GPBoost {
 	*/
 	double normalQF(double p);
 
+	/*!
+	* \brief Calculates the digamma function d ( log ( gamma ( x ) ) ) / dx
+	* \param x Value at which the digamma function is evaluated
+	* \return The value of the digamma function at x
+	* source: https://people.math.sc.edu/Burkardt/cpp_src/asa103/asa103.html
+	*
+	*  Author:
+	*
+	*    Original FORTRAN77 version by Jose Bernardo.
+	*    C++ version by John Burkardt with minor adaptions by Fabio Sigrist
+	*
+	*  Reference:
+	*
+	*    Jose Bernardo,
+	*    Algorithm AS 103:
+	*    Psi ( Digamma ) Function,
+	*    Applied Statistics,
+	*    Volume 25, Number 3, 1976, pages 315-317.
+	*/
+	double digamma(double x);
+
 }  // namespace GPBoost
 
 #endif   // GPB_DF_UTIL_H_

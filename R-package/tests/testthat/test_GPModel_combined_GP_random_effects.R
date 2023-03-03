@@ -45,7 +45,6 @@ b_gr_2 <- qnorm(sim_rand_unif(n=n_obs_gr, init_c=0.36))
 x <- cos((1:n-n/2)^2*5.5*pi/n) # covariate data for random slope
 Z3 <- diag(x) %*% Z1
 b_gr_3 <- qnorm(sim_rand_unif(n=m, init_c=0.5678))
-
 # Error term
 xi <- qnorm(sim_rand_unif(n=n, init_c=0.1)) / 5
 # Data for linear mixed effects model
@@ -53,12 +52,10 @@ X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # desing matrix / covariate data fo
 beta <- c(2,2) # regression coefficents
 # cluster_ids 
 cluster_ids <- c(rep(1,0.4*n),rep(2,0.6*n))
-
 # Sum up random effects
 eps <- as.vector(L %*% b_1) + as.vector(Z1 %*% b_gr_1)
 eps_svc <- as.vector(L %*% b_1 + Z_SVC[,1] * L %*% b_2 + Z_SVC[,2] * L %*% b_3) + 
   Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3
-
 
 test_that("Combined Gaussian process and grouped random effects model ", {
   
@@ -133,7 +130,6 @@ test_that("Combined Gaussian process and grouped random effects model ", {
   expect_equal(as.integer(opt$counts[1]), 335)
 })
 
-
 test_that("Combined GP and grouped random effects model with linear regression term ", {
   
   y <- eps + X%*%beta + xi
@@ -159,7 +155,6 @@ test_that("Combined GP and grouped random effects model with linear regression t
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-5)
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
 })
-
 
 test_that("Combined GP and grouped random effects model with random coefficients ", {
   
@@ -208,7 +203,6 @@ test_that("Combined GP and grouped random effects model with random coefficients
   expect_lt(abs(nll-182.3674191),1E-5)
 })
 
-
 test_that("Combined GP and grouped random effects model with cluster_id's not constant ", {
   
   y <- eps + xi
@@ -236,7 +230,6 @@ test_that("Combined GP and grouped random effects model with cluster_id's not co
   expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
   expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
 })
-
 
 # Avoid being tested on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){

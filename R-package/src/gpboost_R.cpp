@@ -921,7 +921,9 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP reuse_rand_vec_trace,
 	SEXP cg_preconditioner_type,
 	SEXP seed_rand_vec_trace,
-	SEXP piv_chol_rank) {
+	SEXP piv_chol_rank,
+	SEXP init_aux_pars,
+	SEXP estimate_aux_pars) {
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
 	SEXP convergence_criterion_aux = PROTECT(Rf_asChar(convergence_criterion));
 	SEXP optimizer_coef_aux = PROTECT(Rf_asChar(optimizer_coef));
@@ -956,7 +958,9 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		Rf_asLogical(reuse_rand_vec_trace),
 		cg_preconditioner_type_ptr,
 		Rf_asInteger(seed_rand_vec_trace),
-		Rf_asInteger(piv_chol_rank)));
+		Rf_asInteger(piv_chol_rank),
+		R_REAL_PTR(init_aux_pars),
+		Rf_asLogical(estimate_aux_pars)));
 	R_API_END();
 	UNPROTECT(4);
 	return R_NilValue;
@@ -1220,6 +1224,39 @@ SEXP GPB_GetCovariateData_R(SEXP handle,
 	return R_NilValue;
 }
 
+SEXP GPB_GetAuxPars_R(SEXP handle,
+	SEXP aux_pars) {
+	SEXP ret;
+	std::vector<char> inner_char_buf(128);
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetAuxPars(R_ExternalPtrAddr(handle),
+		R_REAL_PTR(aux_pars),
+		inner_char_buf.data()));
+	R_API_END();
+	ret = PROTECT(Rf_allocVector(STRSXP, 1));
+	SET_STRING_ELT(ret, 0, Rf_mkChar(inner_char_buf.data()));
+	UNPROTECT(1);
+	return ret;
+}
+
+SEXP GPB_GetNumAuxPars_R(SEXP handle,
+	SEXP num_aux_pars) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetNumAuxPars(R_ExternalPtrAddr(handle),
+		R_INT_PTR(num_aux_pars)));
+	R_API_END();
+	return R_NilValue;
+}
+
+SEXP GPB_GetInitAuxPars_R(SEXP handle,
+	SEXP aux_pars) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetInitAuxPars(R_ExternalPtrAddr(handle),
+		R_REAL_PTR(aux_pars)));
+	R_API_END();
+	return R_NilValue;
+}
+
 // .Call() calls
 static const R_CallMethodDef CallEntries[] = {
   {"LGBM_HandleIsNull_R"              , (DL_FUNC)&LGBM_HandleIsNull_R              , 1},
@@ -1266,7 +1303,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 26},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 26},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 28},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
   {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 4},
   {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},
@@ -1284,6 +1321,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_SetLikelihood_R"              , (DL_FUNC)&GPB_SetLikelihood_R              , 2},
   {"GPB_GetResponseData_R"            , (DL_FUNC)&GPB_GetResponseData_R            , 2},
   {"GPB_GetCovariateData_R"           , (DL_FUNC)&GPB_GetCovariateData_R           , 2},
+  {"GPB_GetAuxPars_R"                 , (DL_FUNC)&GPB_GetAuxPars_R                 , 2},
+  {"GPB_GetNumAuxPars_R"              , (DL_FUNC)&GPB_GetNumAuxPars_R              , 2},
+  {"GPB_GetInitAuxPars_R"             , (DL_FUNC)&GPB_GetInitAuxPars_R             , 2},
   {NULL, NULL, 0}
 };
 

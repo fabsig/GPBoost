@@ -250,7 +250,9 @@ namespace GPBoost {
 		bool reuse_rand_vec_trace,
 		const char* cg_preconditioner_type,
 		int seed_rand_vec_trace,
-		int piv_chol_rank) {
+		int piv_chol_rank,
+		double* init_aux_pars,
+		bool estimate_aux_pars) {
 		// Initial covariance parameters
 		if (init_cov_pars != nullptr) {
 			vec_t init_cov_pars_orig = Eigen::Map<const vec_t>(init_cov_pars, num_cov_pars_);
@@ -269,7 +271,7 @@ namespace GPBoost {
 			init_cov_pars_provided_ = true;
 			covariance_matrix_has_been_factorized_ = false;
 		}
-		// Iniutial linear regression coefficients
+		// Initial linear regression coefficients
 		if (init_coef != nullptr) {
 			coef_ = Eigen::Map<const vec_t>(init_coef, num_covariates);
 			init_coef_given_ = true;
@@ -277,6 +279,15 @@ namespace GPBoost {
 		}
 		else {
 			init_coef_given_ = false;
+		}
+		// Initial aux_pars
+		if (init_aux_pars != nullptr) {
+			init_aux_pars_ = Eigen::Map<const vec_t>(init_aux_pars, NumAuxPars());
+			SetAuxPars(init_aux_pars);
+			init_aux_pars_given_ = true;
+		}
+		else {
+			init_aux_pars_given_ = false;
 		}
 		// Logging level
 		if (trace) {
@@ -290,19 +301,19 @@ namespace GPBoost {
 			re_model_sp_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars);
 		}
 		else {
 			re_model_den_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars);
 		}
 	}
 
@@ -1070,6 +1081,66 @@ namespace GPBoost {
 				init_cov_pars_ = cov_pars_;
 			}
 			cov_pars_initialized_ = true;
+		}
+	}
+
+	int REModel::NumAuxPars() const {
+		int num_aux_pars;
+		if (matrix_format_ == "sp_mat_t") {
+			num_aux_pars = re_model_sp_->NumAuxPars();
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			num_aux_pars = re_model_sp_rm_->NumAuxPars();
+		}
+		else {
+			num_aux_pars = re_model_den_->NumAuxPars();
+		}
+		return num_aux_pars;
+	}
+
+	void REModel::GetAuxPars(double* aux_pars,
+		string_t& name) const {
+		const double* aux_pars_temp;
+		if (matrix_format_ == "sp_mat_t") {
+			aux_pars_temp = re_model_sp_->GetAuxPars();
+			re_model_sp_->GetNameFirstAuxPar(name);
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			aux_pars_temp = re_model_sp_rm_->GetAuxPars();
+			re_model_sp_rm_->GetNameFirstAuxPar(name);
+		}
+		else {
+			aux_pars_temp = re_model_den_->GetAuxPars();
+			re_model_den_->GetNameFirstAuxPar(name);
+		}
+		for (int j = 0; j < NumAuxPars(); ++j) {
+			aux_pars[j] = aux_pars_temp[j];
+		}
+	}
+
+	void REModel::SetAuxPars(const double* aux_pars) {
+		if (matrix_format_ == "sp_mat_t") {
+			re_model_sp_->SetAuxPars(aux_pars);
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			re_model_sp_rm_->SetAuxPars(aux_pars);
+		}
+		else {
+			re_model_den_->SetAuxPars(aux_pars);
+		}
+	}
+
+	void REModel::GetInitAuxPars(double* aux_pars) const {
+		vec_t init_cov_pars_orig(num_cov_pars_);
+		if (init_aux_pars_given_) {
+			for (int j = 0; j < NumAuxPars(); ++j) {
+				aux_pars[j] = init_aux_pars_[j];
+			}
+		}
+		else {
+			for (int j = 0; j < NumAuxPars(); ++j) {
+				aux_pars[j] = -1.;
+			}
 		}
 	}
 

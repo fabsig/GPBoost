@@ -46,7 +46,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", or "gamma"
-likelihood = "gaussian"
+likelihood = "gamma"
 
 """
 Grouped random effects
@@ -111,8 +111,7 @@ gp_model.summary()
 # For available optimization options, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
 #gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-#gp_model.fit(y=y, X=X, params={"trace": True, 
-#                               "std_dev": True,
+#gp_model.fit(y=y, X=X, params={"trace": True, "std_dev": True,
 #                               "optimizer_cov": "gradient_descent", "lr_cov": 0.1,
 #                               "use_nesterov_acc": True, "maxit": 100})
 
@@ -147,10 +146,11 @@ plt.show(block=False)
 # Adding the overall intercept gives the group-wise intercepts
 group_wise_intercepts = gp_model.get_coef().iloc[0,0] + training_data_random_effects
 # Alternatively, this can also be done as follows
-#group_unique = np.unique(group)
-#X_zero = np.column_stack((np.zeros(len(group_unique)), np.zeros(len(group_unique))))
-#pred_random_effects = gp_model.predict(group_data_pred=group_unique, X_pred=X_zero)
-#np.sum(np.abs(training_data_random_effects['Group_1'] - pred_random_effects['mu']))
+# group_unique = np.unique(group)
+# x_zero = np.column_stack((np.zeros(len(group_unique)), np.zeros(len(group_unique))))
+# pred_random_effects = gp_model.predict(group_data_pred=group_unique, 
+#                                        X_pred=x_zero, predict_response=False)
+# np.sum(np.abs(training_data_random_effects['Group_1'] - pred_random_effects['mu']))
 
 #--------------------Saving a GPModel and loading it from a file----------------
 # Save trained model
@@ -337,8 +337,8 @@ plt.scatter(b_train, GP_smooth)
 plt.title("Comparison of true and smoothed GP")
 plt.show(block=False)
 # The above is equivalent to the following
-#GP_smooth2 = gp_model.predict(gp_coords_pred=coords_train)
-#np.sum(np.abs(GP_smooth['GP'] - GP_smooth2['mu']))
+# GP_smooth2 = gp_model.predict(gp_coords_pred=coords_train, predict_response=False)
+# np.sum(np.abs(GP_smooth['GP'] - GP_smooth2['mu']))
 
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"

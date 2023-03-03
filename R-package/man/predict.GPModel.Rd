@@ -51,7 +51,7 @@ fixed effects linear regression term (if there is one in the \code{GPModel})}
 a priory set data via the function '$set_prediction_data' (this option is not used by users directly)}
 
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
-Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only"
+Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
 Available options:
 \itemize{
 \item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 

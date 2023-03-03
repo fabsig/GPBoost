@@ -375,27 +375,40 @@ namespace GPBoost {
 	/*!
 	* \brief Calculate L.transpose() * L only at non-zero entries for a given sparsiy pattern for sparse matrices (for dense matrices, all entries are calculated)
 	* \param L Matrix L
-	* \param LtL[out] Matrix which contains a sparsity pattern^and on which L.transpose() * L is calculated at the non-zero entries
+	* \param LtL[out] Matrix which contains a sparsity pattern and on which L.transpose() * L is calculated at the non-zero entries
+	* \param symmetric If true, it is assumed that the sparsity pattern given in LtL is symmetric
 	*/
 	template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
-	void CalcLtLGivenSparsityPattern(const T_mat& L, T_mat& LtL) {
+	void CalcLtLGivenSparsityPattern(const T_mat& L, T_mat& LtL, bool symmetric) {
+		if (symmetric) {
 #pragma omp parallel for schedule(static)
-		for (int k = 0; k < LtL.outerSize(); ++k) {
-			for (typename T_mat::InnerIterator it(LtL, k); it; ++it) {
-				int i = (int)it.row();
-				int j = (int)it.col();
-				if (i == j) {
-					it.valueRef() = (L.col(i)).dot(L.col(j));
+			for (int k = 0; k < LtL.outerSize(); ++k) {
+				for (typename T_mat::InnerIterator it(LtL, k); it; ++it) {
+					int i = (int)it.row();
+					int j = (int)it.col();
+					if (i == j) {
+						it.valueRef() = (L.col(i)).dot(L.col(j));
+					}
+					else if (i < j) {
+						it.valueRef() = (L.col(i)).dot(L.col(j));
+						LtL.coeffRef(j, i) = it.value();
+					}
 				}
-				else if (i < j) {
+			}
+		}
+		else {// non-symmetric case
+#pragma omp parallel for schedule(static)
+			for (int k = 0; k < LtL.outerSize(); ++k) {
+				for (typename T_mat::InnerIterator it(LtL, k); it; ++it) {
+					int i = (int)it.row();
+					int j = (int)it.col();
 					it.valueRef() = (L.col(i)).dot(L.col(j));
-					LtL.coeffRef(j, i) = it.value();
 				}
 			}
 		}
 	}//end CalcLtLGivenSparsityPattern (sparse)
 	template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
-	void CalcLtLGivenSparsityPattern(const den_mat_t& L, den_mat_t& LtL) {
+	void CalcLtLGivenSparsityPattern(const den_mat_t& L, den_mat_t& LtL, bool) {
 		LtL = L.transpose() * L;
 	}//end CalcLtLGivenSparsityPattern (dense)
 

@@ -1388,6 +1388,10 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
     
     test_that("GPBoost algorithm with grouped random effects for gamma regression", {
       
+      OPTIM_PARAMS_GAMMA <- DEFAULT_OPTIM_PARAMS_V2
+      OPTIM_PARAMS_GAMMA$estimate_aux_pars = FALSE
+      OPTIM_PARAMS_GAMMA$init_aux_pars = 1.
+      
       ntrain <- ntest <- 1000
       n <- ntrain + ntest
       # Simulate fixed effects
@@ -1436,7 +1440,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Train model
       gp_model <- GPModel(group_data = group_data_train, likelihood = "gamma")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
+      gp_model$set_optim_params(params=OPTIM_PARAMS_GAMMA)
       bst <- gpboost(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 30,
@@ -1456,6 +1460,18 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                       predict_var = TRUE, pred_latent = FALSE)
       expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.04968272, 4.08967031, 0.55919834, 2.89184563))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.002805737, 83.861102898, 1.567890445, 41.930899945))),TOLERANCE)
+      
+      # Also estimate shape parameter
+      gp_model <- GPModel(group_data = group_data_train, likelihood = "gamma")
+      params_shape <- OPTIM_PARAMS_GAMMA
+      params_shape$estimate_aux_pars <- TRUE
+      gp_model$set_optim_params(params=params_shape)
+      bst <- gpboost(data = dtrain,  gp_model = gp_model, nrounds = 30,
+                     learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
+                     objective = "gamma", verbose = 0)
+      cov_pars_est <- c(0.6086986, 0.5337656)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
+      expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-1.445812)),TOLERANCE)
     })
     
     test_that("Saving and loading a booster with a gp_model for non-Gaussian data ", {

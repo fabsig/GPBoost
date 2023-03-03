@@ -99,10 +99,9 @@ summary(gp_model)
 # - change optimization algorithm options (see below)
 # For available optimization options, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-# gp_model <- fitGPModel(group_data = group, y = y, X = X,
-#                        params = list(trace=TRUE,
-#                                      std_dev = TRUE,
-#                                      optimizer_cov= "gradient_descent",
+# gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood,
+#                        params = list(trace = TRUE, std_dev = TRUE,
+#                                      optimizer_cov = "gradient_descent",
 #                                      lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 100))
 
 # --------------------Prediction----------------
@@ -134,7 +133,8 @@ group_wise_intercepts <- gp_model$get_coef()[1] + training_data_random_effects
 # Alternatively, this can also be done as follows
 # group_unique <- unique(group)
 # X_zero <- cbind(rep(0,length(group_unique)),rep(0,length(group_unique)))
-# pred_random_effects <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero)
+# pred_random_effects <- predict(gp_model, group_data_pred = group_unique, 
+#                                X_pred = X_zero, predict_response = FALSE)
 # sum(abs(training_data_random_effects - pred_random_effects$mu))
 
 #--------------------Saving a GPModel and loading it from a file----------------
@@ -174,9 +174,11 @@ pred_random_slopes <- all_training_data_random_effects[first_occurences_1,3]
 pred_random_effects_crossed <- all_training_data_random_effects[first_occurences_2,2]
 # Compare true and predicted random effects
 plot(b, pred_random_effects, xlab="truth", ylab="predicted",
-     main="Comparison of true and predicted random effects")
-points(b_random_slope, pred_random_slopes, col=2, pch=2, lwd=1.5)
-points(b_crossed, pred_random_effects_crossed, col=4, pch=4, lwd=1.5)
+     main="Comparison of true and predicted random effects", lwd=2)
+points(b_random_slope, pred_random_slopes, col=2, pch=2, lwd=2)
+points(b_crossed, pred_random_effects_crossed, col=4, pch=4, lwd=2)
+legend(x =  "topleft", legend = c("1. random effects", "Random slopes", "2. crossed random effects"),
+       col = c(1,2,4), pch = c(1,2,4), bty = "n")
 
 # Random slope model in which an intercept random effect is dropped / not included
 gp_model <- fitGPModel(group_data = cbind(group,group_crossed), group_rand_coef_data = x,
@@ -350,7 +352,8 @@ GP_smooth <- predict_training_data_random_effects(gp_model)
 plot(b_1_train, GP_smooth, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 # The above is equivalent to the following
-# GP_smooth2 = predict(gp_model, gp_coords_pred=coords_train)
+# GP_smooth2 = predict(gp_model, gp_coords_pred=coords_train, 
+#                      predict_response = FALSE)
 # sum(abs(GP_smooth - GP_smooth2$mu))
 
 #--------------------Gaussian process model with linear mean function----------------
@@ -395,9 +398,11 @@ summary(gp_model)
 GP_smooth <- predict_training_data_random_effects(gp_model)
 # Compare true and predicted random effects
 plot(b_1_train, GP_smooth[,1], xlab="truth", ylab="predicted",
-     main="Comparison of true and predicted random effects")
+     main="Comparison of true and predicted random effects", lwd=1.5)
 points(b_2, GP_smooth[,2], col=2, pch=2, lwd=1.5)
 points(b_3, GP_smooth[,3], col=4, pch=4, lwd=1.5)
+legend(x =  "topleft", legend = c("Intercept GP", "1. random coef. GP", "2. random coef. GP"),
+       col = c(1,2,4), pch = c(1,2,4), bty = "n")
 
 # --------------------Using cluster_ids for independent realizations of GPs----------------
 cluster_ids = rep(0,ntrain)

@@ -16,7 +16,7 @@ GPModel(likelihood = "gaussian", group_data = NULL,
   free_raw_data = FALSE, vecchia_approx = NULL)
 }
 \arguments{
-\item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable.
+\item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable. 
 Available options:
 \itemize{
 \item{ "gaussian" }
@@ -95,7 +95,7 @@ the Vecchia approximation. Available options:
 }}
 
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
-Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only"
+Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
 Available options:
 \itemize{
 \item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
@@ -116,7 +116,7 @@ for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neig
 \item{num_ind_points}{An \code{integer} specifying the number of inducing 
 points / knots for, e.g., a predictive process approximation}
 
-\item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices
+\item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices. 
 Available options:
 \itemize{
 \item{"cholesky": Cholesky factorization }

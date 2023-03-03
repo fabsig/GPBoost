@@ -56,7 +56,12 @@ fixed effects linear regression term (if there is one)}
     optimization is printed. Default = FALSE}
     \item{std_dev: If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
     (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
-    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
+    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods). 
+    Default = TRUE}
+    \item{init_aux_pars: Initial values for additional parameters for non-Gaussian likelihoods 
+    (e.g., shape parameter of gamma likelihood). Default = NULL}
+    \item{estimate_aux_pars: If TRUE, additional parameters for non-Gaussian likelihoods 
+    are also estimated (e.g., shape parameter of gamma likelihood). Default = TRUE}
 }}
 
 \item{fixed_effects}{A \code{vector} of optional external fixed effects which are held fixed during training.}
