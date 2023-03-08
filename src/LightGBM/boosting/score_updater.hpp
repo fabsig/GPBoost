@@ -11,6 +11,7 @@
 #include <LightGBM/tree.h>
 #include <LightGBM/tree_learner.h>
 #include <LightGBM/utils/openmp_wrapper.h>
+#include <LightGBM/nesterov_boosting.h>
 
 #include <cstring>
 #include <vector>
@@ -128,31 +129,7 @@ namespace LightGBM {
 		*/
 		inline void ApplyMomentumStep(double mu) {
 			CHECK(score_lag1_initialized_);
-			ApplyMomentumStep(score_.data(), score_lag1_.data(), score_size_, mu);
-		}
-
-		/*!
-		* \brief Apply a momentum step (for Nesterov accelerated boosting)
-		* \param score[out] Current scores on which the momentum is added
-		* \param score_lag1[out] Lag1 of scores
-		* \param score_size Number of scores
-		* \param mu Neterov acceleration rate
-		*/
-		inline void ApplyMomentumStep(double* score, double* score_lag1,
-			int64_t score_size, double mu) {
-			std::vector<double, Common::AlignmentAllocator<double, kAlignedSize>> score_momentum(score_size);
-#pragma omp parallel for schedule(static)
-			for (int64_t i = 0; i < score_size; ++i) {
-				score_momentum[i] = (mu + 1.) * score[i] - mu * score_lag1[i];
-			}
-#pragma omp parallel for schedule(static)
-			for (int64_t i = 0; i < score_size; ++i) {
-				score_lag1[i] = score[i];
-			}
-#pragma omp parallel for schedule(static)
-			for (int64_t i = 0; i < score_size; ++i) {
-				score[i] = score_momentum[i];
-			}
+			DoOneMomentumStep(score_.data(), score_lag1_.data(), score_size_, mu);
 		}
 
 		/*! \brief Pointer of score */

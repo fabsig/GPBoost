@@ -564,7 +564,7 @@ class GBDT : public GBDTBase {
   /*! \brief Acceleration rate for momentum step in Nesterov step */
   double nesterov_acc_rate_ = 0.5;
   /*! \brief Choose the acceleration rate schedule */
-  int momentum_schedule_version_ = 0;
+  int momentum_schedule_version_ = 1;
   /*! \brief Acceleration rate is zero before the offset number */
   int momentum_offset_ = 0;
   /*! \brief If true, a Newton update step is done for the tree leaves after the gradient step (only releveant for GPBoost algorithm, i.e. if objective_function_->HasGPModel()==true) */

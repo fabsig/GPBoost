@@ -606,6 +606,24 @@ namespace LightGBM {
 						Common::Atoi(cur_line.substr(14, 1).c_str(), &is_linear);
 						linear_tree_ = static_cast<bool>(is_linear);
 					}
+					if (Common::StartsWith(cur_line, "[use_nesterov_acc: ")) {
+						int use_nesterov_acc = 0;
+						Common::Atoi(cur_line.substr(19, 1).c_str(), &use_nesterov_acc);
+						use_nesterov_acc_ = static_cast<bool>(use_nesterov_acc);
+					}
+					if (Common::StartsWith(cur_line, "[momentum_schedule_version: ")) {
+						Common::Atoi(cur_line.substr(28, 1).c_str(), &momentum_schedule_version_);
+					}
+					if (Common::StartsWith(cur_line, "[momentum_offset: ")) {
+						int start = 18;
+						int length = (int)cur_line.length();
+						Common::Atoi(cur_line.substr(start, length - start - 1).c_str(), &momentum_offset_);
+					}
+					if (Common::StartsWith(cur_line, "[nesterov_acc_rate: ")) {
+						int start = 20;
+						int length = (int)cur_line.length();
+						Common::Atof(cur_line.substr(start, length - start - 1).c_str(), &nesterov_acc_rate_);
+					}
 				}
 			}
 			p += line_len;

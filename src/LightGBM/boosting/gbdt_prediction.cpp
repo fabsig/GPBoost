@@ -6,6 +6,7 @@
 #include <LightGBM/objective_function.h>
 #include <LightGBM/prediction_early_stop.h>
 #include <LightGBM/utils/openmp_wrapper.h>
+#include <LightGBM/nesterov_boosting.h>
 
 #include "gbdt.h"
 
@@ -28,8 +29,7 @@ namespace LightGBM {
 				}
 				else {
 					double mu = NesterovSchedule(i, momentum_schedule_version_, nesterov_acc_rate_, momentum_offset_);
-					train_score_updater_->ApplyMomentumStep(output, pred_lag1.data(),
-						(int64_t)num_tree_per_iteration_, mu);
+					DoOneMomentumStep(output, pred_lag1.data(), (int64_t)num_tree_per_iteration_, mu);
 				}
 			}
 			// predict all the trees for one iteration
@@ -64,8 +64,7 @@ namespace LightGBM {
 			// apply momentum step
 			if (use_nesterov_acc_) {
 				double mu = NesterovSchedule(i, momentum_schedule_version_, nesterov_acc_rate_, momentum_offset_);
-				train_score_updater_->ApplyMomentumStep(output, pred_lag1.data(),
-					(int64_t)num_tree_per_iteration_, mu);
+				DoOneMomentumStep(output, pred_lag1.data(), (int64_t)num_tree_per_iteration_, mu);
 			}
 			// predict all the trees for one iteration
 			for (int k = 0; k < num_tree_per_iteration_; ++k) {

@@ -1012,6 +1012,29 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_equal(pred_num_it2$fixed_effect, pred_loaded$fixed_effect)
       expect_equal(pred_num_it2$random_effect_mean, pred_loaded$random_effect_mean)
       expect_equal(pred_num_it2$random_effect_cov, pred_loaded$random_effect_cov)
+      
+      # Saving also works with Nesterov-accelerated boosting
+      gp_model <- GPModel(group_data = group_data_train)
+      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 62, learning_rate = 0.01, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0,
+                     use_nesterov_acc = TRUE, momentum_offset = 10)
+      pred <- predict(bst, data = X_test, group_data_pred = group_data_test, predict_var = TRUE, pred_latent = TRUE)
+      # Save to file
+      filename <- tempfile(fileext = ".model")
+      gpb.save(bst, filename=filename, save_raw_data = FALSE)
+      # finalize and destroy models
+      bst$finalize()
+      expect_null(bst$.__enclos_env__$private$handle)
+      rm(bst)
+      rm(gp_model)
+      # Load from file and make predictions again with save_raw_data = FALSE option
+      bst_loaded <- gpb.load(filename = filename)
+      pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test, predict_var= TRUE, pred_latent = TRUE)
+      expect_equal(pred$fixed_effect, pred_loaded$fixed_effect)
+      expect_equal(pred$random_effect_mean, pred_loaded$random_effect_mean)
+      expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
     })
   }
   
