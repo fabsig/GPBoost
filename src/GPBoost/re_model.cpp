@@ -556,7 +556,7 @@ namespace GPBoost {
 				re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
 			}
 			else {
-				re_model_sp_->EvalLAApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+				re_model_sp_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
 			}
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
@@ -564,7 +564,7 @@ namespace GPBoost {
 				re_model_sp_rm_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
 			}
 			else {
-				re_model_sp_rm_->EvalLAApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+				re_model_sp_rm_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
 			}
 		}
 		else {
@@ -572,7 +572,7 @@ namespace GPBoost {
 				re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
 			}
 			else {
-				re_model_den_->EvalLAApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+				re_model_den_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
 			}
 		}
 		covariance_matrix_has_been_factorized_ = false;
@@ -977,7 +977,8 @@ namespace GPBoost {
 	void REModel::PredictTrainingDataRandomEffects(const double* cov_pars_pred,
 		const double* y_obs,
 		double* out_predict,
-		const double* fixed_effects) const {
+		const double* fixed_effects,
+		bool calc_var) const {
 		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
 		if (cov_pars_pred != nullptr) {
@@ -1011,7 +1012,8 @@ namespace GPBoost {
 				y_obs,
 				out_predict, 
 				calc_cov_factor,
-				fixed_effects);
+				fixed_effects,
+				calc_var);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->PredictTrainingDataRandomEffects(cov_pars_pred_trans.data(),
@@ -1019,7 +1021,8 @@ namespace GPBoost {
 				y_obs,
 				out_predict,
 				calc_cov_factor,
-				fixed_effects);
+				fixed_effects,
+				calc_var);
 		}
 		else {
 			re_model_den_->PredictTrainingDataRandomEffects(cov_pars_pred_trans.data(),
@@ -1027,7 +1030,8 @@ namespace GPBoost {
 				y_obs,
 				out_predict,
 				calc_cov_factor,
-				fixed_effects);
+				fixed_effects,
+				calc_var);
 		}
 	}//end PredictTrainingDataRandomEffects
 

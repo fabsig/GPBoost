@@ -1458,7 +1458,7 @@ gpb.GPModel <- R6::R6Class(
       return(list(mu=pred_mean,cov=pred_cov_mat,var=pred_var))
     },
     
-    predict_training_data_random_effects = function() {
+    predict_training_data_random_effects = function(predict_var = FALSE) {
       if(isTRUE(private$model_has_been_loaded_from_saved_file)){
         stop("GPModel: 'predict_training_data_random_effects' is currently not 
         implemented for models that have been loaded from a saved file")
@@ -1468,17 +1468,33 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(private$drop_intercept_group_rand_effect)) {
         num_re_comps <- num_re_comps - sum(private$drop_intercept_group_rand_effect)
       }
-      re_preds <- numeric(private$num_data * num_re_comps)
+      if (storage.mode(predict_var) != "logical") {
+        stop("predict_training_data_random_effects.GPModel: Can only use ", 
+             sQuote("logical"), " as ", sQuote("predict_var"))
+      }
+      if (predict_var) {
+        re_preds <- numeric(private$num_data * num_re_comps * 2)
+      } else {
+        re_preds <- numeric(private$num_data * num_re_comps)
+      }
+      
       .Call(
         GPB_PredictREModelTrainingDataRandomEffects_R
         , private$handle
         , NULL
         , NULL
         , NULL
+        , predict_var
         , re_preds
       )
-      re_preds <- matrix(re_preds, ncol = num_re_comps, 
-                         dimnames=list(NULL, private$re_comp_names))
+      if (predict_var) {
+        re_preds <- matrix(re_preds, ncol = 2 * num_re_comps, 
+                           dimnames = list(NULL, c(private$re_comp_names,
+                                                 paste0(private$re_comp_names, "_var"))))
+      } else {
+        re_preds <- matrix(re_preds, ncol = num_re_comps, 
+                           dimnames = list(NULL, private$re_comp_names))
+      }
       return(re_preds)
     },
     
@@ -2547,7 +2563,8 @@ set_prediction_data.GPModel <- function(gp_model,
 #' @author Fabio Sigrist
 #' @export 
 #' 
-predict_training_data_random_effects <- function(gp_model) UseMethod("predict_training_data_random_effects")
+predict_training_data_random_effects <- function(gp_model,
+                                                 predict_var = FALSE) UseMethod("predict_training_data_random_effects")
 
 #' Predict ("estimate") training data random effects for a \code{GPModel}
 #' 
@@ -2576,15 +2593,15 @@ predict_training_data_random_effects <- function(gp_model) UseMethod("predict_tr
 #' @author Fabio Sigrist
 #' @export 
 #' 
-predict_training_data_random_effects.GPModel <- function(gp_model) {
+predict_training_data_random_effects.GPModel <- function(gp_model,
+                                                         predict_var = FALSE) {
   
   if (!gpb.check.r6.class(gp_model, "GPModel")) {
     stop("predict_training_data_random_effects.GPModel: gp_model needs to be a ", sQuote("GPModel"))
   }
   
-  return(gp_model$predict_training_data_random_effects())
+  return(gp_model$predict_training_data_random_effects(predict_var = predict_var))
 }
-predict_training_data_random_effects <- function(gp_model) UseMethod("predict_training_data_random_effects")
 
 #' Auxiliary function to create categorical variables for nested grouped random effects
 #' 

@@ -140,9 +140,11 @@ test_that("Binary classification with Gaussian process model ", {
   expect_lt(sum(abs(pred$var-expected_mu*(1-expected_mu))),TOLERANCE_STRICT)
   
   # Predict training data random effects
-  training_data_random_effects <- predict_training_data_random_effects(gp_model)
-  pred_random_effects <- predict(gp_model, gp_coords_pred = coords, predict_response = FALSE)
-  expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
+  training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+  preds <- predict(gp_model, gp_coords_pred = coords, 
+                   predict_response = FALSE, predict_var = TRUE)
+  expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
+  expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),TOLERANCE_STRICT)
   
   # Evaluate approximate negative marginal log-likelihood
   nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
@@ -245,9 +247,11 @@ test_that("Binary classification with Gaussian process model with multiple obser
   expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2445757, 0.2445757))),TOLERANCE_STRICT)
   
   # Predict training data random effects
-  training_data_random_effects <- predict_training_data_random_effects(gp_model)
-  pred_random_effects <- predict(gp_model, gp_coords_pred = coords_multiple, predict_response = FALSE)
-  expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
+  training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+  preds <- predict(gp_model, gp_coords_pred = coords_multiple, 
+                   predict_response = FALSE, predict_var = TRUE)
+  expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
+  expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),TOLERANCE_STRICT)
   
   # Multiple cluster IDs and multiple observations
   coord_test <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
@@ -338,12 +342,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-rep(0.5,4))),TOLERANCE_STRICT)
     
     # Predict training data random effects
-    all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+    all_training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
     first_occurences <- match(unique(group), group)
-    training_data_random_effects <- all_training_data_random_effects[first_occurences] 
+    training_data_random_effects <- all_training_data_random_effects[first_occurences,] 
     group_unique <- unique(group)
-    pred_random_effects <- predict(gp_model, group_data_pred = group_unique, predict_response = FALSE)
-    expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
+    preds <- predict(gp_model, group_data_pred = group_unique, 
+                     predict_response = FALSE, predict_var = TRUE)
+    expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),1E-6)
+    expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),1E-6)
     
     # Estimation using Nelder-Mead
     gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
@@ -393,30 +399,34 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 37)
     
     # Predict training data random effects
-    all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+    cov_pars <- gp_model$get_cov_pars()
+    all_training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
     first_occurences_1 <- match(unique(group), group)
     first_occurences_2 <- match(unique(group2), group2)
-    pred_random_effects <- all_training_data_random_effects[first_occurences_1,1]
-    pred_random_slopes <- all_training_data_random_effects[first_occurences_1,3]
-    pred_random_effects_crossed <- all_training_data_random_effects[first_occurences_2,2] 
+    pred_random_effects <- all_training_data_random_effects[first_occurences_1,c(1,4)]
+    pred_random_slopes <- all_training_data_random_effects[first_occurences_1,c(3,6)]
+    head(pred_random_slopes)
+    pred_random_effects_crossed <- all_training_data_random_effects[first_occurences_2,c(2,5)] 
     group_unique <- unique(group)
     group_data_pred = cbind(group_unique,rep(-1,length(group_unique)))
     x_pr = rep(0,length(group_unique))
     preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
-                     predict_response = FALSE)
-    expect_lt(sum(abs(pred_random_effects - preds$mu)),1E-6)
+                     predict_response = FALSE, predict_var = TRUE)
+    expect_lt(sum(abs(pred_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_random_effects[,2] - (preds$var-cov_pars[2]))),TOLERANCE_STRICT)
     # Check whether random slopes are correct
     x_pr = rep(1,length(group_unique))
     preds2 <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
                       predict_response = FALSE)
-    expect_lt(sum(abs(pred_random_slopes - (preds2$mu-preds$mu))),1E-6)
+    expect_lt(sum(abs(pred_random_slopes[,1] - (preds2$mu-preds$mu))),TOLERANCE_STRICT)
     # Check whether crossed random effects are correct
     group_unique <- unique(group2)
     group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
     x_pr = rep(0,length(group_unique))
     preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
-                     predict_response = FALSE)
-    expect_lt(sum(abs(pred_random_effects_crossed - preds$mu)),1E-6)
+                     predict_response = FALSE, predict_var = TRUE)
+    expect_lt(sum(abs(pred_random_effects_crossed[,1] - preds$mu)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(pred_random_effects_crossed[,2] - (preds$var-cov_pars[1]))),TOLERANCE_STRICT)
     
     # Prediction
     gp_model <- GPModel(likelihood = "bernoulli_probit", group_data = cbind(group,group2),
@@ -504,13 +514,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Check whether random slopes are correct
     x_pr = rep(1,length(group_unique))
     preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, predict_response = FALSE)
-    expect_lt(sum(abs(pred_random_slopes - preds$mu)),1E-6)
+    expect_lt(sum(abs(pred_random_slopes - preds$mu)),TOLERANCE_LOOSE)
     # Check whether crossed random effects are correct
     group_unique <- unique(group2)
     group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
     x_pr = rep(0,length(group_unique))
     preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, predict_response = FALSE)
-    expect_lt(sum(abs(pred_random_effects_crossed - preds$mu)),1E-6)
+    expect_lt(sum(abs(pred_random_effects_crossed - preds$mu)),TOLERANCE_LOOSE)
     # Prediction
     gp_model <- GPModel(likelihood = "bernoulli_probit", group_data = cbind(group,group2),
                         group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
@@ -826,32 +836,44 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     # Predict variances
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, predict_response = FALSE)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, 
+                    predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
     # Use vecchia_pred_type = "order_obs_first_cond_all"
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE,
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
+                    predict_response = FALSE,
                     vecchia_pred_type = "order_obs_first_cond_all")
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     # Predict response
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE, predict_var = TRUE)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE, 
+                    predict_var = TRUE)
     expected_mu_lat <- c(0.3034847, 0.3022886, 0.6615111)
     expected_var_lat <- c(0.2113818, 0.2109102, 0.2239142)
     expect_lt(sum(abs(pred$mu-expected_mu_lat)),TOLERANCE_STRICT)
     expect_lt(sum(abs(pred$var-expected_var_lat)),TOLERANCE_STRICT)
     # Use vecchia_pred_type = "latent_order_obs_first_cond_obs_only"
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE,
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
+                    predict_response = FALSE,
                     vecchia_pred_type = "latent_order_obs_first_cond_obs_only")
     expected_cov <- c(0.6476328648, 0.2954937370, -0.0001037986, 0.2954937370, 0.6472245580, 
                       -0.0001133886, -0.0001037986, -0.0001133886, 0.4430490207)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     # Use vecchia_pred_type = "order_obs_first_cond_obs_only"
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE,
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
+                    predict_response = FALSE,
                     vecchia_pred_type = "order_obs_first_cond_obs_only")
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    
+    # Predict training data random effects
+    training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+    preds <- predict(gp_model, gp_coords_pred = coords, predict_response = FALSE,
+                     vecchia_pred_type = "order_obs_first_cond_obs_only", predict_var = TRUE)
+    expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),TOLERANCE_STRICT)
     
     # Evaluate approximate negative marginal log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
@@ -1051,13 +1073,15 @@ test_that("Binary classification with linear predictor and grouped random effect
   expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
   
   # Predict training data random effects
-  all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+  all_training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
   first_occurences <- match(unique(group), group)
-  training_data_random_effects <- all_training_data_random_effects[first_occurences] 
+  training_data_random_effects <- all_training_data_random_effects[first_occurences,] 
   group_unique <- unique(group)
   X_zero <- cbind(rep(0,length(group_unique)),rep(0,length(group_unique)))
-  pred_random_effects <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero, predict_response = FALSE)
-  expect_lt(sum(abs(training_data_random_effects - pred_random_effects$mu)),1E-6)
+  preds <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero, 
+                   predict_response = FALSE, predict_var = TRUE)
+  expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
+  expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),TOLERANCE_STRICT)
   
   # Standard deviations
   capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit", 

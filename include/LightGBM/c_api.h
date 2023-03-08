@@ -1618,15 +1618,17 @@ GPBOOST_C_EXPORT int GPB_PredictREModel(REModelHandle handle,
 * \param handle Handle of REModel
 * \param cov_pars_pred Covariance parameters of components
 * \param y_obs Response variable for observed data
-* \param[out] out_predict Predicted training data random effects
+* \param[out] out_predict Predicted training data random effects and variances if calc_var
 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data). For Gaussian data, this is ignored
+* \param calc_var If true, variances are also calculated
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_PredictREModelTrainingDataRandomEffects(REModelHandle handle,
     const double* cov_pars_pred,
     const double* y_obs,
     double* out_predict,
-    const double* fixed_effects);
+    const double* fixed_effects,
+    bool calc_var);
 
 /*!
 * \brief Get name of likelihood

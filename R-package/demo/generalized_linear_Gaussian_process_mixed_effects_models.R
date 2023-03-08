@@ -39,7 +39,7 @@ simulate_response_variable <- function (lp, rand_eff, likelihood) {
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", or "gamma"
-likelihood <- "gaussian"
+likelihood <- "gamma"
 
 #################################
 # Grouped random effects
@@ -120,22 +120,24 @@ pred_resp$var # Predicted variance of response variable
 
 # --------------------Predict ("estimate") training data random effects----------------
 # The following shows how to obtain predicted (="estimated") random effects for the training data
-all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
+all_training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
 # The function 'predict_training_data_random_effects' returns predicted random effects for all data points.
 # Unique random effects for every group can be obtained as follows
 first_occurences <- match(unique(group), group)
-training_data_random_effects <- all_training_data_random_effects[first_occurences] 
+training_data_random_effects <- all_training_data_random_effects[first_occurences,]
+head(training_data_random_effects) # Training data random effects: predictive means and variances
 # Compare true and predicted random effects
-plot(b, training_data_random_effects, xlab="truth", ylab="predicted",
+plot(b, training_data_random_effects[,1], xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 # Adding the overall intercept gives the group-wise intercepts
 group_wise_intercepts <- gp_model$get_coef()[1] + training_data_random_effects
-# Alternatively, this can also be done as follows
+# The above is equivalent to the following:
 # group_unique <- unique(group)
 # X_zero <- cbind(rep(0,length(group_unique)),rep(0,length(group_unique)))
-# pred_random_effects <- predict(gp_model, group_data_pred = group_unique, 
-#                                X_pred = X_zero, predict_response = FALSE)
-# sum(abs(training_data_random_effects - pred_random_effects$mu))
+# pred_random_effects <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero,
+#                                predict_response = FALSE, predict_var = TRUE)
+# sum(abs(training_data_random_effects[,1] - pred_random_effects$mu))
+# sum(abs(training_data_random_effects[,2] - pred_random_effects$var))
 
 #--------------------Saving a GPModel and loading it from a file----------------
 # Save model to file
@@ -347,14 +349,16 @@ plot3 <- ggplot(data = data.frame(s_1=coords_test[,1] ,s_2=coords_test[,2], b=sq
 grid.arrange(plot1, plot2, plot3, ncol=2)
 
 # Predict latent GP at training data locations (=smoothing)
-GP_smooth <- predict_training_data_random_effects(gp_model)
+GP_smooth <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+head(GP_smooth) # Training data random effects: predictive means and variances
 # Compare true and predicted random effects
-plot(b_1_train, GP_smooth, xlab="truth", ylab="predicted",
+plot(b_1_train, GP_smooth[,1], xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
-# The above is equivalent to the following
-# GP_smooth2 = predict(gp_model, gp_coords_pred=coords_train, 
-#                      predict_response = FALSE)
-# sum(abs(GP_smooth - GP_smooth2$mu))
+# The above is equivalent to the following:
+# GP_smooth2 = predict(gp_model, gp_coords_pred = coords_train,
+#                      predict_response = FALSE, predict_var = TRUE)
+# sum(abs(GP_smooth[,1] - GP_smooth2$mu))
+# sum(abs(GP_smooth[,2] - GP_smooth2$var))
 
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"

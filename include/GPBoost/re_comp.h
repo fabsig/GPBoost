@@ -166,6 +166,10 @@ namespace GPBoost {
 			}
 		}
 
+		bool IsRandCoef() const {
+			return(is_rand_coef_);
+		}
+
 	protected:
 		/*! \brief Number of data points */
 		data_size_t num_data_;

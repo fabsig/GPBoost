@@ -148,6 +148,13 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Returns a pointer to mode_
+		*/
+		const vec_t* GetMode() const {
+			return(&mode_);
+		}
+
+		/*!
 		* \brief Returns a pointer to first_deriv_ll_
 		*/
 		const vec_t* GetFirstDerivLL() const {
@@ -1406,7 +1413,7 @@ namespace GPBoost {
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		void CalcGradNegMargLikelihoodLAApproxStable(const double* y_data,
+		void CalcGradNegMargLikelihoodLaplaceApproxStable(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
 			const data_size_t num_data,
@@ -1507,7 +1514,7 @@ namespace GPBoost {
 					aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
 				}
 			}//end calc_aux_par_grad
-		}//end CalcGradNegMargLikelihoodLAApproxStable
+		}//end CalcGradNegMargLikelihoodLaplaceApproxStable
 
 		/*!
 		* \brief Calculate the gradient of the negative Laplace-approximated marginal log-likelihood wrt covariance parameters, 
@@ -1531,7 +1538,7 @@ namespace GPBoost {
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		void CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale(const double* y_data,
+		void CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGPCalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
 			const data_size_t num_data,
@@ -1580,8 +1587,8 @@ namespace GPBoost {
 			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, third_deriv, diag_ZtThirdDerivZ, true);
 			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZsqrt, L_inv_ZtWZsqrt, false);//L_inv_ZtWZsqrt = L\ZtWZsqrt
 			T_mat L_inv_ZtWZsqrt_Sigma = L_inv_ZtWZsqrt * (*Sigma);
-			//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale: L_inv_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt));//Only for debugging
-			//Log::REInfo("CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale: L_inv_ZtWZsqrt_Sigma: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt_Sigma));//Only for debugging
+			//Log::REInfo("CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGPCalculationsOnREScale: L_inv_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt));//Only for debugging
+			//Log::REInfo("CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGPCalculationsOnREScale: L_inv_ZtWZsqrt_Sigma: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt_Sigma));//Only for debugging
 			// Calculate gradient of approx. marginal log-likelihood wrt the mode
 			//		Note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = ZSigmaZt - L_inv_ZtWZsqrt_Sigma^T*L_inv_ZtWZsqrt_Sigma
 			T_mat L_inv_ZtWZsqrt_Sigma_sqr = L_inv_ZtWZsqrt_Sigma.cwiseProduct(L_inv_ZtWZsqrt_Sigma);
@@ -1648,7 +1655,7 @@ namespace GPBoost {
 					aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
 				}
 			}//end calc_aux_par_grad
-		}//end CalcGradNegMargLikelihoodLAApproxOnlyOneGPCalculationsOnREScale
+		}//end CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGPCalculationsOnREScale
 
 		/*!
 		* \brief Calculate the gradient of the negative Laplace-approximated marginal log-likelihood wrt covariance parameters, 
@@ -1670,7 +1677,7 @@ namespace GPBoost {
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		void CalcGradNegMargLikelihoodLAApproxGroupedRE(const double* y_data,
+		void CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
 			const data_size_t num_data,
@@ -1790,7 +1797,7 @@ namespace GPBoost {
 					aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
 				}
 			}//end calc_aux_par_grad
-		}//end CalcGradNegMargLikelihoodLAApproxGroupedRE
+		}//end CalcGradNegMargLikelihoodLaplaceApproxGroupedRE
 
 		/*!
 		* \brief Calculate the gradient of the negative Laplace-approximated marginal log-likelihood wrt covariance parameters, 
@@ -1811,7 +1818,7 @@ namespace GPBoost {
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		void CalcGradNegMargLikelihoodLAApproxOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
+		void CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
 			const data_size_t num_data,
@@ -1897,7 +1904,7 @@ namespace GPBoost {
 					//double implicit_derivative = (d_mll_d_mode.array() * Zt_second_deriv.array() / diag_SigmaI_plus_ZtWZ_.array()).sum();
 				}
 			}//end calc_aux_par_grad
-		}//end CalcGradNegMargLikelihoodLAApproxOnlyOneGroupedRECalculationsOnREScale
+		}//end CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale
 
 		/*!
 		* \brief Calculate the gradient of the negative Laplace-approximated marginal log-likelihood wrt covariance parameters, 
@@ -1923,7 +1930,7 @@ namespace GPBoost {
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		* \param num_comps_total Total number of random effect components ( = number of GPs)
 		*/
-		void CalcGradNegMargLikelihoodLAApproxVecchia(const double* y_data,
+		void CalcGradNegMargLikelihoodLaplaceApproxVecchia(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
 			const data_size_t num_data,
@@ -2038,7 +2045,7 @@ namespace GPBoost {
 					aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
 				}
 			}//end calc_aux_par_grad
-		}//end CalcGradNegMargLikelihoodLAApproxVecchia
+		}//end CalcGradNegMargLikelihoodLaplaceApproxVecchia
 
 		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
@@ -2058,7 +2065,7 @@ namespace GPBoost {
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		void PredictLAApproxStable(const double* y_data,
+		void PredictLaplaceApproxStable(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
 			const data_size_t num_data,
@@ -2095,7 +2102,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}//end PredictLAApproxStable
+		}//end PredictLaplaceApproxStable
 
 		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
@@ -2116,7 +2123,7 @@ namespace GPBoost {
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		void PredictLAApproxOnlyOneGPCalculationsOnREScale(const double* y_data,
+		void PredictLaplaceApproxOnlyOneGPCalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
 			const data_size_t num_data,
@@ -2159,7 +2166,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}//end PredictLAApproxOnlyOneGPCalculationsOnREScale
+		}//end PredictLaplaceApproxOnlyOneGPCalculationsOnREScale
 
 		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
@@ -2181,7 +2188,7 @@ namespace GPBoost {
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		void PredictLAApproxGroupedRE(const double* y_data,
+		void PredictLaplaceApproxGroupedRE(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
 			const data_size_t num_data,
@@ -2223,7 +2230,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}//end PredictLAApproxGroupedRE
+		}//end PredictLaplaceApproxGroupedRE
 
 		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
@@ -2243,7 +2250,7 @@ namespace GPBoost {
 		* \param calc_pred_var If true, predictive variances are also calculated
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		*/
-		void PredictLAApproxOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
+		void PredictLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
 			const data_size_t num_data,
@@ -2286,7 +2293,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}//end PredictLAApproxOnlyOneGroupedRECalculationsOnREScale
+		}//end PredictLaplaceApproxOnlyOneGroupedRECalculationsOnREScale
 
 		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
@@ -2311,7 +2318,7 @@ namespace GPBoost {
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		* \param CondObsOnly If true, the nearest neighbors for the predictions are found only among the observed data and Bp is an identity matrix
 		*/
-		void PredictLAApproxVecchia(const double* y_data,
+		void PredictLaplaceApproxVecchia(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
 			const data_size_t num_data,
@@ -2384,7 +2391,91 @@ namespace GPBoost {
 					}
 				}
 			}//end calc_pred_cov || calc_pred_var
-		}//end PredictLAApproxVecchia
+		}//end PredictLaplaceApproxVecchia
+
+//Note: the following is currently not used
+//		/*!
+//		* \brief Calculate variance of Laplace-approximated posterior
+//		* \param ZSigmaZt Covariance matrix of latent random effect
+//		* \param[out] pred_var Variance of Laplace-approximated posterior
+//		*/
+//		void CalcVarLaplaceApproxStable(const std::shared_ptr<T_mat> ZSigmaZt,
+//			vec_t& pred_var) {
+//			CHECK(mode_has_been_calculated_);
+//			pred_var = vec_t(num_re_);
+//			vec_t diag_Wsqrt(second_deriv_neg_ll_.size());
+//			diag_Wsqrt.array() = second_deriv_neg_ll_.array().sqrt();
+//			T_mat L_inv_W_sqrt_ZSigmaZt = diag_Wsqrt.asDiagonal() * (*ZSigmaZt);
+//			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_W_sqrt_ZSigmaZt, L_inv_W_sqrt_ZSigmaZt, false);
+//#pragma omp parallel for schedule(static)
+//			for (int i = 0; i < num_re_; ++i) {
+//				pred_var[i] = (*ZSigmaZt).coeff(i,i) - L_inv_W_sqrt_ZSigmaZt.col(i).squaredNorm();
+//			}
+//		}//end CalcVarLaplaceApproxStable
+
+		/*!
+		* \brief Calculate variance of Laplace-approximated posterior
+		* \param Sigma Covariance matrix of latent random effect
+		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
+		* \param[out] pred_var Variance of Laplace-approximated posterior
+		*/
+		void CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale(const std::shared_ptr<T_mat> Sigma,
+			const data_size_t* const random_effects_indices_of_data,
+			vec_t& pred_var) {
+			CHECK(mode_has_been_calculated_);
+			pred_var = vec_t(num_re_);
+			vec_t diag_ZtWZ_sqrt;
+			CalcZtVGivenIndices((data_size_t)second_deriv_neg_ll_.size(), num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_ZtWZ_sqrt, true);
+			diag_ZtWZ_sqrt.array() = diag_ZtWZ_sqrt.array().sqrt();
+			T_mat L_inv_ZtWZ_sqrt_Sigma = diag_ZtWZ_sqrt.asDiagonal() * (*Sigma);
+			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZ_sqrt_Sigma, L_inv_ZtWZ_sqrt_Sigma, false);
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < num_re_; ++i) {
+				pred_var[i] = (*Sigma).coeff(i, i) - L_inv_ZtWZ_sqrt_Sigma.col(i).squaredNorm();
+			}
+		}//end CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale
+
+		/*!
+		* \brief Calculate variance of Laplace-approximated posterior
+		* \param[out] pred_var Variance of Laplace-approximated posterior
+		*/
+		void CalcVarLaplaceApproxGroupedRE(vec_t& pred_var) {
+			CHECK(mode_has_been_calculated_);
+			pred_var = vec_t(num_re_);
+			sp_mat_t L_inv(num_re_, num_re_);
+			L_inv.setIdentity();
+			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, L_inv, L_inv, false);
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < num_re_; ++i) {
+				pred_var[i] = L_inv.col(i).squaredNorm();
+			}
+		}//end CalcVarLaplaceApproxGroupedRE
+
+		/*!
+		* \brief Calculate variance of Laplace-approximated posterior
+		* \param[out] pred_var Variance of Laplace-approximated posterior
+		*/
+		void CalcVarLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(vec_t& pred_var) {
+			CHECK(mode_has_been_calculated_);
+			pred_var = vec_t(num_re_);
+			pred_var.array() = diag_SigmaI_plus_ZtWZ_.array().inverse();
+		}//end CalcVarLaplaceApproxOnlyOneGroupedRECalculationsOnREScale
+
+		/*!
+		* \brief Calculate variance of Laplace-approximated posterior
+		* \param[out] pred_var Variance of Laplace-approximated posterior
+		*/
+		void CalcVarLaplaceApproxVecchia(vec_t& pred_var) {
+			CHECK(mode_has_been_calculated_);
+			pred_var = vec_t(num_re_);
+			sp_mat_t L_inv(num_re_, num_re_);
+			L_inv.setIdentity();
+			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < num_re_; ++i) {
+				pred_var[i] = L_inv.col(i).squaredNorm();
+			}
+		}//end CalcVarLaplaceApproxVecchia
 
 		/*!
 		* \brief Make predictions for the response variable (label) based on predictions for the mean and variance of the latent random effects
@@ -2480,7 +2571,7 @@ namespace GPBoost {
 	private:
 		/*! \brief Number of data points */
 		data_size_t num_data_;
-		/*! \brief Number (dimension) of random effects */
+		/*! \brief Number (dimension) of random effects (= length of mode_) */
 		data_size_t num_re_;
 		/*! \brief Posterior mode used for Laplace approximation */
 		vec_t mode_;

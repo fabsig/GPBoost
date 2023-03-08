@@ -4,10 +4,14 @@
 \alias{predict_training_data_random_effects.GPModel}
 \title{Predict ("estimate") training data random effects for a \code{GPModel}}
 \usage{
-\method{predict_training_data_random_effects}{GPModel}(gp_model)
+\method{predict_training_data_random_effects}{GPModel}(gp_model,
+  predict_var = FALSE)
 }
 \arguments{
 \item{gp_model}{A \code{GPModel}}
+
+\item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
+predictive variances are calculated}
 }
 \value{
 A \code{GPModel}

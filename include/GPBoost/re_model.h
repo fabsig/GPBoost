@@ -362,13 +362,15 @@ namespace GPBoost {
 		* \brief Predict ("estimate") training data random effects
 		* \param cov_pars_pred Covariance parameters of components
 		* \param y_obs Response variable for observed data
-		* \param[out] out_predict Predicted training data random effects
+		* \param[out] out_predict Predicted training data random effects and variances if calc_var
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
+		* \param calc_var If true, variances are also calculated
 		*/
 		void PredictTrainingDataRandomEffects(const double* cov_pars_pred,
 			const double* y_obs,
 			double* out_predict,
-			const double* fixed_effects) const;
+			const double* fixed_effects,
+			bool calc_var) const;
 
 		int GetNumIt() const;
 

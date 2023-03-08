@@ -5652,8 +5652,13 @@ class GPModel(object):
             ctypes.c_double(self.cg_delta_conv_pred)))
         return self
 
-    def predict_training_data_random_effects(self):
+    def predict_training_data_random_effects(self, predict_var=False):
         """Predict ("estimate") training data random effects.
+
+        Parameters
+        ----------
+            predict_var : bool (default=False)
+                If True, the (posterior) predictive variances are calculated
 
         Returns
         -------
@@ -5676,15 +5681,24 @@ class GPModel(object):
         num_re_comps = self.num_group_re + self.num_group_rand_coef + self.num_gp + self.num_gp_rand_coef
         if self.drop_intercept_group_rand_effect is not None:
             num_re_comps = num_re_comps - self.drop_intercept_group_rand_effect.sum()
-        re_preds = np.zeros(self.num_data * num_re_comps, dtype=np.float64)
+        if predict_var:
+            re_preds = np.zeros(self.num_data * num_re_comps * 2, dtype=np.float64)
+        else:
+            re_preds = np.zeros(self.num_data * num_re_comps, dtype=np.float64)
+        
         _safe_call(_LIB.GPB_PredictREModelTrainingDataRandomEffects(
             self.handle,
             ctypes.c_void_p(),
             ctypes.c_void_p(),
             re_preds.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            ctypes.c_void_p()))
-        re_preds = re_preds.reshape((self.num_data, num_re_comps), order='F')
-        re_preds = pd.DataFrame(re_preds, columns=self.re_comp_names)
+            ctypes.c_void_p(),
+            ctypes.c_bool(predict_var)))
+        if predict_var:
+            re_preds = re_preds.reshape((self.num_data, num_re_comps * 2), order='F')
+            re_preds = pd.DataFrame(re_preds, columns=(self.re_comp_names + [el + "_var" for el in self.re_comp_names]))
+        else:
+            re_preds = re_preds.reshape((self.num_data, num_re_comps), order='F')
+            re_preds = pd.DataFrame(re_preds, columns=self.re_comp_names)
         return re_preds
 
     def _get_response_data(self):

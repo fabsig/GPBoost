@@ -1138,13 +1138,15 @@ SEXP GPB_PredictREModelTrainingDataRandomEffects_R(SEXP handle,
 	SEXP cov_pars,
 	SEXP y_obs,
 	SEXP fixed_effects,
+	SEXP calc_var,
 	SEXP out_predict) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_PredictREModelTrainingDataRandomEffects(R_ExternalPtrAddr(handle),
 		R_REAL_PTR(cov_pars),
 		R_REAL_PTR(y_obs),
 		R_REAL_PTR(out_predict),
-		R_REAL_PTR(fixed_effects)));
+		R_REAL_PTR(fixed_effects),
+		Rf_asLogical(calc_var)));
 	R_API_END();
 	return R_NilValue;
 }
@@ -1314,7 +1316,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 2},
   {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 11},
   {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 20},
-  {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 5},
+  {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 6},
   {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 1},
   {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC)&GPB_GetOptimizerCovPars_R        , 1},
   {"GPB_GetOptimizerCoef_R"           , (DL_FUNC)&GPB_GetOptimizerCoef_R           , 1},

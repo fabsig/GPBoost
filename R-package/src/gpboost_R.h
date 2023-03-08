@@ -936,7 +936,8 @@ GPBOOST_C_EXPORT SEXP GPB_PredictREModel_R(
 * \param cov_pars_pred Covariance parameters of components
 * \param y_obs Response variable for observed data
 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
-* \param[out] out_predict Predicted training data random effects
+* \param calc_var If true, variances are also calculated
+* \param[out] out_predict Predicted training data random effects and variances if calc_var
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_PredictREModelTrainingDataRandomEffects_R(
@@ -944,6 +945,7 @@ GPBOOST_C_EXPORT SEXP GPB_PredictREModelTrainingDataRandomEffects_R(
 	SEXP cov_pars,
 	SEXP y_obs,
 	SEXP fixed_effects,
+	SEXP calc_var,
 	SEXP out_predict
 );
 

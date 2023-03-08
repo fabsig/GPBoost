@@ -46,7 +46,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", or "gamma"
-likelihood = "gamma"
+likelihood = "gaussian"
 
 """
 Grouped random effects
@@ -133,24 +133,25 @@ print(pred_resp['mu']) # Predicted response variable (label)
 print(pred_resp['var']) # Predicted variance of response
 
 # --------------------Predict ("estimate") training data random effects----------------
-all_training_data_random_effects = gp_model.predict_training_data_random_effects()
+all_training_data_random_effects = gp_model.predict_training_data_random_effects(predict_var=True)
 # The function 'predict_training_data_random_effects' returns predicted random effects for all data points.
 # Unique random effects for every group can be obtained as follows
 first_occurences = [np.where(group==i)[0][0] for i in np.unique(group)]
 training_data_random_effects = all_training_data_random_effects.iloc[first_occurences]
-print(training_data_random_effects[0:5])# Predicted training data random effects
+print(training_data_random_effects.head()) # Training data random effects: predictive means and variances
 # Compare true and predicted random effects
-plt.scatter(b, training_data_random_effects)
+plt.scatter(b, training_data_random_effects.iloc[:,0])
 plt.title("Comparison of true and predicted random effects")
 plt.show(block=False)
 # Adding the overall intercept gives the group-wise intercepts
 group_wise_intercepts = gp_model.get_coef().iloc[0,0] + training_data_random_effects
-# Alternatively, this can also be done as follows
+# The above is equivalent to the following:
 # group_unique = np.unique(group)
 # x_zero = np.column_stack((np.zeros(len(group_unique)), np.zeros(len(group_unique))))
-# pred_random_effects = gp_model.predict(group_data_pred=group_unique, 
-#                                        X_pred=x_zero, predict_response=False)
-# np.sum(np.abs(training_data_random_effects['Group_1'] - pred_random_effects['mu']))
+# pred_random_effects = gp_model.predict(group_data_pred=group_unique, X_pred=x_zero, 
+#                                        predict_response=False, predict_var=True)
+# print(np.sum(np.abs(training_data_random_effects['Group_1'] - pred_random_effects['mu'])))
+# print(np.sum(np.abs(training_data_random_effects['Group_1_var'] - pred_random_effects['var'])))
 
 #--------------------Saving a GPModel and loading it from a file----------------
 # Save trained model
@@ -331,14 +332,17 @@ axs[1, 0].set_title("Predicted latent GP standard deviation")
 plt.show(block=False)
 
 # Predict latent GP at training data locations (=smoothing)
-GP_smooth = gp_model.predict_training_data_random_effects()
+GP_smooth = gp_model.predict_training_data_random_effects(predict_var=True)
+print(GP_smooth.head()) # Training data random effects: predictive means and variances
 # Compare true and predicted random effects
-plt.scatter(b_train, GP_smooth)
+plt.scatter(b_train, GP_smooth.iloc[:,0])
 plt.title("Comparison of true and smoothed GP")
 plt.show(block=False)
-# The above is equivalent to the following
-# GP_smooth2 = gp_model.predict(gp_coords_pred=coords_train, predict_response=False)
-# np.sum(np.abs(GP_smooth['GP'] - GP_smooth2['mu']))
+# The above is equivalent to the following:
+# GP_smooth2 = gp_model.predict(gp_coords_pred=coords_train, 
+#                               predict_response=False, predict_var=True)
+# print(np.sum(np.abs(GP_smooth['GP'] - GP_smooth2['mu'])))
+# print(np.sum(np.abs(GP_smooth['GP_var'] - GP_smooth2['var'])))
 
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
