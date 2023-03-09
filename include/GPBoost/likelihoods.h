@@ -295,8 +295,8 @@ namespace GPBoost {
 				double s = log_avg - avg_log;
 				aux_pars_[0] = (3. - s + std::sqrt((s - 3.) * (s - 3.) + 24. * s)) / (12. * s);
 			}
-			else if (likelihood_type_ != "gaussian" & likelihood_type_ != "bernoulli_probit" &
-				likelihood_type_ != "bernoulli_logit" & likelihood_type_ != "poisson") {
+			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
+				likelihood_type_ != "bernoulli_logit" && likelihood_type_ != "poisson") {
 				Log::REFatal("FindInitialAuxPars: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 			}
 			return(aux_pars_.data());
@@ -320,8 +320,8 @@ namespace GPBoost {
 					}
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
-				else if (likelihood_type_ != "gaussian" & likelihood_type_ != "bernoulli_probit" &
-					likelihood_type_ != "bernoulli_logit" & likelihood_type_ != "poisson") {
+				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
+					likelihood_type_ != "bernoulli_logit" && likelihood_type_ != "poisson") {
 					Log::REFatal("CalculateAuxQuantNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 				}
 				aux_normalizing_constant_has_been_calculated_ = true;
@@ -362,7 +362,7 @@ namespace GPBoost {
 							num_data * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]));
 					}
 				}
-				else if (likelihood_type_ != "gaussian" & likelihood_type_ != "bernoulli_probit" & 
+				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
 					likelihood_type_ != "bernoulli_logit") {
 					Log::REFatal("CalculateNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 				}
@@ -640,8 +640,8 @@ namespace GPBoost {
 				neg_log_grad *= aux_pars_[0];
 				grad[0] = neg_log_grad;
 			}
-			else if (likelihood_type_ != "gaussian" & likelihood_type_ != "bernoulli_probit" &
-				likelihood_type_ != "bernoulli_logit" & likelihood_type_ != "poisson") {
+			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
+				likelihood_type_ != "bernoulli_logit" && likelihood_type_ != "poisson") {
 				Log::REFatal("CalcGradNegLogLikAuxPars: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
 		}//end CalcGradNegLogLikAuxPars
@@ -670,8 +670,8 @@ namespace GPBoost {
 					neg_third_deriv[i] = second_deriv[i] + aux_pars_[0];
 				}
 			}
-			else if (likelihood_type_ != "gaussian" & likelihood_type_ != "bernoulli_probit" &
-				likelihood_type_ != "bernoulli_logit" & likelihood_type_ != "poisson") {
+			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
+				likelihood_type_ != "bernoulli_logit" && likelihood_type_ != "poisson") {
 				Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
 		}//end CalcSecondNegThirdDerivLogLikAuxParsLocPar
@@ -1544,12 +1544,12 @@ namespace GPBoost {
 			const data_size_t num_data,
 			const std::shared_ptr<T_mat> Sigma,
 			const data_size_t* const random_effects_indices_of_data,
-			const std::vector<std::shared_ptr<RECompBase<T_mat>>> & re_comps_cluster_i,
+			const std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i,
 			bool calc_cov_grad,
 			bool calc_F_grad,
 			bool calc_aux_par_grad,
 			double* cov_grad,
-			vec_t & fixed_effect_grad,
+			vec_t& fixed_effect_grad,
 			double* aux_par_grad,
 			bool calc_mode) {
 			CHECK(re_comps_cluster_i.size() == 1);

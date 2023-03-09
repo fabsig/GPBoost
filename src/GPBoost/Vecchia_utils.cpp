@@ -61,6 +61,15 @@ namespace GPBoost {
 		bool& check_has_duplicates,
 		const string_t& neighbor_selection,
 		RNG_t& gen) {
+		CHECK((int)neighbors.size() == (num_data - start_at));
+		CHECK((int)coords.rows() == num_data);
+		if (end_search_at < 0) {
+			end_search_at = num_data - 2;
+		}
+		if (num_neighbors > end_search_at + 1) {
+			Log::REInfo("The number of neighbors (%d) for the Vecchia approximation needs to be smaller than the number of data points (%d). It is set to %d.", num_neighbors, end_search_at + 2, end_search_at + 1);
+			num_neighbors = end_search_at + 1;
+		}
 		int num_nearest_neighbors = num_neighbors;
 		int num_non_nearest_neighbors = 0;
 		int mult_const_half_random_close_neighbors = 10;//amount of neighbors that are considered as candidate non-nearest but still close neighbors
@@ -74,15 +83,6 @@ namespace GPBoost {
 			Log::REFatal("find_nearest_neighbors_Vecchia_fast: neighbor_selection = '%s' is not supported ", neighbor_selection.c_str());
 		}
 		bool has_duplicates = false;
-		if (end_search_at < 0) {
-			end_search_at = num_data - 2;
-		}
-		CHECK((int)neighbors.size() == (num_data - start_at));
-		CHECK((int)coords.rows() == num_data); 
-		if (num_neighbors > end_search_at + 1) {
-			Log::REInfo("The number of neighbors (%d) for the Vecchia approximation needs to be smaller than the number of data points (%d). It is set to %d.", num_neighbors, end_search_at + 2, end_search_at + 1);
-			num_neighbors = end_search_at + 1;
-		}
 		int dim_coords = (int)coords.cols();
 		//Sort along the sum of the coordinates
 		std::vector<double> coords_sum(num_data);
@@ -123,7 +123,7 @@ namespace GPBoost {
 			int first_i = (start_at <= num_neighbors) ? (num_neighbors + 1) : start_at;//The first point (first_i) for which the search is done is the point with index (num_neighbors + 1) or start_at
 #pragma omp parallel for schedule(static)
 			for (int i = first_i; i < num_data; ++i) {
-				int num_cand_neighbors = std::min<int>({ i, end_search_at + 1 });;
+				int num_cand_neighbors = std::min<int>({ i, end_search_at + 1 });
 				std::vector<int> neighbors_i;
 				std::vector<double> nn_square_dist;
 				if (neighbor_selection == "half_random_close_neighbors" && num_cand_neighbors > num_close_neighbors) {

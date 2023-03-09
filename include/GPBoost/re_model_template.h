@@ -2029,7 +2029,7 @@ namespace GPBoost {
 							D_sqrt.setIdentity();
 							D_sqrt.diagonal().array() = D_inv_cluster_i.diagonal().array().pow(-0.5);
 							sp_mat_t B_inv_D_sqrt;
-							eigen_sp_Lower_sp_RHS_cs_solve(B_cluster_i, D_sqrt, B_inv_D_sqrt, true);
+							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B_cluster_i, D_sqrt, B_inv_D_sqrt, false);
 							psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
 						}//end gp_approx_ == "vecchia"
 						else {//not gp_approx_ == "vecchia"
@@ -3211,7 +3211,13 @@ namespace GPBoost {
 		data_size_t num_data_pred_;
 
 		// ERROR MESSAGES
-		const char* DUPLICATES_COORDS_VECCHIA_NONGAUSS_ = "Duplicates found in the coordinates for the Gaussian process. This is currently not supported for the Vecchia approximation for non-Gaussian likelihoods ";
+		const char* DUPLICATES_COORDS_VECCHIA_NONGAUSS_ = "Duplicates found in the coordinates for the Gaussian process. "
+			"This is currently not supported for the Vecchia approximation for non-Gaussian likelihoods ";
+		const char* DUPLICATES_PRED_VECCHIA_COND_ALL_NONGAUSS_ = "Duplicates found among training and test coordinates. "
+			"This is not supported for predictions with a Vecchia approximation for non-Gaussian likelihoods "
+			"when neighbors are selected among both training and test points ('_cond_all') ";
+		const char* DUPLICATES_PRED_VECCHIA_LATENT_ = "Duplicates found among training and test coordinates. "
+			"This is not supported for predictions with a Vecchia approximation for the latent process ('latent_') ";
 
 		/*! Random number generator */
 		RNG_t rng_;
@@ -4403,7 +4409,7 @@ namespace GPBoost {
 			}
 			if (lr_cov_ * max_abs_nat_grad_cov > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
 				lr_cov_ = MAX_GRADIENT_UPDATE_LOG_SCALE_ / max_abs_nat_grad_cov;
-				Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased since "
+				Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased in iteration number %d since "
 					"the gradient update on the log-scale would have been too large (a change by more than a factor 100). New learning rate = %g", it + 1, lr_cov_);
 			}
 			if (estimate_aux_pars_) {
@@ -6188,9 +6194,15 @@ namespace GPBoost {
 					vecchia_neighbor_selection_, rng_);
 			}
 			else {//find neighbors among both the observed and prediction locations
+				if (!gauss_likelihood_) {
+					check_has_duplicates = true;
+				}
 				find_nearest_neighbors_Vecchia_fast(coords_all, num_data_cli + num_data_pred_cli, num_neighbors_pred_,
 					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, -1, check_has_duplicates,
 					vecchia_neighbor_selection_, rng_);
+				if (check_has_duplicates) {
+					Log::REFatal(DUPLICATES_PRED_VECCHIA_COND_ALL_NONGAUSS_);
+				}
 			}
 			//Random coefficients
 			std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_pred_cli);
@@ -6314,10 +6326,9 @@ namespace GPBoost {
 						}
 					}
 					else {
-						sp_mat_t Identity(num_data_pred_cli, num_data_pred_cli);
-						Identity.setIdentity();
-						sp_mat_t Bp_inv;
-						eigen_sp_Lower_sp_RHS_cs_solve(Bp, Identity, Bp_inv, true);
+						sp_mat_t Bp_inv(num_data_pred_cli, num_data_pred_cli);
+						Bp_inv.setIdentity();
+						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
 						sp_mat_t Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 						if (calc_pred_cov) {
 							pred_cov = T_mat(Bp_inv_Dp * Bp_inv.transpose());
@@ -6518,11 +6529,9 @@ namespace GPBoost {
 			vec_t y_aux = Bop.transpose() * (Do_inv.asDiagonal() * (Bo * y_[cluster_i]));
 			pred_mean = -CholFact.solve(y_aux);
 			if (calc_pred_cov || calc_pred_var) {
-				sp_mat_t Identity(num_data_pred_cli, num_data_pred_cli);
-				Identity.setIdentity();
-				sp_mat_t cond_prec_chol = CholFact.matrixL();
-				sp_mat_t cond_prec_chol_inv;
-				eigen_sp_Lower_sp_RHS_cs_solve(cond_prec_chol, Identity, cond_prec_chol_inv, true);
+				sp_mat_t cond_prec_chol_inv(num_data_pred_cli, num_data_pred_cli);
+				cond_prec_chol_inv.setIdentity();
+				TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(CholFact.CholFactMatrix(), cond_prec_chol_inv, cond_prec_chol_inv, false);
 				if (calc_pred_cov) {
 					pred_cov = T_mat(cond_prec_chol_inv.transpose() * cond_prec_chol_inv);
 				}
@@ -6602,7 +6611,7 @@ namespace GPBoost {
 			std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_coord_unique);
 			std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_coord_unique);
 			std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_coord_unique);
-			bool check_has_duplicates = false;
+			bool check_has_duplicates = true;
 			if (CondObsOnly) {//find neighbors among both the observed locations only
 				find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred_,
 					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1, check_has_duplicates,
@@ -6612,6 +6621,9 @@ namespace GPBoost {
 				find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred_,
 					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
 					vecchia_neighbor_selection_, rng_);
+			}
+			if (check_has_duplicates) {
+				Log::REFatal(DUPLICATES_PRED_VECCHIA_LATENT_);
 			}
 			// Determine Triplet for initializing Bpo and Bp
 			std::vector<Triplet_t> entries_init_B;
@@ -6653,10 +6665,9 @@ namespace GPBoost {
 			}//end loop over data i
 			//Calculate D_inv and B_inv in order to calcualte Sigma and Sigma^-1
 			vec_t D_inv = D.cwiseInverse();
-			sp_mat_t Identity_all(num_coord_unique, num_coord_unique);
-			Identity_all.setIdentity();
-			sp_mat_t B_inv;
-			eigen_sp_Lower_sp_RHS_cs_solve(B, Identity_all, B_inv, true);
+			sp_mat_t B_inv(num_coord_unique, num_coord_unique);
+			B_inv.setIdentity();
+			TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B, B_inv, B_inv, false);
 			//Calculate inverse of covariance matrix for observed data using the Woodbury identity
 			sp_mat_t M_aux_Woodbury = B.transpose() * D_inv.asDiagonal() * B + Z_o.transpose() * Z_o;
 			chol_sp_mat_t CholFac_M_aux_Woodbury;
