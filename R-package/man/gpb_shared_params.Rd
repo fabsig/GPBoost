@@ -65,7 +65,7 @@ names or an integer vector with the indices of the features (e.g.
 
 \item{init_model}{path of model file of \code{gpb.Booster} object, will continue training from this model}
 
-\item{nrounds}{number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting. Default = 100}
+\item{nrounds}{number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting}
 
 \item{obj}{objective function, can be character or custom objective function. Examples include
 \code{regression}, \code{regression_l1}, \code{huber},
@@ -109,12 +109,12 @@ A few key parameters:
 
 \item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
 
-\item{use_gp_model_for_validation}{Boolean (default = TRUE). If TRUE, the \code{gp_model} 
+\item{use_gp_model_for_validation}{Boolean. If TRUE, the \code{gp_model} 
 (Gaussian process and/or random effects) is also used (in addition to the tree model) for calculating 
 predictions on the validation data. If FALSE, the \code{gp_model} (random effects part) is ignored 
 for making predictions and only the tree ensemble is used for making predictions for calculating the validation / test error.}
 
-\item{train_gp_model_cov_pars}{Boolean (default = TRUE). If TRUE, the covariance parameters 
+\item{train_gp_model_cov_pars}{Boolean. If TRUE, the covariance parameters 
 of the \code{gp_model} (Gaussian process and/or random effects) are estimated in every 
 boosting iterations, otherwise the \code{gp_model} parameters are not estimated. 
 In the latter case, you need to either estimate them beforehand or provide the values via 

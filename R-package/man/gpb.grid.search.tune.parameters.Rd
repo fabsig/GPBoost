@@ -23,16 +23,16 @@ may allow you to pass other types of data like \code{matrix} and then separately
 
 \item{num_try_random}{\code{integer} with number of random trial on parameter grid. If NULL, a deterministic search is done}
 
-\item{nrounds}{number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting. Default = 100}
+\item{nrounds}{number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting}
 
 \item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
 
-\item{use_gp_model_for_validation}{Boolean (default = TRUE). If TRUE, the \code{gp_model} 
+\item{use_gp_model_for_validation}{Boolean. If TRUE, the \code{gp_model} 
 (Gaussian process and/or random effects) is also used (in addition to the tree model) for calculating 
 predictions on the validation data. If FALSE, the \code{gp_model} (random effects part) is ignored 
 for making predictions and only the tree ensemble is used for making predictions for calculating the validation / test error.}
 
-\item{train_gp_model_cov_pars}{Boolean (default = TRUE). If TRUE, the covariance parameters 
+\item{train_gp_model_cov_pars}{Boolean. If TRUE, the covariance parameters 
 of the \code{gp_model} (Gaussian process and/or random effects) are estimated in every 
 boosting iterations, otherwise the \code{gp_model} parameters are not estimated. 
 In the latter case, you need to either estimate them beforehand or provide the values via 
