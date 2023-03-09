@@ -96,6 +96,8 @@ namespace GPBoost {
 			first_deriv_ll_ = vec_t(num_data_);
 			second_deriv_neg_ll_ = vec_t(num_data_);
 			mode_has_been_calculated_ = false;
+			na_or_inf_during_last_call_to_find_mode_ = false;
+			na_or_inf_during_second_last_call_to_find_mode_ = false;
 		}
 
 		/*!
@@ -108,6 +110,7 @@ namespace GPBoost {
 			if (has_a_vec_) {
 				a_vec_ = a_vec_previous_value_;
 			}
+			na_or_inf_during_last_call_to_find_mode_ = na_or_inf_during_second_last_call_to_find_mode_;
 		}
 
 		/*! \brief Destructor */
@@ -787,6 +790,7 @@ namespace GPBoost {
 			else {
 				mode_previous_value_ = mode_;
 				a_vec_previous_value_ = a_vec_;
+				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			}
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			vec_t location_par;
@@ -874,6 +878,7 @@ namespace GPBoost {
 			}
 			if (has_NA_or_Inf) {
 				approx_marginal_ll = approx_marginal_ll_new;
+				na_or_inf_during_last_call_to_find_mode_ = true;
 			}
 			else {
 				if (no_fixed_effects) {
@@ -890,6 +895,7 @@ namespace GPBoost {
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_ZSigmaZt_Wsqrt);
 				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
+				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 		}//end FindModePostRandEffCalcMLLStable
 
@@ -921,6 +927,7 @@ namespace GPBoost {
 			else {
 				mode_previous_value_ = mode_;
 				a_vec_previous_value_ = a_vec_;
+				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			}
 			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
 			if (fixed_effects == nullptr) {
@@ -1011,6 +1018,7 @@ namespace GPBoost {
 			}
 			if (has_NA_or_Inf) {
 				approx_marginal_ll = approx_marginal_ll_new;
+				na_or_inf_during_last_call_to_find_mode_ = true;
 			}
 			else {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
@@ -1022,6 +1030,7 @@ namespace GPBoost {
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt);
 				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
+				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 		}//end FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale
 
@@ -1051,6 +1060,7 @@ namespace GPBoost {
 			}
 			else {
 				mode_previous_value_ = mode_;
+				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			}
 			sp_mat_t Z = Zt.transpose();
 			vec_t location_par = Z * mode_;//location parameter = mode of random effects + fixed effects
@@ -1125,6 +1135,7 @@ namespace GPBoost {
 			}
 			if (has_NA_or_Inf) {
 				approx_marginal_ll = approx_marginal_ll_new;
+				na_or_inf_during_last_call_to_find_mode_ = true;
 			}
 			else {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
@@ -1134,6 +1145,7 @@ namespace GPBoost {
 				chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
 				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
+				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 		}//end FindModePostRandEffCalcMLLGroupedRE
 
@@ -1162,6 +1174,7 @@ namespace GPBoost {
 			}
 			else {
 				mode_previous_value_ = mode_;
+				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			}
 			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
 			if (fixed_effects == nullptr) {
@@ -1243,6 +1256,7 @@ namespace GPBoost {
 			}
 			if (has_NA_or_Inf) {
 				approx_marginal_ll = approx_marginal_ll_new;
+				na_or_inf_during_last_call_to_find_mode_ = true;
 			}
 			else {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
@@ -1251,6 +1265,7 @@ namespace GPBoost {
 				diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
 				approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * num_re_ * std::log(sigma2);
 				mode_has_been_calculated_ = true;
+				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 		}//end FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale
 
@@ -1281,6 +1296,7 @@ namespace GPBoost {
 			}
 			else {
 				mode_previous_value_ = mode_;
+				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			}
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			sp_mat_t SigmaI = B.transpose() * D_inv * B;
@@ -1374,6 +1390,7 @@ namespace GPBoost {
 			}
 			if (has_NA_or_Inf) {
 				approx_marginal_ll = approx_marginal_ll_new;
+				na_or_inf_during_last_call_to_find_mode_ = true;
 			}
 			else {
 				if (no_fixed_effects) {
@@ -1390,6 +1407,7 @@ namespace GPBoost {
 				chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
 				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
+				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 		}//end FindModePostRandEffCalcMLLVecchia
 
@@ -1430,9 +1448,10 @@ namespace GPBoost {
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLStable(y_data, y_data_int, fixed_effects, num_data, ZSigmaZt, mll);
 			}
-			else {
-				CHECK(mode_has_been_calculated_);
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
+			CHECK(mode_has_been_calculated_);
 			// Initialize variables
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
@@ -1558,9 +1577,10 @@ namespace GPBoost {
 				FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale(y_data, y_data_int, fixed_effects, num_data,
 					Sigma, random_effects_indices_of_data, mll);
 			}
-			else {
-				CHECK(mode_has_been_calculated_);
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
+			CHECK(mode_has_been_calculated_);
 			// Initialize variables
 			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
 			if (fixed_effects == nullptr) {
@@ -1697,9 +1717,10 @@ namespace GPBoost {
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, num_data, SigmaI, Zt, mll);
 			}
-			else {
-				CHECK(mode_has_been_calculated_);
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
+			CHECK(mode_has_been_calculated_);
 			// Initialize variables
 			sp_mat_t Z = Zt.transpose();
 			vec_t location_par = Z * mode_;//location parameter = mode of random effects + fixed effects
@@ -1836,9 +1857,10 @@ namespace GPBoost {
 				FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, num_data,
 					sigma2, random_effects_indices_of_data, mll);
 			}
-			else {
-				CHECK(mode_has_been_calculated_);
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
+			CHECK(mode_has_been_calculated_);
 			// Initialize variables
 			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
 			if (fixed_effects == nullptr) {
@@ -1950,9 +1972,10 @@ namespace GPBoost {
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, mll);
 			}
-			else {
-				CHECK(mode_has_been_calculated_);
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
+			CHECK(mode_has_been_calculated_);
 			// Initialize variables
 			bool no_fixed_effects = (fixed_effects == nullptr);
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
@@ -2081,9 +2104,10 @@ namespace GPBoost {
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLStable(y_data, y_data_int, fixed_effects, num_data, ZSigmaZt, mll);
 			}
-			else {
-				CHECK(mode_has_been_calculated_);
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
+			CHECK(mode_has_been_calculated_);
 			pred_mean = Cross_Cov * first_deriv_ll_;
 			if (calc_pred_cov || calc_pred_var) {
 				sp_mat_t Wsqrt(num_data, num_data);//diagonal matrix with square root of negative second derivatives on the diagonal (sqrt of negative Hessian of log-likelihood)
@@ -2141,9 +2165,10 @@ namespace GPBoost {
 				FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale(y_data, y_data_int, fixed_effects,
 					num_data, Sigma, random_effects_indices_of_data, mll);
 			}
-			else {
-				CHECK(mode_has_been_calculated_);
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
+			CHECK(mode_has_been_calculated_);
 			vec_t ZtFirstDeriv;
 			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, ZtFirstDeriv, true);
 			pred_mean = Cross_Cov * ZtFirstDeriv;
@@ -2206,9 +2231,10 @@ namespace GPBoost {
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, num_data, SigmaI, Zt, mll);
 			}
-			else {
-				CHECK(mode_has_been_calculated_);
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
+			CHECK(mode_has_been_calculated_);
 			vec_t v_aux = Zt * first_deriv_ll_;
 			vec_t v_aux2 = Sigma * v_aux;
 			pred_mean = Ztilde * v_aux2;
@@ -2268,9 +2294,10 @@ namespace GPBoost {
 				FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, num_data,
 					sigma2, random_effects_indices_of_data, mll);
 			}
-			else {
-				CHECK(mode_has_been_calculated_);
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
+			CHECK(mode_has_been_calculated_);
 			vec_t ZtFirstDeriv;
 			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, ZtFirstDeriv, true);
 			pred_mean = Cross_Cov * ZtFirstDeriv;
@@ -2338,9 +2365,10 @@ namespace GPBoost {
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, mll);
 			}
-			else {
-				CHECK(mode_has_been_calculated_);
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
+			CHECK(mode_has_been_calculated_);
 			int num_pred = (int)Bp.cols();
 			CHECK((int)Dp.size() == num_pred);
 			if (CondObsOnly) {
@@ -2401,6 +2429,9 @@ namespace GPBoost {
 //		*/
 //		void CalcVarLaplaceApproxStable(const std::shared_ptr<T_mat> ZSigmaZt,
 //			vec_t& pred_var) {
+//			if (na_or_inf_during_last_call_to_find_mode_) {
+//				Log::REFatal(NA_OR_INF_ERROR_);
+//			}
 //			CHECK(mode_has_been_calculated_);
 //			pred_var = vec_t(num_re_);
 //			vec_t diag_Wsqrt(second_deriv_neg_ll_.size());
@@ -2422,6 +2453,9 @@ namespace GPBoost {
 		void CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale(const std::shared_ptr<T_mat> Sigma,
 			const data_size_t* const random_effects_indices_of_data,
 			vec_t& pred_var) {
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
+			}
 			CHECK(mode_has_been_calculated_);
 			pred_var = vec_t(num_re_);
 			vec_t diag_ZtWZ_sqrt;
@@ -2440,6 +2474,9 @@ namespace GPBoost {
 		* \param[out] pred_var Variance of Laplace-approximated posterior
 		*/
 		void CalcVarLaplaceApproxGroupedRE(vec_t& pred_var) {
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
+			}
 			CHECK(mode_has_been_calculated_);
 			pred_var = vec_t(num_re_);
 			sp_mat_t L_inv(num_re_, num_re_);
@@ -2456,6 +2493,9 @@ namespace GPBoost {
 		* \param[out] pred_var Variance of Laplace-approximated posterior
 		*/
 		void CalcVarLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(vec_t& pred_var) {
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
+			}
 			CHECK(mode_has_been_calculated_);
 			pred_var = vec_t(num_re_);
 			pred_var.array() = diag_SigmaI_plus_ZtWZ_.array().inverse();
@@ -2466,6 +2506,9 @@ namespace GPBoost {
 		* \param[out] pred_var Variance of Laplace-approximated posterior
 		*/
 		void CalcVarLaplaceApproxVecchia(vec_t& pred_var) {
+			if (na_or_inf_during_last_call_to_find_mode_) {
+				Log::REFatal(NA_OR_INF_ERROR_);
+			}
 			CHECK(mode_has_been_calculated_);
 			pred_var = vec_t(num_re_);
 			sp_mat_t L_inv(num_re_, num_re_);
@@ -2604,6 +2647,10 @@ namespace GPBoost {
 		bool mode_initialized_ = false;
 		/*! \brief If true, the mode has been determined */
 		bool mode_has_been_calculated_ = false;
+		/*! \brief If true, NA or Inf has occurred during the last call to find mode */
+		bool na_or_inf_during_last_call_to_find_mode_ = false;
+		/*! \brief If true, NA or Inf has occurred during the second last call to find mode when mode_previous_value_ was calculated */
+		bool na_or_inf_during_second_last_call_to_find_mode_ = false;
 		/*! \brief Normalizing constant of the log-likelihood (not all likelihoods have one) */
 		double log_normalizing_constant_;
 		/*! \brief If true, the function 'CalculateNormalizingConstant' has been called */
@@ -2735,9 +2782,14 @@ namespace GPBoost {
 										0.64909798155426670071,
 										0.83424747101276179534 };
 
-		const char* NA_OR_INF_WARNING_ = "Mode finding algorithm for Laplace approximation: NA or Inf occurred. This is not necessary a problem as it might have been the cause of a too large learning rate which, consequently, might have been decreased by the optimization algorithm ";
-		const char* NO_INCREASE_IN_MLL_WARNING_ = "Mode finding algorithm for Laplace approximation: The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated ";
-		const char* NO_CONVERGENCE_WARNING_ = "Algorithm for finding mode for Laplace approximation has not converged after the maximal number of iterations ";
+		const char* NA_OR_INF_WARNING_ = "Mode finding algorithm for Laplace approximation: NA or Inf occurred. "
+			"This is not necessary a problem as it might have been the cause of a too large learning rate which, "
+			"consequently, might have been decreased by the optimization algorithm ";
+		const char* NA_OR_INF_ERROR_ = "NA or Inf occurred in the mode finding algorithm for the Laplace approximation ";
+		const char* NO_INCREASE_IN_MLL_WARNING_ = "Mode finding algorithm for Laplace approximation: "
+			"The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated ";
+		const char* NO_CONVERGENCE_WARNING_ = "Algorithm for finding mode for Laplace approximation has not "
+			"converged after the maximal number of iterations ";
 
 	};//end class Likelihood
 
