@@ -1693,7 +1693,7 @@ GPBOOST_C_EXPORT int GPB_GetCovariateData(REModelHandle handle,
 /*!
 * \brief Get additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
 * \param handle Handle of REModel
-* \param[out] Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated
+* \param[out] aux_pars Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated
 * \param[out] out_str Name of the first parameter
 * \return 0 when succeed, -1 when failure happens
 */

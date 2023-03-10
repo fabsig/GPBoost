@@ -1008,7 +1008,7 @@ GPBOOST_C_EXPORT SEXP GPB_GetCovariateData_R(
 /*!
 * \brief Get additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
 * \param handle Handle of REModel
-* \param[out] Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated
+* \param[out] aux_pars Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated
 * \return R character vector (length=1) with the name of the first parameter
 */
 GPBOOST_C_EXPORT SEXP GPB_GetAuxPars_R(
