@@ -220,7 +220,7 @@ gpb.plot.part.dep.interact(bst, X, variables = c(1,2))
 # H-statistic for interactions
 library(flashlight)
 cols <- paste0("Covariate_",1:p)
-fl <- flashlight(model = bst, data = data.frame(y, X), y = "y", label = "xgb",
+fl <- flashlight(model = bst, data = data.frame(y, X), y = "y", label = "gpb",
                  predict_fun = function(m, X) predict(m, data.matrix(X[, cols]), 
                                                       group_data_pred = rep(-1, dim(X)[1]),
                                                       pred_latent = TRUE)$fixed_effect)
