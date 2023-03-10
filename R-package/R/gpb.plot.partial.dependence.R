@@ -50,7 +50,7 @@ gpb.plot.partial.dependence <- function(model, data, variable, n.pt = 100,
   }
   
   if (discrete.x) {
-    x <- unique(data[, variable])
+    x <- sort(unique(data[, variable]))
   } else {
     x <- quantile(data[, variable], seq(0.01, 0.99, length.out = n.pt), names = FALSE)
   }
@@ -146,14 +146,14 @@ gpb.plot.part.dep.interact <- function(model, data, variables, n.pt.per.var = 20
   }
   
   if (discrete.variables[1]) {
-    x <- unique(data[, variables[1]])
+    x <- sort(unique(data[, variables[1]]))
   } else {
     x <- quantile(data[, variables[1]],
                   seq(0.01, 0.99, length.out = n.pt.per.var), names = FALSE)
     x <- unique(x)
   }
   if (discrete.variables[2]) {
-    y <- unique(data[, variables[2]])
+    y <- sort(unique(data[, variables[2]]))
   } else {
     y <- quantile(data[, variables[2]],
                   seq(0.01, 0.99, length.out = n.pt.per.var), names = FALSE)
