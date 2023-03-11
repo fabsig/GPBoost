@@ -64,18 +64,19 @@ f <- f1d(X[,1])
 y <- simulate_response_variable(lp=f, rand_eff=rand_eff, likelihood=likelihood)
 hist(y, breaks=20)  # visualize response variable
 
-# Specify boosting parameters as list
-params <- list(objective = likelihood, learning_rate = 0.01, max_depth = 3)
+# Specify boosting parameters
+objective <- likelihood
 nrounds <- 250
 if (likelihood=="gaussian") {
+  objective <- "regression_l2"
   nrounds <- 50
-  params$objective <- "regression_l2"
-}
-if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
+} else if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
+  objective <- "binary"
   nrounds <- 500
-  params$objective <- "binary"
-} 
-# Note: these parameters are not necessarily optimal for all situations considered here
+}
+params <- list(objective = objective, learning_rate = 0.01, max_depth = 3, 
+               num_leaves = 2^10)
+# Note: these parameters are by no means optimal for all datasets
 
 #--------------------Training----------------
 # Define random effects model
@@ -126,25 +127,30 @@ plot(b1, pred$random_effect_mean, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 
 #--------------------Choosing tuning parameters----------------
-param_grid = list("learning_rate" = c(1,0.1,0.01), "min_data_in_leaf" = c(1,10,100),
-                  "max_depth" = c(1,3,5,10,-1))
+param_grid = list("learning_rate" = c(1,0.1,0.01), 
+                  "min_data_in_leaf" = c(1,10,100,1000),
+                  "max_depth" = c(1,2,3,5,10))
+other_params <- list(objective = objective, num_leaves = 2^10)
+# Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
+#       An alternative strategy is to impose no limit on 'max_depth', 
+#       and try different values for 'num_leaves' as follows:
+# param_grid = list("learning_rate" = c(1,0.1,0.01), 
+#                   "min_data_in_leaf" = c(1,10,100,1000),
+#                   "num_leaves" = 2^(1:10))
+# other_params <- list(objective = objective, max_depth = -1)
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
 dataset <- gpb.Dataset(data = X, label = y)
 set.seed(1)
-opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
-                                              params = params,
-                                              num_try_random = NULL,
-                                              nfold = 4,
-                                              data = dataset,
-                                              gp_model = gp_model,
-                                              verbose_eval = 1,
-                                              nrounds = 1000,
-                                              early_stopping_rounds = 10)
+opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
+                                              num_try_random = NULL, nfold = 4,
+                                              data = dataset, gp_model = gp_model,
+                                              use_gp_model_for_validation=TRUE, verbose_eval = 1,
+                                              nrounds = 1000, early_stopping_rounds = 10)
 print(paste0("Best parameters: ",paste0(unlist(lapply(seq_along(opt_params$best_params), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params, n=names(opt_params$best_params))), collapse=", ")))
 print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
 # Note: other scoring / evaluation metrics can be chosen using the 
-#       'params$metric' argument. E.g., params$metric = "l1" uses the l1 loss
+#       'metric' argument, e.g., metric = "l1"
 
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model <- GPModel(group_data = group, likelihood = likelihood)

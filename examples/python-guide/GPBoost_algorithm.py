@@ -72,17 +72,19 @@ y = simulate_response_variable(lp=f, rand_eff=rand_eff, likelihood=likelihood)
 hst = plt.hist(y, bins=20)  # visualize response variable
 plt.show(block=False)
 
-# Specify boosting parameters as dict
-params = {'objective': likelihood, 'learning_rate': 0.01, 'max_depth': 3,
-          'verbose': 0}
+# Specify boosting parameters
+objective = likelihood
 num_boost_round = 250
 if likelihood == "gaussian":
+    objective = 'regression_l2'
     num_boost_round = 50
-    params['objective'] = 'regression_l2'
-if likelihood in ("bernoulli_probit", "bernoulli_logit"):
+elif likelihood in ("bernoulli_probit", "bernoulli_logit"):
+    objective = 'binary'
     num_boost_round = 500
-    params['objective'] = 'binary'
-# Note: these parameters are not necessarily optimal for all situations considered here
+params = {'objective': objective, 'learning_rate': 0.01, 'max_depth': 3,
+          'num_leaves': 2**10, 'verbose': 0}
+
+# Note: these parameters are by no means optimal for all datasets
 
 #--------------------Training----------------
 # Define random effects model
@@ -144,26 +146,30 @@ plt.ylabel("predicted")
 plt.show(block=False)
 
 #--------------------Choosing tuning parameters----------------
-param_grid = {'learning_rate': [1,0.1,0.01], 'min_data_in_leaf': [1,10,100],
-                    'max_depth': [1,3,5,10,-1]}
+param_grid = {'learning_rate': [1,0.1,0.01], 
+              'min_data_in_leaf': [1,10,100,1000],
+              'max_depth': [1,2,3,5,10]}
+other_params = {'objective': objective, 'num_leaves': 2**10, 'verbose': 0}
+# Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
+#       An alternative strategy is to impose no limit on 'max_depth',  
+#       and try different values for 'num_leaves' as follows:
+# param_grid = {'learning_rate': [1,0.1,0.01], 
+#               'min_data_in_leaf': [1,10,100,1000],
+#               'num_leaves': 2**np.arange(1,11)}
+# other_params = {'objective': objective, 'max_depth': -1, 'verbose': 0}
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(X, y)
-opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
-                                             params=params,
-                                             num_try_random=None,
-                                             nfold=4,
-                                             gp_model=gp_model,
-                                             use_gp_model_for_validation=True,
-                                             train_set=data_train,
-                                             verbose_eval=1,
-                                             num_boost_round=1000, 
-                                             early_stopping_rounds=10,
+opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
+                                             num_try_random=None, nfold=4,
+                                             train_set=data_train, gp_model=gp_model,
+                                             use_gp_model_for_validation=True, verbose_eval=1,
+                                             num_boost_round=1000, early_stopping_rounds=10,
                                              seed=1000)
 print("Best parameters: " + str(opt_params['best_params']))
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
 # Note: other scoring / evaluation metrics can be chosen using the 
-#       'eval' argument
+#       'metrics' argument, e.g., metrics='MAE'
 
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
