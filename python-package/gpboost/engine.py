@@ -968,21 +968,24 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
 
     Example
     -------
-    >>> param_grid = {'learning_rate': [1,0.1,0.01], 'min_data_in_leaf': [1,10,100],
-    >>>                     'max_depth': [1,3,5,10,-1]}
+    >>> param_grid = {'learning_rate': [1,0.1,0.01], 
+    >>>   'min_data_in_leaf': [1,10,100,1000],
+    >>>   'max_depth': [1,2,3,5,10]}
+    >>> other_params = {'objective': "regression_l2", 'num_leaves': 2**10, 'verbose': 0}
+    >>> # Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
+    >>> #       An alternative strategy is to impose no limit on 'max_depth',  
+    >>> #       and try different values for 'num_leaves' as follows:
+    >>> # param_grid = {'learning_rate': [1,0.1,0.01], 
+    >>> #               'min_data_in_leaf': [1,10,100,1000],
+    >>> #               'num_leaves': 2**np.arange(1,11)}
+    >>> # other_params = {'objective': "regression_l2", 'max_depth': -1, 'verbose': 0}
     >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
     >>> data_train = gpb.Dataset(X, y)
-    >>> params = {'objective': 'regression_l2', 'verbose': 0}
-    >>> opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid,
-    >>>                                              params=params,
-    >>>                                              num_try_random=None,
-    >>>                                              nfold=4,
-    >>>                                              gp_model=gp_model,
-    >>>                                              use_gp_model_for_validation=True,
-    >>>                                              train_set=data_train,
-    >>>                                              verbose_eval=1,
-    >>>                                              num_boost_round=1000,
-    >>>                                              early_stopping_rounds=10,
+    >>> opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
+    >>>                                              num_try_random=None, nfold=4,
+    >>>                                              train_set=data_train, gp_model=gp_model,
+    >>>                                              use_gp_model_for_validation=True, verbose_eval=1,
+    >>>                                              num_boost_round=1000, early_stopping_rounds=10,
     >>>                                              seed=1000)
     >>> print("Best parameters: " + str(opt_params['best_params']))
     >>> print("Best number of iterations: " + str(opt_params['best_iter']))
