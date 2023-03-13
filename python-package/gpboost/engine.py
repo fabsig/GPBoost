@@ -1045,6 +1045,11 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     best_params = {}
     best_num_boost_round = num_boost_round
     counter_num_comb = 1
+    if 'max_bin' in param_grid:
+        if train_set.handle is not None:
+            raise ValueError("'train_set' cannot be constructed already when 'max_bin' is in 'param_grid'")
+        else:
+            train_set_not_constructed = copy.deepcopy(train_set)
     for param_comb_number in try_param_combs:
         param_comb = _get_param_combination(param_comb_number=param_comb_number, param_grid=param_grid)
         for param in param_comb:
@@ -1052,6 +1057,8 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         if verbose_eval >= 1:
             print("Trying parameter combination " + str(counter_num_comb) +
                   " of " + str(len(try_param_combs)) + ": " + str(param_comb) + " ...")
+        if 'max_bin' in param_grid:
+            train_set = copy.deepcopy(train_set_not_constructed)
         cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round,
                    gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
                    train_gp_model_cov_pars=train_gp_model_cov_pars,
