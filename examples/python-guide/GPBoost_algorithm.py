@@ -147,15 +147,17 @@ plt.show(block=False)
 
 #--------------------Choosing tuning parameters----------------
 param_grid = {'learning_rate': [1,0.1,0.01], 
-              'min_data_in_leaf': [1,10,100,1000],
-              'max_depth': [1,2,3,5,10]}
+              'min_data_in_leaf': [10,100,1000],
+              'max_depth': [1,2,3,5,10],
+              'lambda_l2': [0,1,10]}
 other_params = {'objective': objective, 'num_leaves': 2**10, 'verbose': 0}
 # Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
 #       An alternative strategy is to impose no limit on 'max_depth',  
 #       and try different values for 'num_leaves' as follows:
 # param_grid = {'learning_rate': [1,0.1,0.01], 
-#               'min_data_in_leaf': [1,10,100,1000],
-#               'num_leaves': 2**np.arange(1,11)}
+#               'min_data_in_leaf': [10,100,1000],
+#               'num_leaves': 2**np.arange(1,11),
+#               'lambda_l2': [0,1,10]}
 # other_params = {'objective': objective, 'max_depth': -1, 'verbose': 0}
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(X, y)
@@ -171,6 +173,18 @@ print("Best score: " + str(opt_params['best_score']))
 # Note: other scoring / evaluation metrics can be chosen using the 
 #       'metrics' argument, e.g., metrics='MAE'
 
+# Using manually defined validation data instead of cross-validation
+permute_aux = np.random.permutation(n)
+train_tune_idx = permute_aux[0:int(0.8 * n)]
+valid_tune_idx = permute_aux[int(0.8 * n):n]
+folds = [(train_tune_idx, valid_tune_idx)]
+opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
+                                             num_try_random=None, folds=folds,
+                                             train_set=data_train, gp_model=gp_model,
+                                             use_gp_model_for_validation=True, verbose_eval=1,
+                                             num_boost_round=1000, early_stopping_rounds=10,
+                                             seed=1000)
+  
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(X, y)
