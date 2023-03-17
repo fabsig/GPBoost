@@ -1258,6 +1258,7 @@ namespace GPBoost {
 									LInvZtZj.diagonal().array() /= sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array();
 								}
 								else {
+									// Note: the following is often the bottleneck (= slower than Cholesky dec.) when there are multiple REs and the number of random effects is large
 									if (CholeskyHasPermutation<T_chol>(chol_facts_[cluster_i])) {
 										TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i].CholFactMatrix(), P_ZtZj_[cluster_i][j], LInvZtZj, false);
 									}
