@@ -125,10 +125,6 @@ Booster <- R6::R6Class(
           
           private$has_gp_model = TRUE
           save_data = RJSONIO::fromJSON(content=modelfile)
-          # Do we have a booster_str as character?
-          if (!is.character(save_data[["booster_str"]])) {
-            stop("gpb.Booster: Can only use a string as booster_str in modelfile")
-          }
           # Create booster from string
           handle <- .Call(
             LGBM_BoosterLoadModelFromString_R
@@ -168,17 +164,52 @@ Booster <- R6::R6Class(
         }
         
       } else if (!is.null(model_str)) {
+        # Create booster from string
         
         # Do we have a model_str as character?
         if (!is.character(model_str)) {
           stop("gpb.Booster: Can only use a string as model_str")
         }
         
-        # Create booster from string
-        handle <- .Call(
-          LGBM_BoosterLoadModelFromString_R
-          , model_str
-        )
+        if (substr(model_str, 20, 20) == "1") {
+          # has gp_model
+          
+          private$has_gp_model = TRUE
+          save_data = RJSONIO::fromJSON(content = model_str)
+          # Create booster from string
+          handle <- .Call(
+            LGBM_BoosterLoadModelFromString_R
+            , save_data[["booster_str"]]
+          )
+          # create gp_model from list
+          private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
+          if (!is.null(save_data[["raw_data"]])) {
+            
+            private$train_set <- gpb.Dataset(
+              data = matrix(unlist(save_data[["raw_data"]]$data),
+                            nrow = length(save_data[["raw_data"]]$data),
+                            byrow = TRUE),
+              label = save_data[["raw_data"]]$label)
+            
+          } else {
+            
+            if (private$gp_model$get_likelihood_name() == "gaussian") {
+              private$residual_loaded_from_file <- save_data[["residual"]]
+            } else {
+              private$fixed_effect_train_loaded_from_file <- save_data[["fixed_effect_train"]]
+              private$label_loaded_from_file <- save_data[["label"]]
+            }
+            private$gp_model_prediction_data_loaded_from_file <- TRUE
+            
+          }
+          
+        } else { # has no gp_model
+          
+          handle <- .Call(
+            LGBM_BoosterLoadModelFromString_R
+            , model_str
+          )
+        }
         
       } else {
         
@@ -544,14 +575,58 @@ Booster <- R6::R6Class(
       # Save gp_model
       if (private$has_gp_model) {
         
+        model_str <- self$save_model_to_string(start_iteration = start_iteration,
+                                               num_iteration = num_iteration, 
+                                               feature_importance_type = feature_importance_type,
+                                               save_raw_data = save_raw_data)
+        write(model_str, file=filename)
+        
+        
+      } else {# has no gp_model
+        
+        # Save booster model
+        .Call(
+          LGBM_BoosterSaveModel_R
+          , private$handle
+          , as.integer(num_iteration)
+          , as.integer(feature_importance_type)
+          , filename
+        )
+      }
+      
+      return(invisible(self))
+    },
+    
+    # Save model to string
+    save_model_to_string = function(start_iteration = NULL, num_iteration = NULL,
+                                    feature_importance_type = 0L, save_raw_data = FALSE, ...) {
+      
+      # Check if number of iteration is non existent
+      if (is.null(num_iteration)) {
+        num_iteration <- self$best_iter
+      }
+      # Check if start iteration is non existent
+      if (is.null(start_iteration)) {
+        start_iteration <- 0L
+      }
+      
+      bst_model_str <- .Call(
+        LGBM_BoosterSaveModelToString_R
+        , private$handle
+        , as.integer(start_iteration)
+        , as.integer(num_iteration)
+        , as.integer(feature_importance_type)
+      )
+      
+      if (private$has_gp_model) {
+        
         if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
-          stop("gpb.save: cannot save to file.
-                Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
+          stop("Cannot save to file or string when " , sQuote("free_raw_data = TRUE"), ".",
+               " Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
         }
         save_data <- list()
         save_data[["has_gp_model"]] <- 1L
-        save_data[["booster_str"]] <- self$save_model_to_string(num_iteration = num_iteration,
-                                                                feature_importance_type = feature_importance_type)
+        save_data[["booster_str"]] <- bst_model_str
         save_data[["gp_model_str"]] <- private$gp_model$model_to_list(include_response_data = FALSE)
         
         if (save_raw_data) {
@@ -586,44 +661,13 @@ Booster <- R6::R6Class(
           
         }# end !save_raw_data
         
-        save_data <- RJSONIO::toJSON(save_data, digits=17)
-        write(save_data, file=filename)
+        model_str <- RJSONIO::toJSON(save_data, digits=17)
         
       } else {# has no gp_model
         
-        # Save booster model
-        .Call(
-          LGBM_BoosterSaveModel_R
-          , private$handle
-          , as.integer(num_iteration)
-          , as.integer(feature_importance_type)
-          , filename
-        )
+        model_str <- bst_model_str
+        
       }
-      
-      return(invisible(self))
-    },
-    
-    # Save model to string
-    save_model_to_string = function(start_iteration = NULL, num_iteration = NULL,
-                                    feature_importance_type = 0L) {
-      
-      # Check if number of iteration is non existent
-      if (is.null(num_iteration)) {
-        num_iteration <- self$best_iter
-      }
-      # Check if start iteration is non existent
-      if (is.null(start_iteration)) {
-        start_iteration <- 0L
-      }
-      
-      model_str <- .Call(
-        LGBM_BoosterSaveModelToString_R
-        , private$handle
-        , as.integer(start_iteration)
-        , as.integer(num_iteration)
-        , as.integer(feature_importance_type)
-      )
       
       return(model_str)
       
@@ -776,7 +820,7 @@ Booster <- R6::R6Class(
             response_mean <- random_effect_pred$mu + fixed_effect
             fixed_effect <- NULL
           }
-
+          
         }# end Gaussian data
         else{# non-Gaussian data
           

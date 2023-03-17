@@ -752,7 +752,7 @@ class GPBoostModel(_GPBoostModelBase):
                              "match the input. Model n_features_ is %s and "
                              "input n_features is %s "
                              % (self._n_features, n_features))
-        return self._Booster.predict(X, raw_score=raw_score, start_iteration=start_iteration, num_iteration=num_iteration,
+        return self._Booster.predict(X, pred_latent=raw_score, start_iteration=start_iteration, num_iteration=num_iteration,
                                      pred_leaf=pred_leaf, pred_contrib=pred_contrib,
                                      group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
                                      gp_coords_pred=gp_coords_pred, gp_rand_coef_data_pred=gp_rand_coef_data_pred,

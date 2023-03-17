@@ -272,6 +272,10 @@ pred$fixed_effect - pred_loaded$fixed_effect
 pred$random_effect_mean - pred_loaded$random_effect_mean
 pred$random_effect_cov - pred_loaded$random_effect_cov
 
+# Note: can also convert to string and load from string
+model_str <- bst$save_model_to_string()
+bst_loaded <- gpb.load(model_str = model_str)
+
 #--------------------GPBoostOOS algorithm: Hyperparameters estimated out-of-sample----------------
 # Create random effects model and dataset
 gp_model <- GPModel(group_data = group, likelihood = likelihood)

@@ -293,6 +293,9 @@ print(pred['fixed_effect'] - pred_loaded['fixed_effect'])
 print(pred['random_effect_mean'] - pred_loaded['random_effect_mean'])
 print(pred['random_effect_cov'] - pred_loaded['random_effect_cov'])
 
+# Note: can also convert to string and load from string
+# model_str = bst.model_to_string()
+# bst_loaded = gpb.Booster(model_str = model_str)
 
 """
 Combine tree-boosting and Gaussian process model
