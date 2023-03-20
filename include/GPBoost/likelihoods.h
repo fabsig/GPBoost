@@ -1409,7 +1409,6 @@ namespace GPBoost {
 				mode_has_been_calculated_ = true;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
-			//test commit
 		}//end FindModePostRandEffCalcMLLVecchia
 
 		/*!
