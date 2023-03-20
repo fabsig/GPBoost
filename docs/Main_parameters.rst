@@ -69,8 +69,6 @@ Below is a list of important parameters for the tree-boosting part. `A comprehen
 
    -  L2 regularization
 
--  ``lambda_l1``, ``lambda_l2`` and ``min_gain_to_split``
-
 -  ``max_bin`` :raw-html:`<a id="max_bin" title="Permalink to this parameter" href="#max_bin">&#x1F517;&#xFE0E;</a>`, default = ``255``, type = int, constraints: ``max_bin > 1``
 
    -  maximal number of bins that feature values will be bucketed in

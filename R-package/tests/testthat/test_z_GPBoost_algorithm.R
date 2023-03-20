@@ -911,7 +911,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(bst$best_score - 0.05520368),TOLERANCE)
     })
     
-    test_that("Saving and loading a booster with a gp_model from a file works", {
+    test_that("Saving and loading a booster with a gp_model from a file and from a string", {
       ntrain <- ntest <- 1000
       n <- ntrain + ntest
       # Simulate fixed effects
@@ -941,24 +941,16 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       X_test <- X[1:ntest+ntrain,]
       f_test <- f[1:ntest+ntrain]
       group_data_test <- group_data[1:ntest+ntrain]
-      params <- list(learning_rate = 0.01,
-                     max_depth = 6,
-                     min_data_in_leaf = 5,
-                     objective = "regression_l2",
-                     feature_pre_filter = FALSE)
+      params <- list(learning_rate = 0.01, max_depth = 6, min_data_in_leaf = 5,
+                     objective = "regression_l2", feature_pre_filter = FALSE)
       # Train model and make predictions
       gp_model <- GPModel(group_data = group_data_train)
       gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
-      bst <- gpboost(data = X_train,
-                     label = y_train,
-                     gp_model = gp_model,
-                     nrounds = 62,
-                     learning_rate = 0.01,
-                     max_depth = 6,
-                     min_data_in_leaf = 5,
-                     objective = "regression_l2",
-                     verbose = 0)
-      pred <- predict(bst, data = X_test, group_data_pred = group_data_test, predict_var = TRUE, pred_latent = TRUE)
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 62, learning_rate = 0.01, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
+      pred <- predict(bst, data = X_test, group_data_pred = group_data_test, 
+                      predict_var = TRUE, pred_latent = TRUE)
       num_iteration <- 50
       start_iteration <- 0# saving and loading with start_iteration!=0 currently does not work for the LightGBM part
       pred_num_it <- predict(bst, data = X_test, group_data_pred = group_data_test,
@@ -1020,7 +1012,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                      nrounds = 62, learning_rate = 0.01, max_depth = 6,
                      min_data_in_leaf = 5, objective = "regression_l2", verbose = 0,
                      use_nesterov_acc = TRUE, momentum_offset = 10)
-      pred <- predict(bst, data = X_test, group_data_pred = group_data_test, predict_var = TRUE, pred_latent = TRUE)
+      pred <- predict(bst, data = X_test, group_data_pred = group_data_test, 
+                      predict_var = TRUE, pred_latent = TRUE)
       # Save to file
       filename <- tempfile(fileext = ".model")
       gpb.save(bst, filename=filename, save_raw_data = FALSE)
@@ -1031,10 +1024,72 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       rm(gp_model)
       # Load from file and make predictions again with save_raw_data = FALSE option
       bst_loaded <- gpb.load(filename = filename)
-      pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test, predict_var= TRUE, pred_latent = TRUE)
+      pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test, 
+                             predict_var= TRUE, pred_latent = TRUE)
       expect_equal(pred$fixed_effect, pred_loaded$fixed_effect)
       expect_equal(pred$random_effect_mean, pred_loaded$random_effect_mean)
       expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
+      
+      # Saving to string and loading
+      gp_model <- GPModel(group_data = group_data_train)
+      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 62, learning_rate = 0.01, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
+      pred <- predict(bst, data = X_test, group_data_pred = group_data_test, 
+                      predict_var = TRUE, pred_latent = TRUE)
+      num_iteration <- 50
+      start_iteration <- 0# saving and loading with start_iteration!=0 currently does not work for the LightGBM part
+      pred_num_it <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                             predict_var = TRUE, num_iteration = num_iteration, start_iteration = start_iteration, pred_latent = TRUE)
+      pred_num_it2 <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                              predict_var = TRUE, num_iteration = 45, start_iteration = 10, pred_latent = TRUE)
+      # Save to string
+      model_str <- bst$save_model_to_string(save_raw_data = FALSE)
+      model_str_num_it <- bst$save_model_to_string(num_iteration = num_iteration, 
+                                                   start_iteration = start_iteration)
+      model_str_raw_data <- bst$save_model_to_string(save_raw_data = TRUE)
+      # finalize and destroy models
+      bst$finalize()
+      expect_null(bst$.__enclos_env__$private$handle)
+      rm(bst)
+      rm(gp_model)
+      # Load from file and make predictions again with save_raw_data = FALSE option
+      bst_loaded <- gpb.load(model_str = model_str)
+      pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test, 
+                             predict_var= TRUE, pred_latent = TRUE)
+      expect_equal(pred$fixed_effect, pred_loaded$fixed_effect)
+      expect_equal(pred$random_effect_mean, pred_loaded$random_effect_mean)
+      expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
+      # Set num_iteration and start_iteration
+      bst_loaded <- gpb.load(model_str = model_str_num_it)
+      pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test, 
+                             predict_var= TRUE, pred_latent = TRUE)
+      expect_equal(pred_num_it$fixed_effect, pred_loaded$fixed_effect)
+      expect_equal(pred_num_it$random_effect_mean, pred_loaded$random_effect_mean)
+      expect_equal(pred_num_it$random_effect_cov, pred_loaded$random_effect_cov)
+      expect_error({
+        pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                               predict_var= TRUE, start_iteration=5, pred_latent = TRUE)
+      })
+      # Load from file and make predictions again with save_raw_data = TRUE option
+      bst_loaded <- gpb.load(model_str = model_str_raw_data)
+      pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                             predict_var= TRUE, pred_latent = TRUE)
+      expect_equal(pred$fixed_effect, pred_loaded$fixed_effect)
+      expect_equal(pred$random_effect_mean, pred_loaded$random_effect_mean)
+      expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
+      # Set num_iteration and start_iteration
+      pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                             predict_var= TRUE, num_iteration = num_iteration, start_iteration = start_iteration, pred_latent = TRUE)
+      expect_equal(pred_num_it$fixed_effect, pred_loaded$fixed_effect)
+      expect_equal(pred_num_it$random_effect_mean, pred_loaded$random_effect_mean)
+      expect_equal(pred_num_it$random_effect_cov, pred_loaded$random_effect_cov)
+      pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
+                             predict_var= TRUE, num_iteration = 45, start_iteration = 10, pred_latent = TRUE)
+      expect_equal(pred_num_it2$fixed_effect, pred_loaded$fixed_effect)
+      expect_equal(pred_num_it2$random_effect_mean, pred_loaded$random_effect_mean)
+      expect_equal(pred_num_it2$random_effect_cov, pred_loaded$random_effect_cov)
     })
   }
   

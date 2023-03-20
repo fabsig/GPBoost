@@ -148,15 +148,17 @@ data(GPBoost_data, package = "gpboost")
 gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 dataset <- gpb.Dataset(X, label = y)
 param_grid = list("learning_rate" = c(1,0.1,0.01), 
-                  "min_data_in_leaf" = c(1,10,100,1000),
-                  "max_depth" = c(1,2,3,5,10))
+                  "min_data_in_leaf" = c(10,100,1000),
+                  "max_depth" = c(1,2,3,5,10),
+                  "lambda_l2" = c(0,1,10))
 other_params <- list(objective = "regression_l2", num_leaves = 2^10)
 # Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
 #       An alternative strategy is to impose no limit on 'max_depth', 
 #       and try different values for 'num_leaves' as follows:
 # param_grid = list("learning_rate" = c(1,0.1,0.01), 
-#                   "min_data_in_leaf" = c(1,10,100,1000),
-#                   "num_leaves" = 2^(1:10))
+#                   "min_data_in_leaf" = c(10,100,1000),
+#                   "num_leaves" = 2^(1:10),
+#                   "lambda_l2" = c(0,1,10))
 # other_params <- list(objective = "regression_l2", max_depth = -1)
 set.seed(1)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
@@ -169,6 +171,16 @@ print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
 # Note: other scoring / evaluation metrics can be chosen using the 
 #       'metric' argument, e.g., metric = "l1"
+
+# Using manually defined validation data instead of cross-validation
+valid_tune_idx <- sample.int(n, as.integer(0.2*n))
+folds = list(valid_tune_idx)
+opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
+                                              num_try_random = NULL, folds = folds,
+                                              data = dataset, gp_model = gp_model,
+                                              use_gp_model_for_validation=TRUE, verbose_eval = 1,
+                                              nrounds = 1000, early_stopping_rounds = 10)
+
 }
 }
 \author{

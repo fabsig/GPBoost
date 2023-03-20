@@ -2481,7 +2481,23 @@ class Booster:
                 self.__num_class = out_num_class.value
                 self.pandas_categorical = _load_pandas_categorical(file_name=model_file)
         elif model_str is not None:
-            self.model_from_string(model_str, not silent)
+            has_gp_model = model_str.splitlines()[1]
+            if has_gp_model == '"has_gp_model": 1,' or has_gp_model == ' "has_gp_model": 1,':
+                self.has_gp_model = True
+                save_data = json.loads(model_str)
+                self.model_from_string(save_data['booster_str'], not silent)
+                self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
+                if save_data.get("raw_data") is not None:
+                    self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
+                else:
+                    if self.gp_model._get_likelihood_name() == "gaussian":
+                        self.residual_loaded_from_file = np.array(save_data['residual'])
+                    else:
+                        self.fixed_effect_train_loaded_from_file = np.array(save_data['fixed_effect_train'])
+                        self.label_loaded_from_file = np.array(save_data['label'])
+                    self.gp_model_prediction_data_loaded_from_file = True
+            else:  # has no gp_model
+                self.model_from_string(model_str, not silent)
         else:
             raise TypeError('Need at least one training dataset or model file or model string '
                             'to create Booster instance')
@@ -2514,18 +2530,38 @@ class Booster:
         this.pop('valid_sets', None)
         if handle is not None:
             this["handle"] = self.model_to_string(num_iteration=-1)
+        this.pop('gp_model', None)
         return this
 
     def __setstate__(self, state):
         model_str = state.get('handle', None)
+
         if model_str is not None:
+            has_gp_model = model_str.splitlines()[1]
+            if has_gp_model == '"has_gp_model": 1,' or has_gp_model == ' "has_gp_model": 1,':
+                state['has_gp_model'] = True
+                save_data = json.loads(model_str)
+                bst_str = save_data['booster_str']
+                state['gp_model'] = GPModel(model_dict=save_data['gp_model_str'])
+                if save_data.get("raw_data") is not None:
+                    state['train_set'] = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
+                else:
+                    if state['gp_model']._get_likelihood_name() == "gaussian":
+                        state['residual_loaded_from_file'] = np.array(save_data['residual'])
+                    else:
+                        state['fixed_effect_train_loaded_from_file'] = np.array(save_data['fixed_effect_train'])
+                        state['label_loaded_from_file'] = np.array(save_data['label'])
+                    state['gp_model_prediction_data_loaded_from_file'] = True
+            else:  # has no gp_model
+                bst_str =model_str
             handle = ctypes.c_void_p()
             out_num_iterations = ctypes.c_int(0)
             _safe_call(_LIB.LGBM_BoosterLoadModelFromString(
-                c_str(model_str),
+                c_str(bst_str),
                 ctypes.byref(out_num_iterations),
                 ctypes.byref(handle)))
             state['handle'] = handle
+
         self.__dict__.update(state)
 
     def free_dataset(self):
@@ -3124,33 +3160,15 @@ class Booster:
         if num_iteration is None:
             num_iteration = self.best_iteration
 
-        # Save gp_model
+        # Saving with gp_model
         if self.has_gp_model:
-            if self.train_set.data is None:
-                raise GPBoostError("Cannot save to file. Set free_raw_data = False when you construct the Dataset")
-            save_data = {}
-            save_data['has_gp_model'] = 1
-            save_data['booster_str'] = self.model_to_string(num_iteration=num_iteration,
-                                                            start_iteration=start_iteration,
-                                                            importance_type=importance_type)
-            save_data['gp_model_str'] = self.gp_model.model_to_dict(include_response_data=False)
-            if save_raw_data:
-                save_data['raw_data'] = {}
-                save_data['raw_data']['data'] = self.train_set.data
-                save_data['raw_data']['label'] = self.train_set.label
-            else:
-                predictor = self._to_predictor(deepcopy(kwargs))
-                fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
-                                                       num_iteration=num_iteration, raw_score=True, pred_leaf=False,
-                                                       pred_contrib=False, data_has_header=False, is_reshape=False)
-                if self.gp_model._get_likelihood_name() == "gaussian":  # Gaussian data
-                    residual = self.train_set.label - fixed_effect_train
-                    save_data['residual'] = residual
-                else:
-                    save_data['fixed_effect_train'] = fixed_effect_train
-                    save_data['label'] = self.train_set.label
-            with open(filename, 'w+') as f:
-                json.dump(save_data, f, default=json_default_with_numpy, indent="")
+            model_str = self.model_to_string(num_iteration=num_iteration,
+                                             start_iteration=start_iteration,
+                                             importance_type=importance_type,
+                                             save_raw_data=save_raw_data, **kwargs)
+            file = open(filename, 'w+')
+            n = file.write(model_str)
+            file.close()
         else:  # has no gp_model
             importance_type_int = FEATURE_IMPORTANCE_TYPE_MAPPER[importance_type]
             _safe_call(_LIB.LGBM_BoosterSaveModel(
@@ -3219,7 +3237,8 @@ class Booster:
         self.pandas_categorical = _load_pandas_categorical(model_str=model_str)
         return self
 
-    def model_to_string(self, num_iteration=None, start_iteration=0, importance_type='split'):
+    def model_to_string(self, num_iteration=None, start_iteration=0, importance_type='split',
+                        save_raw_data=False, **kwargs):
         """Save Booster to string.
 
         Parameters
@@ -3234,6 +3253,12 @@ class Booster:
             What type of feature importance should be saved.
             If "split", result contains numbers of times the feature is used in a model.
             If "gain", result contains total gains of splits which use the feature.
+        save_raw_data : bool (default=False)
+            If true, the raw data (predictor / covariate data) for the Booster is also saved.
+            Enable this option if you want to change 'start_iteration' or 'num_iteration' at prediction time after loading.
+        **kwargs
+            Other parameters for the prediction function.
+            This is only used when there is a gp_model and when save_raw_data=False.
 
         Returns
         -------
@@ -3268,9 +3293,37 @@ class Booster:
                 ctypes.c_int64(actual_len),
                 ctypes.byref(tmp_out_len),
                 ptr_string_buffer))
-        ret = string_buffer.value.decode('utf-8')
-        ret += _dump_pandas_categorical(self.pandas_categorical)
-        return ret
+        booster_str = string_buffer.value.decode('utf-8')
+        booster_str += _dump_pandas_categorical(self.pandas_categorical)
+
+        if self.has_gp_model:
+            if self.train_set.data is None:
+                raise GPBoostError("Cannot save to file or string when 'free_raw_data = True'. "
+                                   "Set 'free_raw_data = False' when you construct the Dataset")
+            save_data = {}
+            save_data['has_gp_model'] = 1
+            save_data['booster_str'] = booster_str
+            save_data['gp_model_str'] = self.gp_model.model_to_dict(include_response_data=False)
+            if save_raw_data:
+                save_data['raw_data'] = {}
+                save_data['raw_data']['data'] = self.train_set.data
+                save_data['raw_data']['label'] = self.train_set.label
+            else:
+                predictor = self._to_predictor(deepcopy(kwargs))
+                fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
+                                                       num_iteration=num_iteration, raw_score=True, pred_leaf=False,
+                                                       pred_contrib=False, data_has_header=False, is_reshape=False)
+                if self.gp_model._get_likelihood_name() == "gaussian":  # Gaussian data
+                    residual = self.train_set.label - fixed_effect_train
+                    save_data['residual'] = residual
+                else:
+                    save_data['fixed_effect_train'] = fixed_effect_train
+                    save_data['label'] = self.train_set.label
+            model_str = json.dumps(save_data, default=json_default_with_numpy, indent="")
+        else: # not self.has_gp_model
+            model_str = booster_str
+
+        return model_str
 
     def dump_model(self, num_iteration=None, start_iteration=0, importance_type='split'):
         """Dump Booster to JSON format.

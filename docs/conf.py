@@ -150,6 +150,14 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'default'
 
+fh = open('latex_preamble.tex', 'r+')
+PREAMBLE = fh.read()
+fh.close()
+latex_elements = {
+# Additional stuff for the LaTeX preamble.
+'preamble': PREAMBLE,
+}
+
 # -- Configuration for C API docs generation ------------------------------
 
 if C_API:
