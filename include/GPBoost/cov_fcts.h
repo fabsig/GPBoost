@@ -442,6 +442,47 @@ namespace GPBoost {
 		}//end GetCovMat (sparse)
 
 		/*!
+		* \brief Covariance function for one distance value
+		* \param dist Distance 
+		* \param pars Vector with covariance parameters
+		* \param[out] sigma Covariance at dist
+		*/
+		void GetCovMat(const double& dist,
+			const vec_t& pars,
+			double& sigma) const {
+			CHECK(pars.size() == num_cov_par_);
+			if (cov_fct_type_ == "exponential" ||
+				(cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 0.5))) {
+				sigma = MaternCovarianceShape0_5(dist, pars[0], pars[1]);
+			}//end cov_fct_type_ == "exponential"
+			else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 1.5)) {
+				sigma = MaternCovarianceShape1_5(dist, pars[0], pars[1]);
+			}
+			else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 2.5)) {
+				sigma = MaternCovarianceShape2_5(dist, pars[0], pars[1]);
+			}//end cov_fct_type_ == "matern"
+			else if (cov_fct_type_ == "gaussian") {
+				sigma = GaussianCovariance(dist, pars[0], pars[1]);
+			}//end cov_fct_type_ == "gaussian"
+			else if (cov_fct_type_ == "powered_exponential") {
+				sigma = PoweredExponentialCovariance(dist, pars[0], pars[1]);
+			}//end cov_fct_type_ == "powered_exponential"
+			else if (cov_fct_type_ == "wendland") {
+				// note: this dense matrix version is usually not used
+				if (dist >= taper_range_) {
+					sigma = 0.;
+				}
+				else {
+					sigma = pars[0];
+					MultiplyWendlandCorrelationTaper(dist, sigma);
+				}
+			}//end cov_fct_type_ == "wendland"
+			else {
+				Log::REFatal("Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
+			}
+		}//end GetCovMat (double)
+
+		/*!
 		* \brief Multiply covariance matrix element-wise with Wendland correlation tapering function
 		* \param dist Distance matrix
 		* \param[out] sigma Covariance matrix
@@ -597,6 +638,28 @@ namespace GPBoost {
 				Log::REFatal("'taper_shape' of %g is not supported for the 'wendland' covariance function or correlation tapering function. Only shape / smoothness parameters 0, 1, and 2 are currently implemented ", taper_shape_);
 			}
 		}//end MultiplyWendlandCorrelationTaper (sparse)
+
+		/*!
+		* \brief Multiply covariance with Wendland correlation tapering function for one distance value
+		* \param dist Distance
+		* \param[out] sigma Covariance at dist after applying tapering
+		*/
+		void MultiplyWendlandCorrelationTaper(const double& dist,
+			double& sigma) const {
+			CHECK(apply_tapering_);
+			if (TwoNumbersAreEqual<double>(taper_shape_, 0.)) {
+				sigma *= WendlandCorrelationShape0(dist);
+			}
+			else if (TwoNumbersAreEqual<double>(taper_shape_, 1.)) {
+				sigma *= WendlandCorrelationShape1(dist);
+			}
+			else if (TwoNumbersAreEqual<double>(taper_shape_, 2.)) {
+				sigma *= WendlandCorrelationShape2(dist);
+			}
+			else {
+				Log::REFatal("'taper_shape' of %g is not supported for the 'wendland' covariance function or correlation tapering function. Only shape / smoothness parameters 0, 1, and 2 are currently implemented ", taper_shape_);
+			}
+		}//end MultiplyWendlandCorrelationTaper (double)
 
 		/*!
 		* \brief Calculates derivatives of the covariance matrix with respect to the inverse range parameter
