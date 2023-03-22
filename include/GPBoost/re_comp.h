@@ -93,6 +93,20 @@ namespace GPBoost {
 		virtual std::shared_ptr<T_mat> GetZSigmaZt() const = 0;
 
 		/*!
+		* \brief Virtual function that calculates entry (i,j) of the covariance matrix Z*Sigma*Z^T
+		* \return Entry (i,j) of the covariance matrix Z*Sigma*Z^T of this component
+		*/
+		virtual double GetZSigmaZtij(int i, int j) const = 0;
+
+		/*!
+		* \brief Get diagonal-element of the covariance matrix
+		* \return diagonal-element of the covariance matrix
+		*/
+		double GetZSigmaZtii() const {
+			return(this->cov_pars_[0]);
+		}
+
+		/*!
 		* \brief Virtual function that calculates the derivatives of the covariance matrix Z*Sigma*Z^T
 		* \param ind_par Index for parameter
 		* \param transf_scale If true, the derivative is taken on the transformed scale otherwise on the original scale. Default = true
@@ -390,6 +404,20 @@ namespace GPBoost {
 				Log::REFatal("Matrix ZZt_ not defined");
 			}
 			return(std::make_shared<T_mat>(this->cov_pars_[0] * ZZt_));
+		}
+
+		/*!
+		* \brief Function that calculates entry (i,j) of the covariance matrix Z*Sigma*Z^T
+		* \return Entry (i,j) of the covariance matrix Z*Sigma*Z^T of this component
+		*/
+		double GetZSigmaZtij(int i, int j) const override {
+			if (this->cov_pars_.size() == 0) {
+				Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
+			}
+			if (this->ZZt_.cols() == 0) {
+				Log::REFatal("Matrix ZZt_ not defined");
+			}
+			return(this->cov_pars_[0] * ZZt_.coeff(i, j));
 		}
 
 		/*!
@@ -1048,6 +1076,24 @@ namespace GPBoost {
 			else {
 				return(std::make_shared<T_mat>(sigma_));
 			}
+		}
+
+		/*!
+		* \brief Function that calculates entry (i,j) of the covariance matrix Z*Sigma*Z^T
+		* \return Entry (i,j) of the covariance matrix Z*Sigma*Z^T of this component
+		*/
+		double GetZSigmaZtij(int i, int j) const override {
+			if (!this->coord_saved_) {
+				Log::REFatal("The function 'GetZSigmaZtij' is currently only implemented when 'coords_' are saved (i.e. for the Vecchia approximation).");
+			}
+			if (this->has_Z_) {
+				Log::REFatal("The function 'GetZSigmaZtij' is currently not implemented when 'has_Z_' is true.");
+			}
+			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
+			double dij = (this->coords_(i, Eigen::all) - this->coords_(j, Eigen::all)).template lpNorm<2>();
+			double covij;
+			cov_function_->GetCovMat(dij, this->cov_pars_, covij);
+			return(covij);
 		}
 
 		/*!

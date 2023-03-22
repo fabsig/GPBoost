@@ -3104,6 +3104,8 @@ namespace GPBoost {
 		bool estimate_aux_pars_ = false;
 		/*! \brief True if the function 'SetOptimConfig' has been called */
 		bool set_optim_config_has_been_called_ = false;
+		/*! \brief If true, the covariance parameters or linear coefficients were updated for the first time with gradient descent*/
+		bool first_update_ = false;
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
 		/*! \brief Collects matrices Z^T (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
@@ -4595,6 +4597,12 @@ namespace GPBoost {
 			if (estimate_aux_pars_) {
 				num_grad_cov_par -= NumAuxPars();
 			}
+			if (it == 0) {
+				first_update_ = true;
+			}
+			else {
+				first_update_ = false;
+			}
 			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
 				vec_t update(nat_grad.size());
 				update.segment(0, num_grad_cov_par) = lr_cov * nat_grad.segment(0, num_grad_cov_par);
@@ -4710,6 +4718,12 @@ namespace GPBoost {
 			double lr_coef = lr_coef_;
 			bool decrease_found = false;
 			bool halving_done = false;
+			if (it == 0){
+				first_update_ = true;
+			}
+			else {
+				first_update_ = false;
+			}
 			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
 				beta_new = beta - lr_coef * grad;
 				// Apply Nesterov acceleration
@@ -4826,6 +4840,11 @@ namespace GPBoost {
 					fixed_effects_cluster_i_ptr = fixed_effects_cluster_i.data();
 				}
 				if (gp_approx_ == "vecchia") {
+					den_mat_t Sigma_L_k;
+					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_sigma") {
+						//Do pivoted Cholseky decomposition for Sigma
+						PivotedCholsekyFactorizationSigma(re_comps_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, num_data_per_cluster_[cluster_i], 1e-6);
+					}
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
@@ -4833,6 +4852,9 @@ namespace GPBoost {
 						B_[cluster_i],
 						D_inv_[cluster_i],
 						mll_cluster_i);
+					//,
+					//	first_update_,
+					//	Sigma_L_k
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLGroupedRE(y_[cluster_i].data(),
