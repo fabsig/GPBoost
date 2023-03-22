@@ -974,6 +974,14 @@ GPBOOST_C_EXPORT SEXP GPB_GetOptimizerCoef_R(
 );
 
 /*!
+* \brief Get name of preconditioner for conjugate gradient algorithm
+* \return R character vector (length=1) with optimizer name
+*/
+GPBOOST_C_EXPORT SEXP GPB_GetCGPreconditionerType_R(
+	SEXP handle
+);
+
+/*!
 * \brief Set the type of likelihood
 * \param likelihood Likelihood name
 * \return 0 when succeed, -1 when failure happens

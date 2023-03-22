@@ -89,6 +89,15 @@ test_that("Binary classification with Gaussian process model ", {
   cov_pars <- c(0.9419234, 0.1866877)
   expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
   expect_equal(gp_model$get_num_optim_iter(), 40)
+  # Can switch between likelihoods
+  gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit")
+  gp_model$set_likelihood("gaussian")
+  gp_model$set_likelihood("bernoulli_probit")
+  capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", 
+                                                     lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                                     convergence_criterion = "relative_change_in_parameters",
+                                                     init_cov_pars = init_cov_pars)), file='NUL')
+  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
   # Estimation using gradient descent and Nesterov acceleration
   gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit")
   capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", 
@@ -286,7 +295,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars <- c(0.40255)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 62)
-    
+    # Can switch between likelihoods
+    gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
+    gp_model$set_likelihood("gaussian")
+    gp_model$set_likelihood("bernoulli_probit")
+    fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", 
+                                       lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                       convergence_criterion = "relative_change_in_parameters", 
+                                       init_cov_pars=init_cov_pars))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     # Estimation using gradient descent and Nesterov acceleration
     gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
     fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", 

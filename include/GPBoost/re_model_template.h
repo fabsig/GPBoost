@@ -418,10 +418,11 @@ namespace GPBoost {
 			if (gp_approx_ == "vecchia") {
 				Log::REInfo("Nearest neighbors for Vecchia approximation found");
 			}
-			CheckCompatibilitySpecialOptions();
 			InitializeLikelihoods(likelihood_strg);
 			DetermineCovarianceParameterIndicesNumCovPars();
 			InitializeDefaultSettings();
+			CheckCompatibilitySpecialOptions();
+			SetMatrixInversionPropertiesLikelihood();
 		}//end REModelTemplate
 
 		/*! \brief Destructor */
@@ -448,6 +449,7 @@ namespace GPBoost {
 		void SetLikelihood(const string_t& likelihood) {
 			bool gauss_likelihood_before = gauss_likelihood_;
 			bool only_one_grouped_RE_calculations_on_RE_scale_before = only_one_grouped_RE_calculations_on_RE_scale_;
+			bool only_one_GP_calculations_on_RE_scale_before = only_one_GP_calculations_on_RE_scale_;
 			bool only_grouped_REs_use_woodbury_identity_before = only_grouped_REs_use_woodbury_identity_;
 			gauss_likelihood_ = likelihood == "gaussian";
 			DetermineSpecialCasesModelsEstimationPrediction();
@@ -461,7 +463,7 @@ namespace GPBoost {
 				}
 			}
 			else if (!gauss_likelihood_before && gauss_likelihood_) {
-				if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
+				if (only_one_GP_calculations_on_RE_scale_before || only_one_grouped_RE_calculations_on_RE_scale_before) {
 					for (const auto& cluster_i : unique_clusters_) {
 						re_comps_[cluster_i][0]->AddZ();
 					}
@@ -497,7 +499,9 @@ namespace GPBoost {
 			InitializeLikelihoods(likelihood);
 			DetermineCovarianceParameterIndicesNumCovPars();
 			InitializeDefaultSettings();
-		}
+			CheckPreconditionerType();
+			SetMatrixInversionPropertiesLikelihood();
+		}//end SetLikelihood
 
 		/*!
 		* \brief Set configuration parameters for the optimizer
@@ -552,7 +556,6 @@ namespace GPBoost {
 			nesterov_schedule_version_ = nesterov_schedule_version;
 			if (optimizer != nullptr) {
 				optimizer_cov_pars_ = std::string(optimizer);
-				cov_pars_optimizer_hase_been_set_ = true;
 			}
 			momentum_offset_ = momentum_offset;
 			if (convergence_criterion != nullptr) {
@@ -578,10 +581,10 @@ namespace GPBoost {
 				piv_chol_rank_ = piv_chol_rank;
 				if (cg_preconditioner_type != nullptr) {
 					cg_preconditioner_type_ = std::string(cg_preconditioner_type);
-					if (SUPPORTED_CG_PRECONDITIONER_TYPE_.find(cg_preconditioner_type_) == SUPPORTED_CG_PRECONDITIONER_TYPE_.end()) {
-						Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
-					}
+					CheckPreconditionerType();
+					cg_preconditioner_type_has_been_set_ = true;
 				}
+				SetMatrixInversionPropertiesLikelihood();
 			}
 			estimate_aux_pars_ = estimate_aux_pars;
 			set_optim_config_has_been_called_ = true;
@@ -1925,8 +1928,15 @@ namespace GPBoost {
 			}
 			CHECK(cov_pars_pred != nullptr);
 			if (has_covariates_) {
-				CHECK(covariate_data_pred != nullptr);
+				if (covariate_data_pred == nullptr) {
+					Log::REFatal("Covariate data 'X_pred' not provided ");
+				}
 				CHECK(coef_pred != nullptr);
+			}
+			else {
+				if (covariate_data_pred != nullptr) {
+					Log::REFatal("Covariate data 'X_pred' provided but model has no linear regresion covariates ");
+				}
 			}
 			if (y_obs == nullptr) {
 				if (!y_has_been_set_) {
@@ -2973,11 +2983,11 @@ namespace GPBoost {
 		// SPECIAL CASES OF RE MODELS FOR FASTER CALCULATIONS
 		/*! \brief If true, the Woodbury, Sherman and Morrison matrix inversion formula is used for calculating the inverse of the covariance matrix (only used if there are only grouped REs and no Gaussian processes) */
 		bool only_grouped_REs_use_woodbury_identity_ = false;
-		/*! \brief True if there is only one grouped random effect component, and (all) calculations are done on the b-scale instead of the Zb-scale (currently used only for non-Gaussian data) */
+		/*! \brief True if there is only one grouped random effect component, and (all) calculations are done on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods) */
 		bool only_one_grouped_RE_calculations_on_RE_scale_ = false;
 		/*! \brief True if there is only one grouped random effect component for Gaussian data, can calculations for predictions (only) are done on the b-scale instead of the Zb-scale */
 		bool only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = false;
-		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (currently used only for non-Gaussian data) */
+		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (currently used only for non-Gaussian likelihoods) */
 		bool only_one_GP_calculations_on_RE_scale_ = false;
 
 		// COVARIANCE MATRIX AND CHOLESKY FACTORS OF IT
@@ -3070,12 +3080,16 @@ namespace GPBoost {
 		double LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ = 1e-4;
 		/*! \brief Threshold value for relative change in other parameters above which a learning rate is again set to its initial value (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
 		double MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ = 1e-2;
-		/*! \brief true if the function 'SetOptimConfig' has been called and optimizer_cov_pars_ has been set */
-		bool cov_pars_optimizer_hase_been_set_ = false;
-		/*! \brief true if the function 'SetOptimConfig' has been called and optimizer_coef_ has been set */
+		/*! \brief true if 'optimizer_coef_' has been set */
 		bool coef_optimizer_has_been_set_ = false;
 		/*! \brief List of optimizers which are externally handled by OptimLib */
 		const std::set<string_t> OPTIM_EXTERNAL_{ "nelder_mead", "bfgs", "adam" };
+		/*! \brief If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood) */
+		bool estimate_aux_pars_ = false;
+		/*! \brief True if the function 'SetOptimConfig' has been called */
+		bool set_optim_config_has_been_called_ = false;
+
+		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
 		string_t matrix_inversion_method_ = "cholesky";
 		/*! \brief Supported matrix inversion methods */
@@ -3083,27 +3097,29 @@ namespace GPBoost {
 		/*! \brief Maximal number of iterations for conjugate gradient algorithm */
 		int cg_max_num_it_ = 1000;
 		/*! \brief Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization */
-		int cg_max_num_it_tridiag_ = 20;
+		int cg_max_num_it_tridiag_ = 1000;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation */
-		double cg_delta_conv_ = 1.;
+		double cg_delta_conv_ = 1e-3;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
 		double cg_delta_conv_pred_ = 0.01;
 		/*! \brief Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix */
-		int num_rand_vec_trace_ = 10;
+		int num_rand_vec_trace_ = 50;
 		/*! \brief If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated */
 		bool reuse_rand_vec_trace_ = true;
 		/*! \brief Seed number to generate random vectors (e.g. Rademacher) */
 		int seed_rand_vec_trace_ = 1;
 		/*! \brief Type of preconditoner used for the conjugate gradient algorithm */
 		string_t cg_preconditioner_type_;
-		/*! \brief List of supported preconditioners for the conjugate gradient algorithm*/
-		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_{ "none" };
-		/*! \brief Rank of the pivoted cholseky decomposition used for the preconditioner of the conjugate gradient algorithm */
-		int piv_chol_rank_ = 100;
-		/*! \brief If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood) */
-		bool estimate_aux_pars_ = false;
-		/*! \brief True if the function 'SetOptimConfig' has been called */
-		bool set_optim_config_has_been_called_ = false;
+		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for Gaussian likelihood */
+		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_{ "none" };
+		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for non-Gaussian likelihoods */
+		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{ "none", "Sigma_inv_plus_BtWB", "piv_chol_on_Sigma" };
+		/*! \brief true if 'cg_preconditioner_type_' has been set */
+		bool cg_preconditioner_type_has_been_set_ = false;
+		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
+		int piv_chol_rank_ = 50;
+		/*! \brief Rank of the matrix for approximating predictive covariance matrices obtained using the Lanczos algorithm */
+		int rank_pred_approx_matrix_lanczos_ = 1000;
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
 		/*! \brief Collects matrices Z^T (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
@@ -3708,7 +3724,7 @@ namespace GPBoost {
 					likelihood_[cluster_i]->InitializeModeAvec();
 				}
 			}
-		}
+		}//end InitializeLikelihoods
 
 		/*!
 		* \brief Function that determines
@@ -3781,6 +3797,15 @@ namespace GPBoost {
 				else {
 					estimate_aux_pars_ = false;
 				}
+			}
+			if (!cg_preconditioner_type_has_been_set_) {
+				if (gauss_likelihood_) {
+					cg_preconditioner_type_ = "none";
+				}
+				else {
+					cg_preconditioner_type_ = "Sigma_inv_plus_BtWB";
+				}
+				CheckPreconditionerType();
 			}
 		}//end InitializeDefaultSettings
 
@@ -3905,6 +3930,32 @@ namespace GPBoost {
 				CHECK(num_comps_total_ == num_re_group_total_);
 			}
 		}
+
+		/*! \brief Check whether preconditioenr is supported */
+		void CheckPreconditionerType() const {
+			if (gauss_likelihood_) {
+				if (SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_.find(cg_preconditioner_type_) == SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_.end()) {
+					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+				}
+			}
+			else {
+				if (SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_.find(cg_preconditioner_type_) == SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_.end()) {
+					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+				}
+			}
+		}//end CheckPreconditionerType
+
+		/*! \brief Set matrix inversion properties and choices for iterative methods in likelihoods.h */
+		void SetMatrixInversionPropertiesLikelihood() {
+			if (!gauss_likelihood_) {
+				for (const auto& cluster_i : unique_clusters_) {
+					likelihood_[cluster_i]->SetMatrixInversionProperties(matrix_inversion_method_,
+						cg_max_num_it_, cg_max_num_it_tridiag_, cg_delta_conv_,
+						num_rand_vec_trace_, reuse_rand_vec_trace_, seed_rand_vec_trace_,
+						cg_preconditioner_type_, piv_chol_rank_, rank_pred_approx_matrix_lanczos_);
+				}
+			}
+		}//end SetMatrixInversionPropertiesLikelihood
 
 		/*!
 		* \brief Initialize individual component models and collect them in a containter

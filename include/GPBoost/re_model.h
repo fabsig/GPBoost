@@ -117,6 +117,8 @@ namespace GPBoost {
 
 		string_t GetOptimizerCoef() const;
 
+		string_t GetCGPreconditionerType() const;
+
 		/*!
 		* \brief Set configuration parameters for the optimizer
 		* \param init_cov_pars Initial values for covariance parameters of RE components
@@ -446,6 +448,7 @@ namespace GPBoost {
 		// Variables for additional parameters for non-Gaussian likelihoods
 		vec_t init_aux_pars_; // Additional parameters for non-Gaussian likelihoods
 		bool init_aux_pars_given_ = false;
+		bool model_has_been_estimated_ = false;
 	};
 
 }  // namespace GPBoost

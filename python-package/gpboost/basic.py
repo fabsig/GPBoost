@@ -4298,13 +4298,12 @@ class GPModel(object):
                        "convergence_criterion": "relative_change_in_log_likelihood",
                        "std_dev": False,
                        "cg_max_num_it": 1000,
-                       "cg_max_num_it_tridiag": 20,
-                       "cg_delta_conv": 1.,
-                       "num_rand_vec_trace": 10,
+                       "cg_max_num_it_tridiag": 1000,
+                       "cg_delta_conv": 1e-3,
+                       "num_rand_vec_trace": 50,
                        "reuse_rand_vec_trace": True,
-                       "cg_preconditioner_type": "none",
-                       "seed_rand_vec_trace": 0,
-                       "piv_chol_rank": 100,
+                       "seed_rand_vec_trace": 1,
+                       "piv_chol_rank": 50,
                        "estimate_aux_pars": True
         }
 
@@ -4632,7 +4631,8 @@ class GPModel(object):
                                              "of parameters")
                 if param in self.params:
                     self.params[param] = params[param]
-                elif param not in ["optimizer_cov", "optimizer_coef", "init_cov_pars", "init_aux_pars"]:
+                elif param not in ["optimizer_cov", "optimizer_coef", "cg_preconditioner_type",
+                                   "init_cov_pars", "init_aux_pars"]:
                     raise ValueError("Unknown parameter: %s" % param)
 
     def __del__(self):
@@ -4912,6 +4912,7 @@ class GPModel(object):
         init_coef_c = ctypes.c_void_p()
         init_aux_pars_c = ctypes.c_void_p()
         optimizer_coef_c = ctypes.c_void_p()
+        cg_preconditioner_type_c = ctypes.c_void_p()
         if params is not None:
             if "init_cov_pars" in params:
                 if params["init_cov_pars"] is not None:
@@ -4927,7 +4928,10 @@ class GPModel(object):
                     init_aux_pars_c = self.params["init_aux_pars"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
             if "optimizer_coef" in params:
                 if params["optimizer_coef"] is not None:
-                    optimizer_coef_c = c_str(params["optimizer_coef"])      
+                    optimizer_coef_c = c_str(params["optimizer_coef"])
+            if "cg_preconditioner_type" in params:
+                if params["cg_preconditioner_type"] is not None:
+                    cg_preconditioner_type_c = c_str(params["cg_preconditioner_type"])
         _safe_call(_LIB.GPB_SetOptimConfig(
             self.handle,
             init_cov_pars_c,
@@ -4952,7 +4956,7 @@ class GPModel(object):
             ctypes.c_double(self.params["cg_delta_conv"]),
             ctypes.c_int(self.params["num_rand_vec_trace"]),
             ctypes.c_bool(self.params["reuse_rand_vec_trace"]),
-            c_str(self.params["cg_preconditioner_type"]),
+            cg_preconditioner_type_c,
             ctypes.c_int(self.params["seed_rand_vec_trace"]),
             ctypes.c_int(self.params["piv_chol_rank"]),
             init_aux_pars_c,
@@ -4975,6 +4979,11 @@ class GPModel(object):
             ptr_string_buffer,
             ctypes.byref(tmp_out_len)))
         params["optimizer_coef"] = string_buffer.value.decode()
+        _safe_call(_LIB.GPB_GetCGPreconditionerType(
+            self.handle,
+            ptr_string_buffer,
+            ctypes.byref(tmp_out_len)))
+        params["cg_preconditioner_type"] = string_buffer.value.decode()
         init_cov_pars = np.zeros(self.num_cov_pars, dtype=np.float64)
         _safe_call(_LIB.GPB_GetInitCovPar(
             self.handle,

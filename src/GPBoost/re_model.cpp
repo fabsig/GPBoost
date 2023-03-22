@@ -188,6 +188,11 @@ namespace GPBoost {
 	}
 
 	void REModel::SetLikelihood(const string_t& likelihood) {
+		if (model_has_been_estimated_) {
+			if (GetLikelihood() != likelihood) {
+				Log::REFatal("Cannot change likelihood after a model has been estimated ");
+			}
+		}
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->SetLikelihood(likelihood);
 			num_cov_pars_ = re_model_sp_->num_cov_par_;
@@ -223,6 +228,18 @@ namespace GPBoost {
 		}
 		else {
 			return(re_model_den_->optimizer_coef_);
+		}
+	}
+
+	string_t REModel::GetCGPreconditionerType() const {
+		if (matrix_format_ == "sp_mat_t") {
+			return(re_model_sp_->cg_preconditioner_type_);
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			return(re_model_sp_rm_->cg_preconditioner_type_);
+		}
+		else {
+			return(re_model_den_->cg_preconditioner_type_);
 		}
 	}
 
@@ -388,6 +405,7 @@ namespace GPBoost {
 		}
 		has_covariates_ = false;
 		covariance_matrix_has_been_factorized_ = true;
+		model_has_been_estimated_ = true;
 	}
 
 	void REModel::OptimLinRegrCoefCovPar(const double* y_data,
@@ -465,6 +483,7 @@ namespace GPBoost {
 		has_covariates_ = true;
 		coef_given_or_estimated_ = true;
 		covariance_matrix_has_been_factorized_ = true;
+		model_has_been_estimated_ = true;
 	}
 
 	void REModel::FindInitialValueBoosting(double* init_score) {

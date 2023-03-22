@@ -39,7 +39,7 @@ simulate_response_variable <- function (lp, rand_eff, likelihood) {
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", or "gamma"
-likelihood <- "gamma"
+likelihood <- "gaussian"
 
 #################################
 # Grouped random effects

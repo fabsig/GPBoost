@@ -1196,6 +1196,21 @@ SEXP GPB_GetOptimizerCoef_R(SEXP handle) {
 	return ret;
 }
 
+SEXP GPB_GetCGPreconditionerType_R(SEXP handle) {
+	SEXP ret;
+	std::vector<char> inner_char_buf(128);
+	int num_char;
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetCGPreconditionerType(R_ExternalPtrAddr(handle),
+		inner_char_buf.data(),
+		&num_char));
+	R_API_END();
+	ret = PROTECT(Rf_allocVector(STRSXP, 1));
+	SET_STRING_ELT(ret, 0, Rf_mkChar(inner_char_buf.data()));
+	UNPROTECT(1);
+	return ret;
+}
+
 SEXP GPB_SetLikelihood_R(SEXP handle,
 	SEXP likelihood) {
 	SEXP likelihood_aux = PROTECT(Rf_asChar(likelihood));
@@ -1320,6 +1335,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 1},
   {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC)&GPB_GetOptimizerCovPars_R        , 1},
   {"GPB_GetOptimizerCoef_R"           , (DL_FUNC)&GPB_GetOptimizerCoef_R           , 1},
+  {"GPB_GetCGPreconditionerType_R"    , (DL_FUNC)&GPB_GetCGPreconditionerType_R    , 1},
   {"GPB_SetLikelihood_R"              , (DL_FUNC)&GPB_SetLikelihood_R              , 2},
   {"GPB_GetResponseData_R"            , (DL_FUNC)&GPB_GetResponseData_R            , 2},
   {"GPB_GetCovariateData_R"           , (DL_FUNC)&GPB_GetCovariateData_R           , 2},
