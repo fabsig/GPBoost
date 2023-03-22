@@ -809,6 +809,7 @@ gpb.GPModel <- R6::R6Class(
         , cg_preconditioner_type_c_str
         , private$params[["seed_rand_vec_trace"]]
         , private$params[["piv_chol_rank"]]
+        , private$params[["rank_pred_approx_matrix_lanczos"]]
         , init_aux_pars
         , private$params[["estimate_aux_pars"]]
       )
@@ -1841,6 +1842,7 @@ gpb.GPModel <- R6::R6Class(
                   reuse_rand_vec_trace = TRUE,
                   seed_rand_vec_trace = 1L,
                   piv_chol_rank = 50L,
+                  rank_pred_approx_matrix_lanczos = 1000L,
                   estimate_aux_pars = TRUE),
     
     determine_num_cov_pars = function(likelihood) {
@@ -1867,7 +1869,7 @@ gpb.GPModel <- R6::R6Class(
       integer_params <- c("maxit", "nesterov_schedule_version",
                           "momentum_offset", "cg_max_num_it", "cg_max_num_it_tridiag",
                           "num_rand_vec_trace", "seed_rand_vec_trace",
-                          "piv_chol_rank")
+                          "piv_chol_rank", "rank_pred_approx_matrix_lanczos")
       character_params <- c("optimizer_cov", "convergence_criterion",
                             "optimizer_coef", "cg_preconditioner_type")
       logical_params <- c("use_nesterov_acc", "trace", "std_dev", 

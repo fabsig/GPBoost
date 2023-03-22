@@ -922,6 +922,7 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP cg_preconditioner_type,
 	SEXP seed_rand_vec_trace,
 	SEXP piv_chol_rank,
+	SEXP rank_pred_approx_matrix_lanczos,
 	SEXP init_aux_pars,
 	SEXP estimate_aux_pars) {
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
@@ -959,6 +960,7 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		cg_preconditioner_type_ptr,
 		Rf_asInteger(seed_rand_vec_trace),
 		Rf_asInteger(piv_chol_rank),
+		Rf_asInteger(rank_pred_approx_matrix_lanczos),
 		R_REAL_PTR(init_aux_pars),
 		Rf_asLogical(estimate_aux_pars)));
 	R_API_END();
@@ -1320,7 +1322,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 26},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 28},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 29},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
   {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 4},
   {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},

@@ -2770,6 +2770,7 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	const char* cg_preconditioner_type,
 	int seed_rand_vec_trace,
 	int piv_chol_rank,
+	int rank_pred_approx_matrix_lanczos,
 	double* init_aux_pars,
 	bool estimate_aux_pars) {
 	API_BEGIN();
@@ -2799,6 +2800,7 @@ int GPB_SetOptimConfig(REModelHandle handle,
 		cg_preconditioner_type,
 		seed_rand_vec_trace,
 		piv_chol_rank,
+		rank_pred_approx_matrix_lanczos,
 		init_aux_pars,
 		estimate_aux_pars);
 	API_END();
