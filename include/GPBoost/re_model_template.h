@@ -3115,7 +3115,7 @@ namespace GPBoost {
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for Gaussian likelihood */
 		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_{ "none" };
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for non-Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{ "none", "Sigma_inv_plus_BtWB", "piv_chol_on_Sigma" };
+		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{ "Sigma_inv_plus_BtWB", "piv_chol_on_Sigma" };
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
 		bool cg_preconditioner_type_has_been_set_ = false;
 		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
@@ -4902,10 +4902,9 @@ namespace GPBoost {
 						num_data_per_cluster_[cluster_i],
 						B_[cluster_i],
 						D_inv_[cluster_i],
+						first_update_,
+						Sigma_L_k,
 						mll_cluster_i);
-					//,
-					//	first_update_,
-					//	Sigma_L_k
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLGroupedRE(y_[cluster_i].data(),

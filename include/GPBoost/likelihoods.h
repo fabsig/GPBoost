@@ -1282,6 +1282,8 @@ namespace GPBoost {
 		* \param num_data Number of data points
 		* \param B Matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
 		* \param D_inv Diagonal matrix D^-1 in Vecchia approximation Sigma^-1 = B^T D^-1 B
+		* \param first_update If true, the covariance parameters or linear coefficients were updated for the first time and the max. number of iterations for the CG should be decreased
+		* \param Sigma_L_k Pivoted Cholseky decomposition of Sigma - Version Habrecht: matrix of dimension nxk with rank(Sigma_L_k_) <= piv_chol_rank generated in re_model_template.h 
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
 		void FindModePostRandEffCalcMLLVecchia(const double* y_data,
@@ -1290,6 +1292,8 @@ namespace GPBoost {
 			const data_size_t num_data,
 			const sp_mat_t& B,
 			const sp_mat_t& D_inv,
+			const bool first_update,
+			const den_mat_t Sigma_L_k,
 			double& approx_marginal_ll) {
 			// Initialize variables
 			if (!mode_initialized_) {
@@ -1318,6 +1322,19 @@ namespace GPBoost {
 				approx_marginal_ll = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			}
 			double approx_marginal_ll_new = approx_marginal_ll;
+			if (matrix_inversion_method_ == "iterative") {
+				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+
+				}
+				else if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+					//Store as class variable
+					Sigma_L_k_ = Sigma_L_k;
+				}
+				else {
+					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+				}
+			}
+
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
@@ -1971,7 +1988,7 @@ namespace GPBoost {
 			int num_comps_total) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, mll);
+				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, false, Sigma_L_k_, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
@@ -2364,7 +2381,7 @@ namespace GPBoost {
 			bool CondObsOnly) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, mll);
+				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, false, Sigma_L_k_, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
@@ -2724,6 +2741,15 @@ namespace GPBoost {
 		int rank_pred_approx_matrix_lanczos_ = 1000;
 		/*! \brief If true, cg_max_num_it and cg_max_num_it_tridiag are reduced by 2/3 (multiplied by 1/3) for the mode finding of the Laplace approximation in the first gradient step when finding a learning rate that reduces the ll */
 		bool reduce_cg_max_num_it_first_optim_step_ = true;
+
+		//ITERATIVE MATRIX INVERSION + VECCIA APPROXIMATION
+		//RANDOM VECTOR VARIABLES
+
+
+		//PRECONDITIONER VARIABLES
+		/*! \brief  piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= piv_chol_rank generated in re_model_template.h*/
+		den_mat_t Sigma_L_k_;
+
 
 		string_t ParseLikelihoodAlias(const string_t& likelihood) {
 			if (likelihood == string_t("binary") || likelihood == string_t("bernoulli_probit") || likelihood == string_t("binary_probit")) {
