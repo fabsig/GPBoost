@@ -706,6 +706,7 @@ GPBOOST_C_EXPORT SEXP GPB_REModelFree_R(
 * \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 * \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
 * \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
+* \param rank_pred_approx_matrix_lanczos Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
 * \param init_aux_pars Initial values for values for aux_pars_ (e.g., shape parameter of gamma likelihood)
 * \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 * \return 0 when succeed, -1 when failure happens
@@ -737,6 +738,7 @@ GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
 	SEXP cg_preconditioner_type,
 	SEXP seed_rand_vec_trace,
 	SEXP piv_chol_rank,
+	SEXP rank_pred_approx_matrix_lanczos,
 	SEXP init_aux_pars,
 	SEXP estimate_aux_pars
 );

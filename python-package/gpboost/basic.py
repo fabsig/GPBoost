@@ -4304,6 +4304,7 @@ class GPModel(object):
                        "reuse_rand_vec_trace": True,
                        "seed_rand_vec_trace": 1,
                        "piv_chol_rank": 50,
+                       "rank_pred_approx_matrix_lanczos": 1000,
                        "estimate_aux_pars": True
         }
 
@@ -4959,6 +4960,7 @@ class GPModel(object):
             cg_preconditioner_type_c,
             ctypes.c_int(self.params["seed_rand_vec_trace"]),
             ctypes.c_int(self.params["piv_chol_rank"]),
+            ctypes.c_int(self.params["rank_pred_approx_matrix_lanczos"]),
             init_aux_pars_c,
             ctypes.c_bool(self.params["estimate_aux_pars"])))
         return self

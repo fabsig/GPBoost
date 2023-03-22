@@ -525,6 +525,7 @@ namespace GPBoost {
 		* \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 		* \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
 		* \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
+		* \param rank_pred_approx_matrix_lanczos Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
 		* \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 		*/
 		void SetOptimConfig(double lr,
@@ -547,6 +548,7 @@ namespace GPBoost {
 			const char* cg_preconditioner_type,
 			int seed_rand_vec_trace,
 			int piv_chol_rank,
+			int rank_pred_approx_matrix_lanczos,
 			bool estimate_aux_pars) {
 			lr_cov_init_ = lr;
 			acc_rate_cov_ = acc_rate_cov;
@@ -584,6 +586,7 @@ namespace GPBoost {
 					CheckPreconditionerType();
 					cg_preconditioner_type_has_been_set_ = true;
 				}
+				rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
 				SetMatrixInversionPropertiesLikelihood();
 			}
 			estimate_aux_pars_ = estimate_aux_pars;
@@ -3120,7 +3123,7 @@ namespace GPBoost {
 		bool cg_preconditioner_type_has_been_set_ = false;
 		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
 		int piv_chol_rank_ = 50;
-		/*! \brief Rank of the matrix for approximating predictive covariance matrices obtained using the Lanczos algorithm */
+		/*! \brief Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm */
 		int rank_pred_approx_matrix_lanczos_ = 1000;
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY

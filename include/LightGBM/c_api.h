@@ -1412,6 +1412,7 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 * \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
 * \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
+* \param rank_pred_approx_matrix_lanczos Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
 * \param init_aux_pars Initial values for values for aux_pars_ (e.g., shape parameter of gamma likelihood)
 * \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 * \return 0 when succeed, -1 when failure happens
@@ -1442,6 +1443,7 @@ GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
     const char* cg_preconditioner_type,
     int seed_rand_vec_trace,
     int piv_chol_rank,
+    int rank_pred_approx_matrix_lanczos,
     double* init_aux_pars,
     bool estimate_aux_pars);
 
