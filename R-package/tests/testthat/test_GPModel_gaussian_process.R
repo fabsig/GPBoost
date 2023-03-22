@@ -70,6 +70,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(dim(gp_model$get_cov_pars())[2], 3)
     expect_equal(dim(gp_model$get_cov_pars())[1], 2)
     expect_equal(gp_model$get_num_optim_iter(), num_it)
+    # Can switch between likelihoods
+    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
+    gp_model$set_likelihood("gamma")
+    gp_model$set_likelihood("gaussian")
+    capture.output( fit(gp_model, y = y, params = DEFAULT_OPTIM_PARAMS_STD), 
+                    file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     # Gradient descent without Nesterov acceleration
     params <- DEFAULT_OPTIM_PARAMS_STD
     params$use_nesterov_acc <- FALSE

@@ -303,6 +303,7 @@ namespace GPBoost {
 			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
 			if (!this->has_Z_) {
 				CreateZ();
+				this->has_Z_ = true;
 				if (has_ZZt_) {
 					ConstructZZt<T_mat>();
 				}

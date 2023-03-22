@@ -773,6 +773,10 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(params[["optimizer_coef"]])) {
         optimizer_coef_c_str <- params[["optimizer_coef"]]
       }
+      cg_preconditioner_type_c_str <- NULL
+      if (!is.null(params[["cg_preconditioner_type"]])) {
+        cg_preconditioner_type_c_str <- params[["cg_preconditioner_type"]]
+      }
       init_aux_pars <- NULL
       if (!is.null(params[["init_aux_pars"]])) {
         init_aux_pars <- params[["init_aux_pars"]]
@@ -802,7 +806,7 @@ gpb.GPModel <- R6::R6Class(
         , private$params[["cg_delta_conv"]]
         , private$params[["num_rand_vec_trace"]]
         , private$params[["reuse_rand_vec_trace"]]
-        , private$params[["cg_preconditioner_type"]]
+        , cg_preconditioner_type_c_str
         , private$params[["seed_rand_vec_trace"]]
         , private$params[["piv_chol_rank"]]
         , init_aux_pars
@@ -813,14 +817,16 @@ gpb.GPModel <- R6::R6Class(
     
     get_optim_params = function() {
       params <- private$params
-      # Get covariance parameters optimizer
       params$optimizer_cov <- .Call(
         GPB_GetOptimizerCovPars_R
         , private$handle
       )
-      # Get linear regression coefficients optimizer
       params$optimizer_coef <- .Call(
         GPB_GetOptimizerCoef_R
+        , private$handle
+      )
+      params$cg_preconditioner_type <- .Call(
+        GPB_GetCGPreconditionerType_R
         , private$handle
       )
       init_cov_pars <- numeric(private$num_cov_pars)
@@ -1328,6 +1334,7 @@ gpb.GPModel <- R6::R6Class(
             } else {
               fixed_effects_pred <- fixed_effects_pred + as.vector(X_pred %*% coefs)
             }
+            X_pred <- NULL
           } else {
             X_pred <- as.vector(matrix(X_pred))
           }
@@ -1828,13 +1835,12 @@ gpb.GPModel <- R6::R6Class(
                   convergence_criterion = "relative_change_in_log_likelihood",
                   std_dev = FALSE,
                   cg_max_num_it = 1000L,
-                  cg_max_num_it_tridiag = 20L,
-                  cg_delta_conv = 1.,
-                  num_rand_vec_trace = 10L,
+                  cg_max_num_it_tridiag = 1000L,
+                  cg_delta_conv = 1e-3,
+                  num_rand_vec_trace = 50L,
                   reuse_rand_vec_trace = TRUE,
-                  cg_preconditioner_type = "none",
-                  seed_rand_vec_trace = 0L,
-                  piv_chol_rank = 100L,
+                  seed_rand_vec_trace = 1L,
+                  piv_chol_rank = 50L,
                   estimate_aux_pars = TRUE),
     
     determine_num_cov_pars = function(likelihood) {
@@ -1934,8 +1940,8 @@ gpb.GPModel <- R6::R6Class(
             private$params[[param]] <- params[[param]]
           }
         }
-        else if (!(param %in% c("optimizer_cov", "init_cov_pars", 
-                                "optimizer_coef", "init_aux_pars"))){
+        else if (!(param %in% c("optimizer_cov", "optimizer_coef", "cg_preconditioner_type", 
+                                "init_cov_pars", "init_aux_pars"))){
           stop(paste0("GPModel: Unknown parameter: ", param))
         }
       }

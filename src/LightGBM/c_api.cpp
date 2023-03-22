@@ -2993,6 +2993,17 @@ int GPB_GetOptimizerCoef(REModelHandle handle,
 	API_END();
 }
 
+int GPB_GetCGPreconditionerType(REModelHandle handle,
+	char* out_str,
+	int* num_char) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	std::string name = ref_remodel->GetCGPreconditionerType();
+	*num_char = (int)name.size() + 1;
+	std::memcpy(out_str, name.c_str(), name.size() + 1);
+	API_END();
+}
+
 int GPB_SetLikelihood(REModelHandle handle,
 	const char* likelihood) {
 	API_BEGIN();

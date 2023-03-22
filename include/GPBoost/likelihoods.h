@@ -2612,6 +2612,29 @@ namespace GPBoost {
 			return mean_resp;
 		}//end RespMeanAdaptiveGHQuadrature
 
+		/*! \brief Set matrix inversion properties and choices for iterative methods. This function is calle from re_model_template.h which also holds these variables */
+		void SetMatrixInversionProperties(const string_t& matrix_inversion_method,
+			int cg_max_num_it,
+			int cg_max_num_it_tridiag,
+			double cg_delta_conv,
+			int num_rand_vec_trace,
+			bool reuse_rand_vec_trace,
+			int seed_rand_vec_trace,
+			const string_t& cg_preconditioner_type,
+			int piv_chol_rank,
+			int rank_pred_approx_matrix_lanczos) {
+			matrix_inversion_method_ = matrix_inversion_method;
+			cg_max_num_it_ = cg_max_num_it;
+			cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
+			cg_delta_conv_ = cg_delta_conv;
+			num_rand_vec_trace_ = num_rand_vec_trace;
+			reuse_rand_vec_trace_ = reuse_rand_vec_trace;
+			seed_rand_vec_trace_ = seed_rand_vec_trace;
+			cg_preconditioner_type_ = cg_preconditioner_type;
+			piv_chol_rank_ = piv_chol_rank;
+			rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
+		}//end SetMatrixInversionProperties
+
 	private:
 		/*! \brief Number of data points */
 		data_size_t num_data_;
@@ -2677,6 +2700,30 @@ namespace GPBoost {
 		std::vector<string_t> names_aux_pars_;
 		/*! \brief True, if the function 'SetAuxPars' has been called */
 		bool aux_pars_have_been_set_ = false;
+
+		// MATRIX INVERSION PROPERTIES
+		/*! \brief Matrix inversion method */
+		string_t matrix_inversion_method_ = "cholesky";
+		/*! \brief Maximal number of iterations for conjugate gradient algorithm */
+		int cg_max_num_it_ = 1000;
+		/*! \brief Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization */
+		int cg_max_num_it_tridiag_ = 1000;
+		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation */
+		double cg_delta_conv_ = 1e-3;
+		/*! \brief Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix */
+		int num_rand_vec_trace_ = 50;
+		/*! \brief If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated */
+		bool reuse_rand_vec_trace_ = true;
+		/*! \brief Seed number to generate random vectors (e.g. Rademacher) */
+		int seed_rand_vec_trace_ = 1;
+		/*! \brief Type of preconditoner used for the conjugate gradient algorithm */
+		string_t cg_preconditioner_type_ = "Sigma_inv_plus_BtWB";
+		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
+		int piv_chol_rank_ = 50;
+		/*! \brief Rank of the matrix for approximating predictive covariance matrices obtained using the Lanczos algorithm */
+		int rank_pred_approx_matrix_lanczos_ = 1000;
+		/*! \brief If true, cg_max_num_it and cg_max_num_it_tridiag are reduced by 2/3 (multiplied by 1/3) for the mode finding of the Laplace approximation in the first gradient step when finding a learning rate that reduces the ll */
+		bool reduce_cg_max_num_it_first_optim_step_ = true;
 
 		string_t ParseLikelihoodAlias(const string_t& likelihood) {
 			if (likelihood == string_t("binary") || likelihood == string_t("bernoulli_probit") || likelihood == string_t("binary_probit")) {

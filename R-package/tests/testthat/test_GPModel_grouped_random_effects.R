@@ -54,6 +54,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(dim(gp_model$get_cov_pars())[2], 2)
     expect_equal(dim(gp_model$get_cov_pars())[1], 2)
     expect_equal(gp_model$get_num_optim_iter(), 6)
+    # Can switch between likelihoods
+    gp_model <- GPModel(group_data = group)
+    gp_model$set_likelihood("gamma")
+    gp_model$set_likelihood("gaussian")
+    fit(gp_model, y = y, params = list(std_dev = TRUE, optimizer_cov = "fisher_scoring",
+                                       convergence_criterion = "relative_change_in_parameters"))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_STRICT)
     # Using gradient descent instead of Fisher scoring
     gp_model <- fitGPModel(group_data = group, y = y,
                            params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
@@ -128,6 +135,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                       0.5409198 , 0.0000000000, 0.0000000000, 0.0000000000, 1.7164805)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOL_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOL_STRICT)
+    ## Cannot provide X for prediction when not provided for estimation
+    expect_error(pred <- predict(gp_model, group_data_pred = group_test, X = group_test))
     
     # Predict training data random effects
     gp_model <- fitGPModel(group_data = group, y = y)

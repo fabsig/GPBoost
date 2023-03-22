@@ -1664,6 +1664,17 @@ GPBOOST_C_EXPORT int GPB_GetOptimizerCoef(REModelHandle handle,
     int* num_char);
 
 /*!
+* \brief Get name of preconditioner for conjugate gradient algorithm
+* \param handle Handle of REModel
+* \param[out] out_str Optimizer name
+* \param[out] num_char Number of characters
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetCGPreconditionerType(REModelHandle handle,
+    char* out_str,
+    int* num_char);
+
+/*!
 * \brief Set the type of likelihood
 * \param handle Handle of REModel
 * \param likelihood Likelihood name
