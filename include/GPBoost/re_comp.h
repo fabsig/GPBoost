@@ -1044,6 +1044,17 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Multiply covariance with taper function for externally provided covariance and distance matrices
+		* \param dist Distance matrix
+		* \param sigma Covariance matrix to which tapering is applied
+		*/
+		void ApplyTaper(const T_mat& dist,
+			T_mat sigma) {
+			CHECK(apply_tapering_);
+			cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(dist, sigma, false);
+		}
+
+		/*!
 		* \brief Calculate covariance matrix
 		* \return Covariance matrix Z*Sigma*Z^T of this component
 		*/
@@ -1173,7 +1184,9 @@ namespace GPBoost {
 			bool calc_cross_cov,
 			bool calc_uncond_pred_cov,
 			bool dont_add_but_overwrite,
-			const double* rand_coef_data_pred) {
+			const double* rand_coef_data_pred,
+			bool return_cross_dist,
+			T_mat& cross_dist) {
 			int num_data_pred = (int)coords_pred.rows();
 			std::vector<int>  uniques_pred;//unique points
 			std::vector<int>  unique_idx_pred;//used for constructing incidence matrix Z_ if there are duplicates
@@ -1220,7 +1233,6 @@ namespace GPBoost {
 			}//end create Zstar
 			if (calc_cross_cov) {
 				//Calculate cross distances between "existing" and "new" points
-				T_mat cross_dist;
 				if (has_duplicates) {
 					CalculateDistances<T_mat>(coords, coords_pred_unique, false, cross_dist);
 				}
@@ -1287,7 +1299,10 @@ namespace GPBoost {
 				}
 				uncond_pred_cov += ZstarSigmastarZstarT;
 			}//end calc_uncond_pred_cov
-		}
+			if (!return_cross_dist) {
+				cross_dist.resize(0, 0);
+			}
+		}//end AddPredCovMatrices
 
 		data_size_t GetNumUniqueREs() const override {
 			return(num_random_effects_);

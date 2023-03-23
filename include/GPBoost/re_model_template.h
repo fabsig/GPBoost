@@ -6024,8 +6024,10 @@ namespace GPBoost {
 				//Gaussian process
 				if (num_gp_ > 0) {
 					std::shared_ptr<RECompGP<T_mat>> re_comp_base = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][cn]);
+					T_mat cross_dist; // unused dummy variable
 					re_comp_base->AddPredCovMatrices(re_comp_base->coords_, gp_coords_mat_pred, cross_cov,
-						cov_mat_pred_id, true, predict_cov_mat, dont_add_but_overwrite, nullptr);
+						cov_mat_pred_id, true, predict_cov_mat, dont_add_but_overwrite, nullptr,
+						false, cross_dist);
 					dont_add_but_overwrite = false;
 					if (predict_var) {
 						re_comp_base->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
@@ -6041,7 +6043,8 @@ namespace GPBoost {
 								rand_coef_data.push_back(gp_rand_coef_data_pred[j * num_data_pred + id]);
 							}
 							re_comp->AddPredCovMatrices(re_comp_base->coords_, gp_coords_mat_pred, cross_cov,
-								cov_mat_pred_id, true, predict_cov_mat, false, rand_coef_data.data());
+								cov_mat_pred_id, true, predict_cov_mat, false, rand_coef_data.data(),
+								false, cross_dist);
 							if (predict_var) {
 								re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
 							}
