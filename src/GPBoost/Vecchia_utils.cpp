@@ -245,8 +245,6 @@ namespace GPBoost {
 				//counting is done on the sorted scale, but the index on the orignal scale needs to be (i) smaller than 'i' in order to be a neighbor (ii) and also below or equal the largest potential neighbor 'end_search_at'
 				if (sort_sum[down_i] < i && sort_sum[down_i] <= end_search_at) {
 					smd = std::pow(coords_sum[sort_sum[down_i]] - coords_sum[i], 2);
-
-
 					if (smd > dim_coords * nn_square_dist[num_nearest_neighbors - 1]) {
 						down = false;
 					}
@@ -278,7 +276,7 @@ namespace GPBoost {
 					}
 				}
 			}//end up
-		}
+		}//end while (up || down)
 	}//end find_nearest_neighbors_fast_internal
 
 }  // namespace GPBoost

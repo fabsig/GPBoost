@@ -2194,6 +2194,10 @@ namespace GPBoost {
 						random_effects_indices_of_data_pred = std::vector<data_size_t>(num_data_per_cluster_pred[cluster_i]);
 						std::vector<int> uniques;//unique points
 						std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
+						if (gp_approx_ != "none") {
+							Log::REWarning("'DetermineUniqueDuplicateCoords' is called and a GP approximation is used. "
+								"Note that 'DetermineUniqueDuplicateCoords' is slow for large data ");
+						}
 						DetermineUniqueDuplicateCoords(gp_coords_mat_pred, num_data_per_cluster_pred[cluster_i], uniques, unique_idx);
 #pragma omp for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
@@ -2988,9 +2992,9 @@ namespace GPBoost {
 		bool only_grouped_REs_use_woodbury_identity_ = false;
 		/*! \brief True if there is only one grouped random effect component, and (all) calculations are done on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods) */
 		bool only_one_grouped_RE_calculations_on_RE_scale_ = false;
-		/*! \brief True if there is only one grouped random effect component for Gaussian data, can calculations for predictions (only) are done on the b-scale instead of the Zb-scale */
+		/*! \brief True if there is only one grouped random effect component for Gaussian data, can calculations for predictions (only) are done on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods) */
 		bool only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = false;
-		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (currently used only for non-Gaussian likelihoods) */
+		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (only for non-Gaussian likelihoods when no approximation is used) */
 		bool only_one_GP_calculations_on_RE_scale_ = false;
 
 		// COVARIANCE MATRIX AND CHOLESKY FACTORS OF IT
@@ -3768,10 +3772,10 @@ namespace GPBoost {
 				only_grouped_REs_use_woodbury_identity_ = false;
 			}
 			// Define options for faster calculations for special cases of RE models (these options depend on the type of likelihood)
-			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ != "vecchia";//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (currently only for non-Gaussian data)
-			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (currently only for non-Gaussian data)
-			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (only used for Gaussian data)
-		}
+			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ == "none";//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (only for non-Gaussian likelihoods when no approximation is used)
+			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods)
+			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods)
+		}//end DetermineSpecialCasesModelsEstimationPrediction
 
 		/*!
 		* \brief Function that set default values for several parameters if they were not initialized
@@ -4033,6 +4037,7 @@ namespace GPBoost {
 					}
 				}
 				den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords_);
+				bool use_Z_for_duplicates = (gp_approx_ == "none");
 				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 					gp_coords_mat,
 					cov_fct_,
@@ -4042,7 +4047,7 @@ namespace GPBoost {
 					gp_approx_ == "tapering",
 					false,
 					true,
-					true,
+					use_Z_for_duplicates,
 					only_one_GP_calculations_on_RE_scale_)));
 				//Random slope GPs
 				if (num_gp_rand_coef_ > 0) {
@@ -6637,6 +6642,7 @@ namespace GPBoost {
 			//Determine number of unique observartion locations
 			std::vector<int> uniques;//unique points
 			std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
+			// Note: 'DetermineUniqueDuplicateCoords' is slow for large data
 			DetermineUniqueDuplicateCoords(gp_coords_mat_obs, num_data_cli, uniques, unique_idx);
 			int num_coord_unique_obs = (int)uniques.size();
 			//Determine unique locations (observed and predicted)
