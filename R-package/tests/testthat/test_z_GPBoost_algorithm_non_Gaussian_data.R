@@ -1469,9 +1469,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       bst <- gpboost(data = dtrain,  gp_model = gp_model, nrounds = 30,
                      learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
                      objective = "gamma", verbose = 0)
-      cov_pars_est <- c(0.6086986, 0.5337656)
+      cov_pars_est <- c(0.6015308, 0.5169128)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-1.445812)),TOLERANCE)
+      expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-1.447807)),TOLERANCE)
     })
     
     test_that("Saving and loading a booster with a gp_model for non-Gaussian data ", {

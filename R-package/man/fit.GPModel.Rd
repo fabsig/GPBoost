@@ -19,14 +19,17 @@ fixed effects linear regression term (if there is one)}
  \itemize{
     \item{optimizer_cov: Optimizer used for estimating covariance parameters. 
     Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam".
-    Default = "gradient_descent"}
+    Default = "gradient_descent". 
+    If there are additional auxiliary parameters for non-Gaussian likelihoods, 
+    'optimizer_cov' is also used for those }
     \item{optimizer_coef: Optimizer used for estimating linear regression coefficients, if there are any 
     (for the GPBoost algorithm there are usually none). 
     Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously 
     with gradient descent steps for the covariance parameters. 
     "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
     Default = "wls" for Gaussian data and "gradient_descent" for other likelihoods.
-    If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 'optimizer_coef' is automatically also set to the same value.}
+    If 'optimizer_cov' is set to "nelder_mead", "bfgs", or "adam", 
+    'optimizer_coef' is automatically also set to the same value.}
     \item{maxit: Maximal number of iterations for optimization algorithm. Default = 1000}
     \item{delta_rel_conv: Convergence tolerance. The algorithm stops if the relative change 
     in eiher the (approximate) log-likelihood or the parameters is below this value. 
@@ -41,9 +44,11 @@ fixed effects linear regression term (if there is one)}
     random effects (can be NULL). Default = NULL}
     \item{lr_coef: Learning rate for fixed effect regression coefficients if gradient descent is used.
     Default = 0.1}
-    \item{lr_cov: Learning rate for covariance parameters. 
-    If < 0, internal default values are used.
-    Default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"}
+    \item{lr_cov: Initial learning rate for covariance parameters. 
+    If lr_cov < 0, internal default values are used.
+    Default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
+    If there are additional auxiliary parameters for non-Gaussian likelihoods, 
+    'lr_cov' is also used for those}
     \item{use_nesterov_acc: If TRUE Nesterov acceleration is used.
     This is used only for gradient descent. Default = TRUE}
     \item{acc_rate_coef: Acceleration rate for regression coefficients (if there are any) 

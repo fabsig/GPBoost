@@ -170,7 +170,8 @@ namespace GPBoost {
 		* \param num_data Number of data points
 		*/
 		template <typename T>//T can be double or float
-		void CheckY(const T* y_data, const data_size_t num_data) const {
+		void CheckY(const T* y_data, 
+			const data_size_t num_data) const {
 			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit") {
 				//#pragma omp parallel for schedule(static)//problematic with error message below... 
 				for (data_size_t i = 0; i < num_data; ++i) {
