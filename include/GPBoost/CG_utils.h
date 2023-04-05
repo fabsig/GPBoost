@@ -9,8 +9,6 @@
 #ifndef GPB_CG_UTILS_
 #define GPB_CG_UTILS_
 
-//#include <functional>
-//#include <iostream>
 #include <GPBoost/type_defs.h>
 #include <GPBoost/re_comp.h>
 
@@ -18,106 +16,88 @@
 #include <chrono>
 #include <thread> //temp
 
-//#include <GPBoost/likelihoods.h>
-//#include <cmath>
-//using namespace std;
 using LightGBM::Log;
 
 namespace GPBoost {
 	/*!
-	* \brief Preconditioned conjugate gradient descent to solve Au=rhs when rhs is a vector
-	*		 A=(Sigma^-1+W) is a symmetric matrix of dimension nxn, a Vecchia approximation for Sigma^-1,
-	*		 Sigma^-1 = B^T D^-1 B, is given, and W is a diagonal matrix. Sigma^-1 = B^T D^-1 B is used as preconditioner.
+	* \brief Preconditioned conjugate gradient descent to solve A u = rhs when rhs is a vector
+	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn, a Vecchia approximation for Sigma^-1,
+	*		 Sigma^-1 = B^T D^-1 B, is given, and W is a diagonal matrix. P = B^T (D^-1 + W) B is used as preconditioner.
 	* \param diag_W Diagonal of matrix W
 	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^(-1) B ("=" Cholesky factor)
-	* \param B_t_D_inv_rm Row-major matrix that contains the product B^T D^(-1). Outsourced in order to reduce the overhead of the function.
+	* \param B_t_D_inv_rm Row-major matrix that contains the product B^T D^-1. Outsourced in order to reduce the overhead of the function.
 	* \param rhs Vector of dimension nx1 on the rhs
 	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
-	* \param[out] NaN_found Is set to true, if NaN is found in the residual of conjugate gradient algorithm
-	* \param p Number of conjugate gradient steps
-	* \param warm_start If false, u is set to zero at the beginning of the algorithm
-	* \param find_mode_it In the first mode-finding iteration (find_mode_it==0) u is set to zero at the beginning of the algorithm
-	* \param delta_conv tolerance for checking convergence
-	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned
-	* \param cg_preconditioner_type Type of preconditoner used for the conjugate gradient algorithm
-	* \param chol_fact_D_k_plus_B_k_W_inv_B_kt_rm_vecchia Cholesky factor E of matrix EE^T = (D_k + B_k W^(-1) B_k^T)
-	* \param chol_fact_I_k_plus_L_kt_W_inv_L_k_rm_vecchia Cholesky factor E of matrix EE^T = (I_k + L_k^T W^(-1) L_k)
-	* \param B_k_rm Matrix of dimension kxn that contains k rows of the Veccia factor B
-	* \param L_k_rm Pivoted Cholseky decomposition of Sigma^(-1): matrix of dimension nxk with rank(L_k) <= piv_chol_rank_ generated with PivotedCholsekyFactorization()
-	* \param D_inv_plus_W_B_rm Row-major matrix that contains the product (D^(-1) + W) B used for the preconditioner "sigma_with_W".
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param p Maximal number of conjugate gradient steps
+	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
+	* \param D_inv_plus_W_B_rm Row-major matrix that contains the product (D^(-1) + W) B used for the preconditioner "Sigma_inv_plus_BtWB".
 	*/
 	void CGVecchiaLaplaceVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& B_t_D_inv_rm,
 		const vec_t& rhs,
 		vec_t& u,
-		bool& NaN_found,
+		bool& NA_or_Inf_found,
 		int p,
-		const bool warm_start,
 		const int find_mode_it,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
-		const string_t cg_preconditioner_type,
-		const chol_sp_mat_rm_t& chol_fact_D_k_plus_B_k_W_inv_B_kt_rm_vecchia,
-		const chol_sp_mat_rm_t& chol_fact_I_k_plus_L_kt_W_inv_L_k_rm_vecchia,
-		const sp_mat_rm_t& B_k_rm,
-		const sp_mat_rm_t& L_k_rm,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm);
 
 	/*!
-	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1+W)u=rhs by u=W^(-1)(Sigma+W^(-1))^(-1)Sigma rhs where the preconditioned conjugate 
-	*		 gradient descent algorithm is used to approximately solve for (Sigma+W^(-1))^(-1)Sigma rhs. As preconditioner P=(Sigma_L_k Sigma_L_k^T + W^(-1)) is used where 
-	*		 Sigma_L_k results from a rank(Sigma_L_k)=k pivoted Cholseky decomposition of the nonapproximated covariance matrix Sigma.
+	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate 
+	*		 gradient descent algorithm is used to approximately solve for (W^(-1) + Sigma)^(-1) Sigma rhs. 
+	*        P = (W^(-1) + Sigma_L_k Sigma_L_k^T) is used as preconditioner where Sigma_L_k results from a rank(Sigma_L_k) = k (k << n)
+	*		 pivoted Cholseky decomposition of the nonapproximated covariance matrix.
 	* \param diag_W Diagonal of matrix W
 	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
 	* \param D_inv_B_rm Row-major matrix that contains the product D^-1 B. Outsourced in order to reduce the overhead of the function.
 	* \param rhs Vector of dimension nx1 on the rhs
 	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
-	* \param[out] NaN_found Is set to true, if NaN is found in the residual of conjugate gradient algorithm
-	* \param p Number of conjugate gradient steps
-	* \param warm_start If false, u is set to zero at the beginning of the algorithm
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param p Maximal number of conjugate gradient steps
+	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
 	* \param delta_conv Tolerance for checking convergence of the algorithm
-	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia Cholesky factor E of matrix EE^T = (I_k + Sigma_L_k^T W^(-1) Sigma_L_k)
-	* \param Sigma_L_k Pivoted Cholseky decomposition of Sigma: matrix of dimension nxk with rank(Sigma_L_k) <= piv_chol_rank_ generated in re_model_template.h
+	* \param Sigma_L_k Matrix of dimension nxk: Pivoted Cholseky decomposition of the nonapproximated covariance matrix, generated in re_model_template.h
 	*/
-	void CGVecchiaLaplaceVecSigmaplusWinv(const vec_t& diag_W,
+	void CGVecchiaLaplaceVecWinvplusSigma(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& D_inv_B_rm,
 		const vec_t& rhs,
 		vec_t& u,
-		bool& NaN_found,
+		bool& NA_or_Inf_found,
 		int p,
-		const bool warm_start,
+		const int find_mode_it,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
-		const chol_den_mat_t chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
+		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
 		const den_mat_t& Sigma_L_k);
 
 	/*!
-	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm
-	*		 Given the linear system AU=rhs where rhs is a matrix of dimension nxt of t probe column-vectors and 
-	*		 A=(Sigma^-1+W) is a symmetric matrix of dimension nxn, a Vecchia approximation for Sigma^-1,
-	*		 Sigma^-1 = B^T D^-1 B, is given, and W is a diagonal matrix.
-	*		 The function returns t approximative tridiagonalizations T of the symmetric matrix A=QTQ' in vector form (diagonal + subdiagonal of T).
+	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
+	*		 A linear system A U = rhs is solved, where the rhs is a matrix of dimension nxt of t random column-vectors and 
+	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn. P = B^T (D^-1 + W) B is used as preconditioner.
+	*		 Further, a Vecchia approximation for Sigma^-1 = B^T D^-1 B is given, and W is a diagonal matrix.
+	*		 The function returns t approximative tridiagonalizations T of the symmetric matrix P^(-0.5) A P^(-0.5) = Q T Q^T in vector form (diagonal + subdiagonal of T)
+	*		 and an approximative solution of the linear system.
 	* \param diag_W Diagonal of matrix W
 	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
 	* \param B_t_D_inv_rm Row-major matrix that contains the product B^T D^-1. Outsourced in order to reduce the overhead of the function.
-	* \param rhs Matrix of dimension nxt that contains (column-)probe vectors z_1,...,z_t with Cov[z_i] = P
-	* \param[out] Tdiags The diagonals of the t approximative tridiagonalizations of A in vector form (solution written on input)
-	* \param[out] Tsubdiags The subdiagonals of the t approximative tridiagonalizations of A in vector form (solution written on input)
+	* \param rhs Matrix of dimension nxt that contains random vectors z_1, ..., z_t with Cov(z_i) = P
+	* \param[out] Tdiags The diagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
+	* \param[out] Tsubdiags The subdiagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
 	* \param[out] U Approximative solution of the linear system (solution written on input) (must have been declared with the correct nxt dimensions)
-	* \param[out] NaN_found Is set to true, if NaN is found in the residual of conjugate gradient algorithm
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
 	* \param num_data n-Dimension of the linear system
 	* \param t t-Dimension of the linear system
-	* \param p Number of conjugate gradient steps
+	* \param p Maximal number of conjugate gradient steps
 	* \param delta_conv Tolerance for checking convergence of the algorithm
-	* \param cg_preconditioner_type Type of preconditoner used for the conjugate gradient algorithm
-	* \param chol_fact_D_k_plus_B_k_W_inv_B_kt_rm_vecchia Cholesky factor E of matrix EE^T = (D_k + B_k W^(-1) B_k^T)
-	* \param chol_fact_I_k_plus_L_kt_W_inv_L_k_rm_vecchia Cholesky factor E of matrix EE^T = (I_k + L_k^T W^(-1) L_k)
-	* \param B_k_rm Matrix of dimension kxn that contains k rows of the Veccia factor B
-	* \param L_k_rm Pivoted Cholseky decomposition of Sigma^(-1): matrix of dimension nxk with rank(L_k) <= piv_chol_rank_ generated with PivotedCholsekyFactorization()
-	* \param D_inv_plus_W_B_rm Row-major matrix that contains the product (D^(-1) + W) B used for the preconditioner "sigma_with_W".
+	* \param D_inv_plus_W_B_rm Row-major matrix that contains the product (D^(-1) + W) B used for the preconditioner "Sigma_inv_plus_BtWB".
 	*/
 	void CGTridiagVecchiaLaplace(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -126,120 +106,160 @@ namespace GPBoost {
 		std::vector<vec_t>& Tdiags,
 		std::vector<vec_t>& Tsubdiags,
 		den_mat_t& U,
-		bool& NaN_found,
+		bool& NA_or_Inf_found,
 		const data_size_t num_data,
 		const int t,
 		int p,
 		const double delta_conv,
-		const string_t cg_preconditioner_type,
-		const chol_sp_mat_rm_t& chol_fact_D_k_plus_B_k_W_inv_B_kt_rm_vecchia,
-		const chol_sp_mat_rm_t& chol_fact_I_k_plus_L_kt_W_inv_L_k_rm_vecchia,
-		const sp_mat_rm_t& B_k_rm,
-		const sp_mat_rm_t& L_k_rm,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm);
 
 	/*!
-	* \brief Version of CGTridiagVecchiaLaplace() that return t approximative tridiagonalizations T of the symmetric matrix 
-	*		 A=(Sigma+W^(-1))=QTQ' in vector form (diagonal + subdiagonal). As preconditioner P=(Sigma_L_k Sigma_L_k^T + W^(-1)) is used where 
-	*		 Sigma_L_k results from a rank(Sigma_L_k)=k pivoted Cholseky decomposition of the nonapproximated covariance matrix Sigma.
+	* \brief Version of CGTridiagVecchiaLaplace() where A = (W^(-1) + Sigma).
+	*		 The linear system is solved with P = (W^(-1) + Sigma_L_k Sigma_L_k^T) as preconditioner, where Sigma_L_k results from a
+	*        rank(Sigma_L_k) = k (k << n) pivoted Cholseky decomposition of the nonapproximated covariance matrix.
 	* \param diag_W Diagonal of matrix W
 	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
 	* \param D_inv_B_rm Row-major matrix that contains the product D^-1 B. Outsourced in order to reduce the overhead of the function.
-	* \param rhs Matrix of dimension nxt that contains (column-)probe vectors z_1,...,z_t with Cov[z_i] = P
-	* \param[out] Tdiags The diagonals of the t approximative tridiagonalizations of A in vector form (solution written on input)
-	* \param[out] Tsubdiags The subdiagonals of the t approximative tridiagonalizations of A in vector form (solution written on input)
+	* \param rhs Matrix of dimension nxt that contains random vectors z_1, ..., z_t with Cov(z_i) = P
+	* \param[out] Tdiags The diagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
+	* \param[out] Tsubdiags The subdiagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
 	* \param[out] U Approximative solution of the linear system (solution written on input) (must have been declared with the correct nxt dimensions)
-	* \param[out] NaN_found Is set to true, if NaN is found in the residual of conjugate gradient algorithm
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
 	* \param num_data n-Dimension of the linear system
 	* \param t t-Dimension of the linear system
-	* \param p Number of conjugate gradient steps
+	* \param p Maximal number of conjugate gradient steps
 	* \param delta_conv Tolerance for checking convergence of the algorithm
 	* \param chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia Cholesky factor E of matrix EE^T = (I_k + Sigma_L_k^T W^(-1) Sigma_L_k)
-	* \param Sigma_L_k Pivoted Cholseky decomposition of Sigma: matrix of dimension nxk with rank(Sigma_L_k) <= piv_chol_rank_ generated in re_model_template.h
+	* \param Sigma_L_k Matrix of dimension nxk: Pivoted Cholseky decomposition of the nonapproximated covariance matrix, generated in re_model_template.h
 	*/
-	void CGTridiagVecchiaLaplaceSigmaplusWinv(const vec_t& diag_W,
+	void CGTridiagVecchiaLaplaceWinvplusSigma(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& D_inv_B_rm,
 		const den_mat_t& rhs,
 		std::vector<vec_t>& Tdiags,
 		std::vector<vec_t>& Tsubdiags,
 		den_mat_t& U,
-		bool& NaN_found,
+		bool& NA_or_Inf_found,
 		const data_size_t num_data,
 		const int t,
 		int p,
 		const double delta_conv,
-		const chol_den_mat_t chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
+		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
 		const den_mat_t& Sigma_L_k);
 
 	/*!
-	* \brief Fills a matrix with Rademacher -1/+1 random numbers
+	* \brief Fills a given matrix with standard normal RV's.
 	* \param generator Random number generator
-	* \param[out] Z Rademacher matrix. Z need to be defined before calling this function
+	* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
 	*/
-	void simRademacher(RNG_t& generator,
-		den_mat_t& Z);
+	void GenRandVecTrace(RNG_t& generator,
+		den_mat_t& R);
 	
 	/*!
-	* \brief Stochastic estimation of log(det(A)) given t approximative tridiagonalizations T of a symmetric matrix A=QTQ' of dimension nxn, 
+	* \brief Stochastic estimation of log(det(A)) given t approximative Lanczos tridiagonalizations T of a symmetric matrix A = Q T Q^T of dimension nxn,
 	*		 where T is given in vector form (diagonal + subdiagonal of T).
+	*		 Lanczos was previously run t-times based on t random vectors r_1, ..., r_t with r_i ~ N(0,I).
 	* \param Tdiags The diagonals of the t approximative tridiagonalizations of A in vector form
 	* \param Tsubdiags The subdiagonals of the t approximative tridiagonalizations of A in vector form
 	* \param ldet[out] Estimation of log(det(A)) (solution written on input)
-	* \param num_data Number of data points
+	* \param num_data n-Dimension
 	* \param t Number of tridiagonalization matrices T
 	*/
 	void LogDetStochTridiag(const std::vector<vec_t>& Tdiags,
-		const  std::vector<vec_t>& Tsubdiags,
+		const std::vector<vec_t>& Tsubdiags,
 		double& ldet,
 		const data_size_t num_data,
 		const int t);
 
 	/*!
-	* \brief Stochastic trace estimation for tr(A*dW/db_i*B) in vectorized form for all i \in n
-	*		 For the vectorization it is assumed that the (i,i)th element of dW/db_i is the only non-zero entry in the matrix.
-	* \param A_Z Matrix A of dimension nxn multiplied with the matrix Z = (z_1,...,z_t) of dimension nxt that contains the random probe vectors
-	* \param third_deriv Vector of all non-zero entries of -dW/db_i for all i \in n
-	* \param B_PI_Z Matrix B of dimension nxn multiplied with the inverse of the preconditioner matrix P (=Cov[z_i]) and the probe vector matrix Z
-	* \param tr[out] Vector of stochastic traces tr(A*dW/db_i*B) for all i \in n (solution written on input)
+	* \brief Calculate c_opt = Cov(z_i^T (A^(-1) dA P^(-1)) z_i, z_i^T (B^(-1) dB P^(-1)) z_i) / Var(z_i^T (B^(-1) dB P^(-1)) z_i) according to StochSim_script_AS20.pdf on p.39.
+	*		 c_opt is used to weight the variance reduction when calculating the gradients.
+	* \param zt_AI_A_deriv_PI_z Vector of dimension t, where each entry is a quadratic form z_i^T (A^(-1) dA P^(-1)) z_i with a random vectors z_1, ..., z_t with Cov(z_i) = P.
+	* \param zt_BI_B_deriv_PI_z Vector of dimension t, where each entry is a quadratic form z_i^T (B^(-1) dB P^(-1)) z_i with a random vectors z_1, ..., z_t with Cov(z_i) = P.
+	* \param tr_AI_A_deriv Stochastic tr(A^(-1) dA) which is equal to the mean of the vector zt_AI_A_deriv_PI_z.
+	* \param tr_BI_B_deriv Stochastic tr(B^(-1) dB) which is equal to the mean of the vector zt_BI_B_deriv_PI_z.
+	* \param c_opt[out] Evaluation of Cov(z_i^T (A^(-1) dA P^(-1)) z_i, z_i^T (B^(-1) dB P^(-1)) z_i) / Var(z_i^T (B^(-1) dB P^(-1)) z_i)
 	*/
-	void StochTraceVecchiaLaplace(const den_mat_t& A_t_Z,
-		const vec_t& third_deriv,
-		const den_mat_t& B_PI_Z,
-		vec_t& tr);
+	void CalcOptimalC(const vec_t& zt_AI_A_deriv_PI_z,
+		const vec_t& zt_BI_B_deriv_PI_z,
+		const double& tr_AI_A_deriv,
+		const double& tr_BI_B_deriv,
+		double& c_opt);
 
 	/*!
-	* \brief Lanczos algorithm with full reorthogonalization to approximately factorize the symmetric matrix (Sigma^-1+W) as Q_k T_k Q_k'
-	*		 where T_k is a tridiagonal matrix of dimension kxk and Q_k a matrix of dimension nxk. The diagonal and subdiagonal of T_k is returned in vector form.
+	* \brief Vectorized version of CalcOptimalC where c_opt is calculated for all dA/db_i, respectively dB/db_i, with i in 1, ..., n.
+	* \param Z_AI_A_deriv_PI_Z Matrix of dimension nxt, where each entry is a quadratic form z_i^T (A^(-1) dA/db_i P^(-1)) z_i, where z_i changes columnwise and dA/db_i changes rowwise.
+	* \param Z_BI_B_deriv_PI_Z Matrix of dimension nxt, where each entry is a quadratic form z_i^T (B^(-1) dB/db_i P^(-1)) z_i, where z_i changes columnwise and dB/db_i changes rowwise.
+	* \param tr_AI_A_deriv Vector of dimension n, where the ith entry contains tr(A^(-1) dA/db_i) (=mean of the row i of the matrix Z_AI_A_deriv_PI_Z).
+	* \param tr_BI_B_deriv Vector of dimension n, where the ith entry contains tr(B^(-1) dB/db_i) (=mean of the row i of the matrix Z_BI_B_deriv_PI_Z).
+	* \param c_opt[out] Vector of dimension n, that contains the rowwise evaluation of c_opt.
+	*/
+	void CalcOptimalCVectorized(const den_mat_t& Z_AI_A_deriv_PI_Z,
+		const den_mat_t& Z_BI_B_deriv_PI_Z,
+		const vec_t& tr_AI_A_deriv,
+		const vec_t& tr_BI_B_deriv,
+		vec_t& c_opt);
+
+	/*!
+	* \brief Lanczos algorithm with full reorthogonalization to approximately factorize the symmetric matrix
+	*		 P^(-0.5) (Sigma^(-1) + W) P^(-0.5*T) as Q_k T_k Q_k^T, where P = B^T (D^(-1) + W) B.
+	*		 T_k is a tridiagonal matrix of dimension kxk and Q_k a orthonormal matrix of dimension nxk.
+	*		 The diagonal and subdiagonal of T_k is returned in vector form.
 	*		 A Vecchia approximation for Sigma^-1 = B^T D^-1 B is given and W is a diagonal matrix.
+	*		 In the end we adjust for preconditioning by returning P^(-0.5*T) Q_k.
 	* \param diag_W Diagonal of matrix W
 	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
 	* \param D_inv_rm Row-major diagonal matrix D^-1 in Vecchia approximation (only used for preconditioning)
-	* \param B_t_D_inv_rm Row-major matrix that contains the product B^T D^-1. Outsourced in order to reduce the overhead of the function.
 	* \param b_init Inital column-vector of Q_k (after normalization) of dimension nx1.
 	* \param num_data n-Dimension
 	* \param[out] Tdiag_k The diagonal of the tridiagonal matrix T_k (solution written on input) (must have been declared with the correct kx1 dimension)
 	* \param[out] Tsubdiag_k The subdiagonal of the tridiagonal matrix T_k (solution written on input) (must have been declared with the correct (k-1)x1 dimension)
-	* \param[out] Q_k Matrix Q_k = [b_init/||b_init||, q_2, q_3, ...] (solution written on input) (must have been declared with the correct nxk dimensions)
-	* \param max_it Rank k of the matrix Q_k and T_k
-	* \param tol Tolerance to decide wether reorthogonalization is necessary
-	* \param preconditioner_type Type of preconditoner (P) used.
-	*		 If "symmetric": Factorize P^(-0.5) (Sigma^-1+W) P^(-0.5*T) where P = B^T (D^(-1) + W) B
-	*		 If "asymmetric": Factorize (I + Sigma W)
+	* \param[out] P_t_sqrt_inv_Q_k Matrix P^(-0.5*T) Q_k of dimension nxk, where Q_k=[b_init/||b_init||, q_2, q_3, ...] (solution written on input)
+	* \param max_it Maximal rank k of the matrix Q_k and T_k
+	* \param tol Tolerance to decide whether reorthogonalization is necessary
 	*/
 
 	void LanczosTridiagVecchiaLaplace(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& D_inv_rm,
-		const sp_mat_rm_t& B_t_D_inv_rm,
 		const vec_t& b_init,
 		const data_size_t num_data,
 		vec_t& Tdiag_k,
 		vec_t& Tsubdiag_k,
-		den_mat_t& Q_k,
+		den_mat_t& P_t_sqrt_inv_Q_k,
+		int max_it,
+		const double tol);
+
+	/*!
+	* \brief Version of LanczosTridiagVecchiaLaplace() where the matrix P^(-0.5) (W^(-1) + Sigma) P^(-0.5) is factorized as Q_k T_k Q_k^T,
+	*		 where P = diag(W^(-1) + Sigma).
+	*		 Since (Sigma^(-1) + W)^(-1) \approx W^(-1) P^(-0.5) Q_k T_k^(-1) Q_k^T P^(-0.5) Sigma we return Sigma P^(-0.5) Q_k and W^(-1) P^(-0.5) Q_k.
+	* \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
+	* \param D_inv_B_rm Row-major matrix that contains the product D^-1 B. Outsourced in order to reduce the overhead of the function.
+	* \param b_init Inital column-vector of Q_k (after normalization) of dimension nx1.
+	* \param num_data n-Dimension
+	* \param[out] Tdiag_k The diagonal of the tridiagonal matrix T_k (solution written on input) (must have been declared with the correct kx1 dimension)
+	* \param[out] Tsubdiag_k The subdiagonal of the tridiagonal matrix T_k (solution written on input) (must have been declared with the correct (k-1)x1 dimension)
+	* \param[out] W_inv_P_sqrt_inv_Q_k Matrix W^(-1) P^(-0.5) Q_k of dimension nxk, where Q_k = [b_init/||b_init||, q_2, q_3, ...] (solution written on input)
+	* \param[out] Sigma_P_sqrt_inv_Q_k Matrix Sigma P^(-0.5) Q_k of dimension nxk, where Q_k = [b_init/||b_init||, q_2, q_3, ...] (solution written on input)
+	* \param max_it Maximal rank k of the matrix Q_k and T_k
+	* \param tol Tolerance to decide whether reorthogonalization is necessary
+	* \param sigma2 Variance parameter (= Sigma_ii) used for the diagonal Lanczos preconditioner
+	*/
+
+	void LanczosTridiagVecchiaLaplaceWinvplusSigma(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const vec_t& b_init,
+		const data_size_t num_data,
+		vec_t& Tdiag_k,
+		vec_t& Tsubdiag_k,
+		den_mat_t& W_inv_P_sqrt_inv_Q_k,
+		den_mat_t& Sigma_P_sqrt_inv_Q_k,
 		int max_it,
 		const double tol,
-		const string_t preconditioner_type);
+		const double sigma2);
 
 	/*!
 	* \brief Pivoted Cholesky factorization according to Habrecht et al. (2012) for the original (nonapproximated) covariance matrix (Sigma)
@@ -248,7 +268,7 @@ namespace GPBoost {
 	* \param Sigma_L_k[out] Matrix of dimension nxmax_it such that Sigma_L_k Sigma_L_k^T ~ Sigma and rank(Sigma_L_k) <= max_it (solution written on input)
 	* \param max_it Max rank of Sigma_L_k
 	* \param num_data n-Dimension
-	* \param err_tol Error tolarance - stop the algorithm if the sum of the diagonal elements of the Schur complement is smaller than err_tol
+	* \param err_tol Error tolerance - stop the algorithm if the sum of the diagonal elements of the Schur complement is smaller than err_tol
 	*/
 
 	template<typename T_mat>
@@ -268,7 +288,7 @@ namespace GPBoost {
 		Sigma_L_k.resize(num_data, max_it);
 		Sigma_L_k.setZero();
 		double diag_ii = re_comp->GetZSigmaZtii();
-		//Log::REInfo("Trace original Covariance Matrix: %g", num_data * diag_ii);
+
 		for (int h = 0; h < num_data; ++h) {
 			pi(h) = h;
 			//The diagonal of the covariance matrix equals the marginal variance and is the same for all entries (i,i). 
@@ -309,13 +329,11 @@ namespace GPBoost {
 				}
 				err = diag(pi.tail(num_data - (m + 1))).lpNorm<1>();
 			}
+
 			//L[m,m] - Update post L[(m+1):n,m] to be able to multiply with L[m,] beforehand
 			Sigma_L_k(pi(m), m) = sqrt(diag(pi(m)));
 			m = m + 1;
 		}
-		//Log::REInfo("Sigma_L_k.size(): %i", Sigma_L_k.size());
-		//Log::REInfo("Sigma_L_k.nonZeros(): %i", Sigma_L_k.nonZeros());
-		//Log::REInfo("Trace Pivoted Original Covariance Matrix: %g", (Sigma_L_k.cwiseProduct(Sigma_L_k) * vec_t::Ones(Sigma_L_k.cols())).sum());
 	}
 }
 #endif   // GPB_CG_UTILS_

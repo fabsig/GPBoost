@@ -2288,6 +2288,7 @@ namespace GPBoost {
 						}//end gauss_likelihood_
 						else {//not gauss_likelihood_
 							const double* fixed_effects_cluster_i_ptr = nullptr;
+							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
 							// Note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
 							// The mode has been calculated already before in the Predict() function above
 							// mean_pred_id and cov_mat_pred_id are not calculate in 'CalcPredVecchiaObservedFirstOrder', only Bpo, Bp, and Dp for non-Gaussian data
@@ -2298,7 +2299,7 @@ namespace GPBoost {
 								likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
 									B_[cluster_i], D_inv_[cluster_i], Bpo, Bp, Dp,
 									mean_pred_id, cov_mat_pred_id, var_pred_id,
-									predict_cov_mat, predict_var_or_response, false, true);
+									predict_cov_mat, predict_var_or_response, false, true, sigma2);
 							}
 							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
@@ -2307,7 +2308,7 @@ namespace GPBoost {
 								likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
 									B_[cluster_i], D_inv_[cluster_i], Bpo, Bp, Dp,
 									mean_pred_id, cov_mat_pred_id, var_pred_id,
-									predict_cov_mat, predict_var_or_response, false, false);
+									predict_cov_mat, predict_var_or_response, false, false, sigma2);
 							}
 							else {
 								Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
@@ -2630,7 +2631,8 @@ namespace GPBoost {
 						}
 						if (calc_var) {
 							vec_t var_pred_id;
-							likelihood_[cluster_i]->CalcVarLaplaceApproxVecchia(var_pred_id);
+							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
+							likelihood_[cluster_i]->CalcVarLaplaceApproxVecchia(var_pred_id, sigma2);
 #pragma omp parallel for schedule(static)// Write on output
 							for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
 								out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_] = var_pred_id[i];
@@ -3074,9 +3076,9 @@ namespace GPBoost {
 		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
 		double acc_rate_coef_ = 0.5;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done for gradient-based optimization of covariance parameters and regression coefficients */
-		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
+		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 1; //TEMP 30;
 		/*! \brief Learning rate shrinkage factor for gradient-based optimization of covariance parameters and regression coefficients */
-		double LR_SHRINKAGE_FACTOR_ = 0.5;
+		double LR_SHRINKAGE_FACTOR_ = 1; //TEMP 0.5;
 		/*! \brief Threshold value for a learning rate below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
 		double LR_IS_SMALL_THRESHOLD_ = 1e-6;
 		/*! \brief Threshold value for relative change in parameters below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
@@ -4895,9 +4897,10 @@ namespace GPBoost {
 				}
 				if (gp_approx_ == "vecchia") {
 					den_mat_t Sigma_L_k;
-					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_sigma") {
+					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_Sigma") {
 						//Do pivoted Cholseky decomposition for Sigma
-						PivotedCholsekyFactorizationSigma(re_comps_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, num_data_per_cluster_[cluster_i], 1e-6);
+						//TODO: only after cov-pars step, not after fixed-effect step
+						PivotedCholsekyFactorizationSigma(re_comps_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, num_data_per_cluster_[cluster_i], PIV_CHOL_STOP_TOL);
 					}
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
