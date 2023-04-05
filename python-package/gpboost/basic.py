@@ -4658,6 +4658,7 @@ class GPModel(object):
                 - optimizer_cov : string, optional (default = "gradient_descent")
                     Optimizer used for estimating covariance parameters.
                     Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam"
+                    If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
                 - optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
@@ -4682,8 +4683,9 @@ class GPModel(object):
                 - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring")
-                    If < 0, internal default values are used.
+                    If lr_cov < 0, internal default values are used.
                     Default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
+                    If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those
                 - lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
                 - use_nesterov_acc : bool, optional (default = True)
@@ -4850,6 +4852,7 @@ class GPModel(object):
                 - optimizer_cov : string, optional (default = "gradient_descent")
                     Optimizer used for estimating covariance parameters.
                     Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam"
+                    If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
                 - optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
@@ -4874,8 +4877,9 @@ class GPModel(object):
                 - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring")
-                    If < 0, internal default values are used.
+                    If lr_cov < 0, internal default values are used.
                     Default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
+                    If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those
                 - lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
                 - use_nesterov_acc : bool, optional (default = True)

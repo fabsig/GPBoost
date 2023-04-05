@@ -764,8 +764,13 @@ namespace GPBoost {
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
 			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering));
+			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			if (use_Z_for_duplicates) {
+				if (has_compact_cov_fct_) {
+					Log::REWarning("'DetermineUniqueDuplicateCoords' is called and a compactly supported covariance function is used. "
+						"Note that 'DetermineUniqueDuplicateCoords' is slow for large data ");
+				}
 				std::vector<int> uniques;//unique points
 				std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
 				DetermineUniqueDuplicateCoords(coords, this->num_data_, uniques, unique_idx);
@@ -800,7 +805,7 @@ namespace GPBoost {
 			if (save_dist) {
 				//Calculate distances
 				T_mat dist;
-				if ((COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_) {//compactly suported covariance
+				if (has_compact_cov_fct_) {//compactly suported covariance
 					CalculateDistancesTapering<T_mat>(coords_, coords_, true, cov_function_->taper_range_, true, dist);
 				}
 				else {
@@ -850,6 +855,7 @@ namespace GPBoost {
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
 			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering));
+			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			sp_mat_t coef_W(this->num_data_, this->num_data_);
 			for (int i = 0; i < this->num_data_; ++i) {
@@ -893,6 +899,7 @@ namespace GPBoost {
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
 			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering));
+			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			dist_saved_ = false;
 			coord_saved_ = false;
@@ -933,12 +940,13 @@ namespace GPBoost {
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
 			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering));
+			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			coords_ = coords;
 			coords_ind_point_ = coords_ind_point;
 			//Calculate distances
 			T_mat dist;
-			if ((COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_) {//compactly suported covariance
+			if (has_compact_cov_fct_) {//compactly suported covariance
 				CalculateDistancesTapering<T_mat>(coords_ind_point_, coords_, false, cov_function_->taper_range_, false, dist);
 			}
 			else {
@@ -1061,6 +1069,17 @@ namespace GPBoost {
 			CHECK(!tapering_has_been_applied_);
 			cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(*dist_, sigma_, sigma_symmetric_);
 			tapering_has_been_applied_ = true;
+		}
+
+		/*!
+		* \brief Multiply covariance with taper function for externally provided covariance and distance matrices
+		* \param dist Distance matrix
+		* \param sigma Covariance matrix to which tapering is applied
+		*/
+		void ApplyTaper(const T_mat& dist,
+			T_mat sigma) {
+			CHECK(apply_tapering_);
+			cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(dist, sigma, false);
 		}
 
 		/*!
@@ -1211,47 +1230,60 @@ namespace GPBoost {
 			bool calc_cross_cov,
 			bool calc_uncond_pred_cov,
 			bool dont_add_but_overwrite,
-			const double* rand_coef_data_pred) {
+			const double* rand_coef_data_pred,
+			bool return_cross_dist,
+			T_mat& cross_dist) {
 			int num_data_pred = (int)coords_pred.rows();
 			std::vector<int>  uniques_pred;//unique points
 			std::vector<int>  unique_idx_pred;//used for constructing incidence matrix Z_ if there are duplicates
-			DetermineUniqueDuplicateCoords(coords_pred, num_data_pred, uniques_pred, unique_idx_pred);
-			bool has_duplicates = (int)uniques_pred.size() != num_data_pred;
-			bool has_Zstar = has_duplicates || this->is_rand_coef_;
+			bool has_duplicates, has_Zstar;
+			if (!has_compact_cov_fct_) {
+				DetermineUniqueDuplicateCoords(coords_pred, num_data_pred, uniques_pred, unique_idx_pred);
+				has_duplicates = (int)uniques_pred.size() != num_data_pred;
+				has_Zstar = has_duplicates || this->is_rand_coef_;
+			}
+			else {
+				has_duplicates = false;
+				has_Zstar = this->is_rand_coef_;
+			}
 			sp_mat_t Zstar;
 			den_mat_t coords_pred_unique;
-			//Create matrix Zstar
-			if (has_Zstar) {
-				// Note: Ztilde relates existing random effects to prediction samples and Zstar relates new / unobserved random effects to prediction samples
-				Zstar = sp_mat_t(num_data_pred, uniques_pred.size());
-				Zstar.setZero();
-			}
 			if (has_duplicates) {//Only keep unique coordinates if there are multiple observations with the same coordinates
 				coords_pred_unique = coords_pred(uniques_pred, Eigen::all);
 			}
+			//Create matrix Zstar
 			if (has_Zstar) {
-				for (int i = 0; i < num_data_pred; ++i) {
-					if (this->is_rand_coef_) {
-						Zstar.insert(i, unique_idx_pred[i]) = rand_coef_data_pred[i];
-					}
-					else {
-						Zstar.insert(i, unique_idx_pred[i]) = 1.;
-					}
-				}
-			}
-			if (calc_cross_cov) {
-				//Calculate cross distances between "existing" and "new" points
-				T_mat cross_dist;
+				// Note: Ztilde relates existing random effects to prediction samples and Zstar relates new / unobserved random effects to prediction samples
 				if (has_duplicates) {
-					if ((COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_) {//compactly suported covariance
-						CalculateDistancesTapering<T_mat>(coords, coords_pred_unique, false, cov_function_->taper_range_, false, cross_dist);
-					}
-					else {
-						CalculateDistances<T_mat>(coords, coords_pred_unique, false, cross_dist);
-					}
+					Zstar = sp_mat_t(num_data_pred, uniques_pred.size());
 				}
 				else {
-					if ((COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_) {//compactly suported covariance
+					Zstar = sp_mat_t(num_data_pred, num_data_pred);
+				}
+				std::vector<Triplet_t> triplets(num_data_pred);
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_data_pred; ++i) {
+					if (this->is_rand_coef_) {
+						if (has_duplicates) {
+							triplets[i] = Triplet_t(i, unique_idx_pred[i], rand_coef_data_pred[i]);
+						}
+						else {
+							triplets[i] = Triplet_t(i, i, rand_coef_data_pred[i]);
+						}
+					}
+					else {
+						triplets[i] = Triplet_t(i, unique_idx_pred[i], 1.);
+					}
+				}
+				Zstar.setFromTriplets(triplets.begin(), triplets.end());
+			}//end create Zstar
+			if (calc_cross_cov) {
+				//Calculate cross distances between "existing" and "new" points
+				if (has_duplicates) {
+					CalculateDistances<T_mat>(coords, coords_pred_unique, false, cross_dist);
+				}
+				else {
+					if (has_compact_cov_fct_) {//compactly suported covariance
 						CalculateDistancesTapering<T_mat>(coords, coords_pred, false, cov_function_->taper_range_, false, cross_dist);
 					}
 					else {
@@ -1290,7 +1322,7 @@ namespace GPBoost {
 			}//end calc_cross_cov
 			if (calc_uncond_pred_cov) {
 				T_mat dist;
-				if ((COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_) {//compactly suported covariance
+				if (has_compact_cov_fct_) {//compactly suported covariance
 					CalculateDistancesTapering<T_mat>(coords_pred, coords_pred, true, cov_function_->taper_range_, false, dist);
 				}
 				else {
@@ -1313,7 +1345,10 @@ namespace GPBoost {
 				}
 				uncond_pred_cov += ZstarSigmastarZstarT;
 			}//end calc_uncond_pred_cov
-		}
+			if (!return_cross_dist) {
+				cross_dist.resize(0, 0);
+			}
+		}//end AddPredCovMatrices
 
 		data_size_t GetNumUniqueREs() const override {
 			return(num_random_effects_);
@@ -1381,7 +1416,8 @@ namespace GPBoost {
 		bool tapering_has_been_applied_ = false;
 		/*! \brief List of covariance functions wtih compact support */
 		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland" };
-
+		/*! \brief True if the GP has a compactly supported covariance function */
+		bool has_compact_cov_fct_;
 
 		/*!
 		* \brief Chooses parameter taper_mu for Wendland covariance function and Wendland correlation tapering function

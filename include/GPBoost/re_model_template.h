@@ -62,7 +62,7 @@ namespace GPBoost {
 			profile_out_marginal_variance_ = profile_out_marginal_variance;
 		}
 		REModelTemplate<T_mat, T_chol>* re_model_templ_;
-		const double* fixed_effects_;//Externally provided fixed effects component of location parameter (only used for non-Gaussian data)
+		const double* fixed_effects_;//Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
 		bool learn_covariance_parameters_;//Indicates whether covariance parameters are optimized or not
 		vec_t cov_pars_;//vector of covariance parameters (only used in case the covariance parameters are not estimated)
 		bool profile_out_marginal_variance_;// If true, the error variance sigma is profiled out(= use closed - form expression for error / nugget variance)
@@ -590,6 +590,9 @@ namespace GPBoost {
 				SetMatrixInversionPropertiesLikelihood();
 			}
 			estimate_aux_pars_ = estimate_aux_pars;
+			if (lr > 0) {
+				lr_aux_pars_init_ = lr;
+			}
 			set_optim_config_has_been_called_ = true;
 		}//end SetOptimConfig
 
@@ -608,7 +611,7 @@ namespace GPBoost {
 		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters (can be nullptr, used only if calc_std_dev)
 		* \param[out] std_dev_coef Standard deviations for the coefficients (can be nullptr, used only if calc_std_dev and if covariate_data is not nullptr)
 		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
-		* \param fixed_effects Externally provided fixed effects component of location parameter (can be nullptr, only used for non-Gaussian data)
+		* \param fixed_effects Externally provided fixed effects component of location parameter (can be nullptr, only used for non-Gaussian likelihoods)
 		* \param learn_covariance_parameters If true, covariance parameters are estimated
 		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
 		*/
@@ -626,14 +629,20 @@ namespace GPBoost {
 			const double* fixed_effects,
 			bool learn_covariance_parameters,
 			bool called_in_GPBoost_algorithm) {
+			if (NumAuxPars() == 0) {
+				estimate_aux_pars_ = false;
+			}
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov_pars_) == SUPPORTED_OPTIM_COV_PAR_.end()) {
 				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters ", optimizer_cov_pars_.c_str());
 			}
 			if (!gauss_likelihood_) {
 				if (optimizer_cov_pars_ == "fisher_scoring") {
-					Log::REFatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian data ", optimizer_cov_pars_.c_str());
+					Log::REFatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian likelihoods ", optimizer_cov_pars_.c_str());
 				}
+			}
+			if (optimizer_cov_pars_ == "fisher_scoring" && estimate_aux_pars_) {
+				Log::REFatal("Optimizer option '%s' is not supported when estimating additional auxiliary parameters for non-Gaussian likelihoods ", optimizer_cov_pars_.c_str());
 			}
 			if (covariate_data != nullptr) {
 				if (gauss_likelihood_) {
@@ -643,21 +652,18 @@ namespace GPBoost {
 				}
 				else {
 					if (SUPPORTED_OPTIM_COEF_NONGAUSS_.find(optimizer_coef_) == SUPPORTED_OPTIM_COEF_NONGAUSS_.end()) {
-						Log::REFatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian data ", optimizer_coef_.c_str());
+						Log::REFatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian likelihoods ", optimizer_coef_.c_str());
 					}
 				}
 			}
 			if (gauss_likelihood_ && fixed_effects != nullptr) {
-				Log::REFatal("Additional external fixed effects in 'fixed_effects' can currently only be used for non-Gaussian data ");
+				Log::REFatal("Additional external fixed effects in 'fixed_effects' can currently only be used for non-Gaussian likelihoods ");
 			}
 			// Check response variable data
 			if (y_data != nullptr) {
 				if (LightGBM::Common::HasNAOrInf(y_data, num_data_)) {
 					Log::REFatal("NaN or Inf in response variable / label ");
 				}
-			}
-			if (NumAuxPars() == 0) {
-				estimate_aux_pars_ = false;
 			}
 			// Initialization of variables
 			OptimConfigSetInitialValues();
@@ -760,7 +766,7 @@ namespace GPBoost {
 				SetY(y_data);
 			}
 			if (!has_covariates_ || !gauss_likelihood_) {
-				CHECK(y_has_been_set_);//response variable data needs to have been set at this point for non-Gaussian data and for Gaussian data without covariates
+				CHECK(y_has_been_set_);//response variable data needs to have been set at this point for non-Gaussian likelihoods and for Gaussian data without covariates
 			}
 			if (gauss_likelihood_) {
 				CHECK(y_data != nullptr);
@@ -835,7 +841,7 @@ namespace GPBoost {
 			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, has_intercept, intercept_col,
 				scale_covariates, loc_transf, scale_transf, cov_aux_pars.data() + num_cov_par_);
 			// Initialize optimizer:
-			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian data)
+			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian likelihoods)
 			// - calculate initial value of objective function
 			// - Note: initial values of aux_pars (additional parameters of likelihood) are set in likelihoods.h
 			CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);
@@ -905,7 +911,7 @@ namespace GPBoost {
 							vec_t grad_beta;
 							// Calculate gradient for linear regression coefficients
 							CalcGradLinCoef(cov_aux_pars[0], beta, grad_beta, fixed_effects_ptr);
-							// Update linear regression coefficients, apply step size safeguard, and recalculate mode for Laplace approx. (only for non-Gaussian data)
+							// Update linear regression coefficients, apply step size safeguard, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
 							UpdateLinCoef(beta, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, it, beta_after_grad_aux, beta_after_grad_aux_lag1,
 								acc_rate_coef_, nesterov_schedule_version_, momentum_offset_, fixed_effects, fixed_effects_vec);
 							fixed_effects_ptr = fixed_effects_vec.data();
@@ -1167,9 +1173,9 @@ namespace GPBoost {
 					}
 				}
 				else {
-					std_dev_cov.setZero();// Calculation of standard deviations for covariance parameters is not supported for non-Gaussian data
+					std_dev_cov.setZero();// Calculation of standard deviations for covariance parameters is not supported for non-Gaussian likelihoods
 					if (!has_covariates_) {
-						Log::REWarning("Calculation of standard deviations of covariance parameters for non-Gaussian data is currently not supported.");
+						Log::REWarning("Calculation of standard deviations of covariance parameters for non-Gaussian likelihoods is currently not supported.");
 					}
 				}
 				if (has_covariates_) {
@@ -1178,7 +1184,7 @@ namespace GPBoost {
 						CalcStdDevCoef(cov_aux_pars.segment(0, num_cov_par_), X_, std_dev_beta);
 					}
 					else {
-						Log::REDebug("Standard deviations of linear regression coefficients for non-Gaussian data can be \"very approximative\". ");
+						Log::REDebug("Standard deviations of linear regression coefficients for non-Gaussian likelihoods can be \"very approximative\". ");
 						CalcStdDevCoefNonGaussian(num_covariates, beta, cov_aux_pars.segment(0, num_cov_par_), fixed_effects, std_dev_beta);
 					}
 					for (int i = 0; i < num_covariates; ++i) {
@@ -1198,13 +1204,13 @@ namespace GPBoost {
 		}//end OptimLinRegrCoefCovPar
 
 		/*!
-		* \brief Calculate gradient wrt the covariance parameters on the log-scale and any additional parameters for the likelihood for non-Gaussian data
+		* \brief Calculate gradient wrt the covariance parameters on the log-scale and any additional parameters for the likelihood for non-Gaussian likelihoods
 		*	This assumes that the covariance matrix has been factorized (by 'CalcCovFactor') and that y_aux or y_tilde/y_tilde2 (if only_grouped_REs_use_woodbury_identity_) have been calculated (by 'CalcYAux' or 'CalcYtilde')
 		* \param cov_pars Covariance parameters
-		* \param[out] grad_cov_aux_par Gradient wrt the covariance parameters and any additional parameters for the likelihood for non-Gaussian data
+		* \param[out] grad_cov_aux_par Gradient wrt the covariance parameters and any additional parameters for the likelihood for non-Gaussian likelihoods
 		* \param include_error_var If true, the gradient with respect to the error variance parameter (=nugget effect) is also calculated, otherwise not (set this to true if the nugget effect is not calculated by using the closed-form solution)
 		* \param save_psi_inv_for_FI If true, the inverse covariance matrix Psi^-1 is saved for reuse later (e.g. when calculating the Fisher information in Fisher scoring). This option is ignored if the Vecchia approximation is used.
-		* \param fixed_effects Fixed effects component of location parameter (used only for non-Gaussian data)
+		* \param fixed_effects Fixed effects component of location parameter (used only for non-Gaussian likelihoods)
 		*/
 		void CalcGradCovParAuxPars(const vec_t& cov_pars,
 			vec_t& grad_cov_aux_par,
@@ -1305,7 +1311,7 @@ namespace GPBoost {
 			}//end gauss_likelihood_
 			else {//not gauss_likelihood_
 				if (include_error_var) {
-					Log::REFatal("There is no error variance (nugget effect) for non-Gaussian data");
+					Log::REFatal("There is no error variance (nugget effect) for non-Gaussian likelihoods");
 				}
 				int length_cov_grad = num_cov_par_;
 				if (estimate_aux_pars_) {
@@ -1422,7 +1428,7 @@ namespace GPBoost {
 		* \param marg_var Marginal variance parameters sigma^2 (only used for Gaussian data)
 		* \param beta Linear regression coefficients
 		* \param[out] grad_beta Gradient for linear regression coefficients
-		 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
+		 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		*/
 		void CalcGradLinCoef(double marg_var,
 			const vec_t beta,
@@ -1533,8 +1539,8 @@ namespace GPBoost {
 
 		/*!
 		* \brief Factorize the covariance matrix (Gaussian data) or
-		*	calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian data)
-		*	And calculate the negative log-likelihood (Gaussian data) or the negative approx. marginal log-likelihood (non-Gaussian data)
+		*	calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian likelihoods)
+		*	And calculate the negative log-likelihood (Gaussian data) or the negative approx. marginal log-likelihood (non-Gaussian likelihoods)
 		* \param cov_pars Covariance parameters
 		* \param fixed_effects Fixed effects component of location parameter
 		*/
@@ -1566,8 +1572,8 @@ namespace GPBoost {
 		/*!
 		* \brief Update fixed effects with new linear regression coefficients
 		* \param beta Linear regression coefficients
-		* \param fixed_effects Externally provided fixed effects component of location parameter (only used for non-Gaussian data)
-		* \param fixed_effects_vec[out] Vector of fixed effects (used only for non-Gaussian data)
+		* \param fixed_effects Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
+		* \param fixed_effects_vec[out] Vector of fixed effects (used only for non-Gaussian likelihoods)
 		*/
 		void UpdateFixedEffects(const vec_t& beta,
 			const double* fixed_effects,
@@ -1822,8 +1828,8 @@ namespace GPBoost {
 		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
-		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
-		* \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
+		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
+		* \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian likelihoods)
 		*/
 		void Predict(const double* cov_pars_pred,
 			const double* y_obs,
@@ -1919,7 +1925,7 @@ namespace GPBoost {
 			CHECK(num_data_pred > 0);
 			if (!gauss_likelihood_ && predict_response && predict_cov_mat) {
 				Log::REFatal("Calculation of the predictive covariance matrix is not supported "
-					"when predicting the response variable (label) for non-Gaussian data");
+					"when predicting the response variable (label) for non-Gaussian likelihoods");
 			}
 			if (predict_cov_mat && predict_var) {
 				Log::REFatal("Calculation of both the predictive covariance matrix and variances is not supported. "
@@ -2117,7 +2123,7 @@ namespace GPBoost {
 							psi = Zpred * cov_mat_pred_id_on_RE_scale * Zpred.transpose();
 						}
 					}//end only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_
-					// Transform to response scale for non-Gaussian data if needed
+					// Transform to response scale for non-Gaussian likelihoods if needed
 					if (!gauss_likelihood_ && predict_response) {
 						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id, var_pred_id, predict_var);
 					}
@@ -2127,7 +2133,7 @@ namespace GPBoost {
 						out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[i];
 					}
 					// Write covariance / variance on output
-					if (!predict_response || gauss_likelihood_) {//this is not done if predict_response==true for non-Gaussian data 
+					if (!predict_response || gauss_likelihood_) {//this is not done if predict_response==true for non-Gaussian likelihoods 
 						if (predict_cov_mat) {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
@@ -2194,6 +2200,10 @@ namespace GPBoost {
 						random_effects_indices_of_data_pred = std::vector<data_size_t>(num_data_per_cluster_pred[cluster_i]);
 						std::vector<int> uniques;//unique points
 						std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
+						if (gp_approx_ != "none") {
+							Log::REWarning("'DetermineUniqueDuplicateCoords' is called and a GP approximation is used. "
+								"Note that 'DetermineUniqueDuplicateCoords' is slow for large data ");
+						}
 						DetermineUniqueDuplicateCoords(gp_coords_mat_pred, num_data_per_cluster_pred[cluster_i], uniques, unique_idx);
 #pragma omp for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
@@ -2220,7 +2230,7 @@ namespace GPBoost {
 					if (gp_approx_ == "vecchia") {
 						re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][ind_intercept_gp_]);
 					}
-					bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);//variance needs to be available for response prediction for non-Gaussian data
+					bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);//variance needs to be available for response prediction for non-Gaussian likelihoods
 					// Calculate predictions
 					if (gp_approx_ == "vecchia") {
 						if (gauss_likelihood_) {
@@ -2291,7 +2301,7 @@ namespace GPBoost {
 							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
 							// Note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
 							// The mode has been calculated already before in the Predict() function above
-							// mean_pred_id and cov_mat_pred_id are not calculate in 'CalcPredVecchiaObservedFirstOrder', only Bpo, Bp, and Dp for non-Gaussian data
+							// mean_pred_id and cov_mat_pred_id are not calculate in 'CalcPredVecchiaObservedFirstOrder', only Bpo, Bp, and Dp for non-Gaussian likelihoods
 							if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
 								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
@@ -2420,7 +2430,7 @@ namespace GPBoost {
 		* \param y_obs Response variable for observed data
 		* \param[out] out_predict Predicted training data random effects and variances if calc_var
 		* \param calc_cov_factor If true, the covariance matrix of the observed data is factorized otherwise a previously done factorization is used
-		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
+		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		* \param calc_var If true, variances are also calculated
 		*/
 		void PredictTrainingDataRandomEffects(const double* cov_pars_pred,
@@ -2784,7 +2794,7 @@ namespace GPBoost {
 				init_cov_pars[0] = var;
 				ind_par = 1;
 			}//end Gaussian data
-			else {//non-Gaussian data
+			else {//non-Gaussian likelihoods
 				ind_par = 0;
 				if (optimizer_cov_pars_ == "nelder_mead") {
 					init_marg_var = 0.1;
@@ -2908,11 +2918,11 @@ namespace GPBoost {
 		data_size_t gauss_likelihood_ = true;
 		/*! \brief Likelihood objects */
 		std::map<data_size_t, std::unique_ptr<Likelihood<T_mat, T_chol>>> likelihood_;
-		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian data */
+		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian likelihoods */
 		double neg_log_likelihood_;
-		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian data of previous iteration in optimization used for convergence checking */
+		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian likelihoods of previous iteration in optimization used for convergence checking */
 		double neg_log_likelihood_lag1_;
-		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian data after linear regression coefficients are update (this equals neg_log_likelihood_lag1_ if there are no regression coefficients). This is used for step-size checking for the covariance parameters */
+		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian likelihoods after linear regression coefficients are update (this equals neg_log_likelihood_lag1_ if there are no regression coefficients). This is used for step-size checking for the covariance parameters */
 		double neg_log_likelihood_after_lin_coef_update_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: data y */
 		std::map<data_size_t, vec_t> y_;
@@ -2920,7 +2930,7 @@ namespace GPBoost {
 		vec_t y_vec_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: data y of integer type (used only for non-Gaussian likelihood) */
 		std::map<data_size_t, vec_int_t> y_int_;
-		// Note: the response variable data is saved in y_ / y_int_ (depending on the likelihood type) for Gaussian data with no covariates and for all non-Gaussian data.
+		// Note: the response variable data is saved in y_ / y_int_ (depending on the likelihood type) for Gaussian data with no covariates and for all non-Gaussian likelihoods.
 		//			For Gaussian data with covariates, the response variables is saved in y_vec_ and y_ is replaced by y - X * beta during the optimization
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: Psi^-1*y_ (used for various computations) */
 		std::map<data_size_t, vec_t> y_aux_;
@@ -2966,7 +2976,7 @@ namespace GPBoost {
 		double cov_fct_taper_range_ = 1.;
 		/*! \brief Shape parameter of the Wendland correlation taper. We follow the notation of Bevilacqua et al. (2019, AOS) */
 		double cov_fct_taper_shape_ = 0.;
-		/*! \brief If true, there are duplicates in coords among the neighbors (currently only used for the Vecchia approximation for non-Gaussian data) */
+		/*! \brief If true, there are duplicates in coords among the neighbors (currently only used for the Vecchia approximation for non-Gaussian likelihoods) */
 		bool has_duplicates_coords_ = false;
 		/*! \brief Type of GP-approximation for handling large data */
 		string_t gp_approx_ = "none";
@@ -2990,9 +3000,9 @@ namespace GPBoost {
 		bool only_grouped_REs_use_woodbury_identity_ = false;
 		/*! \brief True if there is only one grouped random effect component, and (all) calculations are done on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods) */
 		bool only_one_grouped_RE_calculations_on_RE_scale_ = false;
-		/*! \brief True if there is only one grouped random effect component for Gaussian data, can calculations for predictions (only) are done on the b-scale instead of the Zb-scale */
+		/*! \brief True if there is only one grouped random effect component for Gaussian data, can calculations for predictions (only) are done on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods) */
 		bool only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = false;
-		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (currently used only for non-Gaussian likelihoods) */
+		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (only for non-Gaussian likelihoods when no approximation is used) */
 		bool only_one_GP_calculations_on_RE_scale_ = false;
 
 		// COVARIANCE MATRIX AND CHOLESKY FACTORS OF IT
@@ -3012,7 +3022,7 @@ namespace GPBoost {
 		std::map<data_size_t, T_mat> psi_inv_;
 		/*! \brief Inverse covariance matrices Sigma^-1 of random effects. This is only used if only_grouped_REs_use_woodbury_identity_==true (if there are only grouped REs) */
 		std::map<data_size_t, sp_mat_t> SigmaI_;
-		/*! \brief Pointer to covariance matrix of the random effects (sum of all components). This is only used for non-Gaussian data and if only_grouped_REs_use_woodbury_identity_==false. In the Gaussian case this needs not be saved */
+		/*! \brief Pointer to covariance matrix of the random effects (sum of all components). This is only used for non-Gaussian likelihoods and if only_grouped_REs_use_woodbury_identity_==false. In the Gaussian case this needs not be saved */
 		std::map<data_size_t, std::shared_ptr<T_mat>> ZSigmaZt_;
 
 		// COVARIATE DATA FOR LINEAR REGRESSION TERM
@@ -3063,7 +3073,7 @@ namespace GPBoost {
 		int nesterov_schedule_version_ = 0;
 		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
 		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log(100.); // allow maximally a change by a factor of 100 in one iteration
-		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian data upon initialization). See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not */
+		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian likelihoods upon initialization). See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not */
 		string_t optimizer_coef_;
 		/*! \brief List of supported optimizers for regression coefficients for Gaussian likelihoods */
 		const std::set<string_t> SUPPORTED_OPTIM_COEF_GAUSS_{ "gradient_descent", "wls", "nelder_mead", "bfgs", "adam" };
@@ -3772,10 +3782,10 @@ namespace GPBoost {
 				only_grouped_REs_use_woodbury_identity_ = false;
 			}
 			// Define options for faster calculations for special cases of RE models (these options depend on the type of likelihood)
-			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ != "vecchia";//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (currently only for non-Gaussian data)
-			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (currently only for non-Gaussian data)
-			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (only used for Gaussian data)
-		}
+			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ == "none";//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (only for non-Gaussian likelihoods when no approximation is used)
+			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods)
+			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods)
+		}//end DetermineSpecialCasesModelsEstimationPrediction
 
 		/*!
 		* \brief Function that set default values for several parameters if they were not initialized
@@ -4037,6 +4047,7 @@ namespace GPBoost {
 					}
 				}
 				den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords_);
+				bool use_Z_for_duplicates = (gp_approx_ == "none");
 				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 					gp_coords_mat,
 					cov_fct_,
@@ -4046,7 +4057,7 @@ namespace GPBoost {
 					gp_approx_ == "tapering",
 					false,
 					true,
-					true,
+					use_Z_for_duplicates,
 					only_one_GP_calculations_on_RE_scale_)));
 				//Random slope GPs
 				if (num_gp_rand_coef_ > 0) {
@@ -4200,7 +4211,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate the total variance of all random effects
-		*		Note: for random coefficients processes, we ignore the covariates and simply use the marginal variance for simplicity (this function is used for calling 'FindInitialIntercept' for non-Gaussian data)
+		*		Note: for random coefficients processes, we ignore the covariates and simply use the marginal variance for simplicity (this function is used for calling 'FindInitialIntercept' for non-Gaussian likelihoods)
 		* \param cov_pars Covariance parameters
 		*/
 		double GetTotalVarComps(const vec_t& cov_pars) {
@@ -4480,6 +4491,8 @@ namespace GPBoost {
 				}
 				if (lr_aux_pars_ * max_abs_nat_grad_aux_par > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
 					lr_aux_pars_ = MAX_GRADIENT_UPDATE_LOG_SCALE_ / max_abs_nat_grad_aux_par;
+					Log::REDebug("GPModel auxiliary parameter estimation: The learning rate has been decreased in iteration number %d since "
+						"the gradient update on the log-scale would have been too large (a change by more than a factor 100). New learning rate = %g", it + 1, lr_aux_pars_);
 				}
 			}
 		}//end AvoidTooLargeLearningRatesCovAuxPars
@@ -4499,7 +4512,7 @@ namespace GPBoost {
 		}//end RecalculateModeLaplaceApprox
 
 		/*!
-		* \brief Calculate the gradient of the Laplace-approximated negative log-likelihood with respect to the fixed effects F (only used for non-Gaussian data)
+		* \brief Calculate the gradient of the Laplace-approximated negative log-likelihood with respect to the fixed effects F (only used for non-Gaussian likelihoods)
 		* \param[out] grad_F Gradient of the Laplace-approximated negative log-likelihood with respect to the fixed effects F. This vector needs to be pre-allocated of length num_data_
 		* \param fixed_effects Fixed effects component of location parameter
 		*/
@@ -4728,9 +4741,14 @@ namespace GPBoost {
 					lr_cov_ = lr_cov; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring)
 					if (estimate_aux_pars_) {
 						lr_aux_pars_ = lr_aux_pars;
+						Log::REDebug("GPModel covariance and auxiliary parameter estimation: Learning rates have been decreased permanently in iteration number %d "
+							"since with the previous learning rates, there was no decrease in the objective function. "
+							"New learning rates: covariance parameters = %g, auxiliary paramters = %g", it + 1, lr_cov_, lr_aux_pars_);
 					}
-					Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently since with the previous learning rate, "
-						"there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_cov_);
+					else {
+						Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently in iteration number %d "
+							"since with the previous learning rate, there was no decrease in the objective function. New learning rate = %g", it + 1, lr_cov_);
+					}
 				}
 			}
 			if (!decrease_found) {
@@ -4793,7 +4811,7 @@ namespace GPBoost {
 				if (gauss_likelihood_) {
 					EvalNegLogLikelihoodOnlyUpdateFixedEffects(sigma2, neg_log_likelihood_after_lin_coef_update_);
 				}//end if gauss_likelihood_
-				else {//non-Gaussian data
+				else {//non-Gaussian likelihoods
 					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEff(fixed_effects_vec.data());//calculate mode and approximate marginal likelihood
 				}
 				// Safeguard agains too large steps by halving the learning rate when the objective increases
@@ -4848,7 +4866,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate the covariance matrix ZSigmaZt if only_grouped_REs_use_woodbury_identity_==false or the inverse covariance matrix Sigma^-1 if there are only grouped REs i.e. if only_grouped_REs_use_woodbury_identity_==true.
-		*		This function is only used for non-Gaussian data as in the Gaussian case this needs not be saved
+		*		This function is only used for non-Gaussian likelihoods as in the Gaussian case this needs not be saved
 		*/
 		void CalcCovMatrixNonGauss() {
 			if (!only_one_grouped_RE_calculations_on_RE_scale_) {//Nothing to calculate if only_one_grouped_RE_calculations_on_RE_scale_
@@ -4873,7 +4891,7 @@ namespace GPBoost {
 		}//end CalcCovMatrixNonGauss
 
 		/*!
-		* \brief Calculate the mode of the posterior of the latent random effects for use in the Laplace approximation. This function is only used for non-Gaussian data
+		* \brief Calculate the mode of the posterior of the latent random effects for use in the Laplace approximation. This function is only used for non-Gaussian likelihoods
 		* \param fixed_effects Fixed effects component of location parameter
 		* \return Approximate marginal log-likelihood evaluated at the mode
 		*/
@@ -5001,7 +5019,7 @@ namespace GPBoost {
 			if (!gauss_likelihood_) {
 				D_inv_cluster_i.diagonal().array() = 0.;
 			}
-			bool exclude_marg_var_grad = !gauss_likelihood_ && num_comps_total_ == 1;//gradient is not needed if there is only one GP for non-Gaussian data
+			bool exclude_marg_var_grad = !gauss_likelihood_ && num_comps_total_ == 1;//gradient is not needed if there is only one GP for non-Gaussian likelihoods
 			if (calc_gradient) {
 				B_grad_cluster_i = std::vector<sp_mat_t>(num_par_gp);//derivative of B = derviateive of (-A)
 				D_grad_cluster_i = std::vector<sp_mat_t>(num_par_gp);//derivative of D
@@ -5666,7 +5684,7 @@ namespace GPBoost {
 		* \brief Find minimum for parameters using an external optimization library (cppoptlib)
 		* \param cov_pars[out] Covariance parameters (initial values and output written on it). Note: any potential estimated additional likelihood parameters (aux_pars) are also written on this
 		* \param beta[out] Linear regression coefficients (if there are any) (initial values and output written on it)
-		* \param fixed_effects Externally provided fixed effects component of location parameter (only used for non-Gaussian data)
+		* \param fixed_effects Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
 		* \param max_iter Maximal number of iterations
 		* \param delta_rel_conv Convergence criterion: stop iteration if relative change in in parameters is below this value
 		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
@@ -5792,7 +5810,7 @@ namespace GPBoost {
 		* \param coef Coefficients for linear covariates
 		* \param y_obs Response variable for observed data
 		* \param calc_cov_factor If true, the covariance matrix of the observed data is factorized otherwise a previously done factorization is used
-		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
+		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		* \param predict_training_data_random_effects If true, the goal is to predict training data random effects
 		 */
 		void SetYCalcCovCalcYAux(const vec_t& cov_pars,
@@ -6043,8 +6061,10 @@ namespace GPBoost {
 				//Gaussian process
 				if (num_gp_ > 0) {
 					std::shared_ptr<RECompGP<T_mat>> re_comp_base = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][cn]);
+					T_mat cross_dist; // unused dummy variable
 					re_comp_base->AddPredCovMatrices(re_comp_base->coords_, gp_coords_mat_pred, cross_cov,
-						cov_mat_pred_id, true, predict_cov_mat, dont_add_but_overwrite, nullptr);
+						cov_mat_pred_id, true, predict_cov_mat, dont_add_but_overwrite, nullptr,
+						false, cross_dist);
 					dont_add_but_overwrite = false;
 					if (predict_var) {
 						re_comp_base->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
@@ -6060,7 +6080,8 @@ namespace GPBoost {
 								rand_coef_data.push_back(gp_rand_coef_data_pred[j * num_data_pred + id]);
 							}
 							re_comp->AddPredCovMatrices(re_comp_base->coords_, gp_coords_mat_pred, cross_cov,
-								cov_mat_pred_id, true, predict_cov_mat, false, rand_coef_data.data());
+								cov_mat_pred_id, true, predict_cov_mat, false, rand_coef_data.data(),
+								false, cross_dist);
 							if (predict_var) {
 								re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
 							}
@@ -6661,6 +6682,7 @@ namespace GPBoost {
 			//Determine number of unique observartion locations
 			std::vector<int> uniques;//unique points
 			std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
+			// Note: 'DetermineUniqueDuplicateCoords' is slow for large data
 			DetermineUniqueDuplicateCoords(gp_coords_mat_obs, num_data_cli, uniques, unique_idx);
 			int num_coord_unique_obs = (int)uniques.size();
 			//Determine unique locations (observed and predicted)

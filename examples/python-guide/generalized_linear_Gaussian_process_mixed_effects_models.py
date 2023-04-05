@@ -25,7 +25,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
     """Function that simulates response variable for various likelihoods"""
     n = len(rand_eff)
     if likelihood == "gaussian":
-        xi = 0.25 * np.random.normal(size=n) # error term
+        xi = 0.1**0.5 * np.random.normal(size=n) # error term, variance = 0.1
         y = lp + rand_eff + xi
     elif likelihood == "bernoulli_probit":
         probs = stats.norm.cdf(lp + rand_eff)
@@ -54,29 +54,26 @@ Grouped random effects
 # --------------------Simulate data----------------
 # Single-level grouped random effects
 n = 1000  # number of samples
-m = 100  # number of categories / levels for grouping variable
+m = 200  # number of categories / levels for grouping variable
 group = np.arange(n)  # grouping variable
 for i in range(m):
     group[int(i * n / m):int((i + 1) * n / m)] = i
 np.random.seed(1)
-b = 1 * np.random.normal(size=m)  # simulate random effects
+b = 0.25**0.5 * np.random.normal(size=m)  # simulate random effects, variance = 0.25
 rand_eff = b[group]
 rand_eff = rand_eff - np.mean(rand_eff)
 # Simulate linear regression fixed effects
 X = np.column_stack((np.ones(n), np.random.uniform(size=n) - 0.5)) # design matrix / covariate data for fixed effect
-beta = np.array([0, 3]) # regression coefficents
+beta = np.array([0, 2]) # regression coefficents
 lp = X.dot(beta)
 y = simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
 hst = plt.hist(y, bins=20)  # visualize response variable
 plt.show(block=False)
-# Crossed grouped random effects and a random slope
+# Crossed grouped random effects and random slopes
+group_crossed = group[np.random.permutation(n)-1] # grouping variable for crossed random effects
+b_crossed = 0.25**0.5 * np.random.normal(size=m)  # simulate crossed random effects
+b_random_slope = 0.25**0.5 * np.random.normal(size=m)
 x = np.random.uniform(size=n)  # covariate data for random slope
-n_obs_gr = int(n / m)  # number of sampels per group
-group_crossed = np.arange(n)  # grouping variable for second random effect
-for i in range(m):
-    group_crossed[(n_obs_gr * i):(n_obs_gr * (i + 1))] = np.arange(n_obs_gr)
-b_crossed = 0.5 * np.random.normal(size=n_obs_gr)  # simulate random effects
-b_random_slope = 0.75 * np.random.normal(size=m)
 rand_eff = b[group] + b_crossed[group_crossed] + x * b_random_slope[group]
 rand_eff = rand_eff - np.mean(rand_eff)
 y_crossed_random_slope = simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
@@ -88,7 +85,7 @@ for i in range(m):
 # Create nested grouping variable 
 # Note: you need version 0.7.9 or later to use the function 'get_nested_categories'
 group_nested = gpb.get_nested_categories(group, group_inner)
-b_nested = 1. * np.random.normal(size=len(np.unique(group_nested)))  # nested lower level random effects
+b_nested = 0.25**0.5 * np.random.normal(size=len(np.unique(group_nested))) # simulate nested random effects
 rand_eff = b[group] + b_nested[group_nested]
 rand_eff = rand_eff - np.mean(rand_eff)
 y_nested = simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
@@ -168,7 +165,7 @@ print(np.sum(np.abs(pred['var'] - pred_loaded['var'])))
 print(np.sum(np.abs(pred_resp['mu'] - pred_resp_loaded['mu'])))
 print(np.sum(np.abs(pred_resp['var'] - pred_resp_loaded['var'])))
 
-# --------------------Two crossed random effects and a random slope----------------
+# --------------------Two crossed random effects and random slopes----------------
 # Define and train model
 group_data = np.column_stack((group, group_crossed))
 gp_model = gpb.GPModel(group_data=group_data, group_rand_coef_data=x,
@@ -240,7 +237,7 @@ coords_test = np.column_stack((coords_test_x1.flatten(), coords_test_x2.flatten(
 coords = np.row_stack((coords_train, coords_test))
 ntest = nx * nx
 n = ntrain + ntest
-sigma2_1 = 1  # marginal variance of GP
+sigma2_1 = 0.25  # marginal variance of GP
 rho = 0.1  # range parameter
 D = np.zeros((n, n))  # distance matrix
 for i in range(0, n):
@@ -260,7 +257,7 @@ b_test = b[ntrain:n]
 hst = plt.hist(y_train, bins=50)  # visualize response variable
 # Simulate linear regression fixed effects
 X = np.column_stack((np.ones(ntrain), np.random.uniform(size=ntrain) - 0.5)) # design matrix / covariate data for fixed effect
-beta = np.array([0, 3]) # regression coefficents
+beta = np.array([0, 2]) # regression coefficents
 lp = X.dot(beta)
 y_lin = simulate_response_variable(lp=lp, rand_eff=b_train, likelihood=likelihood)
 # Spatially varying coefficient (random coefficient) model
@@ -432,8 +429,8 @@ for i in range(m):
 np.random.seed(1)
 coords = np.column_stack(
     (np.random.uniform(size=n), np.random.uniform(size=n)))  # locations (=features) for Gaussian process
-sigma2_1 = 1 ** 2  # random effect variance
-sigma2_2 = 1 ** 2  # marginal variance of GP
+sigma2_1 = 0.25  # random effect variance
+sigma2_2 = 0.25  # marginal variance of GP
 rho = 0.1  # range parameter
 D = np.zeros((n, n))  # distance matrix
 for i in range(0, n):
@@ -442,7 +439,7 @@ for i in range(0, n):
         D[j, i] = D[i, j]
 Sigma = sigma2_2 * np.exp(-D / rho) + np.diag(np.zeros(n) + 1e-20)
 C = np.linalg.cholesky(Sigma)
-b1 = np.random.normal(size=m)  # simulate random effect
+b1 = sigma2_1**0.5 * np.random.normal(size=m)  # simulate random effect
 b2 = C.dot(np.random.normal(size=n))
 rand_eff = Z1.dot(b1) + b2
 rand_eff = rand_eff - np.mean(rand_eff)
