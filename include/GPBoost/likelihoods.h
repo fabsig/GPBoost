@@ -2163,13 +2163,13 @@ namespace GPBoost {
 				sp_mat_t L_inv(num_data, num_data);
 				L_inv.setIdentity();
 				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
-				vec_t d_mll_d_mode;
+				vec_t d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, SigmaI_plus_W_inv_diag;
+				sp_mat_t SigmaI_plus_W_inv;
 				// Calculate gradient wrt covariance parameters
 				if (calc_cov_grad) {
-					vec_t d_mode_d_par;
 					double explicit_derivative;
 					int num_par = (int)B_grad.size();
-					sp_mat_t SigmaI_plus_W_inv, SigmaI_deriv, Bt_Dinv_Bgrad;
+					sp_mat_t SigmaI_deriv, BgradT_Dinv_B, Bt_Dinv_Bgrad;
 					sp_mat_t D_inv_B = D_inv * B;
 					for (int j = 0; j < num_par; ++j) {
 						// Calculate SigmaI_deriv
@@ -2189,27 +2189,28 @@ namespace GPBoost {
 							CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv, true);
 							d_mll_d_mode = -0.5 * (SigmaI_plus_W_inv.diagonal().array() * third_deriv.array()).matrix();
 						}//end if j == 0
-						d_mode_d_par = -(L_inv.transpose() * (L_inv * (SigmaI_deriv * mode_)));//derivative of mode wrt to a covariance parameter
-						explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv * mode_) + (SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
+						SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
+						vec_t SigmaI_deriv_mode = SigmaI_deriv * mode_;
+						explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) + (SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
 						if (num_comps_total == 1 && j == 0) {
 							explicit_derivative += 0.5 * num_data;
 						}
 						else {
 							explicit_derivative += 0.5 * (D_inv.diagonal().array() * D_grad[j].diagonal().array()).sum();
 						}
-						cov_grad[j] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
+						cov_grad[j] = explicit_derivative - SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode);//add implicit derivative
 					}
 				}//end calc_cov_grad
-				vec_t SigmaI_plus_W_inv_d_mll_d_mode, SigmaI_plus_W_inv_diag;
 				if (calc_F_grad || calc_aux_par_grad) {
-					if (!calc_cov_grad || calc_aux_par_grad) {
+					if (!calc_cov_grad) {
 						sp_mat_t L_inv_sqr = L_inv.cwiseProduct(L_inv);
 						SigmaI_plus_W_inv_diag = L_inv_sqr.transpose() * vec_t::Ones(L_inv_sqr.rows());// diagonal of (Sigma^-1 + W) ^ -1
-						if (!calc_cov_grad) {
-							d_mll_d_mode = (-0.5 * SigmaI_plus_W_inv_diag.array() * third_deriv.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
-						}
+						d_mll_d_mode = (-0.5 * SigmaI_plus_W_inv_diag.array() * third_deriv.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
+						SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
 					}
-					SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
+					else if (calc_aux_par_grad) {
+						SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv.diagonal();
+					}
 				}
 				// Calculate gradient wrt fixed effects
 				if (calc_F_grad) {
