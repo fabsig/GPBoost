@@ -2084,7 +2084,7 @@ namespace GPBoost {
 			}
 			CalcThirdDerivLogLik(y_data, y_data_int, location_par_ptr, num_data, third_deriv.data());
 			if (matrix_inversion_method_ == "iterative") {
-				vec_t d_mll_d_mode, d_log_det_Sigma_W_plus_I_d_mode;
+				vec_t d_mll_d_mode, d_log_det_Sigma_W_plus_I_d_mode, SigmaI_plus_W_inv_d_mll_d_mode(num_data);
 				//Declarations for preconditioner "piv_chol_on_Sigma"
 				vec_t diag_WI;
 				den_mat_t WI_PI_Z, WI_WI_plus_Sigma_inv_Z;
@@ -2094,14 +2094,28 @@ namespace GPBoost {
 				//Stochastic Trace: Calculate gradient of approx. marginal likelihood wrt. the mode (and thus also F here)
 				CalcLogDetStochDerivMode(third_deriv, num_data, d_log_det_Sigma_W_plus_I_d_mode, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z);
 				d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
+				//For implicit derivatives: calculate (Sigma^(-1) + W)^(-1) d_mll_d_mode
+				bool has_NA_or_Inf = false;
+				if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+					CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
+						cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
+				}
+				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+					CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
+						cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
+				}
+				else {
+					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+				}
+				if (has_NA_or_Inf) {
+					Log::REDebug(CG_NA_OR_INF_WARNING_);
+				}
 				// Calculate gradient wrt covariance parameters
 				if (calc_cov_grad) {
 					sp_mat_rm_t SigmaI_deriv_rm, Bt_Dinv_Bgrad_rm, B_t_D_inv_D_grad_D_inv_B_rm;
-					vec_t d_mode_d_par(num_data); //derivative of mode wrt to a covariance parameter
-					vec_t SigmaI_Sigma_deriv_first_deriv_ll_;
+					vec_t SigmaI_deriv_mode;
 					double explicit_derivative, d_log_det_Sigma_W_plus_I_d_cov_pars;
 					int num_par = (int)B_grad.size();
-					bool has_NA_or_Inf = false;
 					for (int j = 0; j < num_par; ++j) {
 						// Calculate SigmaI_deriv
 						if (num_comps_total == 1 && j == 0) {
@@ -2114,44 +2128,10 @@ namespace GPBoost {
 							SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - B_t_D_inv_D_grad_D_inv_B_rm;
 							Bt_Dinv_Bgrad_rm.resize(0, 0);
 						}
-						//Calculate gradient of the mode wrt. covariance parameter
-						SigmaI_Sigma_deriv_first_deriv_ll_ = -SigmaI_deriv_rm * mode_;
-						if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-							CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), SigmaI_Sigma_deriv_first_deriv_ll_, d_mode_d_par, has_NA_or_Inf,
-								cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
-						}
-						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-							CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, SigmaI_Sigma_deriv_first_deriv_ll_, d_mode_d_par, has_NA_or_Inf,
-								cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
-						}
-						else {
-							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
-						}
-						if (has_NA_or_Inf) {
-							Log::REDebug(CG_NA_OR_INF_WARNING_);
-						}
+						SigmaI_deriv_mode = SigmaI_deriv_rm * mode_;
 						CalcLogDetStochDerivCovPar(num_data, num_comps_total, j, SigmaI_deriv_rm, B_grad[j], D_grad[j], D_inv_plus_W_inv_diag, PI_Z, WI_PI_Z, d_log_det_Sigma_W_plus_I_d_cov_pars);
-						explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_rm * mode_) + d_log_det_Sigma_W_plus_I_d_cov_pars);
-						cov_grad[j] = explicit_derivative + d_mll_d_mode.dot(d_mode_d_par);
-					}
-				}
-				vec_t SigmaI_plus_W_inv_d_mll_d_mode(num_data);
-				//Calculate (Sigma^(-1) + W)^(-1) d_mll_d_mode
-				if (calc_F_grad || calc_aux_par_grad) {
-					bool has_NA_or_Inf = false;
-					if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-						CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
-							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
-					}
-					else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-						CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
-							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
-					}
-					else {
-						Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
-					}
-					if (has_NA_or_Inf) {
-						Log::REDebug(CG_NA_OR_INF_WARNING_);
+						explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) + d_log_det_Sigma_W_plus_I_d_cov_pars);
+						cov_grad[j] = explicit_derivative - SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode); //add implicit derivative
 					}
 				}
 				//Calculate gradient wrt fixed effects
