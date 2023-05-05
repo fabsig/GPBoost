@@ -372,7 +372,7 @@ summary(gp_model)
 # Prediction: setting 'num_neighbors_pred' to a larger value than 'num_neighbors' for training
 #   can lead to better predictions
 pred_vecchia <- predict(gp_model, gp_coords_pred = coords_test, num_neighbors_pred = 100,
-                predict_var = TRUE, predict_response = FALSE)
+                        predict_var = TRUE, predict_response = FALSE)
 ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], 
                          b=pred_vecchia$mu), aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=8, shape=15) + scale_color_viridis(option = "B") + 
@@ -418,14 +418,35 @@ summary(gp_model)
 gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                     likelihood = likelihood)
 if (likelihood == "gaussian") {
-  init_cov_pars <- c(1,1,0.2)
+  cov_pars <- c(1,1,0.2)
 } else {
-  init_cov_pars <- c(1,0.2)
+  cov_pars <- c(1,0.2)
 }
-gp_model$neg_log_likelihood(cov_pars = init_cov_pars, y = y_train)
+if (likelihood == "gamma") {
+  aux_pars <- 1
+} else {
+  aux_pars <- NULL
+}
+gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y_train, aux_pars = aux_pars)
 # Do optimization using optim and e.g. Nelder-Mead
-optim(par = init_cov_pars, fn = gp_model$neg_log_likelihood, y = y_train,
-      method = "Nelder-Mead")
+eval_nll <- function(pars, gp_model, y, X, likelihood) {
+  if (likelihood == "gaussian") {
+    cov_pars <- exp(pars[1:3])
+  } else {
+    cov_pars <- exp(pars[1:2])
+  }
+  if (likelihood == "gamma") {
+    aux_pars <- exp(pars[3])
+  } else {
+    aux_pars <- NULL 
+  }
+  gp_model$neg_log_likelihood(cov_pars=cov_pars, y=y, aux_pars=aux_pars)
+}
+init_pars <- log(c(cov_pars, aux_pars))
+opt <- optim(par = init_pars, fn = eval_nll, y = y_train, gp_model=gp_model, 
+             likelihood = likelihood, method = "Nelder-Mead")
+opt
+exp(opt$par) # estimated parameters
 
 
 #################################
