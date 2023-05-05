@@ -79,7 +79,25 @@ Below is a list of important parameters for the tree-boosting part. `A comprehen
 
    -  the minimal gain to perform split
 
-Note that GPBoost uses the LightGBM tree growing algorithm which grows trees using a leaf-wise strategy. I.e., trees are grown by splitting leaf nodes that maximize the information gain until the maximal number of leaves ``num_leaves`` or the maximal depth of a tree ``max_depth`` is attained, even when this leads to unbalanced trees. This in contrast to a depth-wise growth strategy of other boosting implementations which builds more balanced trees. For shallow trees (=small ``max_depth``), there is likely no difference between these two tree growing strategies. If you only want to tune the maximal depth of a tree ``max_depth`` parameter and not the ``num_leaves`` parameter, it is recommended that you set the ``num_leaves`` parameter to a large value.
+-  ``objective`` :raw-html:`<a id="objective" title="Permalink to this parameter" href="#objective">&#x1F517;&#xFE0E;</a>`, default = ``regression_l2``, type = enum, options: ``regression_l2``, ``binary``, ``poisson``, ``gamma``, aliases: ``objective_type``, ``app``, ``application``
+
+   -  ``regression_l2``, Gaussian likelihood, aliases: ``regression``, ``l2``
+
+   -  ``binary``, Bernoulli likelihood with a logit link function
+
+   -  ``poisson``, Poisson likelihood with log link function
+
+   -  ``gamma``, Gamma likelihood with log link function
+
+   - When including random effects and Gaussian processes (i.e., a ``GPModel``), both the ``likelihood`` parameter of the ``GPModel`` and the ``objective`` parameter determine the likelihood. They should thus match. It is possible to provide only one of these two parameters, i.e., either ``objective`` or ``likelihood``. *It is, arguably, a potential disadvantage that two parameters determine the likelihood. But this is the case because both tree-boosting and (linear) random effects and GP models can also be used in stand-alone mode*
+
+-  ``boosting`` :raw-html:`<a id="boosting" title="Permalink to this parameter" href="#boosting">&#x1F517;&#xFE0E;</a>`, default = ``gbdt``, type = enum, options: ``gbdt``, aliases: ``boosting_type``, ``boost``
+
+   -  ``gbdt``, traditional tree-boosting, aliases: ``gbrt``
+
+   - Only the option ``gbdt`` is currently supported when including random effects and Gaussian processes
+
+*Note on ``max_depth`` and ``num_leaves`` parameters*: GPBoost uses the LightGBM tree growing algorithm which grows trees using a leaf-wise strategy. I.e., trees are grown by splitting leaf nodes first that maximize the information gain until the maximal number of leaves ``num_leaves`` or the maximal depth of a tree ``max_depth`` is attained, even when this leads to unbalanced trees. This in contrast to a depth-wise growth strategy of other boosting implementations which builds more balanced trees. For shallow trees (=small ``max_depth``), there is likely no difference between these two tree growing strategies. If you only want to tune the maximal depth of a tree ``max_depth`` parameter and not the ``num_leaves`` parameter, it is recommended that you set the ``num_leaves`` parameter to a large value.
 
 ..
     Categorical features
