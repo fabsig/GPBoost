@@ -868,6 +868,7 @@ gpb.GPModel <- R6::R6Class(
       if (private$model_has_been_loaded_from_saved_file) {
         cov_pars <- private$cov_pars_loaded_from_file
       } else {
+        private$update_cov_par_names(self$get_likelihood_name())
         if (private$params[["std_dev"]]) {
           optim_pars <- numeric(2 * private$num_cov_pars)
         } else {
@@ -1621,13 +1622,7 @@ gpb.GPModel <- R6::R6Class(
       if (!is.character(likelihood)) {
         stop("set_likelihood: Can only use ", sQuote("character"), " as ", sQuote("likelihood"))
       }
-      private$determine_num_cov_pars(likelihood)
-      if (likelihood != "gaussian" && "Error_term" %in% private$cov_par_names){
-        private$cov_par_names <- private$cov_par_names["Error_term" != private$cov_par_names]
-      }
-      if (likelihood == "gaussian" && !("Error_term" %in% private$cov_par_names)){
-        private$cov_par_names <- c("Error_term",private$cov_par_names)
-      }
+      private$update_cov_par_names(likelihood)
       .Call(
         GPB_SetLikelihood_R
         , private$handle
@@ -1951,6 +1946,19 @@ gpb.GPModel <- R6::R6Class(
                                 "init_cov_pars", "init_aux_pars"))){
           stop(paste0("GPModel: Unknown parameter: ", param))
         }
+      }
+    },
+    
+    update_cov_par_names = function(likelihood) {
+      if (!is.character(likelihood)) {
+        stop("set_likelihood: Can only use ", sQuote("character"), " as ", sQuote("likelihood"))
+      }
+      private$determine_num_cov_pars(likelihood)
+      if (likelihood != "gaussian" && "Error_term" %in% private$cov_par_names){
+        private$cov_par_names <- private$cov_par_names["Error_term" != private$cov_par_names]
+      }
+      if (likelihood == "gaussian" && !("Error_term" %in% private$cov_par_names)){
+        private$cov_par_names <- c("Error_term",private$cov_par_names)
       }
     },
     

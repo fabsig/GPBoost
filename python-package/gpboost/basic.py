@@ -4636,6 +4636,13 @@ class GPModel(object):
                                    "init_cov_pars", "init_aux_pars"]:
                     raise ValueError("Unknown parameter: %s" % param)
 
+    def __update_cov_par_names(self, likelihood):
+        self.__determine_num_cov_pars(likelihood)
+        if likelihood != "gaussian" and "Error_term" in self.cov_par_names:
+            self.cov_par_names.remove("Error_term")
+        if likelihood == "gaussian" and "Error_term" not in self.cov_par_names:
+            self.cov_par_names.insert(0, "Error_term")
+
     def __del__(self):
         try:
             if self.handle is not None:
@@ -5029,6 +5036,7 @@ class GPModel(object):
         if self.model_has_been_loaded_from_saved_file:
             cov_pars = self.cov_pars_loaded_from_file
         else:
+            self.__update_cov_par_names(self._get_likelihood_name())
             if self.params["std_dev"]:
                 optim_pars = np.zeros(2 * self.num_cov_pars, dtype=np.float64)
             else:
@@ -5896,14 +5904,10 @@ class GPModel(object):
         return ret
 
     def _set_likelihood(self, likelihood):
+        self.__update_cov_par_names(likelihood)
         _safe_call(_LIB.GPB_SetLikelihood(
             self.handle,
             c_str(likelihood)))
-        self.__determine_num_cov_pars(likelihood)
-        if likelihood != "gaussian" and "Error_term" in self.cov_par_names:
-            self.cov_par_names.remove("Error_term")
-        if likelihood == "gaussian" and "Error_term" not in self.cov_par_names:
-            self.cov_par_names.insert(0, "Error_term")
 
     def _get_num_optim_iter(self):
         num_it = ctypes.c_int64(0)

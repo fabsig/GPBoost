@@ -290,15 +290,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Create random effects model and train GPBoost model
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
       gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
-      bst <- gpboost(data = X_train,
-                     label = y_train,
-                     gp_model = gp_model,
-                     nrounds = 30,
-                     learning_rate = 0.1,
-                     max_depth = 6,
-                     min_data_in_leaf = 5,
-                     objective = "binary",
-                     verbose = 0)
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "binary", verbose = 0)
       cov_pars <- c(0.4578282, 0.3456973)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
       # Prediction
@@ -314,6 +308,21 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                       predict_var = TRUE, pred_latent = FALSE)
       expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.01602001, 0.63412570, 0.20171037, 0.62036433))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.01576337, 0.23201030, 0.16102330, 0.23551243))),TOLERANCE)
+      
+      # Training with "wrong" objective
+      gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression", verbose = 0), file='NUL')
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+      # Training with "wrong" likelihood
+      gp_model <- GPModel(group_data = group_data_train, likelihood = "gaussian")
+      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "binary", verbose = 0), file='NUL')
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
       
       # Prediction when having only one grouped random effect
       group_1 <- rep(1,ntrain) # grouping variable
