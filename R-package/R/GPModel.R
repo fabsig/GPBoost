@@ -373,7 +373,7 @@ gpb.GPModel <- R6::R6Class(
           }
           if (dim(group_rand_coef_data)[2] != length(ind_effect_group_rand_coef)) {
             stop("GPModel: Number of random coefficients in ", 
-                 sQuote("group_rand_coef_data"), "does not match number in ", 
+                 sQuote("group_rand_coef_data"), " does not match number in ", 
                  sQuote("ind_effect_group_rand_coef"))
           }
           if (storage.mode(ind_effect_group_rand_coef) != "integer") {
@@ -382,7 +382,7 @@ gpb.GPModel <- R6::R6Class(
           if (!is.null(drop_intercept_group_rand_effect)) {
             if (length(drop_intercept_group_rand_effect) != private$num_group_re) {
               stop("GPModel: Length of ", sQuote("drop_intercept_group_rand_effect"), 
-                   "does not match number of random effects")
+                   " does not match number of random effects")
             }
             if (storage.mode(drop_intercept_group_rand_effect) != "logical") {
               stop("GPModel: Can only use ", sQuote("logical"), " as ",
@@ -512,7 +512,7 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(cluster_ids)) {
         if (is.vector(cluster_ids)) {
           if (length(cluster_ids) != private$num_data) {
-            stop("GPModel: Length of ", sQuote("cluster_ids"), "does not match number of data points")
+            stop("GPModel: Length of ", sQuote("cluster_ids"), " does not match number of data points")
           }
           private$cluster_ids = cluster_ids
           # Convert cluster_ids to int and save conversion map
