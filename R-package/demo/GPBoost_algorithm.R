@@ -148,14 +148,18 @@ opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = 
                                               data = dataset, gp_model = gp_model,
                                               use_gp_model_for_validation=TRUE, verbose_eval = 1,
                                               nrounds = 1000, early_stopping_rounds = 10)
-print(paste0("Best parameters: ",paste0(unlist(lapply(seq_along(opt_params$best_params), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params, n=names(opt_params$best_params))), collapse=", ")))
+print(paste0("Best parameters: ",
+             paste0(unlist(lapply(seq_along(opt_params$best_params), 
+                                  function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, 
+                                  y=opt_params$best_params, 
+                                  n=names(opt_params$best_params))), collapse=", ")))
 print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
 # Note: other scoring / evaluation metrics can be chosen using the 
 #       'metric' argument, e.g., metric = "l1"
 
 # Using manually defined validation data instead of cross-validation
-valid_tune_idx <- sample.int(n, as.integer(0.2*n))
+valid_tune_idx <- sample.int(length(y), as.integer(0.2*length(y)))
 folds = list(valid_tune_idx)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
                                               num_try_random = NULL, folds = folds,

@@ -10,6 +10,7 @@
 #define GPB_GP_UTIL_H_
 #include <memory>
 #include <GPBoost/type_defs.h>
+#include <GPBoost/utils.h>
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
 
