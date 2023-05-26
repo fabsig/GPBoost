@@ -1020,15 +1020,15 @@ gpb.grid.search.tune.parameters <- function(param_grid
   if (is.null(num_try_random)) {
     try_param_combs <- 0:(grid_size - 1L)
     if (verbose_eval >= 1L) {
-      message(paste0("gpb.grid.search.tune.parameters: Starting deterministic grid search with ", grid_size, " parameter combinations..."))
+      message(paste0("gpb.grid.search.tune.parameters: Starting deterministic grid search with ", grid_size, " parameter combinations "))
     }
   } else {
     if(num_try_random > grid_size){
-      stop("gpb.grid.search.tune.parameters: num_try_random is larger than the number of all possible combinations of parameters in param_grid")
+      stop("gpb.grid.search.tune.parameters: num_try_random is larger than the number of all possible combinations of parameters in param_grid ")
     }
     try_param_combs <- sample.int(n = grid_size, size = num_try_random, replace = FALSE) - 1L
     if (verbose_eval >= 1L) {
-      message(paste0("gpb.grid.search.tune.parameters: Starting random grid search with ", num_try_random, " trials out of ", grid_size, " parameter combinations..."))
+      message(paste0("gpb.grid.search.tune.parameters: Starting random grid search with ", num_try_random, " trials out of ", grid_size, " parameter combinations "))
     }
   }
   if (verbose_eval < 2) {
@@ -1047,62 +1047,71 @@ gpb.grid.search.tune.parameters <- function(param_grid
     for (param in names(param_comb)) {
       params[[param]] <- param_comb[[param]]
     }
+    param_comb_str <- lapply(seq_along(param_comb), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb, n=names(param_comb))
+    param_comb_str <- paste0(unlist(param_comb_str), collapse=", ")
     if (verbose_eval >= 1L) {
-      param_comb_str <- lapply(seq_along(param_comb), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb, n=names(param_comb))
-      param_comb_str <- paste0(unlist(param_comb_str), collapse=", ")
       message(paste0("Trying parameter combination ", counter_num_comb, 
-                     " of ", length(try_param_combs), ": ", param_comb_str, " ..."))
+                     " of ", length(try_param_combs), ": ", param_comb_str))
     }
-    cvbst <- gpb.cv(params = params
-                    , data = data
-                    , nrounds = nrounds
-                    , gp_model = gp_model
-                    , use_gp_model_for_validation = use_gp_model_for_validation
-                    , train_gp_model_cov_pars = train_gp_model_cov_pars
-                    , folds = folds
-                    , nfold = nfold
-                    , label = label
-                    , weight = weight
-                    , obj = obj
-                    , eval = eval
-                    , verbose = verbose_cv
-                    , record = TRUE
-                    , eval_freq = 1L
-                    , showsd = FALSE
-                    , stratified = stratified
-                    , init_model = init_model
-                    , colnames = colnames
-                    , categorical_feature = categorical_feature
-                    , early_stopping_rounds = early_stopping_rounds
-                    , callbacks = callbacks
-                    , delete_boosters_folds = TRUE
-                    , ...
-    )
     current_score_is_better <- FALSE
-    if (higher_better) {
-      if (cvbst$best_score > best_score) {
-        current_score_is_better <- TRUE
+    tryCatch(
+      {
+        cvbst <- gpb.cv(params = params
+                        , data = data
+                        , nrounds = nrounds
+                        , gp_model = gp_model
+                        , use_gp_model_for_validation = use_gp_model_for_validation
+                        , train_gp_model_cov_pars = train_gp_model_cov_pars
+                        , folds = folds
+                        , nfold = nfold
+                        , label = label
+                        , weight = weight
+                        , obj = obj
+                        , eval = eval
+                        , verbose = verbose_cv
+                        , record = TRUE
+                        , eval_freq = 1L
+                        , showsd = FALSE
+                        , stratified = stratified
+                        , init_model = init_model
+                        , colnames = colnames
+                        , categorical_feature = categorical_feature
+                        , early_stopping_rounds = early_stopping_rounds
+                        , callbacks = callbacks
+                        , delete_boosters_folds = TRUE
+                        , ...
+        )
+        if (higher_better) {
+          if (cvbst$best_score > best_score) {
+            current_score_is_better <- TRUE
+          }
+        } else {
+          if (cvbst$best_score < best_score) {
+            current_score_is_better <- TRUE
+          }
+        }
+      },
+      error = function(msg) {
+        message(paste0("Error for parameter combination ", counter_num_comb, 
+                       " of ", length(try_param_combs), ": ", param_comb_str,
+                       ". Error message: "))
+        message(msg)
+      })# end tryCatch
+      if (current_score_is_better) {
+        best_score <- cvbst$best_score
+        best_iter <- cvbst$best_iter
+        best_params <- param_comb
+        if (verbose_eval >= 1L) {
+          metric_name <- names(cvbst$record_evals$valid)
+          param_comb_print <- param_comb
+          param_comb_print[["nrounds"]] <- best_iter
+          str <- lapply(seq_along(param_comb_print), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb_print, n=names(param_comb_print))
+          message(paste0("***** New best test score (",metric_name, " = ", 
+                         best_score,  ") found for the following parameter combination: ", 
+                         paste0(unlist(str), collapse=", ")))
+        }
       }
-    } else {
-      if (cvbst$best_score < best_score) {
-        current_score_is_better <- TRUE
-      }
-    }
-    if (current_score_is_better) {
-      best_score <- cvbst$best_score
-      best_iter <- cvbst$best_iter
-      best_params <- param_comb
-      if (verbose_eval >= 1L) {
-        metric_name <- names(cvbst$record_evals$valid)
-        param_comb_print <- param_comb
-        param_comb_print[["nrounds"]] <- best_iter
-        str <- lapply(seq_along(param_comb_print), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb_print, n=names(param_comb_print))
-        message(paste0("***** New best test score (",metric_name, " = ", 
-                       best_score,  ") found for the following parameter combination: ", 
-                       paste0(unlist(str), collapse=", ")))
-      }
-    }
-    counter_num_comb <- counter_num_comb + 1L
+      counter_num_comb <- counter_num_comb + 1L
   }
   
   return(list(best_params=best_params, best_iter=best_iter, best_score=best_score))

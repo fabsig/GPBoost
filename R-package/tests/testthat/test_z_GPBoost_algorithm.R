@@ -158,6 +158,31 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                       verbose = 0)
       expect_equal(cvbst$best_iter, 59)
       expect_lt(abs(cvbst$best_score-0.6526893), TOLERANCE)
+      # Parameter tuning
+      param_grid = list("learning_rate" = c(1,0.1), 
+                        "min_data_in_leaf" = c(10,100))
+      other_params <- list(objective = "regression_l2", max_depth = 6, num_leaves = 2^10)
+      opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
+                                                    folds = folds, data = dtrain, gp_model = gp_model,
+                                                    use_gp_model_for_validation=TRUE, verbose_eval = 0,
+                                                    nrounds = 1000, early_stopping_rounds = 10)
+      expect_equal(opt_params$best_params$learning_rate, 0.1)
+      expect_equal(opt_params$best_params$min_data_in_leaf, 10)
+      expect_equal(opt_params$best_iter, 7)
+      expect_lt(abs(opt_params$best_score-0.6767217), TOLERANCE)
+      # Parameter tuning: can catch errors
+      param_grid = list("learning_rate" = c(-1,0.1), 
+                        "min_data_in_leaf" = c(10,100))
+      capture.output( capture_messages( capture_error(
+        opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
+                                                      folds = folds, data = dtrain, gp_model = gp_model,
+                                                      use_gp_model_for_validation=TRUE, verbose_eval = 0,
+                                                      nrounds = 1000, early_stopping_rounds = 10) 
+      ) ), file='NUL')
+      expect_equal(opt_params$best_params$learning_rate, 0.1)
+      expect_equal(opt_params$best_params$min_data_in_leaf, 10)
+      expect_equal(opt_params$best_iter, 7)
+      expect_lt(abs(opt_params$best_score-0.6767217), TOLERANCE)
       
       # Create random effects model and train GPBoost model
       gp_model <- GPModel(group_data = group_data_train)
