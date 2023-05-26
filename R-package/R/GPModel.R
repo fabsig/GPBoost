@@ -1516,7 +1516,7 @@ gpb.GPModel <- R6::R6Class(
       if (predict_var) {
         re_preds <- matrix(re_preds, ncol = 2 * num_re_comps, 
                            dimnames = list(NULL, c(private$re_comp_names,
-                                                 paste0(private$re_comp_names, "_var"))))
+                                                   paste0(private$re_comp_names, "_var"))))
       } else {
         re_preds <- matrix(re_preds, ncol = num_re_comps, 
                            dimnames = list(NULL, private$re_comp_names))
@@ -2319,13 +2319,27 @@ summary.GPModel <- function(object, ...){
 #' a priory set data via the function '$set_prediction_data' (this option is not used by users directly)
 #' @param predict_response A \code{boolean}. If TRUE, the response variable (label) 
 #' is predicted, otherwise the latent random effects
+#' @param fixed_effects (usually not used) A \code{numeric} \code{vector} with 
+#' additional external training data fixed effects.
+#' The length of this vector needs to equal the number of training data points.
+#' Used only for non-Gaussian data. For Gaussian data, this is ignored
+#' @param fixed_effects_pred (usually not used) A \code{numeric} \code{vector} 
+#' with additional external prediction fixed effects.
+#' The length of this vector needs to equal the number of prediction points.
+#' Used only for non-Gaussian data. For Gaussian data, this is ignored
 #' @param ... (not used, ignore this, simply here that there is no CRAN warning)
 #' @inheritParams GPModel_shared_params 
 #'
-#' @return Predictions made using a \code{GPModel}. It returns a list of length three. 
-#' The first entry ('mu') is the predicted mean, the second entry ('cov') is the predicted covariance matrix 
-#' (=NULL if 'predict_cov_mat=FALSE'), and the third entry ('var') are predicted variances 
-#' (=NULL if 'predict_var=FALSE')
+#' @return Predictions from a \code{GPModel}. A list with three entries is returned:
+#' \itemize{
+#' \item{ "mu" (first entry): predictive (=posterior) mean. For (generalized) linear mixed
+#' effects models, i.e., models with a linear regression term, this consists of the sum of 
+#' fixed effects and random effects predictions }
+#' \item{ "cov" (second entry): predictive (=posterior) covariance matrix. 
+#' This is NULL if 'predict_cov_mat=FALSE'  }
+#' \item{ "var" (third entry) : predictive (=posterior) variances. 
+#' This is NULL if 'predict_var=FALSE'  }
+#' }
 #'
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
@@ -2382,24 +2396,28 @@ predict.GPModel <- function(object,
                             num_neighbors_pred = NULL,
                             cg_delta_conv_pred = NULL,
                             nsim_var_pred = NULL,
-                            predict_response = TRUE,...){
-  return(object$predict(y = y,
-                        group_data_pred = group_data_pred,
-                        group_rand_coef_data_pred = group_rand_coef_data_pred,
-                        gp_coords_pred = gp_coords_pred,
-                        gp_rand_coef_data_pred = gp_rand_coef_data_pred,
-                        cluster_ids_pred = cluster_ids_pred,
-                        predict_cov_mat = predict_cov_mat,
-                        predict_var = predict_var,
-                        cov_pars = cov_pars,
-                        X_pred = X_pred,
-                        use_saved_data = use_saved_data,
-                        vecchia_pred_type = vecchia_pred_type,
-                        num_neighbors_pred = num_neighbors_pred,
-                        cg_delta_conv_pred = cg_delta_conv_pred,
-                        nsim_var_pred = nsim_var_pred,
-                        predict_response = predict_response,
-                        ...))
+                            predict_response = TRUE,
+                            fixed_effects = NULL,
+                            fixed_effects_pred = NULL, ...){
+  return(object$predict( y = y
+                        , group_data_pred = group_data_pred
+                        , group_rand_coef_data_pred = group_rand_coef_data_pred
+                        , gp_coords_pred = gp_coords_pred
+                        , gp_rand_coef_data_pred = gp_rand_coef_data_pred
+                        , cluster_ids_pred = cluster_ids_pred
+                        , predict_cov_mat = predict_cov_mat
+                        , predict_var = predict_var
+                        , cov_pars = cov_pars
+                        , X_pred = X_pred
+                        , use_saved_data = use_saved_data
+                        , vecchia_pred_type = vecchia_pred_type
+                        , num_neighbors_pred = num_neighbors_pred
+                        , cg_delta_conv_pred = cg_delta_conv_pred
+                        , nsim_var_pred = nsim_var_pred
+                        , predict_response = predict_response
+                        , fixed_effects = fixed_effects
+                        , fixed_effects_pred = fixed_effects_pred
+                        , ... ))
 }
 
 #' @name saveGPModel

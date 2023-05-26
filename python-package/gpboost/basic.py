@@ -5288,18 +5288,31 @@ class GPModel(object):
             predict_response : bool (default=False)
                 If True, the response variable (label) is predicted, otherwise the latent random effects
             fixed_effects : numpy 1-D array or None, optional (default=None)
-                Additional fixed effects component of location parameter for observed data.
+                Additional external training data fixed effects.
+                The length of this vector needs to equal the number of training data points.
                 Used only for non-Gaussian data. For Gaussian data, this is ignored
             fixed_effects_pred : numpy 1-D array or None, optional (default=None)
-                Additional fixed effects component of location parameter for predicted data.
+                Additional external prediction fixed effects.
+                The length of this vector needs to equal the number of prediction points.
                 Used only for non-Gaussian data. For Gaussian data, this is ignored
 
         Returns
         -------
-        result : a dict with three entries both having numpy arrays as values
-            The first entry of the dict result['mu'] is the predicted mean, the second entry result['cov'] is the
-            the predicted covariance matrix (=None if 'predict_cov_mat=False'), and the thirs entry result['var'] are
-            predicted variances (=None if 'predict_var=False')
+        result : a dict with three entries having numpy arrays as values
+
+            - 'mu' (first entry):
+
+                Predictive (=posterior) mean. For (generalized) linear mixed effects models,
+                i.e., models with a linear regression term, this consists of the sum of
+                fixed effects and random effects predictions
+
+            - 'cov' (second entry):
+
+                Predictive (=posterior) covariance matrix. This is None if 'predict_cov_mat=False'
+
+            - 'var' (third entry):
+
+                Predictive (=posterior) variances. This is None if 'predict_var=False'
 
         Example
         -------
