@@ -485,7 +485,8 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                                    cluster_ids_pred=cluster_ids_pred,
                                                    vecchia_pred_type=gp_model.vecchia_pred_type,
                                                    num_neighbors_pred=gp_model.num_neighbors_pred,
-                                                   cg_delta_conv_pred=gp_model.cg_delta_conv_pred)
+                                                   cg_delta_conv_pred=gp_model.cg_delta_conv_pred,
+                                                   nsim_var_pred=gp_model.nsim_var_pred)
             cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
             gp_model._set_likelihood(
                 gp_model_train._get_likelihood_name())  # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods

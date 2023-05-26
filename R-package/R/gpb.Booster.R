@@ -707,7 +707,9 @@ Booster <- R6::R6Class(
                        gp_rand_coef_data_pred = NULL,
                        cluster_ids_pred = NULL,
                        vecchia_pred_type = NULL,
-                       num_neighbors_pred = -1,
+                       num_neighbors_pred = NULL,
+                       cg_delta_conv_pred = NULL,
+                       nsim_var_pred = NULL,
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
                        cov_pars = NULL,
@@ -789,7 +791,9 @@ Booster <- R6::R6Class(
                                                          , X_pred = NULL
                                                          , vecchia_pred_type = vecchia_pred_type
                                                          , num_neighbors_pred = num_neighbors_pred
-                                                         , predict_response = !pred_latent)
+                                                         , cg_delta_conv_pred = cg_delta_conv_pred
+                                                         , nsim_var_pred = nsim_var_pred
+                                                         , predict_response = !pred_latent )
           fixed_effect = predictor$predict( data = data
                                             , start_iteration = start_iteration
                                             , num_iteration = num_iteration
@@ -861,20 +865,22 @@ Booster <- R6::R6Class(
             # Note: we don't need to provide the response variable y as this is saved
             #   in the gp_model ("in C++") for non-Gaussian data. y is only not NULL when
             #   the model was loaded from a file
-            random_effect_pred = private$gp_model$predict(group_data_pred = group_data_pred,
-                                                          group_rand_coef_data_pred = group_rand_coef_data_pred,
-                                                          gp_coords_pred = gp_coords_pred,
-                                                          gp_rand_coef_data_pred = gp_rand_coef_data_pred,
-                                                          cluster_ids_pred = cluster_ids_pred,
-                                                          predict_cov_mat = predict_cov_mat,
-                                                          predict_var = predict_var,
-                                                          cov_pars = cov_pars,
-                                                          X_pred = NULL,
-                                                          vecchia_pred_type = vecchia_pred_type,
-                                                          num_neighbors_pred = num_neighbors_pred,
-                                                          predict_response = FALSE,
-                                                          fixed_effects = fixed_effect_train,
-                                                          y = y)
+            random_effect_pred = private$gp_model$predict( group_data_pred = group_data_pred
+                                                          , group_rand_coef_data_pred = group_rand_coef_data_pred
+                                                          , gp_coords_pred = gp_coords_pred
+                                                          , gp_rand_coef_data_pred = gp_rand_coef_data_pred
+                                                          , cluster_ids_pred = cluster_ids_pred
+                                                          , predict_cov_mat = predict_cov_mat
+                                                          , predict_var = predict_var
+                                                          , cov_pars = cov_pars
+                                                          , X_pred = NULL
+                                                          , vecchia_pred_type = vecchia_pred_type
+                                                          , num_neighbors_pred = num_neighbors_pred
+                                                          , cg_delta_conv_pred = cg_delta_conv_pred
+                                                          , nsim_var_pred = nsim_var_pred
+                                                          , predict_response = FALSE
+                                                          , fixed_effects = fixed_effect_train
+                                                          , y = y )
             
             if (length(fixed_effect) != length(random_effect_pred$mu)){
               warning("Number of data points in fixed effect (tree ensemble) and random effect are not equal")
@@ -890,21 +896,23 @@ Booster <- R6::R6Class(
           }# end pred_latent
           else {# predict response variable for non-Gaussian data
             
-            pred_resp <- private$gp_model$predict(group_data_pred = group_data_pred,
-                                                  group_rand_coef_data_pred = group_rand_coef_data_pred,
-                                                  gp_coords_pred = gp_coords_pred,
-                                                  gp_rand_coef_data_pred = gp_rand_coef_data_pred,
-                                                  cluster_ids_pred = cluster_ids_pred,
-                                                  predict_cov_mat = predict_cov_mat,
-                                                  predict_var = predict_var,
-                                                  cov_pars = cov_pars,
-                                                  X_pred = NULL,
-                                                  vecchia_pred_type = vecchia_pred_type,
-                                                  num_neighbors_pred = num_neighbors_pred,
-                                                  predict_response = TRUE,
-                                                  fixed_effects = fixed_effect_train,
-                                                  fixed_effects_pred = fixed_effect,
-                                                  y=y)
+            pred_resp <- private$gp_model$predict( group_data_pred = group_data_pred
+                                                  , group_rand_coef_data_pred = group_rand_coef_data_pred
+                                                  , gp_coords_pred = gp_coords_pred
+                                                  , gp_rand_coef_data_pred = gp_rand_coef_data_pred
+                                                  , cluster_ids_pred = cluster_ids_pred
+                                                  , predict_cov_mat = predict_cov_mat
+                                                  , predict_var = predict_var
+                                                  , cov_pars = cov_pars
+                                                  , X_pred = NULL
+                                                  , vecchia_pred_type = vecchia_pred_type
+                                                  , num_neighbors_pred = num_neighbors_pred
+                                                  , cg_delta_conv_pred = cg_delta_conv_pred
+                                                  , nsim_var_pred = nsim_var_pred
+                                                  , predict_response = TRUE
+                                                  , fixed_effects = fixed_effect_train
+                                                  , fixed_effects_pred = fixed_effect
+                                                  , y = y )
             
             response_mean <-  pred_resp$mu
             response_var <-  pred_resp$var
@@ -1292,7 +1300,9 @@ predict.gpb.Booster <- function(object,
                                 gp_rand_coef_data_pred = NULL,
                                 cluster_ids_pred = NULL,
                                 vecchia_pred_type = NULL,
-                                num_neighbors_pred = -1,
+                                num_neighbors_pred = NULL,
+                                cg_delta_conv_pred = NULL,
+                                nsim_var_pred = NULL,
                                 predict_cov_mat = FALSE,
                                 predict_var = FALSE,
                                 cov_pars = NULL,
@@ -1322,6 +1332,8 @@ predict.gpb.Booster <- function(object,
       , cluster_ids_pred = cluster_ids_pred
       , vecchia_pred_type = vecchia_pred_type
       , num_neighbors_pred = num_neighbors_pred
+      , cg_delta_conv_pred = cg_delta_conv_pred
+      , nsim_var_pred = nsim_var_pred
       , predict_cov_mat = predict_cov_mat
       , predict_var = predict_var
       , cov_pars = cov_pars

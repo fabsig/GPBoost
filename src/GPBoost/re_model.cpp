@@ -823,7 +823,8 @@ namespace GPBoost {
 		const double* covariate_data_pred,
 		const char* vecchia_pred_type,
 		int num_neighbors_pred,
-		double cg_delta_conv_pred) {
+		double cg_delta_conv_pred,
+		int nsim_var_pred) {
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->SetPredictionData(num_data_pred,
 				cluster_ids_data_pred,
@@ -834,7 +835,8 @@ namespace GPBoost {
 				covariate_data_pred,
 				vecchia_pred_type,
 				num_neighbors_pred,
-				cg_delta_conv_pred);
+				cg_delta_conv_pred,
+				nsim_var_pred);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->SetPredictionData(num_data_pred,
@@ -846,7 +848,8 @@ namespace GPBoost {
 				covariate_data_pred,
 				vecchia_pred_type,
 				num_neighbors_pred,
-				cg_delta_conv_pred);
+				cg_delta_conv_pred,
+				nsim_var_pred);
 		}
 		else {
 			re_model_den_->SetPredictionData(num_data_pred,
@@ -858,7 +861,8 @@ namespace GPBoost {
 				covariate_data_pred,
 				vecchia_pred_type,
 				num_neighbors_pred,
-				cg_delta_conv_pred);
+				cg_delta_conv_pred,
+				nsim_var_pred);
 		}
 	}
 
@@ -879,6 +883,7 @@ namespace GPBoost {
 		const char* vecchia_pred_type,
 		int num_neighbors_pred,
 		double cg_delta_conv_pred,
+		int nsim_var_pred,
 		const double* fixed_effects,
 		const double* fixed_effects_pred,
 		bool suppress_calc_cov_factor) {
@@ -943,6 +948,7 @@ namespace GPBoost {
 				vecchia_pred_type,
 				num_neighbors_pred,
 				cg_delta_conv_pred,
+				nsim_var_pred,
 				fixed_effects,
 				fixed_effects_pred);
 		}
@@ -966,6 +972,7 @@ namespace GPBoost {
 				vecchia_pred_type,
 				num_neighbors_pred,
 				cg_delta_conv_pred,
+				nsim_var_pred,
 				fixed_effects,
 				fixed_effects_pred);
 		}
@@ -989,6 +996,7 @@ namespace GPBoost {
 				vecchia_pred_type,
 				num_neighbors_pred,
 				cg_delta_conv_pred,
+				nsim_var_pred,
 				fixed_effects,
 				fixed_effects_pred);
 		}

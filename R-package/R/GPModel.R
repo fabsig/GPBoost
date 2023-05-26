@@ -96,7 +96,9 @@
 #' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 #' for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors
 #' @param cg_delta_conv_pred a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-#' checking convergence in conjugate gradient algorithm when being used for prediction
+#' checking convergence in conjugate gradient algorithms when being used for prediction
+#' @param nsim_var_pred an \code{integer} specifying the number of samples when simulation 
+#' is used for calculating predictive variances
 #' @param cluster_ids A \code{vector} with elements indicating independent realizations of 
 #' random effects / Gaussian processes (same values = same process realization).
 #' The elements of 'cluster_ids' can be integer, double, or character.
@@ -948,7 +950,8 @@ gpb.GPModel <- R6::R6Class(
                                    X_pred = NULL,
                                    vecchia_pred_type = NULL,
                                    num_neighbors_pred = NULL,
-                                   cg_delta_conv_pred = NULL) {
+                                   cg_delta_conv_pred = NULL,
+                                   nsim_var_pred = NULL) {
       num_data_pred <- 0
       group_data_pred_c_str <- NULL
       # Set data for grouped random effects
@@ -1105,6 +1108,9 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(cg_delta_conv_pred)) {
         private$cg_delta_conv_pred <- as.numeric(cg_delta_conv_pred)
       }
+      if (!is.null(nsim_var_pred)) {
+        private$nsim_var_pred <- as.integer(nsim_var_pred)
+      }
       .Call(
         GPB_SetPredictionData_R
         , private$handle
@@ -1118,6 +1124,7 @@ gpb.GPModel <- R6::R6Class(
         , private$vecchia_pred_type
         , private$num_neighbors_pred
         , private$cg_delta_conv_pred
+        , private$nsim_var_pred
       )
       return(invisible(self))
     },
@@ -1130,6 +1137,7 @@ gpb.GPModel <- R6::R6Class(
                        vecchia_pred_type = NULL,
                        num_neighbors_pred = NULL,
                        cg_delta_conv_pred = NULL,
+                       nsim_var_pred = NULL,
                        cluster_ids_pred = NULL,
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
@@ -1163,6 +1171,9 @@ gpb.GPModel <- R6::R6Class(
       }
       if (!is.null(cg_delta_conv_pred)) {
         private$cg_delta_conv_pred <- as.numeric(cg_delta_conv_pred)
+      }
+      if (!is.null(nsim_var_pred)) {
+        private$nsim_var_pred <- as.integer(nsim_var_pred)
       }
       if (gpb.is.null.handle(private$handle)) {
         stop("predict.GPModel: Gaussian process model has not been initialized")
@@ -1456,6 +1467,7 @@ gpb.GPModel <- R6::R6Class(
         , private$vecchia_pred_type
         , private$num_neighbors_pred
         , private$cg_delta_conv_pred
+        , private$nsim_var_pred
         , fixed_effects
         , fixed_effects_pred
         , preds
@@ -1811,7 +1823,8 @@ gpb.GPModel <- R6::R6Class(
     cluster_ids = NULL,
     cluster_ids_map_to_int = NULL,
     free_raw_data = FALSE,
-    cg_delta_conv_pred = 0.01,
+    cg_delta_conv_pred = 0.001,
+    nsim_var_pred = 1000L,
     cov_par_names = NULL,
     re_comp_names = NULL,
     coef_names = NULL,
@@ -2368,6 +2381,7 @@ predict.GPModel <- function(object,
                             vecchia_pred_type = NULL,
                             num_neighbors_pred = NULL,
                             cg_delta_conv_pred = NULL,
+                            nsim_var_pred = NULL,
                             predict_response = TRUE,...){
   return(object$predict(y = y,
                         group_data_pred = group_data_pred,
@@ -2383,6 +2397,7 @@ predict.GPModel <- function(object,
                         vecchia_pred_type = vecchia_pred_type,
                         num_neighbors_pred = num_neighbors_pred,
                         cg_delta_conv_pred = cg_delta_conv_pred,
+                        nsim_var_pred = nsim_var_pred,
                         predict_response = predict_response,
                         ...))
 }
@@ -2509,7 +2524,8 @@ set_prediction_data <- function(gp_model,
                                 X_pred = NULL,
                                 vecchia_pred_type = NULL,
                                 num_neighbors_pred = NULL,
-                                cg_delta_conv_pred = NULL) UseMethod("set_prediction_data")
+                                cg_delta_conv_pred = NULL,
+                                nsim_var_pred = NULL) UseMethod("set_prediction_data")
 
 #' Set prediction data for a \code{GPModel}
 #' 
@@ -2542,7 +2558,8 @@ set_prediction_data.GPModel <- function(gp_model,
                                         X_pred = NULL,
                                         vecchia_pred_type = NULL,
                                         num_neighbors_pred = NULL,
-                                        cg_delta_conv_pred = NULL) {
+                                        cg_delta_conv_pred = NULL,
+                                        nsim_var_pred = NULL) {
   
   if (!gpb.check.r6.class(gp_model, "GPModel")) {
     stop("set_prediction_data.GPModel: gp_model needs to be a ", sQuote("GPModel"))
@@ -2556,7 +2573,8 @@ set_prediction_data.GPModel <- function(gp_model,
                                          X_pred = X_pred,
                                          vecchia_pred_type = vecchia_pred_type,
                                          num_neighbors_pred = num_neighbors_pred,
-                                         cg_delta_conv_pred = cg_delta_conv_pred))
+                                         cg_delta_conv_pred = cg_delta_conv_pred,
+                                         nsim_var_pred = nsim_var_pred))
 }
 
 #' Generic 'predict_training_data_random_effects' method for a \code{GPModel}

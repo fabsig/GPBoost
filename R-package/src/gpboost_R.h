@@ -865,6 +865,7 @@ GPBOOST_C_EXPORT SEXP GPB_GetNumIt_R(
 * \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 * \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 * \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
+* \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_SetPredictionData_R(
@@ -878,7 +879,8 @@ GPBOOST_C_EXPORT SEXP GPB_SetPredictionData_R(
 	SEXP covariate_data_pred,
 	SEXP vecchia_pred_type,
 	SEXP num_neighbors_pred,
-	SEXP cg_delta_conv_pred
+	SEXP cg_delta_conv_pred,
+	SEXP nsim_var_pred
 );
 
 /*!
@@ -904,6 +906,7 @@ GPBOOST_C_EXPORT SEXP GPB_SetPredictionData_R(
 * \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 * \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 * \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
+* \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
 * \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
 * \param[out] out_predict Predictive/conditional mean at prediciton points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
@@ -927,6 +930,7 @@ GPBOOST_C_EXPORT SEXP GPB_PredictREModel_R(
 	SEXP vecchia_pred_type,
 	SEXP num_neighbors_pred,
 	SEXP cg_delta_conv_pred,
+	SEXP nsim_var_pred,
 	SEXP fixed_effects,
 	SEXP fixed_effects_pred,
 	SEXP out_predict

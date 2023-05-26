@@ -187,7 +187,6 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 					}
 				}
 				else if (config_.objective == std::string("poisson") || config_.objective == std::string("gamma")) {
-					config_.objective = "regression";
 					if (re_model->GetLikelihood() != config_.objective) {
 						Log::Warning("Objective for boosting and likelihood for the random effects model do not match. "
 							"It is assumed that the objective is correctly specified and that the data is %s distributed. "
@@ -195,6 +194,7 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 							"This can be problematic if the random effects model has been pre-trained.", config_.objective.c_str(), config_.objective.c_str());
 						re_model->SetLikelihood(config_.objective);
 					}
+					config_.objective = "regression";
 				}
 				else if (config_.objective == std::string("regression")) {
 					if (re_model->GetLikelihood() != std::string("gaussian")) {
@@ -2888,7 +2888,8 @@ int GPB_SetPredictionData(REModelHandle handle,
 	const double* covariate_data_pred,
 	const char* vecchia_pred_type,
 	int num_neighbors_pred,
-	double cg_delta_conv_pred) {
+	double cg_delta_conv_pred,
+	int nsim_var_pred) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetPredictionData(num_data_pred,
@@ -2900,7 +2901,8 @@ int GPB_SetPredictionData(REModelHandle handle,
 		covariate_data_pred,
 		vecchia_pred_type,
 		num_neighbors_pred,
-		cg_delta_conv_pred);
+		cg_delta_conv_pred,
+		nsim_var_pred);
 	API_END();
 }
 
@@ -2922,6 +2924,7 @@ int GPB_PredictREModel(REModelHandle handle,
 	const char* vecchia_pred_type,
 	int num_neighbors_pred,
 	double cg_delta_conv_pred,
+	int nsim_var_pred,
 	const double* fixed_effects,
 	const double* fixed_effects_pred) {
 	API_BEGIN();
@@ -2943,6 +2946,7 @@ int GPB_PredictREModel(REModelHandle handle,
 		vecchia_pred_type,
 		num_neighbors_pred,
 		cg_delta_conv_pred,
+		nsim_var_pred,
 		fixed_effects,
 		fixed_effects_pred,
 		false);

@@ -3385,7 +3385,8 @@ class Booster:
                 group_data_pred=None, group_rand_coef_data_pred=None,
                 gp_coords_pred=None, gp_rand_coef_data_pred=None,
                 cluster_ids_pred=None, vecchia_pred_type=None,
-                num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False,
+                num_neighbors_pred=None, cg_delta_conv_pred=None, nsim_var_pred=None,
+                predict_cov_mat=False, predict_var=False,
                 cov_pars=None, ignore_gp_model=False, raw_score=None, **kwargs):
         """Make a prediction.
 
@@ -3471,6 +3472,11 @@ class Booster:
             (default values if None: num_neighbors_pred = 2 * num_neighbors)
 
             Used only if the Booster has a gp_model
+        cg_delta_conv_pred : double or None, optional (default=None)
+            Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
+            when being used for prediction
+        nsim_var_pred : integer or None, optional (default=None)
+            The number of samples when simulation is used for calculating predictive variances
         cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default=None)
             IDs / labels indicating independent realizations of random effects / Gaussian processes
             (same values = same process realization). Used only if the Booster has a gp_model
@@ -3580,6 +3586,8 @@ class Booster:
                                                            cluster_ids_pred=cluster_ids_pred,
                                                            vecchia_pred_type=vecchia_pred_type,
                                                            num_neighbors_pred=num_neighbors_pred,
+                                                           cg_delta_conv_pred=cg_delta_conv_pred,
+                                                           nsim_var_pred=nsim_var_pred,
                                                            predict_cov_mat=predict_cov_mat,
                                                            predict_var=predict_var,
                                                            cov_pars=cov_pars,
@@ -3631,6 +3639,8 @@ class Booster:
                                                                cluster_ids_pred=cluster_ids_pred,
                                                                vecchia_pred_type=vecchia_pred_type,
                                                                num_neighbors_pred=num_neighbors_pred,
+                                                               cg_delta_conv_pred=cg_delta_conv_pred,
+                                                               nsim_var_pred=nsim_var_pred,
                                                                predict_cov_mat=predict_cov_mat,
                                                                predict_var=predict_var,
                                                                cov_pars=cov_pars,
@@ -3653,6 +3663,8 @@ class Booster:
                                                       cluster_ids_pred=cluster_ids_pred,
                                                       vecchia_pred_type=vecchia_pred_type,
                                                       num_neighbors_pred=num_neighbors_pred,
+                                                      cg_delta_conv_pred=cg_delta_conv_pred,
+                                                      nsim_var_pred=nsim_var_pred,
                                                       predict_cov_mat=predict_cov_mat,
                                                       predict_var=predict_var,
                                                       cov_pars=cov_pars,
@@ -4269,7 +4281,8 @@ class GPModel(object):
         self.cluster_ids = None
         self.cluster_ids_map_to_int = None
         self.free_raw_data = False
-        self.cg_delta_conv_pred = 0.01
+        self.cg_delta_conv_pred = 0.001
+        self.nsim_var_pred = 1000
         if likelihood == "gaussian":
             self.cov_par_names = ["Error_term"]
         else:
@@ -5189,6 +5202,7 @@ class GPModel(object):
                 vecchia_pred_type=None,
                 num_neighbors_pred=None,
                 cg_delta_conv_pred=None,
+                nsim_var_pred=None,
                 cluster_ids_pred=None,
                 predict_cov_mat=False,
                 predict_var=False,
@@ -5253,6 +5267,8 @@ class GPModel(object):
             cg_delta_conv_pred : double or None, optional (default=None)
                 Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                 when being used for prediction
+            nsim_var_pred : integer or None, optional (default=None)
+                The number of samples when simulation is used for calculating predictive variances
             cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data or None, optional (default=None)
                 The elements indicating independent realizations of random effects / Gaussian processes for which
                 predictions are made (set to None if you have not specified this when creating the model)
@@ -5316,6 +5332,8 @@ class GPModel(object):
             self.num_neighbors_pred = num_neighbors_pred
         if cg_delta_conv_pred is not None:
             self.cg_delta_conv_pred = cg_delta_conv_pred
+        if nsim_var_pred is not None:
+            self.nsim_var_pred = nsim_var_pred
         y_c = ctypes.c_void_p()
         if y is not None:
             y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
@@ -5515,6 +5533,7 @@ class GPModel(object):
             vecchia_pred_type_c,
             ctypes.c_int(self.num_neighbors_pred),
             ctypes.c_double(self.cg_delta_conv_pred),
+            ctypes.c_int(self.nsim_var_pred),
             fixed_effects_c,
             fixed_effects_pred_c))
 
@@ -5537,7 +5556,8 @@ class GPModel(object):
                             X_pred=None,
                             vecchia_pred_type=None,
                             num_neighbors_pred=None,
-                            cg_delta_conv_pred=None):
+                            cg_delta_conv_pred=None,
+                            nsim_var_pred=None):
         """Set the data required for making predictions with a GPModel.
 
         Parameters
@@ -5596,6 +5616,8 @@ class GPModel(object):
             cg_delta_conv_pred : double or None, optional (default=None)
                 Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                 when being used for prediction
+            nsim_var_pred : integer or None, optional (default=None)
+                The number of samples when simulation is used for calculating predictive variances
 
         Example
         -------
@@ -5712,6 +5734,8 @@ class GPModel(object):
             self.num_neighbors_pred = num_neighbors_pred
         if cg_delta_conv_pred is not None:
             self.cg_delta_conv_pred = cg_delta_conv_pred
+        if nsim_var_pred is not None:
+            self.nsim_var_pred = nsim_var_pred
         self.prediction_data_is_set = True
 
         _safe_call(_LIB.GPB_SetPredictionData(
@@ -5725,7 +5749,8 @@ class GPModel(object):
             X_pred_c,
             vecchia_pred_type_c,
             ctypes.c_int(self.num_neighbors_pred),
-            ctypes.c_double(self.cg_delta_conv_pred)))
+            ctypes.c_double(self.cg_delta_conv_pred),
+            ctypes.c_int(self.nsim_var_pred)))
         return self
 
     def predict_training_data_random_effects(self, predict_var=False):

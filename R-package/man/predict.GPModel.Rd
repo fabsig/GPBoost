@@ -10,7 +10,7 @@
   predict_cov_mat = FALSE, predict_var = FALSE, cov_pars = NULL,
   X_pred = NULL, use_saved_data = FALSE, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
-  predict_response = TRUE, ...)
+  nsim_var_pred = NULL, predict_response = TRUE, ...)
 }
 \arguments{
 \item{object}{a \code{GPModel}}
@@ -70,7 +70,10 @@ ordered first for making predictions. This option is only available for Gaussian
 for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-checking convergence in conjugate gradient algorithm when being used for prediction}
+checking convergence in conjugate gradient algorithms when being used for prediction}
+
+\item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
+is used for calculating predictive variances}
 
 \item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) 
 is predicted, otherwise the latent random effects}

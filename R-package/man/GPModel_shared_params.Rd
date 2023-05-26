@@ -114,7 +114,10 @@ ordered first for making predictions. This option is only available for Gaussian
 for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-checking convergence in conjugate gradient algorithm when being used for prediction}
+checking convergence in conjugate gradient algorithms when being used for prediction}
+
+\item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
+is used for calculating predictive variances}
 
 \item{cluster_ids}{A \code{vector} with elements indicating independent realizations of 
 random effects / Gaussian processes (same values = same process realization).

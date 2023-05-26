@@ -8,7 +8,7 @@ set_prediction_data(gp_model, group_data_pred = NULL,
   group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
   gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL,
   vecchia_pred_type = NULL, num_neighbors_pred = NULL,
-  cg_delta_conv_pred = NULL)
+  cg_delta_conv_pred = NULL, nsim_var_pred = NULL)
 }
 \arguments{
 \item{gp_model}{A \code{GPModel}}
@@ -52,7 +52,10 @@ ordered first for making predictions. This option is only available for Gaussian
 for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-checking convergence in conjugate gradient algorithm when being used for prediction}
+checking convergence in conjugate gradient algorithms when being used for prediction}
+
+\item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
+is used for calculating predictive variances}
 }
 \description{
 Generic 'set_prediction_data' method for a \code{GPModel}
