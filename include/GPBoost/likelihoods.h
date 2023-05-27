@@ -1366,7 +1366,7 @@ namespace GPBoost {
 						CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, mode_, has_NA_or_Inf,
 							cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 					}
-					else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+					else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
 						D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).asDiagonal() * B_rm_;
 						CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rhs, mode_, has_NA_or_Inf, 
 							cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
@@ -1463,7 +1463,7 @@ namespace GPBoost {
 							rand_vec_trace_I_.resize(num_data, 2 * num_rand_vec_trace_);
 							WI_plus_Sigma_inv_Z_.resize(num_data, num_rand_vec_trace_);
 						}
-						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
 							rand_vec_trace_I_.resize(num_data, num_rand_vec_trace_);
 							SigmaI_plus_W_inv_Z_.resize(num_data, num_rand_vec_trace_);
 						}
@@ -2100,7 +2100,7 @@ namespace GPBoost {
 					CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
 						cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 				}
-				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
 					CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
 						cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
 				}
@@ -2550,119 +2550,308 @@ namespace GPBoost {
 			}
 			if (calc_pred_cov || calc_pred_var) {
 				sp_mat_t Bp_inv, Bp_inv_Dp;
+				//Version Simulation
 				if (matrix_inversion_method_ == "iterative") {
-					if (rank_pred_approx_matrix_lanczos_ < 2) {
-						//Subdiagonal would have size 0
-						Log::REFatal(LANCZOS_RANK_ERROR_);
-					}
-					sp_mat_t Bpo_t_Bp_inv; //Bpo^T * Bp^(-1)
+					bool var_reduction = false; //Hack
+					int n_sim = rank_pred_approx_matrix_lanczos_; //Hack
+					sp_mat_rm_t Bp_inv_Dp_rm, Bp_inv_rm;
+					sp_mat_rm_t Bpo_rm = sp_mat_rm_t(Bpo);
+					sp_mat_rm_t Bp_rm;
+					sp_mat_rm_t Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm;
+					sp_mat_rm_t Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_rm;
+					sp_mat_rm_t Bp_inv_Bpo_rm; //Bp^(-1) * Bpo 
 					if (CondObsOnly) {
-						Bpo_t_Bp_inv = Bpo.transpose(); //Bp = Id
+						Bp_inv_Bpo_rm = Bpo_rm; //Bp = Id
 					}
 					else {
-						Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
-						Bp_inv.setIdentity();
-						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-						Bpo_t_Bp_inv = Bpo.transpose() * Bp_inv.transpose();
-						Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
+						Bp_rm = sp_mat_rm_t(Bp);
+						Bp_inv_rm = sp_mat_rm_t(Bp_rm.rows(), Bp_rm.cols());
+						Bp_inv_rm.setIdentity();
+						TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(Bp_rm, Bp_inv_rm, Bp_inv_rm, false);
+						Bp_inv_Bpo_rm = Bp_inv_rm * Bpo_rm;
+						Bp_inv_Dp_rm = Bp_inv_rm * Dp.asDiagonal();
 					}
-					//Inital vector
-					vec_t b_init = Bpo_t_Bp_inv * vec_t::Ones(num_pred);
-					b_init /= num_pred;
-					//Declarations for piv_chol_on_Sigma
-					den_mat_t W_inv_P_sqrt_inv_Q_k, Sigma_P_sqrt_inv_Q_k;
-					den_mat_t R_tilde, Bpo_Bp_inv_t_R_tilde;
-					//Declarations for Sigma_inv_plus_BtWB
-					den_mat_t P_t_sqrt_inv_Q_k, R;
-					//Common declarations
-					vec_t Tdiag_k(rank_pred_approx_matrix_lanczos_), Tsubdiag_k(rank_pred_approx_matrix_lanczos_ - 1);
-					den_mat_t R_t_Bpo_t_Bp_inv;
-					//Lanczos
-					if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-						//Factorize P^(-0.5) (W^(-1) + Sigma) P^(-0.5) as Q_k T_k Q_k^T where P = diag(W^(-1) + Sigma)
-						LanczosTridiagVecchiaLaplaceWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), b_init, num_data, 
-							Tdiag_k, Tsubdiag_k, W_inv_P_sqrt_inv_Q_k, Sigma_P_sqrt_inv_Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD, sigma2);
+					if (var_reduction) {
+						//Bp^{-1} Bpo B^{-1}
+						sp_mat_rm_t B_inv_rm = sp_mat_rm_t(B_rm_.rows(), B_rm_.cols());
+						B_inv_rm.setIdentity();
+						TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(B_rm_, B_inv_rm, B_inv_rm, false);
+						sp_mat_rm_t Bp_inv_Bpo_B_inv_rm = Bp_inv_Bpo_rm * B_inv_rm; //Bp^{-1} Bpo B^{-1}
+						vec_t D_inv_plus_W_inv_diag = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).cwiseInverse(); //(D^{-1} + W)^{-1}
+						Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm = Bp_inv_Bpo_B_inv_rm * (D_inv_plus_W_inv_diag.cwiseSqrt()).asDiagonal(); //Bp^{-1} Bpo B^{-1} (D^{-1} + W)^{-0.5}
+						Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_rm = Bp_inv_Bpo_B_inv_rm * D_inv_plus_W_inv_diag.asDiagonal(); //Bp^{-1} Bpo B^{-1} (D^{-1} + W)^{-1}
 					}
-					else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-						//Factorize P^(-0.5) (Sigma^-1 + W) P^(-0.5*T) as Q_k T_k Q_k^T where P = B^T (D^(-1) + W) B
-						LanczosTridiagVecchiaLaplace(second_deriv_neg_ll_, B_rm_, D_inv_rm_, b_init, num_data,
-							Tdiag_k, Tsubdiag_k, P_t_sqrt_inv_Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD);
-					}
-					else {
-						Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
-					}
-					//Calculate T_k^(-1) = U L^(-1) U^T via eigendecomposition
-					Eigen::SelfAdjointEigenSolver<den_mat_t> solver;
-					solver.computeFromTridiagonal(Tdiag_k, Tsubdiag_k);
-					vec_t L = solver.eigenvalues();
-					den_mat_t U = solver.eigenvectors();
-					if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-						//R_tilde = W^(-1) P^(-0.5) Q_k U L^(-1) U^T, R = Sigma P^(-0.5) Q_k, such that (Sigma^(-1) + W)^(-1) \approx R_tilde R^T
-						R_tilde = W_inv_P_sqrt_inv_Q_k * U * L.cwiseInverse().asDiagonal() * U.transpose();
-						//Bp^(-T) Bpo R_tilde
-						Bpo_Bp_inv_t_R_tilde = Bpo_t_Bp_inv.transpose() * R_tilde;
-						//R^T Bpo^T Bp^(-1)
-						R_t_Bpo_t_Bp_inv = Sigma_P_sqrt_inv_Q_k.transpose() * Bpo_t_Bp_inv;
-					}
-					else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-						//R = P^(-0.5*T) Q_k U L^(-0.5), such that (Sigma^(-1) + W)^(-1) \approx R R^T
-						R = P_t_sqrt_inv_Q_k * U * (L.cwiseSqrt().cwiseInverse()).asDiagonal();
-						//R^T Bpo^T Bp^(-1)
-						R_t_Bpo_t_Bp_inv = R.transpose() * Bpo_t_Bp_inv;
-					}
-					else {
-						Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
-					}
+					den_mat_t pred_cov_dense;
 					if (calc_pred_cov) {
-						if (CondObsOnly) {
-							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-								ConvertTo_T_mat_FromDense<T_mat>(Bpo_Bp_inv_t_R_tilde * R_t_Bpo_t_Bp_inv, pred_cov);
-							}
-							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-								ConvertTo_T_mat_FromDense<T_mat>(R_t_Bpo_t_Bp_inv.transpose() * R_t_Bpo_t_Bp_inv, pred_cov);
-							}
-							else {
-								Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
-							}
-							pred_cov.diagonal().array() += Dp.array();
-						}
-						else {
-							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-								ConvertTo_T_mat_FromDense<T_mat>(Bp_inv_Dp * Bp_inv.transpose() + Bpo_Bp_inv_t_R_tilde * R_t_Bpo_t_Bp_inv, pred_cov);
-							}
-							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-								ConvertTo_T_mat_FromDense<T_mat>(Bp_inv_Dp * Bp_inv.transpose() + R_t_Bpo_t_Bp_inv.transpose() * R_t_Bpo_t_Bp_inv, pred_cov);
-							}
-							else {
-								Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
-							}
-						}
+						pred_cov_dense = den_mat_t::Zero(num_pred, num_pred);
 					}
 					if (calc_pred_var) {
-						pred_var = vec_t(num_pred);
-						if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-							R_t_Bpo_t_Bp_inv = Bpo_Bp_inv_t_R_tilde.transpose().cwiseProduct(R_t_Bpo_t_Bp_inv);
+						pred_var = vec_t::Zero(num_pred);
+					}
+					den_mat_t pred_cov_approx_stoch, pred_cov_c_cov, pred_cov_c_var;
+					vec_t pred_var_approx_stoch, pred_var_c_cov, pred_var_c_var;
+					if (var_reduction) {
+						if (calc_pred_cov) {
+							pred_cov_approx_stoch = den_mat_t::Zero(num_pred, num_pred);
+							pred_cov_c_cov = den_mat_t::Zero(num_pred, num_pred);
+							pred_cov_c_var = den_mat_t::Zero(num_pred, num_pred);
+
 						}
-						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-							R_t_Bpo_t_Bp_inv = R_t_Bpo_t_Bp_inv.cwiseProduct(R_t_Bpo_t_Bp_inv);
-						}
-						else {
-							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
-						}
-						if (CondObsOnly) {
-#pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_pred; ++i) {
-								pred_var[i] = Dp[i] + R_t_Bpo_t_Bp_inv.col(i).sum();
-							}
-						}
-						else {
-#pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_pred; ++i) {
-								pred_var[i] = (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i)) + R_t_Bpo_t_Bp_inv.col(i).sum();
-							}
+						if (calc_pred_var) {
+							pred_var_approx_stoch = vec_t::Zero(num_pred);
+							pred_var_c_cov = vec_t::Zero(num_pred);
+							pred_var_c_var = vec_t::Zero(num_pred);
 						}
 					}
-				} // end iterative
+					vec_t W_diag_sqrt = second_deriv_neg_ll_.cwiseSqrt();
+					sp_mat_rm_t D_inv_sqrt_rm = D_inv_rm_.cwiseSqrt();
+					sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * D_inv_sqrt_rm;
+					int num_threads = omp_get_max_threads();
+					std::uniform_int_distribution<> unif(0, 2147483646);
+					std::vector<RNG_t> parallel_rngs;
+					for (int ig = 0; ig < num_threads; ++ig) {
+						int seed_local = unif(cg_generator_);
+						parallel_rngs.push_back(RNG_t(seed_local));
+					}
+#pragma omp parallel
+					{
+#pragma omp for nowait
+						for (int i = 0; i < n_sim; ++i) {
+							//z_i ~ N(0,I)
+							int thread_nb = omp_get_thread_num();
+							std::normal_distribution<double> ndist(0.0, 1.0);
+							vec_t rand_vec_pred_I_1(num_data), rand_vec_pred_I_2(num_data);
+							for (int j = 0; j < num_data; j++) {
+								rand_vec_pred_I_1(j) = ndist(parallel_rngs[thread_nb]);
+								rand_vec_pred_I_2(j) = ndist(parallel_rngs[thread_nb]);
+							}
+							//z_i ~ N(0,(Sigma^{-1} + W))
+							vec_t W_sqrt_rand_vec_pred_I_2 = W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
+							vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_sqrt_rand_vec_pred_I_2;
+							vec_t rand_vec_pred_SigmaI_plus_W_inv(num_data);
+							//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+							bool has_NA_or_Inf = false;
+							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+								CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
+									cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
+							}
+							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+								CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
+									cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
+							}
+							else {
+								Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+							}
+							if (has_NA_or_Inf) {
+								Log::REDebug(CG_NA_OR_INF_WARNING_);
+							}
+							//z_i ~ N(0, Bp^{-1} Bpo (Sigma^{-1} + W)^{-1} Bpo^T Bp^{-1})
+							vec_t rand_vec_pred = Bp_inv_Bpo_rm * rand_vec_pred_SigmaI_plus_W_inv;
+							den_mat_t pred_cov_private;
+							if (calc_pred_cov) {
+								pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
+#pragma omp critical
+								{
+									pred_cov_dense += pred_cov_private;
+								}
+							}
+							vec_t pred_var_private;
+							if (calc_pred_var) {
+								pred_var_private = rand_vec_pred.cwiseProduct(rand_vec_pred);
+#pragma omp critical
+								{
+									pred_var += pred_var_private;
+								}
+							}
+							if (var_reduction) {
+								//z_i ~ N(0, Bp^{-1} Bpo B^{-1} (D^{-1} + W)^{-1} B^{-T} Bpo^T Bp^{-1})
+								vec_t rand_vec_approx = Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_rm * (D_inv_sqrt_rm * rand_vec_pred_I_1 + W_sqrt_rand_vec_pred_I_2);
+								if (calc_pred_cov) {
+									den_mat_t pred_cov_approx_private = rand_vec_approx * rand_vec_approx.transpose();
+									den_mat_t pred_cov_c_cov_private = pred_cov_private.cwiseProduct(pred_cov_approx_private);
+									den_mat_t pred_cov_c_var_private = pred_cov_approx_private.cwiseProduct(pred_cov_approx_private);
+#pragma omp critical
+									{
+										pred_cov_approx_stoch += pred_cov_approx_private;
+										pred_cov_c_cov += pred_cov_c_cov_private;
+										pred_cov_c_var += pred_cov_c_var_private;
+									}
+								}
+								if (calc_pred_var) {
+									vec_t pred_var_approx_private = rand_vec_approx.cwiseProduct(rand_vec_approx);
+									vec_t pred_var_c_cov_private = pred_var_private.cwiseProduct(pred_var_approx_private);
+									vec_t pred_var_c_var_private = pred_var_approx_private.cwiseProduct(pred_var_approx_private);
+#pragma omp critical
+									{
+										pred_var_approx_stoch += pred_var_approx_private;
+										pred_var_c_cov += pred_var_c_cov_private;
+										pred_var_c_var += pred_var_c_var_private;
+									}
+								}
+							}
+						}
+
+					}
+					if (calc_pred_cov) {
+						pred_cov_dense /= n_sim;
+						if (var_reduction) {
+							pred_cov_approx_stoch /= n_sim;
+							pred_cov_c_cov /= n_sim;
+							pred_cov_c_var /= n_sim;
+							den_mat_t pred_cov_c = (pred_cov_c_cov - pred_cov_dense.cwiseProduct(pred_cov_approx_stoch)).array() / (pred_cov_c_var - pred_cov_approx_stoch.cwiseProduct(pred_cov_approx_stoch)).array();
+							pred_cov_dense += pred_cov_c_var.cwiseProduct((Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm * Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm.transpose()) - pred_cov_approx_stoch);
+						}
+						if (CondObsOnly) {
+							pred_cov_dense.diagonal().array() += Dp.array();
+						}
+						else {
+							pred_cov_dense += Bp_inv_Dp_rm * Bp_inv_rm.transpose();
+						}
+						ConvertTo_T_mat_FromDense<T_mat>(pred_cov_dense, pred_cov);
+					}
+					if (calc_pred_var) {
+						pred_var /= n_sim;
+						if (var_reduction) {
+							pred_var_approx_stoch /= n_sim;
+							pred_var_c_cov /= n_sim;
+							pred_var_c_var /= n_sim;
+							vec_t pred_var_c = (pred_var_c_cov - pred_var.cwiseProduct(pred_var_approx_stoch)).array() / (pred_var_c_var - pred_var_approx_stoch.cwiseProduct(pred_var_approx_stoch)).array();
+							pred_var += pred_var_c.cwiseProduct((Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm.cwiseProduct(Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm) * vec_t::Ones(num_pred)) - pred_var_approx_stoch);
+						}
+						if (CondObsOnly) {
+							pred_var += Dp;
+						}
+						else {
+							pred_var += Bp_inv_Dp_rm.cwiseProduct(Bp_inv_rm) * vec_t::Ones(num_pred);
+						}
+					}
+				}
+				//end Version Simulation
+				//Version Lanczos
+//				if (matrix_inversion_method_ == "iterative") {
+//					if (rank_pred_approx_matrix_lanczos_ < 2) {
+//						//Subdiagonal would have size 0
+//						Log::REFatal(LANCZOS_RANK_ERROR_);
+//					}
+//					sp_mat_t Bpo_t_Bp_inv; //Bpo^T * Bp^(-1)
+//					if (CondObsOnly) {
+//						Bpo_t_Bp_inv = Bpo.transpose(); //Bp = Id
+//					}
+//					else {
+//						Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
+//						Bp_inv.setIdentity();
+//						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
+//						Bpo_t_Bp_inv = Bpo.transpose() * Bp_inv.transpose();
+//						Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
+//					}
+//					//Inital vector
+//					vec_t b_init = Bpo_t_Bp_inv * vec_t::Ones(num_pred);
+//					b_init /= num_pred;
+//					//Declarations for piv_chol_on_Sigma
+//					den_mat_t W_inv_P_sqrt_inv_Q_k, Sigma_P_sqrt_inv_Q_k;
+//					den_mat_t R_tilde, Bpo_Bp_inv_t_R_tilde;
+//					//Declarations for Sigma_inv_plus_BtWB and Sigma_inv_plus_BtWB_no_Lanczos_P
+//					den_mat_t P_t_sqrt_inv_Q_k, R, Q_k;
+//					//Common declarations
+//					vec_t Tdiag_k(rank_pred_approx_matrix_lanczos_), Tsubdiag_k(rank_pred_approx_matrix_lanczos_ - 1);
+//					den_mat_t R_t_Bpo_t_Bp_inv;
+//					//Lanczos
+//					if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+//						//Factorize P^(-0.5) (W^(-1) + Sigma) P^(-0.5) as Q_k T_k Q_k^T where P = diag(W^(-1) + Sigma)
+//						LanczosTridiagVecchiaLaplaceWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), b_init, num_data, 
+//							Tdiag_k, Tsubdiag_k, W_inv_P_sqrt_inv_Q_k, Sigma_P_sqrt_inv_Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD, sigma2);
+//					}
+//					else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+//						//Factorize P^(-0.5) (Sigma^-1 + W) P^(-0.5*T) as Q_k T_k Q_k^T where P = B^T (D^(-1) + W) B
+//						LanczosTridiagVecchiaLaplace(second_deriv_neg_ll_, B_rm_, D_inv_rm_, b_init, num_data,
+//							Tdiag_k, Tsubdiag_k, P_t_sqrt_inv_Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD);
+//					}
+//					else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+//						//Factorize (Sigma^-1 + W) as Q_k T_k Q_k^T
+//						LanczosTridiagVecchiaLaplaceNoPreconditioner(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, b_init, num_data,
+//							Tdiag_k, Tsubdiag_k, Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD);
+//					}
+//					else {
+//						Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+//					}
+//					//Calculate T_k^(-1) = U L^(-1) U^T via eigendecomposition
+//					Eigen::SelfAdjointEigenSolver<den_mat_t> solver;
+//					solver.computeFromTridiagonal(Tdiag_k, Tsubdiag_k);
+//					vec_t L = solver.eigenvalues();
+//					den_mat_t U = solver.eigenvectors();
+//					if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+//						//R_tilde = W^(-1) P^(-0.5) Q_k U L^(-1) U^T, R = Sigma P^(-0.5) Q_k, such that (Sigma^(-1) + W)^(-1) \approx R_tilde R^T
+//						R_tilde = W_inv_P_sqrt_inv_Q_k * (U * L.cwiseInverse().asDiagonal() * U.transpose());
+//						//Bp^(-T) Bpo R_tilde
+//						Bpo_Bp_inv_t_R_tilde = Bpo_t_Bp_inv.transpose() * R_tilde;
+//						//R^T Bpo^T Bp^(-1)
+//						R_t_Bpo_t_Bp_inv = Sigma_P_sqrt_inv_Q_k.transpose() * Bpo_t_Bp_inv;
+//					}
+//					else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+//						//R = P^(-0.5*T) Q_k U L^(-0.5), such that (Sigma^(-1) + W)^(-1) \approx R R^T
+//						R = P_t_sqrt_inv_Q_k * (U * (L.cwiseSqrt().cwiseInverse()).asDiagonal());
+//						//R^T Bpo^T Bp^(-1)
+//						R_t_Bpo_t_Bp_inv = R.transpose() * Bpo_t_Bp_inv;
+//					}
+//					else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+//						//R = Q_k U L^(-0.5), such that (Sigma^(-1) + W)^(-1) \approx R R^T
+//						R = Q_k * (U * (L.cwiseSqrt().cwiseInverse()).asDiagonal()); //Doesn't scale linear in Lanczos-rank
+//						//R^T Bpo^T Bp^(-1)
+//						R_t_Bpo_t_Bp_inv = R.transpose() * Bpo_t_Bp_inv;
+//					}
+//					else {
+//						Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+//					}
+//					if (calc_pred_cov) {
+//						if (CondObsOnly) {
+//							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+//								ConvertTo_T_mat_FromDense<T_mat>(Bpo_Bp_inv_t_R_tilde * R_t_Bpo_t_Bp_inv, pred_cov);
+//							}
+//							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+//								ConvertTo_T_mat_FromDense<T_mat>(R_t_Bpo_t_Bp_inv.transpose() * R_t_Bpo_t_Bp_inv, pred_cov);
+//							}
+//							else {
+//								Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+//							}
+//							pred_cov.diagonal().array() += Dp.array();
+//						}
+//						else {
+//							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+//								ConvertTo_T_mat_FromDense<T_mat>(Bp_inv_Dp * Bp_inv.transpose() + Bpo_Bp_inv_t_R_tilde * R_t_Bpo_t_Bp_inv, pred_cov);
+//							}
+//							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+//								ConvertTo_T_mat_FromDense<T_mat>(Bp_inv_Dp * Bp_inv.transpose() + R_t_Bpo_t_Bp_inv.transpose() * R_t_Bpo_t_Bp_inv, pred_cov);
+//							}
+//							else {
+//								Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+//							}
+//						}
+//					}
+//					if (calc_pred_var) {
+//						pred_var = vec_t(num_pred);
+//						if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+//							R_t_Bpo_t_Bp_inv = Bpo_Bp_inv_t_R_tilde.transpose().cwiseProduct(R_t_Bpo_t_Bp_inv);
+//						}
+//						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+//							R_t_Bpo_t_Bp_inv = R_t_Bpo_t_Bp_inv.cwiseProduct(R_t_Bpo_t_Bp_inv);
+//						}
+//						else {
+//							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+//						}
+//						if (CondObsOnly) {
+//#pragma omp parallel for schedule(static)
+//							for (int i = 0; i < num_pred; ++i) {
+//								pred_var[i] = Dp[i] + R_t_Bpo_t_Bp_inv.col(i).sum();
+//							}
+//						}
+//						else {
+//#pragma omp parallel for schedule(static)
+//							for (int i = 0; i < num_pred; ++i) {
+//								pred_var[i] = (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i)) + R_t_Bpo_t_Bp_inv.col(i).sum();
+//							}
+//						}
+//					}
+//				} // end Version Lanczos
 				else {
 					sp_mat_t Maux; //Maux = L\(Bpo^T * Bp^-1), L = Chol(Sigma^-1 + W)
 					if (CondObsOnly) {
@@ -2803,7 +2992,7 @@ namespace GPBoost {
 				//Declarations for piv_chol_on_Sigma
 				den_mat_t W_inv_P_sqrt_inv_Q_k, Sigma_P_sqrt_inv_Q_k;
 				//Declarations for Sigma_inv_plus_BtWB
-				den_mat_t P_t_sqrt_inv_Q_k;
+				den_mat_t P_t_sqrt_inv_Q_k, Q_k;
 				//Common declarations
 				vec_t Tdiag_k(rank_pred_approx_matrix_lanczos_), Tsubdiag_k(rank_pred_approx_matrix_lanczos_ - 1);
 				//Lanczos
@@ -2817,6 +3006,11 @@ namespace GPBoost {
 					LanczosTridiagVecchiaLaplace(second_deriv_neg_ll_, B_rm_, D_inv_rm_, b_init, num_re_,
 						Tdiag_k, Tsubdiag_k, P_t_sqrt_inv_Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD);
 				}
+				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+					//Factorize (Sigma^-1 + W) as Q_k T_k Q_k^T
+					LanczosTridiagVecchiaLaplaceNoPreconditioner(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, b_init, num_re_,
+						Tdiag_k, Tsubdiag_k, Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD);
+				}
 				else {
 					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
 				}
@@ -2828,12 +3022,17 @@ namespace GPBoost {
 				den_mat_t Sigma_inv_plus_W_ii;
 				if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
 					//R_tilde = W^(-1) P^(-0.5) Q_k U L^(-1) U^T, R = Sigma P^(-0.5) Q_k, such that (Sigma^(-1) + W)^(-1) \approx R_tilde R^T
-					den_mat_t R_tilde = W_inv_P_sqrt_inv_Q_k * U * L.cwiseInverse().asDiagonal() * U.transpose();
+					den_mat_t R_tilde = W_inv_P_sqrt_inv_Q_k * (U * L.cwiseInverse().asDiagonal() * U.transpose());
 					Sigma_inv_plus_W_ii = R_tilde.cwiseProduct(Sigma_P_sqrt_inv_Q_k);
 				}
 				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
 					//R = P^(-0.5*T) Q_k U L^(-0.5), such that (Sigma^(-1) + W)^(-1) \approx R R^T
-					den_mat_t R = P_t_sqrt_inv_Q_k * U * (L.cwiseSqrt().cwiseInverse()).asDiagonal();
+					den_mat_t R = P_t_sqrt_inv_Q_k * (U * (L.cwiseSqrt().cwiseInverse()).asDiagonal());
+					Sigma_inv_plus_W_ii = R.cwiseProduct(R);
+				}
+				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+					//R = Q_k U L^(-0.5), such that (Sigma^(-1) + W)^(-1) \approx R R^T
+					den_mat_t R = Q_k * (U * (L.cwiseSqrt().cwiseInverse()).asDiagonal());
 					Sigma_inv_plus_W_ii = R.cwiseProduct(R);
 				}
 				else {
@@ -2951,6 +3150,7 @@ namespace GPBoost {
 			int cg_max_num_it,
 			int cg_max_num_it_tridiag,
 			double cg_delta_conv,
+			double cg_delta_conv_pred,
 			int num_rand_vec_trace,
 			bool reuse_rand_vec_trace,
 			int seed_rand_vec_trace,
@@ -2961,6 +3161,7 @@ namespace GPBoost {
 			cg_max_num_it_ = cg_max_num_it;
 			cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
 			cg_delta_conv_ = cg_delta_conv;
+			cg_delta_conv_pred_ = cg_delta_conv_pred;
 			num_rand_vec_trace_ = num_rand_vec_trace;
 			reuse_rand_vec_trace_ = reuse_rand_vec_trace;
 			seed_rand_vec_trace_ = seed_rand_vec_trace;
@@ -3006,7 +3207,7 @@ namespace GPBoost {
 						2 * ((den_mat_t)chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.matrixL()).diagonal().array().log().sum() - second_deriv_neg_ll_.array().log().sum();
 				}
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
 				std::vector<vec_t> Tdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
 				std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 				//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
@@ -3085,7 +3286,7 @@ namespace GPBoost {
 				CalcOptimalCVectorized(Z_WI_plus_Sigma_inv_WI_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv_vec, c_opt);
 				d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_W_deriv - tr_WI_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
 				//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
 				//P^(-1) Z
 				den_mat_t B_invt_Z(num_data, num_rand_vec_trace_);
@@ -3167,7 +3368,7 @@ namespace GPBoost {
 				d_log_det_Sigma_W_plus_I_d_cov_pars = -1 * ((Sigma_WI_plus_Sigma_inv_Z.cwiseProduct(SigmaI_deriv_rm * Sigma_PI_Z)).colwise().sum()).mean();
 				//no variance reduction since dSigma_L_k/d_theta_j can't be solved analytically
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
 				//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dSigma^(-1)/dtheta_j)
 				vec_t zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(SigmaI_deriv_rm * PI_Z)).colwise().sum()).transpose();
 				double tr_SigmaI_plus_W_inv_SigmaI_deriv = zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z.mean();
@@ -3247,7 +3448,7 @@ namespace GPBoost {
 				CalcOptimalC(zt_WI_plus_Sigma_inv_WI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv, c_opt);
 				d_detmll_d_aux_par += c_opt * (tr_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_L_kt_W_deriv_Sigma_L_k - tr_WI_W_deriv) - c_opt * tr_PI_P_deriv;
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
 				//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dW/daux)
 				vec_t zt_SigmaI_plus_W_inv_W_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(neg_third_deriv.asDiagonal() * PI_Z)).colwise().sum()).transpose();
 				double tr_SigmaI_plus_W_inv_W_deriv = zt_SigmaI_plus_W_inv_W_deriv_PI_z.mean();
@@ -3343,6 +3544,8 @@ namespace GPBoost {
 		int cg_max_num_it_tridiag_ = 1000;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation */
 		double cg_delta_conv_ = 1e-3;
+		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
+		double cg_delta_conv_pred_ = 0.01;
 		/*! \brief Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix */
 		int num_rand_vec_trace_ = 50;
 		/*! \brief If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated */
@@ -3384,11 +3587,11 @@ namespace GPBoost {
 		den_mat_t WI_plus_Sigma_inv_Z_;
 
 		//C) PRECONDITIONER VARIABLES
-		/*! \brief  piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= piv_chol_rank generated in re_model_template.h*/
+		/*! \brief piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= piv_chol_rank generated in re_model_template.h*/
 		den_mat_t Sigma_L_k_;
-		/*! \brief  piv_chol_on_Sigma: Factor E of matrix EE^T = (I_k + Sigma_L_k_^T W^ Sigma_L_k_)*/
+		/*! \brief piv_chol_on_Sigma: Factor E of matrix EE^T = (I_k + Sigma_L_k_^T W^ Sigma_L_k_)*/
 		chol_den_mat_t chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_;
-		/*! \brief  Sigma_inv_plus_BtWB (P = B^T (D^(-1)+W) B): matrix that contains the product (D^(-1) + W) B */
+		/*! \brief Sigma_inv_plus_BtWB (P = B^T (D^(-1) + W) B): matrix that contains the product (D^(-1) + W) B */
 		sp_mat_rm_t D_inv_plus_W_B_rm_;
 
 		string_t ParseLikelihoodAlias(const string_t& likelihood) {

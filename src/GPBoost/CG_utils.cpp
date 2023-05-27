@@ -54,7 +54,7 @@ namespace GPBoost {
 		//r = rhs - A * u
 		r = rhs - ((B_t_D_inv_rm * (B_rm * u)) + diag_W.cwiseProduct(u));
 
-		//z = P^(-1) r, where P^(-1) = B^(-1) (D^(-1)+W)^(-1) B^(-T)
+		//z = P^(-1) r, where P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
 		B_invt_r = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(r);
 		z = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_r);
 
@@ -499,7 +499,6 @@ namespace GPBoost {
 		int final_rank = 1;
 		double alpha_curr, beta_curr, beta_prev;
 		vec_t q_curr, q_prev, inner_products;
-		den_mat_t Q_filled;
 
 		max_it = std::min(max_it, num_data);
 
@@ -557,8 +556,7 @@ namespace GPBoost {
 				r -= alpha_curr * q_curr;
 
 				//Full reorthogonalization: r = r - Q_k (Q_k' r)
-				Q_filled = Q_k(Eigen::all, Eigen::seq(0,k));
-				r -= Q_filled * (Q_filled.transpose() * r);
+				r -= Q_k(Eigen::all, Eigen::seq(0, k)) * (Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r);
 				
 				//Compute next beta value
 				beta_curr = r.norm();
@@ -567,16 +565,16 @@ namespace GPBoost {
 				r /= beta_curr;
 
 				//More reorthogonalizations if necessary
-				inner_products = Q_filled.transpose() * r;
+				inner_products = Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r;
 				could_reorthogonalize = false;
 				for (int l = 0; l < 10; ++l) {
 					if ((inner_products.array() < tol).all()) {
 						could_reorthogonalize = true;
 						break;
 					}
-					r -= Q_filled * (Q_filled.transpose() * r);
+					r -= Q_k(Eigen::all, Eigen::seq(0, k)) * (Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r);
 					r /= r.norm();
-					inner_products = Q_filled.transpose() * r;
+					inner_products = Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r;
 				}
 
 				//Store next vector of Q_k
@@ -619,7 +617,6 @@ namespace GPBoost {
 		double alpha_curr, beta_curr, beta_prev;
 		vec_t diag_W_inv = diag_W.cwiseInverse();
 		vec_t q_curr, q_prev, inner_products;
-		den_mat_t Q_filled;
 
 		max_it = std::min(max_it, num_data);
 
@@ -678,8 +675,7 @@ namespace GPBoost {
 				r -= alpha_curr * q_curr;
 
 				//Full reorthogonalization: r = r - Q_k (Q_k' r)
-				Q_filled = Q_k(Eigen::all, Eigen::seq(0, k));
-				r -= Q_filled * (Q_filled.transpose() * r);
+				r -= Q_k(Eigen::all, Eigen::seq(0, k)) * (Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r);
 
 				//Compute next beta value
 				beta_curr = r.norm();
@@ -688,16 +684,16 @@ namespace GPBoost {
 				r /= beta_curr;
 
 				//More reorthogonalizations if necessary
-				inner_products = Q_filled.transpose() * r;
+				inner_products = Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r;
 				could_reorthogonalize = false;
 				for (int l = 0; l < 10; ++l) {
 					if ((inner_products.array() < tol).all()) {
 						could_reorthogonalize = true;
 						break;
 					}
-					r -= Q_filled * (Q_filled.transpose() * r);
+					r -= Q_k(Eigen::all, Eigen::seq(0, k)) * (Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r);
 					r /= r.norm();
-					inner_products = Q_filled.transpose() * r;
+					inner_products = Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r;
 				}
 
 				//Store next vector of Q_k
@@ -733,4 +729,101 @@ namespace GPBoost {
 			Sigma_P_sqrt_inv_Q_k.col(i) = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_P_sqrt_inv_Q_k.col(i));
 		}
 	} // end LanczosTridiagVecchiaLaplaceWinvplusSigma
+
+	void LanczosTridiagVecchiaLaplaceNoPreconditioner(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& B_t_D_inv_rm,
+		const vec_t& b_init,
+		const data_size_t num_data,
+		vec_t& Tdiag_k,
+		vec_t& Tsubdiag_k,
+		den_mat_t& Q_k,
+		int max_it,
+		const double tol) {
+
+		bool could_reorthogonalize;
+		int final_rank = 1;
+		double alpha_curr, beta_curr, beta_prev;
+		vec_t q_curr, q_prev, inner_products;
+
+		max_it = std::min(max_it, num_data);
+
+		//Inital vector of Q_k: q_0
+		Q_k.resize(num_data, max_it);
+		vec_t q_0 = b_init / b_init.norm();
+		Q_k.col(0) = q_0;
+
+		//Initial alpha value: alpha_0
+		//(Sigma^-1+W) q_0
+		vec_t r = B_t_D_inv_rm * (B_rm * q_0) + diag_W.cwiseProduct(q_0);
+		double alpha_0 = q_0.dot(r);
+
+		//Initial beta value: beta_0
+		r -= alpha_0 * q_0;
+		double beta_0 = r.norm();
+
+		//Store alpha_0 and beta_0 into T_k
+		Tdiag_k(0) = alpha_0;
+		Tsubdiag_k(0) = beta_0;
+
+		//Compute next vector of Q_k: q_1
+		Q_k.col(1) = r / beta_0;
+
+		//Start the iterations
+		for (int k = 1; k < max_it; ++k) {
+
+			//Get previous values
+			q_prev = Q_k.col(k - 1);
+			q_curr = Q_k.col(k);
+			beta_prev = Tsubdiag_k(k - 1);
+
+			//Compute next alpha value
+			r = B_t_D_inv_rm * (B_rm * q_curr) + diag_W.cwiseProduct(q_curr) - beta_prev * q_prev;
+			alpha_curr = q_curr.dot(r);
+
+			//Store alpha_curr
+			Tdiag_k(k) = alpha_curr;
+			final_rank += 1;
+
+			if ((k + 1) < max_it) {
+
+				//Compute next residual
+				r -= alpha_curr * q_curr;
+
+				//Full reorthogonalization: r = r - Q_k (Q_k' r)
+				r -= Q_k(Eigen::all, Eigen::seq(0, k)) * (Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r);
+
+				//Compute next beta value
+				beta_curr = r.norm();
+				Tsubdiag_k(k) = beta_curr;
+
+				r /= beta_curr;
+
+				//More reorthogonalizations if necessary
+				inner_products = Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r;
+				could_reorthogonalize = false;
+				for (int l = 0; l < 10; ++l) {
+					if ((inner_products.array() < tol).all()) {
+						could_reorthogonalize = true;
+						break;
+					}
+					r -= Q_k(Eigen::all, Eigen::seq(0, k)) * (Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r);
+					r /= r.norm();
+					inner_products = Q_k(Eigen::all, Eigen::seq(0, k)).transpose() * r;
+				}
+
+				//Store next vector of Q_k
+				Q_k.col(k + 1) = r;
+
+				if (abs(beta_curr) < 1e-6 || !could_reorthogonalize) {
+					break;
+				}
+			}
+		}
+
+		//Resize Q_k, Tdiag_k, Tsubdiag_k
+		Q_k.conservativeResize(num_data, final_rank);
+		Tdiag_k.conservativeResize(final_rank, 1);
+		Tsubdiag_k.conservativeResize(final_rank - 1, 1);
+	} // end LanczosTridiagVecchiaLaplaceNoPreconditioner
 }

@@ -38,7 +38,7 @@
 #include <LightGBM/utils/common.h>
 using LightGBM::Log;
 using LightGBM::LogLevelRE;
-
+cg_preconditioner_type_
 namespace GPBoost {
 
 	// Forward declaration
@@ -1800,6 +1800,7 @@ namespace GPBoost {
 				if (cg_delta_conv_pred > 0) {
 					cg_delta_conv_pred_ = cg_delta_conv_pred;
 				}
+				SetMatrixInversionPropertiesLikelihood();
 			}
 		}//end SetPredictionData
 
@@ -1976,6 +1977,7 @@ namespace GPBoost {
 				if (cg_delta_conv_pred > 0) {
 					cg_delta_conv_pred_ = cg_delta_conv_pred;
 				}
+				SetMatrixInversionPropertiesLikelihood();
 			}
 			// Initialize linear predictor related terms and covariance parameters
 			vec_t coef, mu;//mu = linear regression predictor
@@ -3086,9 +3088,9 @@ namespace GPBoost {
 		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
 		double acc_rate_coef_ = 0.5;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done for gradient-based optimization of covariance parameters and regression coefficients */
-		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30; //TEMP 1;
+		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
 		/*! \brief Learning rate shrinkage factor for gradient-based optimization of covariance parameters and regression coefficients */
-		double LR_SHRINKAGE_FACTOR_ = 0.5; //TEMP 1;
+		double LR_SHRINKAGE_FACTOR_ = 0.5;
 		/*! \brief Threshold value for a learning rate below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
 		double LR_IS_SMALL_THRESHOLD_ = 1e-6;
 		/*! \brief Threshold value for relative change in parameters below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
@@ -3130,7 +3132,7 @@ namespace GPBoost {
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for Gaussian likelihood */
 		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_{ "none" };
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for non-Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{ "Sigma_inv_plus_BtWB", "piv_chol_on_Sigma" };
+		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{ "Sigma_inv_plus_BtWB", "Sigma_inv_plus_BtWB_no_Lanczos_P", "piv_chol_on_Sigma" };
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
 		bool cg_preconditioner_type_has_been_set_ = false;
 		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
@@ -3967,7 +3969,7 @@ namespace GPBoost {
 			if (!gauss_likelihood_) {
 				for (const auto& cluster_i : unique_clusters_) {
 					likelihood_[cluster_i]->SetMatrixInversionProperties(matrix_inversion_method_,
-						cg_max_num_it_, cg_max_num_it_tridiag_, cg_delta_conv_,
+						cg_max_num_it_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_delta_conv_pred_,
 						num_rand_vec_trace_, reuse_rand_vec_trace_, seed_rand_vec_trace_,
 						cg_preconditioner_type_, piv_chol_rank_, rank_pred_approx_matrix_lanczos_);
 				}

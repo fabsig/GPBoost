@@ -262,6 +262,35 @@ namespace GPBoost {
 		const double sigma2);
 
 	/*!
+	* \brief Lanczos algorithm with full reorthogonalization to approximately factorize the symmetric matrix
+	*		 (Sigma^(-1) + W) as Q_k T_k Q_k^T whereby no preconditioner is used.
+	*		 T_k is a tridiagonal matrix of dimension kxk and Q_k a orthonormal matrix of dimension nxk.
+	*		 The diagonal and subdiagonal of T_k is returned in vector form.
+	*		 A Vecchia approximation for Sigma^-1 = B^T D^-1 B is given and W is a diagonal matrix.
+	* \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
+	* \param B_t_D_inv_rm Row-major matrix that contains the product B^T D^-1. Outsourced in order to reduce the overhead of the function.
+	* \param b_init Inital column-vector of Q_k (after normalization) of dimension nx1.
+	* \param num_data n-Dimension
+	* \param[out] Tdiag_k The diagonal of the tridiagonal matrix T_k (solution written on input) (must have been declared with the correct kx1 dimension)
+	* \param[out] Tsubdiag_k The subdiagonal of the tridiagonal matrix T_k (solution written on input) (must have been declared with the correct (k-1)x1 dimension)
+	* \param[out] Q_k Matrix Q_k of dimension nxk, where Q_k=[b_init/||b_init||, q_2, q_3, ...] (solution written on input)
+	* \param max_it Maximal rank k of the matrix Q_k and T_k
+	* \param tol Tolerance to decide whether reorthogonalization is necessary
+	*/
+
+	void LanczosTridiagVecchiaLaplaceNoPreconditioner(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& B_t_D_inv_rm,
+		const vec_t& b_init,
+		const data_size_t num_data,
+		vec_t& Tdiag_k,
+		vec_t& Tsubdiag_k,
+		den_mat_t& Q_k,
+		int max_it,
+		const double tol);
+
+	/*!
 	* \brief Pivoted Cholesky factorization according to Habrecht et al. (2012) for the original (nonapproximated) covariance matrix (Sigma)
 	* \param cov_f Pointer to function which accesses elements of Sigma (see https://www.geeksforgeeks.org/passing-a-function-as-a-parameter-in-cpp)
 	* \param var_f Pointer to fuction which accesses the diagonal of Sigma which equals the marginal variance and is the same for all entries (i,i)
