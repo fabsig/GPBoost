@@ -21,7 +21,7 @@
 # remotes::install_version("vctrs", "0.1.0")
 # remotes::install_version("roxygen2", "6.0.1")
 ## Need old versions of the above packages for old version of Rcpp and roxygen2
-
+# install.packages(c("data.table","RJSONIO")) # not required, but done to avoid warnings
 
 setwd("R-package")
 

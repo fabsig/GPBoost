@@ -177,19 +177,19 @@ namespace GPBoost {
 				//#pragma omp parallel for schedule(static)//problematic with error message below... 
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (fabs(y_data[i]) >= EPSILON_NUMBERS && !TwoNumbersAreEqual<T>(y_data[i], 1.)) {
-						Log::REFatal("Response variable (label) data needs to be 0 or 1 for likelihood of type '%s'.", likelihood_type_.c_str());
+						Log::REFatal("Response variable (label) data needs to be 0 or 1 for likelihood of type '%s' ", likelihood_type_.c_str());
 					}
 				}
 			}
 			else if (likelihood_type_ == "poisson") {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (y_data[i] < 0) {
-						Log::REFatal("Found negative response variable. Response variable cannot be negative for likelihood of type '%s'.", likelihood_type_.c_str());
+						Log::REFatal("Found negative response variable. Response variable cannot be negative for likelihood of type '%s' ", likelihood_type_.c_str());
 					}
 					else {
 						double intpart;
 						if (std::modf(y_data[i], &intpart) != 0.0) {
-							Log::REFatal("Found non-integer response variable. Response variable can only be integer valued for likelihood of type '%s'.", likelihood_type_.c_str());
+							Log::REFatal("Found non-integer response variable. Response variable can only be integer valued for likelihood of type '%s' ", likelihood_type_.c_str());
 						}
 					}
 				}
@@ -197,14 +197,14 @@ namespace GPBoost {
 			else if (likelihood_type_ == "gamma") {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (y_data[i] < 0) {
-						Log::REFatal("Found negative response variable. Response variable cannot be negative for likelihood of type '%s'.", likelihood_type_.c_str());
+						Log::REFatal("Found negative response variable. Response variable cannot be negative for likelihood of type '%s' ", likelihood_type_.c_str());
 					}
 				}
 			}
 			else {
-				Log::REFatal("CheckY: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				Log::REFatal("GPModel: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 			}
-		}
+		}//end CheckY
 
 		/*!
 		* \brief Determine initial value for intercept (=constant)

@@ -302,6 +302,7 @@ namespace GPBoost {
 		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
+		* \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
 		*/
 		void SetPredictionData(data_size_t num_data_pred,
 			const data_size_t* cluster_ids_data_pred,
@@ -312,7 +313,8 @@ namespace GPBoost {
 			const double* covariate_data_pred,
 			const char* vecchia_pred_type,
 			int num_neighbors_pred,
-			double cg_delta_conv_pred);
+			double cg_delta_conv_pred,
+			int nsim_var_pred);
 
 		/*!
 		* \brief Make predictions: calculate conditional mean and variances or covariance matrix
@@ -337,6 +339,7 @@ namespace GPBoost {
 		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
+		* \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
 		* \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
 		* \param suppress_calc_cov_factor If true, the covariance matrix of the observed data is not factorized (default=false), otherwise it is dynamically decided whether to factorize or nor
@@ -358,6 +361,7 @@ namespace GPBoost {
 			const char* vecchia_pred_type,
 			int num_neighbors_pred,
 			double cg_delta_conv_pred,
+			int nsim_var_pred,
 			const double* fixed_effects,
 			const double* fixed_effects_pred,
 			bool suppress_calc_cov_factor);

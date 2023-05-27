@@ -2888,7 +2888,8 @@ int GPB_SetPredictionData(REModelHandle handle,
 	const double* covariate_data_pred,
 	const char* vecchia_pred_type,
 	int num_neighbors_pred,
-	double cg_delta_conv_pred) {
+	double cg_delta_conv_pred,
+	int nsim_var_pred) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetPredictionData(num_data_pred,
@@ -2900,7 +2901,8 @@ int GPB_SetPredictionData(REModelHandle handle,
 		covariate_data_pred,
 		vecchia_pred_type,
 		num_neighbors_pred,
-		cg_delta_conv_pred);
+		cg_delta_conv_pred,
+		nsim_var_pred);
 	API_END();
 }
 
@@ -2922,6 +2924,7 @@ int GPB_PredictREModel(REModelHandle handle,
 	const char* vecchia_pred_type,
 	int num_neighbors_pred,
 	double cg_delta_conv_pred,
+	int nsim_var_pred,
 	const double* fixed_effects,
 	const double* fixed_effects_pred) {
 	API_BEGIN();
@@ -2943,6 +2946,7 @@ int GPB_PredictREModel(REModelHandle handle,
 		vecchia_pred_type,
 		num_neighbors_pred,
 		cg_delta_conv_pred,
+		nsim_var_pred,
 		fixed_effects,
 		fixed_effects_pred,
 		false);

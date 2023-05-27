@@ -10,7 +10,8 @@
   group_data_pred = NULL, group_rand_coef_data_pred = NULL,
   gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
   cluster_ids_pred = NULL, vecchia_pred_type = NULL,
-  num_neighbors_pred = -1, predict_cov_mat = FALSE, predict_var = FALSE,
+  num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
+  nsim_var_pred = NULL, predict_cov_mat = FALSE, predict_var = FALSE,
   cov_pars = NULL, ignore_gp_model = FALSE, rawscore = NULL, ...)
 }
 \arguments{
@@ -77,6 +78,12 @@ ordered first for making predictions. This option is only available for Gaussian
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
+
+\item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
+checking convergence in conjugate gradient algorithms when being used for prediction}
+
+\item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
+is used for calculating predictive variances}
 
 \item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior) 
 predictive covariance is calculated in addition to the (posterior) predictive mean}

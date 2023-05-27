@@ -96,7 +96,9 @@
 #' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 #' for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors
 #' @param cg_delta_conv_pred a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-#' checking convergence in conjugate gradient algorithm when being used for prediction
+#' checking convergence in conjugate gradient algorithms when being used for prediction
+#' @param nsim_var_pred an \code{integer} specifying the number of samples when simulation 
+#' is used for calculating predictive variances
 #' @param cluster_ids A \code{vector} with elements indicating independent realizations of 
 #' random effects / Gaussian processes (same values = same process realization).
 #' The elements of 'cluster_ids' can be integer, double, or character.
@@ -373,7 +375,7 @@ gpb.GPModel <- R6::R6Class(
           }
           if (dim(group_rand_coef_data)[2] != length(ind_effect_group_rand_coef)) {
             stop("GPModel: Number of random coefficients in ", 
-                 sQuote("group_rand_coef_data"), "does not match number in ", 
+                 sQuote("group_rand_coef_data"), " does not match number in ", 
                  sQuote("ind_effect_group_rand_coef"))
           }
           if (storage.mode(ind_effect_group_rand_coef) != "integer") {
@@ -382,7 +384,7 @@ gpb.GPModel <- R6::R6Class(
           if (!is.null(drop_intercept_group_rand_effect)) {
             if (length(drop_intercept_group_rand_effect) != private$num_group_re) {
               stop("GPModel: Length of ", sQuote("drop_intercept_group_rand_effect"), 
-                   "does not match number of random effects")
+                   " does not match number of random effects")
             }
             if (storage.mode(drop_intercept_group_rand_effect) != "logical") {
               stop("GPModel: Can only use ", sQuote("logical"), " as ",
@@ -512,7 +514,7 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(cluster_ids)) {
         if (is.vector(cluster_ids)) {
           if (length(cluster_ids) != private$num_data) {
-            stop("GPModel: Length of ", sQuote("cluster_ids"), "does not match number of data points")
+            stop("GPModel: Length of ", sQuote("cluster_ids"), " does not match number of data points")
           }
           private$cluster_ids = cluster_ids
           # Convert cluster_ids to int and save conversion map
@@ -868,6 +870,7 @@ gpb.GPModel <- R6::R6Class(
       if (private$model_has_been_loaded_from_saved_file) {
         cov_pars <- private$cov_pars_loaded_from_file
       } else {
+        private$update_cov_par_names(self$get_likelihood_name())
         if (private$params[["std_dev"]]) {
           optim_pars <- numeric(2 * private$num_cov_pars)
         } else {
@@ -947,7 +950,8 @@ gpb.GPModel <- R6::R6Class(
                                    X_pred = NULL,
                                    vecchia_pred_type = NULL,
                                    num_neighbors_pred = NULL,
-                                   cg_delta_conv_pred = NULL) {
+                                   cg_delta_conv_pred = NULL,
+                                   nsim_var_pred = NULL) {
       num_data_pred <- 0
       group_data_pred_c_str <- NULL
       # Set data for grouped random effects
@@ -1104,6 +1108,9 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(cg_delta_conv_pred)) {
         private$cg_delta_conv_pred <- as.numeric(cg_delta_conv_pred)
       }
+      if (!is.null(nsim_var_pred)) {
+        private$nsim_var_pred <- as.integer(nsim_var_pred)
+      }
       .Call(
         GPB_SetPredictionData_R
         , private$handle
@@ -1117,6 +1124,7 @@ gpb.GPModel <- R6::R6Class(
         , private$vecchia_pred_type
         , private$num_neighbors_pred
         , private$cg_delta_conv_pred
+        , private$nsim_var_pred
       )
       return(invisible(self))
     },
@@ -1129,6 +1137,7 @@ gpb.GPModel <- R6::R6Class(
                        vecchia_pred_type = NULL,
                        num_neighbors_pred = NULL,
                        cg_delta_conv_pred = NULL,
+                       nsim_var_pred = NULL,
                        cluster_ids_pred = NULL,
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
@@ -1162,6 +1171,9 @@ gpb.GPModel <- R6::R6Class(
       }
       if (!is.null(cg_delta_conv_pred)) {
         private$cg_delta_conv_pred <- as.numeric(cg_delta_conv_pred)
+      }
+      if (!is.null(nsim_var_pred)) {
+        private$nsim_var_pred <- as.integer(nsim_var_pred)
       }
       if (gpb.is.null.handle(private$handle)) {
         stop("predict.GPModel: Gaussian process model has not been initialized")
@@ -1455,6 +1467,7 @@ gpb.GPModel <- R6::R6Class(
         , private$vecchia_pred_type
         , private$num_neighbors_pred
         , private$cg_delta_conv_pred
+        , private$nsim_var_pred
         , fixed_effects
         , fixed_effects_pred
         , preds
@@ -1503,7 +1516,7 @@ gpb.GPModel <- R6::R6Class(
       if (predict_var) {
         re_preds <- matrix(re_preds, ncol = 2 * num_re_comps, 
                            dimnames = list(NULL, c(private$re_comp_names,
-                                                 paste0(private$re_comp_names, "_var"))))
+                                                   paste0(private$re_comp_names, "_var"))))
       } else {
         re_preds <- matrix(re_preds, ncol = num_re_comps, 
                            dimnames = list(NULL, private$re_comp_names))
@@ -1621,13 +1634,7 @@ gpb.GPModel <- R6::R6Class(
       if (!is.character(likelihood)) {
         stop("set_likelihood: Can only use ", sQuote("character"), " as ", sQuote("likelihood"))
       }
-      private$determine_num_cov_pars(likelihood)
-      if (likelihood != "gaussian" && "Error_term" %in% private$cov_par_names){
-        private$cov_par_names <- private$cov_par_names["Error_term" != private$cov_par_names]
-      }
-      if (likelihood == "gaussian" && !("Error_term" %in% private$cov_par_names)){
-        private$cov_par_names <- c("Error_term",private$cov_par_names)
-      }
+      private$update_cov_par_names(likelihood)
       .Call(
         GPB_SetLikelihood_R
         , private$handle
@@ -1816,7 +1823,8 @@ gpb.GPModel <- R6::R6Class(
     cluster_ids = NULL,
     cluster_ids_map_to_int = NULL,
     free_raw_data = FALSE,
-    cg_delta_conv_pred = 0.01,
+    cg_delta_conv_pred = 0.001,
+    nsim_var_pred = 1000L,
     cov_par_names = NULL,
     re_comp_names = NULL,
     coef_names = NULL,
@@ -1951,6 +1959,19 @@ gpb.GPModel <- R6::R6Class(
                                 "init_cov_pars", "init_aux_pars"))){
           stop(paste0("GPModel: Unknown parameter: ", param))
         }
+      }
+    },
+    
+    update_cov_par_names = function(likelihood) {
+      if (!is.character(likelihood)) {
+        stop("set_likelihood: Can only use ", sQuote("character"), " as ", sQuote("likelihood"))
+      }
+      private$determine_num_cov_pars(likelihood)
+      if (likelihood != "gaussian" && "Error_term" %in% private$cov_par_names){
+        private$cov_par_names <- private$cov_par_names["Error_term" != private$cov_par_names]
+      }
+      if (likelihood == "gaussian" && !("Error_term" %in% private$cov_par_names)){
+        private$cov_par_names <- c("Error_term",private$cov_par_names)
       }
     },
     
@@ -2298,13 +2319,27 @@ summary.GPModel <- function(object, ...){
 #' a priory set data via the function '$set_prediction_data' (this option is not used by users directly)
 #' @param predict_response A \code{boolean}. If TRUE, the response variable (label) 
 #' is predicted, otherwise the latent random effects
+#' @param fixed_effects (usually not used) A \code{numeric} \code{vector} with 
+#' additional external training data fixed effects.
+#' The length of this vector needs to equal the number of training data points.
+#' Used only for non-Gaussian data. For Gaussian data, this is ignored
+#' @param fixed_effects_pred (usually not used) A \code{numeric} \code{vector} 
+#' with additional external prediction fixed effects.
+#' The length of this vector needs to equal the number of prediction points.
+#' Used only for non-Gaussian data. For Gaussian data, this is ignored
 #' @param ... (not used, ignore this, simply here that there is no CRAN warning)
 #' @inheritParams GPModel_shared_params 
 #'
-#' @return Predictions made using a \code{GPModel}. It returns a list of length three. 
-#' The first entry ('mu') is the predicted mean, the second entry ('cov') is the predicted covariance matrix 
-#' (=NULL if 'predict_cov_mat=FALSE'), and the third entry ('var') are predicted variances 
-#' (=NULL if 'predict_var=FALSE')
+#' @return Predictions from a \code{GPModel}. A list with three entries is returned:
+#' \itemize{
+#' \item{ "mu" (first entry): predictive (=posterior) mean. For (generalized) linear mixed
+#' effects models, i.e., models with a linear regression term, this consists of the sum of 
+#' fixed effects and random effects predictions }
+#' \item{ "cov" (second entry): predictive (=posterior) covariance matrix. 
+#' This is NULL if 'predict_cov_mat=FALSE'  }
+#' \item{ "var" (third entry) : predictive (=posterior) variances. 
+#' This is NULL if 'predict_var=FALSE'  }
+#' }
 #'
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
@@ -2360,23 +2395,29 @@ predict.GPModel <- function(object,
                             vecchia_pred_type = NULL,
                             num_neighbors_pred = NULL,
                             cg_delta_conv_pred = NULL,
-                            predict_response = TRUE,...){
-  return(object$predict(y = y,
-                        group_data_pred = group_data_pred,
-                        group_rand_coef_data_pred = group_rand_coef_data_pred,
-                        gp_coords_pred = gp_coords_pred,
-                        gp_rand_coef_data_pred = gp_rand_coef_data_pred,
-                        cluster_ids_pred = cluster_ids_pred,
-                        predict_cov_mat = predict_cov_mat,
-                        predict_var = predict_var,
-                        cov_pars = cov_pars,
-                        X_pred = X_pred,
-                        use_saved_data = use_saved_data,
-                        vecchia_pred_type = vecchia_pred_type,
-                        num_neighbors_pred = num_neighbors_pred,
-                        cg_delta_conv_pred = cg_delta_conv_pred,
-                        predict_response = predict_response,
-                        ...))
+                            nsim_var_pred = NULL,
+                            predict_response = TRUE,
+                            fixed_effects = NULL,
+                            fixed_effects_pred = NULL, ...){
+  return(object$predict( y = y
+                        , group_data_pred = group_data_pred
+                        , group_rand_coef_data_pred = group_rand_coef_data_pred
+                        , gp_coords_pred = gp_coords_pred
+                        , gp_rand_coef_data_pred = gp_rand_coef_data_pred
+                        , cluster_ids_pred = cluster_ids_pred
+                        , predict_cov_mat = predict_cov_mat
+                        , predict_var = predict_var
+                        , cov_pars = cov_pars
+                        , X_pred = X_pred
+                        , use_saved_data = use_saved_data
+                        , vecchia_pred_type = vecchia_pred_type
+                        , num_neighbors_pred = num_neighbors_pred
+                        , cg_delta_conv_pred = cg_delta_conv_pred
+                        , nsim_var_pred = nsim_var_pred
+                        , predict_response = predict_response
+                        , fixed_effects = fixed_effects
+                        , fixed_effects_pred = fixed_effects_pred
+                        , ... ))
 }
 
 #' @name saveGPModel
@@ -2501,7 +2542,8 @@ set_prediction_data <- function(gp_model,
                                 X_pred = NULL,
                                 vecchia_pred_type = NULL,
                                 num_neighbors_pred = NULL,
-                                cg_delta_conv_pred = NULL) UseMethod("set_prediction_data")
+                                cg_delta_conv_pred = NULL,
+                                nsim_var_pred = NULL) UseMethod("set_prediction_data")
 
 #' Set prediction data for a \code{GPModel}
 #' 
@@ -2534,7 +2576,8 @@ set_prediction_data.GPModel <- function(gp_model,
                                         X_pred = NULL,
                                         vecchia_pred_type = NULL,
                                         num_neighbors_pred = NULL,
-                                        cg_delta_conv_pred = NULL) {
+                                        cg_delta_conv_pred = NULL,
+                                        nsim_var_pred = NULL) {
   
   if (!gpb.check.r6.class(gp_model, "GPModel")) {
     stop("set_prediction_data.GPModel: gp_model needs to be a ", sQuote("GPModel"))
@@ -2548,7 +2591,8 @@ set_prediction_data.GPModel <- function(gp_model,
                                          X_pred = X_pred,
                                          vecchia_pred_type = vecchia_pred_type,
                                          num_neighbors_pred = num_neighbors_pred,
-                                         cg_delta_conv_pred = cg_delta_conv_pred))
+                                         cg_delta_conv_pred = cg_delta_conv_pred,
+                                         nsim_var_pred = nsim_var_pred))
 }
 
 #' Generic 'predict_training_data_random_effects' method for a \code{GPModel}

@@ -10,7 +10,8 @@
   predict_cov_mat = FALSE, predict_var = FALSE, cov_pars = NULL,
   X_pred = NULL, use_saved_data = FALSE, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
-  predict_response = TRUE, ...)
+  nsim_var_pred = NULL, predict_response = TRUE, fixed_effects = NULL,
+  fixed_effects_pred = NULL, ...)
 }
 \arguments{
 \item{object}{a \code{GPModel}}
@@ -70,18 +71,37 @@ ordered first for making predictions. This option is only available for Gaussian
 for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-checking convergence in conjugate gradient algorithm when being used for prediction}
+checking convergence in conjugate gradient algorithms when being used for prediction}
+
+\item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
+is used for calculating predictive variances}
 
 \item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) 
 is predicted, otherwise the latent random effects}
 
+\item{fixed_effects}{(usually not used) A \code{numeric} \code{vector} with 
+additional external training data fixed effects.
+The length of this vector needs to equal the number of training data points.
+Used only for non-Gaussian data. For Gaussian data, this is ignored}
+
+\item{fixed_effects_pred}{(usually not used) A \code{numeric} \code{vector} 
+with additional external prediction fixed effects.
+The length of this vector needs to equal the number of prediction points.
+Used only for non-Gaussian data. For Gaussian data, this is ignored}
+
 \item{...}{(not used, ignore this, simply here that there is no CRAN warning)}
 }
 \value{
-Predictions made using a \code{GPModel}. It returns a list of length three. 
-The first entry ('mu') is the predicted mean, the second entry ('cov') is the predicted covariance matrix 
-(=NULL if 'predict_cov_mat=FALSE'), and the third entry ('var') are predicted variances 
-(=NULL if 'predict_var=FALSE')
+Predictions from a \code{GPModel}. A list with three entries is returned:
+\itemize{
+\item{ "mu" (first entry): predictive (=posterior) mean. For (generalized) linear mixed
+effects models, i.e., models with a linear regression term, this consists of the sum of 
+fixed effects and random effects predictions }
+\item{ "cov" (second entry): predictive (=posterior) covariance matrix. 
+This is NULL if 'predict_cov_mat=FALSE'  }
+\item{ "var" (third entry) : predictive (=posterior) variances. 
+This is NULL if 'predict_var=FALSE'  }
+}
 }
 \description{
 Make predictions for a \code{GPModel}

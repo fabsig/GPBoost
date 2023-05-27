@@ -1737,6 +1737,7 @@ namespace GPBoost {
 		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
+		* \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
 		*/
 		void SetPredictionData(int num_data_pred,
 			const data_size_t* cluster_ids_data_pred,
@@ -1747,7 +1748,8 @@ namespace GPBoost {
 			const double* covariate_data_pred,
 			const char* vecchia_pred_type,
 			int num_neighbors_pred,
-			double cg_delta_conv_pred) {
+			double cg_delta_conv_pred,
+			int nsim_var_pred) {
 			CHECK(num_data_pred > 0);
 			if (cluster_ids_data_pred == nullptr) {
 				cluster_ids_data_pred_.clear();
@@ -1800,6 +1802,9 @@ namespace GPBoost {
 				if (cg_delta_conv_pred > 0) {
 					cg_delta_conv_pred_ = cg_delta_conv_pred;
 				}
+				if (nsim_var_pred > 0) {
+					nsim_var_pred_ = nsim_var_pred;
+				}
 				SetMatrixInversionPropertiesLikelihood();
 			}
 		}//end SetPredictionData
@@ -1829,6 +1834,7 @@ namespace GPBoost {
 		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
+		* \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		* \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian likelihoods)
 		*/
@@ -1851,6 +1857,7 @@ namespace GPBoost {
 			const char* vecchia_pred_type,
 			int num_neighbors_pred,
 			double cg_delta_conv_pred,
+			int nsim_var_pred,
 			const double* fixed_effects,
 			const double* fixed_effects_pred) {
 			//First check whether previously set data should be used and load it if required
@@ -1977,7 +1984,10 @@ namespace GPBoost {
 				if (cg_delta_conv_pred > 0) {
 					cg_delta_conv_pred_ = cg_delta_conv_pred;
 				}
-				SetMatrixInversionPropertiesLikelihood();
+				if (nsim_var_pred > 0) {
+					nsim_var_pred_ = nsim_var_pred;
+				}
+				SetMatrixInversionPropertiesLikelihood
 			}
 			// Initialize linear predictor related terms and covariance parameters
 			vec_t coef, mu;//mu = linear regression predictor
@@ -3120,7 +3130,9 @@ namespace GPBoost {
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation */
 		double cg_delta_conv_ = 1e-3;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
-		double cg_delta_conv_pred_ = 0.01;
+		double cg_delta_conv_pred_ = 1e-3;
+		/*! \brief Number of samples when simulation is used for calculating predictive variances */
+		double nsim_var_pred_ = 1000;
 		/*! \brief Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix */
 		int num_rand_vec_trace_ = 50;
 		/*! \brief If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated */

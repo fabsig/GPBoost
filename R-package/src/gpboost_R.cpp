@@ -1066,7 +1066,8 @@ SEXP GPB_SetPredictionData_R(SEXP handle,
 	SEXP covariate_data_pred,
 	SEXP vecchia_pred_type,
 	SEXP num_neighbors_pred,
-	SEXP cg_delta_conv_pred) {
+	SEXP cg_delta_conv_pred,
+	SEXP nsim_var_pred) {
 	int32_t numdata_pred = static_cast<int32_t>(Rf_asInteger(num_data_pred));
 	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
 	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
@@ -1081,7 +1082,8 @@ SEXP GPB_SetPredictionData_R(SEXP handle,
 		R_REAL_PTR(covariate_data_pred),
 		vecchia_pred_type_ptr,
 		Rf_asInteger(num_neighbors_pred),
-		Rf_asReal(cg_delta_conv_pred)));
+		Rf_asReal(cg_delta_conv_pred),
+		Rf_asInteger(nsim_var_pred)));
 	R_API_END();
 	UNPROTECT(1);
 	return R_NilValue;
@@ -1104,6 +1106,7 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 	SEXP vecchia_pred_type,
 	SEXP num_neighbors_pred,
 	SEXP cg_delta_conv_pred,
+	SEXP nsim_var_pred,
 	SEXP fixed_effects,
 	SEXP fixed_effects_pred,
 	SEXP out_predict) {
@@ -1129,6 +1132,7 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 		vecchia_pred_type_ptr,
 		Rf_asInteger(num_neighbors_pred),
 		Rf_asReal(cg_delta_conv_pred),
+		Rf_asInteger(nsim_var_pred),
 		R_REAL_PTR(fixed_effects),
 		R_REAL_PTR(fixed_effects_pred)));
 	R_API_END();
@@ -1331,8 +1335,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetInitCovPar_R"              , (DL_FUNC)&GPB_GetInitCovPar_R              , 2},
   {"GPB_GetCoef_R"                    , (DL_FUNC)&GPB_GetCoef_R                    , 3},
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 2},
-  {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 11},
-  {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 20},
+  {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 12},
+  {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 21},
   {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 6},
   {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 1},
   {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC)&GPB_GetOptimizerCovPars_R        , 1},

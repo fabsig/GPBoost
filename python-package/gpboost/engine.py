@@ -485,7 +485,8 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                                    cluster_ids_pred=cluster_ids_pred,
                                                    vecchia_pred_type=gp_model.vecchia_pred_type,
                                                    num_neighbors_pred=gp_model.num_neighbors_pred,
-                                                   cg_delta_conv_pred=gp_model.cg_delta_conv_pred)
+                                                   cg_delta_conv_pred=gp_model.cg_delta_conv_pred,
+                                                   nsim_var_pred=gp_model.nsim_var_pred)
             cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
             gp_model._set_likelihood(
                 gp_model_train._get_likelihood_name())  # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
@@ -1041,15 +1042,15 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     grid_size = _get_grid_size(param_grid)
     if num_try_random is not None:
         if num_try_random > grid_size:
-            raise ValueError("num_try_random is larger than the number of all possible combinations of parameters in param_grid")
+            raise ValueError("num_try_random is larger than the number of all possible combinations of parameters in param_grid ")
         try_param_combs = np.random.RandomState(seed).choice(a=grid_size, size=num_try_random, replace=False)
         if verbose_eval >= 1:
             print("Starting random grid search with " + str(num_try_random) + " trials out of " + str(
-                grid_size) + " parameter combinations...")
+                grid_size) + " parameter combinations ")
     else:
         try_param_combs = range(grid_size)
         if verbose_eval >= 1:
-            print("Starting deterministic grid search with " + str(grid_size) + " parameter combinations...")
+            print("Starting deterministic grid search with " + str(grid_size) + " parameter combinations ")
     if verbose_eval < 2:
         verbose_eval_cv = False
     else:
@@ -1064,7 +1065,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     counter_num_comb = 1
     if 'max_bin' in param_grid:
         if train_set.handle is not None:
-            raise ValueError("'train_set' cannot be constructed already when 'max_bin' is in 'param_grid'")
+            raise ValueError("'train_set' cannot be constructed already when 'max_bin' is in 'param_grid' ")
         else:
             train_set_not_constructed = copy.deepcopy(train_set)
     for param_comb_number in try_param_combs:
@@ -1073,27 +1074,32 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
             params[param] = param_comb[param]
         if verbose_eval >= 1:
             print("Trying parameter combination " + str(counter_num_comb) +
-                  " of " + str(len(try_param_combs)) + ": " + str(param_comb) + " ...")
+                  " of " + str(len(try_param_combs)) + ": " + str(param_comb))
         if 'max_bin' in param_grid:
             train_set = copy.deepcopy(train_set_not_constructed)
-        cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round,
-                   gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
-                   train_gp_model_cov_pars=train_gp_model_cov_pars,
-                   folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,
-                   metrics=metrics, fobj=fobj, feval=feval, init_model=init_model,
-                   feature_name=feature_name, categorical_feature=categorical_feature,
-                   early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
-                   verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks,
-                   eval_train_metric=False, return_cvbooster=False)
         current_score_is_better = False
-        if higher_better:
-            current_score = np.max(cvbst[next(iter(cvbst))])
-            if current_score > best_score:
-                current_score_is_better = True
-        else:
-            current_score = np.min(cvbst[next(iter(cvbst))])
-            if current_score < best_score:
-                current_score_is_better = True
+        try:
+            cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round,
+                       gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
+                       train_gp_model_cov_pars=train_gp_model_cov_pars,
+                       folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,
+                       metrics=metrics, fobj=fobj, feval=feval, init_model=init_model,
+                       feature_name=feature_name, categorical_feature=categorical_feature,
+                       early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
+                       verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks,
+                       eval_train_metric=False, return_cvbooster=False)
+            if higher_better:
+                current_score = np.max(cvbst[next(iter(cvbst))])
+                if current_score > best_score:
+                    current_score_is_better = True
+            else:
+                current_score = np.min(cvbst[next(iter(cvbst))])
+                if current_score < best_score:
+                    current_score_is_better = True
+        except Exception as err:
+            print("Error for parameter combination " + str(counter_num_comb) +
+                  " of " + str(len(try_param_combs)) + ": " + str(param_comb) + ". Error message: ")
+            print(str(err))
         if current_score_is_better:
             best_score = current_score
             best_params = param_comb
