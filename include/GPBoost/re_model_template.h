@@ -38,7 +38,7 @@
 #include <LightGBM/utils/common.h>
 using LightGBM::Log;
 using LightGBM::LogLevelRE;
-cg_preconditioner_type_
+
 namespace GPBoost {
 
 	// Forward declaration
@@ -1987,7 +1987,7 @@ namespace GPBoost {
 				if (nsim_var_pred > 0) {
 					nsim_var_pred_ = nsim_var_pred;
 				}
-				SetMatrixInversionPropertiesLikelihood
+				SetMatrixInversionPropertiesLikelihood();
 			}
 			// Initialize linear predictor related terms and covariance parameters
 			vec_t coef, mu;//mu = linear regression predictor
