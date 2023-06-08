@@ -824,8 +824,6 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	SEXP cov_fct_taper_shape,
 	SEXP num_neighbors,
 	SEXP vecchia_ordering,
-	SEXP vecchia_pred_type,
-	SEXP num_neighbors_pred,
 	SEXP num_ind_points,
 	SEXP likelihood,
 	SEXP matrix_inversion_method,
@@ -841,13 +839,11 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	int32_t num_gprand_coef = static_cast<int32_t>(Rf_asInteger(num_gp_rand_coef));
 	SEXP cov_fct_aux = PROTECT(Rf_asChar(cov_fct));
 	SEXP vecchia_ordering_aux = PROTECT(Rf_asChar(vecchia_ordering));
-	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
 	SEXP likelihood_aux = PROTECT(Rf_asChar(likelihood));
 	SEXP gp_approx_aux = PROTECT(Rf_asChar(gp_approx));
 	SEXP matrix_inversion_method_aux = PROTECT(Rf_asChar(matrix_inversion_method));
 	const char* cov_fct_ptr = (Rf_isNull(cov_fct)) ? nullptr : CHAR(cov_fct_aux);
 	const char* vecchia_ordering_ptr = (Rf_isNull(vecchia_ordering)) ? nullptr : CHAR(vecchia_ordering_aux);
-	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
 	const char* likelihood_ptr = (Rf_isNull(likelihood)) ? nullptr : CHAR(likelihood_aux);
 	const char* gp_approx_ptr = (Rf_isNull(gp_approx)) ? nullptr : CHAR(gp_approx_aux);
 	const char* matrix_inversion_method_ptr = (Rf_isNull(matrix_inversion_method)) ? nullptr : CHAR(matrix_inversion_method_aux);
@@ -872,8 +868,6 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 		Rf_asReal(cov_fct_taper_shape),
 		Rf_asInteger(num_neighbors),
 		vecchia_ordering_ptr,
-		vecchia_pred_type_ptr,
-		Rf_asInteger(num_neighbors_pred),
 		Rf_asInteger(num_ind_points),
 		likelihood_ptr,
 		matrix_inversion_method_ptr,
@@ -882,7 +876,7 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
 	R_RegisterCFinalizerEx(ret, _REModelFinalizer, TRUE);
-	UNPROTECT(7);
+	UNPROTECT(6);
 	return ret;
 }
 
@@ -922,7 +916,6 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP cg_preconditioner_type,
 	SEXP seed_rand_vec_trace,
 	SEXP piv_chol_rank,
-	SEXP rank_pred_approx_matrix_lanczos,
 	SEXP init_aux_pars,
 	SEXP estimate_aux_pars) {
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
@@ -960,7 +953,6 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		cg_preconditioner_type_ptr,
 		Rf_asInteger(seed_rand_vec_trace),
 		Rf_asInteger(piv_chol_rank),
-		Rf_asInteger(rank_pred_approx_matrix_lanczos),
 		R_REAL_PTR(init_aux_pars),
 		Rf_asLogical(estimate_aux_pars)));
 	R_API_END();
@@ -1067,7 +1059,8 @@ SEXP GPB_SetPredictionData_R(SEXP handle,
 	SEXP vecchia_pred_type,
 	SEXP num_neighbors_pred,
 	SEXP cg_delta_conv_pred,
-	SEXP nsim_var_pred) {
+	SEXP nsim_var_pred,
+	SEXP rank_pred_approx_matrix_lanczos) {
 	int32_t numdata_pred = static_cast<int32_t>(Rf_asInteger(num_data_pred));
 	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
 	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
@@ -1083,7 +1076,8 @@ SEXP GPB_SetPredictionData_R(SEXP handle,
 		vecchia_pred_type_ptr,
 		Rf_asInteger(num_neighbors_pred),
 		Rf_asReal(cg_delta_conv_pred),
-		Rf_asInteger(nsim_var_pred)));
+		Rf_asInteger(nsim_var_pred),
+		Rf_asInteger(rank_pred_approx_matrix_lanczos)));
 	R_API_END();
 	UNPROTECT(1);
 	return R_NilValue;
@@ -1103,16 +1097,10 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 	SEXP cov_pars,
 	SEXP covariate_data_pred,
 	SEXP use_saved_data,
-	SEXP vecchia_pred_type,
-	SEXP num_neighbors_pred,
-	SEXP cg_delta_conv_pred,
-	SEXP nsim_var_pred,
 	SEXP fixed_effects,
 	SEXP fixed_effects_pred,
 	SEXP out_predict) {
 	int32_t numdata_pred = static_cast<int32_t>(Rf_asInteger(num_data_pred));
-	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
-	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_PredictREModel(R_ExternalPtrAddr(handle),
 		R_REAL_PTR(y_data),
@@ -1129,14 +1117,9 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 		R_REAL_PTR(cov_pars),
 		R_REAL_PTR(covariate_data_pred),
 		Rf_asLogical(use_saved_data),
-		vecchia_pred_type_ptr,
-		Rf_asInteger(num_neighbors_pred),
-		Rf_asReal(cg_delta_conv_pred),
-		Rf_asInteger(nsim_var_pred),
 		R_REAL_PTR(fixed_effects),
 		R_REAL_PTR(fixed_effects_pred)));
 	R_API_END();
-	UNPROTECT(1);
 	return R_NilValue;
 }
 
@@ -1324,9 +1307,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterSaveModel_R"          , (DL_FUNC)&LGBM_BoosterSaveModel_R          , 4},
   {"LGBM_BoosterSaveModelToString_R"  , (DL_FUNC)&LGBM_BoosterSaveModelToString_R  , 4},
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
-  {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 26},
+  {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 24},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 29},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 28},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
   {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 4},
   {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},
@@ -1335,7 +1318,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetInitCovPar_R"              , (DL_FUNC)&GPB_GetInitCovPar_R              , 2},
   {"GPB_GetCoef_R"                    , (DL_FUNC)&GPB_GetCoef_R                    , 3},
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 2},
-  {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 12},
+  {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 13},
   {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 21},
   {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 6},
   {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 1},

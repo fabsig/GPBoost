@@ -706,20 +706,26 @@ Booster <- R6::R6Class(
                        gp_coords_pred = NULL,
                        gp_rand_coef_data_pred = NULL,
                        cluster_ids_pred = NULL,
-                       vecchia_pred_type = NULL,
-                       num_neighbors_pred = NULL,
-                       cg_delta_conv_pred = NULL,
-                       nsim_var_pred = NULL,
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
                        cov_pars = NULL,
                        ignore_gp_model = FALSE,
                        rawscore = NULL,
+                       vecchia_pred_type = NULL,
+                       num_neighbors_pred = NULL,
                        ...) {
       
       if (!is.null(rawscore)) {
         stop("predict: The argument 'raw_score' is discontinued. 
              Use the renamed equivalent argument 'pred_latent' instead")
+      }
+      if (!is.null(vecchia_pred_type)) {
+        stop("predict: The argument 'vecchia_pred_type' is discontinued. 
+             Use the function 'set_prediction_data' to specify this")
+      }
+      if (!is.null(num_neighbors_pred)) {
+        stop("predict: The argument 'num_neighbors_pred' is discontinued. 
+             Use the function 'set_prediction_data' to specify this")
       }
       
       # Check if number of iteration is non existent
@@ -789,10 +795,6 @@ Booster <- R6::R6Class(
                                                          , predict_var = predict_var
                                                          , cov_pars = cov_pars
                                                          , X_pred = NULL
-                                                         , vecchia_pred_type = vecchia_pred_type
-                                                         , num_neighbors_pred = num_neighbors_pred
-                                                         , cg_delta_conv_pred = cg_delta_conv_pred
-                                                         , nsim_var_pred = nsim_var_pred
                                                          , predict_response = !pred_latent )
           fixed_effect = predictor$predict( data = data
                                             , start_iteration = start_iteration
@@ -874,10 +876,6 @@ Booster <- R6::R6Class(
                                                           , predict_var = predict_var
                                                           , cov_pars = cov_pars
                                                           , X_pred = NULL
-                                                          , vecchia_pred_type = vecchia_pred_type
-                                                          , num_neighbors_pred = num_neighbors_pred
-                                                          , cg_delta_conv_pred = cg_delta_conv_pred
-                                                          , nsim_var_pred = nsim_var_pred
                                                           , predict_response = FALSE
                                                           , fixed_effects = fixed_effect_train
                                                           , y = y )
@@ -905,10 +903,6 @@ Booster <- R6::R6Class(
                                                   , predict_var = predict_var
                                                   , cov_pars = cov_pars
                                                   , X_pred = NULL
-                                                  , vecchia_pred_type = vecchia_pred_type
-                                                  , num_neighbors_pred = num_neighbors_pred
-                                                  , cg_delta_conv_pred = cg_delta_conv_pred
-                                                  , nsim_var_pred = nsim_var_pred
                                                   , predict_response = TRUE
                                                   , fixed_effects = fixed_effect_train
                                                   , fixed_effects_pred = fixed_effect
@@ -1299,15 +1293,13 @@ predict.gpb.Booster <- function(object,
                                 gp_coords_pred = NULL,
                                 gp_rand_coef_data_pred = NULL,
                                 cluster_ids_pred = NULL,
-                                vecchia_pred_type = NULL,
-                                num_neighbors_pred = NULL,
-                                cg_delta_conv_pred = NULL,
-                                nsim_var_pred = NULL,
                                 predict_cov_mat = FALSE,
                                 predict_var = FALSE,
                                 cov_pars = NULL,
                                 ignore_gp_model = FALSE,
                                 rawscore = NULL,
+                                vecchia_pred_type = NULL,
+                                num_neighbors_pred = NULL,
                                 ...) {
   
   if (!gpb.is.Booster(x = object)) {
@@ -1330,15 +1322,13 @@ predict.gpb.Booster <- function(object,
       , gp_coords_pred = gp_coords_pred
       , gp_rand_coef_data_pred = gp_rand_coef_data_pred
       , cluster_ids_pred = cluster_ids_pred
-      , vecchia_pred_type = vecchia_pred_type
-      , num_neighbors_pred = num_neighbors_pred
-      , cg_delta_conv_pred = cg_delta_conv_pred
-      , nsim_var_pred = nsim_var_pred
       , predict_cov_mat = predict_cov_mat
       , predict_var = predict_var
       , cov_pars = cov_pars
       , ignore_gp_model = ignore_gp_model
       , rawscore = rawscore
+      , vecchia_pred_type = vecchia_pred_type
+      , num_neighbors_pred = num_neighbors_pred
       , ...
     )
   )

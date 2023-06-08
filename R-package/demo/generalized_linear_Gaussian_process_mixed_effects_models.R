@@ -366,12 +366,13 @@ summary(gp_model)
 
 #--------------------Gaussian process model with Vecchia approximation----------------
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential", 
-                       gp_approx = "vecchia", num_neighbors = 30, y = y_train,
+                       gp_approx = "vecchia", num_neighbors = 20, y = y_train,
                        likelihood = likelihood)
 summary(gp_model)
 # Prediction: setting 'num_neighbors_pred' to a larger value than 'num_neighbors' for training
 #   can lead to better predictions
-pred_vecchia <- predict(gp_model, gp_coords_pred = coords_test, num_neighbors_pred = 100,
+gp_model$set_prediction_data(num_neighbors_pred = 40)
+pred_vecchia <- predict(gp_model, gp_coords_pred = coords_test,
                         predict_var = TRUE, predict_response = FALSE)
 ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], 
                          b=pred_vecchia$mu), aes(x=s_1,y=s_2,color=b)) +

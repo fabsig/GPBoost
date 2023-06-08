@@ -10,8 +10,7 @@ fitGPModel(likelihood = "gaussian", group_data = NULL,
   gp_rand_coef_data = NULL, cov_function = "exponential",
   cov_fct_shape = 0.5, gp_approx = "none", cov_fct_taper_range = 1,
   cov_fct_taper_shape = 0, num_neighbors = 20L,
-  vecchia_ordering = "random", vecchia_pred_type = NULL,
-  num_neighbors_pred = 2 * num_neighbors, num_ind_points = 500L,
+  vecchia_ordering = "random", num_ind_points = 500L,
   matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
   free_raw_data = FALSE, y, X = NULL, params = list(),
   vecchia_approx = NULL)
@@ -94,25 +93,6 @@ the Vecchia approximation. Available options:
 \item{"none": the default ordering in the data is used }
 \item{"random": a random ordering }
 }}
-
-\item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
-Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
-Available options:
-\itemize{
-\item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are only observed training data points }
-\item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are selected among all points (training + prediction) }
-\item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
-ordered first and neighbors are only observed points}
-\item{"latent_order_obs_first_cond_all": Vecchia approximation 
-for the latent process and observed data is ordered first and neighbors are selected among all points }
-\item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
-ordered first for making predictions. This option is only available for Gaussian likelihoods }
-}}
-
-\item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{num_ind_points}{An \code{integer} specifying the number of inducing 
 points / knots for, e.g., a predictive process approximation}

@@ -2708,8 +2708,6 @@ int GPB_CreateREModel(int32_t num_data,
 	double cov_fct_taper_shape,
 	int num_neighbors,
 	const char* vecchia_ordering,
-	const char* vecchia_pred_type,
-	int num_neighbors_pred,
 	int num_ind_points,
 	const char* likelihood,
 	const char* matrix_inversion_method,
@@ -2737,8 +2735,6 @@ int GPB_CreateREModel(int32_t num_data,
 		cov_fct_taper_shape,
 		num_neighbors,
 		vecchia_ordering,
-		vecchia_pred_type,
-		num_neighbors_pred,
 		num_ind_points,
 		likelihood,
 		matrix_inversion_method,
@@ -2779,7 +2775,6 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	const char* cg_preconditioner_type,
 	int seed_rand_vec_trace,
 	int piv_chol_rank,
-	int rank_pred_approx_matrix_lanczos,
 	double* init_aux_pars,
 	bool estimate_aux_pars) {
 	API_BEGIN();
@@ -2809,7 +2804,6 @@ int GPB_SetOptimConfig(REModelHandle handle,
 		cg_preconditioner_type,
 		seed_rand_vec_trace,
 		piv_chol_rank,
-		rank_pred_approx_matrix_lanczos,
 		init_aux_pars,
 		estimate_aux_pars);
 	API_END();
@@ -2898,7 +2892,8 @@ int GPB_SetPredictionData(REModelHandle handle,
 	const char* vecchia_pred_type,
 	int num_neighbors_pred,
 	double cg_delta_conv_pred,
-	int nsim_var_pred) {
+	int nsim_var_pred,
+	int rank_pred_approx_matrix_lanczos) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetPredictionData(num_data_pred,
@@ -2911,7 +2906,8 @@ int GPB_SetPredictionData(REModelHandle handle,
 		vecchia_pred_type,
 		num_neighbors_pred,
 		cg_delta_conv_pred,
-		nsim_var_pred);
+		nsim_var_pred,
+		rank_pred_approx_matrix_lanczos);
 	API_END();
 }
 
@@ -2930,10 +2926,6 @@ int GPB_PredictREModel(REModelHandle handle,
 	const double* cov_pars,
 	const double* covariate_data_pred,
 	bool use_saved_data,
-	const char* vecchia_pred_type,
-	int num_neighbors_pred,
-	double cg_delta_conv_pred,
-	int nsim_var_pred,
 	const double* fixed_effects,
 	const double* fixed_effects_pred) {
 	API_BEGIN();
@@ -2952,10 +2944,6 @@ int GPB_PredictREModel(REModelHandle handle,
 		cov_pars,
 		covariate_data_pred,
 		use_saved_data,
-		vecchia_pred_type,
-		num_neighbors_pred,
-		cg_delta_conv_pred,
-		nsim_var_pred,
 		fixed_effects,
 		fixed_effects_pred,
 		false);

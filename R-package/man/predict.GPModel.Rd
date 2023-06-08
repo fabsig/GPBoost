@@ -8,10 +8,9 @@
   group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
   gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL,
   predict_cov_mat = FALSE, predict_var = FALSE, cov_pars = NULL,
-  X_pred = NULL, use_saved_data = FALSE, vecchia_pred_type = NULL,
-  num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
-  nsim_var_pred = NULL, predict_response = TRUE, fixed_effects = NULL,
-  fixed_effects_pred = NULL, ...)
+  X_pred = NULL, use_saved_data = FALSE, predict_response = TRUE,
+  fixed_effects = NULL, fixed_effects_pred = NULL,
+  vecchia_pred_type = NULL, num_neighbors_pred = NULL, ...)
 }
 \arguments{
 \item{object}{a \code{GPModel}}
@@ -51,6 +50,19 @@ fixed effects linear regression term (if there is one in the \code{GPModel})}
 \item{use_saved_data}{A \code{boolean}. If TRUE, predictions are done using 
 a priory set data via the function '$set_prediction_data' (this option is not used by users directly)}
 
+\item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) 
+is predicted, otherwise the latent random effects}
+
+\item{fixed_effects}{(usually not used) A \code{numeric} \code{vector} with 
+additional external training data fixed effects.
+The length of this vector needs to equal the number of training data points.
+Used only for non-Gaussian data. For Gaussian data, this is ignored}
+
+\item{fixed_effects_pred}{(usually not used) A \code{numeric} \code{vector} 
+with additional external prediction fixed effects.
+The length of this vector needs to equal the number of prediction points.
+Used only for non-Gaussian data. For Gaussian data, this is ignored}
+
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
 Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
 Available options:
@@ -69,25 +81,6 @@ ordered first for making predictions. This option is only available for Gaussian
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
-
-\item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-checking convergence in conjugate gradient algorithms when being used for prediction}
-
-\item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
-is used for calculating predictive variances}
-
-\item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) 
-is predicted, otherwise the latent random effects}
-
-\item{fixed_effects}{(usually not used) A \code{numeric} \code{vector} with 
-additional external training data fixed effects.
-The length of this vector needs to equal the number of training data points.
-Used only for non-Gaussian data. For Gaussian data, this is ignored}
-
-\item{fixed_effects_pred}{(usually not used) A \code{numeric} \code{vector} 
-with additional external prediction fixed effects.
-The length of this vector needs to equal the number of prediction points.
-Used only for non-Gaussian data. For Gaussian data, this is ignored}
 
 \item{...}{(not used, ignore this, simply here that there is no CRAN warning)}
 }

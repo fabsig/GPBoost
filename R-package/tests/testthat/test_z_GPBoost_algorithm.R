@@ -739,13 +739,13 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Same thing with Vecchia approximation
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                           gp_approx = "vecchia", num_neighbors = ntrain-1, 
-                                          num_neighbors_pred = ntrain+ntest-1, vecchia_ordering = "none",
-                                          vecchia_pred_type = "order_obs_first_cond_all"), file='NUL')
+                                          vecchia_ordering = "none"), file='NUL')
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
+      gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred = ntrain+ntest-1)
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-pred_re)),TOLERANCE)
       expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_cov)),TOLERANCE)
@@ -754,13 +754,13 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Same thing with Vecchia approximation and random ordering
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                           gp_approx = "vecchia", num_neighbors = ntrain-1, 
-                                          num_neighbors_pred = ntrain+ntest-1, vecchia_ordering = "random",
-                                          vecchia_pred_type = "order_obs_first_cond_all"), file='NUL')
+                                          vecchia_ordering = "random"), file='NUL')
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
+      gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred = ntrain+ntest-1)
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-pred_re)),TOLERANCE)
       expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_cov)),TOLERANCE)
@@ -769,13 +769,13 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Same thing with Vecchia approximation and Nelder-Mead
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                           gp_approx = "vecchia", num_neighbors = ntrain-1,
-                                          num_neighbors_pred = ntrain+ntest-1, vecchia_ordering = "none",
-                                          vecchia_pred_type = "order_obs_first_cond_all"), file='NUL')
+                                          vecchia_ordering = "none"), file='NUL')
       gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.24097347, 0.88916662, 0.08253709))),TOLERANCE)
+      gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred = ntrain+ntest-1)
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4969191, -0.7867247, -0.5883281, -0.2374269))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.4761964, 0.5945182, 0.6208525, 0.8364343))),TOLERANCE)

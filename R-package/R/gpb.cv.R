@@ -504,7 +504,8 @@ gpb.cv <- function(params = list()
                                              , vecchia_pred_type = gp_model$.__enclos_env__$private$vecchia_pred_type
                                              , num_neighbors_pred = gp_model$.__enclos_env__$private$num_neighbors_pred
                                              , cg_delta_conv_pred = gp_model$.__enclos_env__$private$cg_delta_conv_pred
-                                             , nsim_var_pred = gp_model$.__enclos_env__$private$nsim_var_pred)
+                                             , nsim_var_pred = gp_model$.__enclos_env__$private$nsim_var_pred
+                                             , rank_pred_approx_matrix_lanczos = gp_model$.__enclos_env__$private$rank_pred_approx_matrix_lanczos)
           if (has_custom_eval_functions) {
             # Note: Validation using the GP model is only done in R if there are custom evaluation functions in eval_functions, 
             #        otherwise it is directly done in C++. See the function Eval() in regression_metric.hpp

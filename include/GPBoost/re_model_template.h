@@ -221,8 +221,6 @@ namespace GPBoost {
 		* \param cov_fct_taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param num_neighbors The number of neighbors used in the Vecchia approximation
 		* \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
-		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
-		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions
 		* \param num_ind_points Number of inducing points / knots for, e.g., a predictive process approximation
 		* \param likelihood Likelihood function for the observed response variable
 		* \param matrix_inversion_method Method which is used for matrix inversion
@@ -248,8 +246,6 @@ namespace GPBoost {
 			double cov_fct_taper_shape,
 			int num_neighbors,
 			const char* vecchia_ordering,
-			const char* vecchia_pred_type,
-			int num_neighbors_pred,
 			int num_ind_points,
 			const char* likelihood,
 			const char* matrix_inversion_method,
@@ -351,8 +347,7 @@ namespace GPBoost {
 					Log::REInfo("Starting nearest neighbor search for Vecchia approximation");
 					CHECK(num_neighbors > 0);
 					num_neighbors_ = num_neighbors;
-					CHECK(num_neighbors_pred > 0);
-					num_neighbors_pred_ = num_neighbors_pred;
+					num_neighbors_pred_ = 2 * num_neighbors_;
 					if (vecchia_ordering == nullptr) {
 						vecchia_ordering_ = "none";
 					}
@@ -361,9 +356,6 @@ namespace GPBoost {
 						if (SUPPORTED_VECCHIA_ORDERING_.find(vecchia_ordering_) == SUPPORTED_VECCHIA_ORDERING_.end()) {
 							Log::REFatal("Ordering of type '%s' is not supported for the Veccia approximation.", vecchia_ordering_.c_str());
 						}
-					}
-					if (vecchia_pred_type != nullptr) {
-						SetVecchiaPredType(vecchia_pred_type);
 					}
 				}//end if gp_approx_ == "vecchia"
 				if (num_gp_rand_coef > 0) {//Random slopes
@@ -541,7 +533,6 @@ namespace GPBoost {
 		* \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 		* \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
 		* \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
-		* \param rank_pred_approx_matrix_lanczos Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
 		* \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 		*/
 		void SetOptimConfig(double lr,
@@ -564,7 +555,6 @@ namespace GPBoost {
 			const char* cg_preconditioner_type,
 			int seed_rand_vec_trace,
 			int piv_chol_rank,
-			int rank_pred_approx_matrix_lanczos,
 			bool estimate_aux_pars) {
 			lr_cov_init_ = lr;
 			acc_rate_cov_ = acc_rate_cov;
@@ -602,7 +592,6 @@ namespace GPBoost {
 					CheckPreconditionerType();
 					cg_preconditioner_type_has_been_set_ = true;
 				}
-				rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
 				SetMatrixInversionPropertiesLikelihood();
 			}
 			estimate_aux_pars_ = estimate_aux_pars;
@@ -1669,7 +1658,7 @@ namespace GPBoost {
 		*/
 		void EvalNegLogLikelihoodOnlyUpdateNuggetVariance(const double sigma2,
 			double& negll) {
-			negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::log(sigma2) + std::log(2 * M_PI));
+negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::log(sigma2) + std::log(2 * M_PI));
 		}//end EvalNegLogLikelihoodOnlyUpdateNuggetVariance
 
 		/*!
@@ -1754,6 +1743,7 @@ namespace GPBoost {
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 		* \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
+		* \param rank_pred_approx_matrix_lanczos Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
 		*/
 		void SetPredictionData(int num_data_pred,
 			const data_size_t* cluster_ids_data_pred,
@@ -1765,8 +1755,12 @@ namespace GPBoost {
 			const char* vecchia_pred_type,
 			int num_neighbors_pred,
 			double cg_delta_conv_pred,
-			int nsim_var_pred) {
-			CHECK(num_data_pred > 0);
+			int nsim_var_pred,
+			int rank_pred_approx_matrix_lanczos) {
+			if (!(gp_coords_data_pred == nullptr && re_group_data_pred == nullptr && re_group_rand_coef_data_pred == nullptr
+				&& cluster_ids_data_pred == nullptr && gp_rand_coef_data_pred == nullptr && covariate_data_pred == nullptr)) {
+				CHECK(num_data_pred > 0);
+			}
 			if (cluster_ids_data_pred == nullptr) {
 				cluster_ids_data_pred_.clear();
 			}
@@ -1821,6 +1815,10 @@ namespace GPBoost {
 				if (nsim_var_pred > 0) {
 					nsim_var_pred_ = nsim_var_pred;
 				}
+				if (rank_pred_approx_matrix_lanczos > 0) {
+					rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
+				}
+				SetMatrixInversionPropertiesLikelihood();
 			}
 		}//end SetPredictionData
 
@@ -1846,10 +1844,6 @@ namespace GPBoost {
 		* \param gp_coords_data_pred Coordinates (features) for Gaussian process
 		* \param gp_rand_coef_data_pred Covariate data for Gaussian process random coefficients
 		* \param use_saved_data If true, saved data is used and some arguments are ignored
-		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
-		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
-		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
-		* \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		* \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian likelihoods)
 		*/
@@ -1869,10 +1863,6 @@ namespace GPBoost {
 			double* gp_coords_data_pred,
 			const double* gp_rand_coef_data_pred,
 			bool use_saved_data,
-			const char* vecchia_pred_type,
-			int num_neighbors_pred,
-			double cg_delta_conv_pred,
-			int nsim_var_pred,
 			const double* fixed_effects,
 			const double* fixed_effects_pred) {
 			//First check whether previously set data should be used and load it if required
@@ -1929,6 +1919,12 @@ namespace GPBoost {
 				re_group_levels_pred_orig = re_group_levels_pred;
 			}
 			//Some checks including whether required data is present
+			if (gp_approx_ == "vecchia") {
+				CHECK(num_neighbors_pred_ > 0);
+				CHECK(cg_delta_conv_pred_ > 0.);
+				CHECK(nsim_var_pred_ > 0);
+				CHECK(rank_pred_approx_matrix_lanczos_ > 0);
+			}
 			if ((int)re_group_levels_pred.size() == 0 && num_group_variables_ > 0) {
 				Log::REFatal("Missing grouping data ('group_data_pred') for grouped random effects for making predictions");
 			}
@@ -1986,22 +1982,6 @@ namespace GPBoost {
 				int mem_size = (int)(num_mem_d * 8. / 1000000.);
 				Log::REWarning("The covariance matrix can be very large for large sample sizes which might lead to memory limitations. "
 					"In your case (n = %d), the covariance needs at least approximately %d mb of memory. ", num_data_pred, mem_size);
-			}
-			if (gp_approx_ == "vecchia") {
-				if (vecchia_pred_type != nullptr) {
-					SetVecchiaPredType(vecchia_pred_type);
-				}
-				if (num_neighbors_pred > 0) {
-					num_neighbors_pred_ = num_neighbors_pred;
-				}
-			}
-			if (matrix_inversion_method_ == "iterative") {
-				if (cg_delta_conv_pred > 0) {
-					cg_delta_conv_pred_ = cg_delta_conv_pred;
-				}
-				if (nsim_var_pred > 0) {
-					nsim_var_pred_ = nsim_var_pred;
-				}
 			}
 			// Initialize linear predictor related terms and covariance parameters
 			vec_t coef, mu;//mu = linear regression predictor
