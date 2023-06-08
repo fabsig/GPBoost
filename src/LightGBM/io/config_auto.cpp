@@ -10,23 +10,10 @@
 namespace LightGBM {
 const std::unordered_map<std::string, std::string>& Config::alias_table() {
   static std::unordered_map<std::string, std::string> aliases({
-  {"config_file", "config"},
-  {"task_type", "task"},
+  {"likelihood", "objective"},
   {"objective_type", "objective"},
   {"app", "objective"},
   {"application", "objective"},
-  {"boosting_type", "boosting"},
-  {"boost", "boosting"},
-  {"train", "data"},
-  {"train_data", "data"},
-  {"train_data_file", "data"},
-  {"data_filename", "data"},
-  {"test", "valid"},
-  {"valid_data", "valid"},
-  {"valid_data_file", "valid"},
-  {"test_data", "valid"},
-  {"test_data_file", "valid"},
-  {"valid_filenames", "valid"},
   {"num_iteration", "num_iterations"},
   {"n_iter", "num_iterations"},
   {"num_tree", "num_iterations"},
@@ -50,6 +37,20 @@ const std::unordered_map<std::string, std::string>& Config::alias_table() {
   {"device", "device_type"},
   {"random_seed", "seed"},
   {"random_state", "seed"},
+  {"train", "data"},
+  {"train_data", "data"},
+  {"train_data_file", "data"},
+  {"data_filename", "data"},
+  {"test", "valid"},
+  {"valid_data", "valid"},
+  {"valid_data_file", "valid"},
+  {"test_data", "valid"},
+  {"test_data_file", "valid"},
+  {"valid_filenames", "valid"},
+  {"config_file", "config"},
+  {"task_type", "task"},
+  {"boosting_type", "boosting"},
+  {"boost", "boosting"},
   {"hist_pool_size", "histogram_pool_size"},
   {"min_data_per_leaf", "min_data_in_leaf"},
   {"min_data", "min_data_in_leaf"},
@@ -171,13 +172,7 @@ const std::unordered_map<std::string, std::string>& Config::alias_table() {
 
 const std::unordered_set<std::string>& Config::parameter_set() {
   static std::unordered_set<std::string> params({
-  "config",
-  "task",
   "objective",
-  "boosting",
-  "linear_tree",
-  "data",
-  "valid",
   "num_iterations",
   "learning_rate",
   "num_leaves",
@@ -193,6 +188,12 @@ const std::unordered_set<std::string>& Config::parameter_set() {
   "nesterov_acc_rate",
   "momentum_offset",
   "momentum_schedule_version",
+  "linear_tree",
+  "data",
+  "valid",
+  "config",
+  "task",
+  "boosting",
   "force_col_wise",
   "force_row_wise",
   "histogram_pool_size",
@@ -317,14 +318,6 @@ const std::unordered_set<std::string>& Config::parameter_set() {
 
 void Config::GetMembersFromString(const std::unordered_map<std::string, std::string>& params) {
   std::string tmp_str = "";
-  GetBool(params, "linear_tree", &linear_tree);
-
-  GetString(params, "data", &data);
-
-  if (GetString(params, "valid", &tmp_str)) {
-    valid = Common::Split(tmp_str.c_str(), ',');
-  }
-
   GetInt(params, "num_iterations", &num_iterations);
   CHECK_GE(num_iterations, 0);
 
@@ -352,6 +345,14 @@ void Config::GetMembersFromString(const std::unordered_map<std::string, std::str
   GetInt(params, "momentum_offset", &momentum_offset);
 
   GetInt(params, "momentum_schedule_version", &momentum_schedule_version);
+
+  GetBool(params, "linear_tree", &linear_tree);
+
+  GetString(params, "data", &data);
+
+  if (GetString(params, "valid", &tmp_str)) {
+    valid = Common::Split(tmp_str.c_str(), ',');
+  }
 
   GetBool(params, "force_col_wise", &force_col_wise);
 
@@ -661,9 +662,6 @@ void Config::GetMembersFromString(const std::unordered_map<std::string, std::str
 
 std::string Config::SaveMembersToString() const {
   std::stringstream str_buf;
-  str_buf << "[linear_tree: " << linear_tree << "]\n";
-  str_buf << "[data: " << data << "]\n";
-  str_buf << "[valid: " << Common::Join(valid, ",") << "]\n";
   str_buf << "[num_iterations: " << num_iterations << "]\n";
   str_buf << "[learning_rate: " << learning_rate << "]\n";
   str_buf << "[num_leaves: " << num_leaves << "]\n";
@@ -676,6 +674,9 @@ std::string Config::SaveMembersToString() const {
   str_buf << "[nesterov_acc_rate: " << nesterov_acc_rate << "]\n";
   str_buf << "[momentum_offset: " << momentum_offset << "]\n";
   str_buf << "[momentum_schedule_version: " << momentum_schedule_version << "]\n";
+  str_buf << "[linear_tree: " << linear_tree << "]\n";
+  str_buf << "[data: " << data << "]\n";
+  str_buf << "[valid: " << Common::Join(valid, ",") << "]\n";
   str_buf << "[force_col_wise: " << force_col_wise << "]\n";
   str_buf << "[force_row_wise: " << force_row_wise << "]\n";
   str_buf << "[histogram_pool_size: " << histogram_pool_size << "]\n";

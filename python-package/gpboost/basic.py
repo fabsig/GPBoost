@@ -365,6 +365,7 @@ class _ConfigAliases:
                                "nthreads",
                                "n_jobs"},
                "objective": {"objective",
+                             "likelihood",
                              "objective_type",
                              "app",
                              "application"},

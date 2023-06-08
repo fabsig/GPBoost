@@ -4,20 +4,32 @@
 Main parameters for GPBoost
 ===========================
 
-This page contains a summary of the most important parameters. We distinguish between the following two types of parameters:
-
-- (Tuning-) parameters for the tree-boosting part 
-- Model specification and optimization parameters for the Gaussian process and random effects part
-
-**Currently, the GPBoost library supports the following likelihoods**: ``gaussian``, ``bernoulli_probit`` (= ``binary``), ``bernoulli_logit``, ``poisson``, ``gamma``. This distribution of the data can be specified through the ``likelihood`` parameter for the random effects model and the ``objective`` paramter for the tree-boosting part.
-
 .. contents:: **Contents**
     :depth: 2
     :local:
     :backlinks: none
 
-Important tree-boosting parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Likelihood / response variable distribution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The likelihood, i.e., the distribution of the response variable (=label) conditional on fixed and random effects, is set through the ``likelihood`` parameter of the random effects / Gaussian process model (= 'GPModel' in R / Python) for both the GPBoost algorithm and (generalized) linear mixed effects and Gaussian process models. See the `likelihood <likelihood_>`__ documentation below for a list of currently supported likelihoods.
+
+Metrics for parameter tuning
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+It is important that tuning parameters (= hyperparameters) for the tree-boosting part are chosen appropriately. There are no universal good "default" values for different data sets. See `below for a list of important tuning parameters <tunepars_>`__. Selecting tuning parameters can be done conveniently via the ``gpb.grid.search.tune.parameters`` function in the Python and R packages. 
+
+The ``metric`` parameter (e.g., for the ``gpb.train``, ``gpboost``, and ``gpb.grid.search.tune.parameters`` functions in R and Python) specifies how prediction accuracy is measured on validation data. 
+
+-  For the GPBoost algorithm, i.e., if there is a gp_model, ``test_neg_log_likelihood`` is the default metric. 
+
+- Other supported metrics include: ``mse``, ``mae``,  ``binary_logloss``, ``binary_error``, and ``auc``. 
+
+- If another metric besides ``test_neg_log_likelihood`` is used for the GPBoost algorithm, it is calculated as follows. First, the predictive mean of the response variable is calculated. Second, the corresponding metric is evaluated using this predictive mean as point prediction. See `here <https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric>`_ for a list of all supported metrics. 
+
+
+.. _tunepars:
+
+Tuning parameters (= hyperparameters) for the tree-boosting part
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Below is a list of important parameters for the tree-boosting part. `A comprehensive list of all tree-bosting related parameters can be found here <https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst>`_.
 
@@ -39,13 +51,33 @@ Below is a list of important parameters for the tree-boosting part. `A comprehen
 
    -  ``<= 0`` means no limit
 
+-  ``num_leaves`` :raw-html:`<a id="num_leaves" title="Permalink to this parameter" href="#num_leaves">&#x1F517;&#xFE0E;</a>`, default = ``31``, type = int, aliases: ``num_leaf``, ``max_leaves`` ``max_leaf``, constraints: ``1 < num_leaves <= 131072``
+
+   -  maximal number of leaves of a tree
+
+- **Note on ``max_depth`` and ``num_leaves`` parameters**: The GPBoost library uses the LightGBM tree growing algorithm which grows trees using a leaf-wise strategy. I.e., trees are grown by first splitting leaf nodes that maximize the information gain until the maximal number of leaves ``num_leaves`` or the maximal depth of a tree ``max_depth`` is attained, even when this leads to unbalanced trees. This in contrast to a depth-wise growth strategy of other boosting implementations which builds "balanced" trees. For shallow trees (=small ``max_depth``), there is likely no difference between these two tree growing strategies. If you only want to tune the maximal depth of a tree ``max_depth`` parameter and not the ``num_leaves`` parameter, it is recommended that you set the ``num_leaves`` parameter to a large value
+
 -  ``min_data_in_leaf`` :raw-html:`<a id="min_data_in_leaf" title="Permalink to this parameter" href="#min_data_in_leaf">&#x1F517;&#xFE0E;</a>`, default = ``20``, type = int, aliases: ``min_data_per_leaf``, ``min_data``, ``min_child_samples``, constraints: ``min_data_in_leaf >= 0``
 
    -  minimal number of samples in a leaf
 
--  ``num_leaves`` :raw-html:`<a id="num_leaves" title="Permalink to this parameter" href="#num_leaves">&#x1F517;&#xFE0E;</a>`, default = ``31``, type = int, aliases: ``num_leaf``, ``max_leaves`` ``max_leaf``, constraints: ``1 < num_leaves <= 131072``
+-  ``lambda_l2`` :raw-html:`<a id="lambda_l2" title="Permalink to this parameter" href="#lambda_l2">&#x1F517;&#xFE0E;</a>`, default = ``0.0``, type = double, aliases: ``reg_lambda``, ``lambda``, constraints: ``lambda_l2 >= 0.0``
 
-   -  maximal number of leaves of a tree
+   -  L2 regularization
+
+-  ``lambda_l1`` :raw-html:`<a id="lambda_l1" title="Permalink to this parameter" href="#lambda_l1">&#x1F517;&#xFE0E;</a>`, default = ``0.0``, type = double, aliases: ``reg_alpha``, constraints: ``lambda_l1 >= 0.0``
+
+   -  L1 regularization
+
+-  ``max_bin`` :raw-html:`<a id="max_bin" title="Permalink to this parameter" href="#max_bin">&#x1F517;&#xFE0E;</a>`, default = ``255``, type = int, constraints: ``max_bin > 1``
+
+   -  Maximal number of bins that feature values will be bucketed in
+
+   -  GPBoost uses histogram-based algorithms `[1, 2, 3] <#references>`__, which bucket continuous feature (covariate) values into discrete bins. A small number speeds up training and reduces memory usage but may reduce the accuracy of the model
+
+-  ``min_gain_to_split`` :raw-html:`<a id="min_gain_to_split" title="Permalink to this parameter" href="#min_gain_to_split">&#x1F517;&#xFE0E;</a>`, default = ``0.0``, type = double, aliases: ``min_split_gain``, constraints: ``min_gain_to_split >= 0.0``
+
+   -  the minimal gain to perform a split
 
 -  ``train_gp_model_cov_pars`` :raw-html:`<a id="train_gp_model_cov_pars" title="Permalink to this parameter" href="#train_gp_model_cov_pars">&#x1F517;&#xFE0E;</a>`, default = ``true``, type = bool
 
@@ -61,43 +93,6 @@ Below is a list of important parameters for the tree-boosting part. `A comprehen
 
    -  applies only to the GPBoost algorithm for Gaussian data and cannot be used for non-Gaussian data
 
--  ``lambda_l1`` :raw-html:`<a id="lambda_l1" title="Permalink to this parameter" href="#lambda_l1">&#x1F517;&#xFE0E;</a>`, default = ``0.0``, type = double, aliases: ``reg_alpha``, constraints: ``lambda_l1 >= 0.0``
-
-   -  L1 regularization
-
--  ``lambda_l2`` :raw-html:`<a id="lambda_l2" title="Permalink to this parameter" href="#lambda_l2">&#x1F517;&#xFE0E;</a>`, default = ``0.0``, type = double, aliases: ``reg_lambda``, ``lambda``, constraints: ``lambda_l2 >= 0.0``
-
-   -  L2 regularization
-
--  ``max_bin`` :raw-html:`<a id="max_bin" title="Permalink to this parameter" href="#max_bin">&#x1F517;&#xFE0E;</a>`, default = ``255``, type = int, constraints: ``max_bin > 1``
-
-   -  maximal number of bins that feature values will be bucketed in
-
-   -  GPBoost uses histogram-based algorithms `[1, 2, 3] <#references>`__, which bucket continuous feature (covariate) values into discrete bins. A small number speeds up training and reduces memory usage but may reduce the accuracy of the model
-
--  ``min_gain_to_split`` :raw-html:`<a id="min_gain_to_split" title="Permalink to this parameter" href="#min_gain_to_split">&#x1F517;&#xFE0E;</a>`, default = ``0.0``, type = double, aliases: ``min_split_gain``, constraints: ``min_gain_to_split >= 0.0``
-
-   -  the minimal gain to perform split
-
--  ``objective`` :raw-html:`<a id="objective" title="Permalink to this parameter" href="#objective">&#x1F517;&#xFE0E;</a>`, default = ``regression_l2``, type = enum, options: ``regression_l2``, ``binary``, ``poisson``, ``gamma``, aliases: ``objective_type``, ``app``, ``application``
-
-   -  ``regression_l2``, Gaussian likelihood, aliases: ``regression``, ``l2``
-
-   -  ``binary``, Bernoulli likelihood with a logit link function
-
-   -  ``poisson``, Poisson likelihood with log link function
-
-   -  ``gamma``, Gamma likelihood with log link function
-
-   - When including random effects and Gaussian processes (i.e., a ``GPModel``), both the ``likelihood`` parameter of the ``GPModel`` and the ``objective`` parameter determine the likelihood. They should thus match. It is possible to provide only one of these two parameters, i.e., either ``objective`` or ``likelihood``. *It is, arguably, a potential disadvantage that two parameters determine the likelihood. But this is the case because both tree-boosting and (linear) random effects and GP models can also be used in stand-alone mode*
-
--  ``boosting`` :raw-html:`<a id="boosting" title="Permalink to this parameter" href="#boosting">&#x1F517;&#xFE0E;</a>`, default = ``gbdt``, type = enum, options: ``gbdt``, aliases: ``boosting_type``, ``boost``
-
-   -  ``gbdt``, traditional tree-boosting, aliases: ``gbrt``
-
-   - Only the option ``gbdt`` is currently supported when including random effects and Gaussian processes
-
-*Note on ``max_depth`` and ``num_leaves`` parameters*: GPBoost uses the LightGBM tree growing algorithm which grows trees using a leaf-wise strategy. I.e., trees are grown by splitting leaf nodes first that maximize the information gain until the maximal number of leaves ``num_leaves`` or the maximal depth of a tree ``max_depth`` is attained, even when this leads to unbalanced trees. This in contrast to a depth-wise growth strategy of other boosting implementations which builds more balanced trees. For shallow trees (=small ``max_depth``), there is likely no difference between these two tree growing strategies. If you only want to tune the maximal depth of a tree ``max_depth`` parameter and not the ``num_leaves`` parameter, it is recommended that you set the ``num_leaves`` parameter to a large value.
 
 ..
     Categorical features
@@ -122,11 +117,23 @@ used in the R and Python package. The C API works slightly different.
 Model specification parameters
 ------------------------------
 
+.. _likelihood:
+
 -  ``likelihood`` : string, (default = ``gaussian``)
 
-   -  Likelihood function of the response variable = distribution of the label variable
+   -  Likelihood function, i.e., conditional distribution of the response variable (=label)
 
-   -  Currently supported values: ``gaussian``, ``bernoulli_probit`` (= ``binary``), ``bernoulli_logit``, ``poisson``, ``gamma``
+   -  Currently supported likelihoods:
+
+      -  ``gaussian``: Gaussian likelihood
+
+      -  ``bernoulli_probit``: Bernoulli likelihood with a probit link function. Aliases: ``binary``, ``binary_probit``
+
+      -  ``bernoulli_probit``: Bernoulli likelihood with a logit link function. Aliases: ``binary``, ``binary_logit``
+
+      -  ``poisson``: Poisson likelihood with log link function
+
+      -  ``gamma``: Gamma likelihood with log link function
 
 -  ``group_data`` : two dimensional array / matrix of doubles or strings, optional (default = None)
 
@@ -142,7 +149,7 @@ Model specification parameters
 
 -  ``gp_coords`` : two dimensional array / matrix of doubles or None, optional (default = None)
 
-   -  Coordinates (features) for Gaussian process
+   -  Coordinates (input features) for Gaussian process
 
 -  ``gp_rand_coef_data`` : two dimensional array / matrix of doubles or None, optional (default = None)
 

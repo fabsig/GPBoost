@@ -44,7 +44,7 @@ data(GPBoost_data, package = "gpboost")
 gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
 bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-               objective = "regression_l2", verbose = 0)
+               verbose = 0)
 pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
                 predict_var= TRUE, pred_latent = TRUE)
 # Save model to file

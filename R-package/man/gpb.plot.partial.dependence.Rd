@@ -57,7 +57,6 @@ gpboost_model <- gpboost(data = X,
                          learning_rate = 0.05,
                          max_depth = 6,
                          min_data_in_leaf = 5,
-                         objective = "regression_l2",
                          verbose = 0)
 gpb.plot.partial.dependence(gpboost_model, X, variable = 1)
 }

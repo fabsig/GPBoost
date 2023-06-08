@@ -123,6 +123,12 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 		Booster(const Dataset* train_data,
 			const char* parameters,
 			REModel* re_model = nullptr) {
+			if (re_model == nullptr) {
+				config_.has_gp_model = false;
+			}
+			else {
+				config_.has_gp_model = true;
+			}
 			auto param = Config::Str2Map(parameters);
 			config_.Set(param);
 			if (config_.num_threads > 0) {
@@ -164,48 +170,48 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 		void CheckParamConflictREModel(REModel* re_model = nullptr) {
 			if (re_model != nullptr) {
 				if (config_.boosting != std::string("gbdt")) {
-					Log::Fatal("The GPBoost algorithm currently only supports the option 'boosting = \"gbdt\"'");
+					Log::Fatal("The GPBoost algorithm currently only supports the option 'boosting = \"gbdt\"' ");
 				}
 				if (config_.bagging_freq != 0.0) {
-					Log::Fatal("Bagging cannot be applied for the GPBoost algorithm. Set 'bagging_freq = 0'");
+					Log::Fatal("Bagging cannot be applied for the GPBoost algorithm. Set 'bagging_freq = 0' ");
 				}
 				if (train_data_->metadata().weights() != nullptr) {
-					Log::Fatal("Weighted data is currently not supported for the GPBoost algorithm.");
+					Log::Fatal("Weighted data is currently not supported for the GPBoost algorithm ");
 				}
 				if (config_.sigmoid != 1.0) {
-					Log::Fatal("The GPBoost algorithm currently does not support a sigmoid != 1.0.");
+					Log::Fatal("The GPBoost algorithm currently does not support a sigmoid != 1.0 ");
+				}
+				if (config_.objective != std::string("regression") && config_.objective != std::string("bernoulli_probit")
+					&& config_.objective != std::string("bernoulli_logit") && config_.objective != std::string("binary") 
+					&& config_.objective != std::string("poisson") && config_.objective != std::string("gamma")) {
+					Log::Fatal("GPBoost currently does not support 'objective = %s' ", config_.objective.c_str());
 				}
 				// Make sure that objective for boosting and likelihood for re_model match, otherwise change them accordingly
-				if (config_.objective == std::string("binary")) {
-					config_.objective = "regression";
-					if (re_model->GetLikelihood() != std::string("bernoulli_probit") && re_model->GetLikelihood() != std::string("bernoulli_logit")) {
-						Log::Warning("Objective for boosting and likelihood for the random effects model do not match. "
-							"It is assumed that the objective is correctly specified and that the data is binary. "
-							"The likelihood of the random effects model is set to 'bernoulli_probit'. "
-							"This can be problematic if the random effects model has been pre-trained.");
-						re_model->SetLikelihood("bernoulli_probit");
-					}
-				}
-				else if (config_.objective == std::string("poisson") || config_.objective == std::string("gamma")) {
-					if (re_model->GetLikelihood() != config_.objective) {
-						Log::Warning("Objective for boosting and likelihood for the random effects model do not match. "
-							"It is assumed that the objective is correctly specified and that the data is %s distributed. "
-							"The likelihood of the random effects model is set to '%s'. "
-							"This can be problematic if the random effects model has been pre-trained.", config_.objective.c_str(), config_.objective.c_str());
+				if (config_.objective_before_parse != std::string("NOT_SET")) {//objective has been set by a user
+					std::string obj_name = config_.objective_before_parse;
+					if (config_.objective != std::string("regression") && re_model->GetLikelihood() == std::string("gaussian")) {
+						Log::Warning("The 'objective' (='%s') for boosting and the 'likelihood' (='%s') for the GPModel do not match. "
+							"It is assumed that the 'objective' for boosting is correctly specified, "
+							"and the likelihood of the GPModel is changed accordingly. "
+							"This can be problematic if the GPModel has been pre-trained ",
+							obj_name.c_str(), re_model->GetLikelihood().c_str());
 						re_model->SetLikelihood(config_.objective);
 					}
-					config_.objective = "regression";
-				}
-				else if (config_.objective == std::string("regression")) {
-					if (re_model->GetLikelihood() != std::string("gaussian")) {
-						Log::Warning("Objective for boosting and likelihood for the random effects model do not match. "
-							"It is assumed that the likelihood (%s) is correcty specified and this is used.", re_model->GetLikelihood().c_str());
+					/*else if (config_.objective == std::string("regression") && re_model->GetLikelihood() != std::string("gaussian")) {//DELETE
+						Log::Warning("The 'objective' (='%s') for boosting and the 'likelihood' (='%s') for the GPModel do not match. "
+							"It is assumed that the likelihood of the GPModel is correctly specified ",
+							config_.objective_before_parse.c_str(), re_model->GetLikelihood().c_str());
+					}*/
+					else if (config_.objective != re_model->GetLikelihood()) {
+						if (!(config_.objective == std::string("regression") && re_model->GetLikelihood() == std::string("gaussian"))
+							&& !(config_.objective == std::string("binary") && (re_model->GetLikelihood() == std::string("bernoulli_probit") || re_model->GetLikelihood() == std::string("bernoulli_logit")))) {
+							Log::Fatal("The 'objective' (='%s') for boosting and the 'likelihood' (='%s') for the GPModel do not match ",
+								obj_name.c_str(), re_model->GetLikelihood().c_str());
+						}
 					}
 				}
-				else {
-					Log::Fatal("The GPBoost algorithm can currently not be used for objective = %s.", config_.objective.c_str());
-				}
-				// Check consistency of likelihood and metrics
+				config_.objective = "regression";
+				// Check consistency of likelihood and training data metrics
 				for (auto metric_type : config_.metric) {
 					if (metric_type == std::string("neg_log_likelihood") && re_model->GetLikelihood() != std::string("gaussian")) {
 						Log::Fatal("The metric '%s' can only be used for Gaussian data", metric_type.c_str());
@@ -219,11 +225,14 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 				for (auto metric_type : config_.metric) {
 					if (metric_type == std::string("neg_log_likelihood") ||
 						metric_type == std::string("approx_neg_marginal_log_likelihood")) {
-						Log::Fatal("The metric '%s' can only be used for the GPBoost algorithm", metric_type.c_str());
+						Log::Fatal("The metric '%s' is not supported for independent boosting without random effects ", metric_type.c_str());
 					}
 				}
 				if (config_.leaves_newton_update) {
-					Log::Fatal("leaves_newton_update can only be 'true' if Gaussian process boosting is done");
+					Log::Fatal("leaves_newton_update can only be 'true' if Gaussian process boosting is done ");
+				}
+				if (config_.objective == std::string("binary_probit")) {
+					Log::Fatal("The likelihood 'binary_probit' is not supported for independent boosting without random effects ");
 				}
 			}
 		}

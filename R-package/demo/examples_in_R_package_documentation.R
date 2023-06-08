@@ -111,13 +111,13 @@ gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
 # Train model
 bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-               objective = "regression_l2", verbose = 0)
+               verbose = 0)
 
 # Same thing using the gpb.train function
 dtrain <- gpb.Dataset(data = X, label = y)
 bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 16,
                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-                 objective = "regression_l2", verbose = 0)
+                 verbose = 0)
 # Estimated random effects model
 summary(gp_model)
 # Make predictions
@@ -142,12 +142,12 @@ gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
 # Train model
 bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 8,
                learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
-               objective = "regression_l2", verbose = 0)
+               verbose = 0)
 
 dtrain <- gpb.Dataset(data = X, label = y)
 bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 16,
                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-                 objective = "regression_l2", verbose = 0)
+                 verbose = 0)
 # Estimated random effects model
 summary(gp_model)
 # Make predictions
@@ -175,7 +175,7 @@ gp_model$set_prediction_data(group_data_pred = group_data[-train_ind,1])
 # Training with validation data and use_gp_model_for_validation = TRUE
 bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 100,
                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-                 objective = "regression_l2", verbose = 1, valids = valids,
+                 verbose = 1, valids = valids,
                  early_stopping_rounds = 10, use_gp_model_for_validation = TRUE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
              ", best test error: ", bst$best_score))
@@ -189,7 +189,7 @@ plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
 # Note: run the above examples first
 bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 100,
                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-                 objective = "regression_l2", verbose = 1, valids = valids,
+                 verbose = 1, valids = valids,
                  early_stopping_rounds = 5, use_gp_model_for_validation = FALSE,
                  leaves_newton_update = TRUE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
@@ -206,8 +206,7 @@ gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 dtrain <- gpb.Dataset(X, label = y)
 params <- list(learning_rate = 0.05,
                max_depth = 6,
-               min_data_in_leaf = 5,
-               objective = "regression_l2")
+               min_data_in_leaf = 5)
 # Stage 1: run cross-validation to (i) determine to optimal number of iterations
 #           and (ii) to estimate the GPModel on the out-of-sample data
 cvbst <- gpb.cv(params = params,
@@ -231,7 +230,6 @@ bst <- gpb.train(data = dtrain,
                  learning_rate = 0.05,
                  max_depth = 6,
                  min_data_in_leaf = 5,
-                 objective = "regression_l2",
                  verbose = 0,
                  train_gp_model_cov_pars = FALSE)
 # The GPModel has not changed:
@@ -242,13 +240,11 @@ summary(gp_model)
 # Create random effects model, dataset, and define parameter grif
 gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 dtrain <- gpb.Dataset(X, label = y)
-params <- list(objective = "regression_l2")
 param_grid = list("learning_rate" = c(0.1,0.01), "min_data_in_leaf" = c(20),
                   "max_depth" = c(5,10), "num_leaves" = 2^17, "max_bin" = c(255,1000))
 # Parameter tuning using cross-validation and deterministic grid search
 set.seed(1)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
-                                              params = params,
                                               num_try_random = NULL,
                                               nfold = 4,
                                               data = dtrain,
@@ -276,8 +272,7 @@ gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 dtrain <- gpb.Dataset(X, label = y)
 params <- list(learning_rate = 0.05,
                max_depth = 6,
-               min_data_in_leaf = 5,
-               objective = "regression_l2")
+               min_data_in_leaf = 5)
 # Run CV
 cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
                 nrounds = 100, nfold = 4, eval = "l2",
@@ -291,7 +286,7 @@ print(paste0("Optimal number of iterations: ", cvbst$best_iter,
 gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
 bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-               objective = "regression_l2", verbose = 0)
+               verbose = 0)
 pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
                 predict_var= TRUE, pred_latent = TRUE)
 # Save model to file

@@ -35,9 +35,11 @@
 #endif
 
 #include <LightGBM/utils/log.h>
-#include <LightGBM/utils/common.h>
 using LightGBM::Log;
 using LightGBM::LogLevelRE;
+#include <LightGBM/utils/common.h>
+#include <LightGBM/meta.h>
+using LightGBM::label_t;
 
 namespace GPBoost {
 
@@ -263,7 +265,7 @@ namespace GPBoost {
 				likelihood_strg = "gaussian";
 			}
 			else {
-				likelihood_strg = std::string(likelihood);
+				likelihood_strg = Likelihood<T_mat, T_chol>::ParseLikelihoodAlias(std::string(likelihood));
 			}
 			gauss_likelihood_ = likelihood_strg == "gaussian";
 			//Set up GP approximation
@@ -451,7 +453,7 @@ namespace GPBoost {
 			bool only_one_grouped_RE_calculations_on_RE_scale_before = only_one_grouped_RE_calculations_on_RE_scale_;
 			bool only_one_GP_calculations_on_RE_scale_before = only_one_GP_calculations_on_RE_scale_;
 			bool only_grouped_REs_use_woodbury_identity_before = only_grouped_REs_use_woodbury_identity_;
-			gauss_likelihood_ = likelihood == "gaussian";
+			gauss_likelihood_ = (Likelihood<T_mat, T_chol>::ParseLikelihoodAlias(likelihood) == "gaussian");
 			DetermineSpecialCasesModelsEstimationPrediction();
 			CheckCompatibilitySpecialOptions();
 			//Make adaptions in re_comps_ for special options when switching between Gaussian and non-Gaussian likelihoods
@@ -502,6 +504,20 @@ namespace GPBoost {
 			CheckPreconditionerType();
 			SetMatrixInversionPropertiesLikelihood();
 		}//end SetLikelihood
+
+		/*!
+		* \brief Calculate test negative log-likelihood using adaptive GH quadrature
+		* \param y_test Test response variable
+		* \param pred_mean Predictive mean of latent random effects
+		* \param pred_var Predictive variances of latent random effects
+		* \param num_data Number of data points
+		*/
+		double TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
+			const double* pred_mean,
+			const double* pred_var,
+			const data_size_t num_data) {
+			return(likelihood_[unique_clusters_[0]]->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data));
+		}
 
 		/*!
 		* \brief Set configuration parameters for the optimizer

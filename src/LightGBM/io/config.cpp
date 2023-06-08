@@ -78,27 +78,34 @@ void ParseMetrics(const std::string& value, std::vector<std::string>* out_metric
   }
 }
 
-void GetObjectiveType(const std::unordered_map<std::string, std::string>& params, std::string* objective) {
-  std::string value;
-  if (Config::GetString(params, "objective", &value)) {
-    std::transform(value.begin(), value.end(), value.begin(), Common::tolower);
-    *objective = ParseObjectiveAlias(value);
-  }
+void Config::GetObjectiveType(const std::unordered_map<std::string, std::string>& params, std::string* objective_out) {
+    std::string value;
+    if (Config::GetString(params, "objective", &value)) {
+        objective_before_parse = value;
+        std::transform(value.begin(), value.end(), value.begin(), Common::tolower);
+        *objective_out = ParseObjectiveAlias(value);
+    }
 }
 
-void GetMetricType(const std::unordered_map<std::string, std::string>& params, std::vector<std::string>* metric) {
-  std::string value;
-  if (Config::GetString(params, "metric", &value)) {
-    std::transform(value.begin(), value.end(), value.begin(), Common::tolower);
-    ParseMetrics(value, metric);
-  }
-  // add names of objective function if not providing metric
-  if (metric->empty() && value.size() == 0) {
-    if (Config::GetString(params, "objective", &value)) {
-      std::transform(value.begin(), value.end(), value.begin(), Common::tolower);
-      ParseMetrics(value, metric);
+void Config::GetMetricType(const std::unordered_map<std::string, std::string>& params, std::vector<std::string>* metric_out) const {
+    std::string value;
+    if (Config::GetString(params, "metric", &value)) {
+        std::transform(value.begin(), value.end(), value.begin(), Common::tolower);
+        ParseMetrics(value, metric_out);
     }
-  }
+    // add names of objective function if not providing metric
+    if (metric_out->empty() && value.size() == 0) {
+        if (has_gp_model) {
+            value = "test_neg_log_likelihood";
+            ParseMetrics(value, metric_out);
+        }
+        else {
+            if (Config::GetString(params, "objective", &value)) {
+                std::transform(value.begin(), value.end(), value.begin(), Common::tolower);
+                ParseMetrics(value, metric_out);
+            }
+        }
+    }
 }
 
 void GetTaskType(const std::unordered_map<std::string, std::string>& params, TaskType* task) {
@@ -209,6 +216,7 @@ void Config::Set(const std::unordered_map<std::string, std::string>& params) {
   GetBoostingType(params, &boosting);
   GetMetricType(params, &metric);
   GetObjectiveType(params, &objective);
+  objective = ParseObjectiveAlias(objective); // parse again in case it was not set by a user
   GetDeviceType(params, &device_type);
   if (device_type == std::string("cuda")) {
     LGBM_config_::current_device = lgbm_device_cuda;

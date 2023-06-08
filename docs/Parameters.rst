@@ -23,125 +23,25 @@ This page contains descriptions of all tree-boosting (i.e., not random effects) 
 Core Parameters
 ---------------
 
--  ``config`` :raw-html:`<a id="config" title="Permalink to this parameter" href="#config">&#x1F517;&#xFE0E;</a>`, default = ``""``, type = string, aliases: ``config_file``
+-  ``objective`` :raw-html:`<a id="objective" title="Permalink to this parameter" href="#objective">&#x1F517;&#xFE0E;</a>`, default = ``gaussian``, type = string, options: ``gaussian``, ``bernoulli_probit``, ``binary_logit``, ``poisson``, ``gamma``, aliases: ``likelihood``, ``objective_type``, ``app``, ``application``
 
-   -  path of config file
+   -  The distribution of the response variable (=label) conditional on fixed and random effects.
 
-   -  **Note**: can be used only in CLI version
+   -  This ``objective`` parameter only needs to be set when doing independent boosting without random effects / Gaussian processes.
 
--  ``task`` :raw-html:`<a id="task" title="Permalink to this parameter" href="#task">&#x1F517;&#xFE0E;</a>`, default = ``train``, type = enum, options: ``train``, ``predict``, ``convert_model``, ``refit``, aliases: ``task_type``
+   -  For the GPBoost / LaGaBoost algorithms, the likelihood is set through the ``likelihood`` parameter in the 'GPModel' (in Python / R)
 
-   -  ``train``, for training, aliases: ``training``
+   -  Currently, the GPBoost / LaGaBoost algorithms and (generalized) linear mixed effects and Gaussian process models are implemented for the following likelihoods
 
-   -  ``predict``, for prediction, aliases: ``prediction``, ``test``
+      -  ``gaussian``, Gaussian likelihood (= L2 loss for independent boosting), aliases: ``regression``, ``regression_l2``, ``l2``
 
-   -  ``convert_model``, for converting model file into if-else format, see more information in `Convert Parameters <#convert-parameters>`__
+      -  ``bernoulli_probit``, binary Bernoulli likelihood with a probit link function (only for the GPBoost algorithm, not supported for independent boosting), aliases: ``binary_probit``
 
-   -  ``refit``, for refitting existing models with new data, aliases: ``refit_tree``
+      -  ``bernoulli_logit``, binary Bernoulli likelihood with a logit link function, aliases: ``binary_logit``
 
-   -  **Note**: can be used only in CLI version; for language-specific packages you can use the correspondent functions
+      -  ``poisson``, Poisson likelihood with a log link function
 
--  ``objective`` :raw-html:`<a id="objective" title="Permalink to this parameter" href="#objective">&#x1F517;&#xFE0E;</a>`, default = ``regression``, type = enum, options: ``regression``, ``regression_l1``, ``huber``, ``fair``, ``poisson``, ``quantile``, ``mape``, ``gamma``, ``tweedie``, ``binary``, ``multiclass``, ``multiclassova``, ``cross_entropy``, ``cross_entropy_lambda``, ``lambdarank``, ``rank_xendcg``, aliases: ``objective_type``, ``app``, ``application``
-
-   -  regression application
-
-      -  ``regression``, L2 loss, aliases: ``regression_l2``, ``l2``, ``mean_squared_error``, ``mse``, ``l2_root``, ``root_mean_squared_error``, ``rmse``
-
-      -  ``regression_l1``, L1 loss, aliases: ``l1``, ``mean_absolute_error``, ``mae``
-
-      -  ``huber``, `Huber loss <https://en.wikipedia.org/wiki/Huber_loss>`__
-
-      -  ``fair``, `Fair loss <https://www.kaggle.com/c/allstate-claims-severity/discussion/24520>`__
-
-      -  ``poisson``, `Poisson regression <https://en.wikipedia.org/wiki/Poisson_regression>`__
-
-      -  ``quantile``, `Quantile regression <https://en.wikipedia.org/wiki/Quantile_regression>`__
-
-      -  ``mape``, `MAPE loss <https://en.wikipedia.org/wiki/Mean_absolute_percentage_error>`__, aliases: ``mean_absolute_percentage_error``
-
-      -  ``gamma``, Gamma regression with log-link. It might be useful, e.g., for modeling insurance claims severity, or for any target that might be `gamma-distributed <https://en.wikipedia.org/wiki/Gamma_distribution#Occurrence_and_applications>`__
-
-      -  ``tweedie``, Tweedie regression with log-link. It might be useful, e.g., for modeling total loss in insurance, or for any target that might be `tweedie-distributed <https://en.wikipedia.org/wiki/Tweedie_distribution#Occurrence_and_applications>`__
-
-      -  ``tobit``, `Grabit model of Sigrist and Hirnschall (2019) <https://www.sciencedirect.com/science/article/pii/S0378426619300573>`__
-
-   -  binary classification application
-
-      -  ``binary``, binary `log loss <https://en.wikipedia.org/wiki/Cross_entropy>`__ classification (or logistic regression)
-
-      -  requires labels in {0, 1}; see ``cross-entropy`` application for general probability labels in [0, 1]
-
-   -  multi-class classification application
-
-      -  ``multiclass``, `softmax <https://en.wikipedia.org/wiki/Softmax_function>`__ objective function, aliases: ``softmax``
-
-      -  ``multiclassova``, `One-vs-All <https://en.wikipedia.org/wiki/Multiclass_classification#One-vs.-rest>`__ binary objective function, aliases: ``multiclass_ova``, ``ova``, ``ovr``
-
-      -  ``num_class`` should be set as well
-
-   -  cross-entropy application
-
-      -  ``cross_entropy``, objective function for cross-entropy (with optional linear weights), aliases: ``xentropy``
-
-      -  ``cross_entropy_lambda``, alternative parameterization of cross-entropy, aliases: ``xentlambda``
-
-      -  label is anything in interval [0, 1]
-
-   -  ranking application
-
-      -  ``lambdarank``, `lambdarank <https://papers.nips.cc/paper/2971-learning-to-rank-with-nonsmooth-cost-functions.pdf>`__ objective. `label_gain <#label_gain>`__ can be used to set the gain (weight) of ``int`` label and all values in ``label`` must be smaller than number of elements in ``label_gain``
-
-      -  ``rank_xendcg``, `XE_NDCG_MART <https://arxiv.org/abs/1911.09798>`__ ranking objective function, aliases: ``xendcg``, ``xe_ndcg``, ``xe_ndcg_mart``, ``xendcg_mart``
-
-      -  ``rank_xendcg`` is faster than and achieves the similar performance as ``lambdarank``
-
-      -  label should be ``int`` type, and larger number represents the higher relevance (e.g. 0:bad, 1:fair, 2:good, 3:perfect)
-
--  ``boosting`` :raw-html:`<a id="boosting" title="Permalink to this parameter" href="#boosting">&#x1F517;&#xFE0E;</a>`, default = ``gbdt``, type = enum, options: ``gbdt``, ``rf``, ``dart``, ``goss``, aliases: ``boosting_type``, ``boost``
-
-   -  ``gbdt``, traditional Gradient Boosting Decision Tree, aliases: ``gbrt``
-
-   -  ``rf``, Random Forest, aliases: ``random_forest``
-
-   -  ``dart``, `Dropouts meet Multiple Additive Regression Trees <https://arxiv.org/abs/1505.01866>`__
-
-   -  ``goss``, Gradient-based One-Side Sampling
-
-      -  **Note**: internally, GPBoost uses ``gbdt`` mode for the first ``1 / learning_rate`` iterations
-
--  ``linear_tree`` :raw-html:`<a id="linear_tree" title="Permalink to this parameter" href="#linear_tree">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
-
-   -  fit piecewise linear gradient boosting tree
-
-      -  tree splits are chosen in the usual way, but the model at each leaf is linear instead of constant
-
-      -  the linear model at each leaf includes all the numerical features in that leaf's branch
-
-      -  categorical features are used for splits as normal but are not used in the linear models
-
-      -  missing values should not be encoded as ``0``. Use ``np.nan`` for Python, ``NA`` for the CLI, and ``NA``, ``NA_real_``, or ``NA_integer_`` for R
-
-      -  it is recommended to rescale data before training so that features have similar mean and standard deviation
-
-      -  **Note**: only works with CPU and ``serial`` tree learner
-
-      -  **Note**: ``regression_l1`` objective is not supported with linear tree boosting
-
-      -  **Note**: setting ``linear_tree=true`` significantly increases the memory use of GPBoost
-
--  ``data`` :raw-html:`<a id="data" title="Permalink to this parameter" href="#data">&#x1F517;&#xFE0E;</a>`, default = ``""``, type = string, aliases: ``train``, ``train_data``, ``train_data_file``, ``data_filename``
-
-   -  path of training data, GPBoost will train from this data
-
-   -  **Note**: can be used only in CLI version
-
--  ``valid`` :raw-html:`<a id="valid" title="Permalink to this parameter" href="#valid">&#x1F517;&#xFE0E;</a>`, default = ``""``, type = string, aliases: ``test``, ``valid_data``, ``valid_data_file``, ``test_data``, ``test_data_file``, ``valid_filenames``
-
-   -  path(s) of validation/test data, GPBoost will output metrics for these data
-
-   -  support multiple validation data, separated by ``,``
-
-   -  **Note**: can be used only in CLI version
+      -  ``gamma``, Gamma likelihood with a log link function
 
 -  ``num_iterations`` :raw-html:`<a id="num_iterations" title="Permalink to this parameter" href="#num_iterations">&#x1F517;&#xFE0E;</a>`, default = ``100``, type = int, aliases: ``num_iteration``, ``n_iter``, ``num_tree``, ``num_trees``, ``num_round``, ``num_rounds``, ``num_boost_round``, ``n_estimators``, constraints: ``num_iterations >= 0``
 
@@ -246,6 +146,64 @@ Core Parameters
 -  ``momentum_schedule_version`` :raw-html:`<a id="momentum_schedule_version" title="Permalink to this parameter" href="#momentum_schedule_version">&#x1F517;&#xFE0E;</a>`, default = ``1``, type = int
 
    -  version of the acceleration rate schedule (values = 0, 1, default = 1)
+
+-  ``linear_tree`` :raw-html:`<a id="linear_tree" title="Permalink to this parameter" href="#linear_tree">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
+
+   -  fit piecewise linear gradient boosting tree
+
+      -  tree splits are chosen in the usual way, but the model at each leaf is linear instead of constant
+
+      -  the linear model at each leaf includes all the numerical features in that leaf's branch
+
+      -  categorical features are used for splits as normal but are not used in the linear models
+
+      -  missing values should not be encoded as ``0``. Use ``np.nan`` for Python, ``NA`` for the CLI, and ``NA``, ``NA_real_``, or ``NA_integer_`` for R
+
+      -  it is recommended to rescale data before training so that features have similar mean and standard deviation
+
+      -  **Note**: only works with CPU and ``serial`` tree learner
+
+      -  **Note**: ``regression_l1`` objective is not supported with linear tree boosting
+
+      -  **Note**: setting ``linear_tree=true`` significantly increases the memory use of GPBoost
+
+-  ``data`` :raw-html:`<a id="data" title="Permalink to this parameter" href="#data">&#x1F517;&#xFE0E;</a>`, default = ``""``, type = string, aliases: ``train``, ``train_data``, ``train_data_file``, ``data_filename``
+
+   -  path of training data, GPBoost will train from this data
+
+   -  **Note**: can be used only in CLI version
+
+-  ``valid`` :raw-html:`<a id="valid" title="Permalink to this parameter" href="#valid">&#x1F517;&#xFE0E;</a>`, default = ``""``, type = string, aliases: ``test``, ``valid_data``, ``valid_data_file``, ``test_data``, ``test_data_file``, ``valid_filenames``
+
+   -  path(s) of validation/test data, GPBoost will output metrics for these data
+
+   -  support multiple validation data, separated by ``,``
+
+   -  **Note**: can be used only in CLI version
+
+-  ``config`` :raw-html:`<a id="config" title="Permalink to this parameter" href="#config">&#x1F517;&#xFE0E;</a>`, default = ``""``, type = string, aliases: ``config_file``
+
+   -  path of config file
+
+   -  **Note**: can be used only in CLI version
+
+-  ``task`` :raw-html:`<a id="task" title="Permalink to this parameter" href="#task">&#x1F517;&#xFE0E;</a>`, default = ``train``, type = enum, options: ``train``, ``predict``, ``convert_model``, ``refit``, aliases: ``task_type``
+
+   -  ``train``, for training, aliases: ``training``
+
+   -  ``predict``, for prediction, aliases: ``prediction``, ``test``
+
+   -  ``convert_model``, for converting model file into if-else format, see more information in `Convert Parameters <#convert-parameters>`__
+
+   -  ``refit``, for refitting existing models with new data, aliases: ``refit_tree``
+
+   -  **Note**: can be used only in CLI version; for language-specific packages you can use the correspondent functions
+
+-  ``boosting`` :raw-html:`<a id="boosting" title="Permalink to this parameter" href="#boosting">&#x1F517;&#xFE0E;</a>`, default = ``gbdt``, type = string, options: ``gbdt``, aliases: ``boosting_type``, ``boost``
+
+   -  ``gbdt``, traditional Gradient Boosting Decision Tree, aliases: ``gbrt``
+
+   -  Only the option ``gbdt`` is currently supported for the GPBoost algorithm
 
 Learning Control Parameters
 ---------------------------
@@ -434,7 +392,7 @@ Learning Control Parameters
 
 -  ``min_gain_to_split`` :raw-html:`<a id="min_gain_to_split" title="Permalink to this parameter" href="#min_gain_to_split">&#x1F517;&#xFE0E;</a>`, default = ``0.0``, type = double, aliases: ``min_split_gain``, constraints: ``min_gain_to_split >= 0.0``
 
-   -  the minimal gain to perform split
+   -  the minimal gain to perform a split
 
    -  can be used to speed up training
 
@@ -1068,11 +1026,15 @@ Metric Parameters
 
 -  ``metric`` :raw-html:`<a id="metric" title="Permalink to this parameter" href="#metric">&#x1F517;&#xFE0E;</a>`, default = ``""``, type = multi-enum, aliases: ``metrics``, ``metric_types``
 
-   -  metric(s) to be evaluated on the evaluation set(s)
+   -  Metric(s) used to measure prediction accuracy on validation data
 
-      -  ``""`` (empty string or not specified) means that metric corresponding to specified ``objective`` will be used (this is possible only for pre-defined objective functions, otherwise no evaluation metric will be added)
+   -  For the GPBoost algorithm, i.e., if there is a gp_model, ``test_neg_log_likelihood`` is the default metric. If another metric is used and there is a gp_model, the metric is calculated as follows. First, the predictive mean of the response variable is calculated. Second, the corresponding metric is evaluated using this predictive mean as point prediction
 
-      -  ``"None"`` (string, **not** a ``None`` value) means that no metric will be registered, aliases: ``na``, ``null``, ``custom``
+   -  Available options:
+
+      -  ``""`` (empty string or not specified) means that ``test_neg_log_likelihood`` is used if there is a gp_model or a metric corresponding to the ``objective`` is used if there is no gp_model (the latter is possible only for pre-defined objective functions, otherwise no evaluation metric will be added)
+
+      -  ``test_neg_log_likelihood``, (univariate) test negative log-likelihood, adaptive Gauss-Hermite quadrature is used to calculated this for non-Gaussian likelihoods
 
       -  ``l1``, absolute loss, aliases: ``mean_absolute_error``, ``mae``, ``regression_l1``
 
@@ -1090,7 +1052,7 @@ Metric Parameters
 
       -  ``poisson``, negative log-likelihood for `Poisson regression <https://en.wikipedia.org/wiki/Poisson_regression>`__
 
-      -  ``gamma``, negative log-likelihood for **Gamma** regression
+      -  ``gamma``, negative log-likelihood for **Gamma** regression with a shape parameter of one
 
       -  ``gamma_deviance``, residual deviance for **Gamma** regression
 
@@ -1120,7 +1082,7 @@ Metric Parameters
 
       -  ``kullback_leibler``, `Kullback-Leibler divergence <https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence>`__, aliases: ``kldiv``
 
-      -  ``gaussian_neg_log_likelihood``, (univariate) Gaussian negative log-likelihood, aliases: ``normal_neg_log_likelihood``, ``normal_nll``, ``gaussian_nll``
+      -  ``"None"`` (string, **not** a ``None`` value) means that no metric will be registered, aliases: ``na``, ``null``, ``custom``
 
    -  support multiple metrics, separated by ``,``
 

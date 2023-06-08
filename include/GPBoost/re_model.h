@@ -426,6 +426,18 @@ namespace GPBoost {
 		*/
 		void GetInitAuxPars(double* aux_pars) const;
 
+		/*!
+		* \brief Calculate test negative log-likelihood using adaptive GH quadrature
+		* \param y_test Test response variable
+		* \param pred_mean Predictive mean of latent random effects
+		* \param pred_var Predictive variances of latent random effects
+		* \param num_data Number of data points
+		*/
+		double TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
+			const double* pred_mean,
+			const double* pred_var,
+			const data_size_t num_data);
+
 	private:
 
 		string_t matrix_format_ = "den_mat_t";//den_mat_t, sp_mat_t, sp_mat_rm_t

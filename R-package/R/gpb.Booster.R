@@ -1242,7 +1242,7 @@ Booster <- R6::R6Class(
 #' # Train model
 #' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
 #'                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-#'                objective = "regression_l2", verbose = 0)
+#'                verbose = 0)
 #' # Estimated random effects model
 #' summary(gp_model)
 #' 
@@ -1268,7 +1268,7 @@ Booster <- R6::R6Class(
 #' # Train model
 #' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 8,
 #'                learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
-#'                objective = "regression_l2", verbose = 0)
+#'                verbose = 0)
 #' # Estimated random effects model
 #' summary(gp_model)
 #' # Make predictions
@@ -1363,7 +1363,7 @@ predict.gpb.Booster <- function(object,
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
 #' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
 #'                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-#'                objective = "regression_l2", verbose = 0)
+#'                verbose = 0)
 #' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
 #'                 predict_var= TRUE, pred_latent = TRUE)
 #' # Save model to file
@@ -1435,7 +1435,7 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
 #' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
 #'                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-#'                objective = "regression_l2", verbose = 0)
+#'                verbose = 0)
 #' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
 #'                 predict_var= TRUE, pred_latent = TRUE)
 #' # Save model to file

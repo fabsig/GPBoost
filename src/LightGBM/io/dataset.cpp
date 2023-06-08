@@ -836,13 +836,19 @@ bool Dataset::SetFloatField(const char* field_name, const float* field_data,
   if (name == std::string("label") || name == std::string("target")) {
 #ifdef LABEL_T_USE_DOUBLE
     Log::Fatal("Don't support LABEL_T_USE_DOUBLE");
+    if (field_data[0] == 0.) {//dummy code to avoid compiler warnings
+        return false;
+    }
+    else if (num_element == 0) {
+        return false;
+    }
 #else
     metadata_.SetLabel(field_data, num_element);
 #endif
   } else if (name == std::string("weight") || name == std::string("weights")) {
 #ifdef LABEL_T_USE_DOUBLE
     Log::Fatal("Don't support LABEL_T_USE_DOUBLE");
-#else
+#else  
     metadata_.SetWeights(field_data, num_element);
 #endif
   } else {
@@ -882,6 +888,12 @@ bool Dataset::GetFloatField(const char* field_name, data_size_t* out_len,
   if (name == std::string("label") || name == std::string("target")) {
 #ifdef LABEL_T_USE_DOUBLE
     Log::Fatal("Don't support LABEL_T_USE_DOUBLE");
+    if (*out_ptr[0] == 0.) {//dummy code to avoid compiler warnings
+        return false;
+    }
+    else if (out_len[0] == 0) {
+        return false;
+    }
 #else
     *out_ptr = metadata_.label();
     *out_len = num_data_;

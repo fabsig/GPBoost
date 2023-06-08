@@ -69,7 +69,6 @@ gpboost_model <- gpboost(data = X,
                         learning_rate = 0.05,
                         max_depth = 6,
                         min_data_in_leaf = 5,
-                        objective = "regression_l2",
                         verbose = 0)
 gpb.plot.part.dep.interact(gpboost_model, X, variables = c(1,2))
 }

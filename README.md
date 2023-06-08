@@ -23,7 +23,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 * The companion articles [**Sigrist (2022, JMLR)**](https://www.jmlr.org/papers/v23/20-322.html) and [**Sigrist (2023, TPAMI)**](https://ieeexplore.ieee.org/document/9759834) for background on the methodology
 * Detailed [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst): the most important parameters / settings for the GPBoost library
-* [Detailed tree-boosting parameters](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst): a comprehensive list of all tree-boosting (i.e., not random effects) related parameters
+<!-- * [Detailed tree-boosting parameters](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst): a comprehensive list of all tree-boosting (i.e., not random effects) related parameters -->
 * These blog posts on how to 
    * [Combine tree-boosting with grouped random effects models](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) 
    * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)

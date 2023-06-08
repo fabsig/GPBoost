@@ -64,8 +64,7 @@ CVBooster <- R6::R6Class(
 #' dtrain <- gpb.Dataset(X, label = y)
 #' params <- list(learning_rate = 0.05,
 #'                max_depth = 6,
-#'                min_data_in_leaf = 5,
-#'                objective = "regression_l2")
+#'                min_data_in_leaf = 5)
 #' # Run CV
 #' cvbst <- gpb.cv(params = params,
 #'                 data = dtrain,
@@ -517,10 +516,11 @@ gpb.cv <- function(params = list()
           }
           
         }
+        
         booster <- Booster$new(params = params, train_set = dtrain, gp_model = gp_model_train)
         gp_model$set_likelihood(gp_model_train$get_likelihood_name()) ## potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
         gp_model_train$set_optim_params(params = gp_model$get_optim_params())
-        
+
       } else {
         booster <- Booster$new(params = params, train_set = dtrain)
       }
@@ -674,7 +674,13 @@ generate.cv.folds <- function(nfold, nrows, stratified, label, group, params) {
     rnd_idx <- sample.int(nrows)
     
     # Request stratified folds
-    if (isTRUE(stratified) && params$objective %in% c("binary", "multiclass") && length(label) == length(rnd_idx)) {
+    stratified_folds <- FALSE
+    if (!is.null(params$objective)) {
+      if (isTRUE(stratified) && params$objective %in% c("binary", "multiclass") && length(label) == length(rnd_idx)) {
+        stratified_folds <- TRUE
+      }
+    }
+    if (stratified_folds) {
       
       y <- label[rnd_idx]
       y <- as.factor(y)
@@ -922,7 +928,7 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #'                   "min_data_in_leaf" = c(10,100,1000),
 #'                   "max_depth" = c(1,2,3,5,10),
 #'                   "lambda_l2" = c(0,1,10))
-#' other_params <- list(objective = "regression_l2", num_leaves = 2^10)
+#' other_params <- list(num_leaves = 2^10)
 #' # Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
 #' #       An alternative strategy is to impose no limit on 'max_depth', 
 #' #       and try different values for 'num_leaves' as follows:
@@ -930,7 +936,7 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #' #                   "min_data_in_leaf" = c(10,100,1000),
 #' #                   "num_leaves" = 2^(1:10),
 #' #                   "lambda_l2" = c(0,1,10))
-#' # other_params <- list(objective = "regression_l2", max_depth = -1)
+#' # other_params <- list(max_depth = -1)
 #' set.seed(1)
 #' opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
 #'                                               num_try_random = NULL, nfold = 4,

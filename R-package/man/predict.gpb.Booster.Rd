@@ -146,7 +146,7 @@ gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
 # Train model
 bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-               objective = "regression_l2", verbose = 0)
+               verbose = 0)
 # Estimated random effects model
 summary(gp_model)
 
@@ -172,7 +172,7 @@ gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
 # Train model
 bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 8,
                learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
-               objective = "regression_l2", verbose = 0)
+               verbose = 0)
 # Estimated random effects model
 summary(gp_model)
 # Make predictions

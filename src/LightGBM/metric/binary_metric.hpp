@@ -105,7 +105,7 @@ namespace LightGBM {
 								true, nullptr, -1, -1., -1, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated training score (= F_t)
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
-							//	We thus dont provide this here (see the above nullptr). This also implies
+							//	We thus don't provide this here (see the above nullptr). This also implies
 							//	that the Laplace approximation (in particular the mode) is note calculated again
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
 							for (data_size_t i = 0; i < num_data_; ++i) {
