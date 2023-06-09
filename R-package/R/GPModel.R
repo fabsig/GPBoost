@@ -2518,17 +2518,17 @@ loadGPModel <- function(filename){
 #' @export 
 #' 
 set_prediction_data <- function(gp_model,
+                                vecchia_pred_type = NULL,
+                                num_neighbors_pred = NULL,
+                                cg_delta_conv_pred = NULL,
+                                nsim_var_pred = NULL,
+                                rank_pred_approx_matrix_lanczos = NULL,
                                 group_data_pred = NULL,
                                 group_rand_coef_data_pred = NULL,
                                 gp_coords_pred = NULL,
                                 gp_rand_coef_data_pred = NULL,
                                 cluster_ids_pred = NULL,
-                                X_pred = NULL,
-                                vecchia_pred_type = NULL,
-                                num_neighbors_pred = NULL,
-                                cg_delta_conv_pred = 1e-3,
-                                nsim_var_pred = 1000,
-                                rank_pred_approx_matrix_lanczos = 1000) UseMethod("set_prediction_data")
+                                X_pred = NULL) UseMethod("set_prediction_data")
 
 #' Set prediction data for a \code{GPModel}
 #' 

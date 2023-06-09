@@ -4,34 +4,15 @@
 \alias{set_prediction_data}
 \title{Generic 'set_prediction_data' method for a \code{GPModel}}
 \usage{
-set_prediction_data(gp_model, group_data_pred = NULL,
-  group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
-  gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL,
-  vecchia_pred_type = NULL, num_neighbors_pred = NULL,
-  cg_delta_conv_pred = 0.001, nsim_var_pred = 1000,
-  rank_pred_approx_matrix_lanczos = 1000)
+set_prediction_data(gp_model, vecchia_pred_type = NULL,
+  num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
+  nsim_var_pred = NULL, rank_pred_approx_matrix_lanczos = NULL,
+  group_data_pred = NULL, group_rand_coef_data_pred = NULL,
+  gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
+  cluster_ids_pred = NULL, X_pred = NULL)
 }
 \arguments{
 \item{gp_model}{A \code{GPModel}}
-
-\item{group_data_pred}{A \code{vector} or \code{matrix} with elements being group levels 
-for which predictions are made (if there are grouped random effects in the \code{GPModel})}
-
-\item{group_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data 
-for grouped random coefficients (if there are some in the \code{GPModel})}
-
-\item{gp_coords_pred}{A \code{matrix} with prediction coordinates (=features) for 
-Gaussian process (if there is a GP in the \code{GPModel})}
-
-\item{gp_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for 
-Gaussian process random coefficients (if there are some in the \code{GPModel})}
-
-\item{cluster_ids_pred}{A \code{vector} with elements indicating the realizations of 
-random effects / Gaussian processes for which predictions are made 
-(set to NULL if you have not specified this when creating the \code{GPModel})}
-
-\item{X_pred}{A \code{matrix} with prediction covariate data for the 
-fixed effects linear regression term (if there is one in the \code{GPModel})}
 
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
 Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
@@ -63,6 +44,25 @@ Default value if NULL: 1000}
 \item{rank_pred_approx_matrix_lanczos}{an \code{integer} specifying the rank 
 of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
 Default value if NULL: 1000}
+
+\item{group_data_pred}{A \code{vector} or \code{matrix} with elements being group levels 
+for which predictions are made (if there are grouped random effects in the \code{GPModel})}
+
+\item{group_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data 
+for grouped random coefficients (if there are some in the \code{GPModel})}
+
+\item{gp_coords_pred}{A \code{matrix} with prediction coordinates (=features) for 
+Gaussian process (if there is a GP in the \code{GPModel})}
+
+\item{gp_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for 
+Gaussian process random coefficients (if there are some in the \code{GPModel})}
+
+\item{cluster_ids_pred}{A \code{vector} with elements indicating the realizations of 
+random effects / Gaussian processes for which predictions are made 
+(set to NULL if you have not specified this when creating the \code{GPModel})}
+
+\item{X_pred}{A \code{matrix} with prediction covariate data for the 
+fixed effects linear regression term (if there is one in the \code{GPModel})}
 }
 \description{
 Generic 'set_prediction_data' method for a \code{GPModel}
