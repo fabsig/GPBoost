@@ -183,6 +183,7 @@ Estimates the parameters of a \code{GPModel} using maximum likelihood estimation
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
+\donttest{
 data(GPBoost_data, package = "gpboost")
 # Add intercept column
 X1 <- cbind(rep(1,dim(X)[1]),X)
@@ -203,15 +204,12 @@ pred <- predict(gp_model, group_data_pred = group_data_test[,1],
 pred$mu # Predicted mean
 pred$cov # Predicted covariance
 
-
-\donttest{
 #--------------------Two crossed random effects and a random slope----------------
 gp_model <- fitGPModel(group_data = group_data, likelihood="gaussian",
                        group_rand_coef_data = X[,2],
                        ind_effect_group_rand_coef = 1,
                        y = y, X = X1, params = list(std_dev = TRUE))
 summary(gp_model)
-
 
 #--------------------Gaussian process model----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -223,20 +221,17 @@ pred <- predict(gp_model, gp_coords_pred = coords_test,
 pred$mu # Predicted (posterior) mean of GP
 pred$cov # Predicted (posterior) covariance matrix of GP
 
-
 #--------------------Gaussian process model with Vecchia approximation----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        gp_approx = "vecchia", num_neighbors = 20,
                        likelihood="gaussian", y = y)
 summary(gp_model)
 
-
 #--------------------Gaussian process model with random coefficients----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        gp_rand_coef_data = X[,2], y=y,
                        likelihood = "gaussian", params = list(std_dev = TRUE))
 summary(gp_model)
-
 
 #--------------------Combine Gaussian process with grouped random effects----------------
 gp_model <- fitGPModel(group_data = group_data,

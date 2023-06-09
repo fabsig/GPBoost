@@ -29,6 +29,7 @@ For regression, binary classification and lambdarank model, a \code{list} of \co
 Computes feature contribution components of rawscore prediction.
 }
 \examples{
+\donttest{
 Logit <- function(x) log(x / (1.0 - x))
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -51,4 +52,5 @@ model <- gpb.train(
 )
 
 tree_interpretation <- gpb.interprete(model, test$data, 1L:5L)
+}
 }

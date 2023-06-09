@@ -13,6 +13,7 @@
 #' }
 #'
 #' @examples
+#' \donttest{
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
 #' dtrain <- gpb.Dataset(train$data, label = train$label)
@@ -32,6 +33,7 @@
 #'
 #' tree_imp1 <- gpb.importance(model, percentage = TRUE)
 #' tree_imp2 <- gpb.importance(model, percentage = FALSE)
+#' }
 #' @importFrom data.table := setnames setorderv
 #' @export
 gpb.importance <- function(model, percentage = TRUE) {

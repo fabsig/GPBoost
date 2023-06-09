@@ -59,6 +59,7 @@ with z-coordinates. This is only returned if \code{return_plot_data==TRUE}
 Plot interaction partial dependence plots
 }
 \examples{
+\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
@@ -71,6 +72,7 @@ gpboost_model <- gpboost(data = X,
                         min_data_in_leaf = 5,
                         verbose = 0)
 gpb.plot.part.dep.interact(gpboost_model, X, variables = c(1,2))
+}
 }
 \author{
 Fabio Sigrist

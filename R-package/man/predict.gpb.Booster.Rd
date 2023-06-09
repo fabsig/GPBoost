@@ -121,6 +121,7 @@ Prediction function for \code{gpb.Booster} objects
 
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
+\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -157,7 +158,6 @@ pred_resp$response_mean # Predicted response mean
 # For Gaussian data: pred$random_effect_mean + pred$fixed_effect = pred_resp$response_mean
 pred$random_effect_mean + pred$fixed_effect - pred_resp$response_mean
 
-\donttest{
 #--------------------Combine tree-boosting and Gaussian process model----------------
 # Create Gaussian process model
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",

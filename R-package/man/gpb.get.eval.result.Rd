@@ -27,6 +27,7 @@ Given a \code{gpb.Booster}, return evaluation results for a
              particular metric on a particular dataset.
 }
 \examples{
+\donttest{
 # train a regression model
 data(agaricus.train, package = "gpboost")
 train <- agaricus.train
@@ -53,4 +54,5 @@ print(names(model$record_evals[["test"]]))
 
 # Get L2 values for "test" dataset
 gpb.get.eval.result(model, "test", "l2")
+}
 }
