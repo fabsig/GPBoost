@@ -31,6 +31,7 @@ def train(params, train_set, num_boost_round=100,
     ----------
     params : dict
         Parameters for training.
+        See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
     num_boost_round : int, optional (default=100)
@@ -51,7 +52,8 @@ def train(params, train_set, num_boost_round=100,
     valid_names : list of strings or None, optional (default=None)
         Names of ``valid_sets``.
     fobj : callable or None, optional (default=None)
-        Customized objective function.
+        Customized objective function. Only for independent boosting.
+        The GPBoost algorithm currently does not support this.
         Should accept two parameters: preds, train_data,
         and return (grad, hess).
 
@@ -532,6 +534,7 @@ def cv(params, train_set, num_boost_round=100,
     ----------
     params : dict
         Parameters for Booster.
+        See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
     num_boost_round : int, optional (default=100)
@@ -567,7 +570,8 @@ def cv(params, train_set, num_boost_round=100,
         Evaluation metric to be monitored when doing CV.
         If not None, the metric in ``params`` will be overridden.
     fobj : callable or None, optional (default=None)
-        Customized objective function.
+        Customized objective function. Only for independent boosting.
+        The GPBoost algorithm currently does not support this.
         Should accept two parameters: preds, train_data,
         and return (grad, hess).
 
@@ -855,6 +859,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     ----------
     param_grid : dict
         Candidate parameters defining the grid over which a search is done.
+        See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
     params : dict, optional (default=None)
@@ -891,7 +896,8 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         If more than one metric is provided, only the first metric will be used to choose tuning parameters.
         If not None, the metric in ``params`` will be overridden.
     fobj : callable or None, optional (default=None)
-        Customized objective function.
+        Customized objective function. Only for independent boosting.
+        The GPBoost algorithm currently does not support this.
         Should accept two parameters: preds, train_data,
         and return (grad, hess).
 

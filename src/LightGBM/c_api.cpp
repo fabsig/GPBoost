@@ -197,11 +197,6 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 							obj_name.c_str(), re_model->GetLikelihood().c_str());
 						re_model->SetLikelihood(config_.objective);
 					}
-					/*else if (config_.objective == std::string("regression") && re_model->GetLikelihood() != std::string("gaussian")) {//DELETE
-						Log::Warning("The 'objective' (='%s') for boosting and the 'likelihood' (='%s') for the GPModel do not match. "
-							"It is assumed that the likelihood of the GPModel is correctly specified ",
-							config_.objective_before_parse.c_str(), re_model->GetLikelihood().c_str());
-					}*/
 					else if (config_.objective != re_model->GetLikelihood()) {
 						if (!(config_.objective == std::string("regression") && re_model->GetLikelihood() == std::string("gaussian"))
 							&& !(config_.objective == std::string("binary") && (re_model->GetLikelihood() == std::string("bernoulli_probit") || re_model->GetLikelihood() == std::string("bernoulli_logit")))) {
