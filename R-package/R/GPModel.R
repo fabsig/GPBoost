@@ -62,7 +62,11 @@
 #' of the Wendland covariance function and Wendland correlation taper function. 
 #' We follow the notation of Bevilacqua et al. (2019, AOS)
 #' @param num_neighbors An \code{integer} specifying the number of neighbors for 
-#' the Vecchia approximation
+#' the Vecchia approximation. Note: for prediction, the number of neighbors can 
+#' be set through the 'num_neighbors_pred' parameter in the 'set_prediction_data'
+#' function. By default, num_neighbors_pred = 2 * num_neighbors. Further, 
+#' the type of Vecchia approximation used for making predictions is set through  
+#' the 'vecchia_pred_type' parameter in the 'set_prediction_data' function
 #' @param vecchia_ordering A \code{string} specifying the ordering used in 
 #' the Vecchia approximation. Available options:
 #' #' \itemize{
@@ -1986,6 +1990,10 @@ gpb.GPModel <- R6::R6Class(
 #' Create a \code{GPModel} which contains a Gaussian process and / or mixed effects model with grouped random effects
 #'
 #' @inheritParams GPModel_shared_params 
+#' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for making predictions.
+#' This is discontinued here. Use the function 'set_prediction_data' to specify this
+#' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions.
+#' This is discontinued here. Use the function 'set_prediction_data' to specify this
 #'
 #' @return A \code{GPModel} containing ontains a Gaussian process and / or mixed effects model with grouped random effects
 #'
@@ -2026,29 +2034,33 @@ GPModel <- function(likelihood = "gaussian",
                     seed = 0L,
                     cluster_ids = NULL,
                     free_raw_data = FALSE,
-                    vecchia_approx = NULL) {
+                    vecchia_approx = NULL,
+                    vecchia_pred_type = NULL,
+                    num_neighbors_pred = NULL) {
   
   # Create new GPModel
-  invisible(gpb.GPModel$new(likelihood = likelihood,
-                            group_data = group_data,
-                            group_rand_coef_data = group_rand_coef_data,
-                            ind_effect_group_rand_coef = ind_effect_group_rand_coef,
-                            drop_intercept_group_rand_effect = drop_intercept_group_rand_effect,
-                            gp_coords = gp_coords,
-                            gp_rand_coef_data = gp_rand_coef_data,
-                            cov_function = cov_function,
-                            cov_fct_shape = cov_fct_shape,
-                            gp_approx = gp_approx,
-                            cov_fct_taper_range = cov_fct_taper_range,
-                            cov_fct_taper_shape = cov_fct_taper_shape,
-                            num_neighbors = num_neighbors,
-                            vecchia_ordering = vecchia_ordering,
-                            num_ind_points = num_ind_points,
-                            matrix_inversion_method = matrix_inversion_method,
-                            seed = seed,
-                            cluster_ids = cluster_ids,
-                            free_raw_data = free_raw_data,
-                            vecchia_approx = vecchia_approx))
+  invisible(gpb.GPModel$new(likelihood = likelihood
+                            , group_data = group_data
+                            , group_rand_coef_data = group_rand_coef_data
+                            , ind_effect_group_rand_coef = ind_effect_group_rand_coef
+                            , drop_intercept_group_rand_effect = drop_intercept_group_rand_effect
+                            , gp_coords = gp_coords
+                            , gp_rand_coef_data = gp_rand_coef_data
+                            , cov_function = cov_function
+                            , cov_fct_shape = cov_fct_shape
+                            , gp_approx = gp_approx
+                            , cov_fct_taper_range = cov_fct_taper_range
+                            , cov_fct_taper_shape = cov_fct_taper_shape
+                            , num_neighbors = num_neighbors
+                            , vecchia_ordering = vecchia_ordering
+                            , num_ind_points = num_ind_points
+                            , matrix_inversion_method = matrix_inversion_method
+                            , seed = seed
+                            , cluster_ids = cluster_ids
+                            , free_raw_data = free_raw_data
+                            , vecchia_approx = vecchia_approx
+                            , vecchia_pred_type = vecchia_pred_type
+                            , num_neighbors_pred = num_neighbors_pred))
   
 }
 
@@ -2131,6 +2143,10 @@ fit.GPModel <- function(gp_model,
 #' Estimates the parameters of a \code{GPModel} using maximum likelihood estimation
 #'
 #' @inheritParams GPModel_shared_params 
+#' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for making predictions.
+#' This is discontinued here. Use the function 'set_prediction_data' to specify this
+#' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions.
+#' This is discontinued here. Use the function 'set_prediction_data' to specify this
 #'
 #' @return A fitted \code{GPModel}
 #'
@@ -2219,28 +2235,32 @@ fitGPModel <- function(likelihood = "gaussian",
                        y,
                        X = NULL,
                        params = list(),
-                       vecchia_approx = NULL) {
+                       vecchia_approx = NULL,
+                       vecchia_pred_type = NULL,
+                       num_neighbors_pred = NULL) {
   #Create model
-  gpmodel <- gpb.GPModel$new(likelihood = likelihood,
-                             group_data = group_data,
-                             group_rand_coef_data = group_rand_coef_data,
-                             ind_effect_group_rand_coef = ind_effect_group_rand_coef,
-                             drop_intercept_group_rand_effect = drop_intercept_group_rand_effect,
-                             gp_coords = gp_coords,
-                             gp_rand_coef_data = gp_rand_coef_data,
-                             cov_function = cov_function,
-                             cov_fct_shape = cov_fct_shape,
-                             gp_approx = gp_approx,
-                             cov_fct_taper_range = cov_fct_taper_range,
-                             cov_fct_taper_shape = cov_fct_taper_shape,
-                             num_neighbors = num_neighbors,
-                             vecchia_ordering = vecchia_ordering,
-                             num_ind_points = num_ind_points,
-                             matrix_inversion_method = matrix_inversion_method,
-                             seed = seed,
-                             cluster_ids = cluster_ids,
-                             free_raw_data = free_raw_data,
-                             vecchia_approx = vecchia_approx)
+  gpmodel <- gpb.GPModel$new(likelihood = likelihood
+                             , group_data = group_data
+                             , group_rand_coef_data = group_rand_coef_data
+                             , ind_effect_group_rand_coef = ind_effect_group_rand_coef
+                             , drop_intercept_group_rand_effect = drop_intercept_group_rand_effect
+                             , gp_coords = gp_coords
+                             , gp_rand_coef_data = gp_rand_coef_data
+                             , cov_function = cov_function
+                             , cov_fct_shape = cov_fct_shape
+                             , gp_approx = gp_approx
+                             , cov_fct_taper_range = cov_fct_taper_range
+                             , cov_fct_taper_shape = cov_fct_taper_shape
+                             , num_neighbors = num_neighbors
+                             , vecchia_ordering = vecchia_ordering
+                             , num_ind_points = num_ind_points
+                             , matrix_inversion_method = matrix_inversion_method
+                             , seed = seed
+                             , cluster_ids = cluster_ids
+                             , free_raw_data = free_raw_data
+                             , vecchia_approx = vecchia_approx
+                             , vecchia_pred_type = vecchia_pred_type
+                             , num_neighbors_pred = num_neighbors_pred)
   # Fit model
   gpmodel$fit(y = y,
               X = X,
@@ -2312,6 +2332,10 @@ summary.GPModel <- function(object, ...){
 #' Used only for non-Gaussian data. For Gaussian data, this is ignored
 #' @param ... (not used, ignore this, simply here that there is no CRAN warning)
 #' @inheritParams GPModel_shared_params 
+#' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for making predictions.
+#' This is discontinued here. Use the function 'set_prediction_data' to specify this
+#' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions.
+#' This is discontinued here. Use the function 'set_prediction_data' to specify this
 #'
 #' @return Predictions from a \code{GPModel}. A list with three entries is returned:
 #' \itemize{

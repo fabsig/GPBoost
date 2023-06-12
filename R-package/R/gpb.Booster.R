@@ -1169,6 +1169,10 @@ Booster <- R6::R6Class(
 #' @title Prediction function for \code{gpb.Booster} objects
 #' @description Prediction function for \code{gpb.Booster} objects
 #' @inheritParams GPModel_shared_params
+#' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for making predictions.
+#' This is discontinued here. Use the function 'set_prediction_data' to specify this
+#' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions.
+#' This is discontinued here. Use the function 'set_prediction_data' to specify this
 #' @param object Object of class \code{gpb.Booster}
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
 #' @param start_iteration int or NULL, optional (default=NULL)

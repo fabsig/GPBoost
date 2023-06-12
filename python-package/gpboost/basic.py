@@ -3451,9 +3451,11 @@ class Booster:
         raw_score : bool or None, discontinued (default=None)
             This is discontinued. Use the renamed equivalent argument 'pred_latent' instead
         vecchia_pred_type : string, optional (default=None)
-                This is discontinued. Use the function 'set_prediction_data' to specify this
+            The type of Vecchia approximation used for making predictions.
+            This is discontinued here. Use the function 'set_prediction_data' to specify this
         num_neighbors_pred : integer or None, optional (default=None)
-            This is discontinued. Use the function 'set_prediction_data' to specify this
+            The number of neighbors for making predictions.
+            This is discontinued here. Use the function 'set_prediction_data' to specify this
         **kwargs
             Other parameters for the prediction.
 
@@ -4119,7 +4121,10 @@ class GPModel(object):
                 Shape (=smoothness) parameter of the Wendland covariance function and Wendland correlation taper function.
                 We follow the notation of Bevilacqua et al. (2019, AOS)
             num_neighbors : integer, optional (default=20)
-                Number of neighbors for the Vecchia approximation
+                Number of neighbors for the Vecchia approximation. Note: for prediction, the number of neighbors can
+                be set through the 'num_neighbors_pred' parameter in the 'set_prediction_data' function. By default,
+                num_neighbors_pred = 2 * num_neighbors. Further, the type of Vecchia approximation used for making
+                predictions is set through the 'vecchia_pred_type' parameter in the 'set_prediction_data' function
             vecchia_ordering : string, optional (default="random")
                 Ordering used in the Vecchia approximation. Available options:
 
@@ -4156,9 +4161,11 @@ class GPModel(object):
             vecchia_approx : bool or None, discontinued (default=None)
                 This is discontinued. Use gp_approx = "none" instead
             vecchia_pred_type : string, optional (default=None)
-                This is discontinued. Use the function 'set_prediction_data' to specify this
+                The type of Vecchia approximation used for making predictions.
+                This is discontinued here. Use the function 'set_prediction_data' to specify this
             num_neighbors_pred : integer or None, optional (default=None)
-                This is discontinued. Use the function 'set_prediction_data' to specify this
+                The number of neighbors for making predictions.
+                This is discontinued here. Use the function 'set_prediction_data' to specify this
 
         Example
         -------
@@ -5169,9 +5176,11 @@ class GPModel(object):
                 The length of this vector needs to equal the number of prediction points.
                 Used only for non-Gaussian data. For Gaussian data, this is ignored
             vecchia_pred_type : string, optional (default=None)
-                This is discontinued. Use the function 'set_prediction_data' to specify this
+                The type of Vecchia approximation used for making predictions.
+                This is discontinued here. Use the function 'set_prediction_data' to specify this
             num_neighbors_pred : integer or None, optional (default=None)
-                This is discontinued. Use the function 'set_prediction_data' to specify this
+                The number of neighbors for making predictions.
+                This is discontinued here. Use the function 'set_prediction_data' to specify this
 
         Returns
         -------

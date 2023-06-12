@@ -73,7 +73,11 @@ of the Wendland covariance function and Wendland correlation taper function.
 We follow the notation of Bevilacqua et al. (2019, AOS)}
 
 \item{num_neighbors}{An \code{integer} specifying the number of neighbors for 
-the Vecchia approximation}
+the Vecchia approximation. Note: for prediction, the number of neighbors can 
+be set through the 'num_neighbors_pred' parameter in the 'set_prediction_data'
+function. By default, num_neighbors_pred = 2 * num_neighbors. Further, 
+the type of Vecchia approximation used for making predictions is set through  
+the 'vecchia_pred_type' parameter in the 'set_prediction_data' function}
 
 \item{vecchia_ordering}{A \code{string} specifying the ordering used in 
 the Vecchia approximation. Available options:

@@ -12,7 +12,8 @@ GPModel(likelihood = "gaussian", group_data = NULL,
   cov_fct_taper_shape = 0, num_neighbors = 20L,
   vecchia_ordering = "random", num_ind_points = 500L,
   matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
-  free_raw_data = FALSE, vecchia_approx = NULL)
+  free_raw_data = FALSE, vecchia_approx = NULL, vecchia_pred_type = NULL,
+  num_neighbors_pred = NULL)
 }
 \arguments{
 \item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable. 
@@ -84,7 +85,11 @@ of the Wendland covariance function and Wendland correlation taper function.
 We follow the notation of Bevilacqua et al. (2019, AOS)}
 
 \item{num_neighbors}{An \code{integer} specifying the number of neighbors for 
-the Vecchia approximation}
+the Vecchia approximation. Note: for prediction, the number of neighbors can 
+be set through the 'num_neighbors_pred' parameter in the 'set_prediction_data'
+function. By default, num_neighbors_pred = 2 * num_neighbors. Further, 
+the type of Vecchia approximation used for making predictions is set through  
+the 'vecchia_pred_type' parameter in the 'set_prediction_data' function}
 
 \item{vecchia_ordering}{A \code{string} specifying the ordering used in 
 the Vecchia approximation. Available options:
@@ -113,6 +118,12 @@ The elements of 'cluster_ids' can be integer, double, or character.}
 is freed in R after initialization}
 
 \item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
+
+\item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
+This is discontinued here. Use the function 'set_prediction_data' to specify this}
+
+\item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for making predictions.
+This is discontinued here. Use the function 'set_prediction_data' to specify this}
 }
 \value{
 A \code{GPModel} containing ontains a Gaussian process and / or mixed effects model with grouped random effects
