@@ -5103,35 +5103,48 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						cov_mat_between_neighbors.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE;//Avoid numerical problems when there is no nugget effect
 					}
 					den_mat_t A_i(1, num_nn);
-					den_mat_t cov_mat_between_neighbors_inv;
 					den_mat_t A_i_grad_sigma2;
-					if (calc_gradient) {
-						// Note: it is faster (approx. 1.5-2 times) to first calculate cov_mat_between_neighbors_inv and the multiply this with the matrices below 
-						//		instead of always using the Cholesky factor of cov_mat_between_neighbors to calculate cov_mat_between_neighbors_inv * (a matrix)
-						den_mat_t I(num_nn, num_nn);
-						I.setIdentity();
-						cov_mat_between_neighbors_inv = cov_mat_between_neighbors.llt().solve(I);
-						A_i = cov_mat_obs_neighbors * cov_mat_between_neighbors_inv;
-						if (calc_gradient_nugget) {
-							A_i_grad_sigma2 = -A_i * cov_mat_between_neighbors_inv;
-						}
-					}
-					else {
-						A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors.transpose())).transpose();
-					}
+					Eigen::LLT<den_mat_t> chol_fact_between_neighbors = cov_mat_between_neighbors.llt();
+					A_i = (chol_fact_between_neighbors.solve(cov_mat_obs_neighbors.transpose())).transpose();
+
+					// Alternative version where cov_mat_between_neighbors_inv is first calculated and then multiplication with this is done
+					// This can be faster (approx. 1.5-2 times) compared tp always using the Cholesky factor of cov_mat_between_neighbors to calculate cov_mat_between_neighbors_inv * (a matrix)
+					// But it leads to numerical instabilities if locations / input features are close together (e.g., large num_data)
+					//den_mat_t cov_mat_between_neighbors_inv;
+					//if (calc_gradient) {
+					//	den_mat_t I(num_nn, num_nn);
+					//	I.setIdentity();
+					//	cov_mat_between_neighbors_inv = cov_mat_between_neighbors.llt().solve(I);
+					//	A_i = cov_mat_obs_neighbors * cov_mat_between_neighbors_inv;
+					//	if (calc_gradient_nugget) {
+					//		A_i_grad_sigma2 = -A_i * cov_mat_between_neighbors_inv;
+					//	}
+					//}
+					//else {
+					//	A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors.transpose())).transpose();
+					//}
+
 					for (int inn = 0; inn < num_nn; ++inn) {
 						B_cluster_i.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i(0, inn);
 					}
 					D_inv_cluster_i.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
 					if (calc_gradient) {
+						if (calc_gradient_nugget) {
+							A_i_grad_sigma2 = -(chol_fact_between_neighbors.solve(A_i.transpose())).transpose();
+						}
 						den_mat_t A_i_grad(1, num_nn);
 						for (int j = 0; j < num_gp_total_; ++j) {
 							int ind_first_par = j * num_par_comp;
 							for (int ipar = 0; ipar < num_par_comp; ++ipar) {
 								if (!(exclude_marg_var_grad && ipar == 0)) {
-									A_i_grad = (cov_grad_mats_obs_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv) -
-										(cov_mat_obs_neighbors * cov_mat_between_neighbors_inv *
-											cov_grad_mats_between_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv);
+									A_i_grad = (chol_fact_between_neighbors.solve(cov_grad_mats_obs_neighbors[ind_first_par + ipar].transpose())).transpose() -
+										A_i * ((chol_fact_between_neighbors.solve(cov_grad_mats_between_neighbors[ind_first_par + ipar])).transpose());
+
+									// Alternative version where cov_mat_between_neighbors_inv is calculated first
+									//A_i_grad = (cov_grad_mats_obs_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv) -
+									//	(cov_mat_obs_neighbors * cov_mat_between_neighbors_inv *
+									//		cov_grad_mats_between_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv);
+
 									for (int inn = 0; inn < num_nn; ++inn) {
 										B_grad_cluster_i[ind_first_par + ipar].coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i_grad(0, inn);
 									}
@@ -5156,6 +5169,18 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				}//end if i > 0
 				D_inv_cluster_i.coeffRef(i, i) = 1. / D_inv_cluster_i.coeffRef(i, i);
 			}//end loop over data i
+			Eigen::Index minRow, minCol;
+			double min_D_inv = D_inv_cluster_i.diagonal().minCoeff(&minRow, &minCol);
+			if (min_D_inv <= 0.) {
+				const char* min_D_inv_below_zero_msg = "The matrix D in the Vecchia approximation contains negative or zero values. "
+					"This is a serious problem that likely results from numerical instabilities ";
+				if (gauss_likelihood_) {
+					Log::REWarning(min_D_inv_below_zero_msg);
+				}
+				else {
+					Log::REFatal(min_D_inv_below_zero_msg);
+				}
+			}
 		}//end CalcCovFactorVecchia
 
 		/*!
