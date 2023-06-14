@@ -8,6 +8,7 @@
 #' @param cex (base R barplot) passed as \code{cex.names} parameter to \code{\link[graphics]{barplot}}.
 #'            Set a number smaller than 1.0 to make the bar labels smaller than R's default and values
 #'            greater than 1.0 to make them larger.
+#' @param ... other parameters passed to graphics::barplot
 #'
 #' @details
 #' The graph represents each feature as a horizontal bar of length proportional to the defined importance of a feature.
@@ -45,7 +46,7 @@ gpb.plot.importance <- function(tree_imp,
                                 top_n = 10L,
                                 measure = "Gain",
                                 left_margin = 10L,
-                                cex = NULL
+                                cex = NULL, ...
                                 ) {
 
   # Check for measurement (column names) correctness
@@ -85,10 +86,11 @@ gpb.plot.importance <- function(tree_imp,
                , names.arg = Feature
                , horiz = TRUE
                , border = NA
-               , main = "Feature Importance"
+               # , main = "Feature Importance"
                , xlab = measure
                , cex.names = cex
                , las = 1L
+               , ...
            )]
 
   return(invisible(tree_imp))

@@ -691,6 +691,10 @@ namespace GPBoost {
 				optimizer_coef_ = optimizer_cov_pars_;
 			}
 			bool terminate_optim = false;
+			//learning_rate_decreased_first_time_ = false;
+			//learning_rate_increased_after_descrease_ = false;
+			//learning_rate_decreased_after_increase_ = false;
+			num_ll_evaluations_ = 0;
 			num_it = max_iter_;
 			bool profile_out_marginal_variance = gauss_likelihood_ &&
 				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam");
@@ -1064,8 +1068,7 @@ namespace GPBoost {
 					}
 					if (!na_or_inf_occurred) {
 						// Check convergence
-						bool likelihood_is_na = std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_);//if the likelihood is NA, we monitor the parameters instead of the likelihood
-						if (convergence_criterion_ == "relative_change_in_parameters" || likelihood_is_na) {
+						if (convergence_criterion_ == "relative_change_in_parameters") {
 							if (has_covariates_) {
 								if (((beta - beta_lag1).norm() < delta_rel_conv_ * beta_lag1.norm()) && ((cov_aux_pars - cov_aux_pars_lag1).norm() < delta_rel_conv_ * cov_aux_pars_lag1.norm())) {
 									terminate_optim = true;
@@ -1101,8 +1104,25 @@ namespace GPBoost {
 						num_it = it + 1;
 						break;
 					}
+					////increase learning rates again
+					//else if (optimizer_cov_pars_ == "gradient_descent" && (it + 1) >= 10 && learning_rate_decreased_first_time_ &&
+					//	!learning_rate_increased_after_descrease_ && !na_or_inf_occurred) {
+					//	if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < INCREASE_LR_CHANGE_LL_THRESHOLD_ * std::abs(neg_log_likelihood_lag1_)) {
+					//		if (has_covariates_) {
+					//			lr_coef_ /= LR_SHRINKAGE_FACTOR_;
+					//		}
+					//		if (learn_covariance_parameters) {
+					//			lr_cov_ /= LR_SHRINKAGE_FACTOR_;
+					//		}
+					//		if (estimate_aux_pars_) {
+					//			lr_aux_pars_ /= LR_SHRINKAGE_FACTOR_;
+					//		}
+					//		learning_rate_increased_after_descrease_ = true;
+					//		Log::REDebug("GPModel covariance parameter estimation: The learning rates have been increased in iteration number %d ", it + 1);
+					//	}
+					//}
 				}//end for loop for optimization
-			}
+			}//end "gradient_descent" or "fisher_scoring"
 			// redo optimization with "nelder_mead" in case NA or Inf occurred
 			if (na_or_inf_occurred && optimizer_cov_pars_ != "nelder_mead") {
 				string_t optimizers = "";
@@ -1115,7 +1135,7 @@ namespace GPBoost {
 					"The optimization will be started a second time using 'nelder_mead'. "
 					"If you want to avoid this, try directly using a different optimizer. "
 					"If you have used 'gradient_descent', you can also consider using a smaller learning rate. "
-					"The following optimizers are currently implemented:%s", optimizer_cov_pars_.c_str(), optimizer_cov_pars_.c_str());
+					"The following optimizers are currently implemented: %s ", optimizer_cov_pars_.c_str(), optimizer_cov_pars_.c_str());
 				cov_aux_pars = cov_aux_pars_init;
 				if (has_covariates_) {
 					beta = beta_init;
@@ -1131,10 +1151,12 @@ namespace GPBoost {
 					learn_covariance_parameters, "nelder_mead", profile_out_marginal_variance);
 			}
 			if (num_it == max_iter_) {
-				Log::REDebug("GPModel: no convergence after the maximal number of iterations (%d) ", max_iter_);
+				Log::REDebug("GPModel: no convergence after the maximal number of iterations "
+					"(%d, nb. likelihood evaluations = %d) ", max_iter_, num_ll_evaluations_);
 			}
 			else {
-				Log::REDebug("GPModel: parameter estimation finished after %d iteration ", num_it);
+				Log::REDebug("GPModel: parameter estimation finished after %d iteration "
+					"(nb. likelihood evaluations = %d) ", num_it, num_ll_evaluations_);
 			}
 			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, has_intercept, intercept_col,
 				scale_covariates, loc_transf, scale_transf, cov_aux_pars.data() + num_cov_par_);
@@ -1207,6 +1229,7 @@ namespace GPBoost {
 				}
 			}
 		}//end OptimLinRegrCoefCovPar
+		
 
 		/*!
 		* \brief Calculate gradient wrt the covariance parameters on the log-scale and any additional parameters for the likelihood for non-Gaussian likelihoods
@@ -1572,6 +1595,7 @@ namespace GPBoost {
 				}
 				neg_log_likelihood_ = -CalcModePostRandEff(fixed_effects);//calculate mode and approximate marginal likelihood
 			}//end not gauss_likelihood_
+			num_ll_evaluations_++;
 		}//end CalcCovFactorOrModeAndNegLL
 
 		/*!
@@ -3076,7 +3100,9 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		/*! \brief Select Nesterov acceleration schedule 0 or 1 */
 		int nesterov_schedule_version_ = 0;
 		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
-		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log(100.); // allow maximally a change by a factor of 100 in one iteration
+		int MAX_REL_CHANGE_GRADIENT_UPDATE_ = 100; // allow maximally a change by a factor of 'MAX_REL_CHANGE_GRADIENT_UPDATE_' in one iteration
+		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
+		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log((double)MAX_REL_CHANGE_GRADIENT_UPDATE_);
 		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian likelihoods upon initialization). See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not */
 		string_t optimizer_coef_;
 		/*! \brief List of supported optimizers for regression coefficients for Gaussian likelihoods */
@@ -3107,6 +3133,17 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		bool estimate_aux_pars_ = false;
 		/*! \brief True if the function 'SetOptimConfig' has been called */
 		bool set_optim_config_has_been_called_ = false;
+		/*! \brief Number of likelihood evaluations during optimization */
+		int num_ll_evaluations_ = 0;
+		// The following variables are not used anymore (increasing learning rate again does not seem beneficial)
+		///*! \brief True if the learning rates have been descreased (only for gradient_descent) */
+		//bool learning_rate_decreased_first_time_ = false;
+		///*! \brief True if the learning rates have been increased after they have been descreased (only for gradient_descent) */
+		//bool learning_rate_increased_after_descrease_ = false;
+		///*! \brief True if the learning rates have been descreased again after they have been increased (only for gradient_descent) */
+		//bool learning_rate_decreased_after_increase_ = false;
+		///*! \brief Threshold value, for relative change in the log-likelihood, below which learning rates are increased again for gradient descent */
+		//double INCREASE_LR_CHANGE_LL_THRESHOLD_ = 1e-3;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
@@ -3261,8 +3298,10 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		RNG_t rng_;
 
 		/*! \brief Nesterov schedule */
-		double NesterovSchedule(int iter, int momentum_schedule_version = 0,
-			double nesterov_acc_rate = 0.5, int momentum_offset = 2) {
+		double NesterovSchedule(int iter,
+			int momentum_schedule_version,
+			double nesterov_acc_rate, 
+			int momentum_offset) {
 			if (iter < momentum_offset) {
 				return(0.);
 			}
@@ -3274,6 +3313,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					return(1. - (3. / (6. + iter)));
 				}
 				else {
+					Log::REFatal("NesterovSchedule: version = %d is not supported ", momentum_schedule_version);
 					return(0.);
 				}
 			}
@@ -4484,7 +4524,8 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			if (lr_cov_ * max_abs_nat_grad_cov > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
 				lr_cov_ = MAX_GRADIENT_UPDATE_LOG_SCALE_ / max_abs_nat_grad_cov;
 				Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased in iteration number %d since "
-					"the gradient update on the log-scale would have been too large (a change by more than a factor 100). New learning rate = %g", it + 1, lr_cov_);
+					"the gradient update on the log-scale would have been too large (change by more than a factor %d). New learning rate = %g", 
+					it + 1, MAX_REL_CHANGE_GRADIENT_UPDATE_, lr_cov_);
 			}
 			if (estimate_aux_pars_) {
 				double max_abs_nat_grad_aux_par = 0.;
@@ -4496,7 +4537,8 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				if (lr_aux_pars_ * max_abs_nat_grad_aux_par > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
 					lr_aux_pars_ = MAX_GRADIENT_UPDATE_LOG_SCALE_ / max_abs_nat_grad_aux_par;
 					Log::REDebug("GPModel auxiliary parameter estimation: The learning rate has been decreased in iteration number %d since "
-						"the gradient update on the log-scale would have been too large (a change by more than a factor 100). New learning rate = %g", it + 1, lr_aux_pars_);
+						"the gradient update on the log-scale would have been too large (change by more than a factor %d). New learning rate = %g", 
+						it + 1, MAX_REL_CHANGE_GRADIENT_UPDATE_, lr_aux_pars_);
 				}
 			}
 		}//end AvoidTooLargeLearningRatesCovAuxPars
@@ -4710,7 +4752,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					SetAuxPars(cov_pars_new.data() + num_cov_par_);
 				}
 				CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
-				// Safeguard agains too large steps by halving the learning rate when the objective increases
+				// Safeguard against too large steps by halving the learning rate when the objective increases
 				if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
 					decrease_found = true;
 					break;
@@ -4741,7 +4783,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						lr_aux_pars_ = lr_aux_pars;
 						Log::REDebug("GPModel covariance and auxiliary parameter estimation: Learning rates have been decreased permanently in iteration number %d "
 							"since with the previous learning rates, there was no decrease in the objective function. "
-							"New learning rates: covariance parameters = %g, auxiliary paramters = %g", it + 1, lr_cov_, lr_aux_pars_);
+							"New learning rates: covariance parameters = %g, auxiliary parameters = %g", it + 1, lr_cov_, lr_aux_pars_);
 					}
 					else {
 						Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently in iteration number %d "
@@ -4758,6 +4800,322 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			}
 			cov_pars = cov_pars_new;
 		}//end UpdateCovAuxPars
+
+		////Alternative version with separate learning rate descreases for cov_pars and aux_pars
+		////	-> not necessarily more efficient as more likelihood evaluations are needed
+		//void UpdateCovAuxPars(vec_t& cov_pars,
+		//	const vec_t& nat_grad,
+		//	bool profile_out_marginal_variance,
+		//	bool use_nesterov_acc,
+		//	int it,
+		//	vec_t& cov_pars_after_grad_aux,
+		//	vec_t& cov_pars_after_grad_aux_lag1,
+		//	double acc_rate_cov,
+		//	int nesterov_schedule_version,
+		//	int momentum_offset,
+		//	const double* fixed_effects) {
+		//	vec_t cov_pars_new(num_cov_par_);
+		//	if (profile_out_marginal_variance) {
+		//		cov_pars_new[0] = cov_pars[0];
+		//	}
+		//	double lr_cov = lr_cov_;
+		//	double lr_aux_pars = lr_aux_pars_;
+		//	bool decrease_found = false;
+		//	bool halving_done = false;
+		//	int num_grad_cov_par = (int)nat_grad.size();
+		//	if (estimate_aux_pars_) {
+		//		num_grad_cov_par -= NumAuxPars();
+		//	}
+		//	for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
+		//		if (ih > 0) {
+		//			halving_done = true;
+		//			learning_rate_decreased_first_time_ = true;
+		//			if (learning_rate_increased_after_descrease_) {
+		//				learning_rate_decreased_after_increase_ = true;
+		//			}
+		//			lr_cov *= LR_SHRINKAGE_FACTOR_;
+		//			acc_rate_cov *= 0.5;
+		//			if (!gauss_likelihood_) {
+		//				// Reset mode to previous value since also parameters are discarded
+		//				for (const auto& cluster_i : unique_clusters_) {
+		//					likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//				}
+		//			}
+		//		}// end ih > 0
+		//		UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//			profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//			acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//		if (estimate_aux_pars_) {
+		//			SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//		}
+		//		CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//		if (estimate_aux_pars_ && ih > 0) {
+		//			// Undo learning rate decrease for cov_pars and decrease learning rate for aux_pars and check whether this leads to a smaller log-likelihood
+		//			lr_cov /= LR_SHRINKAGE_FACTOR_;
+		//			lr_aux_pars *= LR_SHRINKAGE_FACTOR_;
+		//			UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//				profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//				acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//			SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//			double neg_log_likelihood_cov_par_decrease = neg_log_likelihood_;
+		//			if (!gauss_likelihood_) {
+		//				for (const auto& cluster_i : unique_clusters_) {
+		//					likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//				}
+		//			}
+		//			CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//			if (neg_log_likelihood_cov_par_decrease < neg_log_likelihood_) {
+		//				lr_cov *= LR_SHRINKAGE_FACTOR_;
+		//				lr_aux_pars /= LR_SHRINKAGE_FACTOR_;
+		//				UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//					profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//					acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//				SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//				neg_log_likelihood_ = neg_log_likelihood_cov_par_decrease;
+		//				if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
+		//					// the following needs only be done in case the for loop stops, otherwise it is done at the beginning of the next iteration
+		//					if (!gauss_likelihood_) {
+		//						for (const auto& cluster_i : unique_clusters_) {
+		//							likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//						}
+		//					}
+		//					CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//				}
+		//			}
+		//		}// end estimate_aux_pars_ && ih > 0
+		//		// Safeguard against too large steps by halving the learning rate when the objective increases
+		//		if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
+		//			decrease_found = true;
+		//			break;
+		//		}
+		//	}//end loop over learnig rate halving procedure
+		//	if (halving_done) {
+		//		if (optimizer_cov_pars_ == "fisher_scoring") {
+		//			Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. "
+		//				"The learning rate has been decreased in this iteration.", it + 1);
+		//		}
+		//		else if (optimizer_cov_pars_ == "gradient_descent") {
+		//			lr_cov_ = lr_cov; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring)
+		//			if (estimate_aux_pars_) {
+		//				lr_aux_pars_ = lr_aux_pars;
+		//				Log::REDebug("GPModel covariance and auxiliary parameter estimation: Learning rates have been decreased permanently in iteration number %d "
+		//					"since with the previous learning rates, there was no decrease in the objective function. "
+		//					"New learning rates: covariance parameters = %g, auxiliary parameters = %g", it + 1, lr_cov_, lr_aux_pars_);
+		//			}
+		//			else {
+		//				Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently in iteration number %d "
+		//					"since with the previous learning rate, there was no decrease in the objective function. New learning rate = %g", it + 1, lr_cov_);
+		//			}
+		//		}
+		//	}
+		//	if (!decrease_found) {
+		//		Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d "
+		//			"after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+		//	}
+		//	if (use_nesterov_acc) {
+		//		cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
+		//	}
+		//	cov_pars = cov_pars_new;
+		//}//end UpdateCovAuxPars
+
+		//void UpdateCovAuxParsInternal(vec_t& cov_pars,
+		//	vec_t& cov_pars_new,
+		//	const vec_t& nat_grad,
+		//	int num_grad_cov_par,
+		//	double lr_cov,
+		//	double lr_aux_pars,
+		//	bool profile_out_marginal_variance,
+		//	bool use_nesterov_acc,
+		//	int it,
+		//	vec_t& cov_pars_after_grad_aux,
+		//	vec_t& cov_pars_after_grad_aux_lag1,
+		//	double acc_rate_cov,
+		//	int nesterov_schedule_version,
+		//	int momentum_offset) {
+		//	vec_t update(nat_grad.size());
+		//	update.segment(0, num_grad_cov_par) = lr_cov * nat_grad.segment(0, num_grad_cov_par);
+		//	if (estimate_aux_pars_) {
+		//		update.segment(num_grad_cov_par, NumAuxPars()) = lr_aux_pars * nat_grad.segment(num_grad_cov_par, NumAuxPars());
+		//	}
+		//	// Avoid to large steps on log-scale: updates on the log-scale in one Fisher scoring step are capped at a certain level
+		//	// This is not done for gradient_descent since the learning rate is already adjusted accordingly in 'AvoidTooLargeLearningRatesCovAuxPars'
+		//	if (optimizer_cov_pars_ != "gradient_descent") {
+		//		for (int ip = 0; ip < (int)update.size(); ++ip) {
+		//			if (update[ip] > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
+		//				update[ip] = MAX_GRADIENT_UPDATE_LOG_SCALE_;
+		//			}
+		//			else if (update[ip] < -MAX_GRADIENT_UPDATE_LOG_SCALE_) {
+		//				update[ip] = -MAX_GRADIENT_UPDATE_LOG_SCALE_;
+		//			}
+		//		}
+		//	}
+		//	if (profile_out_marginal_variance) {
+		//		cov_pars_new.segment(1, cov_pars.size() - 1) = (cov_pars.segment(1, cov_pars.size() - 1).array().log() - update.array()).exp().matrix();//make update on log-scale
+		//	}
+		//	else {
+		//		cov_pars_new = (cov_pars.array().log() - update.array()).exp().matrix();//make update on log-scale
+		//	}
+		//	// Apply Nesterov acceleration
+		//	if (use_nesterov_acc) {
+		//		cov_pars_after_grad_aux = cov_pars_new;
+		//		ApplyMomentumStep(it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, cov_pars_new, acc_rate_cov,
+		//			nesterov_schedule_version, profile_out_marginal_variance, momentum_offset, true);
+		//		// Note: (i) cov_pars_after_grad_aux and cov_pars_after_grad_aux_lag1 correspond to the parameters obtained after calculating the gradient before applying acceleration
+		//		//		 (ii) cov_pars (below this) are the parameters obtained after applying acceleration (and cov_pars_lag1 is simply the value of the previous iteration)
+		//		// We first apply a gradient step and then an acceleration step (and not the other way aroung) since this is computationally more efficient 
+		//		//		(otherwise the covariance matrix needs to be factored twice: once for the gradient step (accelerated parameters) and once for calculating the
+		//		//		 log-likelihood (non-accelerated parameters after gradient update) when checking for convergence at the end of an iteration. 
+		//		//		However, performing the acceleration before or after the gradient update gives equivalent algorithms
+		//	}
+		//}//end UpdateCovAuxParsInternal
+
+		////Alternative version where learning rates are decreased until 
+		//// (i) a decrease in the log-likelihood compared to the previous one is found and 
+		//// (ii) subsequent decreases are only small.
+		//// Problem: this does not necessarily lead to less log-likelihood evaluations compared to the above version
+		//void UpdateCovAuxPars(vec_t& cov_pars,
+		//	const vec_t& nat_grad,
+		//	bool profile_out_marginal_variance,
+		//	bool use_nesterov_acc,
+		//	int it,
+		//	vec_t& cov_pars_after_grad_aux,
+		//	vec_t& cov_pars_after_grad_aux_lag1,
+		//	double acc_rate_cov,
+		//	int nesterov_schedule_version,
+		//	int momentum_offset,
+		//	const double* fixed_effects) {
+		//	vec_t cov_pars_new(num_cov_par_);
+		//	if (profile_out_marginal_variance) {
+		//		cov_pars_new[0] = cov_pars[0];
+		//	}
+		//	double lr_cov = lr_cov_;
+		//	double lr_aux_pars = lr_aux_pars_;
+		//	bool decrease_found = false;
+		//	bool halving_done = false;
+		//	double cur_lowest_neg_log_like = neg_log_likelihood_after_lin_coef_update_;// currently lowest negative log-likelihood
+		//	bool lr_cov_last_decreased = true;// indicates whether lr_cov or lr_aux_pars has been last descreased
+		//	int num_grad_cov_par = (int)nat_grad.size();
+		//	if (estimate_aux_pars_) {
+		//		num_grad_cov_par -= NumAuxPars();
+		//	}
+		//	for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
+		//		if (ih > 0) {
+		//			learning_rate_decreased_first_time_ = true;
+		//			if (learning_rate_increased_after_descrease_) {
+		//				learning_rate_decreased_after_increase_ = true;
+		//			}
+		//			acc_rate_cov *= 0.5;
+		//			if (ih == 1 || lr_cov_last_decreased || !decrease_found) {
+		//				//lr_cov is decreased until there is a decrease found and subsequently only if if has been decreased last
+		//				lr_cov *= LR_SHRINKAGE_FACTOR_;
+		//				if (!gauss_likelihood_) {
+		//					// Reset mode to previous value since also parameters are discarded
+		//					for (const auto& cluster_i : unique_clusters_) {
+		//						likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//					}
+		//				}
+		//				lr_cov_last_decreased = true;
+		//			}
+		//		}//end ih > 0
+		//		UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//			profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//			acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//		if (estimate_aux_pars_) {
+		//			SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//		}
+		//		CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//		if (estimate_aux_pars_ && ih > 0 && (ih == 1 || !lr_cov_last_decreased || !decrease_found)) {
+		//			//lr_aux_pars is decreased until there is a decrease found and subsequently only if if has been decreased last
+		//			if (lr_cov_last_decreased) {
+		//				// Undo decrease for 'lr_cov', decrease 'lr_aux_pars', and check whether this leads to a smaller negative log-likelihood
+		//				lr_cov /= LR_SHRINKAGE_FACTOR_;
+		//			}
+		//			lr_aux_pars *= LR_SHRINKAGE_FACTOR_;
+		//			UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//				profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//				acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//			SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//			double neg_log_likelihood_cov_par_decrease = neg_log_likelihood_;
+		//			if (!gauss_likelihood_) {
+		//				for (const auto& cluster_i : unique_clusters_) {
+		//					likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//				}
+		//			}
+		//			CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//			if (lr_cov_last_decreased && neg_log_likelihood_cov_par_decrease < neg_log_likelihood_) {
+		//				// Better to decrease 'lr_cov': undo decrease in 'lr_aux_pars'
+		//				lr_cov *= LR_SHRINKAGE_FACTOR_;
+		//				lr_aux_pars /= LR_SHRINKAGE_FACTOR_;
+		//				UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//					profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//					acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//				SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//				neg_log_likelihood_ = neg_log_likelihood_cov_par_decrease;
+		//			}
+		//			else {
+		//				lr_cov_last_decreased = false;
+		//			}
+		//		}// end estimate_aux_pars_ && ih > 0
+		//		if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
+		//			decrease_found = true;
+		//		}
+		//		// Stop trying more decreases when decrease is only small
+		//		if (((cur_lowest_neg_log_like - neg_log_likelihood_) <= 2.) && decrease_found) {
+		//			if (ih > 1) {
+		//				acc_rate_cov /= 0.5;
+		//				if (lr_cov_last_decreased) {
+		//					// Undo decrease for 'lr_cov'
+		//					lr_cov /= LR_SHRINKAGE_FACTOR_;
+		//				}
+		//				else {
+		//					lr_aux_pars /= LR_SHRINKAGE_FACTOR_;
+		//					SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//				}
+		//				UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//					profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//					acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//				if (!gauss_likelihood_) {
+		//					for (const auto& cluster_i : unique_clusters_) {
+		//						likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//					}
+		//				}
+		//				CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//				halving_done = true;
+		//			}
+		//			break;// ll increases again after a decrease -> stop
+		//		}
+		//		if (neg_log_likelihood_ <= cur_lowest_neg_log_like) {
+		//			cur_lowest_neg_log_like = neg_log_likelihood_;
+		//		}
+		//	}//end loop over learnig rate halving procedure
+		//	if (halving_done) {
+		//		if (optimizer_cov_pars_ == "fisher_scoring") {
+		//			Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. "
+		//				"The learning rate has been decreased in this iteration.", it + 1);
+		//		}
+		//		else if (optimizer_cov_pars_ == "gradient_descent") {
+		//			lr_cov_ = lr_cov; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring)
+		//			if (estimate_aux_pars_) {
+		//				lr_aux_pars_ = lr_aux_pars;
+		//				Log::REDebug("GPModel covariance and auxiliary parameter estimation: Learning rates have been decreased permanently in iteration number %d "
+		//					"since with the previous learning rates, there was no decrease in the objective function. "
+		//					"New learning rates: covariance parameters = %g, auxiliary parameters = %g", it + 1, lr_cov_, lr_aux_pars_);
+		//			}
+		//			else {
+		//				Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently in iteration number %d "
+		//					"since with the previous learning rate, there was no decrease in the objective function. New learning rate = %g", it + 1, lr_cov_);
+		//			}
+		//		}
+		//	}
+		//	if (!decrease_found) {
+		//		Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d "
+		//			"after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+		//	}
+		//	if (use_nesterov_acc) {
+		//		cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
+		//	}
+		//	cov_pars = cov_pars_new;
+		//}//end UpdateCovAuxPars
 
 		/*!
 		* \brief Update linear regression coefficients and apply step size safeguard
@@ -4806,14 +5164,18 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				else {//non-Gaussian likelihoods
 					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEff(fixed_effects_vec.data());//calculate mode and approximate marginal likelihood
 				}
-				// Safeguard agains too large steps by halving the learning rate when the objective increases
+				// Safeguard against too large steps by halving the learning rate when the objective increases
 				if (neg_log_likelihood_after_lin_coef_update_ <= neg_log_likelihood_lag1_) {
 					decrease_found = true;
 					break;
 				}
 				else {
-					// Safeguard agains too large steps by halving the learning rate
+					// Safeguard against too large steps by halving the learning rate
 					halving_done = true;
+					//learning_rate_decreased_first_time_ = true;
+					//if (learning_rate_increased_after_descrease_) {
+					//	learning_rate_decreased_after_increase_ = true;
+					//}
 					lr_coef *= LR_SHRINKAGE_FACTOR_;
 					acc_rate_coef *= 0.5;
 					if (!gauss_likelihood_) {
@@ -4830,7 +5192,8 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					"there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_coef_);
 			}
 			if (!decrease_found) {
-				Log::REDebug("GPModel linear regression coefficient estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+				Log::REDebug("GPModel linear regression coefficient estimation: No decrease in the objective function "
+					"in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
 			}
 			if (use_nesterov_acc) {
 				beta_after_grad_aux_lag1 = beta_after_grad_aux;
@@ -5366,8 +5729,15 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
 		* \param log_scale If true, the momentum step is done on the log-scale
 		*/
-		void ApplyMomentumStep(int it, vec_t& pars, vec_t& pars_lag1, vec_t& pars_acc, double nesterov_acc_rate = 0.5,
-			int nesterov_schedule_version = 0, bool exclude_first_log_scale = true, int momentum_offset = 2, bool log_scale = false) {
+		void ApplyMomentumStep(int it, 
+			vec_t& pars, 
+			vec_t& pars_lag1, 
+			vec_t& pars_acc, 
+			double nesterov_acc_rate,
+			int nesterov_schedule_version, 
+			bool exclude_first_log_scale, 
+			int momentum_offset, 
+			bool log_scale) {
 			double mu = NesterovSchedule(it, nesterov_schedule_version, nesterov_acc_rate, momentum_offset);
 			int num_par = (int)pars.size();
 			if (exclude_first_log_scale) {

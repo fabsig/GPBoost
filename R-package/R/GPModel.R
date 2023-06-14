@@ -332,7 +332,7 @@ gpb.GPModel <- R6::R6Class(
       # Set data for grouped random effects
       group_data_c_str <- NULL
       if (!is.null(group_data)) {
-        # Check for correct format and set meta data
+        # Check for correct format
         if (!(is.data.frame(group_data) | is.matrix(group_data) | 
               is.numeric(group_data) | is.character(group_data) | is.factor(group_data))) {
           stop("GPModel: Can only use the following types for as ", sQuote("group_data"),": ",
@@ -440,16 +440,14 @@ gpb.GPModel <- R6::R6Class(
       } # End set data for grouped random effects
       # Set data for Gaussian process part
       if (!is.null(gp_coords)) {
-        if (is.numeric(gp_coords)) {
-          gp_coords <- as.matrix(gp_coords)
+        # Check for correct format
+        if (!(is.data.frame(gp_coords) | is.matrix(gp_coords) | 
+              is.numeric(gp_coords))) {
+          stop("GPModel: Can only use the following types for as ", sQuote("gp_coords"),": ",
+               sQuote("data.frame"), ", ", sQuote("matrix"), ", ", sQuote("numeric"))
         }
-        if (is.matrix(gp_coords)) {
-          # Check whether matrix is the correct type first ("double")
-          if (storage.mode(gp_coords) != "double") {
-            storage.mode(gp_coords) <- "double"
-          }
-        } else {
-          stop("GPModel: Can only use ", sQuote("matrix"), " as ", sQuote("gp_coords"))
+        if (is.data.frame(gp_coords) | is.numeric(gp_coords)) {
+          gp_coords <- as.matrix(gp_coords)
         }
         if (!is.null(private$num_data)) {
           if (dim(gp_coords)[1] != private$num_data) {

@@ -5,7 +5,7 @@
 \title{Plot feature importance as a bar graph}
 \usage{
 gpb.plot.importance(tree_imp, top_n = 10L, measure = "Gain",
-  left_margin = 10L, cex = NULL)
+  left_margin = 10L, cex = NULL, ...)
 }
 \arguments{
 \item{tree_imp}{a \code{data.table} returned by \code{\link{gpb.importance}}.}
@@ -19,6 +19,8 @@ gpb.plot.importance(tree_imp, top_n = 10L, measure = "Gain",
 \item{cex}{(base R barplot) passed as \code{cex.names} parameter to \code{\link[graphics]{barplot}}.
 Set a number smaller than 1.0 to make the bar labels smaller than R's default and values
 greater than 1.0 to make them larger.}
+
+\item{...}{other parameters passed to graphics::barplot}
 }
 \value{
 The \code{gpb.plot.importance} function creates a \code{barplot}
