@@ -108,6 +108,7 @@ Learning the above-mentioned models means **learning both the covariance paramet
 #### Methodological issues
 - Add multivariate models, e.g., using coregionalization
 - Add spatio-temporal Gaussian process models
+- Add areal models for spatial data such as CAR and SAR models
 - Add possibility to predict separate latent Gaussian processes and random effects (e.g., random coefficients)
 - Implement more approaches such that computations scale well (memory and time) for Gaussian process models and mixed effects models with more than one grouping variable for non-Gaussian data
 - Support sample weights

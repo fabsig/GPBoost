@@ -166,13 +166,11 @@ namespace GPBoost {
 		//  using a fast approach based on results of Ra and Kim (1993)
 #pragma omp parallel for schedule(static)
 		for (int i = 0; i < coords2.rows(); ++i) {
-			int first_j = 0;
 			if (only_one_set_of_coords) {
 #pragma omp critical
 				{
 					triplets.emplace_back(i, i, 0.);
 				}
-				first_j = i + 1;
 			}
 			bool down = true;
 			bool up = true;

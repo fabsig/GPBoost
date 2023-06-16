@@ -10,12 +10,12 @@ The response variable is
 
 There are four predictor variables:
 
-- L: log(share) of employment (empl/pop)
-- K: log(fixed capita/population
+- L: (log) share of employment (empl/pop)
+- K: (log) fixed capital/population
 - Pop: log(population)
 - Edu: share of tertiary education
 
-Furter, there are spatial coordinates:
+Further, there are spatial coordinates:
 
 - Long: region longitude
 - Lat: region latitude
@@ -24,6 +24,6 @@ A spatial region ID:
 
 - Group: the region ID (from 1 to 242)
 
-And a spatial cluster ID:
+A spatial cluster ID:
 
 - cl: identifies the cluster the region belongs
