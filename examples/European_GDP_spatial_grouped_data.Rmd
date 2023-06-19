@@ -15,16 +15,16 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-run_python <- FALSE
 cache <- FALSE # caching does not work properly...
+knitr::opts_chunk$set(echo = TRUE, cache = cache)
+run_python <- FALSE
 library(reticulate)
 reticulate::use_python("C:/ProgramData/Anaconda3", require=TRUE)
 ```
 
 # Introduction
 
-The GPBoost algorithm extends linear mixed effects and Gaussian process models by replacing the linear fixed effects function with a non-parametric non-linear function modeled using tree-boosting. This document shows how the GPBoost algorithm implemented in the ``GPBoost`` library can be used for modeling data with a spatial and grouped structure. We demonstrate the functionality of the ``GPBoost`` library using European GDP data which is areal spatial econometric data. All results are obtained using ``GPBoost`` version 1.2.1. This demo uses the R package, but the corresponding Python package provides the same functionality.
+The GPBoost algorithm extends linear mixed effects and Gaussian process models by replacing the linear fixed effects function with a non-parametric non-linear function modeled using tree-boosting. This article shows how the GPBoost algorithm implemented in the ``GPBoost`` library can be used for modeling data with a spatial and grouped structure. We demonstrate the functionality of the ``GPBoost`` library using European GDP data which is an example of areal spatial econometric data. All results are obtained using ``GPBoost`` version 1.2.1. This demo uses the R package, but the corresponding Python package provides the same functionality.
 
 Applying a GPBoost model (= combined tree-boosting and random effects / GP models) involves the following main steps:
 
@@ -63,7 +63,7 @@ A spatial region ID:
 
 A spatial cluster ID:
 
-- cl: identifies the cluster the region belongs
+- cl: identifies the cluster the region belongs (there are two clusters)
 
 ## Data loading and short visualization
 
@@ -79,9 +79,12 @@ covars <- c("L", "K", "pop", "edu")
 library(ggplot2)
 library(viridis)
 library(gridExtra)
-p1 <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"],GDP=data[,"y"]),aes(x=Long,y=Lat,color=GDP)) +
-  geom_point(size=2, alpha=0.5) + scale_color_viridis(option = "B") + ggtitle("GDP / capita (log)")
-p2 <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"],GDP=data[,"y"]),aes(x=Long,y=Lat,color=GDP)) +
+p1 <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"],
+                               GDP=data[,"y"]), aes(x=Long,y=Lat,color=GDP)) +
+  geom_point(size=2, alpha=0.5) + scale_color_viridis(option = "B") + 
+  ggtitle("GDP / capita (log)")
+p2 <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"], 
+                               GDP=data[,"y"]), aes(x=Long,y=Lat,color=GDP)) +
   geom_point(size=3, alpha=0.5) + scale_color_viridis(option = "B") + 
   ggtitle("GDP / capita (log) -- Europe excluding islands") + xlim(-10,28) + ylim(35,67)
 grid.arrange(p1, p2, ncol=2)
@@ -91,22 +94,25 @@ grid.arrange(p1, p2, ncol=2)
 In the following, we use a Gaussian process model with an exponential covariance function to model spatial random effects. Additionally, we include grouped random effects for the cluster variable cl. In the ``GPBoost`` library, Gaussian process random effects are defined by the ``gp_coords`` argument and grouped random effects via the ``group_data`` argument of the ``GPModel`` constructor. The above-mentioned predictor variables are used in the fixed effects tree-ensemble function. We fit the model using the ``gpboost``, or equivalently the ``gpb.train``, function. Note that we use tuning parameters that are selected below using cross-validation.
 
 ```{r train_r, results=FALSE, cache=cache}
-gp_model <- GPModel(group_data = data[, c("cl")], gp_coords = data[, c("Long", "Lat")],
+gp_model <- GPModel(group_data = data[, c("cl")], 
+                    gp_coords = data[, c("Long", "Lat")],
                     likelihood = "gaussian", cov_function = "exponential")
 params <- list(learning_rate = 0.01, max_depth = 2, num_leaves = 2^10,
                min_data_in_leaf = 10, lambda_l2 = 0)
 nrounds <- 37
-# gp_model$set_optim_params(params = list(trace=TRUE)) # to monitor parameter estimation
+# gp_model$set_optim_params(params = list(trace=TRUE)) # To monitor hzperparameter estimation
 boost_data <- gpb.Dataset(data = data[, covars], label = data[, "y"])
-gpboost_model <- gpboost(data = boost_data, gp_model = gp_model, nrounds = nrounds,
-                         params = params, verbose = 1) ## same as gpb.train
+gpboost_model <- gpboost(data = boost_data, gp_model = gp_model, 
+                         nrounds = nrounds, params = params, 
+                         verbose = 1) # same as gpb.train
 ```
 
 # Choosing tuning parameters
-It is important that tuning parameters are appropriately chosen for boosting. There are no universal default values and every data set will likely need different optimal tuning parameters. Note that this can take some time. Instead of a fixed grid search as below, one can also do a random grid search to speed things up (see ``num_try_random``). Below we show how tuning parameters can be chosen using the `` gpb.grid.search.tune.parameters`` function. We use the mean square error (``mse``) as prediction accuracy measure on the validation data. Alternatively, one can also use, e.g.,  the test negative log-likelihood (``test_neg_log_likelihood`` = default value if nothing is specified) which also takes prediction uncertainty into account. 
+It is important that tuning parameters are appropriately chosen for boosting. There are no universal default values and every data set will likely need different tuning parameters. Note that this can take some time. Instead of a fixed grid search as below, one can also do a random grid search to speed things up (see ``num_try_random``). Below we show how tuning parameters can be chosen using the `` gpb.grid.search.tune.parameters`` function. We use the mean square error (``mse``) as prediction accuracy measure on the validation data. Alternatively, one can also use, e.g.,  the test negative log-likelihood (``test_neg_log_likelihood`` = default value if nothing is specified) which also takes prediction uncertainty into account. 
 
 ```{r tune_pars_r, eval=FALSE, include=TRUE}
-gp_model <- GPModel(group_data = data[, "cl"], gp_coords = data[, c("Long", "Lat")],
+gp_model <- GPModel(group_data = data[, "cl"], 
+                    gp_coords = data[, c("Long", "Lat")],
                     likelihood = "gaussian", cov_function = "exponential")
 boost_data <- gpb.Dataset(data = data[, covars], label = data[, "y"])
 param_grid = list("learning_rate" = c(1,0.1,0.01), 
@@ -127,13 +133,13 @@ opt_params
 # Model interpretation
 
 ## Estimated random effects model
-Information on the estimated random effects model can be obtained by calling the ``summary`` function. For spatial Gaussian processes, ``GP_var`` is the marginal variance, i.e., the amount of spatial correlation or structure spatial variation, and ``GP_range`` is the range, or scale, parameter that measures how fast correlation decays over space. For an exponential covariance function, three times this value (approx. `r signif(3 * gp_model$get_cov_pars()[4], digits=2)` here) is the distance where the (residual) spatial correlation is essentially zero (below 5%). As the results below show, the amount of spatial correlation is relatively small since the marginal variance of `r signif(gp_model$get_cov_pars()[3], digits=2)` is small compared to the total variance of the response variable which is approx. `r signif(var(data[,"y"]), digits=2)`. Additionally the error term and the cl grouped random effects also have small variances (`r signif(gp_model$get_cov_pars()[1], digits=2)` and `r signif(gp_model$get_cov_pars()[2], digits=2)`). We thus conclude that most of the variance in the response variable is explained by the fixed effects predictor variables. 
+Information on the estimated random effects model can be obtained by calling the ``summary`` function on the ``gp_model``. For Gaussian processes, ``GP_var`` is the marginal variance, i.e., the amount of spatial correlation or structure spatial variation, and ``GP_range`` is the range, or scale, parameter that measures how fast correlation decays over space. For an exponential covariance function, three times this value (approx. `r signif(3 * gp_model$get_cov_pars()[4], digits=2)` here) is the distance where the (residual) spatial correlation is essentially zero (below 5%). As the results below show, the amount of spatial correlation is relatively small since the marginal variance of `r signif(gp_model$get_cov_pars()[3], digits=2)` is small compared to the total variance of the response variable which is approx. `r signif(var(data[,"y"]), digits=2)`. Additionally the error term and the cl grouped random effects also have small variances (`r signif(gp_model$get_cov_pars()[1], digits=2)` and `r signif(gp_model$get_cov_pars()[2], digits=2)`). We thus conclude that most of the variance in the response variable is explained by the fixed effects predictor variables. 
 ```{r summary_r}
 summary(gp_model)
 ```
 
 ## Spatial effect map
-We can plot the estimated ("predicted") spatial random effects at the training data locations by calling the ``predict`` function on the training data; see the code below. Such a plot shows the spatial effect when factoring out the effect of the fixed effects predictor variables. Note that the spatial effects take into account both the spatial Gaussian process and the grouped region cluster random effects. If one wants to obtain only spatial random effects from the Gaussian process part, one can use the ``predict_training_data_random_effects`` function (see the commented code below). Alternatively, one can also do spatial extrapolation (="Krigging"), but this makes not a lot of sense for areal data.
+We can plot the estimated ("predicted") spatial random effects at the training data locations by calling the ``predict`` function on the training data; see the code below. Such a plot shows the spatial effect when factoring out the effect of the fixed effects predictor variables. Note that these spatial effects take into account both the spatial Gaussian process and the grouped region cluster random effects. If one wants to obtain only spatial random effects from the Gaussian process part, one can use the ``predict_training_data_random_effects`` function (see the commented code below). Alternatively, one can also do spatial extrapolation (="Krigging"), but this makes not a lot of sense for areal data.
 ```{r spatial_map_r, fig.width=10, fig.height=4, echo=TRUE, message=FALSE, warning=FALSE}
 pred <- predict(gpboost_model, group_data_pred = data[1:242, c("cl")], 
                 gp_coords_pred = data[1:242, c("Long", "Lat")],
@@ -196,7 +202,7 @@ There are several tools for understanding the form of the fixed effects function
 - Friedman's H-statistic
 - Partial dependence plots (one and two-dimensional)
 
-As the results below show, the information obtained from SHAP values and SHAP dependence plots is the same as when looking at traditional variable importance measures and partial dependence plots. The most important variables are 'K' and 'edu'. From the dependence plots, we conclude that there are non-linearities. For instance, the effect of K is almost flat for large and small values of K and increasing in-between. Further, the effect of edu is steeper for small values of edu and flattens for larger values of edu. Friedman's H-statistic indicates that there are some interactions. For the two variables with the largest amount of interaction, L and pop, we create a two-dimensional partial dependence plot.
+As the results below show, the information obtained from SHAP values and SHAP dependence plots is the same as when looking at traditional variable importance measures and partial dependence plots. The most important variables are 'K' and 'edu'. From the dependence plots, we conclude that there are non-linearities. For instance, the effect of K is almost flat for large and small values of K and increasing in-between. Further, the effect of edu is steeper for small values of edu and flattens for larger values of edu. Friedman's H-statistic indicates that there are some interactions. For the two variables with the largest amount of interaction, L and pop, we create a two-dimensional partial dependence plot below.
 
 ```{r interpret_r, fig.width=7, fig.height=5, cache=cache}
 # SHAP values
@@ -205,10 +211,10 @@ shap.plot.summary.wrap1(gpboost_model, X = data[,covars]) + ggtitle("SHAP values
 # SHAP dependence plots
 shap_long <- shap.prep(gpboost_model, X_train = data[,covars])
 shap.plot.dependence(data_long = shap_long, x = covars[2], 
-                           color_feature = covars[4], smooth = FALSE, size = 2) + 
+                     color_feature = covars[4], smooth = FALSE, size = 2) + 
   ggtitle("SHAP dependence plot for K")
 shap.plot.dependence(data_long = shap_long, x = covars[4], 
-                           color_feature = covars[2], smooth = FALSE, size = 2) + 
+                     color_feature = covars[2], smooth = FALSE, size = 2) + 
   ggtitle("SHAP dependence plot for edu")
 
 # Split-based feature importances
@@ -227,16 +233,16 @@ fl <- flashlight(model = gpboost_model, data = data.frame(y = data[,"y"], data[,
 plot(imp <- light_interaction(fl, v = covars, pairwise = TRUE)) + 
   ggtitle("H interaction statistic") # takes a few seconds
 
-# Partial dependence plot
+# Partial dependence plots
 gpb.plot.partial.dependence(gpboost_model, data[,covars], variable = 2, xlab = covars[2], 
-                            ylab = "gdp", main = "Partial dependence plot" )
+                            ylab = "gdp", main = "Partial dependence plot for K" )
 gpb.plot.partial.dependence(gpboost_model, data[,covars], variable = 4, xlab = covars[4], 
-                            ylab = "gdp", main = "Partial dependence plot" )
+                            ylab = "gdp", main = "Partial dependence plot edu" )
 
-# Two-dimensional partial dependence plot (can show interactions)
+# Two-dimensional partial dependence plot (to visualize interactions)
 i = 1; j = 3;# i vs j
 gpb.plot.part.dep.interact(gpboost_model, data[,covars], variables = c(i,j), xlab = covars[i], 
-                           ylab = covars[j], main = "Pairwise partial dependence plot")
+                           ylab = covars[j], main = "Pairwise partial dependence plot for pop and L")
 
 ```
 
@@ -244,9 +250,9 @@ gpb.plot.part.dep.interact(gpboost_model, data[,covars], variables = c(i,j), xla
 
 ## Separate random effects for different time periods
 
-In the above model, we have used the same random effects for both the year 2000 and the year 2021. Alternatively, one can also use independent spatial and grouped random effects for different time periods (*independent under the prior, conditional on the data, there is dependence ...*). In the ``GPBoost`` library, this can be done via the ``cluster_ids`` argument. ``cluster_ids`` needs to be a vector of length the sample size, and every entry indicates the "cluster" to which an observation belongs to. Different clusters then have independent spatial and grouped random effects, but the hyperparameters (e.g., marginal variance, variance components, etc.) and the fixed effects function are the same across clusters. 
+In the above model, we have used the same random effects for both years 2000 and 2021. Alternatively, one can also use independent spatial and grouped random effects for different time periods (*independent under the prior, conditional on the data, there is dependence ...*). In the ``GPBoost`` library, this can be done via the ``cluster_ids`` argument. ``cluster_ids`` needs to be a vector of length the sample size, and every entry indicates the "cluster" to which an observation belongs to. Different clusters then have independent spatial and grouped random effects, but the hyperparameters (e.g., marginal variance, variance components, etc.) and the fixed effects function are the same across clusters. 
 
-Below we show how we can fit such a model and create two separate spatial maps. As the results below show, the spatial effects are quite different for the two years 2000 and 2021. In particular, there is less (residual) spatial variation (or heterogeneity) for the year 2021 compared to 2000. This is confirmed by looking at standard deviations of the predicted spatial random effects which is almost twice as large for 2000 compared to the year 2021 (see below). A further conclusion is that in 2000, there were more regions with "low" GDP numbers (random effects below 0), and this is no longer the case for 2021.
+Below we show how we can fit such a model and create two separate spatial maps. As the results below show, the spatial effects are quite different for the two years 2000 and 2021. In particular, there is less (residual) spatial variation (or heterogeneity) for the year 2021 compared to 2000. This is confirmed by looking at standard deviations of the predicted spatial random effects which is almost twice as large for 2000 compared to the year 2021 (see below). A further conclusion is that in 2000, there were more regions with "low" GDP numbers (spatial effects below 0), and this is no longer the case for 2021.
 
 ```{r cluster_ids_r, echo=TRUE, fig.height=4, fig.width=10, message=FALSE, warning=FALSE}
 gp_model <- GPModel(group_data = data[, c("cl")], gp_coords = data[, c("Long", "Lat")],
@@ -280,7 +286,7 @@ sd(pred$random_effect_mean[1:242 + 242])
 
 ## Interaction between space and fixed effects predictor variables
 
-In the above model, there is no interaction between the random effects and the fixed effects predictor variables. I.e., there is no interaction between the spatial coordinates and the fixed effects predictor variables. Such interaction can be modeled by additionally including the random effect input variables (= the spatial coordinates or the categorical grouping variable) in the fixed effects function. The code below shows how this can be done. However, as the variable importance plot below shows, the coordinates are not used in the tree-ensemble, and there is thus no such interaction detectable.
+In the above model, there is no interaction between the random effects and the fixed effects predictor variables. I.e., there is no interaction between the spatial coordinates and the fixed effects predictor variables. Such interaction can be modeled by additionally including the random effects input variables (= the spatial coordinates or the categorical grouping variable) in the fixed effects function. The code below shows how this can be done. As the variable importance plot below shows, the coordinates are not used in the tree-ensemble, and there is thus no such interaction detectable for this data set.
 
 ```{r train_interact_r, results=FALSE}
 gp_model <- GPModel(group_data = data[, c("cl")], gp_coords = data[, c("Long", "Lat")],
@@ -294,18 +300,18 @@ gpboost_model <- gpboost(data = boost_data, gp_model = gp_model, nrounds = nroun
                          params = params, verbose = 0)
 feature_importances <- gpb.importance(gpboost_model, percentage = TRUE)
 gpb.plot.importance(feature_importances, top_n = 25, measure = "Gain", 
-                    main = "Variable importances when including coordinates in the fixed effects")
+                    main = "Var. imp. when including coordinates in the fixed effects")
 ```
 
 ## Large data
 
-For large data sets, calculations with Gaussian processes are very slow, and one has to use an approximation. The ``GPBoost`` library implements several ones. For instance, setting ``gp_approx="vecchia"`` in the ``GPModel`` constructor will use a Vecchia approximation. The data set used in this article is relatively small, and we can do all calculations exactly. 
+For large data sets, calculations with Gaussian processes are slow, and one has to use an approximation. The ``GPBoost`` library implements several ones. For instance, setting ``gp_approx="vecchia"`` in the ``GPModel`` constructor will use a Vecchia approximation. The data set used in this article is relatively small, and we can do all calculations exactly. 
 
 ## Other spatial random effects models
 
 Above, we have used a Gaussian process to model spatial random effects. Since the data is areal data, another option is to use models that rely on neighborhood information such as CAR and SAR models. These models are currently not yet implemented in the ``GPBoost`` library (*might be added in the future -> contact the author*).
 
-Another option is to use a grouped random effects model defined by the categorical region ID variable cl for modeling spatial effects. The code below shows how this can be done in ``GPBoost``. However, this model essentially ignores the spatial structure.
+Another option is to use a grouped random effects model defined by the categorical region ID variable for modeling spatial effects. The code below shows how this can be done in ``GPBoost``. However, this model essentially ignores the spatial structure.
 
 ```{r grouped_spat_r, eval=FALSE, include=TRUE}
 gp_model <- GPModel(group_data = data[, c("group", "cl")], likelihood = "gaussian")
