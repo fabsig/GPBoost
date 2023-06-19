@@ -3452,10 +3452,12 @@ class Booster:
             This is discontinued. Use the renamed equivalent argument 'pred_latent' instead
         vecchia_pred_type : string, optional (default=None)
             The type of Vecchia approximation used for making predictions.
-            This is discontinued here. Use the function 'set_prediction_data' to specify this
+            This is discontinued here. Use the function 'set_prediction_data' 
+            of the 'gp_model' to specify this
         num_neighbors_pred : integer or None, optional (default=None)
             The number of neighbors for making predictions.
-            This is discontinued here. Use the function 'set_prediction_data' to specify this
+            This is discontinued here. Use the function 'set_prediction_data' 
+            of the 'gp_model' to specify this
         **kwargs
             Other parameters for the prediction.
 
