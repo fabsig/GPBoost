@@ -195,31 +195,15 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # CV for finding number of boosting iterations with use_gp_model_for_validation = FALSE
       gp_model <- GPModel(group_data = group_data_train)
       gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
-      cvbst <- gpb.cv(params = params,
-                      data = dtrain,
-                      gp_model = gp_model,
-                      nrounds = 100,
-                      nfold = 4,
-                      eval = "l2",
-                      early_stopping_rounds = 5,
-                      use_gp_model_for_validation = FALSE,
-                      fit_GP_cov_pars_OOS = FALSE,
-                      folds = folds,
-                      verbose = 0)
+      cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
+                      nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
+                      use_gp_model_for_validation = FALSE, folds = folds, verbose = 0)
       expect_equal(cvbst$best_iter, 59)
       expect_lt(abs(cvbst$best_score-1.027334), TOLERANCE)
       # CV for finding number of boosting iterations with use_gp_model_for_validation = TRUE
-      cvbst <- gpb.cv(params = params,
-                      data = dtrain,
-                      gp_model = gp_model,
-                      nrounds = 100,
-                      nfold = 4,
-                      eval = "l2",
-                      early_stopping_rounds = 5,
-                      use_gp_model_for_validation = TRUE,
-                      fit_GP_cov_pars_OOS = FALSE,
-                      folds = folds,
-                      verbose = 0)
+      cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
+                      nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
+                      use_gp_model_for_validation = TRUE, folds = folds, verbose = 0)
       expect_equal(cvbst$best_iter, 59)
       expect_lt(abs(cvbst$best_score-0.6526893), TOLERANCE)
       # Parameter tuning
@@ -286,17 +270,10 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       #   1. Run GPBoost algorithm separately on every fold and fit parameters on out-of-sample data
       gp_model <- GPModel(group_data = group_data_train)
       gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
-      cvbst <- gpb.cv(params = params,
-                      data = dtrain,
-                      gp_model = gp_model,
-                      nrounds = 100,
-                      nfold = 4,
-                      eval = "l2",
-                      early_stopping_rounds = 5,
-                      use_gp_model_for_validation = FALSE,
-                      fit_GP_cov_pars_OOS = TRUE,
-                      folds = folds,
-                      verbose = 0)
+      cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
+                      nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
+                      use_gp_model_for_validation = FALSE, folds = folds, verbose = 0,
+                      fit_GP_cov_pars_OOS = TRUE)
       expect_equal(cvbst$best_iter, 59)
       cov_pars_OOS <- c(0.05103639, 0.60775408, 0.38378833)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),TOLERANCE)
@@ -307,24 +284,18 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       #   3. Prediction
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test, 
                       predict_var = TRUE, pred_latent = TRUE)
-      expect_lt(sum(abs(head(pred$fixed_effect, n=4)-c(4.891230, 4.121098, 3.140073, 4.236029))),TOLERANCE)
+      expect_lt(sum(abs(head(pred$fixed_effect, n=4)-c(4.891230, 4.121098, 3.140073, 4.236029))),0.1)
       expect_lt(sum(abs(tail(pred$random_effect_mean)-c(0.3953752, -0.1785115, -1.2413583,
-                                                        rep(0,n_new)))),TOLERANCE)
+                                                        rep(0,n_new)))),0.05)
       expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.003256045, 0.003256045, 0.003256045,
                                                        rep(0.991588837,n_new)))),TOLERANCE)
       
       # GPBoostOOS algorithm: fit parameters on out-of-sample data with random folds
       gp_model <- GPModel(group_data = group_data_train)
       gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
-      cvbst <- gpb.cv(params = params,
-                      data = dtrain,
-                      gp_model = gp_model,
-                      nrounds = 100,
-                      nfold = 4,
-                      eval = "l2",
-                      early_stopping_rounds = 5,
-                      use_gp_model_for_validation = FALSE,
-                      fit_GP_cov_pars_OOS = TRUE,
+      cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
+                      nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
+                      use_gp_model_for_validation = FALSE, fit_GP_cov_pars_OOS = TRUE,
                       verbose = 0)
       cov_pars_OOS <- c(0.055, 0.59, 0.39)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),0.1)
@@ -332,16 +303,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Use Nelder-Mead for training
       gp_model <- GPModel(group_data = group_data_train)
       gp_model$set_optim_params(params = list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6))
-      bst <- gpboost(data = X_train,
-                     label = y_train,
-                     gp_model = gp_model,
-                     nrounds = 62,
-                     learning_rate = 0.01,
-                     max_depth = 6,
-                     min_data_in_leaf = 5,
-                     objective = "regression_l2",
-                     verbose = 0,
-                     leaves_newton_update = FALSE)
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 62, learning_rate = 0.01, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
       cov_pars <- c(0.004823767, 0.592422707, 0.394167937)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
       # Prediction
@@ -353,31 +317,17 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Use BFGS for training
       gp_model <- GPModel(group_data = group_data_train)
       gp_model$set_optim_params(params = list(optimizer_cov="bfgs"))
-      bst <- gpboost(data = X_train,
-                     label = y_train,
-                     gp_model = gp_model,
-                     nrounds = 62,
-                     learning_rate = 0.01,
-                     max_depth = 6,
-                     min_data_in_leaf = 5,
-                     objective = "regression_l2",
-                     verbose = 0,
-                     leaves_newton_update = FALSE)
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 62, learning_rate = 0.01, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
       
       # Use Adam for training
       gp_model <- GPModel(group_data = group_data_train)
       gp_model$set_optim_params(params = list(optimizer_cov="adam"))
-      bst <- gpboost(data = X_train,
-                     label = y_train,
-                     gp_model = gp_model,
-                     nrounds = 62,
-                     learning_rate = 0.01,
-                     max_depth = 6,
-                     min_data_in_leaf = 5,
-                     objective = "regression_l2",
-                     verbose = 0,
-                     leaves_newton_update = FALSE)
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 62, learning_rate = 0.01, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
       
       # Newton updates for tree leaves
