@@ -16,7 +16,7 @@ output:
 
 ```{r setup, include=FALSE}
 cache <- FALSE # caching does not work properly...
-knitr::opts_chunk$set(echo = TRUE, cache = cache)
+knitr::opts_chunk$set(echo = TRUE, cache = cache, dev = "ragg_png")
 run_python <- FALSE
 library(reticulate)
 reticulate::use_python("C:/ProgramData/Anaconda3", require=TRUE)
@@ -52,7 +52,7 @@ There are four predictor variables:
 - Pop: log(population)
 - Edu: share of tertiary education
 
-Further, there are spatial coordinates:
+Further, there are centroid spatial coordinates or the regions:
 
 - Long: region longitude
 - Lat: region latitude
@@ -67,27 +67,50 @@ A spatial cluster ID:
 
 ## Data loading and short visualization
 
-We first load the data and create a map illustrating the (log) GDP / capita over space.
+We first load the data and create a map illustrating the (log) GDP / capita over space. We create two maps: one with all data and another one when excluding some remote islands. In the commented code below, we also show how to create a spatial plot when no shape file for spatial polygons is available.
 
 <!-- ***R*** -->
-```{r load_data_r, echo=TRUE, fig.height=4, fig.width=10, message=FALSE, warning=FALSE}
+```{r load_data_r, echo=TRUE, fig.height=4, fig.width=10, message=FALSE, warning=FALSE, results=FALSE}
 library(gpboost)
-data <- read.csv("https://raw.githubusercontent.com/fabsig/GPBoost/master/data/gdp_european_regions.csv")
-data <- as.matrix(data) # convert to matrix since the boosting part currently does not support data.frames
-covars <- c("L", "K", "pop", "edu")
-
 library(ggplot2)
-library(viridis)
 library(gridExtra)
-p1 <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"],
-                               GDP=data[,"y"]), aes(x=Long,y=Lat,color=GDP)) +
-  geom_point(size=2, alpha=0.5) + scale_color_viridis(option = "B") + 
-  ggtitle("GDP / capita (log)")
-p2 <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"], 
-                               GDP=data[,"y"]), aes(x=Long,y=Lat,color=GDP)) +
-  geom_point(size=3, alpha=0.5) + scale_color_viridis(option = "B") + 
-  ggtitle("GDP / capita (log) -- Europe excluding islands") + xlim(-10,28) + ylim(35,67)
+library(viridis)
+library(sf)
+
+# Load data
+data <- read.csv("https://raw.githubusercontent.com/fabsig/GPBoost/master/data/gdp_european_regions.csv")
+FID <- data$FID
+data <- as.matrix(data[,names(data)!="FID"]) # convert to matrix since the boosting part currently does not support data.frames
+covars <- c("L", "K", "pop", "edu")
+# Load shape file for spatial plots
+cur_tempfile <- tempfile()
+download.file(url = "https://raw.githubusercontent.com/fabsig/GPBoost/master/data/shape_European_regions.zip", destfile = cur_tempfile)
+out_directory <- tempfile()
+unzip(cur_tempfile, exdir = out_directory)
+shape <- st_read(dsn = out_directory)
+
+# Create spatial plot of GDP
+data_plot <- merge(shape, data.frame(FID = FID, y = data[,"y"]), by="FID")
+p1 <- ggplot(data_plot) + geom_sf(aes(group=FID, fill=y)) +
+  scale_fill_viridis(name="GDP / capita (log)", option = "B") + 
+   ggtitle("GDP / capita (log)")
+# Sample plot excluding islands
+p2 <- ggplot(data_plot) + geom_sf(aes(group=FID, fill=y)) +
+  scale_fill_viridis(name="GDP / capita (log)", option = "B") +
+  xlim(2700000,6400000) + ylim(1500000,5200000) + 
+  ggtitle("GDP / capita (log) -- excluding islands")
 grid.arrange(p1, p2, ncol=2)
+
+# # Spatial plot without a shape file
+# p1 <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"],
+#                                GDP=data[,"y"]), aes(x=Long,y=Lat,color=GDP)) +
+#   geom_point(size=2, alpha=0.5) + scale_color_viridis(option = "B") + 
+#   ggtitle("GDP / capita (log)")
+# p2 <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"], 
+#                                GDP=data[,"y"]), aes(x=Long,y=Lat,color=GDP)) +
+#   geom_point(size=3, alpha=0.5) + scale_color_viridis(option = "B") + 
+#   ggtitle("GDP / capita (log) -- Europe excluding islands") + xlim(-10,28) + ylim(35,67)
+# grid.arrange(p1, p2, ncol=2)
 ```
 
 # Training a GPBoost model
@@ -144,22 +167,26 @@ We can plot the estimated ("predicted") spatial random effects at the training d
 pred <- predict(gpboost_model, group_data_pred = data[1:242, c("cl")], 
                 gp_coords_pred = data[1:242, c("Long", "Lat")],
                 data = data[1:242, covars], predict_var = TRUE, pred_latent = TRUE)
-plot_mu <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"], spat_eff=pred$random_effect_mean),aes(x=Long,y=Lat,color=spat_eff)) +
-  geom_point(size=3, alpha=0.5) + scale_color_viridis(option = "B") + 
-  ggtitle("Spatial effect (mean)") + xlim(-10,28) + ylim(35,67)
-plot_sd <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"], std_dev=pred$random_effect_cov),aes(x=Long,y=Lat,color=std_dev)) +
-  geom_point(size=3, alpha=0.5) + scale_color_viridis(option = "B") + 
-  ggtitle("Uncertainty (std. dev.)") + xlim(-10,28) + ylim(35,67)
+data_plot <- merge(shape, data.frame(FID = FID, y = pred$random_effect_mean), by="FID")
+plot_mu <- ggplot(data_plot) + geom_sf(aes(group=FID, fill=y)) +
+  scale_fill_viridis(name="Spatial effect", option = "B") +
+  ggtitle("Spatial effect (mean)") + xlim(2700000,6400000) + ylim(1500000,5200000)
+data_plot <- merge(shape, data.frame(FID = FID, y = pred$random_effect_cov), by="FID")
+plot_sd <- ggplot(data_plot) + geom_sf(aes(group=FID, fill=y)) +
+  scale_fill_viridis(name="Std. dev.", option = "B") +
+  ggtitle("Uncertainty (std. dev.)") + xlim(2700000,6400000) + ylim(1500000,5200000)
 grid.arrange(plot_mu, plot_sd, ncol=2)
 
-# # Only spatial effecst from the Gaussian process
+# Only spatial effecst from the Gaussian process
 # rand_effs <- predict_training_data_random_effects(gp_model, predict_var = TRUE)[1:242, c("GP", "GP_var")]
-# plot_mu <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"], spat_eff=rand_effs[,1]),aes(x=Long,y=Lat,color=spat_eff)) +
-#   geom_point(size=3, alpha=0.5) + scale_color_viridis(option = "B") + 
-#   ggtitle("Spatial effect from Gausian process (mean)") + xlim(-10,28) + ylim(35,67)
-# plot_sd <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"], std_dev=rand_effs[,2]),aes(x=Long,y=Lat,color=std_dev)) +
-#   geom_point(size=3, alpha=0.5) + scale_color_viridis(option = "B") + 
-#   ggtitle("Uncertainty (std. dev.)") + xlim(-10,28) + ylim(35,67)
+# data_plot <- merge(shape, data.frame(FID = FID, y = rand_effs[,1]), by="FID")
+# plot_mu <- ggplot(data_plot) + geom_sf(aes(group=FID, fill=y)) +
+#   scale_fill_viridis(name="Spatial effect (mean)", option = "B") +
+#   ggtitle("Spatial effect from Gausian process (mean)") + xlim(2700000,6400000) + ylim(1500000,5200000)
+# data_plot <- merge(shape, data.frame(FID = FID, y = rand_effs[,2]), by="FID")
+# plot_sd <- ggplot(data_plot) + geom_sf(aes(group=FID, fill=y)) +
+#   scale_fill_viridis(name="Uncertainty (std. dev.)", option = "B") +
+#   ggtitle("Uncertainty (std. dev.)") + xlim(2700000,6400000) + ylim(1500000,5200000)
 # grid.arrange(plot_mu, plot_sd, ncol=2)
 ```
 
@@ -269,19 +296,17 @@ pred <- predict(gpboost_model, group_data_pred = data[, c("cl")],
                 gp_coords_pred = data[, c("Long", "Lat")],
                 data = data[, covars], predict_var = TRUE, pred_latent = TRUE,
                 cluster_ids_pred = c(rep(1,242), rep(2,242)))
-plot_mu_2000 <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"], 
-                                         spat_eff=pred$random_effect_mean[1:242]), 
-                       aes(x=Long,y=Lat,color=spat_eff)) +
-  geom_point(size=3, alpha=0.5) + scale_color_viridis(option = "B") + 
-  ggtitle("Spatial effect for 2000 (mean)") + xlim(-10,28) + ylim(35,67)
-plot_mu_2021 <- ggplot(data = data.frame(Lat=data[,"Lat"], Long=data[,"Long"], 
-                                         spat_eff=pred$random_effect_mean[243:484]), 
-                       aes(x=Long,y=Lat,color=spat_eff)) +
-  geom_point(size=3, alpha=0.5) + scale_color_viridis(option = "B") + 
-  ggtitle("Spatial effect for 2021 (mean)") + xlim(-10,28) + ylim(35,67)
+data_plot <- merge(shape, data.frame(FID = FID, y = pred$random_effect_mean[1:242]), by="FID")
+plot_mu_2000 <- ggplot(data_plot) + geom_sf(aes(group=FID, fill=y)) +
+  scale_fill_viridis(name="Spatial effect", option = "B") +
+  ggtitle("Spatial effect for 2000 (mean)") + xlim(2700000,6400000) + ylim(1500000,5200000)
+data_plot <- merge(shape, data.frame(FID = FID, y = pred$random_effect_mean[243:484]), by="FID")
+plot_mu_2021 <- ggplot(data_plot) + geom_sf(aes(group=FID, fill=y)) +
+  scale_fill_viridis(name="Spatial effect", option = "B") +
+  ggtitle("Spatial effect for 2021 (mean)") + xlim(2700000,6400000) + ylim(1500000,5200000)
 grid.arrange(plot_mu_2000, plot_mu_2021, ncol=2)
-sd(pred$random_effect_mean[1:242])
-sd(pred$random_effect_mean[1:242 + 242])
+sd(pred$random_effect_mean[1:242]) # 0.2321267
+sd(pred$random_effect_mean[243:484]) # 0.1286398
 ```
 
 ## Interaction between space and fixed effects predictor variables
