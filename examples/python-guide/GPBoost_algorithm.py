@@ -94,7 +94,7 @@ params = {'learning_rate': 0.01, 'max_depth': 3,
           'num_leaves': 2**10, 'verbose': 0}
 
 # Create dataset for gpb.train
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
 bst = gpb.train(params=params, train_set=data_train,  gp_model=gp_model,
                 num_boost_round=num_boost_round)
 gp_model.summary() # Estimated random effects model
@@ -158,7 +158,7 @@ other_params = {'num_leaves': 2**10, 'verbose': 0}
 #               'lambda_l2': [0,1,10]}
 # other_params = {'max_depth': -1, 'verbose': 0}
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
                                              num_try_random=None, nfold=4, seed=1000,
                                              train_set=data_train, gp_model=gp_model,
@@ -196,7 +196,7 @@ opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other
   
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
 cvbst = gpb.cv(params=params, train_set=data_train,
                gp_model=gp_model, use_gp_model_for_validation=True,
                num_boost_round=1000, early_stopping_rounds=10,
@@ -234,7 +234,7 @@ if likelihood == "gaussian":
 
 #--------------------Model interpretation----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
 bst = gpb.train(params=params, train_set=data_train,
                 gp_model=gp_model, num_boost_round=num_boost_round)
 # Split-based feature importances
@@ -274,7 +274,7 @@ shap.dependence_plot(("Feature 0", "Feature 1"), shap_interaction_values, X, dis
 #--------------------Saving a booster with a gp_model and loading it from a file----------------
 # Train model and make prediction
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
 bst = gpb.train(params=params, train_set=data_train,
                 gp_model=gp_model, num_boost_round=num_boost_round)
 group_test = np.array([1,2,-1])

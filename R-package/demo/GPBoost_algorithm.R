@@ -125,7 +125,7 @@ plot(b1, pred$random_effect_mean, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 
 #--------------------Choosing tuning parameters----------------
-param_grid = list("learning_rate" = c(1,0.1,0.01), 
+param_grid <- list("learning_rate" = c(1,0.1,0.01), 
                   "min_data_in_leaf" = c(10,100,1000),
                   "max_depth" = c(1,2,3,5,10),
                   "lambda_l2" = c(0,1,10))
@@ -173,7 +173,7 @@ opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = 
 # Faster computation for large data:
 #   using manually defined validation data instead of cross-validation
 valid_tune_idx <- sample.int(length(y), as.integer(0.2*length(y))) # use 20% of the data as validation data
-folds = list(valid_tune_idx)
+folds <- list(valid_tune_idx)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
                                               num_try_random = NULL, folds = folds,
                                               data = dataset, gp_model = gp_model,

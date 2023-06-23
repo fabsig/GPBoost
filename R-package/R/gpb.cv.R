@@ -521,7 +521,7 @@ gpb.cv <- function(params = list()
         booster <- Booster$new(params = params, train_set = dtrain, gp_model = gp_model_train)
         gp_model$set_likelihood(gp_model_train$get_likelihood_name()) ## potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
         gp_model_train$set_optim_params(params = gp_model$get_optim_params())
-
+        
       } else {
         booster <- Booster$new(params = params, train_set = dtrain)
       }
@@ -1099,26 +1099,28 @@ gpb.grid.search.tune.parameters <- function(param_grid
         }
       },
       error = function(msg) {
-        message(paste0("Error for parameter combination ", counter_num_comb, 
-                       " of ", length(try_param_combs), ": ", param_comb_str,
-                       ". Error message: "))
+        if (verbose_eval < 1L) {
+          message(paste0("Error for parameter combination ", counter_num_comb, 
+                         " of ", length(try_param_combs), ": ", param_comb_str,
+                         ". Error message: "))
+        }
         message(msg)
       })# end tryCatch
-      if (current_score_is_better) {
-        best_score <- cvbst$best_score
-        best_iter <- cvbst$best_iter
-        best_params <- param_comb
-        if (verbose_eval >= 1L) {
-          metric_name <- names(cvbst$record_evals$valid)
-          param_comb_print <- param_comb
-          param_comb_print[["nrounds"]] <- best_iter
-          str <- lapply(seq_along(param_comb_print), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb_print, n=names(param_comb_print))
-          message(paste0("***** New best test score (",metric_name, " = ", 
-                         best_score,  ") found for the following parameter combination: ", 
-                         paste0(unlist(str), collapse=", ")))
-        }
+    if (current_score_is_better) {
+      best_score <- cvbst$best_score
+      best_iter <- cvbst$best_iter
+      best_params <- param_comb
+      if (verbose_eval >= 1L) {
+        metric_name <- names(cvbst$record_evals$valid)
+        param_comb_print <- param_comb
+        param_comb_print[["nrounds"]] <- best_iter
+        str <- lapply(seq_along(param_comb_print), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb_print, n=names(param_comb_print))
+        message(paste0("***** New best test score (",metric_name, " = ", 
+                       best_score,  ") found for the following parameter combination: ", 
+                       paste0(unlist(str), collapse=", ")))
       }
-      counter_num_comb <- counter_num_comb + 1L
+    }
+    counter_num_comb <- counter_num_comb + 1L
   }
   
   return(list(best_params=best_params, best_iter=best_iter, best_score=best_score))

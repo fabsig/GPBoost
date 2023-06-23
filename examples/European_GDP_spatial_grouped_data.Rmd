@@ -260,7 +260,7 @@ feature_importances <- gpb.importance(gpboost_model, percentage = TRUE)
 gpb.plot.importance(feature_importances, top_n = 25, measure = "Gain", 
                     main = "Split-based variable importances")
 
-# H-statistic for interactions. Note: there are no interactions if max_depth = 1
+# H-statistic for interactions
 library(flashlight)
 fl <- flashlight(model = gpboost_model, data = data.frame(y = data[,"y"], data[,covars]), 
                  y = "y", label = "gpb",

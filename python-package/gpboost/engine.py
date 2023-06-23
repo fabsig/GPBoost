@@ -1114,8 +1114,9 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                 if current_score < best_score:
                     current_score_is_better = True
         except Exception as err:
-            print("Error for parameter combination " + str(counter_num_comb) +
-                  " of " + str(len(try_param_combs)) + ": " + str(param_comb) + ". Error message: ")
+            if verbose_eval < 1:
+                print("Error for parameter combination " + str(counter_num_comb) +
+                      " of " + str(len(try_param_combs)) + ": " + str(param_comb) + ". Error message: ")
             print(str(err))
         if current_score_is_better:
             best_score = current_score
