@@ -24,18 +24,19 @@ reticulate::use_python("C:/ProgramData/Anaconda3", require=TRUE)
 
 # Introduction
 
-The GPBoost algorithm extends linear mixed effects and Gaussian process models by replacing the linear fixed effects function with a non-parametric non-linear function modeled using tree-boosting. This article shows how the GPBoost algorithm implemented in the ``GPBoost`` library can be used for modeling data with a spatial and grouped structure. We demonstrate the functionality of the ``GPBoost`` library using European GDP data which is an example of areal spatial econometric data. All results are obtained using ``GPBoost`` version 1.2.1. This demo uses the R package, but the corresponding Python package provides the same functionality.
+The [GPBoost algorithm](https://www.jmlr.org/papers/v23/20-322.html) extends linear mixed effects and Gaussian process models by replacing the linear fixed effects function with a non-parametric non-linear function modeled using tree-boosting. This article shows how the GPBoost algorithm implemented in the [``GPBoost`` library](https://github.com/fabsig/GPBoost) can be used for modeling data with a spatial and grouped structure. We demonstrate the functionality of the ``GPBoost`` library using European GDP data which is an example of areal spatial econometric data. All results are obtained using ``GPBoost`` version 1.2.1. This demo uses the R package, but the corresponding Python package provides the same functionality.
 
 Applying a GPBoost model (= combined tree-boosting and random effects / GP models) involves the following main steps:
 
 1. Define a ``GPModel`` in which you specify the following:
 
-- A random effects model (e.g., spatial random effects, grouped random effects, combined spatial and grouped, etc.)
-- The likelihood (= distribution of the response variable conditional on fixed and random effects)
+    - A random effects model (e.g., spatial random effects, grouped random effects, combined spatial and grouped, etc.)
+    - The likelihood (= distribution of the response variable conditional on fixed and random effects)
 
 2. Create a ``gpb.Dataset`` with the response variable and fixed effects predictor variables
 3. Choose tuning parameters, e.g., using the function ``gpb.grid.search.tune.parameters``
 4. Train the model with the ``gpboost`` / ``gpb.train`` function
+5. Interpret the trained model an/or make predictions
 
 ## Data description
 
@@ -225,16 +226,18 @@ There are several tools for understanding the form of the fixed effects function
 
 - SHAP values
 - SHAP dependence plots
+- SHAP force plot
 - Split-based variable importance
 - Friedman's H-statistic
 - Partial dependence plots (one and two-dimensional)
 
-As the results below show, the information obtained from SHAP values and SHAP dependence plots is the same as when looking at traditional variable importance measures and partial dependence plots. The most important variables are 'K' and 'edu'. From the dependence plots, we conclude that there are non-linearities. For instance, the effect of K is almost flat for large and small values of K and increasing in-between. Further, the effect of edu is steeper for small values of edu and flattens for larger values of edu. Friedman's H-statistic indicates that there are some interactions. For the two variables with the largest amount of interaction, L and pop, we create a two-dimensional partial dependence plot below.
+As the results below show, the information obtained from SHAP values and SHAP dependence plots is the same as when looking at traditional variable importance measures and partial dependence plots. The most important variables are 'K' and 'edu'. From the dependence plots, we conclude that there are non-linearities. For instance, the effect of K is almost flat for large and small values of K and increasing in-between. Further, the effect of edu is steeper for small values of edu and flattens for larger values of edu. Friedman's H-statistic indicates that there are some interactions. For the two variables with the largest amount of interaction, L and pop, we create a two-dimensional partial dependence plot below. Further, the SHAP force plot shows that the effect of the predictor variables is different for the year 2000 compared to the year 2021.
 
-```{r interpret_r, fig.width=7, fig.height=5, cache=cache}
+```{r interpret_r, fig.width=7, fig.height=5, cache=cache, message=FALSE, warning=FALSE, results=FALSE}
 # SHAP values
 library(SHAPforxgboost)
 shap.plot.summary.wrap1(gpboost_model, X = data[,covars]) + ggtitle("SHAP values")
+
 # SHAP dependence plots
 shap_long <- shap.prep(gpboost_model, X_train = data[,covars])
 shap.plot.dependence(data_long = shap_long, x = covars[2], 
@@ -243,6 +246,14 @@ shap.plot.dependence(data_long = shap_long, x = covars[2],
 shap.plot.dependence(data_long = shap_long, x = covars[4], 
                      color_feature = covars[2], smooth = FALSE, size = 2) + 
   ggtitle("SHAP dependence plot for edu")
+
+# SHAP force plot
+shap_contrib <- shap.values(gpboost_model, X_train = data[,covars])
+plot_data <- cbind(shap_contrib$shap_score, ID = 1:dim(data)[1])
+shap.plot.force_plot(plot_data, zoom_in=FALSE, id = "ID") + 
+  scale_fill_discrete(name="Variable") + xlab("Regions") + 
+  geom_vline(xintercept=242.5, linewidth=1) + ggtitle("SHAP force plot") + 
+  geom_text(x=100,y=-1.2,label="2000") + geom_text(x=400,y=-1.2,label="2021")
 
 # Split-based feature importances
 feature_importances <- gpb.importance(gpboost_model, percentage = TRUE)

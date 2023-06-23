@@ -1,29 +1,6 @@
-# Data sets used in demos
+# Description of data sets
 
-## gdp_european_regions.csv
+- **gdp_european_regions.csv and shape_European_regions.zip**
 
-The data is gross domestic product (GDP) data collected by Massimo Giannini, University of Rome Tor Vergata, from Eurostat. There is data for 242 European regions collected over two years 2000 and 2021. I.e., the number of data points is 484.
-
-The response variable is
-
-- (log) GDP / capita.
-
-There are four predictor variables:
-
-- L: (log) share of employment (empl/pop)
-- K: (log) fixed capital/population
-- Pop: log(population)
-- Edu: share of tertiary education
-
-Further, there are spatial coordinates:
-
-- Long: region longitude
-- Lat: region latitude
-
-A spatial region ID:
-
-- Group: the region ID (from 1 to 242)
-
-A spatial cluster ID:
-
-- cl: identifies the cluster the region belongs
+    - Gross domestic product (GDP) data and shape file for spatial polygons for NUTS2 regions collected by Massimo Giannini, University of Rome Tor Vergata, from Eurostat. See [**Mixed effects machine learning with GPBoost for grouped and areal spatial econometric data demo**](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/European_GDP_spatial_grouped_data.html) for information on the data
+    - Terms of usage and rights: see https://ec.europa.eu/eurostat/about-us/policies/copyright ("Eurostat has a policy of encouraging free re-use of its data, both for non-commercial and commercial purposes.") 
