@@ -132,7 +132,7 @@ gpboost_model <- gpboost(data = boost_data, gp_model = gp_model,
 ```
 
 # Choosing tuning parameters
-It is important that tuning parameters are appropriately chosen for boosting. There are no universal default values and every data set will likely need different tuning parameters. Note that this can take some time. Instead of a fixed grid search as below, one can also do a random grid search to speed things up (see ``num_try_random``). Below we show how tuning parameters can be chosen using the `` gpb.grid.search.tune.parameters`` function. We use the mean square error (``mse``) as prediction accuracy measure on the validation data. Alternatively, one can also use, e.g.,  the test negative log-likelihood (``test_neg_log_likelihood`` = default value if nothing is specified) which also takes prediction uncertainty into account. 
+It is important that tuning parameters are appropriately chosen for boosting. There are no universal default values and every data set will likely need different tuning parameters. Below we show how tuning parameters can be chosen using the `` gpb.grid.search.tune.parameters`` function. We use the mean square error (``mse``) as prediction accuracy measure on the validation data. Alternatively, one can also use, e.g.,  the test negative log-likelihood (``test_neg_log_likelihood`` = default value if nothing is specified) which also takes prediction uncertainty into account. *Depending on the data set and the grid size, this can take some time. Instead of a deterministic grid search as below, one can also do a random grid search to speed things up (see ``num_try_random``).*
 
 ```{r tune_pars_r, eval=FALSE, include=TRUE}
 gp_model <- GPModel(group_data = data[, "cl"], 
@@ -355,7 +355,7 @@ gp_model <- GPModel(group_data = data[, c("group", "cl")], likelihood = "gaussia
 
 ## (Generalized) linear mixed effects and Gaussian process models
 
-(Generalized) linear mixed effects and Gaussian process models can also be run in the ``GPBoost`` library. The code below shows how this can be done with the ``fitGPModel`` function. Note that one needs to manually add a column of 1's to include an intercept.
+(Generalized) linear mixed effects and Gaussian process models can also be run in the ``GPBoost`` library. The code below shows how this can be done with the ``fitGPModel`` function. Note that one needs to manually add a column of 1's to include an intercept. With the option ``params = list(std_dev=TRUE)``, one obtains standard deviations and p-values in the ``summary`` function.
 
 ```{r linear_r}
 X_incl_1 = cbind(Intercept = rep(1,dim(data)[1]), data[, covars])
