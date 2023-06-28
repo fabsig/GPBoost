@@ -1104,7 +1104,7 @@ namespace GPBoost {
 						num_it = it + 1;
 						break;
 					}
-					////increase learning rates again
+					////increase learning rates again (not used)
 					//else if (optimizer_cov_pars_ == "gradient_descent" && (it + 1) >= 10 && learning_rate_decreased_first_time_ &&
 					//	!learning_rate_increased_after_descrease_ && !na_or_inf_occurred) {
 					//	if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < INCREASE_LR_CHANGE_LL_THRESHOLD_ * std::abs(neg_log_likelihood_lag1_)) {

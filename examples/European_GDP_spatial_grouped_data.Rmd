@@ -124,7 +124,7 @@ gp_model <- GPModel(group_data = data[, c("cl")],
 params <- list(learning_rate = 0.01, max_depth = 2, num_leaves = 2^10,
                min_data_in_leaf = 10, lambda_l2 = 0)
 nrounds <- 37
-# gp_model$set_optim_params(params = list(trace=TRUE)) # To monitor hzperparameter estimation
+# gp_model$set_optim_params(params = list(trace=TRUE)) # To monitor hyperparameter estimation
 boost_data <- gpb.Dataset(data = data[, covars], label = data[, "y"])
 gpboost_model <- gpboost(data = boost_data, gp_model = gp_model, 
                          nrounds = nrounds, params = params, 
