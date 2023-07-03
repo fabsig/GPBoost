@@ -26,7 +26,7 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return new RegressionFairLoss(config);
   } else if (type == std::string("poisson")) {
     return new RegressionPoissonLoss(config);
-  } else if (type == std::string("binary")) {
+  } else if (type == std::string("bernoulli_logit") || type == std::string("binary")) {
     return new BinaryLogloss(config);
   } else if (type == std::string("lambdarank")) {
     return new LambdarankNDCG(config);
@@ -58,7 +58,7 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
 ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string& str) {
   auto strs = Common::Split(str.c_str(), ' ');
   auto type = strs[0];
-  if (type == std::string("regression")) {
+  if (type == std::string("regression") || type == std::string("gaussian")) {
     return new RegressionL2loss(strs);
   } else if (type == std::string("regression_l1")) {
     return new RegressionL1loss(strs);
@@ -70,7 +70,7 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return new RegressionFairLoss(strs);
   } else if (type == std::string("poisson")) {
     return new RegressionPoissonLoss(strs);
-  } else if (type == std::string("binary")) {
+  } else if (type == std::string("bernoulli_logit") || type == std::string("binary")) {
     return new BinaryLogloss(strs);
   } else if (type == std::string("lambdarank")) {
     return new LambdarankNDCG(strs);

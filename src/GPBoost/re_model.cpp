@@ -10,6 +10,8 @@
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
 using LightGBM::LogLevelRE;
+#include <LightGBM/meta.h>
+using LightGBM::label_t;
 
 namespace GPBoost {
 
@@ -36,8 +38,6 @@ namespace GPBoost {
 		double cov_fct_taper_shape,
 		int num_neighbors,
 		const char* vecchia_ordering,
-		const char* vecchia_pred_type,
-		int num_neighbors_pred,
 		int num_ind_points,
 		const char* likelihood,
 		const char* matrix_inversion_method,
@@ -89,8 +89,6 @@ namespace GPBoost {
 				cov_fct_taper_shape,
 				num_neighbors, 
 				vecchia_ordering,
-				vecchia_pred_type,
-				num_neighbors_pred,
 				num_ind_points,
 				likelihood,
 				matrix_inversion_method,
@@ -119,8 +117,6 @@ namespace GPBoost {
 				cov_fct_taper_shape,
 				num_neighbors,
 				vecchia_ordering,
-				vecchia_pred_type,
-				num_neighbors_pred,
 				num_ind_points,
 				likelihood,
 				matrix_inversion_method,
@@ -149,8 +145,6 @@ namespace GPBoost {
 				cov_fct_taper_shape,
 				num_neighbors,
 				vecchia_ordering,
-				vecchia_pred_type,
-				num_neighbors_pred,
 				num_ind_points,
 				likelihood,
 				matrix_inversion_method,
@@ -268,7 +262,6 @@ namespace GPBoost {
 		const char* cg_preconditioner_type,
 		int seed_rand_vec_trace,
 		int piv_chol_rank,
-		int rank_pred_approx_matrix_lanczos,
 		double* init_aux_pars,
 		bool estimate_aux_pars) {
 		// Initial covariance parameters
@@ -319,19 +312,19 @@ namespace GPBoost {
 			re_model_sp_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, rank_pred_approx_matrix_lanczos, estimate_aux_pars);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, rank_pred_approx_matrix_lanczos, estimate_aux_pars);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars);
 		}
 		else {
 			re_model_den_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, rank_pred_approx_matrix_lanczos, estimate_aux_pars);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars);
 		}
 	}
 
@@ -824,7 +817,8 @@ namespace GPBoost {
 		const char* vecchia_pred_type,
 		int num_neighbors_pred,
 		double cg_delta_conv_pred,
-		int nsim_var_pred) {
+		int nsim_var_pred,
+		int rank_pred_approx_matrix_lanczos) {
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->SetPredictionData(num_data_pred,
 				cluster_ids_data_pred,
@@ -836,7 +830,8 @@ namespace GPBoost {
 				vecchia_pred_type,
 				num_neighbors_pred,
 				cg_delta_conv_pred,
-				nsim_var_pred);
+				nsim_var_pred,
+				rank_pred_approx_matrix_lanczos);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->SetPredictionData(num_data_pred,
@@ -849,7 +844,8 @@ namespace GPBoost {
 				vecchia_pred_type,
 				num_neighbors_pred,
 				cg_delta_conv_pred,
-				nsim_var_pred);
+				nsim_var_pred,
+				rank_pred_approx_matrix_lanczos);
 		}
 		else {
 			re_model_den_->SetPredictionData(num_data_pred,
@@ -862,7 +858,8 @@ namespace GPBoost {
 				vecchia_pred_type,
 				num_neighbors_pred,
 				cg_delta_conv_pred,
-				nsim_var_pred);
+				nsim_var_pred,
+				rank_pred_approx_matrix_lanczos);
 		}
 	}
 
@@ -880,10 +877,6 @@ namespace GPBoost {
 		const double* cov_pars_pred,
 		const double* covariate_data_pred,
 		bool use_saved_data,
-		const char* vecchia_pred_type,
-		int num_neighbors_pred,
-		double cg_delta_conv_pred,
-		int nsim_var_pred,
 		const double* fixed_effects,
 		const double* fixed_effects_pred,
 		bool suppress_calc_cov_factor) {
@@ -945,10 +938,6 @@ namespace GPBoost {
 				gp_coords_data_pred,
 				gp_rand_coef_data_pred,
 				use_saved_data,
-				vecchia_pred_type,
-				num_neighbors_pred,
-				cg_delta_conv_pred,
-				nsim_var_pred,
 				fixed_effects,
 				fixed_effects_pred);
 		}
@@ -969,10 +958,6 @@ namespace GPBoost {
 				gp_coords_data_pred,
 				gp_rand_coef_data_pred,
 				use_saved_data,
-				vecchia_pred_type,
-				num_neighbors_pred,
-				cg_delta_conv_pred,
-				nsim_var_pred,
 				fixed_effects,
 				fixed_effects_pred);
 		}
@@ -993,10 +978,6 @@ namespace GPBoost {
 				gp_coords_data_pred,
 				gp_rand_coef_data_pred,
 				use_saved_data,
-				vecchia_pred_type,
-				num_neighbors_pred,
-				cg_delta_conv_pred,
-				nsim_var_pred,
 				fixed_effects,
 				fixed_effects_pred);
 		}
@@ -1173,6 +1154,32 @@ namespace GPBoost {
 			for (int j = 0; j < NumAuxPars(); ++j) {
 				aux_pars[j] = -1.;
 			}
+		}
+	}
+
+	/*!
+	* \brief Calculate test log-likelihood using adaptive GH quadrature
+	* \param y_test Test response variable
+	* \param pred_mean Predictive mean of latent random effects
+	* \param pred_var Predictive variances of latent random effects
+	* \param num_data Number of data points
+	*/
+	double REModel::TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
+		const double* pred_mean,
+		const double* pred_var,
+		const data_size_t num_data) {
+		if (GetLikelihood() == "gaussian") {
+			double aux_par = 1. / (std::sqrt(cov_pars_[0]));
+			SetAuxPars(&aux_par);
+		}
+		if (matrix_format_ == "sp_mat_t") {
+			return(re_model_sp_->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data));
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			return(re_model_sp_rm_->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data));
+		}
+		else {
+			return(re_model_den_->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data));
 		}
 	}
 

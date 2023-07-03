@@ -10,7 +10,7 @@ path_tests = paste0(getwd(),.Platform$file.sep,file.path("R-package","tests","te
 t1 <- Sys.time()
 test_dir(path_tests, reporter = "summary")
 t2 <- Sys.time()
-print(t2-t1) ## Approx 4.5 mins
+print(t2-t1) ## Approx. 4 mins
 
 # Evaluate coverage of R tests
 system("Rscript build_r.R")

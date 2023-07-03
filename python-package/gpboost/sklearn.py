@@ -672,7 +672,7 @@ class GPBoostModel(_GPBoostModelBase):
                 group_data_pred=None, group_rand_coef_data_pred=None,
                 gp_coords_pred=None, gp_rand_coef_data_pred=None,
                 cluster_ids_pred=None, vecchia_pred_type=None,
-                num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False, **kwargs):
+                num_neighbors_pred=None, predict_cov_mat=False, predict_var=False, **kwargs):
         """Return the predicted value for each sample.
 
         Parameters
@@ -710,17 +710,6 @@ class GPBoostModel(_GPBoostModelBase):
             Coordinates (features) for Gaussian process. Used only if the Booster has a GPModel
         gp_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
             Covariate data for Gaussian process random coefficients. Used only if the Booster has a GPModel
-        vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
-            Type of Vecchia approximation used for making predictions. Used only if the Booster has a GPModel.
-            "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
-            points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected
-            among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for
-            making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent
-            process and observed data is ordered first and neighbors are only observed points,
-            "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is
-            ordered first and neighbors are selected among all points
-        num_neighbors_pred : integer or None, optional (default=None)
-            Number of neighbors for the Vecchia approximation for making predictions. Used only if the Booster has a GPModel
         cluster_ids_pred : one dimensional numpy array (vector) with integer data or None, optional (default=None)
             IDs / labels indicating independent realizations of random effects / Gaussian processes
             (same values = same process realization). Used only if the Booster has a GPModel
@@ -730,6 +719,14 @@ class GPBoostModel(_GPBoostModelBase):
         predict_var : bool, optional (default=False)
             If True, (posterior / conditional) predictive variances are calculated in addition to the
             (posterior / conditional) predictive mean. Used only if the Booster has a GPModel
+        vecchia_pred_type : string, optional (default=None)
+            The type of Vecchia approximation used for making predictions.
+            This is discontinued here. Use the function 'set_prediction_data' 
+            of the 'gp_model' to specify this
+        num_neighbors_pred : integer or None, optional (default=None)
+            The number of neighbors for making predictions.
+            This is discontinued here. Use the function 'set_prediction_data' 
+            of the 'gp_model' to specify this
         **kwargs
             Other parameters for the prediction.
 
@@ -966,7 +963,7 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
                       group_data_pred=None, group_rand_coef_data_pred=None,
                       gp_coords_pred=None, gp_rand_coef_data_pred=None,
                       cluster_ids_pred=None, vecchia_pred_type=None,
-                      num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False, **kwargs):
+                      num_neighbors_pred=None, predict_cov_mat=False, predict_var=False, **kwargs):
         """Return the predicted probability for each class for each sample.
 
         Parameters
@@ -1004,17 +1001,6 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
             Coordinates (features) for Gaussian process. Used only if the Booster has a GPModel
         gp_rand_coef_data_pred : numpy array with numeric data or None, optional (default=None)
             Covariate data for Gaussian process random coefficients. Used only if the Booster has a GPModel
-        vecchia_pred_type : string, optional (default="order_obs_first_cond_obs_only")
-            Type of Vecchia approximation used for making predictions. Used only if the Booster has a GPModel.
-            "order_obs_first_cond_obs_only" = observed data is ordered first and the neighbors are only observed
-            points, "order_obs_first_cond_all" = observed data is ordered first and the neighbors are selected
-            among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for
-            making predictions, "latent_order_obs_first_cond_obs_only" = Vecchia approximation for the latent
-            process and observed data is ordered first and neighbors are only observed points,
-            "latent_order_obs_first_cond_all" = Vecchia approximation for the latent process and observed data is
-            ordered first and neighbors are selected among all points
-        num_neighbors_pred : integer or None, optional (default=None)
-            Number of neighbors for the Vecchia approximation for making predictions. Used only if the Booster has a GPModel
         cluster_ids_pred : one dimensional numpy array (vector) with integer data or None, optional (default=None)
             IDs / labels indicating independent realizations of random effects / Gaussian processes
             (same values = same process realization). Used only if the Booster has a GPModel
@@ -1024,6 +1010,14 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
         predict_var : bool, optional (default=False)
             If True, (posterior / conditional) predictive variances are calculated in addition to the
             (posterior / conditional) predictive mean. Used only if the Booster has a GPModel
+        vecchia_pred_type : string, optional (default=None)
+            The type of Vecchia approximation used for making predictions.
+            This is discontinued here. Use the function 'set_prediction_data' 
+            of the 'gp_model' to specify this
+        num_neighbors_pred : integer or None, optional (default=None)
+            The number of neighbors for making predictions.
+            This is discontinued here. Use the function 'set_prediction_data' 
+            of the 'gp_model' to specify this
         **kwargs
             Other parameters for the prediction.
 

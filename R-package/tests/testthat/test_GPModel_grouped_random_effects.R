@@ -272,14 +272,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOL_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 7)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood() - 1224957.3892409)),TOL_STRICT)
     
-    gp_model <- fitGPModel(group_data = group_L,
-                           y = y_L, X = X_L,
+    gp_model <- fitGPModel(group_data = group_L, y = y_L, X = X_L,
                            params = list(optimizer_cov = "nelder_mead", maxit=1000, delta_rel_conv=1e-6))
     cov_pars <- c(0.5004681, 0.9988288)
     coef <- c(2.000747, 1.999343)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOL_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood() - 1224958.6057028)),TOL_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 152)
     
   })

@@ -67,7 +67,10 @@ Metric* Metric::CreateMetric(const std::string& type, const Config& config) {
   } else if (type == std::string("neg_log_likelihood")) {
       return new NegLogLikelihood(config);
   } else if (type == std::string("gaussian_neg_log_likelihood")) {
-      return new GaussianNegLogLikelihood(config);
+      Log::Fatal("The metric 'gaussian_neg_log_likelihood' is no longer supported. "
+          "Please use the equivalent metric 'test_neg_log_likelihood' instead ");
+  } else if (type == std::string("test_neg_log_likelihood")) {
+      return new TestNegLogLikelihood(config);
   }
   return nullptr;
 }

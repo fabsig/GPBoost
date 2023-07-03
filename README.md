@@ -23,7 +23,7 @@ GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models
 * The companion articles [**Sigrist (2022, JMLR)**](https://www.jmlr.org/papers/v23/20-322.html) and [**Sigrist (2023, TPAMI)**](https://ieeexplore.ieee.org/document/9759834) for background on the methodology
 * Detailed [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide) and [**R examples**](https://github.com/fabsig/GPBoost/tree/master/R-package/demo)
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst): the most important parameters / settings for the GPBoost library
-* [Detailed tree-boosting parameters](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst): a comprehensive list of all tree-boosting (i.e., not random effects) related parameters
+<!-- * [Detailed tree-boosting parameters](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst): a comprehensive list of all tree-boosting (i.e., not random effects) related parameters -->
 * These blog posts on how to 
    * [Combine tree-boosting with grouped random effects models](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) 
    * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)
@@ -108,6 +108,7 @@ Learning the above-mentioned models means **learning both the covariance paramet
 #### Methodological issues
 - Add multivariate models, e.g., using coregionalization
 - Add spatio-temporal Gaussian process models
+- Add areal models for spatial data such as CAR and SAR models
 - Add possibility to predict separate latent Gaussian processes and random effects (e.g., random coefficients)
 - Implement more approaches such that computations scale well (memory and time) for Gaussian process models and mixed effects models with more than one grouping variable for non-Gaussian data
 - Support sample weights

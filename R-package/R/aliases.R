@@ -1,5 +1,4 @@
 # Central location for parameter aliases.
-# See https://lightgbm.readthedocs.io/en/latest/Parameters.html#core-parameters
 
 # [description] List of respected parameter aliases specific to gpb.Dataset. Wrapped in a function to
 #               take advantage of lazy evaluation (so it doesn't matter what order

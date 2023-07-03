@@ -350,12 +350,13 @@ gp_model.summary()
 
 # --------------------Gaussian process model with Vecchia approximation----------------
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
-                       gp_approx = "vecchia", num_neighbors=30, likelihood=likelihood)
+                       gp_approx = "vecchia", num_neighbors=20, likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
 # Prediction: setting 'num_neighbors_pred' to a larger value than 'num_neighbors' for training
 #   can lead to better predictions
-pred_vecchia = gp_model.predict(gp_coords_pred=coords_test, num_neighbors_pred=100,
+gp_model.set_prediction_data(num_neighbors_pred=40)
+pred_vecchia = gp_model.predict(gp_coords_pred=coords_test,
                                 predict_var=True, predict_response=False)
 pred_vecchia = pred_vecchia['mu'].reshape((nx, nx))
 plt.contourf(coords_test_x1, coords_test_x2, pred_vecchia)

@@ -12,7 +12,7 @@ gpb.train(params = list(), data, nrounds = 100L, gp_model = NULL,
   callbacks = list(), reset_data = FALSE, ...)
 }
 \arguments{
-\item{params}{list of ("tuning") parameters. 
+\item{params}{list of "tuning" parameters. 
 See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst}{the parameter documentation} for more information. 
 A few key parameters:
            \itemize{
@@ -21,11 +21,12 @@ A few key parameters:
                lead to higher predictive accuracy but more boosting iterations are needed }
                \item{\code{num_leaves}}{ Number of leaves in a tree. Tuning parameter for 
                tree-boosting (default = 31)}
+               \item{\code{max_depth}}{ Maximal depth of a tree. Tuning parameter for tree-boosting (default = no limit)}
                \item{\code{min_data_in_leaf}}{ Minimal number of samples per leaf. Tuning parameter for 
                tree-boosting (default = 20)}
-               \item{\code{max_depth}}{ Maximal depth of a tree. Tuning parameter for tree-boosting (default = no limit)}
-               \item{\code{leaves_newton_update}}{ Set this to TRUE to do a Newton update step for the tree leaves 
-               after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
+               \item{\code{lambda_l2}}{ L2 regularization (default = 0)}
+               \item{\code{lambda_l1}}{ L1 regularization (default = 0)}
+               \item{\code{max_bin}}{ Maximal number of bins that feature values will be bucketed in (default = 255)}
                \item{\code{train_gp_model_cov_pars}}{ If TRUE, the covariance parameters of the Gaussian process 
                are stimated in every boosting iterations, 
                otherwise the gp_model parameters are not estimated. In the latter case, you need to 
@@ -34,12 +35,8 @@ A few key parameters:
                \item{\code{use_gp_model_for_validation}}{ If TRUE, the Gaussian process is also used 
                (in addition to the tree model) for calculating predictions on the validation data 
                (default = TRUE)}
-               \item{\code{use_nesterov_acc}}{ Set this to TRUE to do boosting with Nesterov acceleration (default = FALSE). 
-               Can currently only be used for tree_learner = "serial" (default option)}
-               \item{\code{nesterov_acc_rate}}{ Acceleration rate for momentum step in case Nesterov accelerated 
-               boosting is used (default = 0.5)}
-               \item{\code{oosting}}{ Boosting type. \code{"gbdt"}, \code{"rf"}, \code{"dart"} or \code{"goss"}.
-               Only \code{"gbdt"} allows for doing Gaussian process boosting.}
+               \item{\code{leaves_newton_update}}{ Set this to TRUE to do a Newton update step for the tree leaves 
+               after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
                \item{num_threads}{ Number of threads. For the best speed, set this to
                             the number of real CPU cores(\code{parallel::detectCores(logical = FALSE)}),
                             not the number of threads (most CPU using hyper-threading to generate 2 threads
@@ -67,9 +64,8 @@ the \code{init_cov_pars} parameter when creating the \code{gp_model}}
 
 \item{valids}{a list of \code{gpb.Dataset} objects, used for validation}
 
-\item{obj}{objective function, can be character or custom objective function. Examples include
-\code{regression}, \code{regression_l1}, \code{huber},
-\code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}}
+\item{obj}{(character) The distribution of the response variable (=label) conditional on fixed and random effects.
+This only needs to be set when doing independent boosting without random effects / Gaussian processes.}
 
 \item{eval}{evaluation function(s). This can be a character vector, function, or list with a mixture of
             strings and functions.
@@ -160,6 +156,7 @@ Logic to train with GBPoost
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
+\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -178,7 +175,7 @@ dtrain <- gpb.Dataset(data = X, label = y)
 # Train model
 bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 16,
                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-                 objective = "regression_l2", verbose = 0)
+                 verbose = 0)
 # Estimated random effects model
 summary(gp_model)
 # Make predictions
@@ -190,7 +187,6 @@ pred$fixed_effect # Predicted fixed effect from tree ensemble
 # Sum them up to otbain a single prediction
 pred$random_effect_mean + pred$fixed_effect
 
-\donttest{
 #--------------------Combine tree-boosting and Gaussian process model----------------
 # Create Gaussian process model
 gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
@@ -199,7 +195,7 @@ gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
 dtrain <- gpb.Dataset(data = X, label = y)
 bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 16,
                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-                 objective = "regression_l2", verbose = 0)
+                 verbose = 0)
 # Estimated random effects model
 summary(gp_model)
 # Make predictions
@@ -224,7 +220,7 @@ gp_model$set_prediction_data(group_data_pred = group_data[-train_ind,1])
 # Training with validation data and use_gp_model_for_validation = TRUE
 bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 100,
                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-                 objective = "regression_l2", verbose = 1, valids = valids,
+                 verbose = 1, valids = valids,
                  early_stopping_rounds = 10, use_gp_model_for_validation = TRUE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
              ", best test error: ", bst$best_score))
@@ -238,7 +234,7 @@ plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
 # Note: run the above examples first
 bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 100,
                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-                 objective = "regression_l2", verbose = 1, valids = valids,
+                 verbose = 1, valids = valids,
                  early_stopping_rounds = 5, use_gp_model_for_validation = FALSE,
                  leaves_newton_update = TRUE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
@@ -255,8 +251,7 @@ gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 dtrain <- gpb.Dataset(X, label = y)
 params <- list(learning_rate = 0.05,
                max_depth = 6,
-               min_data_in_leaf = 5,
-               objective = "regression_l2")
+               min_data_in_leaf = 5)
 # Stage 1: run cross-validation to (i) determine to optimal number of iterations
 #           and (ii) to estimate the GPModel on the out-of-sample data
 cvbst <- gpb.cv(params = params,
@@ -280,7 +275,6 @@ bst <- gpb.train(data = dtrain,
                  learning_rate = 0.05,
                  max_depth = 6,
                  min_data_in_leaf = 5,
-                 objective = "regression_l2",
                  verbose = 0,
                  train_gp_model_cov_pars = FALSE)
 # The GPModel has not changed:

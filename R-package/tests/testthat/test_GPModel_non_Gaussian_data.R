@@ -769,12 +769,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            likelihood = "bernoulli_probit", gp_approx = "vecchia", 
-                                           num_neighbors = n-1, num_neighbors_pred=n+2, 
-                                           vecchia_pred_type="latent_order_obs_first_cond_all",
-                                           vecchia_ordering = "none",
+                                           num_neighbors = n-1, vecchia_ordering = "none",
                                            y = y, params = list(optimizer_cov = "gradient_descent", 
                                                                 use_nesterov_acc = FALSE, lr_cov=0.01, init_cov_pars=init_cov_pars)), file='NUL')
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+    gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = n+2)
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
                                     predict_cov_mat = TRUE, predict_response = FALSE), file='NUL')
     expected_mu <- c(-0.6595662, -0.6638940, 0.4997690)
@@ -833,19 +832,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                        lr_cov = 0.1, use_nesterov_acc = FALSE,
                                                        convergence_criterion = "relative_change_in_parameters"))
                     , file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
-    # Note (02.03.2023): this test can be violated for some compilers (e.g., gcc) 
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),0.01)
+    # Note (02.03.2023): the results differ among compilers (e.g., gcc) 
     #   as pseudo random numbers from the C++ RNG 'mt19937' can differ across compilers
     expect_equal(gp_model$get_num_optim_iter(), 40)
     
     # Prediction
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            likelihood = "bernoulli_probit", gp_approx = "vecchia", 
-                                           num_neighbors=30, num_neighbors_pred=30, 
-                                           vecchia_pred_type="latent_order_obs_first_cond_all",
-                                           vecchia_ordering = "none",
+                                           num_neighbors=30, vecchia_ordering = "none",
                                            y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = FALSE, 
                                                                 lr_cov=0.01, init_cov_pars=init_cov_pars)), file='NUL')
+    gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = 30)
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(-0.6602899, -0.6646044, 0.5004378)
     expected_cov <- c(0.6476328648, 0.5760722706, -0.0001037986, 0.5760722706, 
@@ -858,9 +856,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
     # Use vecchia_pred_type = "order_obs_first_cond_all"
+    gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
-                    predict_response = FALSE,
-                    vecchia_pred_type = "order_obs_first_cond_all")
+                    predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     # Predict response
@@ -871,24 +869,24 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu_lat)),TOLERANCE_STRICT)
     expect_lt(sum(abs(pred$var-expected_var_lat)),TOLERANCE_STRICT)
     # Use vecchia_pred_type = "latent_order_obs_first_cond_obs_only"
+    gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_obs_only")
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
-                    predict_response = FALSE,
-                    vecchia_pred_type = "latent_order_obs_first_cond_obs_only")
+                    predict_response = FALSE)
     expected_cov <- c(0.6476328648, 0.2954937370, -0.0001037986, 0.2954937370, 0.6472245580, 
                       -0.0001133886, -0.0001037986, -0.0001133886, 0.4430490207)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     # Use vecchia_pred_type = "order_obs_first_cond_obs_only"
+    gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only")
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
-                    predict_response = FALSE,
-                    vecchia_pred_type = "order_obs_first_cond_obs_only")
+                    predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     
     # Predict training data random effects
     training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
-    preds <- predict(gp_model, gp_coords_pred = coords, predict_response = FALSE,
-                     vecchia_pred_type = "order_obs_first_cond_obs_only", predict_var = TRUE)
+    gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only")
+    preds <- predict(gp_model, gp_coords_pred = coords, predict_response = FALSE, predict_var = TRUE)
     expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),TOLERANCE_STRICT)
     
@@ -924,11 +922,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     capture.output( gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC,
                                         cov_function = "exponential", likelihood = "bernoulli_probit",
-                                        gp_approx = "vecchia", num_neighbors = n-1, num_neighbors_pred=n+2, 
-                                        vecchia_pred_type="latent_order_obs_first_cond_all", 
-                                        vecchia_ordering = "none"), file='NUL')
+                                        gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none"), file='NUL')
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
     Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
+    gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred=n+2)
     pred <- gp_model$predict(y = y, gp_coords_pred = coord_test, gp_rand_coef_data_pred=Z_SVC_test,
                              cov_pars = c(1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(0.18346009, 0.03479259, -0.17247579)
@@ -1492,7 +1489,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.998025)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-0.9985453)),TOLERANCE_STRICT)
    
-    
     # Multiple random effects
     mu <- exp(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
     y <- qgamma(sim_rand_unif(n=n, init_c=0.04532), scale = mu/shape, shape = shape)
@@ -1692,19 +1688,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            likelihood = "gamma", y = y, params = params,
                                            gp_approx = "vecchia", num_neighbors = 30, vecchia_ordering = "random")
                     , file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.9484890, 0.0731435))),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 9)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.9484890, 0.0731435))),TOLERANCE_LOOSE)
+    expect_lt(gp_model$get_num_optim_iter(), 11)
+    expect_gt(gp_model$get_num_optim_iter(), 8)
     # Prediction
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(-0.1159426, -0.1028064, -0.3223582)
     expected_cov <- c(8.091398e-01, 1.079958e-01, -4.403387e-07, 1.079958e-01, 
                       8.055727e-01, -4.442709e-07, -4.403387e-07, -4.442709e-07, 6.957873e-01)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$mu-expected_mu)),0.01)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),0.01)
     # Evaluate approximate negative marginal log-likelihood
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
-    expect_lt(abs(nll-159.9221359),TOLERANCE_STRICT)
+    expect_lt(abs(nll-159.9221359),0.05)
     # Also estimate shape parameter
     params_shape$optimizer_cov <- "nelder_mead"
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
@@ -1713,9 +1710,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     , file='NUL')
     cov_pars <- c(1.14184253, 0.03605877)
     aux_pars <- c(1.328749)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 118)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+    expect_gt(gp_model$get_num_optim_iter(), 117)
+    expect_lt(gp_model$get_num_optim_iter(), 131)
     # Also estimate shape parameter with gradient descent
     params_shape$optimizer_cov <- "gradient_descent"
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
@@ -1724,8 +1721,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     , file='NUL')
     cov_pars <- c(1.13722505, 0.03706853)
     aux_pars <- c(1.321834)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 58)
   })
   

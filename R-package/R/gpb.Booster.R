@@ -706,20 +706,26 @@ Booster <- R6::R6Class(
                        gp_coords_pred = NULL,
                        gp_rand_coef_data_pred = NULL,
                        cluster_ids_pred = NULL,
-                       vecchia_pred_type = NULL,
-                       num_neighbors_pred = NULL,
-                       cg_delta_conv_pred = NULL,
-                       nsim_var_pred = NULL,
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
                        cov_pars = NULL,
                        ignore_gp_model = FALSE,
                        rawscore = NULL,
+                       vecchia_pred_type = NULL,
+                       num_neighbors_pred = NULL,
                        ...) {
       
       if (!is.null(rawscore)) {
         stop("predict: The argument 'raw_score' is discontinued. 
              Use the renamed equivalent argument 'pred_latent' instead")
+      }
+      if (!is.null(vecchia_pred_type)) {
+        stop("predict: The argument 'vecchia_pred_type' is discontinued. 
+             Use the function 'set_prediction_data' to specify this")
+      }
+      if (!is.null(num_neighbors_pred)) {
+        stop("predict: The argument 'num_neighbors_pred' is discontinued. 
+             Use the function 'set_prediction_data' to specify this")
       }
       
       # Check if number of iteration is non existent
@@ -789,10 +795,6 @@ Booster <- R6::R6Class(
                                                          , predict_var = predict_var
                                                          , cov_pars = cov_pars
                                                          , X_pred = NULL
-                                                         , vecchia_pred_type = vecchia_pred_type
-                                                         , num_neighbors_pred = num_neighbors_pred
-                                                         , cg_delta_conv_pred = cg_delta_conv_pred
-                                                         , nsim_var_pred = nsim_var_pred
                                                          , predict_response = !pred_latent )
           fixed_effect = predictor$predict( data = data
                                             , start_iteration = start_iteration
@@ -874,10 +876,6 @@ Booster <- R6::R6Class(
                                                           , predict_var = predict_var
                                                           , cov_pars = cov_pars
                                                           , X_pred = NULL
-                                                          , vecchia_pred_type = vecchia_pred_type
-                                                          , num_neighbors_pred = num_neighbors_pred
-                                                          , cg_delta_conv_pred = cg_delta_conv_pred
-                                                          , nsim_var_pred = nsim_var_pred
                                                           , predict_response = FALSE
                                                           , fixed_effects = fixed_effect_train
                                                           , y = y )
@@ -905,10 +903,6 @@ Booster <- R6::R6Class(
                                                   , predict_var = predict_var
                                                   , cov_pars = cov_pars
                                                   , X_pred = NULL
-                                                  , vecchia_pred_type = vecchia_pred_type
-                                                  , num_neighbors_pred = num_neighbors_pred
-                                                  , cg_delta_conv_pred = cg_delta_conv_pred
-                                                  , nsim_var_pred = nsim_var_pred
                                                   , predict_response = TRUE
                                                   , fixed_effects = fixed_effect_train
                                                   , fixed_effects_pred = fixed_effect
@@ -1175,6 +1169,10 @@ Booster <- R6::R6Class(
 #' @title Prediction function for \code{gpb.Booster} objects
 #' @description Prediction function for \code{gpb.Booster} objects
 #' @inheritParams GPModel_shared_params
+#' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for making predictions.
+#' This is discontinued here. Use the function 'set_prediction_data' to specify this
+#' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions.
+#' This is discontinued here. Use the function 'set_prediction_data' to specify this
 #' @param object Object of class \code{gpb.Booster}
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
 #' @param start_iteration int or NULL, optional (default=NULL)
@@ -1224,6 +1222,7 @@ Booster <- R6::R6Class(
 #' 
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
+#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -1242,7 +1241,7 @@ Booster <- R6::R6Class(
 #' # Train model
 #' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
 #'                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-#'                objective = "regression_l2", verbose = 0)
+#'                verbose = 0)
 #' # Estimated random effects model
 #' summary(gp_model)
 #' 
@@ -1260,7 +1259,6 @@ Booster <- R6::R6Class(
 #' # For Gaussian data: pred$random_effect_mean + pred$fixed_effect = pred_resp$response_mean
 #' pred$random_effect_mean + pred$fixed_effect - pred_resp$response_mean
 #' 
-#' \donttest{
 #' #--------------------Combine tree-boosting and Gaussian process model----------------
 #' # Create Gaussian process model
 #' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
@@ -1268,7 +1266,7 @@ Booster <- R6::R6Class(
 #' # Train model
 #' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 8,
 #'                learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
-#'                objective = "regression_l2", verbose = 0)
+#'                verbose = 0)
 #' # Estimated random effects model
 #' summary(gp_model)
 #' # Make predictions
@@ -1299,15 +1297,13 @@ predict.gpb.Booster <- function(object,
                                 gp_coords_pred = NULL,
                                 gp_rand_coef_data_pred = NULL,
                                 cluster_ids_pred = NULL,
-                                vecchia_pred_type = NULL,
-                                num_neighbors_pred = NULL,
-                                cg_delta_conv_pred = NULL,
-                                nsim_var_pred = NULL,
                                 predict_cov_mat = FALSE,
                                 predict_var = FALSE,
                                 cov_pars = NULL,
                                 ignore_gp_model = FALSE,
                                 rawscore = NULL,
+                                vecchia_pred_type = NULL,
+                                num_neighbors_pred = NULL,
                                 ...) {
   
   if (!gpb.is.Booster(x = object)) {
@@ -1330,15 +1326,13 @@ predict.gpb.Booster <- function(object,
       , gp_coords_pred = gp_coords_pred
       , gp_rand_coef_data_pred = gp_rand_coef_data_pred
       , cluster_ids_pred = cluster_ids_pred
-      , vecchia_pred_type = vecchia_pred_type
-      , num_neighbors_pred = num_neighbors_pred
-      , cg_delta_conv_pred = cg_delta_conv_pred
-      , nsim_var_pred = nsim_var_pred
       , predict_cov_mat = predict_cov_mat
       , predict_var = predict_var
       , cov_pars = cov_pars
       , ignore_gp_model = ignore_gp_model
       , rawscore = rawscore
+      , vecchia_pred_type = vecchia_pred_type
+      , num_neighbors_pred = num_neighbors_pred
       , ...
     )
   )
@@ -1363,7 +1357,7 @@ predict.gpb.Booster <- function(object,
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
 #' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
 #'                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-#'                objective = "regression_l2", verbose = 0)
+#'                verbose = 0)
 #' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
 #'                 predict_var= TRUE, pred_latent = TRUE)
 #' # Save model to file
@@ -1435,7 +1429,7 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood = "gaussian")
 #' bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = 16,
 #'                learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-#'                objective = "regression_l2", verbose = 0)
+#'                verbose = 0)
 #' pred <- predict(bst, data = X_test, group_data_pred = group_data_test[,1],
 #'                 predict_var= TRUE, pred_latent = TRUE)
 #' # Save model to file
@@ -1532,6 +1526,7 @@ gpb.dump <- function(booster, num_iteration = NULL) {
 #' @return numeric vector of evaluation result
 #'
 #' @examples
+#' \donttest{
 #' # train a regression model
 #' data(agaricus.train, package = "gpboost")
 #' train <- agaricus.train
@@ -1558,6 +1553,7 @@ gpb.dump <- function(booster, num_iteration = NULL) {
 #'
 #' # Get L2 values for "test" dataset
 #' gpb.get.eval.result(model, "test", "l2")
+#' }
 #' @export
 gpb.get.eval.result <- function(booster, data_name, eval_name, iters = NULL, is_err = FALSE) {
   

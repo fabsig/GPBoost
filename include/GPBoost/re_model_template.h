@@ -35,9 +35,11 @@
 #endif
 
 #include <LightGBM/utils/log.h>
-#include <LightGBM/utils/common.h>
 using LightGBM::Log;
 using LightGBM::LogLevelRE;
+#include <LightGBM/utils/common.h>
+#include <LightGBM/meta.h>
+using LightGBM::label_t;
 
 namespace GPBoost {
 
@@ -219,8 +221,6 @@ namespace GPBoost {
 		* \param cov_fct_taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param num_neighbors The number of neighbors used in the Vecchia approximation
 		* \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
-		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
-		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions
 		* \param num_ind_points Number of inducing points / knots for, e.g., a predictive process approximation
 		* \param likelihood Likelihood function for the observed response variable
 		* \param matrix_inversion_method Method which is used for matrix inversion
@@ -246,8 +246,6 @@ namespace GPBoost {
 			double cov_fct_taper_shape,
 			int num_neighbors,
 			const char* vecchia_ordering,
-			const char* vecchia_pred_type,
-			int num_neighbors_pred,
 			int num_ind_points,
 			const char* likelihood,
 			const char* matrix_inversion_method,
@@ -263,7 +261,7 @@ namespace GPBoost {
 				likelihood_strg = "gaussian";
 			}
 			else {
-				likelihood_strg = std::string(likelihood);
+				likelihood_strg = Likelihood<T_mat, T_chol>::ParseLikelihoodAlias(std::string(likelihood));
 			}
 			gauss_likelihood_ = likelihood_strg == "gaussian";
 			//Set up GP approximation
@@ -349,8 +347,7 @@ namespace GPBoost {
 					Log::REInfo("Starting nearest neighbor search for Vecchia approximation");
 					CHECK(num_neighbors > 0);
 					num_neighbors_ = num_neighbors;
-					CHECK(num_neighbors_pred > 0);
-					num_neighbors_pred_ = num_neighbors_pred;
+					num_neighbors_pred_ = 2 * num_neighbors_;
 					if (vecchia_ordering == nullptr) {
 						vecchia_ordering_ = "none";
 					}
@@ -359,9 +356,6 @@ namespace GPBoost {
 						if (SUPPORTED_VECCHIA_ORDERING_.find(vecchia_ordering_) == SUPPORTED_VECCHIA_ORDERING_.end()) {
 							Log::REFatal("Ordering of type '%s' is not supported for the Veccia approximation.", vecchia_ordering_.c_str());
 						}
-					}
-					if (vecchia_pred_type != nullptr) {
-						SetVecchiaPredType(vecchia_pred_type);
 					}
 				}//end if gp_approx_ == "vecchia"
 				if (num_gp_rand_coef > 0) {//Random slopes
@@ -451,7 +445,7 @@ namespace GPBoost {
 			bool only_one_grouped_RE_calculations_on_RE_scale_before = only_one_grouped_RE_calculations_on_RE_scale_;
 			bool only_one_GP_calculations_on_RE_scale_before = only_one_GP_calculations_on_RE_scale_;
 			bool only_grouped_REs_use_woodbury_identity_before = only_grouped_REs_use_woodbury_identity_;
-			gauss_likelihood_ = likelihood == "gaussian";
+			gauss_likelihood_ = (Likelihood<T_mat, T_chol>::ParseLikelihoodAlias(likelihood) == "gaussian");
 			DetermineSpecialCasesModelsEstimationPrediction();
 			CheckCompatibilitySpecialOptions();
 			//Make adaptions in re_comps_ for special options when switching between Gaussian and non-Gaussian likelihoods
@@ -504,6 +498,20 @@ namespace GPBoost {
 		}//end SetLikelihood
 
 		/*!
+		* \brief Calculate test negative log-likelihood using adaptive GH quadrature
+		* \param y_test Test response variable
+		* \param pred_mean Predictive mean of latent random effects
+		* \param pred_var Predictive variances of latent random effects
+		* \param num_data Number of data points
+		*/
+		double TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
+			const double* pred_mean,
+			const double* pred_var,
+			const data_size_t num_data) {
+			return(likelihood_[unique_clusters_[0]]->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data));
+		}
+
+		/*!
 		* \brief Set configuration parameters for the optimizer
 		* \param lr Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
@@ -525,7 +533,6 @@ namespace GPBoost {
 		* \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 		* \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
 		* \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
-		* \param rank_pred_approx_matrix_lanczos Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
 		* \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 		*/
 		void SetOptimConfig(double lr,
@@ -548,7 +555,6 @@ namespace GPBoost {
 			const char* cg_preconditioner_type,
 			int seed_rand_vec_trace,
 			int piv_chol_rank,
-			int rank_pred_approx_matrix_lanczos,
 			bool estimate_aux_pars) {
 			lr_cov_init_ = lr;
 			acc_rate_cov_ = acc_rate_cov;
@@ -586,7 +592,6 @@ namespace GPBoost {
 					CheckPreconditionerType();
 					cg_preconditioner_type_has_been_set_ = true;
 				}
-				rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
 				SetMatrixInversionPropertiesLikelihood();
 			}
 			estimate_aux_pars_ = estimate_aux_pars;
@@ -686,6 +691,10 @@ namespace GPBoost {
 				optimizer_coef_ = optimizer_cov_pars_;
 			}
 			bool terminate_optim = false;
+			//learning_rate_decreased_first_time_ = false;
+			//learning_rate_increased_after_descrease_ = false;
+			//learning_rate_decreased_after_increase_ = false;
+			num_ll_evaluations_ = 0;
 			num_it = max_iter_;
 			bool profile_out_marginal_variance = gauss_likelihood_ &&
 				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam");
@@ -1059,8 +1068,7 @@ namespace GPBoost {
 					}
 					if (!na_or_inf_occurred) {
 						// Check convergence
-						bool likelihood_is_na = std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_);//if the likelihood is NA, we monitor the parameters instead of the likelihood
-						if (convergence_criterion_ == "relative_change_in_parameters" || likelihood_is_na) {
+						if (convergence_criterion_ == "relative_change_in_parameters") {
 							if (has_covariates_) {
 								if (((beta - beta_lag1).norm() < delta_rel_conv_ * beta_lag1.norm()) && ((cov_aux_pars - cov_aux_pars_lag1).norm() < delta_rel_conv_ * cov_aux_pars_lag1.norm())) {
 									terminate_optim = true;
@@ -1096,8 +1104,25 @@ namespace GPBoost {
 						num_it = it + 1;
 						break;
 					}
+					////increase learning rates again (not used)
+					//else if (optimizer_cov_pars_ == "gradient_descent" && (it + 1) >= 10 && learning_rate_decreased_first_time_ &&
+					//	!learning_rate_increased_after_descrease_ && !na_or_inf_occurred) {
+					//	if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < INCREASE_LR_CHANGE_LL_THRESHOLD_ * std::abs(neg_log_likelihood_lag1_)) {
+					//		if (has_covariates_) {
+					//			lr_coef_ /= LR_SHRINKAGE_FACTOR_;
+					//		}
+					//		if (learn_covariance_parameters) {
+					//			lr_cov_ /= LR_SHRINKAGE_FACTOR_;
+					//		}
+					//		if (estimate_aux_pars_) {
+					//			lr_aux_pars_ /= LR_SHRINKAGE_FACTOR_;
+					//		}
+					//		learning_rate_increased_after_descrease_ = true;
+					//		Log::REDebug("GPModel covariance parameter estimation: The learning rates have been increased in iteration number %d ", it + 1);
+					//	}
+					//}
 				}//end for loop for optimization
-			}
+			}//end "gradient_descent" or "fisher_scoring"
 			// redo optimization with "nelder_mead" in case NA or Inf occurred
 			if (na_or_inf_occurred && optimizer_cov_pars_ != "nelder_mead") {
 				string_t optimizers = "";
@@ -1110,7 +1135,7 @@ namespace GPBoost {
 					"The optimization will be started a second time using 'nelder_mead'. "
 					"If you want to avoid this, try directly using a different optimizer. "
 					"If you have used 'gradient_descent', you can also consider using a smaller learning rate. "
-					"The following optimizers are currently implemented:%s", optimizer_cov_pars_.c_str(), optimizer_cov_pars_.c_str());
+					"The following optimizers are currently implemented: %s ", optimizer_cov_pars_.c_str(), optimizer_cov_pars_.c_str());
 				cov_aux_pars = cov_aux_pars_init;
 				if (has_covariates_) {
 					beta = beta_init;
@@ -1126,10 +1151,12 @@ namespace GPBoost {
 					learn_covariance_parameters, "nelder_mead", profile_out_marginal_variance);
 			}
 			if (num_it == max_iter_) {
-				Log::REDebug("GPModel: no convergence after the maximal number of iterations (%d) ", max_iter_);
+				Log::REDebug("GPModel: no convergence after the maximal number of iterations "
+					"(%d, nb. likelihood evaluations = %d) ", max_iter_, num_ll_evaluations_);
 			}
 			else {
-				Log::REDebug("GPModel: parameter estimation finished after %d iteration ", num_it);
+				Log::REDebug("GPModel: parameter estimation finished after %d iteration "
+					"(nb. likelihood evaluations = %d) ", num_it, num_ll_evaluations_);
 			}
 			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, has_intercept, intercept_col,
 				scale_covariates, loc_transf, scale_transf, cov_aux_pars.data() + num_cov_par_);
@@ -1202,6 +1229,7 @@ namespace GPBoost {
 				}
 			}
 		}//end OptimLinRegrCoefCovPar
+		
 
 		/*!
 		* \brief Calculate gradient wrt the covariance parameters on the log-scale and any additional parameters for the likelihood for non-Gaussian likelihoods
@@ -1567,6 +1595,7 @@ namespace GPBoost {
 				}
 				neg_log_likelihood_ = -CalcModePostRandEff(fixed_effects);//calculate mode and approximate marginal likelihood
 			}//end not gauss_likelihood_
+			num_ll_evaluations_++;
 		}//end CalcCovFactorOrModeAndNegLL
 
 		/*!
@@ -1653,7 +1682,7 @@ namespace GPBoost {
 		*/
 		void EvalNegLogLikelihoodOnlyUpdateNuggetVariance(const double sigma2,
 			double& negll) {
-			negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::log(sigma2) + std::log(2 * M_PI));
+negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::log(sigma2) + std::log(2 * M_PI));
 		}//end EvalNegLogLikelihoodOnlyUpdateNuggetVariance
 
 		/*!
@@ -1738,6 +1767,7 @@ namespace GPBoost {
 		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
 		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 		* \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
+		* \param rank_pred_approx_matrix_lanczos Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
 		*/
 		void SetPredictionData(int num_data_pred,
 			const data_size_t* cluster_ids_data_pred,
@@ -1749,8 +1779,12 @@ namespace GPBoost {
 			const char* vecchia_pred_type,
 			int num_neighbors_pred,
 			double cg_delta_conv_pred,
-			int nsim_var_pred) {
-			CHECK(num_data_pred > 0);
+			int nsim_var_pred,
+			int rank_pred_approx_matrix_lanczos) {
+			if (!(gp_coords_data_pred == nullptr && re_group_data_pred == nullptr && re_group_rand_coef_data_pred == nullptr
+				&& cluster_ids_data_pred == nullptr && gp_rand_coef_data_pred == nullptr && covariate_data_pred == nullptr)) {
+				CHECK(num_data_pred > 0);
+			}
 			if (cluster_ids_data_pred == nullptr) {
 				cluster_ids_data_pred_.clear();
 			}
@@ -1805,6 +1839,9 @@ namespace GPBoost {
 				if (nsim_var_pred > 0) {
 					nsim_var_pred_ = nsim_var_pred;
 				}
+				if (rank_pred_approx_matrix_lanczos > 0) {
+					rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
+				}
 				SetMatrixInversionPropertiesLikelihood();
 			}
 		}//end SetPredictionData
@@ -1831,10 +1868,6 @@ namespace GPBoost {
 		* \param gp_coords_data_pred Coordinates (features) for Gaussian process
 		* \param gp_rand_coef_data_pred Covariate data for Gaussian process random coefficients
 		* \param use_saved_data If true, saved data is used and some arguments are ignored
-		* \param vecchia_pred_type Type of Vecchia approximation for making predictions. "order_obs_first_cond_obs_only" = observed data is ordered first and neighbors are only observed points, "order_obs_first_cond_all" = observed data is ordered first and neighbors are selected among all points (observed + predicted), "order_pred_first" = predicted data is ordered first for making predictions, "latent_order_obs_first_cond_obs_only"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are only observed points, "latent_order_obs_first_cond_all"  = Vecchia approximation for the latent process and observed data is ordered first and neighbors are selected among all points
-		* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions (-1 means that the value already set at initialization is used)
-		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
-		* \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		* \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian likelihoods)
 		*/
@@ -1854,10 +1887,6 @@ namespace GPBoost {
 			double* gp_coords_data_pred,
 			const double* gp_rand_coef_data_pred,
 			bool use_saved_data,
-			const char* vecchia_pred_type,
-			int num_neighbors_pred,
-			double cg_delta_conv_pred,
-			int nsim_var_pred,
 			const double* fixed_effects,
 			const double* fixed_effects_pred) {
 			//First check whether previously set data should be used and load it if required
@@ -1914,6 +1943,12 @@ namespace GPBoost {
 				re_group_levels_pred_orig = re_group_levels_pred;
 			}
 			//Some checks including whether required data is present
+			if (gp_approx_ == "vecchia") {
+				CHECK(num_neighbors_pred_ > 0);
+				CHECK(cg_delta_conv_pred_ > 0.);
+				CHECK(nsim_var_pred_ > 0);
+				CHECK(rank_pred_approx_matrix_lanczos_ > 0);
+			}
 			if ((int)re_group_levels_pred.size() == 0 && num_group_variables_ > 0) {
 				Log::REFatal("Missing grouping data ('group_data_pred') for grouped random effects for making predictions");
 			}
@@ -1971,23 +2006,6 @@ namespace GPBoost {
 				int mem_size = (int)(num_mem_d * 8. / 1000000.);
 				Log::REWarning("The covariance matrix can be very large for large sample sizes which might lead to memory limitations. "
 					"In your case (n = %d), the covariance needs at least approximately %d mb of memory. ", num_data_pred, mem_size);
-			}
-			if (gp_approx_ == "vecchia") {
-				if (vecchia_pred_type != nullptr) {
-					SetVecchiaPredType(vecchia_pred_type);
-				}
-				if (num_neighbors_pred > 0) {
-					num_neighbors_pred_ = num_neighbors_pred;
-				}
-			}
-			if (matrix_inversion_method_ == "iterative") {
-				if (cg_delta_conv_pred > 0) {
-					cg_delta_conv_pred_ = cg_delta_conv_pred;
-				}
-				if (nsim_var_pred > 0) {
-					nsim_var_pred_ = nsim_var_pred;
-				}
-				SetMatrixInversionPropertiesLikelihood();
 			}
 			// Initialize linear predictor related terms and covariance parameters
 			vec_t coef, mu;//mu = linear regression predictor
@@ -3084,7 +3102,9 @@ namespace GPBoost {
 		/*! \brief Select Nesterov acceleration schedule 0 or 1 */
 		int nesterov_schedule_version_ = 0;
 		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
-		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log(100.); // allow maximally a change by a factor of 100 in one iteration
+		int MAX_REL_CHANGE_GRADIENT_UPDATE_ = 100; // allow maximally a change by a factor of 'MAX_REL_CHANGE_GRADIENT_UPDATE_' in one iteration
+		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
+		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log((double)MAX_REL_CHANGE_GRADIENT_UPDATE_);
 		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian likelihoods upon initialization). See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not */
 		string_t optimizer_coef_;
 		/*! \brief List of supported optimizers for regression coefficients for Gaussian likelihoods */
@@ -3117,6 +3137,17 @@ namespace GPBoost {
 		bool set_optim_config_has_been_called_ = false;
 		/*! \brief If true, the covariance parameters or linear coefficients were updated for the first time with gradient descent*/
 		bool first_update_ = false;
+		/*! \brief Number of likelihood evaluations during optimization */
+		int num_ll_evaluations_ = 0;
+		// The following variables are not used anymore (increasing learning rate again does not seem beneficial)
+		///*! \brief True if the learning rates have been descreased (only for gradient_descent) */
+		//bool learning_rate_decreased_first_time_ = false;
+		///*! \brief True if the learning rates have been increased after they have been descreased (only for gradient_descent) */
+		//bool learning_rate_increased_after_descrease_ = false;
+		///*! \brief True if the learning rates have been descreased again after they have been increased (only for gradient_descent) */
+		//bool learning_rate_decreased_after_increase_ = false;
+		///*! \brief Threshold value, for relative change in the log-likelihood, below which learning rates are increased again for gradient descent */
+		//double INCREASE_LR_CHANGE_LL_THRESHOLD_ = 1e-3;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
@@ -3271,8 +3302,10 @@ namespace GPBoost {
 		RNG_t rng_;
 
 		/*! \brief Nesterov schedule */
-		double NesterovSchedule(int iter, int momentum_schedule_version = 0,
-			double nesterov_acc_rate = 0.5, int momentum_offset = 2) {
+		double NesterovSchedule(int iter,
+			int momentum_schedule_version,
+			double nesterov_acc_rate, 
+			int momentum_offset) {
 			if (iter < momentum_offset) {
 				return(0.);
 			}
@@ -3284,6 +3317,7 @@ namespace GPBoost {
 					return(1. - (3. / (6. + iter)));
 				}
 				else {
+					Log::REFatal("NesterovSchedule: version = %d is not supported ", momentum_schedule_version);
 					return(0.);
 				}
 			}
@@ -4494,7 +4528,8 @@ namespace GPBoost {
 			if (lr_cov_ * max_abs_nat_grad_cov > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
 				lr_cov_ = MAX_GRADIENT_UPDATE_LOG_SCALE_ / max_abs_nat_grad_cov;
 				Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased in iteration number %d since "
-					"the gradient update on the log-scale would have been too large (a change by more than a factor 100). New learning rate = %g", it + 1, lr_cov_);
+					"the gradient update on the log-scale would have been too large (change by more than a factor %d). New learning rate = %g", 
+					it + 1, MAX_REL_CHANGE_GRADIENT_UPDATE_, lr_cov_);
 			}
 			if (estimate_aux_pars_) {
 				double max_abs_nat_grad_aux_par = 0.;
@@ -4506,7 +4541,8 @@ namespace GPBoost {
 				if (lr_aux_pars_ * max_abs_nat_grad_aux_par > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
 					lr_aux_pars_ = MAX_GRADIENT_UPDATE_LOG_SCALE_ / max_abs_nat_grad_aux_par;
 					Log::REDebug("GPModel auxiliary parameter estimation: The learning rate has been decreased in iteration number %d since "
-						"the gradient update on the log-scale would have been too large (a change by more than a factor 100). New learning rate = %g", it + 1, lr_aux_pars_);
+						"the gradient update on the log-scale would have been too large (change by more than a factor %d). New learning rate = %g", 
+						it + 1, MAX_REL_CHANGE_GRADIENT_UPDATE_, lr_aux_pars_);
 				}
 			}
 		}//end AvoidTooLargeLearningRatesCovAuxPars
@@ -4726,7 +4762,7 @@ namespace GPBoost {
 					SetAuxPars(cov_pars_new.data() + num_cov_par_);
 				}
 				CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
-				// Safeguard agains too large steps by halving the learning rate when the objective increases
+				// Safeguard against too large steps by halving the learning rate when the objective increases
 				if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
 					decrease_found = true;
 					break;
@@ -4757,7 +4793,7 @@ namespace GPBoost {
 						lr_aux_pars_ = lr_aux_pars;
 						Log::REDebug("GPModel covariance and auxiliary parameter estimation: Learning rates have been decreased permanently in iteration number %d "
 							"since with the previous learning rates, there was no decrease in the objective function. "
-							"New learning rates: covariance parameters = %g, auxiliary paramters = %g", it + 1, lr_cov_, lr_aux_pars_);
+							"New learning rates: covariance parameters = %g, auxiliary parameters = %g", it + 1, lr_cov_, lr_aux_pars_);
 					}
 					else {
 						Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently in iteration number %d "
@@ -4774,6 +4810,322 @@ namespace GPBoost {
 			}
 			cov_pars = cov_pars_new;
 		}//end UpdateCovAuxPars
+
+		////Alternative version with separate learning rate descreases for cov_pars and aux_pars
+		////	-> not necessarily more efficient as more likelihood evaluations are needed
+		//void UpdateCovAuxPars(vec_t& cov_pars,
+		//	const vec_t& nat_grad,
+		//	bool profile_out_marginal_variance,
+		//	bool use_nesterov_acc,
+		//	int it,
+		//	vec_t& cov_pars_after_grad_aux,
+		//	vec_t& cov_pars_after_grad_aux_lag1,
+		//	double acc_rate_cov,
+		//	int nesterov_schedule_version,
+		//	int momentum_offset,
+		//	const double* fixed_effects) {
+		//	vec_t cov_pars_new(num_cov_par_);
+		//	if (profile_out_marginal_variance) {
+		//		cov_pars_new[0] = cov_pars[0];
+		//	}
+		//	double lr_cov = lr_cov_;
+		//	double lr_aux_pars = lr_aux_pars_;
+		//	bool decrease_found = false;
+		//	bool halving_done = false;
+		//	int num_grad_cov_par = (int)nat_grad.size();
+		//	if (estimate_aux_pars_) {
+		//		num_grad_cov_par -= NumAuxPars();
+		//	}
+		//	for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
+		//		if (ih > 0) {
+		//			halving_done = true;
+		//			learning_rate_decreased_first_time_ = true;
+		//			if (learning_rate_increased_after_descrease_) {
+		//				learning_rate_decreased_after_increase_ = true;
+		//			}
+		//			lr_cov *= LR_SHRINKAGE_FACTOR_;
+		//			acc_rate_cov *= 0.5;
+		//			if (!gauss_likelihood_) {
+		//				// Reset mode to previous value since also parameters are discarded
+		//				for (const auto& cluster_i : unique_clusters_) {
+		//					likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//				}
+		//			}
+		//		}// end ih > 0
+		//		UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//			profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//			acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//		if (estimate_aux_pars_) {
+		//			SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//		}
+		//		CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//		if (estimate_aux_pars_ && ih > 0) {
+		//			// Undo learning rate decrease for cov_pars and decrease learning rate for aux_pars and check whether this leads to a smaller log-likelihood
+		//			lr_cov /= LR_SHRINKAGE_FACTOR_;
+		//			lr_aux_pars *= LR_SHRINKAGE_FACTOR_;
+		//			UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//				profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//				acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//			SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//			double neg_log_likelihood_cov_par_decrease = neg_log_likelihood_;
+		//			if (!gauss_likelihood_) {
+		//				for (const auto& cluster_i : unique_clusters_) {
+		//					likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//				}
+		//			}
+		//			CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//			if (neg_log_likelihood_cov_par_decrease < neg_log_likelihood_) {
+		//				lr_cov *= LR_SHRINKAGE_FACTOR_;
+		//				lr_aux_pars /= LR_SHRINKAGE_FACTOR_;
+		//				UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//					profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//					acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//				SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//				neg_log_likelihood_ = neg_log_likelihood_cov_par_decrease;
+		//				if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
+		//					// the following needs only be done in case the for loop stops, otherwise it is done at the beginning of the next iteration
+		//					if (!gauss_likelihood_) {
+		//						for (const auto& cluster_i : unique_clusters_) {
+		//							likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//						}
+		//					}
+		//					CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//				}
+		//			}
+		//		}// end estimate_aux_pars_ && ih > 0
+		//		// Safeguard against too large steps by halving the learning rate when the objective increases
+		//		if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
+		//			decrease_found = true;
+		//			break;
+		//		}
+		//	}//end loop over learnig rate halving procedure
+		//	if (halving_done) {
+		//		if (optimizer_cov_pars_ == "fisher_scoring") {
+		//			Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. "
+		//				"The learning rate has been decreased in this iteration.", it + 1);
+		//		}
+		//		else if (optimizer_cov_pars_ == "gradient_descent") {
+		//			lr_cov_ = lr_cov; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring)
+		//			if (estimate_aux_pars_) {
+		//				lr_aux_pars_ = lr_aux_pars;
+		//				Log::REDebug("GPModel covariance and auxiliary parameter estimation: Learning rates have been decreased permanently in iteration number %d "
+		//					"since with the previous learning rates, there was no decrease in the objective function. "
+		//					"New learning rates: covariance parameters = %g, auxiliary parameters = %g", it + 1, lr_cov_, lr_aux_pars_);
+		//			}
+		//			else {
+		//				Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently in iteration number %d "
+		//					"since with the previous learning rate, there was no decrease in the objective function. New learning rate = %g", it + 1, lr_cov_);
+		//			}
+		//		}
+		//	}
+		//	if (!decrease_found) {
+		//		Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d "
+		//			"after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+		//	}
+		//	if (use_nesterov_acc) {
+		//		cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
+		//	}
+		//	cov_pars = cov_pars_new;
+		//}//end UpdateCovAuxPars
+
+		//void UpdateCovAuxParsInternal(vec_t& cov_pars,
+		//	vec_t& cov_pars_new,
+		//	const vec_t& nat_grad,
+		//	int num_grad_cov_par,
+		//	double lr_cov,
+		//	double lr_aux_pars,
+		//	bool profile_out_marginal_variance,
+		//	bool use_nesterov_acc,
+		//	int it,
+		//	vec_t& cov_pars_after_grad_aux,
+		//	vec_t& cov_pars_after_grad_aux_lag1,
+		//	double acc_rate_cov,
+		//	int nesterov_schedule_version,
+		//	int momentum_offset) {
+		//	vec_t update(nat_grad.size());
+		//	update.segment(0, num_grad_cov_par) = lr_cov * nat_grad.segment(0, num_grad_cov_par);
+		//	if (estimate_aux_pars_) {
+		//		update.segment(num_grad_cov_par, NumAuxPars()) = lr_aux_pars * nat_grad.segment(num_grad_cov_par, NumAuxPars());
+		//	}
+		//	// Avoid to large steps on log-scale: updates on the log-scale in one Fisher scoring step are capped at a certain level
+		//	// This is not done for gradient_descent since the learning rate is already adjusted accordingly in 'AvoidTooLargeLearningRatesCovAuxPars'
+		//	if (optimizer_cov_pars_ != "gradient_descent") {
+		//		for (int ip = 0; ip < (int)update.size(); ++ip) {
+		//			if (update[ip] > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
+		//				update[ip] = MAX_GRADIENT_UPDATE_LOG_SCALE_;
+		//			}
+		//			else if (update[ip] < -MAX_GRADIENT_UPDATE_LOG_SCALE_) {
+		//				update[ip] = -MAX_GRADIENT_UPDATE_LOG_SCALE_;
+		//			}
+		//		}
+		//	}
+		//	if (profile_out_marginal_variance) {
+		//		cov_pars_new.segment(1, cov_pars.size() - 1) = (cov_pars.segment(1, cov_pars.size() - 1).array().log() - update.array()).exp().matrix();//make update on log-scale
+		//	}
+		//	else {
+		//		cov_pars_new = (cov_pars.array().log() - update.array()).exp().matrix();//make update on log-scale
+		//	}
+		//	// Apply Nesterov acceleration
+		//	if (use_nesterov_acc) {
+		//		cov_pars_after_grad_aux = cov_pars_new;
+		//		ApplyMomentumStep(it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, cov_pars_new, acc_rate_cov,
+		//			nesterov_schedule_version, profile_out_marginal_variance, momentum_offset, true);
+		//		// Note: (i) cov_pars_after_grad_aux and cov_pars_after_grad_aux_lag1 correspond to the parameters obtained after calculating the gradient before applying acceleration
+		//		//		 (ii) cov_pars (below this) are the parameters obtained after applying acceleration (and cov_pars_lag1 is simply the value of the previous iteration)
+		//		// We first apply a gradient step and then an acceleration step (and not the other way aroung) since this is computationally more efficient 
+		//		//		(otherwise the covariance matrix needs to be factored twice: once for the gradient step (accelerated parameters) and once for calculating the
+		//		//		 log-likelihood (non-accelerated parameters after gradient update) when checking for convergence at the end of an iteration. 
+		//		//		However, performing the acceleration before or after the gradient update gives equivalent algorithms
+		//	}
+		//}//end UpdateCovAuxParsInternal
+
+		////Alternative version where learning rates are decreased until 
+		//// (i) a decrease in the log-likelihood compared to the previous one is found and 
+		//// (ii) subsequent decreases are only small.
+		//// Problem: this does not necessarily lead to less log-likelihood evaluations compared to the above version
+		//void UpdateCovAuxPars(vec_t& cov_pars,
+		//	const vec_t& nat_grad,
+		//	bool profile_out_marginal_variance,
+		//	bool use_nesterov_acc,
+		//	int it,
+		//	vec_t& cov_pars_after_grad_aux,
+		//	vec_t& cov_pars_after_grad_aux_lag1,
+		//	double acc_rate_cov,
+		//	int nesterov_schedule_version,
+		//	int momentum_offset,
+		//	const double* fixed_effects) {
+		//	vec_t cov_pars_new(num_cov_par_);
+		//	if (profile_out_marginal_variance) {
+		//		cov_pars_new[0] = cov_pars[0];
+		//	}
+		//	double lr_cov = lr_cov_;
+		//	double lr_aux_pars = lr_aux_pars_;
+		//	bool decrease_found = false;
+		//	bool halving_done = false;
+		//	double cur_lowest_neg_log_like = neg_log_likelihood_after_lin_coef_update_;// currently lowest negative log-likelihood
+		//	bool lr_cov_last_decreased = true;// indicates whether lr_cov or lr_aux_pars has been last descreased
+		//	int num_grad_cov_par = (int)nat_grad.size();
+		//	if (estimate_aux_pars_) {
+		//		num_grad_cov_par -= NumAuxPars();
+		//	}
+		//	for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
+		//		if (ih > 0) {
+		//			learning_rate_decreased_first_time_ = true;
+		//			if (learning_rate_increased_after_descrease_) {
+		//				learning_rate_decreased_after_increase_ = true;
+		//			}
+		//			acc_rate_cov *= 0.5;
+		//			if (ih == 1 || lr_cov_last_decreased || !decrease_found) {
+		//				//lr_cov is decreased until there is a decrease found and subsequently only if if has been decreased last
+		//				lr_cov *= LR_SHRINKAGE_FACTOR_;
+		//				if (!gauss_likelihood_) {
+		//					// Reset mode to previous value since also parameters are discarded
+		//					for (const auto& cluster_i : unique_clusters_) {
+		//						likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//					}
+		//				}
+		//				lr_cov_last_decreased = true;
+		//			}
+		//		}//end ih > 0
+		//		UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//			profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//			acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//		if (estimate_aux_pars_) {
+		//			SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//		}
+		//		CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//		if (estimate_aux_pars_ && ih > 0 && (ih == 1 || !lr_cov_last_decreased || !decrease_found)) {
+		//			//lr_aux_pars is decreased until there is a decrease found and subsequently only if if has been decreased last
+		//			if (lr_cov_last_decreased) {
+		//				// Undo decrease for 'lr_cov', decrease 'lr_aux_pars', and check whether this leads to a smaller negative log-likelihood
+		//				lr_cov /= LR_SHRINKAGE_FACTOR_;
+		//			}
+		//			lr_aux_pars *= LR_SHRINKAGE_FACTOR_;
+		//			UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//				profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//				acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//			SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//			double neg_log_likelihood_cov_par_decrease = neg_log_likelihood_;
+		//			if (!gauss_likelihood_) {
+		//				for (const auto& cluster_i : unique_clusters_) {
+		//					likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//				}
+		//			}
+		//			CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//			if (lr_cov_last_decreased && neg_log_likelihood_cov_par_decrease < neg_log_likelihood_) {
+		//				// Better to decrease 'lr_cov': undo decrease in 'lr_aux_pars'
+		//				lr_cov *= LR_SHRINKAGE_FACTOR_;
+		//				lr_aux_pars /= LR_SHRINKAGE_FACTOR_;
+		//				UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//					profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//					acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//				SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//				neg_log_likelihood_ = neg_log_likelihood_cov_par_decrease;
+		//			}
+		//			else {
+		//				lr_cov_last_decreased = false;
+		//			}
+		//		}// end estimate_aux_pars_ && ih > 0
+		//		if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
+		//			decrease_found = true;
+		//		}
+		//		// Stop trying more decreases when decrease is only small
+		//		if (((cur_lowest_neg_log_like - neg_log_likelihood_) <= 2.) && decrease_found) {
+		//			if (ih > 1) {
+		//				acc_rate_cov /= 0.5;
+		//				if (lr_cov_last_decreased) {
+		//					// Undo decrease for 'lr_cov'
+		//					lr_cov /= LR_SHRINKAGE_FACTOR_;
+		//				}
+		//				else {
+		//					lr_aux_pars /= LR_SHRINKAGE_FACTOR_;
+		//					SetAuxPars(cov_pars_new.data() + num_cov_par_);
+		//				}
+		//				UpdateCovAuxParsInternal(cov_pars, cov_pars_new, nat_grad, num_grad_cov_par, lr_cov, lr_aux_pars,
+		//					profile_out_marginal_variance, use_nesterov_acc, it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1,
+		//					acc_rate_cov, nesterov_schedule_version, momentum_offset);
+		//				if (!gauss_likelihood_) {
+		//					for (const auto& cluster_i : unique_clusters_) {
+		//						likelihood_[cluster_i]->ResetModeToPreviousValue();
+		//					}
+		//				}
+		//				CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
+		//				halving_done = true;
+		//			}
+		//			break;// ll increases again after a decrease -> stop
+		//		}
+		//		if (neg_log_likelihood_ <= cur_lowest_neg_log_like) {
+		//			cur_lowest_neg_log_like = neg_log_likelihood_;
+		//		}
+		//	}//end loop over learnig rate halving procedure
+		//	if (halving_done) {
+		//		if (optimizer_cov_pars_ == "fisher_scoring") {
+		//			Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. "
+		//				"The learning rate has been decreased in this iteration.", it + 1);
+		//		}
+		//		else if (optimizer_cov_pars_ == "gradient_descent") {
+		//			lr_cov_ = lr_cov; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring)
+		//			if (estimate_aux_pars_) {
+		//				lr_aux_pars_ = lr_aux_pars;
+		//				Log::REDebug("GPModel covariance and auxiliary parameter estimation: Learning rates have been decreased permanently in iteration number %d "
+		//					"since with the previous learning rates, there was no decrease in the objective function. "
+		//					"New learning rates: covariance parameters = %g, auxiliary parameters = %g", it + 1, lr_cov_, lr_aux_pars_);
+		//			}
+		//			else {
+		//				Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently in iteration number %d "
+		//					"since with the previous learning rate, there was no decrease in the objective function. New learning rate = %g", it + 1, lr_cov_);
+		//			}
+		//		}
+		//	}
+		//	if (!decrease_found) {
+		//		Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d "
+		//			"after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+		//	}
+		//	if (use_nesterov_acc) {
+		//		cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
+		//	}
+		//	cov_pars = cov_pars_new;
+		//}//end UpdateCovAuxPars
 
 		/*!
 		* \brief Update linear regression coefficients and apply step size safeguard
@@ -4828,14 +5180,18 @@ namespace GPBoost {
 				else {//non-Gaussian likelihoods
 					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEff(fixed_effects_vec.data());//calculate mode and approximate marginal likelihood
 				}
-				// Safeguard agains too large steps by halving the learning rate when the objective increases
+				// Safeguard against too large steps by halving the learning rate when the objective increases
 				if (neg_log_likelihood_after_lin_coef_update_ <= neg_log_likelihood_lag1_) {
 					decrease_found = true;
 					break;
 				}
 				else {
-					// Safeguard agains too large steps by halving the learning rate
+					// Safeguard against too large steps by halving the learning rate
 					halving_done = true;
+					//learning_rate_decreased_first_time_ = true;
+					//if (learning_rate_increased_after_descrease_) {
+					//	learning_rate_decreased_after_increase_ = true;
+					//}
 					lr_coef *= LR_SHRINKAGE_FACTOR_;
 					acc_rate_coef *= 0.5;
 					if (!gauss_likelihood_) {
@@ -4852,7 +5208,8 @@ namespace GPBoost {
 					"there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_coef_);
 			}
 			if (!decrease_found) {
-				Log::REDebug("GPModel linear regression coefficient estimation: No decrease in the objective function in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+				Log::REDebug("GPModel linear regression coefficient estimation: No decrease in the objective function "
+					"in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
 			}
 			if (use_nesterov_acc) {
 				beta_after_grad_aux_lag1 = beta_after_grad_aux;
@@ -5133,35 +5490,48 @@ namespace GPBoost {
 						cov_mat_between_neighbors.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE;//Avoid numerical problems when there is no nugget effect
 					}
 					den_mat_t A_i(1, num_nn);
-					den_mat_t cov_mat_between_neighbors_inv;
 					den_mat_t A_i_grad_sigma2;
-					if (calc_gradient) {
-						// Note: it is faster (approx. 1.5-2 times) to first calculate cov_mat_between_neighbors_inv and the multiply this with the matrices below 
-						//		instead of always using the Cholesky factor of cov_mat_between_neighbors to calculate cov_mat_between_neighbors_inv * (a matrix)
-						den_mat_t I(num_nn, num_nn);
-						I.setIdentity();
-						cov_mat_between_neighbors_inv = cov_mat_between_neighbors.llt().solve(I);
-						A_i = cov_mat_obs_neighbors * cov_mat_between_neighbors_inv;
-						if (calc_gradient_nugget) {
-							A_i_grad_sigma2 = -A_i * cov_mat_between_neighbors_inv;
-						}
-					}
-					else {
-						A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors.transpose())).transpose();
-					}
+					Eigen::LLT<den_mat_t> chol_fact_between_neighbors = cov_mat_between_neighbors.llt();
+					A_i = (chol_fact_between_neighbors.solve(cov_mat_obs_neighbors.transpose())).transpose();
+
+					// Alternative version where cov_mat_between_neighbors_inv is first calculated and then multiplication with this is done
+					// This can be faster (approx. 1.5-2 times) compared tp always using the Cholesky factor of cov_mat_between_neighbors to calculate cov_mat_between_neighbors_inv * (a matrix)
+					// But it leads to numerical instabilities if locations / input features are close together (e.g., large num_data)
+					//den_mat_t cov_mat_between_neighbors_inv;
+					//if (calc_gradient) {
+					//	den_mat_t I(num_nn, num_nn);
+					//	I.setIdentity();
+					//	cov_mat_between_neighbors_inv = cov_mat_between_neighbors.llt().solve(I);
+					//	A_i = cov_mat_obs_neighbors * cov_mat_between_neighbors_inv;
+					//	if (calc_gradient_nugget) {
+					//		A_i_grad_sigma2 = -A_i * cov_mat_between_neighbors_inv;
+					//	}
+					//}
+					//else {
+					//	A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors.transpose())).transpose();
+					//}
+
 					for (int inn = 0; inn < num_nn; ++inn) {
 						B_cluster_i.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i(0, inn);
 					}
 					D_inv_cluster_i.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
 					if (calc_gradient) {
+						if (calc_gradient_nugget) {
+							A_i_grad_sigma2 = -(chol_fact_between_neighbors.solve(A_i.transpose())).transpose();
+						}
 						den_mat_t A_i_grad(1, num_nn);
 						for (int j = 0; j < num_gp_total_; ++j) {
 							int ind_first_par = j * num_par_comp;
 							for (int ipar = 0; ipar < num_par_comp; ++ipar) {
 								if (!(exclude_marg_var_grad && ipar == 0)) {
-									A_i_grad = (cov_grad_mats_obs_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv) -
-										(cov_mat_obs_neighbors * cov_mat_between_neighbors_inv *
-											cov_grad_mats_between_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv);
+									A_i_grad = (chol_fact_between_neighbors.solve(cov_grad_mats_obs_neighbors[ind_first_par + ipar].transpose())).transpose() -
+										A_i * ((chol_fact_between_neighbors.solve(cov_grad_mats_between_neighbors[ind_first_par + ipar])).transpose());
+
+									// Alternative version where cov_mat_between_neighbors_inv is calculated first
+									//A_i_grad = (cov_grad_mats_obs_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv) -
+									//	(cov_mat_obs_neighbors * cov_mat_between_neighbors_inv *
+									//		cov_grad_mats_between_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv);
+
 									for (int inn = 0; inn < num_nn; ++inn) {
 										B_grad_cluster_i[ind_first_par + ipar].coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i_grad(0, inn);
 									}
@@ -5186,6 +5556,18 @@ namespace GPBoost {
 				}//end if i > 0
 				D_inv_cluster_i.coeffRef(i, i) = 1. / D_inv_cluster_i.coeffRef(i, i);
 			}//end loop over data i
+			Eigen::Index minRow, minCol;
+			double min_D_inv = D_inv_cluster_i.diagonal().minCoeff(&minRow, &minCol);
+			if (min_D_inv <= 0.) {
+				const char* min_D_inv_below_zero_msg = "The matrix D in the Vecchia approximation contains negative or zero values. "
+					"This is a serious problem that likely results from numerical instabilities ";
+				if (gauss_likelihood_) {
+					Log::REWarning(min_D_inv_below_zero_msg);
+				}
+				else {
+					Log::REFatal(min_D_inv_below_zero_msg);
+				}
+			}
 		}//end CalcCovFactorVecchia
 
 		/*!
@@ -5371,8 +5753,15 @@ namespace GPBoost {
 		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
 		* \param log_scale If true, the momentum step is done on the log-scale
 		*/
-		void ApplyMomentumStep(int it, vec_t& pars, vec_t& pars_lag1, vec_t& pars_acc, double nesterov_acc_rate = 0.5,
-			int nesterov_schedule_version = 0, bool exclude_first_log_scale = true, int momentum_offset = 2, bool log_scale = false) {
+		void ApplyMomentumStep(int it, 
+			vec_t& pars, 
+			vec_t& pars_lag1, 
+			vec_t& pars_acc, 
+			double nesterov_acc_rate,
+			int nesterov_schedule_version, 
+			bool exclude_first_log_scale, 
+			int momentum_offset, 
+			bool log_scale) {
 			double mu = NesterovSchedule(it, nesterov_schedule_version, nesterov_acc_rate, momentum_offset);
 			int num_par = (int)pars.size();
 			if (exclude_first_log_scale) {

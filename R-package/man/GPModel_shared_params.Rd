@@ -73,7 +73,11 @@ of the Wendland covariance function and Wendland correlation taper function.
 We follow the notation of Bevilacqua et al. (2019, AOS)}
 
 \item{num_neighbors}{An \code{integer} specifying the number of neighbors for 
-the Vecchia approximation}
+the Vecchia approximation. Note: for prediction, the number of neighbors can 
+be set through the 'num_neighbors_pred' parameter in the 'set_prediction_data'
+function. By default, num_neighbors_pred = 2 * num_neighbors. Further, 
+the type of Vecchia approximation used for making predictions is set through  
+the 'vecchia_pred_type' parameter in the 'set_prediction_data' function}
 
 \item{vecchia_ordering}{A \code{string} specifying the ordering used in 
 the Vecchia approximation. Available options:
@@ -114,10 +118,16 @@ ordered first for making predictions. This option is only available for Gaussian
 for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-checking convergence in conjugate gradient algorithms when being used for prediction}
+checking convergence in conjugate gradient algorithms when being used for prediction
+Default value if NULL: 1e-3}
 
 \item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
-is used for calculating predictive variances}
+is used for calculating predictive variances
+Default value if NULL: 1000}
+
+\item{rank_pred_approx_matrix_lanczos}{an \code{integer} specifying the rank 
+of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
+Default value if NULL: 1000}
 
 \item{cluster_ids}{A \code{vector} with elements indicating independent realizations of 
 random effects / Gaussian processes (same values = same process realization).

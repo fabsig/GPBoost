@@ -93,7 +93,7 @@ namespace LightGBM {
 							std::vector<double> minus_gp_pred(num_data_);
 							re_model->Predict(nullptr, num_data_, minus_gp_pred.data(), false, false,  false, 
 								nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-								true, nullptr, -1, -1., -1, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
+								true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated response data score - label = F_t - y 
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
@@ -106,7 +106,7 @@ namespace LightGBM {
 							std::vector<double> gp_pred(num_data_);
 							re_model->Predict(nullptr, num_data_, gp_pred.data(), false, false, true,
 								nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-								true, nullptr, -1, -1., -1, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
+								true, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated training score (= F_t)
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 							//	We thus dont provide this here (see the above nullptr). This also implies
@@ -367,14 +367,14 @@ namespace LightGBM {
 	};
 
 	/*!
-	* \brief Metric for Gaussian negative log-likelihood
+	* \brief Metric for test negative log-likelihood
 	*/
-	class GaussianNegLogLikelihood : public Metric {
+	class TestNegLogLikelihood : public Metric {
 	public:
-		explicit GaussianNegLogLikelihood(const Config& config) :config_(config) {
+		explicit TestNegLogLikelihood(const Config& config) :config_(config) {
 		}
 
-		virtual ~GaussianNegLogLikelihood() {
+		virtual ~TestNegLogLikelihood() {
 		}
 
 		const std::vector<std::string>& GetName() const override {
@@ -393,63 +393,83 @@ namespace LightGBM {
 				sum_weights_ = static_cast<double>(num_data_);
 			}
 			else {
-				Log::Fatal("Sample weights can currently not be used for the metric 'gaussian_neg_log_likelihood'");
+				Log::Fatal("Sample weights can currently not be used for the metric 'test_neg_log_likelihood'");
 			}
 		}
 
-		std::vector<double> Eval(const double* score, const ObjectiveFunction* objective, const double* residual_variance) const override {
-			double sum_loss = 0.0f;
+		std::vector<double> Eval(const double* score, 
+			const ObjectiveFunction* objective, 
+			const double* residual_variance) const override {
 			if (objective == nullptr) {
-				if (weights_ == nullptr) {
+				Log::Fatal("'objective' cannot be nullptr for the metric 'test_neg_log_likelihood' ");
+			}
+			if (metric_for_train_data_) {
+				Log::Fatal("Cannot use the metric 'test_neg_log_likelihood' on the training data ");
+			}
+			std::string obj_name = objective->GetName();
+			if (!(objective->HasGPModel()) && obj_name != "regression") {
+				Log::Fatal("The metric 'test_neg_log_likelihood' can only be used when "
+					"having a GPModel / including random effects for non-Gaussian likelihoods ");
+			}
+			REModel* re_model = nullptr;
+			if (objective->HasGPModel()) {
+				re_model = objective->GetGPModel();
+				if (!(re_model->GaussLikelihood()) && !(objective->UseGPModelForValidation())) {
+					Log::Fatal("The metric 'test_neg_log_likelihood' can only be used when "
+						"'use_gp_model_for_validation == true' for non-Gaussian likelihoods ");
+				}
+			}
+			double sum_loss = 0.;
+			if (objective->HasGPModel() && objective->UseGPModelForValidation()) {
+				if (re_model->GaussLikelihood()) {//Gaussian data
+					std::vector<double> re_pred(num_data_ * 2); // the first num_data_ are the negative predictive means followed by num_data_ predictive variances
+					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true,
+						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+						true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
+					// Note that the re_model already has the updated response data score - label = F_t - y 
+					//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
 					for (data_size_t i = 0; i < num_data_; ++i) {
-						sum_loss += std::pow(score[i] - label_[i], 2) / residual_variance[0];
+						sum_loss += std::pow(score[i] - re_pred[i] - label_[i], 2) / re_pred[num_data_ + i] + std::log(re_pred[num_data_ + i]);
 					}
-					sum_loss += num_data_ * std::log(residual_variance[0]);
-				}
-				else {
-					Log::Fatal("Sample weights can currently not be used for the metric 'gaussian_neg_log_likelihood'");
-				}
-			}
-			else {
-				if (weights_ == nullptr) {
-					if (objective->HasGPModel() && objective->UseGPModelForValidation()) {
-						if (metric_for_train_data_) {
-							Log::Fatal("Cannot use the option 'use_gp_model_for_validation = true' for calculating this "
-								"validation metric on the training data. If you want a metric on the training data, either (i) set 'use_gp_model_for_validation = false' "
-								"or (ii) choose the metric 'neg_log_likelihood' and use only the training data as validation data.");
-						}
-						REModel* re_model = objective->GetGPModel();
-						if (re_model->GaussLikelihood()) {//Gaussian data
-							std::vector<double> re_pred(num_data_ * 2); // the first num_data_ are the negative predictive means followed by num_data_ predictive variances
-							re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true,
-								nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-								true, nullptr, -1, -1., -1, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
-							// Note that the re_model already has the updated response data score - label = F_t - y 
-							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
+					sum_loss += num_data_ * LOG_2PI_;
+					sum_loss *= 0.5;
+
+					// The following code is equivalent to the above (but slower)
+//					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, false,
+//						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+//						true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
+//					// Note that the re_model already has the updated response data score - label = F_t - y 
+//					//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
+//#pragma omp parallel for schedule(static)
+//					for (data_size_t i = 0; i < num_data_; ++i) {
+//						re_pred[i] *= -1;
+//						re_pred[i] += score[i];
+//					}
+//					sum_loss = re_model->TestNegLogLikelihoodAdaptiveGHQuadrature(label_, re_pred.data(), re_pred.data() + num_data_, num_data_);
+
+				}//end Gaussian data
+				else {//non-Gaussian data
+					std::vector<double> re_pred(num_data_ * 2); // the first num_data_ are the predictive means followed by num_data_ predictive variances
+					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, false,
+						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+						true, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
+					// Note that the re_model already has the updated training score (= F_t)
+					//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
+					//	We thus don't provide this here (see the above nullptr). This also implies
+					//	that the Laplace approximation (in particular the mode) is note calculated again
+					sum_loss = re_model->TestNegLogLikelihoodAdaptiveGHQuadrature(label_, re_pred.data(), re_pred.data() + num_data_, num_data_);
+				}//end non-Gaussian data
+			}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
+			else {//re_model inexistent or not used for calculating validation loss for Gaussian likelihoods
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								sum_loss += std::pow(score[i] - re_pred[i] - label_[i], 2) / re_pred[num_data_ + i] + std::log(re_pred[num_data_ + i]);
-							}
-						}//end Gaussian data
-						else {//non-Gaussian data
-							Log::Fatal("Metric 'gaussian_neg_log_likelihood' cannot be used for non-Gaussian data");
-						}//end non-Gaussian data
-					}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
-					else {//re_model inexistent or not used for calculating validation loss
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							sum_loss += std::pow(score[i] - label_[i], 2) / residual_variance[0];
-						}
-						sum_loss += num_data_ * std::log(residual_variance[0]);
-					}//end re_model inexistent or not used for calculating validation loss
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					sum_loss += std::pow(score[i] - label_[i], 2) / residual_variance[0];
 				}
-				else {
-					Log::Fatal("Sample weights can currently not be used for the metric 'gaussian_neg_log_likelihood'");
-				}
-			}
-			sum_loss += num_data_ * LOG_2PI_;
-			sum_loss *= 0.5;
+				sum_loss += num_data_ * std::log(residual_variance[0]);
+				sum_loss += num_data_ * LOG_2PI_;
+				sum_loss *= 0.5;
+			}//end re_model inexistent or not used for calculating validation loss
 			double loss = sum_loss / sum_weights_;
 			return std::vector<double>(1, loss);
 		}
@@ -464,10 +484,10 @@ namespace LightGBM {
 		/*! \brief Sum weights */
 		double sum_weights_;
 		/*! \brief Name of this metric */
-		std::vector<std::string> name_ = { "Gaussian negative log-likelihood" };
+		std::vector<std::string> name_ = { "test_neg_log_likelihood" };
 		Config config_;
-		double LOG_2PI_ = std::log(M_PI)  + std::log(2);
-	};
+		double LOG_2PI_ = std::log(M_PI) + std::log(2);
+	};//end TestNegLogLikelihood
 
 }  // namespace LightGBM
 #endif   // LightGBM_METRIC_REGRESSION_METRIC_HPP_

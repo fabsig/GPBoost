@@ -4,33 +4,15 @@
 \alias{set_prediction_data.GPModel}
 \title{Set prediction data for a \code{GPModel}}
 \usage{
-\method{set_prediction_data}{GPModel}(gp_model, group_data_pred = NULL,
-  group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
-  gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL,
-  vecchia_pred_type = NULL, num_neighbors_pred = NULL,
-  cg_delta_conv_pred = NULL, nsim_var_pred = NULL)
+\method{set_prediction_data}{GPModel}(gp_model, vecchia_pred_type = NULL,
+  num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
+  nsim_var_pred = NULL, rank_pred_approx_matrix_lanczos = NULL,
+  group_data_pred = NULL, group_rand_coef_data_pred = NULL,
+  gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
+  cluster_ids_pred = NULL, X_pred = NULL)
 }
 \arguments{
 \item{gp_model}{A \code{GPModel}}
-
-\item{group_data_pred}{A \code{vector} or \code{matrix} with elements being group levels 
-for which predictions are made (if there are grouped random effects in the \code{GPModel})}
-
-\item{group_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data 
-for grouped random coefficients (if there are some in the \code{GPModel})}
-
-\item{gp_coords_pred}{A \code{matrix} with prediction coordinates (=features) for 
-Gaussian process (if there is a GP in the \code{GPModel})}
-
-\item{gp_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for 
-Gaussian process random coefficients (if there are some in the \code{GPModel})}
-
-\item{cluster_ids_pred}{A \code{vector} with elements indicating the realizations of 
-random effects / Gaussian processes for which predictions are made 
-(set to NULL if you have not specified this when creating the \code{GPModel})}
-
-\item{X_pred}{A \code{matrix} with prediction covariate data for the 
-fixed effects linear regression term (if there is one in the \code{GPModel})}
 
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
 Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
@@ -52,10 +34,35 @@ ordered first for making predictions. This option is only available for Gaussian
 for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-checking convergence in conjugate gradient algorithms when being used for prediction}
+checking convergence in conjugate gradient algorithms when being used for prediction
+Default value if NULL: 1e-3}
 
 \item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
-is used for calculating predictive variances}
+is used for calculating predictive variances
+Default value if NULL: 1000}
+
+\item{rank_pred_approx_matrix_lanczos}{an \code{integer} specifying the rank 
+of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
+Default value if NULL: 1000}
+
+\item{group_data_pred}{A \code{vector} or \code{matrix} with elements being group levels 
+for which predictions are made (if there are grouped random effects in the \code{GPModel})}
+
+\item{group_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data 
+for grouped random coefficients (if there are some in the \code{GPModel})}
+
+\item{gp_coords_pred}{A \code{matrix} with prediction coordinates (=features) for 
+Gaussian process (if there is a GP in the \code{GPModel})}
+
+\item{gp_rand_coef_data_pred}{A \code{vector} or \code{matrix} with covariate data for 
+Gaussian process random coefficients (if there are some in the \code{GPModel})}
+
+\item{cluster_ids_pred}{A \code{vector} with elements indicating the realizations of 
+random effects / Gaussian processes for which predictions are made 
+(set to NULL if you have not specified this when creating the \code{GPModel})}
+
+\item{X_pred}{A \code{matrix} with prediction covariate data for the 
+fixed effects linear regression term (if there is one in the \code{GPModel})}
 }
 \value{
 A \code{GPModel}

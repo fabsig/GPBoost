@@ -64,8 +64,7 @@ CVBooster <- R6::R6Class(
 #' dtrain <- gpb.Dataset(X, label = y)
 #' params <- list(learning_rate = 0.05,
 #'                max_depth = 6,
-#'                min_data_in_leaf = 5,
-#'                objective = "regression_l2")
+#'                min_data_in_leaf = 5)
 #' # Run CV
 #' cvbst <- gpb.cv(params = params,
 #'                 data = dtrain,
@@ -505,7 +504,8 @@ gpb.cv <- function(params = list()
                                              , vecchia_pred_type = gp_model$.__enclos_env__$private$vecchia_pred_type
                                              , num_neighbors_pred = gp_model$.__enclos_env__$private$num_neighbors_pred
                                              , cg_delta_conv_pred = gp_model$.__enclos_env__$private$cg_delta_conv_pred
-                                             , nsim_var_pred = gp_model$.__enclos_env__$private$nsim_var_pred)
+                                             , nsim_var_pred = gp_model$.__enclos_env__$private$nsim_var_pred
+                                             , rank_pred_approx_matrix_lanczos = gp_model$.__enclos_env__$private$rank_pred_approx_matrix_lanczos)
           if (has_custom_eval_functions) {
             # Note: Validation using the GP model is only done in R if there are custom evaluation functions in eval_functions, 
             #        otherwise it is directly done in C++. See the function Eval() in regression_metric.hpp
@@ -517,6 +517,7 @@ gpb.cv <- function(params = list()
           }
           
         }
+        
         booster <- Booster$new(params = params, train_set = dtrain, gp_model = gp_model_train)
         gp_model$set_likelihood(gp_model_train$get_likelihood_name()) ## potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
         gp_model_train$set_optim_params(params = gp_model$get_optim_params())
@@ -674,7 +675,13 @@ generate.cv.folds <- function(nfold, nrows, stratified, label, group, params) {
     rnd_idx <- sample.int(nrows)
     
     # Request stratified folds
-    if (isTRUE(stratified) && params$objective %in% c("binary", "multiclass") && length(label) == length(rnd_idx)) {
+    stratified_folds <- FALSE
+    if (!is.null(params$objective)) {
+      if (isTRUE(stratified) && params$objective %in% c("binary", "multiclass") && length(label) == length(rnd_idx)) {
+        stratified_folds <- TRUE
+      }
+    }
+    if (stratified_folds) {
       
       y <- label[rnd_idx]
       y <- as.factor(y)
@@ -922,7 +929,7 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #'                   "min_data_in_leaf" = c(10,100,1000),
 #'                   "max_depth" = c(1,2,3,5,10),
 #'                   "lambda_l2" = c(0,1,10))
-#' other_params <- list(objective = "regression_l2", num_leaves = 2^10)
+#' other_params <- list(num_leaves = 2^10)
 #' # Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
 #' #       An alternative strategy is to impose no limit on 'max_depth', 
 #' #       and try different values for 'num_leaves' as follows:
@@ -930,7 +937,7 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #' #                   "min_data_in_leaf" = c(10,100,1000),
 #' #                   "num_leaves" = 2^(1:10),
 #' #                   "lambda_l2" = c(0,1,10))
-#' # other_params <- list(objective = "regression_l2", max_depth = -1)
+#' # other_params <- list(max_depth = -1)
 #' set.seed(1)
 #' opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
 #'                                               num_try_random = NULL, nfold = 4,
@@ -1092,26 +1099,28 @@ gpb.grid.search.tune.parameters <- function(param_grid
         }
       },
       error = function(msg) {
-        message(paste0("Error for parameter combination ", counter_num_comb, 
-                       " of ", length(try_param_combs), ": ", param_comb_str,
-                       ". Error message: "))
+        if (verbose_eval < 1L) {
+          message(paste0("Error for parameter combination ", counter_num_comb, 
+                         " of ", length(try_param_combs), ": ", param_comb_str,
+                         ". Error message: "))
+        }
         message(msg)
       })# end tryCatch
-      if (current_score_is_better) {
-        best_score <- cvbst$best_score
-        best_iter <- cvbst$best_iter
-        best_params <- param_comb
-        if (verbose_eval >= 1L) {
-          metric_name <- names(cvbst$record_evals$valid)
-          param_comb_print <- param_comb
-          param_comb_print[["nrounds"]] <- best_iter
-          str <- lapply(seq_along(param_comb_print), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb_print, n=names(param_comb_print))
-          message(paste0("***** New best test score (",metric_name, " = ", 
-                         best_score,  ") found for the following parameter combination: ", 
-                         paste0(unlist(str), collapse=", ")))
-        }
+    if (current_score_is_better) {
+      best_score <- cvbst$best_score
+      best_iter <- cvbst$best_iter
+      best_params <- param_comb
+      if (verbose_eval >= 1L) {
+        metric_name <- names(cvbst$record_evals$valid)
+        param_comb_print <- param_comb
+        param_comb_print[["nrounds"]] <- best_iter
+        str <- lapply(seq_along(param_comb_print), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb_print, n=names(param_comb_print))
+        message(paste0("***** New best test score (",metric_name, " = ", 
+                       best_score,  ") found for the following parameter combination: ", 
+                       paste0(unlist(str), collapse=", ")))
       }
-      counter_num_comb <- counter_num_comb + 1L
+    }
+    counter_num_comb <- counter_num_comb + 1L
   }
   
   return(list(best_params=best_params, best_iter=best_iter, best_score=best_score))

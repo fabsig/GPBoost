@@ -31,6 +31,7 @@ def train(params, train_set, num_boost_round=100,
     ----------
     params : dict
         Parameters for training.
+        See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
     num_boost_round : int, optional (default=100)
@@ -51,7 +52,8 @@ def train(params, train_set, num_boost_round=100,
     valid_names : list of strings or None, optional (default=None)
         Names of ``valid_sets``.
     fobj : callable or None, optional (default=None)
-        Customized objective function.
+        Customized objective function. Only for independent boosting.
+        The GPBoost algorithm currently does not support this.
         Should accept two parameters: preds, train_data,
         and return (grad, hess).
 
@@ -156,7 +158,7 @@ def train(params, train_set, num_boost_round=100,
     -------
     >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
     >>> data_train = gpb.Dataset(X, y)
-    >>> params = {'objective': 'regression_l2', 'verbose': 0}
+    >>> params = {'learning_rate': 0.01, 'max_depth': 3, 'num_leaves': 2**10, 'verbose': 0}
     >>> bst = gpb.train(params=params, train_set=data_train,  gp_model=gp_model,
     >>>                 num_boost_round=100)
 
@@ -520,18 +522,19 @@ def cv(params, train_set, num_boost_round=100,
        gp_model=None, use_gp_model_for_validation=True,
        fit_GP_cov_pars_OOS=False, train_gp_model_cov_pars=True,
        folds=None, nfold=5, stratified=False, shuffle=True,
-       metrics=None, fobj=None, feval=None, init_model=None,
+       metric=None, fobj=None, feval=None, init_model=None,
        feature_name='auto', categorical_feature='auto',
        early_stopping_rounds=None, fpreproc=None,
        verbose_eval=None, show_stdv=False, seed=0,
        callbacks=None, eval_train_metric=False,
-       return_cvbooster=False):
+       return_cvbooster=False, metrics=None):
     """Perform cross-validation for choosing number of boosting iterations.
 
     Parameters
     ----------
     params : dict
         Parameters for Booster.
+        See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
     num_boost_round : int, optional (default=100)
@@ -563,11 +566,12 @@ def cv(params, train_set, num_boost_round=100,
         Whether to perform stratified sampling.
     shuffle : bool, optional (default=True)
         Whether to shuffle before splitting data.
-    metrics : string, list of strings or None, optional (default=None)
-        Evaluation metrics to be monitored while CV.
+    metric : string, list of strings or None, optional (default=None)
+        Evaluation metric to be monitored when doing CV.
         If not None, the metric in ``params`` will be overridden.
     fobj : callable or None, optional (default=None)
-        Customized objective function.
+        Customized objective function. Only for independent boosting.
+        The GPBoost algorithm currently does not support this.
         Should accept two parameters: preds, train_data,
         and return (grad, hess).
 
@@ -604,7 +608,7 @@ def cv(params, train_set, num_boost_round=100,
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is preds[j * num_data + i].
         To ignore the default metric corresponding to the used objective,
-        set ``metrics`` to the string ``"None"``.
+        set ``metric`` to the string ``"None"``.
     init_model : string, Booster or None, optional (default=None)
         Filename of GPBoost model or Booster instance used for continue training.
     feature_name : list of strings or 'auto', optional (default="auto")
@@ -647,6 +651,8 @@ def cv(params, train_set, num_boost_round=100,
         The score of the metric is calculated again after each training step, so there is some impact on performance.
     return_cvbooster : bool, optional (default=False)
         Whether to return Booster models trained on each fold through ``CVBooster``.
+    metrics : string, list of strings or None, discontinued (default=None)
+        This is discontinued. Use the renamed equivalent argument 'metric' instead
 
     Returns
     -------
@@ -662,7 +668,7 @@ def cv(params, train_set, num_boost_round=100,
     -------
     >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
     >>> data_train = gpb.Dataset(X, y)
-    >>> params = {'objective': 'regression_l2', 'verbose': 0}
+    >>> params = {'learning_rate': 0.01, 'max_depth': 3, 'num_leaves': 2**10, 'verbose': 0}
     >>> cvbst = gpb.cv(params=params, train_set=data_train,
     >>>                gp_model=gp_model, use_gp_model_for_validation=True,
     >>>                num_boost_round=1000, early_stopping_rounds=5,
@@ -672,6 +678,9 @@ def cv(params, train_set, num_boost_round=100,
         Authors of the LightGBM Python package
         Fabio Sigrist
     """
+    if metrics is not None:
+        raise GPBoostError("The argument 'metrics' is discontinued. "
+                           "Use the renamed equivalent argument 'metric' instead")
     if fit_GP_cov_pars_OOS:
         raise ValueError("The GPBoostOOS algorithm (fit_GP_cov_pars_OOS=True) is not yet implemented in Python.")
     if not isinstance(train_set, Dataset):
@@ -718,10 +727,10 @@ def cv(params, train_set, num_boost_round=100,
     else:
         predictor = None
 
-    if metrics is not None:
+    if metric is not None:
         for metric_alias in _ConfigAliases.get("metric"):
             params.pop(metric_alias, None)
-        params['metric'] = metrics
+        params['metric'] = metric
 
     train_set._update_params(params) \
         ._set_predictor(predictor) \
@@ -840,16 +849,17 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                                 num_boost_round=100, gp_model=None,
                                 use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
                                 folds=None, nfold=5, stratified=False, shuffle=True,
-                                metrics=None, fobj=None, feval=None, init_model=None,
+                                metric=None, fobj=None, feval=None, init_model=None,
                                 feature_name='auto', categorical_feature='auto',
                                 early_stopping_rounds=None, fpreproc=None,
-                                verbose_eval=1, seed=0, callbacks=None):
+                                verbose_eval=1, seed=0, callbacks=None, metrics=None):
     """Function that allows for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
 
     Parameters
     ----------
     param_grid : dict
         Candidate parameters defining the grid over which a search is done.
+        See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
     params : dict, optional (default=None)
@@ -881,11 +891,13 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         Whether to perform stratified sampling.
     shuffle : bool, optional (default=True)
         Whether to shuffle before splitting data.
-    metrics : string, list of strings or None, optional (default=None)
-        Evaluation metrics. If more than one metric is provided, only the first metric will be used to choose tuning parameters
+    metric : string, list of strings or None, optional (default=None)
+        Evaluation metric for monitoring prediction accuracy on validation data.
+        If more than one metric is provided, only the first metric will be used to choose tuning parameters.
         If not None, the metric in ``params`` will be overridden.
     fobj : callable or None, optional (default=None)
-        Customized objective function.
+        Customized objective function. Only for independent boosting.
+        The GPBoost algorithm currently does not support this.
         Should accept two parameters: preds, train_data,
         and return (grad, hess).
 
@@ -924,7 +936,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         For multi-class task, the preds is group by class_id first, then group by row_id.
         If you want to get i-th row preds in j-th class, the access way is preds[j * num_data + i].
         To ignore the default metric corresponding to the used objective,
-        set ``metrics`` to the string ``"None"``.
+        set ``metric`` to the string ``"None"``.
     init_model : string, Booster or None, optional (default=None)
         Filename of GPBoost model or Booster instance used for continue training.
     feature_name : list of strings or 'auto', optional (default="auto")
@@ -959,6 +971,8 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     callbacks : list of callables or None, optional (default=None)
         List of callback functions that are applied at each iteration.
         See Callbacks in Python API for more information.
+    metrics : string, list of strings or None, discontinued (default=None)
+        This is discontinued. Use the renamed equivalent argument 'metric' instead
 
     Returns
     -------
@@ -973,7 +987,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     >>>   'min_data_in_leaf': [10,100,1000],
     >>>   'max_depth': [1,2,3,5,10],
     >>>   'lambda_l2': [0,1,10]}
-    >>> other_params = {'objective': objective, 'num_leaves': 2**10, 'verbose': 0}
+    >>> other_params = {'num_leaves': 2**10, 'verbose': 0}
     >>> # Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
     >>> #       An alternative strategy is to impose no limit on 'max_depth',  
     >>> #       and try different values for 'num_leaves' as follows:
@@ -981,7 +995,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     >>> #               'min_data_in_leaf': [10,100,1000],
     >>> #               'num_leaves': 2**np.arange(1,11),
     >>> #               'lambda_l2': [0,1,10]}
-    >>> # other_params = {'objective': objective, 'max_depth': -1, 'verbose': 0}
+    >>> # other_params = {'max_depth': -1, 'verbose': 0}
     >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
     >>> data_train = gpb.Dataset(X, y)
     >>> opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
@@ -1009,6 +1023,9 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     :Authors:
         Fabio Sigrist
     """
+    if metrics is not None:
+        raise GPBoostError("The argument 'metrics' is discontinued. "
+                           "Use the renamed equivalent argument 'metric' instead")
     # Check correct format
     if not isinstance(param_grid, dict):
         raise ValueError("param_grid needs to be a dict")
@@ -1029,10 +1046,10 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                                                   data_name=param, check_data_type=False,
                                                   check_must_be_int=False, convert_to_type=None)
     higher_better = False
-    if metrics is not None:
-        if isinstance(metrics, str):
-            metrics = [metrics]
-        if metrics[0].startswith(('auc', 'ndcg@', 'map@', 'average_precision')):
+    if metric is not None:
+        if isinstance(metric, str):
+            metric = [metric]
+        if metric[0].startswith(('auc', 'ndcg@', 'map@', 'average_precision')):
             higher_better = True
     elif feval is not None:
         if callable(feval):
@@ -1083,7 +1100,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                        gp_model=gp_model, use_gp_model_for_validation=use_gp_model_for_validation,
                        train_gp_model_cov_pars=train_gp_model_cov_pars,
                        folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,
-                       metrics=metrics, fobj=fobj, feval=feval, init_model=init_model,
+                       metric=metric, fobj=fobj, feval=feval, init_model=init_model,
                        feature_name=feature_name, categorical_feature=categorical_feature,
                        early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
                        verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks,
@@ -1097,8 +1114,9 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                 if current_score < best_score:
                     current_score_is_better = True
         except Exception as err:
-            print("Error for parameter combination " + str(counter_num_comb) +
-                  " of " + str(len(try_param_combs)) + ": " + str(param_comb) + ". Error message: ")
+            if verbose_eval < 1:
+                print("Error for parameter combination " + str(counter_num_comb) +
+                      " of " + str(len(try_param_combs)) + ": " + str(param_comb) + ". Error message: ")
             print(str(err))
         if current_score_is_better:
             best_score = current_score

@@ -10,11 +10,11 @@ fitGPModel(likelihood = "gaussian", group_data = NULL,
   gp_rand_coef_data = NULL, cov_function = "exponential",
   cov_fct_shape = 0.5, gp_approx = "none", cov_fct_taper_range = 1,
   cov_fct_taper_shape = 0, num_neighbors = 20L,
-  vecchia_ordering = "random", vecchia_pred_type = NULL,
-  num_neighbors_pred = 2 * num_neighbors, num_ind_points = 500L,
+  vecchia_ordering = "random", num_ind_points = 500L,
   matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
   free_raw_data = FALSE, y, X = NULL, params = list(),
-  vecchia_approx = NULL)
+  vecchia_approx = NULL, vecchia_pred_type = NULL,
+  num_neighbors_pred = NULL)
 }
 \arguments{
 \item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable. 
@@ -86,7 +86,11 @@ of the Wendland covariance function and Wendland correlation taper function.
 We follow the notation of Bevilacqua et al. (2019, AOS)}
 
 \item{num_neighbors}{An \code{integer} specifying the number of neighbors for 
-the Vecchia approximation}
+the Vecchia approximation. Note: for prediction, the number of neighbors can 
+be set through the 'num_neighbors_pred' parameter in the 'set_prediction_data'
+function. By default, num_neighbors_pred = 2 * num_neighbors. Further, 
+the type of Vecchia approximation used for making predictions is set through  
+the 'vecchia_pred_type' parameter in the 'set_prediction_data' function}
 
 \item{vecchia_ordering}{A \code{string} specifying the ordering used in 
 the Vecchia approximation. Available options:
@@ -94,25 +98,6 @@ the Vecchia approximation. Available options:
 \item{"none": the default ordering in the data is used }
 \item{"random": a random ordering }
 }}
-
-\item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
-Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
-Available options:
-\itemize{
-\item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are only observed training data points }
-\item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are selected among all points (training + prediction) }
-\item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
-ordered first and neighbors are only observed points}
-\item{"latent_order_obs_first_cond_all": Vecchia approximation 
-for the latent process and observed data is ordered first and neighbors are selected among all points }
-\item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
-ordered first for making predictions. This option is only available for Gaussian likelihoods }
-}}
-
-\item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{num_ind_points}{An \code{integer} specifying the number of inducing 
 points / knots for, e.g., a predictive process approximation}
@@ -193,6 +178,12 @@ fixed effects linear regression term (if there is one)}
 }}
 
 \item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
+
+\item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
+This is discontinued here. Use the function 'set_prediction_data' to specify this}
+
+\item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for making predictions.
+This is discontinued here. Use the function 'set_prediction_data' to specify this}
 }
 \value{
 A fitted \code{GPModel}
@@ -203,6 +194,7 @@ Estimates the parameters of a \code{GPModel} using maximum likelihood estimation
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
+\donttest{
 data(GPBoost_data, package = "gpboost")
 # Add intercept column
 X1 <- cbind(rep(1,dim(X)[1]),X)
@@ -223,15 +215,12 @@ pred <- predict(gp_model, group_data_pred = group_data_test[,1],
 pred$mu # Predicted mean
 pred$cov # Predicted covariance
 
-
-\donttest{
 #--------------------Two crossed random effects and a random slope----------------
 gp_model <- fitGPModel(group_data = group_data, likelihood="gaussian",
                        group_rand_coef_data = X[,2],
                        ind_effect_group_rand_coef = 1,
                        y = y, X = X1, params = list(std_dev = TRUE))
 summary(gp_model)
-
 
 #--------------------Gaussian process model----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -243,20 +232,17 @@ pred <- predict(gp_model, gp_coords_pred = coords_test,
 pred$mu # Predicted (posterior) mean of GP
 pred$cov # Predicted (posterior) covariance matrix of GP
 
-
 #--------------------Gaussian process model with Vecchia approximation----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        gp_approx = "vecchia", num_neighbors = 20,
                        likelihood="gaussian", y = y)
 summary(gp_model)
 
-
 #--------------------Gaussian process model with random coefficients----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        gp_rand_coef_data = X[,2], y=y,
                        likelihood = "gaussian", params = list(std_dev = TRUE))
 summary(gp_model)
-
 
 #--------------------Combine Gaussian process with grouped random effects----------------
 gp_model <- fitGPModel(group_data = group_data,

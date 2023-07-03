@@ -46,6 +46,7 @@ This is only returned if \code{return_plot_data==TRUE}
 Plot partial dependence plots
 }
 \examples{
+\donttest{
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
@@ -57,9 +58,9 @@ gpboost_model <- gpboost(data = X,
                          learning_rate = 0.05,
                          max_depth = 6,
                          min_data_in_leaf = 5,
-                         objective = "regression_l2",
                          verbose = 0)
 gpb.plot.partial.dependence(gpboost_model, X, variable = 1)
+}
 }
 \author{
 Fabio Sigrist (adapted from a version by Michael Mayer)

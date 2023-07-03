@@ -18,6 +18,7 @@
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' 
+#' \donttest{
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
@@ -36,7 +37,7 @@
 #' # Train model
 #' bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 16,
 #'                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-#'                  objective = "regression_l2", verbose = 0)
+#'                  verbose = 0)
 #' # Estimated random effects model
 #' summary(gp_model)
 #' # Make predictions
@@ -48,7 +49,6 @@
 #' # Sum them up to otbain a single prediction
 #' pred$random_effect_mean + pred$fixed_effect
 #'
-#' \donttest{
 #' #--------------------Combine tree-boosting and Gaussian process model----------------
 #' # Create Gaussian process model
 #' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
@@ -57,7 +57,7 @@
 #' dtrain <- gpb.Dataset(data = X, label = y)
 #' bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 16,
 #'                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-#'                  objective = "regression_l2", verbose = 0)
+#'                  verbose = 0)
 #' # Estimated random effects model
 #' summary(gp_model)
 #' # Make predictions
@@ -82,7 +82,7 @@
 #' # Training with validation data and use_gp_model_for_validation = TRUE
 #' bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 100,
 #'                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-#'                  objective = "regression_l2", verbose = 1, valids = valids,
+#'                  verbose = 1, valids = valids,
 #'                  early_stopping_rounds = 10, use_gp_model_for_validation = TRUE)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter,
 #'              ", best test error: ", bst$best_score))
@@ -96,7 +96,7 @@
 #' # Note: run the above examples first
 #' bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 100,
 #'                  learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5,
-#'                  objective = "regression_l2", verbose = 1, valids = valids,
+#'                  verbose = 1, valids = valids,
 #'                  early_stopping_rounds = 5, use_gp_model_for_validation = FALSE,
 #'                  leaves_newton_update = TRUE)
 #' print(paste0("Optimal number of iterations: ", bst$best_iter,
@@ -113,8 +113,7 @@
 #' dtrain <- gpb.Dataset(X, label = y)
 #' params <- list(learning_rate = 0.05,
 #'                max_depth = 6,
-#'                min_data_in_leaf = 5,
-#'                objective = "regression_l2")
+#'                min_data_in_leaf = 5)
 #' # Stage 1: run cross-validation to (i) determine to optimal number of iterations
 #' #           and (ii) to estimate the GPModel on the out-of-sample data
 #' cvbst <- gpb.cv(params = params,
@@ -138,7 +137,6 @@
 #'                  learning_rate = 0.05,
 #'                  max_depth = 6,
 #'                  min_data_in_leaf = 5,
-#'                  objective = "regression_l2",
 #'                  verbose = 0,
 #'                  train_gp_model_cov_pars = FALSE)
 #' # The GPModel has not changed:

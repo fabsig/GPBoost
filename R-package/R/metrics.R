@@ -1,5 +1,5 @@
 # [description] List of metrics known to LightGBM. The most up to date list can be found
-#               at https://lightgbm.readthedocs.io/en/latest/Parameters.html#metric-parameters
+#               at https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 #
 # [return] A named logical vector, where each key is a metric name and each value is a boolean.
 #          TRUE if higher values of the metric are desirable, FALSE if lower values are desirable.
@@ -32,6 +32,7 @@
             , "cross_entropy" = FALSE
             , "cross_entropy_lambda" = FALSE
             , "kullback_leibler" = FALSE
+            , "test_neg_log_likelihood" = FALSE
         )
     )
 }

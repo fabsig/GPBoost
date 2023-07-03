@@ -27,7 +27,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
     """Function that simulates response variable for various likelihoods"""
     n = len(rand_eff)
     if likelihood == "gaussian":
-        xi = 0.25 * np.random.normal(size=n) # error term
+        xi = np.sqrt(0.05) * np.random.normal(size=n) # error term
         y = lp + rand_eff + xi
     elif likelihood == "bernoulli_probit":
         probs = stats.norm.cdf(lp + rand_eff)
@@ -42,7 +42,8 @@ def simulate_response_variable(lp, rand_eff, likelihood):
         y = stats.poisson.ppf(np.random.uniform(size=n), mu=mu)
     elif likelihood == "gamma":
         mu = np.exp(lp + rand_eff)
-        y = mu * stats.gamma.ppf(np.random.uniform(size=n), a=1)
+        shape = 10
+        y = mu / shape * stats.gamma.ppf(np.random.uniform(size=n), a=shape)
     return y
 
 # Choose likelihood: either "gaussian" (=regression), 
@@ -61,7 +62,7 @@ np.random.seed(1)
 group = np.arange(n)  # grouping variable
 for i in range(m):
     group[int(i * n / m):int((i + 1) * n / m)] = i
-b1 = np.sqrt(0.5) * np.random.normal(size=m)  # simulate random effects
+b1 = np.sqrt(0.25) * np.random.normal(size=m)  # simulate random effects
 rand_eff = b1[group]
 rand_eff = rand_eff - np.mean(rand_eff)
 # Simulate fixed effects
@@ -72,20 +73,6 @@ y = simulate_response_variable(lp=f, rand_eff=rand_eff, likelihood=likelihood)
 hst = plt.hist(y, bins=20)  # visualize response variable
 plt.show(block=False)
 
-# Specify boosting parameters
-objective = likelihood
-num_boost_round = 250
-if likelihood == "gaussian":
-    objective = 'regression_l2'
-    num_boost_round = 50
-elif likelihood in ("bernoulli_probit", "bernoulli_logit"):
-    objective = 'binary'
-    num_boost_round = 500
-params = {'objective': objective, 'learning_rate': 0.01, 'max_depth': 3,
-          'num_leaves': 2**10, 'verbose': 0}
-
-# Note: these parameters are by no means optimal for all datasets
-
 #--------------------Training----------------
 # Define random effects model
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
@@ -95,8 +82,19 @@ gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 # Use the option "trace": true to monitor convergence of hyperparameter estimation of the gp_model. E.g.:
 # gp_model.set_optim_params(params={"trace": True})
 
+# Specify boosting parameters
+# Note: these parameters are by no means optimal for all data sets but 
+#       need to be chosen appropriately, e.g., using 'gpb.grid.search.tune.parameters'
+num_boost_round = 250
+if likelihood == "gaussian":
+    num_boost_round = 50
+elif likelihood in ("bernoulli_probit", "bernoulli_logit"):
+    num_boost_round = 500
+params = {'learning_rate': 0.01, 'max_depth': 3, 
+          'num_leaves': 2**10, 'verbose': 0}
+
 # Create dataset for gpb.train
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
 bst = gpb.train(params=params, train_set=data_train,  gp_model=gp_model,
                 num_boost_round=num_boost_round)
 gp_model.summary() # Estimated random effects model
@@ -150,7 +148,7 @@ param_grid = {'learning_rate': [1,0.1,0.01],
               'min_data_in_leaf': [10,100,1000],
               'max_depth': [1,2,3,5,10],
               'lambda_l2': [0,1,10]}
-other_params = {'objective': objective, 'num_leaves': 2**10, 'verbose': 0}
+other_params = {'num_leaves': 2**10, 'verbose': 0}
 # Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
 #       An alternative strategy is to impose no limit on 'max_depth',  
 #       and try different values for 'num_leaves' as follows:
@@ -158,36 +156,47 @@ other_params = {'objective': objective, 'num_leaves': 2**10, 'verbose': 0}
 #               'min_data_in_leaf': [10,100,1000],
 #               'num_leaves': 2**np.arange(1,11),
 #               'lambda_l2': [0,1,10]}
-# other_params = {'objective': objective, 'max_depth': -1, 'verbose': 0}
+# other_params = {'max_depth': -1, 'verbose': 0}
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
-                                             num_try_random=None, nfold=4,
+                                             num_try_random=None, nfold=4, seed=1000,
                                              train_set=data_train, gp_model=gp_model,
                                              use_gp_model_for_validation=True, verbose_eval=1,
-                                             num_boost_round=1000, early_stopping_rounds=10,
-                                             seed=1000)
+                                             num_boost_round=1000, early_stopping_rounds=10)                                             
 print("Best parameters: " + str(opt_params['best_params']))
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
-# Note: other scoring / evaluation metrics can be chosen using the 
-#       'metrics' argument, e.g., metrics='MAE'
-
-# Using manually defined validation data instead of cross-validation
-permute_aux = np.random.permutation(n)
-train_tune_idx = permute_aux[0:int(0.8 * n)]
-valid_tune_idx = permute_aux[int(0.8 * n):n]
-folds = [(train_tune_idx, valid_tune_idx)]
+# Note: by default, 'test_neg_log_likelihood' is used as metric
+#       Other evaluation metrics / scoring rules can be chosen using the 
+#       'metric' argument, e.g., metric = "mse" or metric = "binary_logloss"
+#       For more information on available metrics, see 
+#       https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
+metric = "mse"
+if likelihood in ("bernoulli_probit", "bernoulli_logit"):
+    metric = "binary_logloss"
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
-                                             num_try_random=None, folds=folds,
+                                             num_try_random=None, nfold=4, seed=1000,
                                              train_set=data_train, gp_model=gp_model,
                                              use_gp_model_for_validation=True, verbose_eval=1,
                                              num_boost_round=1000, early_stopping_rounds=10,
-                                             seed=1000)
+                                             metric=metric)
+
+# Faster computation for large data:
+#   using manually defined validation data instead of cross-validation
+permute_aux = np.random.permutation(n)
+train_tune_idx = permute_aux[0:int(0.8 * n)] # use 20% of the data as validation data
+valid_tune_idx = permute_aux[int(0.8 * n):n]
+folds = [(train_tune_idx, valid_tune_idx)]
+opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
+                                             num_try_random=None, folds=folds, seed=1000,
+                                             train_set=data_train, gp_model=gp_model,
+                                             use_gp_model_for_validation=True, verbose_eval=1,
+                                             num_boost_round=1000, early_stopping_rounds=10)
   
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
 cvbst = gpb.cv(params=params, train_set=data_train,
                gp_model=gp_model, use_gp_model_for_validation=True,
                num_boost_round=1000, early_stopping_rounds=10,
@@ -203,7 +212,6 @@ test_ind = [i for i in range(n) if i not in train_ind]
 data_train = gpb.Dataset(X[train_ind, :], y[train_ind])
 data_eval = gpb.Dataset(X[test_ind, :], y[test_ind], reference=data_train)
 gp_model = gpb.GPModel(group_data=group[train_ind], likelihood=likelihood)
-# Include random effect predictions for validation (=default)
 gp_model.set_prediction_data(group_data_pred=group[test_ind])
 evals_result = {}  # record eval results for plotting
 bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
@@ -212,30 +220,21 @@ bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
                 evals_result=evals_result)
 gpb.plot_metric(evals_result, figsize=(10, 5))# plot validation scores
 plt.show(block=False)
-# Do not include random effect predictions for validation (observe the higher test error)
-evals_result = {}  # record eval results for plotting
-bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
-                gp_model=gp_model, valid_sets=data_eval, 
-                early_stopping_rounds=10, use_gp_model_for_validation=False,
-                evals_result=evals_result)
-gpb.plot_metric(evals_result, figsize=(10, 5)) # plot validation scores
-plt.show(block=False)
-# Note: other scoring / evaluation metrics can be chosen using the 
-#       params['metric'] argument. E.g., params['metric'] = 'l1' uses the l1 loss
 
 #--------------------Do Newton updates for tree leaves (only for Gaussian data)----------------
 if likelihood == "gaussian":
-    params_N = params.copy()
-    params_N['leaves_newton_update'] = True
+    params_newton = params.copy()
+    params_newton['leaves_newton_update'] = True
+    params_newton['learning_rate'] = 0.1
     evals_result = {}  # record eval results for plotting
-    bst = gpb.train(params=params_N, train_set=data_train, num_boost_round=100,
+    bst = gpb.train(params=params_newton, train_set=data_train, num_boost_round=1000,
                     gp_model=gp_model, valid_sets=data_eval, early_stopping_rounds=5,
                     use_gp_model_for_validation=True, evals_result=evals_result)
     gpb.plot_metric(evals_result, figsize=(10, 5))# plot validation scores
 
 #--------------------Model interpretation----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
 bst = gpb.train(params=params, train_set=data_train,
                 gp_model=gp_model, num_boost_round=num_boost_round)
 # Split-based feature importances
@@ -256,12 +255,8 @@ ax = pdp.pdp_plot(pdp_dist, 'variable_0', plot_lines=True, frac_to_plot=0.1)
 interact = pdp.pdp_interact(model=bst, dataset=Xpd, model_features=Xpd.columns,
                              features=['variable_0','variable_1'],
                              predict_kwds={"ignore_gp_model": True})
-try:
-    pdp.pdp_interact_plot(interact, ['variable_0','variable_1'], x_quantile=True,
-                          plot_type='contour', plot_pdp=True)
-except:
-    print("Ignore the error message 'got an unexpected keyword argument 'contour_label_fontsize'' in 'pdp_interact_plot'")
-
+pdp.pdp_interact_plot(interact, ['variable_0','variable_1'], x_quantile=True,
+                      plot_type='contour', plot_pdp=True) # Ignore the error message 'got an unexpected keyword argument 'contour_label_fontsize'' in 'pdp_interact_plot'
 # SHAP values and dependence plots (note: shap version>=0.36.0 is required)
 import shap
 shap_values = shap.TreeExplainer(bst).shap_values(X)
@@ -275,7 +270,7 @@ shap.dependence_plot(("Feature 0", "Feature 1"), shap_interaction_values, X, dis
 #--------------------Saving a booster with a gp_model and loading it from a file----------------
 # Train model and make prediction
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
 bst = gpb.train(params=params, train_set=data_train,
                 gp_model=gp_model, num_boost_round=num_boost_round)
 group_test = np.array([1,2,-1])
@@ -296,6 +291,7 @@ print(pred['random_effect_cov'] - pred_loaded['random_effect_cov'])
 # Note: can also convert to string and load from string
 # model_str = bst.model_to_string()
 # bst_loaded = gpb.Booster(model_str = model_str)
+
 
 """
 Combine tree-boosting and Gaussian process model
@@ -343,13 +339,10 @@ hst = plt.hist(y_train, bins=20)  # visualize response variable
 plt.show(block=False)
 
 # Specify boosting parameters as dict
-params = {'learning_rate': 0.1, 'objective': likelihood, 'verbose': 0}
+params = {'learning_rate': 0.1, 'max_depth': 3, 'verbose': 0}
 num_boost_round = 10
-if likelihood == "gaussian":
-    params['objective'] = 'regression_l2'
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     num_boost_round = 50
-    params['objective'] = 'binary'
 
 #--------------------Training----------------
 # Define Gaussian process model
@@ -418,11 +411,20 @@ axs[1, 1].plot(X_test[:, 0], pred['fixed_effect'], linewidth=2, label="Pred F")
 axs[1, 1].set_title("Predicted and true F")
 axs[1, 1].legend()
 
-#--------------------Cross-validation for determining number of iterations----------------
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
-                       likelihood=likelihood)
-cvbst = gpb.cv(params=params, train_set=data_train, gp_model=gp_model,
-               use_gp_model_for_validation=True, num_boost_round=200,
-               early_stopping_rounds=5, nfold=4, verbose_eval=True,
-               show_stdv=False, seed=1)
-print("Best number of iterations: " + str(np.argmin(next(iter(cvbst.values())))))
+#--------------------Choosing tuning parameters----------------
+run_slow_demo = False
+if run_slow_demo:
+    param_grid = {'learning_rate': [1,0.1,0.01], 
+                  'min_data_in_leaf': [10,100,1000],
+                  'max_depth': [1,2,3,5,10],
+                  'lambda_l2': [0,1,10]}
+    other_params = {'num_leaves': 2**10, 'verbose': 0}
+    gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+                           likelihood=likelihood)
+    data_train = gpb.Dataset(X_train, y_train)
+    opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
+                                                 num_try_random=None, nfold=4, seed=1000,
+                                                 train_set=data_train, gp_model=gp_model,
+                                                 use_gp_model_for_validation=True, verbose_eval=1,
+                                                 num_boost_round=1000, early_stopping_rounds=10)
+

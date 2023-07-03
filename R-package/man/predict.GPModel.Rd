@@ -8,10 +8,9 @@
   group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
   gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL,
   predict_cov_mat = FALSE, predict_var = FALSE, cov_pars = NULL,
-  X_pred = NULL, use_saved_data = FALSE, vecchia_pred_type = NULL,
-  num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
-  nsim_var_pred = NULL, predict_response = TRUE, fixed_effects = NULL,
-  fixed_effects_pred = NULL, ...)
+  X_pred = NULL, use_saved_data = FALSE, predict_response = TRUE,
+  fixed_effects = NULL, fixed_effects_pred = NULL,
+  vecchia_pred_type = NULL, num_neighbors_pred = NULL, ...)
 }
 \arguments{
 \item{object}{a \code{GPModel}}
@@ -51,31 +50,6 @@ fixed effects linear regression term (if there is one in the \code{GPModel})}
 \item{use_saved_data}{A \code{boolean}. If TRUE, predictions are done using 
 a priory set data via the function '$set_prediction_data' (this option is not used by users directly)}
 
-\item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
-Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
-Available options:
-\itemize{
-\item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are only observed training data points }
-\item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are selected among all points (training + prediction) }
-\item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
-ordered first and neighbors are only observed points}
-\item{"latent_order_obs_first_cond_all": Vecchia approximation 
-for the latent process and observed data is ordered first and neighbors are selected among all points }
-\item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
-ordered first for making predictions. This option is only available for Gaussian likelihoods }
-}}
-
-\item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
-for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
-
-\item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-checking convergence in conjugate gradient algorithms when being used for prediction}
-
-\item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
-is used for calculating predictive variances}
-
 \item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) 
 is predicted, otherwise the latent random effects}
 
@@ -88,6 +62,12 @@ Used only for non-Gaussian data. For Gaussian data, this is ignored}
 with additional external prediction fixed effects.
 The length of this vector needs to equal the number of prediction points.
 Used only for non-Gaussian data. For Gaussian data, this is ignored}
+
+\item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
+This is discontinued here. Use the function 'set_prediction_data' to specify this}
+
+\item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for making predictions.
+This is discontinued here. Use the function 'set_prediction_data' to specify this}
 
 \item{...}{(not used, ignore this, simply here that there is no CRAN warning)}
 }
@@ -109,6 +89,7 @@ Make predictions for a \code{GPModel}
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 
+\donttest{
 data(GPBoost_data, package = "gpboost")
 # Add intercept column
 X1 <- cbind(rep(1,dim(X)[1]),X)
@@ -130,7 +111,6 @@ pred$mu # Predicted mean
 pred$cov # Predicted covariance
 
 
-\donttest{
 #--------------------Gaussian process model----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))

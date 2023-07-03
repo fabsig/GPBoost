@@ -92,92 +92,19 @@ namespace LightGBM {
 
 #pragma region Core Parameters
 
-		// [no-save]
 		// [doc-only]
-		// alias = config_file
-		// desc = path of config file
-		// desc = **Note**: can be used only in CLI version
-		std::string config = "";
-
-		// [no-save]
-		// [doc-only]
-		// type = enum
-		// default = train
-		// options = train, predict, convert_model, refit
-		// alias = task_type
-		// desc = ``train``, for training, aliases: ``training``
-		// desc = ``predict``, for prediction, aliases: ``prediction``, ``test``
-		// desc = ``convert_model``, for converting model file into if-else format, see more information in `Convert Parameters <#convert-parameters>`__
-		// desc = ``refit``, for refitting existing models with new data, aliases: ``refit_tree``
-		// desc = **Note**: can be used only in CLI version; for language-specific packages you can use the correspondent functions
-		TaskType task = TaskType::kTrain;
-
-		// [doc-only]
-		// type = enum
-		// options = regression, regression_l1, huber, fair, poisson, quantile, mape, gamma, tweedie, binary, multiclass, multiclassova, cross_entropy, cross_entropy_lambda, lambdarank, rank_xendcg
-		// alias = objective_type, app, application
-		// desc = regression application
-		// descl2 = ``regression``, L2 loss, aliases: ``regression_l2``, ``l2``, ``mean_squared_error``, ``mse``, ``l2_root``, ``root_mean_squared_error``, ``rmse``
-		// descl2 = ``regression_l1``, L1 loss, aliases: ``l1``, ``mean_absolute_error``, ``mae``
-		// descl2 = ``huber``, `Huber loss <https://en.wikipedia.org/wiki/Huber_loss>`__
-		// descl2 = ``fair``, `Fair loss <https://www.kaggle.com/c/allstate-claims-severity/discussion/24520>`__
-		// descl2 = ``poisson``, `Poisson regression <https://en.wikipedia.org/wiki/Poisson_regression>`__
-		// descl2 = ``quantile``, `Quantile regression <https://en.wikipedia.org/wiki/Quantile_regression>`__
-		// descl2 = ``mape``, `MAPE loss <https://en.wikipedia.org/wiki/Mean_absolute_percentage_error>`__, aliases: ``mean_absolute_percentage_error``
-		// descl2 = ``gamma``, Gamma regression with log-link. It might be useful, e.g., for modeling insurance claims severity, or for any target that might be `gamma-distributed <https://en.wikipedia.org/wiki/Gamma_distribution#Occurrence_and_applications>`__
-		// descl2 = ``tweedie``, Tweedie regression with log-link. It might be useful, e.g., for modeling total loss in insurance, or for any target that might be `tweedie-distributed <https://en.wikipedia.org/wiki/Tweedie_distribution#Occurrence_and_applications>`__
-		// descl2 = ``tobit``, `Grabit model of Sigrist and Hirnschall (2019) <https://www.sciencedirect.com/science/article/pii/S0378426619300573>`__ 
-		// desc = binary classification application
-		// descl2 = ``binary``, binary `log loss <https://en.wikipedia.org/wiki/Cross_entropy>`__ classification (or logistic regression)
-		// descl2 = requires labels in {0, 1}; see ``cross-entropy`` application for general probability labels in [0, 1]
-		// desc = multi-class classification application
-		// descl2 = ``multiclass``, `softmax <https://en.wikipedia.org/wiki/Softmax_function>`__ objective function, aliases: ``softmax``
-		// descl2 = ``multiclassova``, `One-vs-All <https://en.wikipedia.org/wiki/Multiclass_classification#One-vs.-rest>`__ binary objective function, aliases: ``multiclass_ova``, ``ova``, ``ovr``
-		// descl2 = ``num_class`` should be set as well
-		// desc = cross-entropy application
-		// descl2 = ``cross_entropy``, objective function for cross-entropy (with optional linear weights), aliases: ``xentropy``
-		// descl2 = ``cross_entropy_lambda``, alternative parameterization of cross-entropy, aliases: ``xentlambda``
-		// descl2 = label is anything in interval [0, 1]
-		// desc = ranking application
-		// descl2 = ``lambdarank``, `lambdarank <https://papers.nips.cc/paper/2971-learning-to-rank-with-nonsmooth-cost-functions.pdf>`__ objective. `label_gain <#label_gain>`__ can be used to set the gain (weight) of ``int`` label and all values in ``label`` must be smaller than number of elements in ``label_gain``
-		// descl2 = ``rank_xendcg``, `XE_NDCG_MART <https://arxiv.org/abs/1911.09798>`__ ranking objective function, aliases: ``xendcg``, ``xe_ndcg``, ``xe_ndcg_mart``, ``xendcg_mart``
-		// descl2 = ``rank_xendcg`` is faster than and achieves the similar performance as ``lambdarank``
-		// descl2 = label should be ``int`` type, and larger number represents the higher relevance (e.g. 0:bad, 1:fair, 2:good, 3:perfect)
-		std::string objective = "regression";
-
-		// [doc-only]
-		// type = enum
-		// alias = boosting_type, boost
-		// options = gbdt, rf, dart, goss
-		// desc = ``gbdt``, traditional Gradient Boosting Decision Tree, aliases: ``gbrt``
-		// desc = ``rf``, Random Forest, aliases: ``random_forest``
-		// desc = ``dart``, `Dropouts meet Multiple Additive Regression Trees <https://arxiv.org/abs/1505.01866>`__
-		// desc = ``goss``, Gradient-based One-Side Sampling
-		// descl2 = **Note**: internally, GPBoost uses ``gbdt`` mode for the first ``1 / learning_rate`` iterations
-		std::string boosting = "gbdt";
-
-		// desc = fit piecewise linear gradient boosting tree
-		// descl2 = tree splits are chosen in the usual way, but the model at each leaf is linear instead of constant
-		// descl2 = the linear model at each leaf includes all the numerical features in that leaf's branch
-		// descl2 = categorical features are used for splits as normal but are not used in the linear models
-		// descl2 = missing values should not be encoded as ``0``. Use ``np.nan`` for Python, ``NA`` for the CLI, and ``NA``, ``NA_real_``, or ``NA_integer_`` for R
-		// descl2 = it is recommended to rescale data before training so that features have similar mean and standard deviation
-		// descl2 = **Note**: only works with CPU and ``serial`` tree learner
-		// descl2 = **Note**: ``regression_l1`` objective is not supported with linear tree boosting
-		// descl2 = **Note**: setting ``linear_tree=true`` significantly increases the memory use of GPBoost
-		bool linear_tree = false;
-
-		// alias = train, train_data, train_data_file, data_filename
-		// desc = path of training data, GPBoost will train from this data
-		// desc = **Note**: can be used only in CLI version
-		std::string data = "";
-
-		// alias = test, valid_data, valid_data_file, test_data, test_data_file, valid_filenames
-		// default = ""
-		// desc = path(s) of validation/test data, GPBoost will output metrics for these data
-		// desc = support multiple validation data, separated by ``,``
-		// desc = **Note**: can be used only in CLI version
-		std::vector<std::string> valid;
+		// options = gaussian, bernoulli_probit, binary_logit, poisson, gamma
+		// alias = likelihood, objective_type, app, application
+		// desc = The distribution of the response variable (=label) conditional on fixed and random effects.
+		// desc = This ``objective`` parameter only needs to be set when doing independent boosting without random effects / Gaussian processes. 
+		// desc = For the GPBoost / LaGaBoost algorithms, the likelihood is set through the ``likelihood`` parameter in the 'GPModel' (in Python / R)
+		// desc = Currently, the GPBoost / LaGaBoost algorithms and (generalized) linear mixed effects and Gaussian process models are implemented for the following likelihoods
+		// descl2 = ``gaussian``, Gaussian likelihood (= L2 loss for independent boosting), aliases: ``regression``, ``regression_l2``, ``l2``
+		// descl2 = ``bernoulli_probit``, binary Bernoulli likelihood with a probit link function (only for the GPBoost algorithm, not supported for independent boosting), aliases: ``binary_probit``
+		// descl2 = ``bernoulli_logit``, binary Bernoulli likelihood with a logit link function, aliases: ``binary_logit``
+		// descl2 = ``poisson``, Poisson likelihood with a log link function
+		// descl2 = ``gamma``, Gamma likelihood with a log link function
+		std::string objective = "gaussian";
 
 		// alias = num_iteration, n_iter, num_tree, num_trees, num_round, num_rounds, num_boost_round, n_estimators
 		// check = >=0
@@ -265,6 +192,56 @@ namespace LightGBM {
 
 		// desc = version of the acceleration rate schedule (values = 0, 1, default = 1)
 		int momentum_schedule_version = 1;
+
+		// desc = fit piecewise linear gradient boosting tree
+		// descl2 = tree splits are chosen in the usual way, but the model at each leaf is linear instead of constant
+		// descl2 = the linear model at each leaf includes all the numerical features in that leaf's branch
+		// descl2 = categorical features are used for splits as normal but are not used in the linear models
+		// descl2 = missing values should not be encoded as ``0``. Use ``np.nan`` for Python, ``NA`` for the CLI, and ``NA``, ``NA_real_``, or ``NA_integer_`` for R
+		// descl2 = it is recommended to rescale data before training so that features have similar mean and standard deviation
+		// descl2 = **Note**: only works with CPU and ``serial`` tree learner
+		// descl2 = **Note**: ``regression_l1`` objective is not supported with linear tree boosting
+		// descl2 = **Note**: setting ``linear_tree=true`` significantly increases the memory use of GPBoost
+		bool linear_tree = false;
+
+		// alias = train, train_data, train_data_file, data_filename
+		// desc = path of training data, GPBoost will train from this data
+		// desc = **Note**: can be used only in CLI version
+		std::string data = "";
+
+		// alias = test, valid_data, valid_data_file, test_data, test_data_file, valid_filenames
+		// default = ""
+		// desc = path(s) of validation/test data, GPBoost will output metrics for these data
+		// desc = support multiple validation data, separated by ``,``
+		// desc = **Note**: can be used only in CLI version
+		std::vector<std::string> valid;
+
+		// [no-save]
+		// [doc-only]
+		// alias = config_file
+		// desc = path of config file
+		// desc = **Note**: can be used only in CLI version
+		std::string config = "";
+
+		// [no-save]
+		// [doc-only]
+		// type = enum
+		// default = train
+		// options = train, predict, convert_model, refit
+		// alias = task_type
+		// desc = ``train``, for training, aliases: ``training``
+		// desc = ``predict``, for prediction, aliases: ``prediction``, ``test``
+		// desc = ``convert_model``, for converting model file into if-else format, see more information in `Convert Parameters <#convert-parameters>`__
+		// desc = ``refit``, for refitting existing models with new data, aliases: ``refit_tree``
+		// desc = **Note**: can be used only in CLI version; for language-specific packages you can use the correspondent functions
+		TaskType task = TaskType::kTrain;
+
+		// [doc-only]
+		// alias = boosting_type, boost
+		// options = gbdt
+		// desc = ``gbdt``, traditional Gradient Boosting Decision Tree, aliases: ``gbrt``
+		// desc = Only the option ``gbdt`` is currently supported for the GPBoost algorithm
+		std::string boosting = "gbdt";
 
 #pragma endregion
 
@@ -414,7 +391,7 @@ namespace LightGBM {
 
 		// alias = min_split_gain
 		// check = >=0.0
-		// desc = the minimal gain to perform split
+		// desc = the minimal gain to perform a split
 		// desc = can be used to speed up training
 		double min_gain_to_split = 0.0;
 
@@ -930,9 +907,11 @@ namespace LightGBM {
 		// alias = metrics, metric_types
 		// default = ""
 		// type = multi-enum
-		// desc = metric(s) to be evaluated on the evaluation set(s)
-		// descl2 = ``""`` (empty string or not specified) means that metric corresponding to specified ``objective`` will be used (this is possible only for pre-defined objective functions, otherwise no evaluation metric will be added)
-		// descl2 = ``"None"`` (string, **not** a ``None`` value) means that no metric will be registered, aliases: ``na``, ``null``, ``custom``
+		// desc = Metric(s) used to measure prediction accuracy on validation data
+		// desc = For the GPBoost algorithm, i.e., if there is a gp_model, ``test_neg_log_likelihood`` is the default metric. If another metric is used and there is a gp_model, the metric is calculated as follows. First, the predictive mean of the response variable is calculated. Second, the corresponding metric is evaluated using this predictive mean as point prediction
+		// desc = Available options:
+		// descl2 = ``""`` (empty string or not specified) means that ``test_neg_log_likelihood`` is used if there is a gp_model or a metric corresponding to the ``objective`` is used if there is no gp_model (the latter is possible only for pre-defined objective functions, otherwise no evaluation metric will be added)
+		// descl2 = ``test_neg_log_likelihood``, (univariate) test negative log-likelihood, adaptive Gauss-Hermite quadrature is used to calculated this for non-Gaussian likelihoods
 		// descl2 = ``l1``, absolute loss, aliases: ``mean_absolute_error``, ``mae``, ``regression_l1``
 		// descl2 = ``l2``, square loss, aliases: ``mean_squared_error``, ``mse``, ``regression_l2``, ``regression``
 		// descl2 = ``rmse``, root square loss, aliases: ``root_mean_squared_error``, ``l2_root``
@@ -941,7 +920,7 @@ namespace LightGBM {
 		// descl2 = ``huber``, `Huber loss <https://en.wikipedia.org/wiki/Huber_loss>`__
 		// descl2 = ``fair``, `Fair loss <https://www.kaggle.com/c/allstate-claims-severity/discussion/24520>`__
 		// descl2 = ``poisson``, negative log-likelihood for `Poisson regression <https://en.wikipedia.org/wiki/Poisson_regression>`__
-		// descl2 = ``gamma``, negative log-likelihood for **Gamma** regression
+		// descl2 = ``gamma``, negative log-likelihood for **Gamma** regression with a shape parameter of one
 		// descl2 = ``gamma_deviance``, residual deviance for **Gamma** regression
 		// descl2 = ``tweedie``, negative log-likelihood for **Tweedie** regression
 		// descl2 = ``ndcg``, `NDCG <https://en.wikipedia.org/wiki/Discounted_cumulative_gain#Normalized_DCG>`__, aliases: ``lambdarank``, ``rank_xendcg``, ``xendcg``, ``xe_ndcg``, ``xe_ndcg_mart``, ``xendcg_mart``
@@ -956,7 +935,7 @@ namespace LightGBM {
 		// descl2 = ``cross_entropy``, cross-entropy (with optional linear weights), aliases: ``xentropy``
 		// descl2 = ``cross_entropy_lambda``, "intensity-weighted" cross-entropy, aliases: ``xentlambda``
 		// descl2 = ``kullback_leibler``, `Kullback-Leibler divergence <https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence>`__, aliases: ``kldiv``
-		// descl2 = ``gaussian_neg_log_likelihood``, (univariate) Gaussian negative log-likelihood, aliases: ``normal_neg_log_likelihood``, ``normal_nll``, ``gaussian_nll``
+		// descl2 = ``"None"`` (string, **not** a ``None`` value) means that no metric will be registered, aliases: ``na``, ``null``, ``custom``
 		// desc = support multiple metrics, separated by ``,``
 		std::vector<std::string> metric;
 
@@ -1062,6 +1041,52 @@ namespace LightGBM {
 		static const std::unordered_set<std::string>& parameter_set();
 		std::vector<std::vector<double>> auc_mu_weights_matrix;
 		std::vector<std::vector<int>> interaction_constraints_vector;
+		// true if there is a GPModel
+		bool has_gp_model = false;
+		//Old documentation for 'objective' parameter
+		// [doc-only]
+		// type = enum
+		// options = regression, regression_l1, huber, fair, poisson, quantile, mape, gamma, tweedie, binary, multiclass, multiclassova, cross_entropy, cross_entropy_lambda, lambdarank, rank_xendcg
+		// alias = objective_type, app, application
+		// desc = regression application
+		// descl2 = ``regression``, L2 loss, aliases: ``regression_l2``, ``l2``, ``mean_squared_error``, ``mse``, ``l2_root``, ``root_mean_squared_error``, ``rmse``
+		// descl2 = ``regression_l1``, L1 loss, aliases: ``l1``, ``mean_absolute_error``, ``mae``
+		// descl2 = ``huber``, `Huber loss <https://en.wikipedia.org/wiki/Huber_loss>`__
+		// descl2 = ``fair``, `Fair loss <https://www.kaggle.com/c/allstate-claims-severity/discussion/24520>`__
+		// descl2 = ``poisson``, `Poisson regression <https://en.wikipedia.org/wiki/Poisson_regression>`__
+		// descl2 = ``quantile``, `Quantile regression <https://en.wikipedia.org/wiki/Quantile_regression>`__
+		// descl2 = ``mape``, `MAPE loss <https://en.wikipedia.org/wiki/Mean_absolute_percentage_error>`__, aliases: ``mean_absolute_percentage_error``
+		// descl2 = ``gamma``, Gamma regression with log-link. It might be useful, e.g., for modeling insurance claims severity, or for any target that might be `gamma-distributed <https://en.wikipedia.org/wiki/Gamma_distribution#Occurrence_and_applications>`__
+		// descl2 = ``tweedie``, Tweedie regression with log-link. It might be useful, e.g., for modeling total loss in insurance, or for any target that might be `tweedie-distributed <https://en.wikipedia.org/wiki/Tweedie_distribution#Occurrence_and_applications>`__
+		// descl2 = ``tobit``, `Grabit model of Sigrist and Hirnschall (2019) <https://www.sciencedirect.com/science/article/pii/S0378426619300573>`__ 
+		// desc = binary classification application
+		// descl2 = ``binary``, binary `log loss <https://en.wikipedia.org/wiki/Cross_entropy>`__ classification (or logistic regression)
+		// descl2 = requires labels in {0, 1}; see ``cross-entropy`` application for general probability labels in [0, 1]
+		// desc = multi-class classification application
+		// descl2 = ``multiclass``, `softmax <https://en.wikipedia.org/wiki/Softmax_function>`__ objective function, aliases: ``softmax``
+		// descl2 = ``multiclassova``, `One-vs-All <https://en.wikipedia.org/wiki/Multiclass_classification#One-vs.-rest>`__ binary objective function, aliases: ``multiclass_ova``, ``ova``, ``ovr``
+		// descl2 = ``num_class`` should be set as well
+		// desc = cross-entropy application
+		// descl2 = ``cross_entropy``, objective function for cross-entropy (with optional linear weights), aliases: ``xentropy``
+		// descl2 = ``cross_entropy_lambda``, alternative parameterization of cross-entropy, aliases: ``xentlambda``
+		// descl2 = label is anything in interval [0, 1]
+		// desc = ranking application
+		// descl2 = ``lambdarank``, `lambdarank <https://papers.nips.cc/paper/2971-learning-to-rank-with-nonsmooth-cost-functions.pdf>`__ objective. `label_gain <#label_gain>`__ can be used to set the gain (weight) of ``int`` label and all values in ``label`` must be smaller than number of elements in ``label_gain``
+		// descl2 = ``rank_xendcg``, `XE_NDCG_MART <https://arxiv.org/abs/1911.09798>`__ ranking objective function, aliases: ``xendcg``, ``xe_ndcg``, ``xe_ndcg_mart``, ``xendcg_mart``
+		// descl2 = ``rank_xendcg`` is faster than and achieves the similar performance as ``lambdarank``
+		// descl2 = label should be ``int`` type, and larger number represents the higher relevance (e.g. 0:bad, 1:fair, 2:good, 3:perfect)
+
+		//Old documentation for 'boosting' parameter
+		// [doc-only]
+		// alias = boosting_type, boost
+		// options = gbdt, rf, dart, goss
+		// desc = ``gbdt``, traditional Gradient Boosting Decision Tree, aliases: ``gbrt``
+		// desc = ``rf``, Random Forest, aliases: ``random_forest``
+		// desc = ``dart``, `Dropouts meet Multiple Additive Regression Trees <https://arxiv.org/abs/1505.01866>`__
+		// desc = ``goss``, Gradient-based One-Side Sampling
+		// descl2 = **Note**: internally, GPBoost uses ``gbdt`` mode for the first ``1 / learning_rate`` iterations
+
+		std::string objective_before_parse = "NOT_SET";
 
 	private:
 		void CheckParamConflict();
@@ -1069,6 +1094,8 @@ namespace LightGBM {
 		std::string SaveMembersToString() const;
 		void GetAucMuWeights();
 		void GetInteractionConstraints();
+		void GetMetricType(const std::unordered_map<std::string, std::string>& params, std::vector<std::string>* metric_out) const;
+		void GetObjectiveType(const std::unordered_map<std::string, std::string>& params, std::string* objective_out);
 	};
 
 	inline bool Config::GetString(
@@ -1176,15 +1203,22 @@ namespace LightGBM {
 	inline std::string ParseObjectiveAlias(const std::string& type) {
 		if (type == std::string("regression") || type == std::string("regression_l2")
 			|| type == std::string("mean_squared_error") || type == std::string("mse") || type == std::string("l2")
-			|| type == std::string("l2_root") || type == std::string("root_mean_squared_error") || type == std::string("rmse")) {
+			|| type == std::string("l2_root") || type == std::string("root_mean_squared_error") || type == std::string("rmse")
+			|| type == std::string("gaussian")) {
 			return "regression";
+		}
+		else if (type == std::string("bernoulli_logit") || type == std::string("binary_logit")) {
+			return "bernoulli_logit";
+		}
+		else if (type == std::string("bernoulli_probit") || type == std::string("binary_probit")) {
+			return "bernoulli_probit";
+		}
+		else if (type == std::string("tobit") || type == std::string("grabit")) {
+			return "tobit";
 		}
 		else if (type == std::string("regression_l1") || type == std::string("mean_absolute_error")
 			|| type == std::string("l1") || type == std::string("mae")) {
 			return "regression_l1";
-		}
-		else if (type == std::string("tobit") || type == std::string("grabit")) {
-			return "tobit";
 		}
 		else if (type == std::string("multiclass") || type == std::string("softmax")) {
 			return "multiclass";
@@ -1245,9 +1279,6 @@ namespace LightGBM {
 		}
 		else if (type == std::string("mean_absolute_percentage_error") || type == std::string("mape")) {
 			return "mape";
-		}
-		else if (type == std::string("normal_neg_log_likelihood") || type == std::string("normal_nll") || type == std::string("gaussian_nll")) {
-			return "gaussian_neg_log_likelihood";
 		}
 		else if (type == std::string("none") || type == std::string("null") || type == std::string("custom") || type == std::string("na")) {
 			return "custom";
