@@ -241,22 +241,35 @@ bst = gpb.train(params=params, train_set=data_train,
 feature_importances = bst.feature_importance(importance_type='gain')
 plt_imp = gpb.plot_importance(bst, importance_type='gain')
 # Partial dependence plot
-from pdpbox import pdp 
+from pdpbox import pdp
 # note: pdpbox can also be run with newer versions of matplotlib. In case 
 #       problems occurr during installation, try "pip install pdpbox --no-dependencies"
 import pandas as pd
 # Note: for the pdpbox package, the data needs to be a pandas DataFrame
 Xpd = pd.DataFrame(X, columns=['variable_' + str(i) for i in range(p)])
-pdp_dist = pdp.pdp_isolate(model=bst, dataset=Xpd, model_features=Xpd.columns,
-                           feature='variable_0', num_grid_points=50,
+pdp_dist = pdp.PDPIsolate(model=bst, df=Xpd.copy(), model_features=Xpd.columns, # need to copy() since PDPIsolate modifies the df
+                           feature='variable_0', feature_name='variable_0', 
+                           n_classes=0, num_grid_points=50,
                            predict_kwds={"ignore_gp_model": True})
-ax = pdp.pdp_plot(pdp_dist, 'variable_0', plot_lines=True, frac_to_plot=0.1)
+fig, axes = pdp_dist.plot(engine='matplotlib', plot_lines=True, frac_to_plot=0.1)
 # Interaction plot
-interact = pdp.pdp_interact(model=bst, dataset=Xpd, model_features=Xpd.columns,
+interact = pdp.PDPInteract(model=bst, df=Xpd.copy(), model_features=Xpd.columns,
                              features=['variable_0','variable_1'],
-                             predict_kwds={"ignore_gp_model": True})
-pdp.pdp_interact_plot(interact, ['variable_0','variable_1'], x_quantile=True,
-                      plot_type='contour', plot_pdp=True) # Ignore the error message 'got an unexpected keyword argument 'contour_label_fontsize'' in 'pdp_interact_plot'
+                             feature_names=['variable_0','variable_1'],
+                             n_classes=0, predict_kwds={"ignore_gp_model": True})
+fig, axes = interact.plot(engine='matplotlib', plot_type='contour')
+"""
+# Note: the above code is for pdpbox version 0.3.0 or latter, for earlier versions use:
+# pdp_dist = pdp.pdp_isolate(model=bst, dataset=Xpd, model_features=Xpd.columns,
+#                            feature='variable_0', num_grid_points=50,
+#                            predict_kwds={"ignore_gp_model": True})
+# ax = pdp.pdp_plot(pdp_dist, 'variable_0', plot_lines=True, frac_to_plot=0.1)
+# interact = pdp.pdp_interact(model=bst, dataset=Xpd, model_features=Xpd.columns,
+#                              features=['variable_0','variable_1'],
+#                              predict_kwds={"ignore_gp_model": True})
+# pdp.pdp_interact_plot(interact, ['variable_0','variable_1'], x_quantile=True,
+#                       plot_type='contour', plot_pdp=True) # Ignore the error message 'got an unexpected keyword argument 'contour_label_fontsize'' in 'pdp_interact_plot'
+"""
 # SHAP values and dependence plots (note: shap version>=0.36.0 is required)
 import shap
 shap_values = shap.TreeExplainer(bst).shap_values(X)
