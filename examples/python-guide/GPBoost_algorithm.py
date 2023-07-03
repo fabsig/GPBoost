@@ -255,12 +255,8 @@ ax = pdp.pdp_plot(pdp_dist, 'variable_0', plot_lines=True, frac_to_plot=0.1)
 interact = pdp.pdp_interact(model=bst, dataset=Xpd, model_features=Xpd.columns,
                              features=['variable_0','variable_1'],
                              predict_kwds={"ignore_gp_model": True})
-try:
-    pdp.pdp_interact_plot(interact, ['variable_0','variable_1'], x_quantile=True,
-                          plot_type='contour', plot_pdp=True)
-except:
-    print("Ignore the error message 'got an unexpected keyword argument 'contour_label_fontsize'' in 'pdp_interact_plot'")
-
+pdp.pdp_interact_plot(interact, ['variable_0','variable_1'], x_quantile=True,
+                      plot_type='contour', plot_pdp=True) # Ignore the error message 'got an unexpected keyword argument 'contour_label_fontsize'' in 'pdp_interact_plot'
 # SHAP values and dependence plots (note: shap version>=0.36.0 is required)
 import shap
 shap_values = shap.TreeExplainer(bst).shap_values(X)

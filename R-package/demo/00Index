@@ -1,5 +1,4 @@
 GPBoost_algorithm           GPBoost and LaGaBoost algorithms: combining tree-boosting with Gaussian process and random effects models
-parameter_tuning               Parameter tuning using deterministic or random grid search
 generalized_linear_Gaussian_process_mixed_effects_models           Generalized linear Gaussian process and mixed effects model examples for various likelihoods
 examples_in_R_package_documentation           Examples used in the R package documentation
 Grabit               Grabit model of Sigrist and Hirnschall (2019)

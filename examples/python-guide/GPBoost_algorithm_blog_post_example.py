@@ -67,12 +67,13 @@ pred = bst.predict(data=X_test, group_data_pred=group_test)
 y_pred = pred['response_mean']
 np.sqrt(np.mean((y_test - y_pred) ** 2)) # root mean square error (RMSE) on test data. Approx. = 1.26
 
-# Parameter tuning using cross-validation (only number of boosting iterations)
+# Choosing number of boosting iterations using cross-validation
 gp_model = gpb.GPModel(group_data=group_train)
 cvbst = gpb.cv(params=params, train_set=data_train,
                gp_model=gp_model, use_gp_model_for_validation=False,
                num_boost_round=100, early_stopping_rounds=5,
-               nfold=4, verbose_eval=True, show_stdv=False, seed=1)
+               nfold=4, verbose_eval=True, show_stdv=False, seed=1, 
+               metric="l2") # 'metric' was called 'metrics' in earlier versions of gpboost
 best_iter = np.argmin(cvbst['l2-mean'])
 print("Best number of iterations: " + str(best_iter))
 # Best number of iterations: 31
