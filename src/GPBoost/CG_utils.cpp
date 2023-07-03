@@ -74,10 +74,12 @@ namespace GPBoost {
 			r_squared_norm = r.squaredNorm();
 			//Log::REInfo("r.squaredNorm(): %g | Iteration: %i", r_squared_norm, j);
 			if (std::isnan(r_squared_norm) || std::isinf(r_squared_norm)) {
+				Log::REInfo("CGVecchiaLaplaceVec: NA_or_Inf_found");
 				NA_or_Inf_found = true;
 				return;
 			}
 			if (r_squared_norm < delta_conv) {
+				Log::REInfo("Number CG iterations: %i", j);
 				early_stop_alg = true;
 			}
 
@@ -96,6 +98,7 @@ namespace GPBoost {
 				return;
 			}
 		}
+		Log::REInfo("CG has not converged after the maximal number of iterations. This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.");
 	} // end CGVecchiaLaplaceVec
 
 	void CGVecchiaLaplaceVecWinvplusSigma(const vec_t& diag_W,
@@ -169,6 +172,7 @@ namespace GPBoost {
 				return;
 			}
 			if (r_squared_norm < delta_conv) {
+				Log::REInfo("Number CG iterations: %i", j);
 				early_stop_alg = true;
 			}
 
@@ -187,6 +191,9 @@ namespace GPBoost {
 			if (early_stop_alg || (j + 1) == p) {
 				//u = W^(-1) u
 				u = diag_W_inv.cwiseProduct(u);
+				if ((j + 1) == p) {
+				 Log::REInfo("CG has not converged after the maximal number of iterations. This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.");
+				}
 				return;
 			}
 		}
@@ -222,13 +229,18 @@ namespace GPBoost {
 
 		//Parallelization in for loop is much faster
 		//R = rhs - (Sigma^(-1) + W) U
-#pragma omp parallel for schedule(static)   
-		for (int i = 0; i < t; ++i) {
-			R.col(i) = rhs.col(i) - ((B_t_D_inv_rm * (B_rm * U.col(i))) + diag_W.cwiseProduct(U.col(i)));
-		}
+//#pragma omp parallel for schedule(static)   
+//		for (int i = 0; i < t; ++i) {
+//			R.col(i) = rhs.col(i) - ((B_t_D_inv_rm * (B_rm * U.col(i))) + diag_W.cwiseProduct(U.col(i)));
+//		}
+		R = rhs;
+
+		Log::REInfo("R.col(0).squaredNorm(): %g", R.col(0).squaredNorm());
+		Log::REInfo("R.col(1).squaredNorm(): %g", R.col(1).squaredNorm());
+		Log::REInfo("R.col(2).squaredNorm(): %g", R.col(2).squaredNorm());
 
 		//Z = P^(-1) R 		
-		//P^(-1) = B^(-1) (D^(-1)+W)^(-1) B^(-T)
+		//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
 #pragma omp parallel for schedule(static)   
 		for (int i = 0; i < t; ++i) {
 			B_invt_R.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(R.col(i));
@@ -237,6 +249,9 @@ namespace GPBoost {
 		for (int i = 0; i < t; ++i) {
 			Z.col(i) = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_R.col(i));
 		}
+		Log::REInfo("Z.col(0).squaredNorm(): %g", Z.col(0).squaredNorm());
+		Log::REInfo("Z.col(1).squaredNorm(): %g", Z.col(1).squaredNorm());
+		Log::REInfo("Z.col(2).squaredNorm(): %g", Z.col(2).squaredNorm());
 
 		H = Z;
 
@@ -247,26 +262,39 @@ namespace GPBoost {
 				V.col(i) = (B_t_D_inv_rm * (B_rm * H.col(i))) + diag_W.cwiseProduct(H.col(i));
 			}
 
+			Log::REInfo("V.col(0).squaredNorm(): %g", V.col(0).squaredNorm());
+			Log::REInfo("V.col(1).squaredNorm(): %g", V.col(1).squaredNorm());
+			Log::REInfo("V.col(2).squaredNorm(): %g", V.col(2).squaredNorm());
+
 			a_old = a;
 			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+
+			Log::REInfo("a[0]: %g", a[0]);
+			Log::REInfo("a[1]: %g", a[1]);
+			Log::REInfo("a[2]: %g", a[2]);
+			Log::REInfo("a[3]: %g", a[3]);
 
 			U += H * a.asDiagonal();
 			R_old = R;
 			R -= V * a.asDiagonal();
 
-			mean_squared_R_norm = 0;
-
-#pragma omp parallel for schedule(static)            
+			mean_squared_R_norm = 0;        
 			for (int i = 0; i < t; ++i) {
 				mean_squared_R_norm += R.col(i).squaredNorm();
+				Log::REInfo("R.col(i).squaredNorm(): %g", R.col(i).squaredNorm());
 			}
 			mean_squared_R_norm /= t;
+			Log::REInfo("mean_squared_R_norm old: %g", mean_squared_R_norm);
+			mean_squared_R_norm = R.colwise().squaredNorm().mean();
+			Log::REInfo("mean_squared_R_norm new: %g", mean_squared_R_norm);
 			if (std::isnan(mean_squared_R_norm) || std::isinf(mean_squared_R_norm)) {
+				Log::REInfo("CGTridiagVecchiaLaplace: NA_or_Inf_found at iteration: %i", j);
 				NA_or_Inf_found = true;
 				return;
 			}
 			if (mean_squared_R_norm < delta_conv) {
 				early_stop_alg = true;
+				Log::REInfo("Number CG-Tridiag iterations: %i", j);
 			}
 
 			Z_old = Z;
@@ -302,6 +330,7 @@ namespace GPBoost {
 				return;
 			}
 		}
+		Log::REInfo("CG has not converged after the maximal number of iterations. This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.");
 	} // end CGTridiagVecchiaLaplace
 
 	void CGTridiagVecchiaLaplaceWinvplusSigma(const vec_t& diag_W,
@@ -337,15 +366,16 @@ namespace GPBoost {
 
 		//R = rhs - (W^(-1) + Sigma) * U
 		//Drastic performance increase through paralellization
-#pragma omp parallel for schedule(static)   
-		for (int i = 0; i < t; ++i) {
-			B_invt_U.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(U.col(i));
-		}
-#pragma omp parallel for schedule(static)   
-		for (int i = 0; i < t; ++i) {
-			R.col(i) = rhs.col(i) - D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_U.col(i));
-		}
-		R -= diag_W_inv.replicate(1, t).cwiseProduct(U);
+//#pragma omp parallel for schedule(static)   
+//		for (int i = 0; i < t; ++i) {
+//			B_invt_U.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(U.col(i));
+//		}
+//#pragma omp parallel for schedule(static)   
+//		for (int i = 0; i < t; ++i) {
+//			R.col(i) = rhs.col(i) - D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_U.col(i));
+//		}
+//		R -= diag_W_inv.replicate(1, t).cwiseProduct(U);
+		R = rhs;
 
 		//Z = P^(-1) R 
 		//P^(-1) = (W^(-1) + Sigma_L_k Sigma_L_k^T)^(-1) = W - W Sigma_L_k (I_k + Sigma_L_k^T W Sigma_L_k)^(-1) Sigma_L_k^T W
@@ -379,19 +409,21 @@ namespace GPBoost {
 			R_old = R;
 			R -= V * a.asDiagonal();
 
-			mean_squared_R_norm = 0;
+//			mean_squared_R_norm = 0;
+//#pragma omp parallel for schedule(static)            
+//			for (int i = 0; i < t; ++i) {
+//				mean_squared_R_norm += R.col(i).squaredNorm();
+//			}
+//			mean_squared_R_norm /= t;
+			mean_squared_R_norm = R.colwise().squaredNorm().mean();
 
-#pragma omp parallel for schedule(static)            
-			for (int i = 0; i < t; ++i) {
-				mean_squared_R_norm += R.col(i).squaredNorm();
-			}
-			mean_squared_R_norm /= t;
 			if (std::isnan(mean_squared_R_norm) || std::isinf(mean_squared_R_norm)) {
 				NA_or_Inf_found = true;
 				return;
 			}
 			if (mean_squared_R_norm < delta_conv) {
 				early_stop_alg = true;
+				Log::REInfo("Number CG-Tridiag iterations: %i", j);
 			}
 
 			Z_old = Z;
@@ -426,6 +458,7 @@ namespace GPBoost {
 				return;
 			}
 		}
+		Log::REInfo("CG has not converged after the maximal number of iterations. This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.");
 	} // end CGTridiagVecchiaLaplaceSigmaplusWinv
 
 	void GenRandVecTrace(RNG_t& generator, 

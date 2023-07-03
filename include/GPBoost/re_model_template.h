@@ -2310,7 +2310,7 @@ namespace GPBoost {
 						}//end gauss_likelihood_
 						else {//not gauss_likelihood_
 							const double* fixed_effects_cluster_i_ptr = nullptr;
-							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
+							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0]; //TEMP
 							// Note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
 							// The mode has been calculated already before in the Predict() function above
 							// mean_pred_id and cov_mat_pred_id are not calculate in 'CalcPredVecchiaObservedFirstOrder', only Bpo, Bp, and Dp for non-Gaussian likelihoods
@@ -2653,7 +2653,7 @@ namespace GPBoost {
 						}
 						if (calc_var) {
 							vec_t var_pred_id;
-							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
+							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0]; //TEMP
 							likelihood_[cluster_i]->CalcVarLaplaceApproxVecchia(var_pred_id, sigma2);
 #pragma omp parallel for schedule(static)// Write on output
 							for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
@@ -3098,9 +3098,9 @@ namespace GPBoost {
 		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
 		double acc_rate_coef_ = 0.5;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done for gradient-based optimization of covariance parameters and regression coefficients */
-		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
+		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 1; //30;
 		/*! \brief Learning rate shrinkage factor for gradient-based optimization of covariance parameters and regression coefficients */
-		double LR_SHRINKAGE_FACTOR_ = 0.5;
+		double LR_SHRINKAGE_FACTOR_ = 1; // 0.5;
 		/*! \brief Threshold value for a learning rate below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
 		double LR_IS_SMALL_THRESHOLD_ = 1e-6;
 		/*! \brief Threshold value for relative change in parameters below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
@@ -3132,7 +3132,7 @@ namespace GPBoost {
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
 		double cg_delta_conv_pred_ = 1e-3;
 		/*! \brief Number of samples when simulation is used for calculating predictive variances */
-		double nsim_var_pred_ = 1000;
+		int nsim_var_pred_ = 1000;
 		/*! \brief Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix */
 		int num_rand_vec_trace_ = 50;
 		/*! \brief If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated */
@@ -3144,7 +3144,7 @@ namespace GPBoost {
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for Gaussian likelihood */
 		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_{ "none" };
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for non-Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{ "Sigma_inv_plus_BtWB", "Sigma_inv_plus_BtWB_no_Lanczos_P", "piv_chol_on_Sigma" };
+		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{"Sigma_inv_plus_BtWB", "Sigma_inv_plus_BtWB_no_Lanczos_P", "piv_chol_on_Sigma"};
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
 		bool cg_preconditioner_type_has_been_set_ = false;
 		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
@@ -3983,7 +3983,7 @@ namespace GPBoost {
 					likelihood_[cluster_i]->SetMatrixInversionProperties(matrix_inversion_method_,
 						cg_max_num_it_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_delta_conv_pred_,
 						num_rand_vec_trace_, reuse_rand_vec_trace_, seed_rand_vec_trace_,
-						cg_preconditioner_type_, piv_chol_rank_, rank_pred_approx_matrix_lanczos_);
+						cg_preconditioner_type_, piv_chol_rank_, rank_pred_approx_matrix_lanczos_, nsim_var_pred_);
 				}
 			}
 		}//end SetMatrixInversionPropertiesLikelihood

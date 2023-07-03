@@ -1305,13 +1305,15 @@ namespace GPBoost {
 				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			}
 			bool no_fixed_effects = (fixed_effects == nullptr);
-			sp_mat_t SigmaI = B.transpose() * D_inv * B;
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
-			sp_mat_t SigmaI_plus_W;
 			vec_t rhs, B_mode;
+			//Cholesky
+			sp_mat_t SigmaI, SigmaI_plus_W;
+			//Iterative
 			int cg_max_num_it = cg_max_num_it_;
 			int cg_max_num_it_tridiag = cg_max_num_it_tridiag_;
-			den_mat_t I_k_plus_Sigma_L_kt_W_Sigma_L_k;
+			den_mat_t I_k_plus_Sigma_L_kt_W_Sigma_L_k, I_k_plus_L_kt_P_diagonal_L_k;
+			vec_t diag_SigmaI;
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			B_mode = B * mode_;
 			if (no_fixed_effects) {
@@ -1342,6 +1344,9 @@ namespace GPBoost {
 					I_k_plus_Sigma_L_kt_W_Sigma_L_k.resize(Sigma_L_k_.cols(), Sigma_L_k_.cols());
 				}
 			}
+			else {
+				SigmaI = B.transpose() * D_inv * B;
+			}
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
@@ -1359,6 +1364,9 @@ namespace GPBoost {
 				// Calculate Cholesky factor and update mode
 				rhs.array() = second_deriv_neg_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
 				if (matrix_inversion_method_ == "iterative") {
+					std::chrono::steady_clock::time_point begin, end;
+					double el_time;
+					begin = std::chrono::steady_clock::now();
 					if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
 						I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
 						I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * second_deriv_neg_ll_.asDiagonal() * Sigma_L_k_;
@@ -1379,6 +1387,9 @@ namespace GPBoost {
 						Log::REDebug(NA_OR_INF_WARNING_);
 						break;
 					}
+					end = std::chrono::steady_clock::now();
+					el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;
+					Log::REInfo("Time CG: %g", el_time);
 				}
 				else {
 					SigmaI_plus_W = SigmaI;
@@ -1434,6 +1445,10 @@ namespace GPBoost {
 					approx_marginal_ll = approx_marginal_ll_new;
 				}
 			} // end loop for mode finding
+			Log::REInfo("mode_[0]: %g", mode_[0]);
+			Log::REInfo("mode_[1]: %g", mode_[1]);
+			Log::REInfo("mode_[2]: %g", mode_[2]);
+			Log::REInfo("mode_[3]: %g", mode_[3]);
 			if (it == MAXIT_MODE_NEWTON_) {
 				Log::REDebug(NO_CONVERGENCE_WARNING_);
 			}
@@ -1477,7 +1492,14 @@ namespace GPBoost {
 						rand_vec_trace_P_.resize(num_data, num_rand_vec_trace_);
 					}
 					double log_det_Sigma_W_plus_I;
-					CalcLogDetStoch(num_data, cg_max_num_it_tridiag, I_k_plus_Sigma_L_kt_W_Sigma_L_k, has_NA_or_Inf, log_det_Sigma_W_plus_I);
+					std::chrono::steady_clock::time_point begin, end;
+					double el_time;
+					begin = std::chrono::steady_clock::now();
+					CalcLogDetStoch(num_data, cg_max_num_it_tridiag, I_k_plus_Sigma_L_kt_W_Sigma_L_k, diag_SigmaI, has_NA_or_Inf, log_det_Sigma_W_plus_I);
+					end = std::chrono::steady_clock::now();
+					el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;
+					Log::REInfo("Time LogDet: %g", el_time);
+					Log::REInfo("W norm: %g", second_deriv_neg_ll_.cwiseAbs().sum());
 					if (has_NA_or_Inf) {
 						approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
 						Log::REDebug(NA_OR_INF_WARNING_);
@@ -2552,13 +2574,9 @@ namespace GPBoost {
 				sp_mat_t Bp_inv, Bp_inv_Dp;
 				//Version Simulation
 				if (matrix_inversion_method_ == "iterative") {
-					bool var_reduction = false; //Hack
-					int n_sim = rank_pred_approx_matrix_lanczos_; //Hack
 					sp_mat_rm_t Bp_inv_Dp_rm, Bp_inv_rm;
 					sp_mat_rm_t Bpo_rm = sp_mat_rm_t(Bpo);
 					sp_mat_rm_t Bp_rm;
-					sp_mat_rm_t Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm;
-					sp_mat_rm_t Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_rm;
 					sp_mat_rm_t Bp_inv_Bpo_rm; //Bp^(-1) * Bpo 
 					if (CondObsOnly) {
 						Bp_inv_Bpo_rm = Bpo_rm; //Bp = Id
@@ -2571,16 +2589,6 @@ namespace GPBoost {
 						Bp_inv_Bpo_rm = Bp_inv_rm * Bpo_rm;
 						Bp_inv_Dp_rm = Bp_inv_rm * Dp.asDiagonal();
 					}
-					if (var_reduction) {
-						//Bp^{-1} Bpo B^{-1}
-						sp_mat_rm_t B_inv_rm = sp_mat_rm_t(B_rm_.rows(), B_rm_.cols());
-						B_inv_rm.setIdentity();
-						TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(B_rm_, B_inv_rm, B_inv_rm, false);
-						sp_mat_rm_t Bp_inv_Bpo_B_inv_rm = Bp_inv_Bpo_rm * B_inv_rm; //Bp^{-1} Bpo B^{-1}
-						vec_t D_inv_plus_W_inv_diag = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).cwiseInverse(); //(D^{-1} + W)^{-1}
-						Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm = Bp_inv_Bpo_B_inv_rm * (D_inv_plus_W_inv_diag.cwiseSqrt()).asDiagonal(); //Bp^{-1} Bpo B^{-1} (D^{-1} + W)^{-0.5}
-						Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_rm = Bp_inv_Bpo_B_inv_rm * D_inv_plus_W_inv_diag.asDiagonal(); //Bp^{-1} Bpo B^{-1} (D^{-1} + W)^{-1}
-					}
 					den_mat_t pred_cov_dense;
 					if (calc_pred_cov) {
 						pred_cov_dense = den_mat_t::Zero(num_pred, num_pred);
@@ -2588,24 +2596,8 @@ namespace GPBoost {
 					if (calc_pred_var) {
 						pred_var = vec_t::Zero(num_pred);
 					}
-					den_mat_t pred_cov_approx_stoch, pred_cov_c_cov, pred_cov_c_var;
-					vec_t pred_var_approx_stoch, pred_var_c_cov, pred_var_c_var;
-					if (var_reduction) {
-						if (calc_pred_cov) {
-							pred_cov_approx_stoch = den_mat_t::Zero(num_pred, num_pred);
-							pred_cov_c_cov = den_mat_t::Zero(num_pred, num_pred);
-							pred_cov_c_var = den_mat_t::Zero(num_pred, num_pred);
-
-						}
-						if (calc_pred_var) {
-							pred_var_approx_stoch = vec_t::Zero(num_pred);
-							pred_var_c_cov = vec_t::Zero(num_pred);
-							pred_var_c_var = vec_t::Zero(num_pred);
-						}
-					}
 					vec_t W_diag_sqrt = second_deriv_neg_ll_.cwiseSqrt();
-					sp_mat_rm_t D_inv_sqrt_rm = D_inv_rm_.cwiseSqrt();
-					sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * D_inv_sqrt_rm;
+					sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * D_inv_rm_.cwiseSqrt();
 					int num_threads = omp_get_max_threads();
 					std::uniform_int_distribution<> unif(0, 2147483646);
 					std::vector<RNG_t> parallel_rngs;
@@ -2616,7 +2608,7 @@ namespace GPBoost {
 #pragma omp parallel
 					{
 #pragma omp for nowait
-						for (int i = 0; i < n_sim; ++i) {
+						for (int i = 0; i < nsim_var_pred_; ++i) {
 							//z_i ~ N(0,I)
 							int thread_nb = omp_get_thread_num();
 							std::normal_distribution<double> ndist(0.0, 1.0);
@@ -2626,8 +2618,7 @@ namespace GPBoost {
 								rand_vec_pred_I_2(j) = ndist(parallel_rngs[thread_nb]);
 							}
 							//z_i ~ N(0,(Sigma^{-1} + W))
-							vec_t W_sqrt_rand_vec_pred_I_2 = W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
-							vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_sqrt_rand_vec_pred_I_2;
+							vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
 							vec_t rand_vec_pred_SigmaI_plus_W_inv(num_data);
 							//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 							bool has_NA_or_Inf = false;
@@ -2647,60 +2638,25 @@ namespace GPBoost {
 							}
 							//z_i ~ N(0, Bp^{-1} Bpo (Sigma^{-1} + W)^{-1} Bpo^T Bp^{-1})
 							vec_t rand_vec_pred = Bp_inv_Bpo_rm * rand_vec_pred_SigmaI_plus_W_inv;
-							den_mat_t pred_cov_private;
 							if (calc_pred_cov) {
-								pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
+								den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
 #pragma omp critical
 								{
 									pred_cov_dense += pred_cov_private;
 								}
 							}
-							vec_t pred_var_private;
 							if (calc_pred_var) {
-								pred_var_private = rand_vec_pred.cwiseProduct(rand_vec_pred);
+								vec_t pred_var_private = rand_vec_pred.cwiseProduct(rand_vec_pred);
 #pragma omp critical
 								{
 									pred_var += pred_var_private;
-								}
-							}
-							if (var_reduction) {
-								//z_i ~ N(0, Bp^{-1} Bpo B^{-1} (D^{-1} + W)^{-1} B^{-T} Bpo^T Bp^{-1})
-								vec_t rand_vec_approx = Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_rm * (D_inv_sqrt_rm * rand_vec_pred_I_1 + W_sqrt_rand_vec_pred_I_2);
-								if (calc_pred_cov) {
-									den_mat_t pred_cov_approx_private = rand_vec_approx * rand_vec_approx.transpose();
-									den_mat_t pred_cov_c_cov_private = pred_cov_private.cwiseProduct(pred_cov_approx_private);
-									den_mat_t pred_cov_c_var_private = pred_cov_approx_private.cwiseProduct(pred_cov_approx_private);
-#pragma omp critical
-									{
-										pred_cov_approx_stoch += pred_cov_approx_private;
-										pred_cov_c_cov += pred_cov_c_cov_private;
-										pred_cov_c_var += pred_cov_c_var_private;
-									}
-								}
-								if (calc_pred_var) {
-									vec_t pred_var_approx_private = rand_vec_approx.cwiseProduct(rand_vec_approx);
-									vec_t pred_var_c_cov_private = pred_var_private.cwiseProduct(pred_var_approx_private);
-									vec_t pred_var_c_var_private = pred_var_approx_private.cwiseProduct(pred_var_approx_private);
-#pragma omp critical
-									{
-										pred_var_approx_stoch += pred_var_approx_private;
-										pred_var_c_cov += pred_var_c_cov_private;
-										pred_var_c_var += pred_var_c_var_private;
-									}
 								}
 							}
 						}
 
 					}
 					if (calc_pred_cov) {
-						pred_cov_dense /= n_sim;
-						if (var_reduction) {
-							pred_cov_approx_stoch /= n_sim;
-							pred_cov_c_cov /= n_sim;
-							pred_cov_c_var /= n_sim;
-							den_mat_t pred_cov_c = (pred_cov_c_cov - pred_cov_dense.cwiseProduct(pred_cov_approx_stoch)).array() / (pred_cov_c_var - pred_cov_approx_stoch.cwiseProduct(pred_cov_approx_stoch)).array();
-							pred_cov_dense += pred_cov_c_var.cwiseProduct((Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm * Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm.transpose()) - pred_cov_approx_stoch);
-						}
+						pred_cov_dense /= nsim_var_pred_;
 						if (CondObsOnly) {
 							pred_cov_dense.diagonal().array() += Dp.array();
 						}
@@ -2710,14 +2666,7 @@ namespace GPBoost {
 						ConvertTo_T_mat_FromDense<T_mat>(pred_cov_dense, pred_cov);
 					}
 					if (calc_pred_var) {
-						pred_var /= n_sim;
-						if (var_reduction) {
-							pred_var_approx_stoch /= n_sim;
-							pred_var_c_cov /= n_sim;
-							pred_var_c_var /= n_sim;
-							vec_t pred_var_c = (pred_var_c_cov - pred_var.cwiseProduct(pred_var_approx_stoch)).array() / (pred_var_c_var - pred_var_approx_stoch.cwiseProduct(pred_var_approx_stoch)).array();
-							pred_var += pred_var_c.cwiseProduct((Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm.cwiseProduct(Bp_inv_Bpo_B_inv_D_inv_plus_W_inv_sqrt_rm) * vec_t::Ones(num_pred)) - pred_var_approx_stoch);
-						}
+						pred_var /= nsim_var_pred_;
 						if (CondObsOnly) {
 							pred_var += Dp;
 						}
@@ -2725,8 +2674,7 @@ namespace GPBoost {
 							pred_var += Bp_inv_Dp_rm.cwiseProduct(Bp_inv_rm) * vec_t::Ones(num_pred);
 						}
 					}
-				}
-				//end Version Simulation
+				} //end Version Simulation
 				//Version Lanczos
 //				if (matrix_inversion_method_ == "iterative") {
 //					if (rank_pred_approx_matrix_lanczos_ < 2) {
@@ -2985,64 +2933,117 @@ namespace GPBoost {
 			}
 			CHECK(mode_has_been_calculated_);
 			pred_var = vec_t(num_re_);
+			//Version Simulation
 			if (matrix_inversion_method_ == "iterative") {
-				//Inital vector
-				vec_t b_init = vec_t::Ones(num_re_);
-				b_init /= num_re_;
-				//Declarations for piv_chol_on_Sigma
-				den_mat_t W_inv_P_sqrt_inv_Q_k, Sigma_P_sqrt_inv_Q_k;
-				//Declarations for Sigma_inv_plus_BtWB
-				den_mat_t P_t_sqrt_inv_Q_k, Q_k;
-				//Common declarations
-				vec_t Tdiag_k(rank_pred_approx_matrix_lanczos_), Tsubdiag_k(rank_pred_approx_matrix_lanczos_ - 1);
-				//Lanczos
-				if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-					//Factorize P^(-0.5) (W^(-1) + Sigma) P^(-0.5) as Q_k T_k Q_k^T where P = diag(W^(-1) + Sigma)
-					LanczosTridiagVecchiaLaplaceWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), b_init, num_re_,
-						Tdiag_k, Tsubdiag_k, W_inv_P_sqrt_inv_Q_k, Sigma_P_sqrt_inv_Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD, sigma2);
+				pred_var = vec_t::Zero(num_re_);
+				vec_t W_diag_sqrt = second_deriv_neg_ll_.cwiseSqrt();
+				sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * D_inv_rm_.cwiseSqrt();
+				int num_threads = omp_get_max_threads();
+				std::uniform_int_distribution<> unif(0, 2147483646);
+				std::vector<RNG_t> parallel_rngs;
+				for (int ig = 0; ig < num_threads; ++ig) {
+					int seed_local = unif(cg_generator_);
+					parallel_rngs.push_back(RNG_t(seed_local));
 				}
-				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-					//Factorize P^(-0.5) (Sigma^-1 + W) P^(-0.5*T) as Q_k T_k Q_k^T where P = B^T (D^(-1) + W) B
-					LanczosTridiagVecchiaLaplace(second_deriv_neg_ll_, B_rm_, D_inv_rm_, b_init, num_re_,
-						Tdiag_k, Tsubdiag_k, P_t_sqrt_inv_Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD);
+#pragma omp parallel
+				{
+#pragma omp for nowait
+					for (int i = 0; i < nsim_var_pred_; ++i) {
+						//z_i ~ N(0,I)
+						int thread_nb = omp_get_thread_num();
+						std::normal_distribution<double> ndist(0.0, 1.0);
+						vec_t rand_vec_pred_I_1(num_re_), rand_vec_pred_I_2(num_re_);
+						for (int j = 0; j < num_re_; j++) {
+							rand_vec_pred_I_1(j) = ndist(parallel_rngs[thread_nb]);
+							rand_vec_pred_I_2(j) = ndist(parallel_rngs[thread_nb]);
+						}
+						//z_i ~ N(0,(Sigma^{-1} + W))
+						vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
+						vec_t rand_vec_pred_SigmaI_plus_W_inv(num_re_);
+						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+						bool has_NA_or_Inf = false;
+						if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+							CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
+								cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
+						}
+						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+							CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
+								cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
+						}
+						else {
+							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+						}
+						if (has_NA_or_Inf) {
+							Log::REDebug(CG_NA_OR_INF_WARNING_);
+						}
+						vec_t pred_var_private = rand_vec_pred_SigmaI_plus_W_inv.cwiseProduct(rand_vec_pred_SigmaI_plus_W_inv);
+#pragma omp critical
+						{
+							pred_var += pred_var_private;
+						}
+					}
 				}
-				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
-					//Factorize (Sigma^-1 + W) as Q_k T_k Q_k^T
-					LanczosTridiagVecchiaLaplaceNoPreconditioner(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, b_init, num_re_,
-						Tdiag_k, Tsubdiag_k, Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD);
-				}
-				else {
-					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
-				}
-				//Calculate T_k^(-1) = U L^(-1) U^T via eigendecomposition
-				Eigen::SelfAdjointEigenSolver<den_mat_t> solver;
-				solver.computeFromTridiagonal(Tdiag_k, Tsubdiag_k);
-				vec_t L = solver.eigenvalues();
-				den_mat_t U = solver.eigenvectors();
-				den_mat_t Sigma_inv_plus_W_ii;
-				if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-					//R_tilde = W^(-1) P^(-0.5) Q_k U L^(-1) U^T, R = Sigma P^(-0.5) Q_k, such that (Sigma^(-1) + W)^(-1) \approx R_tilde R^T
-					den_mat_t R_tilde = W_inv_P_sqrt_inv_Q_k * (U * L.cwiseInverse().asDiagonal() * U.transpose());
-					Sigma_inv_plus_W_ii = R_tilde.cwiseProduct(Sigma_P_sqrt_inv_Q_k);
-				}
-				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-					//R = P^(-0.5*T) Q_k U L^(-0.5), such that (Sigma^(-1) + W)^(-1) \approx R R^T
-					den_mat_t R = P_t_sqrt_inv_Q_k * (U * (L.cwiseSqrt().cwiseInverse()).asDiagonal());
-					Sigma_inv_plus_W_ii = R.cwiseProduct(R);
-				}
-				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
-					//R = Q_k U L^(-0.5), such that (Sigma^(-1) + W)^(-1) \approx R R^T
-					den_mat_t R = Q_k * (U * (L.cwiseSqrt().cwiseInverse()).asDiagonal());
-					Sigma_inv_plus_W_ii = R.cwiseProduct(R);
-				}
-				else {
-					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
-				}
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_re_; ++i) {
-					pred_var[i] = Sigma_inv_plus_W_ii.row(i).sum();
-				}
-			} // end iterative
+				pred_var /= nsim_var_pred_;
+			} //end Version Simulation
+			//Version Lanczos
+//			if (matrix_inversion_method_ == "iterative") {
+//				//Inital vector
+//				vec_t b_init = vec_t::Ones(num_re_);
+//				b_init /= num_re_;
+//				//Declarations for piv_chol_on_Sigma
+//				den_mat_t W_inv_P_sqrt_inv_Q_k, Sigma_P_sqrt_inv_Q_k;
+//				//Declarations for Sigma_inv_plus_BtWB
+//				den_mat_t P_t_sqrt_inv_Q_k, Q_k;
+//				//Common declarations
+//				vec_t Tdiag_k(rank_pred_approx_matrix_lanczos_), Tsubdiag_k(rank_pred_approx_matrix_lanczos_ - 1);
+//				//Lanczos
+//				if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+//					//Factorize P^(-0.5) (W^(-1) + Sigma) P^(-0.5) as Q_k T_k Q_k^T where P = diag(W^(-1) + Sigma)
+//					LanczosTridiagVecchiaLaplaceWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), b_init, num_re_,
+//						Tdiag_k, Tsubdiag_k, W_inv_P_sqrt_inv_Q_k, Sigma_P_sqrt_inv_Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD, sigma2);
+//				}
+//				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+//					//Factorize P^(-0.5) (Sigma^-1 + W) P^(-0.5*T) as Q_k T_k Q_k^T where P = B^T (D^(-1) + W) B
+//					LanczosTridiagVecchiaLaplace(second_deriv_neg_ll_, B_rm_, D_inv_rm_, b_init, num_re_,
+//						Tdiag_k, Tsubdiag_k, P_t_sqrt_inv_Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD);
+//				}
+//				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+//					//Factorize (Sigma^-1 + W) as Q_k T_k Q_k^T
+//					LanczosTridiagVecchiaLaplaceNoPreconditioner(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, b_init, num_re_,
+//						Tdiag_k, Tsubdiag_k, Q_k, rank_pred_approx_matrix_lanczos_, LANCZOS_REORTHOGONALIZATION_THRESHOLD);
+//				}
+//				else {
+//					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+//				}
+//				//Calculate T_k^(-1) = U L^(-1) U^T via eigendecomposition
+//				Eigen::SelfAdjointEigenSolver<den_mat_t> solver;
+//				solver.computeFromTridiagonal(Tdiag_k, Tsubdiag_k);
+//				vec_t L = solver.eigenvalues();
+//				den_mat_t U = solver.eigenvectors();
+//				den_mat_t Sigma_inv_plus_W_ii;
+//				if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+//					//R_tilde = W^(-1) P^(-0.5) Q_k U L^(-1) U^T, R = Sigma P^(-0.5) Q_k, such that (Sigma^(-1) + W)^(-1) \approx R_tilde R^T
+//					den_mat_t R_tilde = W_inv_P_sqrt_inv_Q_k * (U * L.cwiseInverse().asDiagonal() * U.transpose());
+//					Sigma_inv_plus_W_ii = R_tilde.cwiseProduct(Sigma_P_sqrt_inv_Q_k);
+//				}
+//				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+//					//R = P^(-0.5*T) Q_k U L^(-0.5), such that (Sigma^(-1) + W)^(-1) \approx R R^T
+//					den_mat_t R = P_t_sqrt_inv_Q_k * (U * (L.cwiseSqrt().cwiseInverse()).asDiagonal());
+//					Sigma_inv_plus_W_ii = R.cwiseProduct(R);
+//				}
+//				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB_no_Lanczos_P") {
+//					//R = Q_k U L^(-0.5), such that (Sigma^(-1) + W)^(-1) \approx R R^T
+//					den_mat_t R = Q_k * (U * (L.cwiseSqrt().cwiseInverse()).asDiagonal());
+//					Sigma_inv_plus_W_ii = R.cwiseProduct(R);
+//				}
+//				else {
+//					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+//				}
+//#pragma omp parallel for schedule(static)
+//				for (int i = 0; i < num_re_; ++i) {
+//					pred_var[i] = Sigma_inv_plus_W_ii.row(i).sum();
+//				}
+//			} // end Version Lanczos
 			else {
 				sp_mat_t L_inv(num_re_, num_re_);
 				L_inv.setIdentity();
@@ -3156,7 +3157,8 @@ namespace GPBoost {
 			int seed_rand_vec_trace,
 			const string_t& cg_preconditioner_type,
 			int piv_chol_rank,
-			int rank_pred_approx_matrix_lanczos) {
+			int rank_pred_approx_matrix_lanczos,
+			int nsim_var_pred) {
 			matrix_inversion_method_ = matrix_inversion_method;
 			cg_max_num_it_ = cg_max_num_it;
 			cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
@@ -3168,6 +3170,7 @@ namespace GPBoost {
 			cg_preconditioner_type_ = cg_preconditioner_type;
 			piv_chol_rank_ = piv_chol_rank;
 			rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
+			nsim_var_pred_ = nsim_var_pred;
 		}//end SetMatrixInversionProperties
 
 		/*!
@@ -3181,6 +3184,7 @@ namespace GPBoost {
 		void CalcLogDetStoch(const data_size_t& num_data, 
 			const int& cg_max_num_it_tridiag,
 			den_mat_t& I_k_plus_Sigma_L_kt_W_Sigma_L_k,
+			vec_t& diag_SigmaI,
 			bool& has_NA_or_Inf,
 			double& log_det_Sigma_W_plus_I) {
 
@@ -3212,8 +3216,26 @@ namespace GPBoost {
 				std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 				//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
 				//For P = B^T (D^(-1) + W) B: z_i = B^T (D^(-1) + W)^0.5 r_i, where r_i ~ N(0,I)
-				rand_vec_trace_P_ = B_rm_.transpose() * ((D_inv_rm_.diagonal() + second_deriv_neg_ll_).cwiseSqrt().asDiagonal() * rand_vec_trace_I_);
-				D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).asDiagonal() * B_rm_;
+				vec_t D_inv_plus_W_diag = D_inv_rm_.diagonal() + second_deriv_neg_ll_;
+				Log::REInfo("D_inv_plus_W_diag[0]: %g", D_inv_plus_W_diag[0]);
+				Log::REInfo("D_inv_plus_W_diag[1]: %g", D_inv_plus_W_diag[1]);
+				Log::REInfo("D_inv_plus_W_diag[2]: %g", D_inv_plus_W_diag[2]);
+				Log::REInfo("D_inv_plus_W_diag.minCoeff(): %g", D_inv_plus_W_diag.minCoeff());
+				Log::REInfo("second_deriv_neg_ll_.minCoeff(): %g", second_deriv_neg_ll_.minCoeff());
+				sp_mat_rm_t B_t_D_inv_plus_W_sqrt_rm = B_rm_.transpose() * (D_inv_plus_W_diag).cwiseSqrt().asDiagonal();
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < num_rand_vec_trace_; ++i) {
+					rand_vec_trace_P_.col(i) = B_t_D_inv_plus_W_sqrt_rm * rand_vec_trace_I_.col(i);
+				}
+				//rand_vec_trace_P_ = B_rm_.transpose() * ((D_inv_rm_.diagonal() + second_deriv_neg_ll_).cwiseSqrt().asDiagonal() * rand_vec_trace_I_);
+				Log::REInfo("rand_vec_trace_I_.col(0).squaredNorm(): %g", rand_vec_trace_I_.col(0).squaredNorm());
+				Log::REInfo("rand_vec_trace_I_.col(1).squaredNorm(): %g", rand_vec_trace_I_.col(1).squaredNorm());
+				Log::REInfo("rand_vec_trace_I_.col(2).squaredNorm(): %g", rand_vec_trace_I_.col(2).squaredNorm());
+
+				Log::REInfo("rand_vec_trace_P_.col(0).squaredNorm(): %g", rand_vec_trace_P_.col(0).squaredNorm());
+				Log::REInfo("rand_vec_trace_P_.col(1).squaredNorm(): %g", rand_vec_trace_P_.col(1).squaredNorm());
+				Log::REInfo("rand_vec_trace_P_.col(2).squaredNorm(): %g", rand_vec_trace_P_.col(2).squaredNorm());
+				D_inv_plus_W_B_rm_ = (D_inv_plus_W_diag).asDiagonal() * B_rm_;
 				CGTridiagVecchiaLaplace(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W,
 					SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, D_inv_plus_W_B_rm_);
 				if (!has_NA_or_Inf) {
@@ -3221,7 +3243,7 @@ namespace GPBoost {
 					LogDetStochTridiag(Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W, ldet_PI_SigmaI_plus_W, num_data, num_rand_vec_trace_);
 					//log|Sigma W + I| = log|P^(-1) (Sigma^(-1) + W)| + log|P| + log|Sigma|
 					//where log|P| = log|B^T (D^(-1) + W) B| = log|(D^(-1) + W)|
-					log_det_Sigma_W_plus_I = ldet_PI_SigmaI_plus_W + (D_inv_rm_.diagonal() + second_deriv_neg_ll_).array().log().sum() - D_inv_rm_.diagonal().array().log().sum();
+					log_det_Sigma_W_plus_I = ldet_PI_SigmaI_plus_W + D_inv_plus_W_diag.array().log().sum() - D_inv_rm_.diagonal().array().log().sum();
 				}
 			}
 			else {
@@ -3558,6 +3580,8 @@ namespace GPBoost {
 		int piv_chol_rank_ = 50;
 		/*! \brief Rank of the matrix for approximating predictive covariance matrices obtained using the Lanczos algorithm */
 		int rank_pred_approx_matrix_lanczos_ = 1000;
+		/*! \brief Number of samples when simulation is used for calculating predictive variances */
+		int nsim_var_pred_ = 1000;
 		/*! \brief If true, cg_max_num_it and cg_max_num_it_tridiag are reduced by 2/3 (multiplied by 1/3) for the mode finding of the Laplace approximation in the first gradient step when finding a learning rate that reduces the ll */
 		bool reduce_cg_max_num_it_first_optim_step_ = true;
 
