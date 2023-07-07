@@ -86,6 +86,19 @@ namespace GPBoost {
 			}
 			chol_fact_pattern_analyzed_ = false;
 			has_a_vec_ = has_a_vec;
+			DetermineWhetherToCapChangeModeNewton();
+		}
+
+		/*!
+		* \brief Determine cap_change_mode_newton_
+		*/
+		void DetermineWhetherToCapChangeModeNewton() {
+			if (likelihood_type_ == "gamma" || likelihood_type_ == "poisson") {
+				cap_change_mode_newton_ = true;
+			}
+			else {
+				cap_change_mode_newton_ = false;
+			}
 		}
 
 		/*!
@@ -141,6 +154,7 @@ namespace GPBoost {
 			}
 			likelihood_type_ = likelihood;
 			chol_fact_pattern_analyzed_ = false;
+			DetermineWhetherToCapChangeModeNewton();
 		}
 
 		/*!
@@ -1510,7 +1524,7 @@ namespace GPBoost {
 			sp_mat_t SigmaI = B.transpose() * D_inv * B;
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			sp_mat_t SigmaI_plus_W;
-			vec_t rhs, B_mode;
+			vec_t rhs, B_mode, mode_new;
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			B_mode = B * mode_;
 			if (no_fixed_effects) {
@@ -1552,7 +1566,22 @@ namespace GPBoost {
 				chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
 				//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
 				//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
-				mode_ = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
+				if (cap_change_mode_newton_) {
+					mode_new = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						double abs_change = std::abs(mode_new[i] - mode_[i]);
+						if (abs_change > MAX_CHANGE_MODE_NEWTON_) {
+							mode_[i] = mode_[i] + (mode_new[i] - mode_[i]) / abs_change * MAX_CHANGE_MODE_NEWTON_;
+						}
+						else {
+							mode_[i] = mode_new[i];
+						}
+					}
+				}//end cap_change_mode_newton_
+				else {
+					mode_ = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
+				}
 				// Calculate new objective function
 				B_mode = B * mode_;
 				if (no_fixed_effects) {
@@ -2964,6 +2993,10 @@ namespace GPBoost {
 		int MAXIT_MODE_NEWTON_ = 1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
 		double DELTA_REL_CONV_ = 1e-6;
+		/*! \brief If true, the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method */
+		bool cap_change_mode_newton_ = false;
+		/*! \brief Maximally allowed change for mode in Newton's method for those likelihoods where a cap is enforced */
+		double MAX_CHANGE_MODE_NEWTON_ = std::log(100.);
 		/*! \brief Number of additional parameters for likelihoods  */
 		int num_aux_pars_;
 		/*! \brief Additional parameters for likelihoods. For "gamma", aux_pars_[0] = shape parameter, for gaussian, aux_pars_[0] = 1 / sqrt(variance) */
