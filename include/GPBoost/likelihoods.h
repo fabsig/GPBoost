@@ -46,6 +46,10 @@ using LightGBM::label_t;
 
 namespace GPBoost {
 
+	// Forward declaration
+	template<typename T_mat, typename T_chol>
+	class REModelTemplate;
+
 	/*!
 	* \brief This class implements the likelihoods for the Gaussian proceses
 	* The template parameters <T_mat, T_chol> can be <den_mat_t, chol_den_mat_t> , <sp_mat_t, chol_sp_mat_t>, <sp_mat_rm_t, chol_sp_mat_rm_t>
@@ -68,6 +72,7 @@ namespace GPBoost {
 			data_size_t num_re,
 			bool has_a_vec) {
 			string_t likelihood = ParseLikelihoodAlias(type);
+			likelihood = ParseLikelihoodAliasGradientDescent(likelihood);
 			if (SUPPORTED_LIKELIHOODS_.find(likelihood) == SUPPORTED_LIKELIHOODS_.end()) {
 				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
 			}
@@ -136,6 +141,7 @@ namespace GPBoost {
 		*/
 		void SetLikelihood(const string_t& type) {
 			string_t likelihood = ParseLikelihoodAlias(type);
+			likelihood = ParseLikelihoodAliasGradientDescent(likelihood);
 			if (SUPPORTED_LIKELIHOODS_.find(likelihood) == SUPPORTED_LIKELIHOODS_.end()) {
 				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
 			}
@@ -1510,7 +1516,12 @@ namespace GPBoost {
 			sp_mat_t SigmaI = B.transpose() * D_inv * B;
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			sp_mat_t SigmaI_plus_W;
-			vec_t rhs, B_mode;
+			vec_t rhs, B_mode, mode_new;
+			vec_t mode_after_grad_aux, mode_after_grad_aux_lag1;//auxiliary variable used only if gradient_descent_for_mode_finding_
+			if (gradient_descent_for_mode_finding_) {
+				mode_after_grad_aux_lag1 = mode_;
+				DELTA_REL_CONV_ = 1e-9;
+			}
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			B_mode = B * mode_;
 			if (no_fixed_effects) {
@@ -1529,6 +1540,7 @@ namespace GPBoost {
 			int it;
 			bool terminate_optim = false;
 			bool has_NA_or_Inf = false;
+			double lr_GD = 1.;// learning rate for gradient descent
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				if (no_fixed_effects) {
@@ -1539,33 +1551,75 @@ namespace GPBoost {
 					CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);
 					CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 				}
-				// Calculate Cholesky factor and update mode
-				rhs.array() = second_deriv_neg_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
-				SigmaI_plus_W = SigmaI;
-				SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
-				SigmaI_plus_W.makeCompressed();
-				//Calculation of the Cholesky factor is the bottleneck
-				if (!chol_fact_pattern_analyzed_) {
-					chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
-					chol_fact_pattern_analyzed_ = true;
-				}
-				chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
-				//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
-				//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
-				mode_ = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
-				// Calculate new objective function
-				B_mode = B * mode_;
-				if (no_fixed_effects) {
-					approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, mode_.data(), num_data);
-				}
-				else {
-					// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+				if (gradient_descent_for_mode_finding_) {
+					vec_t grad = first_deriv_ll_ - B.transpose() * (D_inv * (B * mode_));
+					sp_mat_t D_inv_B = D_inv * B;
+					sp_mat_t Bt_D_inv_B_aux = B.cwiseProduct(D_inv_B);
+					vec_t SigmaI_diag = Bt_D_inv_B_aux.transpose() * vec_t::Ones(Bt_D_inv_B_aux.rows());
+					grad.array() /= (second_deriv_neg_ll_.array() + SigmaI_diag.array());
+					//// Alternative way approximating W + Sigma^-1 with Bt * (W + D^-1) * B. 
+					//// Note: seems to work worse compared to above diagonal approach. Also, better to comment out "nesterov_acc_rate *= 0.5;"
+					//vec_t grad_aux = B.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(grad);
+					//grad_aux.array() /= (D_inv.diagonal().array() + second_deriv_neg_ll_.array());
+					//grad = B.triangularView<Eigen::UpLoType::UnitLower>().solve(grad_aux);
+					lr_GD = 1.;
+					double nesterov_acc_rate = (1. - (3. / (6. + it)));//Nesterov acceleration factor
+					for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
+						mode_after_grad_aux = mode_ + lr_GD * grad;
+						REModelTemplate<T_mat, T_chol>::ApplyMomentumStep(it, mode_after_grad_aux, mode_after_grad_aux_lag1,
+							mode_new, nesterov_acc_rate, 0, false, 2, false);
+						B_mode = B * mode_new;
+						if (no_fixed_effects) {
+							approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, mode_new.data(), num_data);
+						}
+						else {
 #pragma omp parallel for schedule(static)
-					for (data_size_t i = 0; i < num_data; ++i) {
-						location_par[i] = mode_[i] + fixed_effects[i];
+							for (data_size_t i = 0; i < num_data; ++i) {// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+								location_par[i] = mode_new[i] + fixed_effects[i];
+							}
+							approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+						}
+						if (approx_marginal_ll_new < approx_marginal_ll || 
+							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+							lr_GD *= 0.5;
+							nesterov_acc_rate *= 0.5;
+						}
+						else {//approx_marginal_ll_new >= approx_marginal_ll
+							mode_ = mode_new;
+							break;
+						}
+					}// end loop over learnig rate halving procedure
+					mode_after_grad_aux_lag1 = mode_after_grad_aux;
+				}//end gradient_descent_for_mode_finding_
+				else {//Newton's method
+					// Calculate Cholesky factor and update mode
+					rhs.array() = second_deriv_neg_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
+					SigmaI_plus_W = SigmaI;
+					SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
+					SigmaI_plus_W.makeCompressed();
+					//Calculation of the Cholesky factor is the bottleneck
+					if (!chol_fact_pattern_analyzed_) {
+						chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
+						chol_fact_pattern_analyzed_ = true;
 					}
-					approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-				}
+					chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
+					//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
+					//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
+					mode_ = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
+					// Calculate new objective function
+					B_mode = B * mode_;
+					if (no_fixed_effects) {
+						approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, mode_.data(), num_data);
+					}
+					else {
+						// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data; ++i) {
+							location_par[i] = mode_[i] + fixed_effects[i];
+						}
+						approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+					}
+				}//end Newton's method
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
@@ -1612,6 +1666,10 @@ namespace GPBoost {
 				SigmaI_plus_W = SigmaI;
 				SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
 				SigmaI_plus_W.makeCompressed();
+				if (!chol_fact_pattern_analyzed_) {
+					chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
+					chol_fact_pattern_analyzed_ = true;
+				}
 				chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
 				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
@@ -2907,6 +2965,14 @@ namespace GPBoost {
 			return likelihood;
 		}
 
+		string_t ParseLikelihoodAliasGradientDescent(const string_t& likelihood) {
+			if (likelihood.substr(likelihood.size() - 5) == string_t("_grad")) {
+				gradient_descent_for_mode_finding_ = true;
+				return likelihood.substr(0,likelihood.size() - 5);
+			}
+			return likelihood;
+		}
+
 	private:
 		/*! \brief Number of data points */
 		data_size_t num_data_;
@@ -2964,6 +3030,10 @@ namespace GPBoost {
 		int MAXIT_MODE_NEWTON_ = 1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
 		double DELTA_REL_CONV_ = 1e-6;
+		/*! \brief If true, gradient descent instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
+		bool gradient_descent_for_mode_finding_ = false;
+		/*! \brief Maximal number of steps for which learning rate shrinkage is done in gradient descent for mode finding in Laplace approximation */
+		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
 		/*! \brief Number of additional parameters for likelihoods  */
 		int num_aux_pars_;
 		/*! \brief Additional parameters for likelihoods. For "gamma", aux_pars_[0] = shape parameter, for gaussian, aux_pars_[0] = 1 / sqrt(variance) */
