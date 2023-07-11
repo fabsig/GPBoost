@@ -91,16 +91,29 @@ gpb.plot_importance(bst)
 # Classical partial dependence plots
 from pdpbox import pdp
 # Single variable plots (takes a few seconds to compute)
+pdp_dist = pdp.PDPIsolate(model=bst, df=X_train.copy(), model_features=X_train.columns, # need to copy() since PDPIsolate modifies the df
+                           feature='variable_2', feature_name='variable_2', 
+                           n_classes=0, num_grid_points=50,
+                           predict_kwds={"ignore_gp_model": True})
+fig, axes = pdp_dist.plot(engine='matplotlib', plot_lines=True)
+# Two variable interaction plot
+interact = pdp.PDPInteract(model=bst, df=X_train.copy(), model_features=X_train.columns,
+                             features=['variable_1','variable_2'],
+                             feature_names=['variable_1','variable_2'],
+                             n_classes=0, predict_kwds={"ignore_gp_model": True})
+fig, axes = interact.plot(engine='matplotlib', plot_type='contour')
+"""
+# Note: the above code is for pdpbox version 0.3.0 or latter, for earlier versions use:
 pdp_dist = pdp.pdp_isolate(model=bst, dataset=X_train, model_features=X_train.columns,
                            feature='variable_2', num_grid_points=50,
                            predict_kwds={"ignore_gp_model": True})
 pdp.pdp_plot(pdp_dist, 'variable_2', plot_lines=True)
-# Two variable interaction plot
 inter_rf = pdp.pdp_interact(model=bst, dataset=X_train, model_features=X_train.columns,
                              features=['variable_1','variable_2'],
                              predict_kwds={"ignore_gp_model": True})
 pdp.pdp_interact_plot(inter_rf, ['variable_1','variable_2'], x_quantile=True,
                       plot_type='contour', plot_pdp=True)# ignore any error message
+"""
 
 # --------------------Comparison to alternative approaches----------------
 results = pd.DataFrame(columns = ["RMSE","Time"],

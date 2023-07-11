@@ -2944,6 +2944,43 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			}
 		}//end NewtonUpdateLeafValues
 
+		/*!
+		* \brief Apply a momentum step
+		* \param it Iteration number
+		* \param pars Parameters
+		* \param pars_lag1 Parameters from last iteration
+		* \param[out] pars_acc Accelerated parameters
+		* \param nesterov_acc_rate Nesterov acceleration speed
+		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
+		* \param exclude_first_log_scale If true, no momentum is applied to the first value and the momentum step is done on the log-scale for the other values. Default = true
+		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
+		* \param log_scale If true, the momentum step is done on the log-scale
+		*/
+		static void ApplyMomentumStep(int it,
+			vec_t& pars,
+			vec_t& pars_lag1,
+			vec_t& pars_acc,
+			double nesterov_acc_rate,
+			int nesterov_schedule_version,
+			bool exclude_first_log_scale,
+			int momentum_offset,
+			bool log_scale) {
+			double mu = NesterovSchedule(it, nesterov_schedule_version, nesterov_acc_rate, momentum_offset);
+			int num_par = (int)pars.size();
+			if (exclude_first_log_scale) {
+				pars_acc[0] = pars[0];
+				pars_acc.segment(1, num_par - 1) = ((mu + 1.) * (pars.segment(1, num_par - 1).array().log()) - mu * (pars_lag1.segment(1, num_par - 1).array().log())).exp().matrix();//Momentum is added on the log scale
+			}
+			else {
+				if (log_scale) {
+					pars_acc = ((mu + 1.) * (pars.array().log()) - mu * (pars_lag1.array().log())).exp().matrix();
+				}
+				else {
+					pars_acc = (mu + 1) * pars - mu * pars_lag1;
+				}
+			}
+		}// end ApplyMomentumStep
+
 	private:
 
 		// RESPONSE DATA
@@ -3107,7 +3144,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		/*! \brief Select Nesterov acceleration schedule 0 or 1 */
 		int nesterov_schedule_version_ = 0;
 		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
-		int MAX_REL_CHANGE_GRADIENT_UPDATE_ = 10; //100; // allow maximally a change by a factor of 'MAX_REL_CHANGE_GRADIENT_UPDATE_' in one iteration
+		int MAX_REL_CHANGE_GRADIENT_UPDATE_ = 100; // allow maximally a change by a factor of 'MAX_REL_CHANGE_GRADIENT_UPDATE_' in one iteration
 		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
 		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log((double)MAX_REL_CHANGE_GRADIENT_UPDATE_);
 		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian likelihoods upon initialization). See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not */
@@ -3307,7 +3344,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		RNG_t rng_;
 
 		/*! \brief Nesterov schedule */
-		double NesterovSchedule(int iter,
+		static double NesterovSchedule(int iter,
 			int momentum_schedule_version,
 			double nesterov_acc_rate, 
 			int momentum_offset) {
@@ -3323,10 +3360,10 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				}
 				else {
 					Log::REFatal("NesterovSchedule: version = %d is not supported ", momentum_schedule_version);
-					return(0.);
 				}
 			}
-		}
+			return(0.);
+		}//end NesterovSchedule
 
 		/*! \brief mutex for threading safe call */
 		std::mutex mutex_;
@@ -5758,43 +5795,6 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				}//end not gp_approx_ == "vecchia"
 			}
 		}//end CalcYTPsiIInvY
-
-		/*!
-		* \brief Apply a momentum step
-		* \param it Iteration number
-		* \param pars Parameters
-		* \param pars_lag1 Parameters from last iteration
-		* \param[out] pars_acc Accelerated parameters
-		* \param nesterov_acc_rate Nesterov acceleration speed
-		* \param nesterov_schedule_version Which version of Nesterov schedule should be used. Default = 0
-		* \param exclude_first_log_scale If true, no momentum is applied to the first value and the momentum step is done on the log-scale for the other values. Default = true
-		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning
-		* \param log_scale If true, the momentum step is done on the log-scale
-		*/
-		void ApplyMomentumStep(int it, 
-			vec_t& pars, 
-			vec_t& pars_lag1, 
-			vec_t& pars_acc, 
-			double nesterov_acc_rate,
-			int nesterov_schedule_version, 
-			bool exclude_first_log_scale, 
-			int momentum_offset, 
-			bool log_scale) {
-			double mu = NesterovSchedule(it, nesterov_schedule_version, nesterov_acc_rate, momentum_offset);
-			int num_par = (int)pars.size();
-			if (exclude_first_log_scale) {
-				pars_acc[0] = pars[0];
-				pars_acc.segment(1, num_par - 1) = ((mu + 1.) * (pars.segment(1, num_par - 1).array().log()) - mu * (pars_lag1.segment(1, num_par - 1).array().log())).exp().matrix();//Momentum is added on the log scale
-			}
-			else {
-				if (log_scale) {
-					pars_acc = ((mu + 1.) * (pars.array().log()) - mu * (pars_lag1.array().log())).exp().matrix();
-				}
-				else {
-					pars_acc = (mu + 1) * pars - mu * pars_lag1;
-				}
-			}
-		}
 
 		/*!
 		* \brief Update linear fixed-effect coefficients using generalized least squares (GLS)

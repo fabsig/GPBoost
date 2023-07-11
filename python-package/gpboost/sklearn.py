@@ -936,7 +936,7 @@ class GPBoostClassifier(GPBoostModel, _GPBoostClassifierBase):
                 group_data_pred=None, group_rand_coef_data_pred=None,
                 gp_coords_pred=None, gp_rand_coef_data_pred=None,
                 cluster_ids_pred=None, vecchia_pred_type=None,
-                num_neighbors_pred=-1, predict_cov_mat=False, predict_var=False, **kwargs):
+                num_neighbors_pred=None, predict_cov_mat=False, predict_var=False, **kwargs):
         """Docstring is inherited from the GPBoostModel."""
         result = self.predict_proba(X=X, raw_score=raw_score, start_iteration=start_iteration, num_iteration=num_iteration,
                                     pred_leaf=pred_leaf, pred_contrib=pred_contrib,
