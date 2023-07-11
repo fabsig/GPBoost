@@ -143,3 +143,18 @@ pred_loaded = bst_loaded.predict(data=Xtest, group_data_pred=group_test,
 print(pred['fixed_effect'] - pred_loaded['fixed_effect'])
 print(pred['random_effect_mean'] - pred_loaded['random_effect_mean'])
 print(pred['random_effect_cov'] - pred_loaded['random_effect_cov'])
+
+
+#--------------------Classification example----------------
+y_bin = ((y - np.mean(y)) > 0) * 1.
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+# train
+bst = gpb.GPBoostClassifier(max_depth=3, learning_rate=0.01, n_estimators=50)
+bst.fit(X, y_bin, gp_model=gp_model)
+print("Estimated random effects model")
+gp_model.summary()
+# predict
+group_test = np.arange(m)
+Xtest = np.zeros((m, 2))
+Xtest[:, 0] = np.linspace(0, 1, m)
+pred = bst.predict(X=Xtest, group_data_pred=group_test, raw_score = True)
