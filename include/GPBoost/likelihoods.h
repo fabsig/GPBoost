@@ -1520,7 +1520,6 @@ namespace GPBoost {
 			vec_t mode_after_grad_aux, mode_after_grad_aux_lag1;//auxiliary variable used only if gradient_descent_for_mode_finding_
 			if (gradient_descent_for_mode_finding_) {
 				mode_after_grad_aux_lag1 = mode_;
-				DELTA_REL_CONV_ = 1e-9;
 			}
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			B_mode = B * mode_;
@@ -2968,6 +2967,7 @@ namespace GPBoost {
 		string_t ParseLikelihoodAliasGradientDescent(const string_t& likelihood) {
 			if (likelihood.substr(likelihood.size() - 5) == string_t("_grad")) {
 				gradient_descent_for_mode_finding_ = true;
+				DELTA_REL_CONV_ = 1e-9;
 				return likelihood.substr(0,likelihood.size() - 5);
 			}
 			return likelihood;
