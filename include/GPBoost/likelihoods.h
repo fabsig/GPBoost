@@ -1531,8 +1531,8 @@ namespace GPBoost {
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			sp_mat_t SigmaI_plus_W;
 			vec_t rhs, B_mode, mode_new;
-			vec_t mode_after_grad_aux, mode_after_grad_aux_lag1;//auxiliary variable used only if gradient_descent_for_mode_finding_
-			if (gradient_descent_for_mode_finding_) {
+			vec_t mode_after_grad_aux, mode_after_grad_aux_lag1;//auxiliary variable used only if quasi_newton_for_mode_finding_
+			if (quasi_newton_for_mode_finding_) {
 				mode_after_grad_aux_lag1 = mode_;
 			}
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
@@ -1564,7 +1564,7 @@ namespace GPBoost {
 					CalcFirstDerivLogLik(y_data, y_data_int, location_par.data(), num_data);
 					CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 				}
-				if (gradient_descent_for_mode_finding_) {
+				if (quasi_newton_for_mode_finding_) {
 					vec_t grad = first_deriv_ll_ - B.transpose() * (D_inv * (B * mode_));
 					sp_mat_t D_inv_B = D_inv * B;
 					sp_mat_t Bt_D_inv_B_aux = B.cwiseProduct(D_inv_B);
@@ -1581,6 +1581,15 @@ namespace GPBoost {
 						mode_after_grad_aux = mode_ + lr_GD * grad;
 						REModelTemplate<T_mat, T_chol>::ApplyMomentumStep(it, mode_after_grad_aux, mode_after_grad_aux_lag1,
 							mode_new, nesterov_acc_rate, 0, false, 2, false);
+						if (cap_change_mode_newton_) {
+#pragma omp parallel for schedule(static)
+							for (data_size_t i = 0; i < num_data; ++i) {
+								double abs_change = std::abs(mode_new[i] - mode_[i]);
+								if (abs_change > MAX_CHANGE_MODE_NEWTON_) {
+									mode_new[i] = mode_[i] + (mode_new[i] - mode_[i]) / abs_change * MAX_CHANGE_MODE_NEWTON_;
+								}
+							}
+						}//end cap_change_mode_newton_
 						B_mode = B * mode_new;
 						if (no_fixed_effects) {
 							approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, mode_new.data(), num_data);
@@ -1603,7 +1612,7 @@ namespace GPBoost {
 						}
 					}// end loop over learnig rate halving procedure
 					mode_after_grad_aux_lag1 = mode_after_grad_aux;
-				}//end gradient_descent_for_mode_finding_
+				}//end quasi_newton_for_mode_finding_
 				else {//Newton's method
 					// Calculate Cholesky factor and update mode
 					rhs.array() = second_deriv_neg_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
@@ -2994,10 +3003,12 @@ namespace GPBoost {
 		}
 
 		string_t ParseLikelihoodAliasGradientDescent(const string_t& likelihood) {
-			if (likelihood.substr(likelihood.size() - 5) == string_t("_grad")) {
-				gradient_descent_for_mode_finding_ = true;
-				DELTA_REL_CONV_ = 1e-9;
-				return likelihood.substr(0, likelihood.size() - 5);
+			if (likelihood.size() > 13) {
+				if (likelihood.substr(likelihood.size() - 13) == string_t("_quasi-newton")) {
+					quasi_newton_for_mode_finding_ = true;
+					DELTA_REL_CONV_ = 1e-9;
+					return likelihood.substr(0, likelihood.size() - 13);
+				}
 			}
 			return likelihood;
 		}
@@ -3059,9 +3070,9 @@ namespace GPBoost {
 		int MAXIT_MODE_NEWTON_ = 1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
 		double DELTA_REL_CONV_ = 1e-6;
-		/*! \brief If true, gradient descent instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
-		bool gradient_descent_for_mode_finding_ = false;
-		/*! \brief Maximal number of steps for which learning rate shrinkage is done in gradient descent for mode finding in Laplace approximation */
+		/*! \brief If true, a quasi-Newton method instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
+		bool quasi_newton_for_mode_finding_ = false;
+		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the quasi-Newton method for mode finding in Laplace approximation */
 		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
 		/*! \brief If true, the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method */
 		bool cap_change_mode_newton_ = false;
