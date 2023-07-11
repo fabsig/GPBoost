@@ -1365,6 +1365,10 @@ namespace GPBoost {
 						fixed_effects_cluster_i_ptr = fixed_effects_cluster_i.data();
 					}
 					if (gp_approx_ == "vecchia") {
+						double sigma2 = 0;
+						if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_Sigma_diag_corrected") {
+							sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
+						}
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxVecchia(y_[cluster_i].data(),
 							y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr,
@@ -1373,6 +1377,7 @@ namespace GPBoost {
 							D_inv_[cluster_i],
 							B_grad_[cluster_i],
 							D_grad_[cluster_i],
+							sigma2,
 							true,
 							false,
 							estimate_aux_pars_,
@@ -2328,7 +2333,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						}//end gauss_likelihood_
 						else {//not gauss_likelihood_
 							const double* fixed_effects_cluster_i_ptr = nullptr;
-							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0]; //TEMP
+							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
 							// Note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
 							// The mode has been calculated already before in the Predict() function above
 							// mean_pred_id and cov_mat_pred_id are not calculate in 'CalcPredVecchiaObservedFirstOrder', only Bpo, Bp, and Dp for non-Gaussian likelihoods
@@ -3102,7 +3107,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		/*! \brief Select Nesterov acceleration schedule 0 or 1 */
 		int nesterov_schedule_version_ = 0;
 		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
-		int MAX_REL_CHANGE_GRADIENT_UPDATE_ = 100; // allow maximally a change by a factor of 'MAX_REL_CHANGE_GRADIENT_UPDATE_' in one iteration
+		int MAX_REL_CHANGE_GRADIENT_UPDATE_ = 10; //100; // allow maximally a change by a factor of 'MAX_REL_CHANGE_GRADIENT_UPDATE_' in one iteration
 		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
 		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log((double)MAX_REL_CHANGE_GRADIENT_UPDATE_);
 		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian likelihoods upon initialization). See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not */
@@ -3118,9 +3123,9 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
 		double acc_rate_coef_ = 0.5;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done for gradient-based optimization of covariance parameters and regression coefficients */
-		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 1; //30;
+		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
 		/*! \brief Learning rate shrinkage factor for gradient-based optimization of covariance parameters and regression coefficients */
-		double LR_SHRINKAGE_FACTOR_ = 1; // 0.5;
+		double LR_SHRINKAGE_FACTOR_ = 0.5;
 		/*! \brief Threshold value for a learning rate below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
 		double LR_IS_SMALL_THRESHOLD_ = 1e-6;
 		/*! \brief Threshold value for relative change in parameters below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
@@ -3175,7 +3180,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for Gaussian likelihood */
 		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_{ "none" };
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for non-Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{"Sigma_inv_plus_BtWB", "Sigma_inv_plus_BtWB_no_Lanczos_P", "piv_chol_on_Sigma"};
+		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{"Sigma_inv_plus_BtWB", "Sigma_inv_plus_BtWB_no_Lanczos_P", "piv_chol_on_Sigma", "piv_chol_on_Sigma_diag_corrected" };
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
 		bool cg_preconditioner_type_has_been_set_ = false;
 		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
@@ -4584,6 +4589,10 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					fixed_effects_cluster_i_ptr = fixed_effects_cluster_i.data();
 				}
 				if (gp_approx_ == "vecchia") {
+					double sigma2 = 0;
+					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_Sigma_diag_corrected") {
+						sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
+					}
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxVecchia(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
@@ -4592,6 +4601,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						D_inv_[cluster_i],
 						B_grad_[cluster_i],
 						D_grad_[cluster_i],
+						sigma2,
 						false,
 						true,
 						false,
@@ -5286,11 +5296,18 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				}
 				if (gp_approx_ == "vecchia") {
 					den_mat_t Sigma_L_k;
-					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-						//Do pivoted Cholseky decomposition for Sigma
+					double sigma2 = 0;
+					if (matrix_inversion_method_ == "iterative" && (cg_preconditioner_type_ == "piv_chol_on_Sigma" || cg_preconditioner_type_ == "piv_chol_on_Sigma_diag_corrected")) {
+						//Do pivoted Cholesky decomposition for Sigma
 						//TODO: only after cov-pars step, not after fixed-effect step
 						PivotedCholsekyFactorizationSigma(re_comps_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, num_data_per_cluster_[cluster_i], PIV_CHOL_STOP_TOL);
+						if (cg_preconditioner_type_ == "piv_chol_on_Sigma_diag_corrected") {
+							sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
+						}
 					}
+					//TEMP
+					Log::REInfo("sigma2: %g", re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0]);
+					Log::REInfo("rho: %g", re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[1]);
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
@@ -5299,6 +5316,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						D_inv_[cluster_i],
 						first_update_,
 						Sigma_L_k,
+						sigma2,
 						mll_cluster_i);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {

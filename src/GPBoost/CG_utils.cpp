@@ -199,6 +199,105 @@ namespace GPBoost {
 		}
 	} // end CGVecchiaLaplaceVecSigmaplusWinv
 
+	void CGVecchiaLaplaceVecWinvplusSigmaDiagCorrected(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const int find_mode_it,
+		const double delta_conv,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_,
+		const vec_t& WI_plus_diag_corr_inv,
+		const den_mat_t& Sigma_L_k) {
+
+		p = std::min(p, (int)B_rm.cols());
+
+		vec_t r, r_old;
+		vec_t z, z_old;
+		vec_t h, v, diag_W_inv, B_invt_u, B_invt_h, B_invt_rhs, Sigma_rhs;
+		bool early_stop_alg = false;
+		double a = 0;
+		double b = 1;
+		double r_squared_norm;
+
+		//Avoid numerical instabilites when rhs is de facto 0
+		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+			u.setZero();
+			return;
+		}
+
+		//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
+		if (find_mode_it == 0) {
+			u.setZero();
+		}
+
+		diag_W_inv = diag_W.cwiseInverse();
+
+		//Sigma * rhs, where Sigma = B^(-1) D B^(-T)
+		B_invt_rhs = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rhs);
+		Sigma_rhs = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_rhs);
+
+		//r = Sigma * rhs - (W^(-1) + Sigma) * u
+		B_invt_u = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(u);
+		r = Sigma_rhs - (D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_u) + diag_W_inv.cwiseProduct(u));
+
+		//z = P^(-1) r 
+		//P^(-1) = (W^(-1) + diag(Sigma) - diag(Sigma_L_k  Sigma_L_k^T) + Sigma_L_k Sigma_L_k^T)^(-1) = C^(-1) - C^(-1) Sigma_L_k (I_k + Sigma_L_k^T C^(-1) Sigma_L_k)^(-1) Sigma_L_k^T C^(-1),
+		//where C = W^(-1) + diag(Sigma) - diag(Sigma_L_k  Sigma_L_k^T)
+		vec_t WI_plus_diag_corr_inv_r = WI_plus_diag_corr_inv.cwiseProduct(r);
+		vec_t Sigma_Lkt_WI_plus_diag_corr_inv_r = Sigma_L_k.transpose() * WI_plus_diag_corr_inv_r;
+		z = WI_plus_diag_corr_inv_r - WI_plus_diag_corr_inv.cwiseProduct(Sigma_L_k * chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_.solve(Sigma_Lkt_WI_plus_diag_corr_inv_r));
+
+		h = z;
+
+		for (int j = 0; j < p; ++j) {
+			//(W^(-1) + Sigma) * h
+			B_invt_h = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(h);
+			v = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_h) + diag_W_inv.cwiseProduct(h);
+
+			a = r.transpose() * z;
+			a /= h.transpose() * v;
+
+			u += a * h;
+			r_old = r;
+			r -= a * v;
+
+			r_squared_norm = r.squaredNorm();
+			if (std::isnan(r_squared_norm) || std::isinf(r_squared_norm)) {
+				NA_or_Inf_found = true;
+				return;
+			}
+			if (r_squared_norm < delta_conv) {
+				Log::REInfo("Number CG iterations: %i", j);
+				early_stop_alg = true;
+			}
+
+			z_old = z;
+
+			//z = P^(-1) r
+			WI_plus_diag_corr_inv_r = WI_plus_diag_corr_inv.cwiseProduct(r);
+			Sigma_Lkt_WI_plus_diag_corr_inv_r = Sigma_L_k.transpose() * WI_plus_diag_corr_inv_r;
+			z = WI_plus_diag_corr_inv_r - WI_plus_diag_corr_inv.cwiseProduct(Sigma_L_k * chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_.solve(Sigma_Lkt_WI_plus_diag_corr_inv_r));
+
+			b = r.transpose() * z;
+			b /= r_old.transpose() * z_old;
+
+			h = z + b * h;
+
+			if (early_stop_alg || (j + 1) == p) {
+				//u = W^(-1) u
+				u = diag_W_inv.cwiseProduct(u);
+				if ((j + 1) == p) {
+					Log::REInfo("CG has not converged after the maximal number of iterations. This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.");
+				}
+				return;
+			}
+		}
+	} // end CGVecchiaLaplaceVecWinvplusSigmaDiagCorrected
+
 	void CGTridiagVecchiaLaplace(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& B_t_D_inv_rm,
@@ -227,17 +326,8 @@ namespace GPBoost {
 		a.setOnes();
 		b.setZero();
 
-		//Parallelization in for loop is much faster
-		//R = rhs - (Sigma^(-1) + W) U
-//#pragma omp parallel for schedule(static)   
-//		for (int i = 0; i < t; ++i) {
-//			R.col(i) = rhs.col(i) - ((B_t_D_inv_rm * (B_rm * U.col(i))) + diag_W.cwiseProduct(U.col(i)));
-//		}
-		R = rhs;
-
-		Log::REInfo("R.col(0).squaredNorm(): %g", R.col(0).squaredNorm());
-		Log::REInfo("R.col(1).squaredNorm(): %g", R.col(1).squaredNorm());
-		Log::REInfo("R.col(2).squaredNorm(): %g", R.col(2).squaredNorm());
+		//R = rhs - (W^(-1) + Sigma) * U
+		R = rhs; //Since U is 0
 
 		//Z = P^(-1) R 		
 		//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
@@ -249,9 +339,6 @@ namespace GPBoost {
 		for (int i = 0; i < t; ++i) {
 			Z.col(i) = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_R.col(i));
 		}
-		Log::REInfo("Z.col(0).squaredNorm(): %g", Z.col(0).squaredNorm());
-		Log::REInfo("Z.col(1).squaredNorm(): %g", Z.col(1).squaredNorm());
-		Log::REInfo("Z.col(2).squaredNorm(): %g", Z.col(2).squaredNorm());
 
 		H = Z;
 
@@ -262,33 +349,16 @@ namespace GPBoost {
 				V.col(i) = (B_t_D_inv_rm * (B_rm * H.col(i))) + diag_W.cwiseProduct(H.col(i));
 			}
 
-			Log::REInfo("V.col(0).squaredNorm(): %g", V.col(0).squaredNorm());
-			Log::REInfo("V.col(1).squaredNorm(): %g", V.col(1).squaredNorm());
-			Log::REInfo("V.col(2).squaredNorm(): %g", V.col(2).squaredNorm());
-
 			a_old = a;
 			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
-
-			Log::REInfo("a[0]: %g", a[0]);
-			Log::REInfo("a[1]: %g", a[1]);
-			Log::REInfo("a[2]: %g", a[2]);
-			Log::REInfo("a[3]: %g", a[3]);
 
 			U += H * a.asDiagonal();
 			R_old = R;
 			R -= V * a.asDiagonal();
 
-			mean_squared_R_norm = 0;        
-			for (int i = 0; i < t; ++i) {
-				mean_squared_R_norm += R.col(i).squaredNorm();
-				Log::REInfo("R.col(i).squaredNorm(): %g", R.col(i).squaredNorm());
-			}
-			mean_squared_R_norm /= t;
-			Log::REInfo("mean_squared_R_norm old: %g", mean_squared_R_norm);
 			mean_squared_R_norm = R.colwise().squaredNorm().mean();
-			Log::REInfo("mean_squared_R_norm new: %g", mean_squared_R_norm);
+
 			if (std::isnan(mean_squared_R_norm) || std::isinf(mean_squared_R_norm)) {
-				Log::REInfo("CGTridiagVecchiaLaplace: NA_or_Inf_found at iteration: %i", j);
 				NA_or_Inf_found = true;
 				return;
 			}
@@ -365,17 +435,7 @@ namespace GPBoost {
 		b.setZero();
 
 		//R = rhs - (W^(-1) + Sigma) * U
-		//Drastic performance increase through paralellization
-//#pragma omp parallel for schedule(static)   
-//		for (int i = 0; i < t; ++i) {
-//			B_invt_U.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(U.col(i));
-//		}
-//#pragma omp parallel for schedule(static)   
-//		for (int i = 0; i < t; ++i) {
-//			R.col(i) = rhs.col(i) - D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_U.col(i));
-//		}
-//		R -= diag_W_inv.replicate(1, t).cwiseProduct(U);
-		R = rhs;
+		R = rhs; //Since U is 0
 
 		//Z = P^(-1) R 
 		//P^(-1) = (W^(-1) + Sigma_L_k Sigma_L_k^T)^(-1) = W - W Sigma_L_k (I_k + Sigma_L_k^T W Sigma_L_k)^(-1) Sigma_L_k^T W
@@ -409,12 +469,6 @@ namespace GPBoost {
 			R_old = R;
 			R -= V * a.asDiagonal();
 
-//			mean_squared_R_norm = 0;
-//#pragma omp parallel for schedule(static)            
-//			for (int i = 0; i < t; ++i) {
-//				mean_squared_R_norm += R.col(i).squaredNorm();
-//			}
-//			mean_squared_R_norm /= t;
 			mean_squared_R_norm = R.colwise().squaredNorm().mean();
 
 			if (std::isnan(mean_squared_R_norm) || std::isinf(mean_squared_R_norm)) {
@@ -460,6 +514,146 @@ namespace GPBoost {
 		}
 		Log::REInfo("CG has not converged after the maximal number of iterations. This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.");
 	} // end CGTridiagVecchiaLaplaceSigmaplusWinv
+
+	void CGTridiagVecchiaLaplaceWinvplusSigmaDiagCorrected(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_,
+		const vec_t& WI_plus_diag_corr_inv,
+		const den_mat_t& Sigma_L_k) {
+
+		p = std::min(p, (int)num_data);
+
+		den_mat_t B_invt_U(num_data, t), Sigma_Lkt_WI_plus_diag_corr_inv_R, B_invt_H(num_data, t), WI_plus_diag_corr_inv_R;
+		den_mat_t R(num_data, t), R_old, Z, Z_old, H, V(num_data, t);
+		vec_t v1(num_data), diag_W_inv;
+		vec_t a(t), a_old(t);
+		vec_t b(t), b_old(t);
+		bool early_stop_alg = false;
+		double mean_squared_R_norm;
+
+		diag_W_inv = diag_W.cwiseInverse();
+		U.setZero();
+		v1.setOnes();
+		a.setOnes();
+		b.setZero();
+
+		////////////////////////////////////////////////////////////////////////////////////////////////////////
+		//Check if Sigma + W^(-1) and P have the same diagonal
+		//den_mat_t Sigma_plus_WI(num_data, num_data);
+		//Sigma_plus_WI.setIdentity();
+
+		//den_mat_t B_invt = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(Sigma_plus_WI);
+		//Sigma_plus_WI = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt);
+		//Sigma_plus_WI += diag_W.cwiseInverse().asDiagonal();
+
+		//den_mat_t P = Sigma_L_k * Sigma_L_k.transpose();
+		//P += WI_plus_diag_corr_inv.cwiseInverse().asDiagonal();
+
+		//vec_t diag_Sigma_plus_WI = Sigma_plus_WI.diagonal();
+		//vec_t diag_P = P.diagonal();
+		//vec_t diag_diff = diag_Sigma_plus_WI - diag_P;
+
+		//Log::REInfo("diag_diff abs sum: %g", diag_diff.cwiseAbs().sum());
+		//Log::REInfo("diag_Sigma_plus_WI[0]: %g", diag_Sigma_plus_WI[0]);
+		//Log::REInfo("diag_P[0]: %g", diag_P[0]);
+		//Log::REInfo("diag_Sigma_plus_WI[1]: %g", diag_Sigma_plus_WI[1]);
+		//Log::REInfo("diag_P[1]: %g", diag_P[1]);
+		//Log::REInfo("diag_Sigma_plus_WI[2]: %g", diag_Sigma_plus_WI[2]);
+		//Log::REInfo("diag_P[2]: %g", diag_P[2]);
+		////////////////////////////////////////////////////////////////////////////////////////////////////////
+		
+		//R = rhs - (W^(-1) + Sigma) * U
+		R = rhs; //Since U is 0
+
+		//z = P^(-1) R 
+		//P^(-1) = (W^(-1) + diag(Sigma) - diag(Sigma_L_k  Sigma_L_k^T) + Sigma_L_k Sigma_L_k^T)^(-1) = C^(-1) - C^(-1) Sigma_L_k (I_k + Sigma_L_k^T C^(-1) Sigma_L_k)^(-1) Sigma_L_k^T C^(-1),
+		//where C = W^(-1) + diag(Sigma) - diag(Sigma_L_k  Sigma_L_k^T)
+		WI_plus_diag_corr_inv_R = WI_plus_diag_corr_inv.asDiagonal() * R;
+		Sigma_Lkt_WI_plus_diag_corr_inv_R = Sigma_L_k.transpose() * WI_plus_diag_corr_inv_R;
+		if (Sigma_L_k.cols() < t) {
+			Z = WI_plus_diag_corr_inv_R - (WI_plus_diag_corr_inv.asDiagonal() * Sigma_L_k) * chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_.solve(Sigma_Lkt_WI_plus_diag_corr_inv_R);
+		}
+		else {
+			Z = WI_plus_diag_corr_inv_R - WI_plus_diag_corr_inv.asDiagonal() * (Sigma_L_k * chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_.solve(Sigma_Lkt_WI_plus_diag_corr_inv_R));
+		}
+
+		H = Z;
+
+		for (int j = 0; j < p; ++j) {
+
+			//V = (W^(-1) + Sigma) * H - expensive part of the loop
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				B_invt_H.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(H.col(i));
+			}
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				V.col(i) = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_H.col(i));
+			}
+			V += diag_W_inv.replicate(1, t).cwiseProduct(H);
+
+			a_old = a;
+			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
+
+			U += H * a.asDiagonal();
+			R_old = R;
+			R -= V * a.asDiagonal();
+
+			mean_squared_R_norm = R.colwise().squaredNorm().mean();
+
+			if (std::isnan(mean_squared_R_norm) || std::isinf(mean_squared_R_norm)) {
+				NA_or_Inf_found = true;
+				return;
+			}
+			if (mean_squared_R_norm < delta_conv) {
+				early_stop_alg = true;
+				Log::REInfo("Number CG-Tridiag iterations: %i", j);
+			}
+
+			Z_old = Z;
+
+			//Z = P^(-1) R
+			WI_plus_diag_corr_inv_R = WI_plus_diag_corr_inv.asDiagonal() * R;
+			Sigma_Lkt_WI_plus_diag_corr_inv_R = Sigma_L_k.transpose() * WI_plus_diag_corr_inv_R;
+			if (Sigma_L_k.cols() < t) {
+				Z = WI_plus_diag_corr_inv_R - (WI_plus_diag_corr_inv.asDiagonal() * Sigma_L_k) * chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_.solve(Sigma_Lkt_WI_plus_diag_corr_inv_R);
+			}
+			else {
+				Z = WI_plus_diag_corr_inv_R - WI_plus_diag_corr_inv.asDiagonal() * (Sigma_L_k * chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_.solve(Sigma_Lkt_WI_plus_diag_corr_inv_R));
+			}
+			b_old = b;
+			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+
+			H = Z + H * b.asDiagonal();
+
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < t; ++i) {
+				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
+				if (j > 0) {
+					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
+				}
+			}
+
+			if (early_stop_alg) {
+				for (int i = 0; i < t; ++i) {
+					Tdiags[i].conservativeResize(j + 1, 1);
+					Tsubdiags[i].conservativeResize(j, 1);
+				}
+				return;
+			}
+		}
+		Log::REInfo("CG has not converged after the maximal number of iterations. This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.");
+	} // end CGTridiagVecchiaLaplaceWinvplusSigmaDiagCorrected
 
 	void GenRandVecTrace(RNG_t& generator, 
 		den_mat_t& R) {

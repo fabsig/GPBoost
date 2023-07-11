@@ -79,6 +79,39 @@ namespace GPBoost {
 		const den_mat_t& Sigma_L_k);
 
 	/*!
+	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate
+	*		 gradient descent algorithm is used to approximately solve for (W^(-1) + Sigma)^(-1) Sigma rhs.
+	*        P = W^(-1) + diag(Sigma) - diag(Sigma_L_k Sigma_L_k^T) + Sigma_L_k Sigma_L_k^T is used as preconditioner where Sigma_L_k results from
+	*		 a rank(Sigma_L_k) = k (k << n) pivoted Cholseky decomposition of the nonapproximated covariance matrix.
+	* \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
+	* \param D_inv_B_rm Row-major matrix that contains the product D^-1 B. Outsourced in order to reduce the overhead of the function.
+	* \param rhs Vector of dimension nx1 on the rhs
+	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param p Maximal number of conjugate gradient steps
+	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
+	* \param chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_ Cholesky factor E of matrix EE^T = (I_k + Sigma_L_k_^T (W^(-1) + diag(Sigma) - diag(Sigma_L_k_ Sigma_L_k_^T))^(-1) Sigma_L_k_)
+	* \param WI_plus_diag_corr_inv Vector that contains the diagonal of (W^(-1) + diag(Sigma) - diag(Sigma_L_k_ Sigma_L_k_^T))^(-1)
+	* \param Sigma_L_k Matrix of dimension nxk: Pivoted Cholseky decomposition of the nonapproximated covariance matrix, generated in re_model_template.h
+	*/
+	void CGVecchiaLaplaceVecWinvplusSigmaDiagCorrected(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const int find_mode_it,
+		const double delta_conv,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_,
+		const vec_t& WI_plus_diag_corr_inv,
+		const den_mat_t& Sigma_L_k);
+
+	/*!
 	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
 	*		 A linear system A U = rhs is solved, where the rhs is a matrix of dimension nxt of t random column-vectors and 
 	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn. P = B^T (D^-1 + W) B is used as preconditioner.
@@ -145,6 +178,42 @@ namespace GPBoost {
 		int p,
 		const double delta_conv,
 		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
+		const den_mat_t& Sigma_L_k);
+
+	/*!
+	* \brief Version of CGTridiagVecchiaLaplace() where A = (W^(-1) + Sigma).
+	*		 The linear system is solved with P = W^(-1) + diag(Sigma) - diag(Sigma_L_k Sigma_L_k^T) + Sigma_L_k Sigma_L_k^T as preconditioner,
+	*        where Sigma_L_k results from a rank(Sigma_L_k) = k (k << n) pivoted Cholseky decomposition of the nonapproximated covariance matrix.
+	* \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
+	* \param D_inv_B_rm Row-major matrix that contains the product D^-1 B. Outsourced in order to reduce the overhead of the function.
+	* \param rhs Matrix of dimension nxt that contains random vectors z_1, ..., z_t with Cov(z_i) = P
+	* \param[out] Tdiags The diagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
+	* \param[out] Tsubdiags The subdiagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
+	* \param[out] U Approximative solution of the linear system (solution written on input) (must have been declared with the correct nxt dimensions)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param num_data n-Dimension of the linear system
+	* \param t t-Dimension of the linear system
+	* \param p Maximal number of conjugate gradient steps
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_ Cholesky factor E of matrix EE^T = (I_k + Sigma_L_k_^T (W^(-1) + diag(Sigma) - diag(Sigma_L_k_ Sigma_L_k_^T))^(-1) Sigma_L_k_)
+	* \param WI_plus_diag_corr_inv Vector that contains the diagonal of (W^(-1) + diag(Sigma) - diag(Sigma_L_k_ Sigma_L_k_^T))^(-1)
+	* \param Sigma_L_k Matrix of dimension nxk: Pivoted Cholseky decomposition of the nonapproximated covariance matrix, generated in re_model_template.h
+	*/
+	void CGTridiagVecchiaLaplaceWinvplusSigmaDiagCorrected(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_WI_plus_diag_corr_inv_Sigma_L_k_vecchia_,
+		const vec_t& WI_plus_diag_corr_inv,
 		const den_mat_t& Sigma_L_k);
 
 	/*!
