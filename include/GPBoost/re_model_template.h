@@ -1784,46 +1784,66 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			if (!(gp_coords_data_pred == nullptr && re_group_data_pred == nullptr && re_group_rand_coef_data_pred == nullptr
 				&& cluster_ids_data_pred == nullptr && gp_rand_coef_data_pred == nullptr && covariate_data_pred == nullptr)) {
 				CHECK(num_data_pred > 0);
+				num_data_pred_ = num_data_pred;
 			}
-			if (cluster_ids_data_pred == nullptr) {
-				cluster_ids_data_pred_.clear();
-			}
-			else {
+			if (cluster_ids_data_pred != nullptr) {
 				cluster_ids_data_pred_ = std::vector<data_size_t>(cluster_ids_data_pred, cluster_ids_data_pred + num_data_pred);
 			}
-			if (re_group_data_pred == nullptr) {
-				re_group_levels_pred_.clear();
-			}
-			else {
+			if (re_group_data_pred != nullptr) {
 				//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_group_variables_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
 				re_group_levels_pred_ = std::vector<std::vector<re_group_t>>(num_group_variables_, std::vector<re_group_t>(num_data_pred));
 				ConvertCharToStringGroupLevels(num_data_pred, num_group_variables_, re_group_data_pred, re_group_levels_pred_);
 			}
-			if (re_group_rand_coef_data_pred == nullptr) {
-				re_group_rand_coef_data_pred_.clear();
-			}
-			else {
+			if (re_group_rand_coef_data_pred != nullptr) {
 				re_group_rand_coef_data_pred_ = std::vector<double>(re_group_rand_coef_data_pred, re_group_rand_coef_data_pred + num_data_pred * num_re_group_rand_coef_);
 			}
-			if (gp_coords_data_pred == nullptr) {
-				gp_coords_data_pred_.clear();
-			}
-			else {
+			if (gp_coords_data_pred != nullptr) {
 				gp_coords_data_pred_ = std::vector<double>(gp_coords_data_pred, gp_coords_data_pred + num_data_pred * dim_gp_coords_);
 			}
-			if (gp_rand_coef_data_pred == nullptr) {
-				gp_rand_coef_data_pred_.clear();
-			}
-			else {
+			if (gp_rand_coef_data_pred != nullptr) {
 				gp_rand_coef_data_pred_ = std::vector<double>(gp_rand_coef_data_pred, gp_rand_coef_data_pred + num_data_pred * num_gp_rand_coef_);
 			}
-			if (covariate_data_pred == nullptr) {
-				covariate_data_pred_.clear();
-			}
-			else {
+			if (covariate_data_pred != nullptr) {
 				covariate_data_pred_ = std::vector<double>(covariate_data_pred, covariate_data_pred + num_data_pred * num_coef_);
 			}
-			num_data_pred_ = num_data_pred;
+			//if (cluster_ids_data_pred == nullptr) {
+			//	cluster_ids_data_pred_.clear();
+			//}
+			//else {
+			//	cluster_ids_data_pred_ = std::vector<data_size_t>(cluster_ids_data_pred, cluster_ids_data_pred + num_data_pred);
+			//}
+			//if (re_group_data_pred == nullptr) {
+			//	re_group_levels_pred_.clear();
+			//}
+			//else {
+			//	//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_group_variables_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
+			//	re_group_levels_pred_ = std::vector<std::vector<re_group_t>>(num_group_variables_, std::vector<re_group_t>(num_data_pred));
+			//	ConvertCharToStringGroupLevels(num_data_pred, num_group_variables_, re_group_data_pred, re_group_levels_pred_);
+			//}
+			//if (re_group_rand_coef_data_pred == nullptr) {
+			//	re_group_rand_coef_data_pred_.clear();
+			//}
+			//else {
+			//	re_group_rand_coef_data_pred_ = std::vector<double>(re_group_rand_coef_data_pred, re_group_rand_coef_data_pred + num_data_pred * num_re_group_rand_coef_);
+			//}
+			//if (gp_coords_data_pred == nullptr) {
+			//	gp_coords_data_pred_.clear();
+			//}
+			//else {
+			//	gp_coords_data_pred_ = std::vector<double>(gp_coords_data_pred, gp_coords_data_pred + num_data_pred * dim_gp_coords_);
+			//}
+			//if (gp_rand_coef_data_pred == nullptr) {
+			//	gp_rand_coef_data_pred_.clear();
+			//}
+			//else {
+			//	gp_rand_coef_data_pred_ = std::vector<double>(gp_rand_coef_data_pred, gp_rand_coef_data_pred + num_data_pred * num_gp_rand_coef_);
+			//}
+			//if (covariate_data_pred == nullptr) {
+			//	covariate_data_pred_.clear();
+			//}
+			//else {
+			//	covariate_data_pred_ = std::vector<double>(covariate_data_pred, covariate_data_pred + num_data_pred * num_coef_);
+			//}
 			if (gp_approx_ == "vecchia") {
 				if (vecchia_pred_type != nullptr) {
 					SetVecchiaPredType(vecchia_pred_type);
