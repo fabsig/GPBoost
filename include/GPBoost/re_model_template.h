@@ -1365,10 +1365,6 @@ namespace GPBoost {
 						fixed_effects_cluster_i_ptr = fixed_effects_cluster_i.data();
 					}
 					if (gp_approx_ == "vecchia") {
-						double sigma2 = 0;
-						if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_Sigma_diag_corrected") {
-							sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
-						}
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxVecchia(y_[cluster_i].data(),
 							y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr,
@@ -1377,7 +1373,6 @@ namespace GPBoost {
 							D_inv_[cluster_i],
 							B_grad_[cluster_i],
 							D_grad_[cluster_i],
-							sigma2,
 							true,
 							false,
 							estimate_aux_pars_,
@@ -2333,7 +2328,6 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						}//end gauss_likelihood_
 						else {//not gauss_likelihood_
 							const double* fixed_effects_cluster_i_ptr = nullptr;
-							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
 							// Note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
 							// The mode has been calculated already before in the Predict() function above
 							// mean_pred_id and cov_mat_pred_id are not calculate in 'CalcPredVecchiaObservedFirstOrder', only Bpo, Bp, and Dp for non-Gaussian likelihoods
@@ -2344,7 +2338,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 								likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
 									B_[cluster_i], D_inv_[cluster_i], Bpo, Bp, Dp,
 									mean_pred_id, cov_mat_pred_id, var_pred_id,
-									predict_cov_mat, predict_var_or_response, false, true, sigma2);
+									predict_cov_mat, predict_var_or_response, false, true);
 							}
 							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
@@ -2353,7 +2347,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 								likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
 									B_[cluster_i], D_inv_[cluster_i], Bpo, Bp, Dp,
 									mean_pred_id, cov_mat_pred_id, var_pred_id,
-									predict_cov_mat, predict_var_or_response, false, false, sigma2);
+									predict_cov_mat, predict_var_or_response, false, false);
 							}
 							else {
 								Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
@@ -2676,8 +2670,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						}
 						if (calc_var) {
 							vec_t var_pred_id;
-							double sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0]; //TEMP
-							likelihood_[cluster_i]->CalcVarLaplaceApproxVecchia(var_pred_id, sigma2);
+							likelihood_[cluster_i]->CalcVarLaplaceApproxVecchia(var_pred_id);
 #pragma omp parallel for schedule(static)// Write on output
 							for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
 								out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_] = var_pred_id[i];
@@ -3217,7 +3210,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for Gaussian likelihood */
 		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_{ "none" };
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for non-Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{"Sigma_inv_plus_BtWB", "Sigma_inv_plus_BtWB_no_Lanczos_P", "piv_chol_on_Sigma", "piv_chol_on_Sigma_diag_corrected" };
+		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{"Sigma_inv_plus_BtWB", "piv_chol_on_Sigma"};
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
 		bool cg_preconditioner_type_has_been_set_ = false;
 		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
@@ -4626,10 +4619,6 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					fixed_effects_cluster_i_ptr = fixed_effects_cluster_i.data();
 				}
 				if (gp_approx_ == "vecchia") {
-					double sigma2 = 0;
-					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_Sigma_diag_corrected") {
-						sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
-					}
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxVecchia(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
@@ -4638,7 +4627,6 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						D_inv_[cluster_i],
 						B_grad_[cluster_i],
 						D_grad_[cluster_i],
-						sigma2,
 						false,
 						true,
 						false,
@@ -5333,18 +5321,11 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				}
 				if (gp_approx_ == "vecchia") {
 					den_mat_t Sigma_L_k;
-					double sigma2 = 0;
-					if (matrix_inversion_method_ == "iterative" && (cg_preconditioner_type_ == "piv_chol_on_Sigma" || cg_preconditioner_type_ == "piv_chol_on_Sigma_diag_corrected")) {
+					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_Sigma") {
 						//Do pivoted Cholesky decomposition for Sigma
 						//TODO: only after cov-pars step, not after fixed-effect step
 						PivotedCholsekyFactorizationSigma(re_comps_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, num_data_per_cluster_[cluster_i], PIV_CHOL_STOP_TOL);
-						if (cg_preconditioner_type_ == "piv_chol_on_Sigma_diag_corrected") {
-							sigma2 = re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0];
-						}
 					}
-					//TEMP
-					Log::REInfo("sigma2: %g", re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[0]);
-					Log::REInfo("rho: %g", re_comps_[cluster_i][ind_intercept_gp_]->cov_pars_[1]);
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
@@ -5353,7 +5334,6 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						D_inv_[cluster_i],
 						first_update_,
 						Sigma_L_k,
-						sigma2,
 						mll_cluster_i);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
