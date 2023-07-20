@@ -60,6 +60,7 @@ OBJECTS = \
     GP_utils.o \
     DF_utils.o \
     Vecchia_utils.o \
+    CG_utils.o \
     cs_spsolve.o \
     cs_reach.o \
     cs_dfs.o
