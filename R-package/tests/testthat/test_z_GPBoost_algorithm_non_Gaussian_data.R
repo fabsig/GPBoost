@@ -848,23 +848,35 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(bst$best_score - 0.5785662),TOLERANCE)
       
       # Training with Vecchia approximation
-      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                                          likelihood = "bernoulli_probit", gp_approx = "vecchia", 
-                                          num_neighbors = 30, vecchia_ordering = "none"),
-                      file='NUL')
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
-      bst <- gpb.train(data = dtrain, gp_model = gp_model,
-                       nrounds = 9, learning_rate = 0.2, max_depth = 10,
-                       min_data_in_leaf = 5, objective = "binary", verbose = 0)
-      cov_pars_est <- c(0.1786872, 0.1902082)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
-      # Prediction
-      gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = 30)
-      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-                      predict_var = TRUE, pred_latent = TRUE)
-      expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.25123649, 0.07750260, 0.19457371, 0.04771122))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.09503200, 0.10440602, 0.09169082, 0.09131758))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4060860, -0.5598213, -0.7936279, 0.5029883))),TOLERANCE)
+      for(inv_method in c("cholesky", "iterative")){
+        if(inv_method == "iterative"){
+          tolerance_loc <- 0.1
+        } else{
+          tolerance_loc <- TOLERANCE
+        }
+        capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                                            likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                            num_neighbors = 30, vecchia_ordering = "none", matrix_inversion_method = inv_method),
+                        file='NUL')
+        if(inv_method == "iterative"){
+          DEFAULT_OPTIM_PARAMS$num_rand_vec_trace=500 
+          DEFAULT_OPTIM_PARAMS$cg_delta_conv = 1e-6
+        }
+        gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+        bst <- gpb.train(data = dtrain, gp_model = gp_model,
+                         nrounds = 9, learning_rate = 0.2, max_depth = 10,
+                         min_data_in_leaf = 5, objective = "binary", verbose = 0)
+        cov_pars_est <- c(0.1786872, 0.1902082)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),tolerance_loc)
+        # Prediction
+        gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = 30)
+        pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                        predict_var = TRUE, pred_latent = TRUE)
+        expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.25123649, 0.07750260, 0.19457371, 0.04771122))),tolerance_loc)
+        expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.09503200, 0.10440602, 0.09169082, 0.09131758))),tolerance_loc)
+        if(inv_method == "iterative") tolerance_loc <- 0.3
+        expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4060860, -0.5598213, -0.7936279, 0.5029883))),tolerance_loc)
+      }
       
       # Training with Wendland covariance
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
@@ -1273,38 +1285,52 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-P_F)),TOLERANCE)
       
       # Same thing with Vecchia approximation
-      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                                          likelihood = "bernoulli_probit", gp_approx = "vecchia", 
-                                          num_neighbors = ntrain-1, vecchia_ordering = "none"), file='NUL')
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
-      bst <- gpb.train(data = dtrain, gp_model = gp_model,
-                       nrounds = 5, learning_rate = 0.5, max_depth = 6,
-                       min_data_in_leaf = 5, objective = "binary", verbose = 0)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
-      # Prediction
-      gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = ntest+ntrain-1)
-      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-                      predict_var = TRUE, pred_latent = TRUE)
-      expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-P_RE_mean)),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-P_RE_cov)),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-P_F)),TOLERANCE)
-      
-      # Same thing with Vecchia approximation and random ordering
-      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                                          likelihood = "bernoulli_probit", gp_approx = "vecchia", 
-                                          num_neighbors = ntrain-1, vecchia_ordering = "random"), file='NUL')
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
-      bst <- gpb.train(data = dtrain, gp_model = gp_model,
-                       nrounds = 5, learning_rate = 0.5, max_depth = 6,
-                       min_data_in_leaf = 5, objective = "binary", verbose = 0)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
-      # Prediction
-      gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = ntest+ntrain-1)
-      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-                      predict_var = TRUE, pred_latent = TRUE)
-      expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-P_RE_mean)),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-P_RE_cov)),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-P_F)),TOLERANCE)
+      for(inv_method in c("cholesky", "iterative")){
+        if(inv_method == "iterative"){
+          tolerance_loc <- 0.01
+        } else{
+          tolerance_loc <- TOLERANCE
+        }
+        capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                                            likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                            num_neighbors = ntrain-1, vecchia_ordering = "none",
+                                            matrix_inversion_method = inv_method), file='NUL')
+        if(inv_method == "iterative"){
+          DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$num_rand_vec_trace=500 
+          DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$cg_delta_conv = 1e-6
+        }
+        gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
+        bst <- gpb.train(data = dtrain, gp_model = gp_model,
+                         nrounds = 5, learning_rate = 0.5, max_depth = 6,
+                         min_data_in_leaf = 5, objective = "binary", verbose = 0)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),tolerance_loc)
+        # Prediction
+        gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = ntest+ntrain-1)
+        pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                        predict_var = TRUE, pred_latent = TRUE)
+        expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-P_RE_mean)),tolerance_loc)
+        expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-P_RE_cov)),tolerance_loc)
+        expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-P_F)),tolerance_loc)
+        
+        # Same thing with Vecchia approximation and random ordering
+        capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                                            likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                            num_neighbors = ntrain-1, vecchia_ordering = "random",
+                                            matrix_inversion_method = inv_method), file='NUL')
+        gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
+        bst <- gpb.train(data = dtrain, gp_model = gp_model,
+                         nrounds = 5, learning_rate = 0.5, max_depth = 6,
+                         min_data_in_leaf = 5, objective = "binary", verbose = 0)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),tolerance_loc)
+
+        # Prediction
+        gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = ntest+ntrain-1)
+        pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                        predict_var = TRUE, pred_latent = TRUE)
+        expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-P_RE_mean)),tolerance_loc)
+        expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-P_RE_cov)),tolerance_loc)
+        expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-P_F)),tolerance_loc)
+      }
     })
     
     test_that("GPBoost algorithm with Gaussian process model 
@@ -1782,5 +1808,4 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
     })
     
   }
-  
 }

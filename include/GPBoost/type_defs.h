@@ -30,6 +30,7 @@ namespace GPBoost {
 	typedef Eigen::MatrixXd den_mat_t;
 	typedef Eigen::VectorXd vec_t;
 	typedef Eigen::VectorXi vec_int_t;
+	typedef Eigen::SparseVector<double> sp_vec_t;
 	typedef Eigen::SparseMatrix<double> sp_mat_t; // column-major sparse matrix
 	typedef Eigen::SparseMatrix<double, Eigen::RowMajor> sp_mat_rm_t; // row-major sparse matrix
 	typedef Eigen::Triplet<double> Triplet_t;

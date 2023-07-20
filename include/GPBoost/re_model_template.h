@@ -3194,6 +3194,8 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		bool estimate_aux_pars_ = false;
 		/*! \brief True if the function 'SetOptimConfig' has been called */
 		bool set_optim_config_has_been_called_ = false;
+		/*! \brief If true, the covariance parameters or linear coefficients were updated for the first time with gradient descent*/
+		bool first_update_ = false;
 		/*! \brief Number of likelihood evaluations during optimization */
 		int num_ll_evaluations_ = 0;
 		// The following variables are not used anymore (increasing learning rate again does not seem beneficial)
@@ -3220,7 +3222,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
 		double cg_delta_conv_pred_ = 1e-3;
 		/*! \brief Number of samples when simulation is used for calculating predictive variances */
-		double nsim_var_pred_ = 1000;
+		int nsim_var_pred_ = 1000;
 		/*! \brief Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix */
 		int num_rand_vec_trace_ = 50;
 		/*! \brief If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated */
@@ -3232,7 +3234,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for Gaussian likelihood */
 		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_{ "none" };
 		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for non-Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{ "none", "Sigma_inv_plus_BtWB", "piv_chol_on_Sigma" };
+		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{"Sigma_inv_plus_BtWB", "piv_chol_on_Sigma"};
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
 		bool cg_preconditioner_type_has_been_set_ = false;
 		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
@@ -4072,9 +4074,9 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			if (!gauss_likelihood_) {
 				for (const auto& cluster_i : unique_clusters_) {
 					likelihood_[cluster_i]->SetMatrixInversionProperties(matrix_inversion_method_,
-						cg_max_num_it_, cg_max_num_it_tridiag_, cg_delta_conv_,
+						cg_max_num_it_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_delta_conv_pred_,
 						num_rand_vec_trace_, reuse_rand_vec_trace_, seed_rand_vec_trace_,
-						cg_preconditioner_type_, piv_chol_rank_, rank_pred_approx_matrix_lanczos_);
+						cg_preconditioner_type_, piv_chol_rank_, rank_pred_approx_matrix_lanczos_, nsim_var_pred_);
 				}
 			}
 		}//end SetMatrixInversionPropertiesLikelihood
@@ -4773,6 +4775,12 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			if (estimate_aux_pars_) {
 				num_grad_cov_par -= NumAuxPars();
 			}
+			if (it == 0) {
+				first_update_ = true;
+			}
+			else {
+				first_update_ = false;
+			}
 			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
 				vec_t update(nat_grad.size());
 				update.segment(0, num_grad_cov_par) = lr_cov * nat_grad.segment(0, num_grad_cov_par);
@@ -5209,6 +5217,12 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			double lr_coef = lr_coef_;
 			bool decrease_found = false;
 			bool halving_done = false;
+			if (it == 0){
+				first_update_ = true;
+			}
+			else {
+				first_update_ = false;
+			}
 			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
 				beta_new = beta - lr_coef * grad;
 				// Apply Nesterov acceleration
@@ -5330,12 +5344,20 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					fixed_effects_cluster_i_ptr = fixed_effects_cluster_i.data();
 				}
 				if (gp_approx_ == "vecchia") {
+					den_mat_t Sigma_L_k;
+					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+						//Do pivoted Cholesky decomposition for Sigma
+						//TODO: only after cov-pars step, not after fixed-effect step
+						PivotedCholsekyFactorizationSigma(re_comps_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, num_data_per_cluster_[cluster_i], PIV_CHOL_STOP_TOL);
+					}
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
 						num_data_per_cluster_[cluster_i],
 						B_[cluster_i],
 						D_inv_[cluster_i],
+						first_update_,
+						Sigma_L_k,
 						mll_cluster_i);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {

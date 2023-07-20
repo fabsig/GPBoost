@@ -153,6 +153,17 @@ namespace GPBoost {
 		}
 	}//end SampleIntNoReplace
 
+	/*! \brief Convert a dense matrix to a matrix of type T_mat (dense or sparse) */
+	template <class T_mat1, typename std::enable_if <std::is_same<sp_mat_t, T_mat1>::value ||
+		std::is_same<sp_mat_rm_t, T_mat1>::value>::type* = nullptr >
+	inline void ConvertTo_T_mat_FromDense(const den_mat_t M, T_mat1& Mout) {
+		Mout = M.sparseView();
+	};
+	template <class T_mat1, typename std::enable_if< std::is_same<den_mat_t, T_mat1>::value>::type* = nullptr  >
+	inline void ConvertTo_T_mat_FromDense(const den_mat_t M, T_mat1& Mout) {
+		Mout = M;
+	};
+
 }  // namespace GPBoost
 
 #endif   // GPB_UTILS_H_
