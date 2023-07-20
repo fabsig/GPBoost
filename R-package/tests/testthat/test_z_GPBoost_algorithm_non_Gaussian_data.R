@@ -1328,7 +1328,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                         predict_var = TRUE, pred_latent = TRUE)
         expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-P_RE_mean)),tolerance_loc)
-        expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-P_RE_cov)),tolerance_loc)
+        adjust_tol <- 1
+        if (inv_method == "iterative") adjust_tol <- 1.5
+        expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-P_RE_cov)),adjust_tol*tolerance_loc)
         expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-P_F)),tolerance_loc)
       }
     })

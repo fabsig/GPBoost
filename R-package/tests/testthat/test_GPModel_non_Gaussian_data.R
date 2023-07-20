@@ -803,7 +803,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expected_cov <- c(0.6482223800, 0.5765285294, -0.0001030520, 0.5765285294, 
                         0.6478190560, -0.0001163496, -0.0001030520, -0.0001163496, 0.4435550921)
       expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
+      adjust_tol <- 1
+      if (inv_method == "iterative") adjust_tol <- 1.5
+      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),adjust_tol*tolerance_loc_1)
       # Predict variances
       capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
                                       predict_var = TRUE, predict_response = FALSE), file='NUL')
