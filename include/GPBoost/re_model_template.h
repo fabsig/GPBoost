@@ -1784,46 +1784,66 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			if (!(gp_coords_data_pred == nullptr && re_group_data_pred == nullptr && re_group_rand_coef_data_pred == nullptr
 				&& cluster_ids_data_pred == nullptr && gp_rand_coef_data_pred == nullptr && covariate_data_pred == nullptr)) {
 				CHECK(num_data_pred > 0);
+				num_data_pred_ = num_data_pred;
 			}
-			if (cluster_ids_data_pred == nullptr) {
-				cluster_ids_data_pred_.clear();
-			}
-			else {
+			if (cluster_ids_data_pred != nullptr) {
 				cluster_ids_data_pred_ = std::vector<data_size_t>(cluster_ids_data_pred, cluster_ids_data_pred + num_data_pred);
 			}
-			if (re_group_data_pred == nullptr) {
-				re_group_levels_pred_.clear();
-			}
-			else {
+			if (re_group_data_pred != nullptr) {
 				//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_group_variables_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
 				re_group_levels_pred_ = std::vector<std::vector<re_group_t>>(num_group_variables_, std::vector<re_group_t>(num_data_pred));
 				ConvertCharToStringGroupLevels(num_data_pred, num_group_variables_, re_group_data_pred, re_group_levels_pred_);
 			}
-			if (re_group_rand_coef_data_pred == nullptr) {
-				re_group_rand_coef_data_pred_.clear();
-			}
-			else {
+			if (re_group_rand_coef_data_pred != nullptr) {
 				re_group_rand_coef_data_pred_ = std::vector<double>(re_group_rand_coef_data_pred, re_group_rand_coef_data_pred + num_data_pred * num_re_group_rand_coef_);
 			}
-			if (gp_coords_data_pred == nullptr) {
-				gp_coords_data_pred_.clear();
-			}
-			else {
+			if (gp_coords_data_pred != nullptr) {
 				gp_coords_data_pred_ = std::vector<double>(gp_coords_data_pred, gp_coords_data_pred + num_data_pred * dim_gp_coords_);
 			}
-			if (gp_rand_coef_data_pred == nullptr) {
-				gp_rand_coef_data_pred_.clear();
-			}
-			else {
+			if (gp_rand_coef_data_pred != nullptr) {
 				gp_rand_coef_data_pred_ = std::vector<double>(gp_rand_coef_data_pred, gp_rand_coef_data_pred + num_data_pred * num_gp_rand_coef_);
 			}
-			if (covariate_data_pred == nullptr) {
-				covariate_data_pred_.clear();
-			}
-			else {
+			if (covariate_data_pred != nullptr) {
 				covariate_data_pred_ = std::vector<double>(covariate_data_pred, covariate_data_pred + num_data_pred * num_coef_);
 			}
-			num_data_pred_ = num_data_pred;
+			//if (cluster_ids_data_pred == nullptr) {
+			//	cluster_ids_data_pred_.clear();
+			//}
+			//else {
+			//	cluster_ids_data_pred_ = std::vector<data_size_t>(cluster_ids_data_pred, cluster_ids_data_pred + num_data_pred);
+			//}
+			//if (re_group_data_pred == nullptr) {
+			//	re_group_levels_pred_.clear();
+			//}
+			//else {
+			//	//For grouped random effecst: create matrix 're_group_levels_pred' (vector of vectors, dimension: num_group_variables_ x num_data_) with strings of group levels from characters in 'const char* re_group_data_pred'
+			//	re_group_levels_pred_ = std::vector<std::vector<re_group_t>>(num_group_variables_, std::vector<re_group_t>(num_data_pred));
+			//	ConvertCharToStringGroupLevels(num_data_pred, num_group_variables_, re_group_data_pred, re_group_levels_pred_);
+			//}
+			//if (re_group_rand_coef_data_pred == nullptr) {
+			//	re_group_rand_coef_data_pred_.clear();
+			//}
+			//else {
+			//	re_group_rand_coef_data_pred_ = std::vector<double>(re_group_rand_coef_data_pred, re_group_rand_coef_data_pred + num_data_pred * num_re_group_rand_coef_);
+			//}
+			//if (gp_coords_data_pred == nullptr) {
+			//	gp_coords_data_pred_.clear();
+			//}
+			//else {
+			//	gp_coords_data_pred_ = std::vector<double>(gp_coords_data_pred, gp_coords_data_pred + num_data_pred * dim_gp_coords_);
+			//}
+			//if (gp_rand_coef_data_pred == nullptr) {
+			//	gp_rand_coef_data_pred_.clear();
+			//}
+			//else {
+			//	gp_rand_coef_data_pred_ = std::vector<double>(gp_rand_coef_data_pred, gp_rand_coef_data_pred + num_data_pred * num_gp_rand_coef_);
+			//}
+			//if (covariate_data_pred == nullptr) {
+			//	covariate_data_pred_.clear();
+			//}
+			//else {
+			//	covariate_data_pred_ = std::vector<double>(covariate_data_pred, covariate_data_pred + num_data_pred * num_coef_);
+			//}
 			if (gp_approx_ == "vecchia") {
 				if (vecchia_pred_type != nullptr) {
 					SetVecchiaPredType(vecchia_pred_type);
@@ -3136,10 +3156,14 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		int momentum_offset_ = 2;
 		/*! \brief Select Nesterov acceleration schedule 0 or 1 */
 		int nesterov_schedule_version_ = 0;
-		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
+		/*! \brief Maximal relative change for covariance parameters in one iteration */
 		int MAX_REL_CHANGE_GRADIENT_UPDATE_ = 100; // allow maximally a change by a factor of 'MAX_REL_CHANGE_GRADIENT_UPDATE_' in one iteration
 		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
 		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log((double)MAX_REL_CHANGE_GRADIENT_UPDATE_);
+		/*! \brief Maximal relative change for for auxiliary parameters in one iteration */
+		int MAX_REL_CHANGE_GRADIENT_UPDATE_AUX_PARS_ = 100;
+		/*! \brief Maximal value of gradient updates on log-scale for auxiliary parameters */
+		double MAX_GRADIENT_UPDATE_LOG_SCALE_AUX_PARS_ = std::log((double)MAX_REL_CHANGE_GRADIENT_UPDATE_AUX_PARS_);
 		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian likelihoods upon initialization). See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not */
 		string_t optimizer_coef_;
 		/*! \brief List of supported optimizers for regression coefficients for Gaussian likelihoods */
@@ -4573,11 +4597,11 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						max_abs_nat_grad_aux_par = std::abs(nat_grad[num_cov_par_ + ip]);
 					}
 				}
-				if (lr_aux_pars_ * max_abs_nat_grad_aux_par > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
-					lr_aux_pars_ = MAX_GRADIENT_UPDATE_LOG_SCALE_ / max_abs_nat_grad_aux_par;
+				if (lr_aux_pars_ * max_abs_nat_grad_aux_par > MAX_GRADIENT_UPDATE_LOG_SCALE_AUX_PARS_) {
+					lr_aux_pars_ = MAX_GRADIENT_UPDATE_LOG_SCALE_AUX_PARS_ / max_abs_nat_grad_aux_par;
 					Log::REDebug("GPModel auxiliary parameter estimation: The learning rate has been decreased in iteration number %d since "
 						"the gradient update on the log-scale would have been too large (change by more than a factor %d). New learning rate = %g", 
-						it + 1, MAX_REL_CHANGE_GRADIENT_UPDATE_, lr_aux_pars_);
+						it + 1, MAX_REL_CHANGE_GRADIENT_UPDATE_AUX_PARS_, lr_aux_pars_);
 				}
 			}
 		}//end AvoidTooLargeLearningRatesCovAuxPars

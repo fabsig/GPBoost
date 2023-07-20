@@ -2,6 +2,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
   
   context("GPBoost_combined_boosting_GP_random_effects")
   
+  TOLERANCE_STRICT <- 1e-6
   TOLERANCE <- 1E-3
   TOLERANCE2 <- 1E-2
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov="fisher_scoring", delta_rel_conv=1E-6)
@@ -668,6 +669,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       X_test <- X[1:ntest+ntrain,]
       f_test <- f[1:ntest+ntrain]
       coords_test <- coords[1:ntest+ntrain,]
+      dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+      valids <- list(test = dtest)
       
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
@@ -730,6 +733,37 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4969191, -0.7867247, -0.5883281, -0.2374269))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.4761964, 0.5945182, 0.6208525, 0.8364343))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(4.679265, 4.562299, 4.570425, 4.392607))),TOLERANCE)
+      
+      # Vecchia approximation, less neighbors, and validation data: can call 'set_prediction_data' multiple times
+      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                                          gp_approx = "vecchia", num_neighbors = 20, 
+                                          vecchia_ordering = "random"), file='NUL')
+      gp_model$set_prediction_data(gp_coords_pred = coords_test)
+      gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred = 100)
+      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+      bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
+                       learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, 
+                       objective = "regression_l2", verbose = 0, valids = valids, metric="mse")
+      iter <- 20
+      score <- 1.54475
+      cov_pars_estV <- c(0.23768321, 0.90212975, 0.08164033)
+      expect_equal(bst$best_iter, iter)
+      expect_lt(abs(bst$best_score - score),TOLERANCE_STRICT)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_estV)),TOLERANCE)
+      # Can also first set vecchia_pred_type and then gp_coords_pred
+      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                                          gp_approx = "vecchia", num_neighbors = 20, 
+                                          vecchia_ordering = "random"), file='NUL')
+      gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred = 100)
+      gp_model$set_prediction_data(gp_coords_pred = coords_test)
+      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+      bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
+                       learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, 
+                       objective = "regression_l2", verbose = 0, valids = valids, metric="mse")
+      expect_equal(bst$best_iter, iter)
+      expect_lt(abs(bst$best_score - score),TOLERANCE_STRICT)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_estV)),TOLERANCE)
+
       
       # Same thing with Wendland covariance function
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
