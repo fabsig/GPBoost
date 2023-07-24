@@ -21,17 +21,10 @@ This is the Python package implementation of the GPBoost library. See https://gi
 
 ## Examples and documentation
 
-* [**Detailed Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide):
-  * [GPBoost and LaGaBoost algorithms](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm.py) for Gaussian data ("regression") and non-Gaussian data ("classification", etc.) combining tree-boosting with Gaussian process and random effects models
+* [**Python examples**](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide)
+  * [GPBoost / LaGaBoost algorithm](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/GPBoost_algorithm.py) for Gaussian ("regression") and non-Gaussian likelihoods (e.g., "classification", etc.)
   * [Generalized linear Gaussian process and mixed effects models](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/generalized_linear_Gaussian_process_mixed_effects_models.py)
-  * [GPBoost algorithm applied to panel data](https://github.com/fabsig/GPBoost/tree/master/examples/python-guide/panel_data_example.py)
 * The **documentation at [https://gpboost.readthedocs.io](https://gpboost.readthedocs.io/en/latest/Python_package.html)**
-* Blog posts on how to 
-   * [Combine tree-boosting with grouped random effects models](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb) 
-   * [Combine tree-boosting with Gaussian processes for spatial data](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d)
-   * [GPBoost for generalized linear mixed effects models (GLMMs)](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c) 
-* [Demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
-
 
 ## Installation
 
