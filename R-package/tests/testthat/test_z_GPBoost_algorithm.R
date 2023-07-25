@@ -118,7 +118,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Create random effects model and train GPBoost model
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      set_optim_params(gp_model, params=DEFAULT_OPTIM_PARAMS)
       bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                      nrounds = 62, learning_rate = 0.01, max_depth = 6,
                      min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -447,7 +447,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Use of validation data and test_neg_log_likelihood as metric
       gp_model <- GPModel(group_data = group_data_train)
       set_prediction_data(gp_model, group_data_pred = group_data_test)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      set_optim_params(gp_model, params=DEFAULT_OPTIM_PARAMS)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 10,
                        learning_rate = 0.01, max_depth = 6, min_data_in_leaf = 5,
                        objective = "regression_l2", verbose = 0,

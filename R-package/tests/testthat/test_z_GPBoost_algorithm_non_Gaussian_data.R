@@ -156,7 +156,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Create random effects model and train GPBoost model
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      set_optim_params(gp_model, params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
       bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                      nrounds = 30, learning_rate = 0.1, max_depth = 6,
                      min_data_in_leaf = 5, objective = "binary", verbose = 0)
@@ -1296,7 +1296,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                             num_neighbors = ntrain-1, vecchia_ordering = "none",
                                             matrix_inversion_method = inv_method), file='NUL')
         if(inv_method == "iterative"){
-          DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$num_rand_vec_trace=500 
+          DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$num_rand_vec_trace = 1000 
           DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$cg_delta_conv = 1e-6
         }
         gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
@@ -1305,7 +1305,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                          min_data_in_leaf = 5, objective = "binary", verbose = 0)
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),tolerance_loc)
         # Prediction
-        gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = ntest+ntrain-1)
+        gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
+                                     num_neighbors_pred = ntest+ntrain-1)
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                         predict_var = TRUE, pred_latent = TRUE)
         expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-P_RE_mean)),tolerance_loc)

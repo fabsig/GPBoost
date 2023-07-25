@@ -796,16 +796,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              params = list(optimizer_cov = "gradient_descent", 
                                                            use_nesterov_acc = FALSE, lr_cov=0.01, init_cov_pars=init_cov_pars)), file='NUL')
       coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
-      gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = n+2)
+      gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
+                                   num_neighbors_pred = n+2, nsim_var_pred = 100000)
       capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
                                       predict_cov_mat = TRUE, predict_response = FALSE), file='NUL')
       expected_mu <- c(-0.6595662, -0.6638940, 0.4997690)
       expected_cov <- c(0.6482223800, 0.5765285294, -0.0001030520, 0.5765285294, 
                         0.6478190560, -0.0001163496, -0.0001030520, -0.0001163496, 0.4435550921)
       expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-      adjust_tol <- 1
-      if (inv_method == "iterative") adjust_tol <- 1.5
-      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),adjust_tol*tolerance_loc_1)
+      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
       # Predict variances
       capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
                                       predict_var = TRUE, predict_response = FALSE), file='NUL')
@@ -1754,7 +1753,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expected_cov <- c(8.091398e-01, 1.079958e-01, -4.403387e-07, 1.079958e-01, 
                         8.055727e-01, -4.442709e-07, -4.403387e-07, -4.442709e-07, 6.957873e-01)
       expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
+      adjust_tol <- 1
+      if (inv_method == "iterative") adjust_tol <- 1.5
+      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),adjust_tol*tolerance_loc_1)
       # Evaluate approximate negative marginal log-likelihood
       nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
       if(inv_method=="iterative"){

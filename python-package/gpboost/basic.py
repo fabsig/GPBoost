@@ -4147,6 +4147,11 @@ class GPModel(object):
 
                         Cholesky factorization
 
+                    - "iterative":
+
+                        Iterative methods: Only supported for non-Gaussian likelihoods with a Vecchia-Laplace
+                        approximation. This a combination of conjugate gradient, Lanczos algorithm, and other methods
+
             seed : integer, optional (default=0)
                 The seed used for model creation (e.g., random ordering in Vecchia approximation)
             cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data
@@ -4654,6 +4659,35 @@ class GPModel(object):
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated 
                     (e.g., shape parameter of gamma likelihood)
+                - cg_max_num_it: integer, optional (default = 1000)
+                    Maximal number of iterations for conjugate gradient algorithms
+                - cg_max_num_it_tridiag: integer, optional (default = 1000)
+                    Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm
+                    for tridiagonalization
+                - cg_delta_conv: double, optional (default = 1e-3)
+                    Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
+                    when being used for parameter estimation
+                - num_rand_vec_trace: integer, optional (default = 50)
+                    Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix
+                - reuse_rand_vec_trace: boolean, optional (default = True)
+                    If true, random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix
+                    are sampled only once at the beginning of Newton's method for finding the mode in the Laplace
+                    approximation and are then reused in later trace approximations. Otherwise they are sampled
+                    every time a trace is calculated
+                - seed_rand_vec_trace: integer, optional (default = 1)
+                    Seed number to generate random vectors (e.g., Rademacher)
+                - piv_chol_rank: integer, optional (default = 50)
+                    Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms
+                - cg_preconditioner_type: string, optional (default = "piv_chol_on_Sigma" for non-Gaussian likelihoods and a Vecchia-Laplace approximation)
+                    Type of preconditioner used for conjugate gradient algorithms.
+                    Options for non-Gaussian likelihoods and a Vecchia-Laplace approximation:
+
+                        - "piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting
+                            (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma
+                            and B^-1 * D * B^-T approx= Sigma
+
+                        - "Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting
+                            (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
 
         fixed_effects : numpy 1-D array or None, optional (default=None)
             Additional fixed effects component of location parameter for observed data.
@@ -4799,7 +4833,7 @@ class GPModel(object):
                     Optimizer used for estimating covariance parameters.
                     Options: "gradient_descent", "fisher_scoring", "nelder_mead", "bfgs", "adam"
                     If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
-                - optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
+                - optimizer_coef : string, optional (default = "wls" for Gaussian likelihoods and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
                     Options: "gradient_descent", "wls", "nelder_mead", "bfgs", "adam". Gradient descent steps are done simultaneously with
@@ -4810,7 +4844,7 @@ class GPModel(object):
                 - maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm
                 - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
-                    Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
+                    Convergence tolerance. The algorithm stops if the relative change in either the (approximate)
                     log-likelihood or the parameters is below this value. For "bfgs" and "adam", the L2 norm of the
                     gradient is used instead of the relative change in the log-likelihood
                     If < 0, internal default values are used.
@@ -4848,6 +4882,35 @@ class GPModel(object):
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated 
                     (e.g., shape parameter of gamma likelihood)
+                - cg_max_num_it: integer, optional (default = 1000)
+                    Maximal number of iterations for conjugate gradient algorithms
+                - cg_max_num_it_tridiag: integer, optional (default = 1000)
+                    Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm
+                    for tridiagonalization
+                - cg_delta_conv: double, optional (default = 1e-3)
+                    Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
+                    when being used for parameter estimation
+                - num_rand_vec_trace: integer, optional (default = 50)
+                    Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix
+                - reuse_rand_vec_trace: boolean, optional (default = True)
+                    If true, random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix
+                    are sampled only once at the beginning of Newton's method for finding the mode in the Laplace
+                    approximation and are then reused in later trace approximations. Otherwise they are sampled
+                    every time a trace is calculated
+                - seed_rand_vec_trace: integer, optional (default = 1)
+                    Seed number to generate random vectors (e.g., Rademacher)
+                - piv_chol_rank: integer, optional (default = 50)
+                    Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms
+                - cg_preconditioner_type: string, optional (default = "piv_chol_on_Sigma" for non-Gaussian likelihoods and a Vecchia-Laplace approximation)
+                    Type of preconditioner used for conjugate gradient algorithms.
+                    Options for non-Gaussian likelihoods and a Vecchia-Laplace approximation:
+
+                        - "piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting
+                            (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma
+                            and B^-1 * D * B^-T approx= Sigma
+
+                        - "Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting
+                            (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
 
         Example
         -------

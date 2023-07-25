@@ -3223,17 +3223,17 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		double cg_delta_conv_pred_ = 1e-3;
 		/*! \brief Number of samples when simulation is used for calculating predictive variances */
 		int nsim_var_pred_ = 1000;
-		/*! \brief Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix */
+		/*! \brief Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix */
 		int num_rand_vec_trace_ = 50;
-		/*! \brief If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated */
+		/*! \brief If true, random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning of Newton's method for finding the mode in the Laplace approximation and are then reused in later trace approximations, otherwise they are sampled every time a trace is calculated */
 		bool reuse_rand_vec_trace_ = true;
-		/*! \brief Seed number to generate random vectors (e.g. Rademacher) */
+		/*! \brief Seed number to generate random vectors (e.g., Rademacher) */
 		int seed_rand_vec_trace_ = 1;
-		/*! \brief Type of preconditoner used for the conjugate gradient algorithm */
+		/*! \brief Type of preconditioner used for conjugate gradient algorithms */
 		string_t cg_preconditioner_type_;
-		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for Gaussian likelihood */
+		/*! \brief List of supported preconditioners for conjugate gradient algorithms for Gaussian likelihood */
 		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_{ "none" };
-		/*! \brief List of supported preconditioners for the conjugate gradient algorithm for non-Gaussian likelihoods */
+		/*! \brief List of supported preconditioners for conjugate gradient algorithms for non-Gaussian likelihoods */
 		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{"Sigma_inv_plus_BtWB", "piv_chol_on_Sigma"};
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
 		bool cg_preconditioner_type_has_been_set_ = false;
@@ -3927,7 +3927,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					cg_preconditioner_type_ = "none";
 				}
 				else {
-					cg_preconditioner_type_ = "Sigma_inv_plus_BtWB";
+					cg_preconditioner_type_ = "piv_chol_on_Sigma";
 				}
 				CheckPreconditionerType();
 			}

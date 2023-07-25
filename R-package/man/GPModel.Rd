@@ -105,6 +105,8 @@ points / knots for, e.g., a predictive process approximation}
 Available options:
 \itemize{
 \item{"cholesky": Cholesky factorization }
+\item{"iterative": iterative methods. Only supported for non-Gaussian likelihoods
+with a Vecchia-Laplace approximation. This a combination of conjugate gradient, Lanczos algorithm, and other methods }
 }}
 
 \item{seed}{An \code{integer} specifying the seed used for model creation 
