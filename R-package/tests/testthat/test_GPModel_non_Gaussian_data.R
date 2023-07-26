@@ -735,7 +735,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params_vecchia <- list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
                            lr_cov = 0.1, use_nesterov_acc = FALSE,
                            convergence_criterion = "relative_change_in_parameters",
-                           cg_delta_conv = 1e-6, num_rand_vec_trace=500)
+                           cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
+                           cg_preconditioner_type = "piv_chol_on_Sigma")
 
     for(inv_method in c("cholesky", "iterative")){
       if(inv_method == "iterative"){
@@ -847,10 +848,31 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
                                                          lr_cov = 0.1, use_nesterov_acc = FALSE,
                                                          convergence_criterion = "relative_change_in_parameters",
-                                                         cg_delta_conv = 1e-6, num_rand_vec_trace=500)), file='NUL')
+                                                         cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
+                                                         cg_preconditioner_type = "piv_chol_on_Sigma")), file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
-      if(inv_method != "iterative"){
+      if(inv_method == "cholesky"){
         expect_equal(gp_model$get_num_optim_iter(), 40)
+      } else {
+        expect_equal(gp_model$get_num_optim_iter(), 5)
+      }
+      if(inv_method == "iterative"){
+        ## Cannot change cg_preconditioner_type after a model has been fitted
+        expect_error( capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
+                                                           lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                                           convergence_criterion = "relative_change_in_parameters",
+                                                           cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
+                                                           cg_preconditioner_type = "Sigma_inv_plus_BtWB")), file='NUL'))
+        capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                            likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                            num_neighbors=30, vecchia_ordering = "none",
+                                            matrix_inversion_method = inv_method), file='NUL')
+        capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
+                                                           lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                                           convergence_criterion = "relative_change_in_parameters",
+                                                           cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
+                                                           cg_preconditioner_type = "Sigma_inv_plus_BtWB")), file='NUL')
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
       }
       # Random ordering
       capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", vecchia_ordering="random",
@@ -859,7 +881,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars, 
                                                          lr_cov = 0.1, use_nesterov_acc = FALSE,
                                                          convergence_criterion = "relative_change_in_parameters",
-                                                         cg_delta_conv = 1e-6, num_rand_vec_trace=500))
+                                                         cg_delta_conv = 1e-6, num_rand_vec_trace = 500))
                       , file='NUL')
       if(inv_method != "iterative"){
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),0.01)
@@ -876,7 +898,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              num_neighbors=30, vecchia_ordering = "none", matrix_inversion_method = inv_method,
                                              y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = FALSE, 
                                                                   lr_cov=0.01, init_cov_pars=init_cov_pars,
-                                                                  cg_delta_conv = 1e-6, num_rand_vec_trace=500)), file='NUL')
+                                                                  cg_delta_conv = 1e-6, num_rand_vec_trace = 500)), file='NUL')
       gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = 30, nsim_var_pred=5000)
       pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
       expected_mu <- c(-0.6602899, -0.6646044, 0.5004378)

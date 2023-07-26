@@ -859,8 +859,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                             num_neighbors = 30, vecchia_ordering = "none", matrix_inversion_method = inv_method),
                         file='NUL')
         if(inv_method == "iterative"){
-          DEFAULT_OPTIM_PARAMS$num_rand_vec_trace=500 
+          DEFAULT_OPTIM_PARAMS$num_rand_vec_trace = 500 
           DEFAULT_OPTIM_PARAMS$cg_delta_conv = 1e-6
+          DEFAULT_OPTIM_PARAMS$cg_preconditioner_type = "piv_chol_on_Sigma"
         }
         gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
         bst <- gpb.train(data = dtrain, gp_model = gp_model,
@@ -1298,6 +1299,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         if(inv_method == "iterative"){
           DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$num_rand_vec_trace = 1000 
           DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$cg_delta_conv = 1e-6
+          DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$cg_preconditioner_type = "piv_chol_on_Sigma"
         }
         gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
         bst <- gpb.train(data = dtrain, gp_model = gp_model,

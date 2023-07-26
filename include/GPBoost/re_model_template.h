@@ -588,6 +588,10 @@ namespace GPBoost {
 				seed_rand_vec_trace_ = seed_rand_vec_trace;
 				piv_chol_rank_ = piv_chol_rank;
 				if (cg_preconditioner_type != nullptr) {
+					if (cg_preconditioner_type_ != std::string(cg_preconditioner_type) &&
+						model_has_been_estimated_) {
+						Log::REFatal("Cannot change 'cg_preconditioner_type' after a model has been fitted ");
+					}
 					cg_preconditioner_type_ = std::string(cg_preconditioner_type);
 					CheckPreconditionerType();
 					cg_preconditioner_type_has_been_set_ = true;
@@ -1228,6 +1232,7 @@ namespace GPBoost {
 					//	but this function is called for initialization of the GPBoost algorithm.
 				}
 			}
+			model_has_been_estimated_ = true;
 		}//end OptimLinRegrCoefCovPar
 		
 
@@ -3133,9 +3138,9 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		int max_iter_ = 1000;
 		/*!
 		\brief Convergence tolerance for covariance and linear regression coefficient estimation.
-		The algorithm stops if the relative change in either the (approximate) log-likelihood or the parameters is below this value.
-		For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood.
-		If delta_rel_conv_init_ < 0, internal default values are set in 'OptimConfigSetInitialValues'
+			The algorithm stops if the relative change in either the (approximate) log-likelihood or the parameters is below this value.
+			For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood.
+			If delta_rel_conv_init_ < 0, internal default values are set in 'OptimConfigSetInitialValues'
 		*/
 		double delta_rel_conv_;
 		/*! \brief Initial convergence tolerance (to remember as default values for delta_rel_conv_ are different for 'nelder_mead' vs. other optimizers and the optimization might get restarted) */
@@ -3198,6 +3203,8 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		bool first_update_ = false;
 		/*! \brief Number of likelihood evaluations during optimization */
 		int num_ll_evaluations_ = 0;
+		/*! \brief True, if 'OptimLinRegrCoefCovPar' has been called */
+		bool model_has_been_estimated_ = false;
 		// The following variables are not used anymore (increasing learning rate again does not seem beneficial)
 		///*! \brief True if the learning rates have been descreased (only for gradient_descent) */
 		//bool learning_rate_decreased_first_time_ = false;
