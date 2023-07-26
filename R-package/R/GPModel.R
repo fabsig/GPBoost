@@ -2557,9 +2557,9 @@ loadGPModel <- function(filename){
   
 }
 
-#' Generic 'set_optim_params' method for a \code{GPModel}
-#'
-#' Generic 'set_optim_params' method for a \code{GPModel}
+#' Set parameters for estimation of the covariance parameters
+#' 
+#' Set parameters for optimization of the covariance parameters of a \code{GPModel}
 #' 
 #' @param gp_model A \code{GPModel}
 #' @inheritParams GPModel_shared_params
@@ -2607,9 +2607,9 @@ set_optim_params.GPModel <- function(gp_model
   invisible(gp_model$set_optim_params(params = params))
 }
 
-#' Generic 'set_prediction_data' method for a \code{GPModel}
-#'
-#' Generic 'set_prediction_data' method for a \code{GPModel}
+#' Set prediction data for a \code{GPModel}
+#' 
+#' Set the data required for making predictions with a \code{GPModel} 
 #' 
 #' @param gp_model A \code{GPModel}
 #' @inheritParams GPModel_shared_params
@@ -2691,9 +2691,9 @@ set_prediction_data.GPModel <- function(gp_model
                                          , X_pred = X_pred))
 }
 
-#' Generic 'predict_training_data_random_effects' method for a \code{GPModel}
-#'
-#' Generic 'predict_training_data_random_effects' method for a \code{GPModel}
+#' Predict ("estimate") training data random effects for a \code{GPModel}
+#' 
+#' Predict ("estimate") training data random effects for a \code{GPModel}
 #' 
 #' @param gp_model A \code{GPModel}
 #' @inheritParams GPModel_shared_params

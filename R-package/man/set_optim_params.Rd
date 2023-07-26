@@ -2,7 +2,7 @@
 % Please edit documentation in R/GPModel.R
 \name{set_optim_params}
 \alias{set_optim_params}
-\title{Generic 'set_optim_params' method for a \code{GPModel}}
+\title{Set parameters for estimation of the covariance parameters}
 \usage{
 set_optim_params(gp_model, params = list())
 }
@@ -104,7 +104,7 @@ set_optim_params(gp_model, params = list())
 }}
 }
 \description{
-Generic 'set_optim_params' method for a \code{GPModel}
+Set parameters for optimization of the covariance parameters of a \code{GPModel}
 }
 \examples{
 \donttest{

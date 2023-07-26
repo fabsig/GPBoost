@@ -2,7 +2,7 @@
 % Please edit documentation in R/GPModel.R
 \name{predict_training_data_random_effects}
 \alias{predict_training_data_random_effects}
-\title{Generic 'predict_training_data_random_effects' method for a \code{GPModel}}
+\title{Predict ("estimate") training data random effects for a \code{GPModel}}
 \usage{
 predict_training_data_random_effects(gp_model, predict_var = FALSE)
 }
@@ -16,7 +16,7 @@ predictive variances are calculated}
 A \code{GPModel}
 }
 \description{
-Generic 'predict_training_data_random_effects' method for a \code{GPModel}
+Predict ("estimate") training data random effects for a \code{GPModel}
 }
 \examples{
 \donttest{

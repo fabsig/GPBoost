@@ -2,7 +2,7 @@
 % Please edit documentation in R/GPModel.R
 \name{set_prediction_data}
 \alias{set_prediction_data}
-\title{Generic 'set_prediction_data' method for a \code{GPModel}}
+\title{Set prediction data for a \code{GPModel}}
 \usage{
 set_prediction_data(gp_model, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
@@ -65,7 +65,7 @@ random effects / Gaussian processes for which predictions are made
 fixed effects linear regression term (if there is one in the \code{GPModel})}
 }
 \description{
-Generic 'set_prediction_data' method for a \code{GPModel}
+Set the data required for making predictions with a \code{GPModel}
 }
 \examples{
 \donttest{
