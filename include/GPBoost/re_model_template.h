@@ -1600,7 +1600,6 @@ namespace GPBoost {
 				}
 				neg_log_likelihood_ = -CalcModePostRandEff(fixed_effects);//calculate mode and approximate marginal likelihood
 			}//end not gauss_likelihood_
-			num_ll_evaluations_++;
 		}//end CalcCovFactorOrModeAndNegLL
 
 		/*!
@@ -5405,6 +5404,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				}
 				mll += mll_cluster_i;
 			}
+			num_ll_evaluations_++;
 			return(mll);
 		}//CalcModePostRandEff
 
@@ -5680,6 +5680,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				}
 			}
 			covariance_matrix_has_been_factorized_ = true;
+			num_ll_evaluations_++;
 		}
 
 		/*!
