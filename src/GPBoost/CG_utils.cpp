@@ -97,7 +97,8 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REInfo("CG has not converged after the maximal number of iterations (%i). This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
+		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 	} // end CGVecchiaLaplaceVec
 
 	void CGVecchiaLaplaceVecWinvplusSigma(const vec_t& diag_W,
@@ -191,7 +192,8 @@ namespace GPBoost {
 				//u = W^(-1) u
 				u = diag_W_inv.cwiseProduct(u);
 				if ((j + 1) == p) {
-					Log::REInfo("CG has not converged after the maximal number of iterations (%i). This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
+					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 				}
 				return;
 			}
@@ -300,7 +302,8 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REInfo("CG has not converged after the maximal number of iterations (%i). This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
 	} // end CGTridiagVecchiaLaplace
 
 	void CGTridiagVecchiaLaplaceWinvplusSigma(const vec_t& diag_W,
@@ -412,7 +415,8 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REInfo("CG has not converged after the maximal number of iterations (%i). This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
 	} // end CGTridiagVecchiaLaplaceSigmaplusWinv
 
 	void GenRandVecTrace(RNG_t& generator, 
