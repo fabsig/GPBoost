@@ -217,6 +217,16 @@ gp_model.summary()
 #Note: gives sames result in this example as when not using cluster_ids
 #   since the random effects of different groups are independent anyway
 
+# --------------------Evaluate negative log-likelihood----------------
+if likelihood == "gaussian":
+  cov_pars = [0.1 ,0.1]
+else:
+  cov_pars = [0.1]
+gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+coef = [0, 0.1]
+fixed_effects = X.dot(coef)
+gp_model.neg_log_likelihood(cov_pars=cov_pars, y=y, fixed_effects=fixed_effects)
+
 
 """
 Gaussian processes

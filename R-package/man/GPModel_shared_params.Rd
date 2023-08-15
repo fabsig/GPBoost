@@ -237,7 +237,7 @@ fixed effects linear regression term (if there is one)}
    }
 }}
 
-\item{fixed_effects}{A \code{vector} of optional external fixed effects which are held fixed during training.}
+\item{fixed_effects}{A \code{vector} of optional external fixed effects (length = number of data points)}
 
 \item{group_data_pred}{A \code{vector} or \code{matrix} with elements being group levels 
 for which predictions are made (if there are grouped random effects in the \code{GPModel})}

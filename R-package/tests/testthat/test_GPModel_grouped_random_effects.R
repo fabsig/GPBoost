@@ -150,8 +150,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(training_data_random_effects[,2] - pred_random_effects$var)),TOL_STRICT)
     
     # Evaluate negative log-likelihood
-    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.1,1),y=y)
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.1,1), y=y)
     expect_lt(abs(nll-2282.073),1E-2)
+    nll <- neg_log_likelihood(gp_model, cov_pars=c(0.1,1), y=y)
+    expect_lt(abs(nll-2282.073),1E-2)
+    fixed_effects <- rep(1, length(y))
+    nll1 <- neg_log_likelihood(gp_model, cov_pars=c(0.1,1), y=(y-fixed_effects))
+    nll2 <- neg_log_likelihood(gp_model, cov_pars=c(0.1,1), y=y, fixed_effects=fixed_effects)
+    expect_lt(abs(nll1-nll2),1E-6)
     
     # Do optimization using optim and e.g. Nelder-Mead
     gp_model <- GPModel(group_data = group)

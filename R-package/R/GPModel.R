@@ -211,7 +211,7 @@
 #'                 }
 #'               }
 #'            }
-#' @param fixed_effects A \code{vector} of optional external fixed effects which are held fixed during training. 
+#' @param fixed_effects A \code{vector} of optional external fixed effects (length = number of data points)
 #' @param group_data_pred A \code{vector} or \code{matrix} with elements being group levels 
 #' for which predictions are made (if there are grouped random effects in the \code{GPModel})
 #' @param group_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data 
@@ -2445,22 +2445,22 @@ predict.GPModel <- function(object,
                             vecchia_pred_type = NULL,
                             num_neighbors_pred = NULL,...){
   return(object$predict( y = y
-                        , group_data_pred = group_data_pred
-                        , group_rand_coef_data_pred = group_rand_coef_data_pred
-                        , gp_coords_pred = gp_coords_pred
-                        , gp_rand_coef_data_pred = gp_rand_coef_data_pred
-                        , cluster_ids_pred = cluster_ids_pred
-                        , predict_cov_mat = predict_cov_mat
-                        , predict_var = predict_var
-                        , cov_pars = cov_pars
-                        , X_pred = X_pred
-                        , use_saved_data = use_saved_data
-                        , predict_response = predict_response
-                        , fixed_effects = fixed_effects
-                        , fixed_effects_pred = fixed_effects_pred
-                        , vecchia_pred_type = vecchia_pred_type
-                        , num_neighbors_pred = vecchia_pred_type
-                        , ... ))
+                         , group_data_pred = group_data_pred
+                         , group_rand_coef_data_pred = group_rand_coef_data_pred
+                         , gp_coords_pred = gp_coords_pred
+                         , gp_rand_coef_data_pred = gp_rand_coef_data_pred
+                         , cluster_ids_pred = cluster_ids_pred
+                         , predict_cov_mat = predict_cov_mat
+                         , predict_var = predict_var
+                         , cov_pars = cov_pars
+                         , X_pred = X_pred
+                         , use_saved_data = use_saved_data
+                         , predict_response = predict_response
+                         , fixed_effects = fixed_effects
+                         , fixed_effects_pred = fixed_effects_pred
+                         , vecchia_pred_type = vecchia_pred_type
+                         , num_neighbors_pred = vecchia_pred_type
+                         , ... ))
 }
 
 #' @name saveGPModel
@@ -2601,7 +2601,7 @@ set_optim_params.GPModel <- function(gp_model
                                      , params = list()) {
   
   if (!gpb.check.r6.class(gp_model, "GPModel")) {
-    stop("set_prediction_data.GPModel: gp_model needs to be a ", sQuote("GPModel"))
+    stop("set_optim_params.GPModel: gp_model needs to be a ", sQuote("GPModel"))
   }
   
   invisible(gp_model$set_optim_params(params = params))
@@ -2689,6 +2689,85 @@ set_prediction_data.GPModel <- function(gp_model
                                          , gp_rand_coef_data_pred = gp_rand_coef_data_pred
                                          , cluster_ids_pred = cluster_ids_pred
                                          , X_pred = X_pred))
+}
+
+#' Evaluate the negative log-likelihood
+#' 
+#' Evaluate the negative log-likelihood. If there is a linear fixed effects
+#' predictor term, this needs to be calculated "manually" prior to calling this 
+#' function (see example below)
+#' 
+#' 
+#' @param gp_model A \code{GPModel}
+#' @param cov_pars A \code{vector} with \code{numeric} elements. 
+#' Covariance parameters of Gaussian process and  random effects
+#' @param aux_pars A \code{vector} with \code{numeric} elements. 
+#' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of gamma likelihood)
+#' @inheritParams GPModel_shared_params
+#'
+#' @examples
+#' \donttest{
+#' data(GPBoost_data, package = "gpboost")
+#' gp_model <- GPModel(group_data = group_data, likelihood="gaussian")
+#' X1 <- cbind(rep(1,dim(X)[1]), X)
+#' coef <- c(0.1, 0.1, 0.1)
+#' fixed_effects <- as.numeric(X1 %*% coef)
+#' neg_log_likelihood(gp_model, y = y, cov_pars = c(0.1,1,1), 
+#'                    fixed_effects = fixed_effects)
+#' }
+#' @author Fabio Sigrist
+#' @export 
+#' 
+neg_log_likelihood <- function(gp_model
+                               , cov_pars
+                               , y
+                               , fixed_effects = NULL
+                               , aux_pars = NULL) UseMethod("neg_log_likelihood")
+
+#' Evaluate the negative log-likelihood
+#' 
+#' Evaluate the negative log-likelihood. If there is a linear fixed effects
+#' predictor term, this needs to be calculated "manually" prior to calling this 
+#' function (see example below)
+#' 
+#' @param gp_model A \code{GPModel}
+#' @param cov_pars A \code{vector} with \code{numeric} elements. 
+#' Covariance parameters of Gaussian process and  random effects
+#' @param aux_pars A \code{vector} with \code{numeric} elements. 
+#' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of gamma likelihood)
+#' @inheritParams GPModel_shared_params
+#'
+#' @return A \code{GPModel}
+#'
+#' @examples
+#' \donttest{
+#' data(GPBoost_data, package = "gpboost")
+#' gp_model <- GPModel(group_data = group_data, likelihood="gaussian")
+#' X1 <- cbind(rep(1,dim(X)[1]), X)
+#' coef <- c(0.1, 0.1, 0.1)
+#' fixed_effects <- as.numeric(X1 %*% coef)
+#' neg_log_likelihood(gp_model, y = y, cov_pars = c(0.1,1,1), 
+#'                    fixed_effects = fixed_effects)
+#' }
+#' @method neg_log_likelihood GPModel 
+#' @rdname neg_log_likelihood.GPModel
+#' @author Fabio Sigrist
+#' @export 
+#' 
+neg_log_likelihood.GPModel <- function(gp_model
+                                       , cov_pars
+                                       , y
+                                       , fixed_effects = NULL
+                                       , aux_pars = NULL) {
+  
+  if (!gpb.check.r6.class(gp_model, "GPModel")) {
+    stop("neg_log_likelihood.GPModel: gp_model needs to be a ", sQuote("GPModel"))
+  }
+  
+  gp_model$neg_log_likelihood(cov_pars = cov_pars, 
+                              y = y, 
+                              fixed_effects = fixed_effects,
+                              aux_pars = aux_pars)
 }
 
 #' Predict ("estimate") training data random effects for a \code{GPModel}

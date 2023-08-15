@@ -4764,7 +4764,8 @@ class GPModel(object):
         return self
 
     def neg_log_likelihood(self, cov_pars, y, fixed_effects=None, aux_pars=None):
-        """Evaluate the negative log-likelihood.
+        """Evaluate the negative log-likelihood. If there is a linear fixed effects predictor term, this needs to be
+        calculated "manually" prior to calling this function (see example below)
 
         Parameters
         ----------
@@ -4773,8 +4774,9 @@ class GPModel(object):
         y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
             Response variable data
         fixed_effects : numpy 1-D array or None, optional (default=None)
-            Additional fixed effects component of location parameter for observed data.
-            Used only for non-Gaussian data. For Gaussian data, this is ignored
+            Additional fixed effects component of location parameter for observed data. (length = number of data points)
+        aux_pars : numpy array or pandas DataFrame, optional (default = None)
+            Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of gamma likelihood) (can be None)
 
         Returns
         -------
@@ -4783,7 +4785,9 @@ class GPModel(object):
         Example
         -------
         >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
-        >>> gp_model.neg_log_likelihood(y=y, cov_pars=[1.,1.])
+        >>> coef = [0, 0.1]
+        >>> fixed_effects = X.dot(coef)
+        >>> gp_model.neg_log_likelihood(y=y, cov_pars=[1.,1.], fixed_effects=fixed_effects)
         """
         if ((self.num_cov_pars == 1 and self._get_likelihood_name() == "gaussian") or
                 (self.num_cov_pars == 0 and self._get_likelihood_name() != "gaussian")):

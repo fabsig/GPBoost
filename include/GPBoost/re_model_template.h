@@ -1588,7 +1588,7 @@ namespace GPBoost {
 				else {
 					CalcYAux(1.);//y_aux = Psi^-1 * y
 				}
-				EvalNegLogLikelihood(nullptr, cov_pars.data(), neg_log_likelihood_, true, true, true);
+				EvalNegLogLikelihood(nullptr, cov_pars.data(), nullptr, neg_log_likelihood_, true, true, true);
 			}//end gauss_likelihood_
 			else {//not gauss_likelihood_
 				if (gp_approx_ == "vecchia") {
@@ -1630,6 +1630,7 @@ namespace GPBoost {
 		* \brief Calculate the value of the negative log-likelihood
 		* \param y_data Response variable data
 		* \param cov_pars Values for covariance parameters of RE components
+		* \param fixed_effects Externally provided fixed effects component of location parameter
 		* \param[out] negll Negative log-likelihood
 		* \param CalcCovFactor_already_done If true, it is assumed that the covariance matrix has already been factorized
 		* \param CalcYAux_already_done If true, it is assumed that y_aux_=Psi^-1y_ has already been calculated (only relevant if not only_grouped_REs_use_woodbury_identity_)
@@ -1637,13 +1638,27 @@ namespace GPBoost {
 		*/
 		void EvalNegLogLikelihood(const double* y_data,
 			const double* cov_pars,
+			const double* fixed_effects,
 			double& negll,
 			bool CalcCovFactor_already_done,
 			bool CalcYAux_already_done,
 			bool CalcYtilde_already_done) {
 			CHECK(!(CalcYAux_already_done && !CalcCovFactor_already_done));// CalcYAux_already_done && !CalcCovFactor_already_done makes no sense
-			if (y_data != nullptr) {
-				SetY(y_data);
+			if (fixed_effects != nullptr) {
+				if (y_data == nullptr) {
+					Log::REFatal("EvalNegLogLikelihood: 'y_data' cannot nullptr when 'fixed_effects' is provided ");
+				}
+				vec_t y_minus_lp(num_data_);
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_data_; ++i) {
+					y_minus_lp[i] = y_data[i] - fixed_effects[i];
+				}
+				SetY(y_minus_lp.data());
+			}
+			else {
+				if (y_data != nullptr) {
+					SetY(y_data);
+				}
 			}
 			if (!CalcCovFactor_already_done) {
 				const vec_t cov_pars_vec = Eigen::Map<const vec_t>(cov_pars, num_cov_par_);

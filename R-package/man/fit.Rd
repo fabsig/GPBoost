@@ -108,7 +108,7 @@ fixed effects linear regression term (if there is one)}
    }
 }}
 
-\item{fixed_effects}{A \code{vector} of optional external fixed effects which are held fixed during training.}
+\item{fixed_effects}{A \code{vector} of optional external fixed effects (length = number of data points)}
 }
 \description{
 Generic 'fit' method for a \code{GPModel}

@@ -566,26 +566,32 @@ namespace GPBoost {
 
 		if (matrix_format_ == "sp_mat_t") {
 			if (re_model_sp_->gauss_likelihood_) {
-				re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
+				re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), fixed_effects, 
+					negll, false, false, false);
 			}
 			else {
-				re_model_sp_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+				re_model_sp_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, 
+					fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
 			}
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			if (re_model_sp_rm_->gauss_likelihood_) {
-				re_model_sp_rm_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
+				re_model_sp_rm_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), fixed_effects, 
+					negll, false, false, false);
 			}
 			else {
-				re_model_sp_rm_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+				re_model_sp_rm_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, 
+					fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
 			}
 		}
 		else {
 			if (re_model_den_->gauss_likelihood_) {
-				re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, false, false, false);
+				re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), fixed_effects, 
+					negll, false, false, false);
 			}
 			else {
-				re_model_den_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+				re_model_den_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, 
+					fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
 			}
 		}
 		covariance_matrix_has_been_factorized_ = false;

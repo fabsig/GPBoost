@@ -221,16 +221,12 @@ eval_nll <- function(pars, gp_model, y, X, likelihood) {
     coef <- pars[-1]
     cov_pars <- exp(pars[1])
   }
-  fixed_effects <- as.numeric(X%*%coef)
-  if (likelihood == "gaussian") {
-    y <- y - fixed_effects
-    fixed_effects <- NULL
-  }
-  gp_model$neg_log_likelihood(cov_pars=cov_pars, y=y, fixed_effects=fixed_effects)
+  fixed_effects <- as.numeric(X %*% coef)
+  neg_log_likelihood(gp_model, cov_pars=cov_pars, y=y, fixed_effects=fixed_effects)
 }
 pars <- c(init_cov_pars, rep(0,dim(X)[2]))
 eval_nll(pars = pars, gp_model = gp_model, X = X, y=y, likelihood = likelihood)
-# Do optimization using optim and e.g. Nelder-Mead
+# Do optimization using optim and, e.g., Nelder-Mead
 opt <- optim(par = pars, fn = eval_nll, gp_model = gp_model, y = y, X = X, 
              likelihood = likelihood, method = "Nelder-Mead")
 opt
@@ -428,8 +424,8 @@ if (likelihood == "gamma") {
 } else {
   aux_pars <- NULL
 }
-gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y_train, aux_pars = aux_pars)
-# Do optimization using optim and e.g. Nelder-Mead
+neg_log_likelihood(gp_model, cov_pars = cov_pars, y = y_train, aux_pars = aux_pars)
+# Do optimization using optim and, e.g., Nelder-Mead
 eval_nll <- function(pars, gp_model, y, X, likelihood) {
   if (likelihood == "gaussian") {
     cov_pars <- exp(pars[1:3])
@@ -441,7 +437,7 @@ eval_nll <- function(pars, gp_model, y, X, likelihood) {
   } else {
     aux_pars <- NULL 
   }
-  gp_model$neg_log_likelihood(cov_pars=cov_pars, y=y, aux_pars=aux_pars)
+  neg_log_likelihood(gp_model, cov_pars=cov_pars, y=y, aux_pars=aux_pars)
 }
 init_pars <- log(c(cov_pars, aux_pars))
 opt <- optim(par = init_pars, fn = eval_nll, y = y_train, gp_model=gp_model, 
