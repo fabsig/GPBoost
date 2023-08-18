@@ -96,7 +96,7 @@ fixed effects linear regression term (if there is one)}
     Rank of the pivoted Cholesky decomposition used as 
     preconditioner in conjugate gradient algorithms }
     \item{cg_preconditioner_type: \code{string} 
-    (default = "piv_chol_on_Sigma" for non-Gaussian likelihoods and a Vecchia-Laplace approximation). 
+    (default = "Sigma_inv_plus_BtWB" for non-Gaussian likelihoods and a Vecchia-Laplace approximation). 
     Type of preconditioner used for conjugate gradient algorithms.
     Options for non-Gaussian likelihoods and a Vecchia-Laplace approximation: 
     \itemize{

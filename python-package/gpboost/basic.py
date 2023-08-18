@@ -4678,7 +4678,7 @@ class GPModel(object):
                     Seed number to generate random vectors (e.g., Rademacher)
                 - piv_chol_rank: integer, optional (default = 50)
                     Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms
-                - cg_preconditioner_type: string, optional (default = "piv_chol_on_Sigma" for non-Gaussian likelihoods and a Vecchia-Laplace approximation)
+                - cg_preconditioner_type: string, optional (default = "Sigma_inv_plus_BtWB" for non-Gaussian likelihoods and a Vecchia-Laplace approximation)
                     Type of preconditioner used for conjugate gradient algorithms.
                     Options for non-Gaussian likelihoods and a Vecchia-Laplace approximation:
 
@@ -4905,7 +4905,7 @@ class GPModel(object):
                     Seed number to generate random vectors (e.g., Rademacher)
                 - piv_chol_rank: integer, optional (default = 50)
                     Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms
-                - cg_preconditioner_type: string, optional (default = "piv_chol_on_Sigma" for non-Gaussian likelihoods and a Vecchia-Laplace approximation)
+                - cg_preconditioner_type: string, optional (default = "Sigma_inv_plus_BtWB" for non-Gaussian likelihoods and a Vecchia-Laplace approximation)
                     Type of preconditioner used for conjugate gradient algorithms.
                     Options for non-Gaussian likelihoods and a Vecchia-Laplace approximation:
 

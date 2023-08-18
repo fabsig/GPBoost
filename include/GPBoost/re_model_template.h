@@ -3948,7 +3948,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					cg_preconditioner_type_ = "none";
 				}
 				else {
-					cg_preconditioner_type_ = "piv_chol_on_Sigma";
+					cg_preconditioner_type_ = "Sigma_inv_plus_BtWB";
 				}
 				CheckPreconditionerType();
 			}

@@ -795,7 +795,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              num_neighbors = n-1, vecchia_ordering = "none",
                                              y = y, matrix_inversion_method = inv_method,
                                              params = list(optimizer_cov = "gradient_descent", 
-                                                           use_nesterov_acc = FALSE, lr_cov=0.01, init_cov_pars=init_cov_pars)), file='NUL')
+                                                           use_nesterov_acc = FALSE, lr_cov = 0.01, 
+                                                           init_cov_pars = init_cov_pars,
+                                                           cg_preconditioner_type = "piv_chol_on_Sigma")), file='NUL')
       coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
       gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
                                    num_neighbors_pred = n+2, nsim_var_pred = 100000)

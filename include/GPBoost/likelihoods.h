@@ -1510,7 +1510,7 @@ namespace GPBoost {
 		* \param num_data Number of data points
 		* \param B Matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
 		* \param D_inv Diagonal matrix D^-1 in Vecchia approximation Sigma^-1 = B^T D^-1 B
-		* \param first_update If true, the covariance parameters or linear coefficients were updated for the first time and the max. number of iterations for the CG should be decreased
+		* \param first_update If true, the covariance parameters or linear regression coefficients are updated for the first time and the max. number of iterations for the CG should be decreased
 		* \param Sigma_L_k Pivoted Cholseky decomposition of Sigma - Version Habrecht: matrix of dimension nxk with rank(Sigma_L_k_) <= piv_chol_rank generated in re_model_template.h
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
@@ -1646,11 +1646,16 @@ namespace GPBoost {
 					rhs.array() = second_deriv_neg_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
 					if (matrix_inversion_method_ == "iterative") {
 						if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-							I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
-							I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * second_deriv_neg_ll_.asDiagonal() * Sigma_L_k_;
-							chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
-							CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, mode_new, has_NA_or_Inf,
-								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
+							if ((second_deriv_neg_ll_.array() > 1e10).any()) {
+								has_NA_or_Inf = true;// the inversion of the preconditioner with the Woodbury identity can be numerically unstable when second_deriv_neg_ll_ is very large
+							}
+							else {
+								I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
+								I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * second_deriv_neg_ll_.asDiagonal() * Sigma_L_k_;
+								chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
+								CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, mode_new, has_NA_or_Inf,
+									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
+							}
 						}
 						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
 							D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).asDiagonal() * B_rm_;
@@ -1805,6 +1810,7 @@ namespace GPBoost {
 					na_or_inf_during_last_call_to_find_mode_ = false;
 				}
 			}
+			//Log::REInfo("FindModePostRandEffCalcMLLVecchia: finished after %d iterations ", it);//for debugging
 		}//end FindModePostRandEffCalcMLLVecchia
 
 		/*!

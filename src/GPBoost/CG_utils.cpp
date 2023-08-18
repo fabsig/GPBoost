@@ -172,7 +172,7 @@ namespace GPBoost {
 				return;
 			}
 			if (r_squared_norm < delta_conv) {
-				//Log::REInfo("Number CG iterations: %i", j + 1);
+				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				early_stop_alg = true;
 			}
 
