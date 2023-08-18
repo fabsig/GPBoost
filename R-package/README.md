@@ -17,6 +17,7 @@ This is the R package implementation of the GPBoost library. See https://github.
   * [Installation from CRAN](#installation-from-cran)
   * [Installation from source](#installation-from-source)
 * [Testing](#testing)
+* [Preparing a CRAN package](#preparing-a-cran-package)
 
 ## Examples
 
@@ -120,3 +121,31 @@ There is currently no integration service set up that automatically runs unit te
 Sys.setenv(GPBOOST_ALL_TESTS = "GPBOOST_ALL_TESTS")
 ```
 before running the tests in the `R-package/tests/testthat` directory.
+
+## Preparing a CRAN package
+
+This section is primarily for maintainers, but may help users and contributors to understand the structure of the R package. Most of `GPBoost` uses `CMake` to handle tasks like setting compiler and linker flags, including header file locations, and linking to other libraries. Because CRAN packages typically do not assume the presence of `CMake`, the R package uses an alternative method that is in the CRAN-supported toolchain for building R packages with C++ code: `Autoconf`. For more information on this approach, see ["Writing R Extensions"](https://cran.r-project.org/doc/manuals/r-release/R-exts.html#Configure-and-cleanup).
+
+### Build a CRAN Package
+
+From the root of the repository, run the following:
+```shell
+sh build-cran-package.sh
+```
+
+This will create a file `gpboost_${VERSION}.tar.gz`, where `VERSION` is the version of `GPBoost`.
+
+### Installation of a CRAN package
+
+After building the package, you can install it with the following command:
+
+```shell
+R CMD INSTALL gpboost_*.tar.gz
+```
+
+### Testing a CRAN package
+
+After building the package, you can test the CRAN package as follows:
+```shell
+R CMD check --as-cran gpboost_*.tar.gz
+```
