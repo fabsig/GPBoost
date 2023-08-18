@@ -209,7 +209,6 @@ namespace GPBoost {
 	* \param num_data n-Dimension
 	* \param err_tol Error tolerance - stop the algorithm if the sum of the diagonal elements of the Schur complement is smaller than err_tol
 	*/
-
 	template<typename T_mat>
 	void PivotedCholsekyFactorizationSigma(
 		RECompBase<T_mat>* re_comp,
@@ -273,6 +272,6 @@ namespace GPBoost {
 			Sigma_L_k(pi(m), m) = sqrt(diag(pi(m)));
 			m = m + 1;
 		}
-	}
+	}//end PivotedCholsekyFactorizationSigma
 }
 #endif   // GPB_CG_UTILS_

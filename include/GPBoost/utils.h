@@ -130,7 +130,7 @@ namespace GPBoost {
 		}
 	}//end SampleIntNoReplaceExcludeSomeIndices
 
-		/*!
+	/*!
 	* \brief Sample k integers from 0:(N-1) without replacement
 	*		Source: see https://www.nowherenearithaca.com/2013/05/robert-floyds-tiny-and-beautiful.html and https://stackoverflow.com/questions/28287138/c-randomly-sample-k-numbers-from-range-0n-1-n-k-without-replacement
 	* \param N Total number of integers from which to sample
