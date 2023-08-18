@@ -1512,6 +1512,7 @@ namespace GPBoost {
 		* \param D_inv Diagonal matrix D^-1 in Vecchia approximation Sigma^-1 = B^T D^-1 B
 		* \param first_update If true, the covariance parameters or linear regression coefficients are updated for the first time and the max. number of iterations for the CG should be decreased
 		* \param Sigma_L_k Pivoted Cholseky decomposition of Sigma - Version Habrecht: matrix of dimension nxk with rank(Sigma_L_k_) <= piv_chol_rank generated in re_model_template.h
+		* \param calc_mll If true the marginal log-likelihood is also calculated (only relevant for matrix_inversion_method_ == "iterative")
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
 		void FindModePostRandEffCalcMLLVecchia(const double* y_data,
@@ -1522,6 +1523,7 @@ namespace GPBoost {
 			const sp_mat_t& D_inv,
 			const bool first_update,
 			const den_mat_t& Sigma_L_k,
+			bool calc_mll,
 			double& approx_marginal_ll) {
 			// Initialize variables
 			if (!mode_initialized_) {
@@ -1749,6 +1751,8 @@ namespace GPBoost {
 				na_or_inf_during_last_call_to_find_mode_ = true;
 			}
 			else {
+				mode_has_been_calculated_ = true;
+				na_or_inf_during_last_call_to_find_mode_ = false;
 				if (no_fixed_effects) {
 					CalcFirstDerivLogLik(y_data, y_data_int, mode_.data(), num_data);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 					CalcSecondDerivNegLogLik(y_data, y_data_int, mode_.data(), num_data);
@@ -1758,43 +1762,43 @@ namespace GPBoost {
 					CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 				}
 				if (matrix_inversion_method_ == "iterative") {
-					//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
-					if (!saved_rand_vec_trace_) {
-						//Seed Generator
-						if (!cg_generator_seeded_) {
-							cg_generator_ = RNG_t(seed_rand_vec_trace_);
-							cg_generator_seeded_ = true;
+					if (calc_mll) {//calculate determinant term for approx_marginal_ll
+						//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
+						if (!saved_rand_vec_trace_) {
+							//Seed Generator
+							if (!cg_generator_seeded_) {
+								cg_generator_ = RNG_t(seed_rand_vec_trace_);
+								cg_generator_seeded_ = true;
+							}
+							//Dependent on the preconditioner: Generate t (= num_rand_vec_trace_) or 2*t random vectors
+							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+								rand_vec_trace_I_.resize(num_data, 2 * num_rand_vec_trace_);
+								WI_plus_Sigma_inv_Z_.resize(num_data, num_rand_vec_trace_);
+							}
+							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+								rand_vec_trace_I_.resize(num_data, num_rand_vec_trace_);
+								SigmaI_plus_W_inv_Z_.resize(num_data, num_rand_vec_trace_);
+							}
+							else {
+								Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+							}
+							GenRandVecTrace(cg_generator_, rand_vec_trace_I_);
+							if (reuse_rand_vec_trace_) {
+								saved_rand_vec_trace_ = true;
+							}
+							rand_vec_trace_P_.resize(num_data, num_rand_vec_trace_);
 						}
-						//Dependent on the preconditioner: Generate t (= num_rand_vec_trace_) or 2*t random vectors
-						if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-							rand_vec_trace_I_.resize(num_data, 2 * num_rand_vec_trace_);
-							WI_plus_Sigma_inv_Z_.resize(num_data, num_rand_vec_trace_);
-						}
-						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-							rand_vec_trace_I_.resize(num_data, num_rand_vec_trace_);
-							SigmaI_plus_W_inv_Z_.resize(num_data, num_rand_vec_trace_);
+						double log_det_Sigma_W_plus_I;
+						CalcLogDetStoch(num_data, cg_max_num_it_tridiag, I_k_plus_Sigma_L_kt_W_Sigma_L_k, has_NA_or_Inf, log_det_Sigma_W_plus_I);
+						if (has_NA_or_Inf) {
+							approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
+							Log::REDebug(NA_OR_INF_WARNING_);
+							na_or_inf_during_last_call_to_find_mode_ = true;
 						}
 						else {
-							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+							approx_marginal_ll -= 0.5 * log_det_Sigma_W_plus_I;
 						}
-						GenRandVecTrace(cg_generator_, rand_vec_trace_I_);
-						if (reuse_rand_vec_trace_) {
-							saved_rand_vec_trace_ = true;
-						}
-						rand_vec_trace_P_.resize(num_data, num_rand_vec_trace_);
-					}
-					double log_det_Sigma_W_plus_I;
-					CalcLogDetStoch(num_data, cg_max_num_it_tridiag, I_k_plus_Sigma_L_kt_W_Sigma_L_k, has_NA_or_Inf, log_det_Sigma_W_plus_I);
-					if (has_NA_or_Inf) {
-						approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
-						Log::REDebug(NA_OR_INF_WARNING_);
-						na_or_inf_during_last_call_to_find_mode_ = true;
-					}
-					else {
-						approx_marginal_ll -= 0.5 * log_det_Sigma_W_plus_I;
-						mode_has_been_calculated_ = true;
-						na_or_inf_during_last_call_to_find_mode_ = false;
-					}
+					}//end calculate determinant term for approx_marginal_ll
 				}//end iterative
 				else {
 					SigmaI_plus_W = SigmaI;
@@ -1806,8 +1810,6 @@ namespace GPBoost {
 					}
 					chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
 					approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
-					mode_has_been_calculated_ = true;
-					na_or_inf_during_last_call_to_find_mode_ = false;
 				}
 			}
 			//Log::REInfo("FindModePostRandEffCalcMLLVecchia: finished after %d iterations ", it);//for debugging
@@ -2372,7 +2374,7 @@ namespace GPBoost {
 			int num_comps_total) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, false, Sigma_L_k_, mll);
+				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, false, Sigma_L_k_, true, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
@@ -2843,7 +2845,7 @@ namespace GPBoost {
 			bool CondObsOnly) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, false, Sigma_L_k_, mll);
+				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, num_data, B, D_inv, false, Sigma_L_k_, false, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);

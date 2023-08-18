@@ -631,7 +631,7 @@ namespace GPBoost {
 						re_model_sp_->CalcSigmaComps();
 						re_model_sp_->CalcCovMatrixNonGauss();
 					}
-					re_model_sp_->CalcModePostRandEff(fixed_effects);
+					re_model_sp_->CalcModePostRandEffCalcMLL(fixed_effects, true);
 				}//end gauss_likelihood_
 			}//end calc_cov_factor
 			//2. Calculate gradient
@@ -659,7 +659,7 @@ namespace GPBoost {
 						re_model_sp_rm_->CalcSigmaComps();
 						re_model_sp_rm_->CalcCovMatrixNonGauss();
 					}
-					re_model_sp_rm_->CalcModePostRandEff(fixed_effects);
+					re_model_sp_rm_->CalcModePostRandEffCalcMLL(fixed_effects, true);
 				}//end gauss_likelihood_
 			}//end calc_cov_factor
 			//2. Calculate gradient
@@ -687,7 +687,7 @@ namespace GPBoost {
 						re_model_den_->CalcSigmaComps();
 						re_model_den_->CalcCovMatrixNonGauss();
 					}
-					re_model_den_->CalcModePostRandEff(fixed_effects);
+					re_model_den_->CalcModePostRandEffCalcMLL(fixed_effects, true);
 				}//end gauss_likelihood_
 			}//end calc_cov_factor
 			//2. Calculate gradient

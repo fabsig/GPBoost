@@ -1598,7 +1598,7 @@ namespace GPBoost {
 					CalcSigmaComps();
 					CalcCovMatrixNonGauss();
 				}
-				neg_log_likelihood_ = -CalcModePostRandEff(fixed_effects);//calculate mode and approximate marginal likelihood
+				neg_log_likelihood_ = -CalcModePostRandEffCalcMLL(fixed_effects, true);//calculate mode and approximate marginal likelihood
 			}//end not gauss_likelihood_
 		}//end CalcCovFactorOrModeAndNegLL
 
@@ -1769,7 +1769,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						CalcCovMatrixNonGauss();
 					}
 				}//end InitializeModeCovMat
-				negll = -CalcModePostRandEff(fixed_effects);
+				negll = -CalcModePostRandEffCalcMLL(fixed_effects, true);
 			}//end not CalcModePostRandEff_already_done
 		}//end EvalLaplaceApproxNegLogLikelihood
 
@@ -2071,7 +2071,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			}
 			//Factorize covariance matrix and calculate Psi^{-1}y_obs or calculate Laplace approximation (if required)
 			if (pred_for_observed_data) {
-				SetYCalcCovCalcYAux(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects, false);
+				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects, false);
 			}
 			// Loop over different clusters to calculate predictions
 			for (const auto& cluster_i : unique_clusters_pred) {
@@ -2526,7 +2526,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			if (gauss_likelihood_ && gp_approx_ == "vecchia") {
 				calc_cov_factor = true;//recalculate Vecchia approximation since it might have been done (saved in B_) with a different nugget effect if calc_std_dev == true in CalcStdDevCovPar
 			}
-			SetYCalcCovCalcYAux(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects, true);
+			SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects, true);
 			// Loop over different clusters to calculate predictions
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gauss_likelihood_) {
@@ -4637,7 +4637,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				for (const auto& cluster_i : unique_clusters_) {
 					likelihood_[cluster_i]->InitializeModeAvec();
 				}
-				CalcModePostRandEff(fixed_effects);
+				CalcModePostRandEffCalcMLL(fixed_effects, false);
 			}
 		}//end RecalculateModeLaplaceApprox
 
@@ -5258,7 +5258,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					EvalNegLogLikelihoodOnlyUpdateFixedEffects(sigma2, neg_log_likelihood_after_lin_coef_update_);
 				}//end if gauss_likelihood_
 				else {//non-Gaussian likelihoods
-					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEff(fixed_effects_vec.data());//calculate mode and approximate marginal likelihood
+					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEffCalcMLL(fixed_effects_vec.data(), true);//calculate mode and approximate marginal likelihood
 				}
 				// Safeguard against too large steps by halving the learning rate when the objective increases
 				if (neg_log_likelihood_after_lin_coef_update_ <= neg_log_likelihood_lag1_) {
@@ -5342,11 +5342,13 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		}//end CalcCovMatrixNonGauss
 
 		/*!
-		* \brief Calculate the mode of the posterior of the latent random effects for use in the Laplace approximation. This function is only used for non-Gaussian likelihoods
+		* \brief Calculate the mode of the posterior of the latent random effects and the Laplace-approximated marginal log-likelihood. This function is only used for non-Gaussian likelihoods
 		* \param fixed_effects Fixed effects component of location parameter
+		* \param calc_mll If true the marginal log-likelihood is also calculated (only relevant for gp_approx_ == "vecchia" && matrix_inversion_method_ == "iterative")
 		* \return Approximate marginal log-likelihood evaluated at the mode
 		*/
-		double CalcModePostRandEff(const double* fixed_effects) {
+		double CalcModePostRandEffCalcMLL(const double* fixed_effects,
+			bool calc_mll) {
 			double mll = 0.;
 			double mll_cluster_i;
 			const double* fixed_effects_cluster_i_ptr = nullptr;
@@ -5379,6 +5381,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						D_inv_[cluster_i],
 						first_update_,
 						Sigma_L_k,
+						calc_mll,
 						mll_cluster_i);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
@@ -5421,7 +5424,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			}
 			num_ll_evaluations_++;
 			return(mll);
-		}//CalcModePostRandEff
+		}//CalcModePostRandEffCalcMLL
 
 		/*!
 		* \brief Calculate matrices A and D_inv as well as their derivatives for the Vecchia approximation for one cluster (independent realization of GP)
@@ -6261,7 +6264,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		* \param predict_training_data_random_effects If true, the goal is to predict training data random effects
 		 */
-		void SetYCalcCovCalcYAux(const vec_t& cov_pars,
+		void SetYCalcCovCalcYAuxForPred(const vec_t& cov_pars,
 			const vec_t& coef,
 			const double* y_obs,
 			bool calc_cov_factor,
@@ -6337,14 +6340,14 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 							CalcSigmaComps();
 							CalcCovMatrixNonGauss();
 						}
-						CalcModePostRandEff(fixed_effects_ptr);
+						CalcModePostRandEffCalcMLL(fixed_effects_ptr, false);
 					}//end not gauss_likelihood_
 				}//end if calc_cov_factor
 				if (gauss_likelihood_) {
 					CalcYAux(1.);//note: in some cases a call to CalcYAux() could be avoided (e.g. no covariates and not GPBoost algorithm)...
 				}
 			}//end not (gp_approx_ == "vecchia" && gauss_likelihood_)
-		}// end SetYCalcCovCalcYAux
+		}// end SetYCalcCovCalcYAuxForPred
 
 		/*!
 		 * \brief Calculate predictions (conditional mean and covariance matrix) for one cluster
