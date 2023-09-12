@@ -1,7 +1,7 @@
 Comments on computational efficiency for GPBoost
 ================================================
 
-Estimation/training of random effects models and Gaussian process (GP) models, in particular, can be computationally demanding, and this issue translates to the GPBoost algorithm. Below, we list some strategies for computationally efficient inference.
+Estimation/training of random effects models and Gaussian process (GP) models, in particular, can be computationally demanding for large data (not just in GPBoost). Below, we list some strategies for computationally efficient inference.
 
 Adjusting the way how hyperparameters (*of random effects / GP models*) are chosen
 ----------------------------------------------------------------------------------
@@ -22,10 +22,15 @@ Adjusting the way how hyperparameters (*of random effects / GP models*) are chos
 
 Adjusting Gaussian process models / using approximate models
 ------------------------------------------------------------
-* For Gaussian process models, the compactly supported covariance functions (``cov_function``) options ``wendland`` and ``exponential_tapered`` can speed up computations and reduce memory usage. The taper range parameter ``cov_fct_taper_range`` controls the amount of sparsity in the covariance matrices and thus the computational cost and memory usage. See `here <https://projecteuclid.org/journals/annals-of-statistics/volume-47/issue-2/Estimation-and-prediction-using-generalized-Wendland-covariance-functions-under-fixed/10.1214/17-AOS1652.short>`__ for more information on the methodological background.
 
-* The GPBoost library also implements a Vecchia approximation for Gaussian processes. This option is recommended for Gaussian processes with Gaussian likelihoods and low-dimensional input features. For non-Gaussian likelihoods, it currently does not yet scale as well. To activate this, set ``gp_approx = vecchia`` to and choose the ``num_neighbors`` parameter. The smaller the ``num_neighbors``, the faster the code will run.  See `here <http://arxiv.org/abs/2004.02653>`__ for more information on the methodological background.
+* **In brief: try** ``GPModel(..., gp_approx = "vecchia")`` or ``GPModel(..., gp_approx = "tapering")`` for Gaussian process models
 
-* Both the Vecchia approximation and covariance tapering are techniques that work well for low-dimensional input features (e.g., spatial data). For higher-dimensional input features, it is less clear how well they perform. I.e., the GPBoost library currently does not implement a useful large-data approximation for non-low-dimensional input features for Gaussian processes. Work on this is in progress.
+* The GPBoost library implements Vecchia approximations for Gaussian processes. This option is recommended for Gaussian processes with Gaussian likelihoods and low-dimensional input features such as two-dimensional spatial data. To activate this, set ``gp_approx = "vecchia"``. The parameter ``num_neighbors`` controls a trade-off between runtime and accuracy. The smaller the ``num_neighbors``, the faster the code will run.  See `here <http://arxiv.org/abs/2004.02653>`__ for more information on the methodological background.
+
+
+* Alternatively, covariance tapering (``gp_approx = "tapering"``) and compactly supported covariance functions (``cov_function = "wendland"``) can speed up computations and reduce memory usage. The taper range parameter ``cov_fct_taper_range`` controls the amount of sparsity in the covariance matrices and thus the computational cost and memory usage. See `here <https://projecteuclid.org/journals/annals-of-statistics/volume-47/issue-2/Estimation-and-prediction-using-generalized-Wendland-covariance-functions-under-fixed/10.1214/17-AOS1652.short>`__ for more information on the methodological background.
+
+
+* Both the Vecchia approximation and covariance tapering are techniques that work well for low-dimensional input features (e.g., spatial data). For higher-dimensional input features, it is less clear how well they perform. Work on this is in progress.
 
 *Note: For Gaussian processes, there exist various other possible strategies (low-rank approximations, basis function expansions, spectral methods, full-scale approximations, etc.) such that computations scale well to large data which are currently not implemented. Contributions and suggestions are welcome.* 
