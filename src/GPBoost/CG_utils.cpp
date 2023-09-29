@@ -35,10 +35,7 @@ namespace GPBoost {
 		vec_t r, r_old;
 		vec_t z, z_old;
 		vec_t h, v, B_invt_r;
-		bool early_stop_alg = false;
-		double a = 0;
-		double b = 1;
-		double r_norm;
+		double a, b, r_norm;
 		
 		//Avoid numerical instabilites when rhs is de facto 0
 		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
@@ -49,10 +46,13 @@ namespace GPBoost {
 		//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
 		if (find_mode_it == 0) {
 			u.setZero();
+			//r = rhs - A * u
+			r = rhs; //since u is 0
 		}
-
-		//r = rhs - A * u
-		r = rhs - ((B_t_D_inv_rm * (B_rm * u)) + diag_W.cwiseProduct(u));
+		else {
+			//r = rhs - A * u
+			r = rhs - ((B_t_D_inv_rm * (B_rm * u)) + diag_W.cwiseProduct(u));
+		}
 
 		//z = P^(-1) r, where P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
 		B_invt_r = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(r);
@@ -79,7 +79,7 @@ namespace GPBoost {
 			}
 			if (r_norm < delta_conv) {
 				//Log::REInfo("Number CG iterations: %i", j + 1);
-				early_stop_alg = true;
+				return;
 			}
 
 			z_old = z;
@@ -92,10 +92,6 @@ namespace GPBoost {
 			b /= r_old.transpose() * z_old;
 
 			h = z + b * h;
-
-			if (early_stop_alg) {
-				return;
-			}
 		}
 		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
@@ -119,20 +115,12 @@ namespace GPBoost {
 		vec_t r, r_old;
 		vec_t z, z_old;
 		vec_t h, v, diag_W_inv, B_invt_u, B_invt_h, B_invt_rhs, Sigma_Lkt_W_r, Sigma_rhs, W_r;
-		bool early_stop_alg = false;
-		double a = 0;
-		double b = 1;
-		double r_norm;
+		double a, b, r_norm;
 
 		//Avoid numerical instabilites when rhs is de facto 0
 		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
 			u.setZero();
 			return;
-		}
-
-		//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
-		if (find_mode_it == 0) {
-			u.setZero();
 		}
 
 		diag_W_inv = diag_W.cwiseInverse();
@@ -141,9 +129,17 @@ namespace GPBoost {
 		B_invt_rhs = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rhs);
 		Sigma_rhs = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_rhs);
 
-		//r = Sigma * rhs - (W^(-1) + Sigma) * u
-		B_invt_u = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(u);
-		r = Sigma_rhs - (D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_u) + diag_W_inv.cwiseProduct(u));
+		//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
+		if (find_mode_it == 0) {
+			u.setZero();
+			//r = Sigma * rhs - (W^(-1) + Sigma) * u
+			r = Sigma_rhs; //since u is 0
+		}
+		else {
+			//r = Sigma * rhs - (W^(-1) + Sigma) * u
+			B_invt_u = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(u);
+			r = Sigma_rhs - (D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_u) + diag_W_inv.cwiseProduct(u));
+		}
 
 		//z = P^(-1) r 
 		//P^(-1) = (W^(-1) + Sigma_L_k Sigma_L_k^T)^(-1) = W - W Sigma_L_k (I_k + Sigma_L_k^T W Sigma_L_k)^(-1) Sigma_L_k^T W
@@ -171,9 +167,15 @@ namespace GPBoost {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (r_norm < delta_conv) {
+			if (r_norm < delta_conv || (j + 1) == p) {
+				//u = W^(-1) u
+				u = diag_W_inv.cwiseProduct(u);
+				if ((j + 1) == p) {
+					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
+				}
 				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
-				early_stop_alg = true;
+				return;
 			}
 
 			z_old = z;
@@ -187,16 +189,6 @@ namespace GPBoost {
 			b /= r_old.transpose() * z_old;
 
 			h = z + b * h;
-
-			if (early_stop_alg || (j + 1) == p) {
-				//u = W^(-1) u
-				u = diag_W_inv.cwiseProduct(u);
-				if ((j + 1) == p) {
-					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
-				}
-				return;
-			}
 		}
 	} // end CGVecchiaLaplaceVecSigmaplusWinv
 
