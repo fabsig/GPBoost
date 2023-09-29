@@ -38,7 +38,7 @@ namespace GPBoost {
 		bool early_stop_alg = false;
 		double a = 0;
 		double b = 1;
-		double r_squared_norm;
+		double r_norm;
 		
 		//Avoid numerical instabilites when rhs is de facto 0
 		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
@@ -71,13 +71,13 @@ namespace GPBoost {
 			r_old = r;
 			r -= a * v;
 
-			r_squared_norm = r.squaredNorm();
-			//Log::REInfo("r.squaredNorm(): %g | Iteration: %i", r_squared_norm, j);
-			if (std::isnan(r_squared_norm) || std::isinf(r_squared_norm)) {
+			r_norm = r.norm();
+			//Log::REInfo("r.norm(): %g | Iteration: %i", r_norm, j);
+			if (std::isnan(r_norm) || std::isinf(r_norm)) {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (r_squared_norm < delta_conv) {
+			if (r_norm < delta_conv) {
 				//Log::REInfo("Number CG iterations: %i", j + 1);
 				early_stop_alg = true;
 			}
@@ -122,7 +122,7 @@ namespace GPBoost {
 		bool early_stop_alg = false;
 		double a = 0;
 		double b = 1;
-		double r_squared_norm;
+		double r_norm;
 
 		//Avoid numerical instabilites when rhs is de facto 0
 		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
@@ -166,12 +166,12 @@ namespace GPBoost {
 			r_old = r;
 			r -= a * v;
 
-			r_squared_norm = r.squaredNorm();
-			if (std::isnan(r_squared_norm) || std::isinf(r_squared_norm)) {
+			r_norm = r.norm();
+			if (std::isnan(r_norm) || std::isinf(r_norm)) {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (r_squared_norm < delta_conv) {
+			if (r_norm < delta_conv) {
 				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				early_stop_alg = true;
 			}
@@ -221,7 +221,7 @@ namespace GPBoost {
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
 		bool early_stop_alg = false;
-		double mean_squared_R_norm;
+		double mean_R_norm;
 
 		U.setZero();
 		v1.setOnes();
@@ -258,13 +258,13 @@ namespace GPBoost {
 			R_old = R;
 			R -= V * a.asDiagonal();
 
-			mean_squared_R_norm = R.colwise().squaredNorm().mean();
+			mean_R_norm = R.colwise().norm().mean();
 
-			if (std::isnan(mean_squared_R_norm) || std::isinf(mean_squared_R_norm)) {
+			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (mean_squared_R_norm < delta_conv) {
+			if (mean_R_norm < delta_conv) {
 				early_stop_alg = true;
 				//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
 			}
@@ -329,7 +329,7 @@ namespace GPBoost {
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
 		bool early_stop_alg = false;
-		double mean_squared_R_norm;
+		double mean_R_norm;
 
 		diag_W_inv = diag_W.cwiseInverse();
 		U.setZero();
@@ -372,13 +372,13 @@ namespace GPBoost {
 			R_old = R;
 			R -= V * a.asDiagonal();
 
-			mean_squared_R_norm = R.colwise().squaredNorm().mean();
+			mean_R_norm = R.colwise().norm().mean();
 
-			if (std::isnan(mean_squared_R_norm) || std::isinf(mean_squared_R_norm)) {
+			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (mean_squared_R_norm < delta_conv) {
+			if (mean_R_norm < delta_conv) {
 				early_stop_alg = true;
 				//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
 			}
