@@ -6,7 +6,6 @@ build:
 formats:
   - pdf
 python:
-  version: 3
   install:
     - requirements: docs/requirements.txt
 sphinx:
