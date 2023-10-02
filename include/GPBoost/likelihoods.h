@@ -3459,7 +3459,7 @@ namespace GPBoost {
 				PI_Z.resize(num_data, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					B_invt_Z.col(i) = B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rand_vec_trace_P_.col(i));
+					B_invt_Z.col(i) = B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>().solve(rand_vec_trace_P_.col(i));
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
@@ -3516,20 +3516,20 @@ namespace GPBoost {
 				//Stochastic Trace: Calculate tr((Sigma + W^(-1))^(-1) dSigma/dtheta_j)
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					B_invt_WI_plus_Sigma_inv_Z.col(i) = B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(WI_plus_Sigma_inv_Z_.col(i));
+					B_invt_WI_plus_Sigma_inv_Z.col(i) = B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>().solve(WI_plus_Sigma_inv_Z_.col(i));
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					Sigma_WI_plus_Sigma_inv_Z.col(i) = B_t_D_inv_rm_.transpose().triangularView<Eigen::UpLoType::Lower>().solve(B_invt_WI_plus_Sigma_inv_Z.col(i));
+					Sigma_WI_plus_Sigma_inv_Z.col(i) = B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>().solve(B_invt_WI_plus_Sigma_inv_Z.col(i));
 				}
 				den_mat_t PI_Z_local = second_deriv_neg_ll_.asDiagonal() * WI_PI_Z;
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					B_invt_PI_Z.col(i) = B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(PI_Z_local.col(i));
+					B_invt_PI_Z.col(i) = B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>().solve(PI_Z_local.col(i));
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					Sigma_PI_Z.col(i) = B_t_D_inv_rm_.transpose().triangularView<Eigen::UpLoType::Lower>().solve(B_invt_PI_Z.col(i));
+					Sigma_PI_Z.col(i) = B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>().solve(B_invt_PI_Z.col(i));
 				}
 				d_log_det_Sigma_W_plus_I_d_cov_pars = -1 * ((Sigma_WI_plus_Sigma_inv_Z.cwiseProduct(SigmaI_deriv_rm * Sigma_PI_Z)).colwise().sum()).mean();
 				//no variance reduction since dSigma_L_k/d_theta_j can't be solved analytically
