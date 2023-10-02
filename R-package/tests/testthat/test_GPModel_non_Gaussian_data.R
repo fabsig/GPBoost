@@ -735,7 +735,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params_vecchia <- list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
                            lr_cov = 0.1, use_nesterov_acc = FALSE,
                            convergence_criterion = "relative_change_in_parameters",
-                           cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
+                           cg_delta_conv = sqrt(1e-6), num_rand_vec_trace = 500,
                            cg_preconditioner_type = "piv_chol_on_Sigma")
 
     for(inv_method in c("cholesky", "iterative")){
@@ -850,7 +850,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
                                                          lr_cov = 0.1, use_nesterov_acc = FALSE,
                                                          convergence_criterion = "relative_change_in_parameters",
-                                                         cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
+                                                         cg_delta_conv = sqrt(1e-6), num_rand_vec_trace = 500,
                                                          cg_preconditioner_type = "piv_chol_on_Sigma")), file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
       if(inv_method == "cholesky"){

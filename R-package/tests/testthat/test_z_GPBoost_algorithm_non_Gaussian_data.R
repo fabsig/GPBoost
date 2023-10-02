@@ -860,7 +860,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                         file='NUL')
         if(inv_method == "iterative"){
           DEFAULT_OPTIM_PARAMS$num_rand_vec_trace = 500 
-          DEFAULT_OPTIM_PARAMS$cg_delta_conv = 1e-6
+          DEFAULT_OPTIM_PARAMS$cg_delta_conv = sqrt(1e-6)
           DEFAULT_OPTIM_PARAMS$cg_preconditioner_type = "piv_chol_on_Sigma"
         }
         gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
@@ -1298,7 +1298,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                             matrix_inversion_method = inv_method), file='NUL')
         if(inv_method == "iterative"){
           DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$num_rand_vec_trace = 1000 
-          DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$cg_delta_conv = 1e-6
+          DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$cg_delta_conv = sqrt(1e-6)
           DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$cg_preconditioner_type = "piv_chol_on_Sigma"
         }
         gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
@@ -1308,6 +1308,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),tolerance_loc)
         # Prediction
         gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
+                                     nsim_var_pred=2000,
                                      num_neighbors_pred = ntest+ntrain-1)
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                         predict_var = TRUE, pred_latent = TRUE)
