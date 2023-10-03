@@ -1,61 +1,61 @@
 context("GPModel_gaussian_process")
 
-TOLERANCE_LOOSE <- 1E-2
-TOLERANCE_STRICT <- 1E-6
-
-DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent",
-                             lr_cov = 0.1, use_nesterov_acc = TRUE,
-                             acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
-                             optimizer_coef = "gradient_descent", lr_coef = 0.1,
-                             convergence_criterion = "relative_change_in_log_likelihood")
-DEFAULT_OPTIM_PARAMS_STD <- c(DEFAULT_OPTIM_PARAMS, list(std_dev = TRUE))
-
-# Function that simulates uniform random variables
-sim_rand_unif <- function(n, init_c=0.1){
-  mod_lcg <- 2^32 # modulus for linear congruential generator (random0 used)
-  sim <- rep(NA, n)
-  sim[1] <- floor(init_c * mod_lcg)
-  for(i in 2:n) sim[i] <- (22695477 * sim[i-1] + 1) %% mod_lcg
-  return(sim / mod_lcg)
-}
-
-# Create data
-n <- 100 # number of samples
-# Simulate locations / features of GP
-d <- 2 # dimension of GP locations
-coords <- matrix(sim_rand_unif(n=n*d, init_c=0.1), ncol=d)
-D <- as.matrix(dist(coords))
-# Simulate GP
-sigma2_1 <- 1^2 # marginal variance of GP
-rho <- 0.1 # range parameter
-Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
-C <- t(chol(Sigma))
-b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.8))
-eps <- as.vector(C %*% b_1)
-# Random coefficients
-Z_SVC <- matrix(sim_rand_unif(n=n*2, init_c=0.6), ncol=2) # covariate data for random coeffients
-colnames(Z_SVC) <- c("var1","var2")
-b_2 <- qnorm(sim_rand_unif(n=n, init_c=0.17))
-b_3 <- qnorm(sim_rand_unif(n=n, init_c=0.42))
-eps_svc <- as.vector(C %*% b_1 + Z_SVC[,1] * C %*% b_2 + Z_SVC[,2] * C %*% b_3)
-# Error term
-xi <- qnorm(sim_rand_unif(n=n, init_c=0.1)) / 5
-# Data for linear mixed effects model
-X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # design matrix / covariate data for fixed effect
-beta <- c(2,2) # regression coefficients
-# cluster_ids 
-cluster_ids <- c(rep(1,0.4*n),rep(2,0.6*n))
-# GP with multiple observations at the same locations
-coords_multiple <- matrix(sim_rand_unif(n=n*d/4, init_c=0.1), ncol=d)
-coords_multiple <- rbind(coords_multiple,coords_multiple,coords_multiple,coords_multiple)
-D_multiple <- as.matrix(dist(coords_multiple))
-Sigma_multiple <- sigma2_1*exp(-D_multiple/rho)+diag(1E-10,n)
-C_multiple <- t(chol(Sigma_multiple))
-b_multiple <- qnorm(sim_rand_unif(n=n, init_c=0.8))
-eps_multiple <- as.vector(C_multiple %*% b_multiple)
-
 # Avoid that long tests get executed on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+  
+  TOLERANCE_LOOSE <- 1E-2
+  TOLERANCE_STRICT <- 1E-6
+  
+  DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent",
+                               lr_cov = 0.1, use_nesterov_acc = TRUE,
+                               acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
+                               optimizer_coef = "gradient_descent", lr_coef = 0.1,
+                               convergence_criterion = "relative_change_in_log_likelihood")
+  DEFAULT_OPTIM_PARAMS_STD <- c(DEFAULT_OPTIM_PARAMS, list(std_dev = TRUE))
+  
+  # Function that simulates uniform random variables
+  sim_rand_unif <- function(n, init_c=0.1){
+    mod_lcg <- 2^32 # modulus for linear congruential generator (random0 used)
+    sim <- rep(NA, n)
+    sim[1] <- floor(init_c * mod_lcg)
+    for(i in 2:n) sim[i] <- (22695477 * sim[i-1] + 1) %% mod_lcg
+    return(sim / mod_lcg)
+  }
+  
+  # Create data
+  n <- 100 # number of samples
+  # Simulate locations / features of GP
+  d <- 2 # dimension of GP locations
+  coords <- matrix(sim_rand_unif(n=n*d, init_c=0.1), ncol=d)
+  D <- as.matrix(dist(coords))
+  # Simulate GP
+  sigma2_1 <- 1^2 # marginal variance of GP
+  rho <- 0.1 # range parameter
+  Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
+  C <- t(chol(Sigma))
+  b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.8))
+  eps <- as.vector(C %*% b_1)
+  # Random coefficients
+  Z_SVC <- matrix(sim_rand_unif(n=n*2, init_c=0.6), ncol=2) # covariate data for random coeffients
+  colnames(Z_SVC) <- c("var1","var2")
+  b_2 <- qnorm(sim_rand_unif(n=n, init_c=0.17))
+  b_3 <- qnorm(sim_rand_unif(n=n, init_c=0.42))
+  eps_svc <- as.vector(C %*% b_1 + Z_SVC[,1] * C %*% b_2 + Z_SVC[,2] * C %*% b_3)
+  # Error term
+  xi <- qnorm(sim_rand_unif(n=n, init_c=0.1)) / 5
+  # Data for linear mixed effects model
+  X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # design matrix / covariate data for fixed effect
+  beta <- c(2,2) # regression coefficients
+  # cluster_ids 
+  cluster_ids <- c(rep(1,0.4*n),rep(2,0.6*n))
+  # GP with multiple observations at the same locations
+  coords_multiple <- matrix(sim_rand_unif(n=n*d/4, init_c=0.1), ncol=d)
+  coords_multiple <- rbind(coords_multiple,coords_multiple,coords_multiple,coords_multiple)
+  D_multiple <- as.matrix(dist(coords_multiple))
+  Sigma_multiple <- sigma2_1*exp(-D_multiple/rho)+diag(1E-10,n)
+  C_multiple <- t(chol(Sigma_multiple))
+  b_multiple <- qnorm(sim_rand_unif(n=n, init_c=0.8))
+  eps_multiple <- as.vector(C_multiple %*% b_multiple)
   
   test_that("Gaussian process model ", {
     
@@ -122,11 +122,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 40)
     # Test default values for delta_rel_conv for nelder_mead
     capture.output( gp_model_default <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                           y = y, params = list(optimizer_cov = "nelder_mead"))
+                                                   y = y, params = list(optimizer_cov = "nelder_mead"))
                     , file='NUL')
     capture.output( gp_model_8 <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                                   y = y, params = list(optimizer_cov = "nelder_mead",
-                                                                        delta_rel_conv=1e-8))
+                                             y = y, params = list(optimizer_cov = "nelder_mead",
+                                                                  delta_rel_conv=1e-8))
                     , file='NUL')
     expect_false(isTRUE(all.equal(gp_model_default$get_cov_pars(), gp_model$get_cov_pars())))
     expect_true(isTRUE(all.equal(gp_model_default$get_cov_pars(), gp_model_8$get_cov_pars())))
@@ -179,7 +179,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Predict training data random effects
     training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
     preds <- predict(gp_model, gp_coords_pred = coords,
-                                   predict_var = TRUE, predict_response = FALSE)
+                     predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),1E-6)
     expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),1E-6)
     
@@ -302,169 +302,166 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
   })
   
-}
-
-test_that("Gaussian process and two random coefficients ", {
   
-  y <- eps_svc + xi
-  # Fit model
-  capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                         gp_rand_coef_data = Z_SVC, y = y,
-                                         params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
-                                                       lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                                       acc_rate_cov = 0.5, maxit=10)), file='NUL')
-  expected_values <- c(0.25740068, 0.22608704, 0.83503539, 0.41896403, 0.15039055,
-                       0.10090869, 1.61010233, 0.84207763, 0.09015444, 0.07106099, 
-                       0.25064640, 0.62279880, 0.08720822, 0.32047865)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
-  expect_equal(gp_model$get_num_optim_iter(), 10)
   
-  # Predict training data random effects
-  cov_pars <- gp_model$get_cov_pars()[1,]
-  training_data_random_effects <- predict_training_data_random_effects(gp_model)
-  Z_SVC_test <- cbind(rep(0,length(y)),rep(0,length(y)))
-  preds <- predict(gp_model, gp_coords_pred = coords,
-                                 gp_rand_coef_data_pred=Z_SVC_test,
-                                 predict_var = TRUE, predict_response = FALSE)
-  expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),1E-6)
-  Z_SVC_test <- cbind(rep(1,length(y)),rep(0,length(y)))
-  preds2 <- predict(gp_model, gp_coords_pred = coords,
-                   gp_rand_coef_data_pred=Z_SVC_test,
-                   predict_var = TRUE, predict_response = FALSE)
-  expect_lt(sum(abs(training_data_random_effects[,2] - (preds2$mu - preds$mu))),1E-6)
-  Z_SVC_test <- cbind(rep(0,length(y)),rep(1,length(y)))
-  preds3 <- predict(gp_model, gp_coords_pred = coords,
-                    gp_rand_coef_data_pred=Z_SVC_test,
-                    predict_var = TRUE, predict_response = FALSE)
-  expect_lt(sum(abs(training_data_random_effects[,3] - (preds3$mu - preds$mu))),1E-6)
+  test_that("Gaussian process and two random coefficients ", {
+    
+    y <- eps_svc + xi
+    # Fit model
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           gp_rand_coef_data = Z_SVC, y = y,
+                                           params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
+                                                         lr_cov = 0.1, use_nesterov_acc = TRUE,
+                                                         acc_rate_cov = 0.5, maxit=10)), file='NUL')
+    expected_values <- c(0.25740068, 0.22608704, 0.83503539, 0.41896403, 0.15039055,
+                         0.10090869, 1.61010233, 0.84207763, 0.09015444, 0.07106099, 
+                         0.25064640, 0.62279880, 0.08720822, 0.32047865)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 10)
+    
+    # Predict training data random effects
+    cov_pars <- gp_model$get_cov_pars()[1,]
+    training_data_random_effects <- predict_training_data_random_effects(gp_model)
+    Z_SVC_test <- cbind(rep(0,length(y)),rep(0,length(y)))
+    preds <- predict(gp_model, gp_coords_pred = coords,
+                     gp_rand_coef_data_pred=Z_SVC_test,
+                     predict_var = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),1E-6)
+    Z_SVC_test <- cbind(rep(1,length(y)),rep(0,length(y)))
+    preds2 <- predict(gp_model, gp_coords_pred = coords,
+                      gp_rand_coef_data_pred=Z_SVC_test,
+                      predict_var = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(training_data_random_effects[,2] - (preds2$mu - preds$mu))),1E-6)
+    Z_SVC_test <- cbind(rep(0,length(y)),rep(1,length(y)))
+    preds3 <- predict(gp_model, gp_coords_pred = coords,
+                      gp_rand_coef_data_pred=Z_SVC_test,
+                      predict_var = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(training_data_random_effects[,3] - (preds3$mu - preds$mu))),1E-6)
+    
+    # Prediction
+    gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC, cov_function = "exponential")
+    coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+    Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
+    expect_error(gp_model$predict(y = y, gp_coords_pred = coord_test,
+                                  cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08)))# random slope data not provided
+    pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                             gp_rand_coef_data_pred=Z_SVC_test,
+                             cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE)
+    expected_mu <- c(-0.1669209, 1.6166381, 0.2861320)
+    expected_cov <- c(9.643323e-01, 3.536846e-04, -1.783557e-04, 3.536846e-04,
+                      5.155009e-01, 4.554321e-07, -1.783557e-04, 4.554321e-07, 7.701614e-01)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+    # Predict variances
+    pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                             gp_rand_coef_data_pred=Z_SVC_test,
+                             cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08), predict_var = TRUE)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
+    
+    # Fisher scoring
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           gp_rand_coef_data = Z_SVC, y = y,
+                                           params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
+                                                         use_nesterov_acc= FALSE, maxit=5)), file='NUL')
+    expected_values <- c(0.000242813, 0.176573955, 1.008181385, 0.397341267, 0.141084495, 
+                         0.070671768, 1.432715033, 0.708039197, 0.055598038, 0.048988825, 
+                         0.430573036, 0.550644708, 0.038976112, 0.106110593)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 5)
+    
+    # Evaluate negative log-likelihood
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.1,1,0.1,0.8,0.15,1.1,0.08),y=y)
+    expect_lt(abs(nll-149.4422184),1E-5)
+  })
   
-  # Prediction
-  gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC, cov_function = "exponential")
-  coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
-  Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
-  expect_error(gp_model$predict(y = y, gp_coords_pred = coord_test,
-                                cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08)))# random slope data not provided
-  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-                           gp_rand_coef_data_pred=Z_SVC_test,
-                           cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE)
-  expected_mu <- c(-0.1669209, 1.6166381, 0.2861320)
-  expected_cov <- c(9.643323e-01, 3.536846e-04, -1.783557e-04, 3.536846e-04,
-                    5.155009e-01, 4.554321e-07, -1.783557e-04, 4.554321e-07, 7.701614e-01)
-  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
-  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
-  # Predict variances
-  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-                           gp_rand_coef_data_pred=Z_SVC_test,
-                           cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08), predict_var = TRUE)
-  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
-  expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
+  test_that("Gaussian process model with cluster_id's not constant ", {
+    
+    y <- eps + xi
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           y = y, cluster_ids = cluster_ids,
+                                           params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
+                                                         lr_cov = 0.1, use_nesterov_acc = TRUE,
+                                                         acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
+                                                         convergence_criterion = "relative_change_in_parameters")), file='NUL')
+    cov_pars <- c(0.05414149, 0.08722111, 1.05789166, 0.22886740, 0.12702368, 0.04076914)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 247)
+    
+    # Fisher scoring
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           y = y, cluster_ids = cluster_ids,
+                                           params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
+                                                         use_nesterov_acc = FALSE, delta_rel_conv = 1E-6,
+                                                         convergence_criterion = "relative_change_in_parameters")), file='NUL')
+    cov_pars <- c(0.05414149, 0.08722111, 1.05789166, 0.22886740, 0.12702368, 0.04076914)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
+    expect_equal(gp_model$get_num_optim_iter(), 20)
+    
+    # Prediction
+    coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+    cluster_ids_pred = c(1,3,1)
+    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                        cluster_ids = cluster_ids)
+    pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                             cluster_ids_pred = cluster_ids_pred,
+                             cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE)
+    expected_mu <- c(-0.01437506, 0.00000000, 0.93112902)
+    expected_cov <- c(0.743055189, 0.000000000, -0.000140644, 0.000000000,
+                      1.100000000, 0.000000000, -0.000140644, 0.000000000, 0.565243468)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+    # Predict variances
+    pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                             cluster_ids_pred = cluster_ids_pred,
+                             cov_pars = c(0.1,1,0.15), predict_var = TRUE)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
+  })
   
-  # Fisher scoring
-  capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                         gp_rand_coef_data = Z_SVC, y = y,
-                                         params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
-                                                       use_nesterov_acc= FALSE, maxit=5)), file='NUL')
-  expected_values <- c(0.000242813, 0.176573955, 1.008181385, 0.397341267, 0.141084495, 
-                       0.070671768, 1.432715033, 0.708039197, 0.055598038, 0.048988825, 
-                       0.430573036, 0.550644708, 0.038976112, 0.106110593)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
-  expect_equal(gp_model$get_num_optim_iter(), 5)
-  
-  # Evaluate negative log-likelihood
-  nll <- gp_model$neg_log_likelihood(cov_pars=c(0.1,1,0.1,0.8,0.15,1.1,0.08),y=y)
-  expect_lt(abs(nll-149.4422184),1E-5)
-})
-
-test_that("Gaussian process model with cluster_id's not constant ", {
-  
-  y <- eps + xi
-  capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                         y = y, cluster_ids = cluster_ids,
-                                         params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
-                                                       lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                                       acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
-                                                       convergence_criterion = "relative_change_in_parameters")), file='NUL')
-  cov_pars <- c(0.05414149, 0.08722111, 1.05789166, 0.22886740, 0.12702368, 0.04076914)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-  expect_equal(gp_model$get_num_optim_iter(), 247)
-  
-  # Fisher scoring
-  capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                         y = y, cluster_ids = cluster_ids,
-                                         params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
-                                                       use_nesterov_acc = FALSE, delta_rel_conv = 1E-6,
-                                                       convergence_criterion = "relative_change_in_parameters")), file='NUL')
-  cov_pars <- c(0.05414149, 0.08722111, 1.05789166, 0.22886740, 0.12702368, 0.04076914)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
-  expect_equal(gp_model$get_num_optim_iter(), 20)
-  
-  # Prediction
-  coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
-  cluster_ids_pred = c(1,3,1)
-  gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                      cluster_ids = cluster_ids)
-  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-                           cluster_ids_pred = cluster_ids_pred,
-                           cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE)
-  expected_mu <- c(-0.01437506, 0.00000000, 0.93112902)
-  expected_cov <- c(0.743055189, 0.000000000, -0.000140644, 0.000000000,
-                    1.100000000, 0.000000000, -0.000140644, 0.000000000, 0.565243468)
-  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
-  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
-  # Predict variances
-  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-                           cluster_ids_pred = cluster_ids_pred,
-                           cov_pars = c(0.1,1,0.15), predict_var = TRUE)
-  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
-  expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
-})
-
-test_that("Gaussian process model with multiple observations at the same location ", {
-  
-  y <- eps_multiple + xi
-  capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", y = y,
-                                         params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
-                                                       lr_cov = 0.1, use_nesterov_acc = FALSE,
-                                                       delta_rel_conv = 1E-6, maxit = 500)), file='NUL')
-  cov_pars <- c(0.037145465, 0.006065652, 1.151982610, 0.434770575, 0.191648634, 0.102375515)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-  expect_equal(gp_model$get_num_optim_iter(), 12)
-  
-  # Fisher scoring
-  capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", y = y,
-                                         params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
-                                                       use_nesterov_acc = FALSE, delta_rel_conv = 1E-6,
-                                                       convergence_criterion = "relative_change_in_parameters")), file='NUL')
-  cov_pars <- c(0.037136462, 0.006064181, 1.153630335, 0.435788570, 0.192080613, 0.102631006)
-  expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
-  expect_equal(gp_model$get_num_optim_iter(), 14)
-  
-  # Predict training data random effects
-  training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
-  preds <- predict(gp_model, gp_coords_pred = coords_multiple,
-                                 predict_var = TRUE, predict_response = FALSE)
-  expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),1E-6)
-  expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),1E-6)
-  
-  # Prediction
-  coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
-  gp_model <- GPModel(gp_coords = coords_multiple, cov_function = "exponential")
-  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-                           cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE)
-  expected_mu <- c(-0.1460550, 1.0042814, 0.7840301)
-  expected_cov <- c(0.6739502109, 0.0008824337, -0.0003815281, 0.0008824337,
-                    0.6060039551, -0.0004157361, -0.0003815281, -0.0004157361, 0.7851787946)
-  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
-  expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
-  # Predict variances
-  pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-                           cov_pars = c(0.1,1,0.15), predict_var = TRUE)
-  expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
-  expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
-})
-
-# Avoid that long tests get executed on CRAN
-if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+  test_that("Gaussian process model with multiple observations at the same location ", {
+    
+    y <- eps_multiple + xi
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", y = y,
+                                           params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
+                                                         lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                                         delta_rel_conv = 1E-6, maxit = 500)), file='NUL')
+    cov_pars <- c(0.037145465, 0.006065652, 1.151982610, 0.434770575, 0.191648634, 0.102375515)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), 12)
+    
+    # Fisher scoring
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", y = y,
+                                           params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
+                                                         use_nesterov_acc = FALSE, delta_rel_conv = 1E-6,
+                                                         convergence_criterion = "relative_change_in_parameters")), file='NUL')
+    cov_pars <- c(0.037136462, 0.006064181, 1.153630335, 0.435788570, 0.192080613, 0.102631006)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
+    expect_equal(gp_model$get_num_optim_iter(), 14)
+    
+    # Predict training data random effects
+    training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+    preds <- predict(gp_model, gp_coords_pred = coords_multiple,
+                     predict_var = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),1E-6)
+    expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),1E-6)
+    
+    # Prediction
+    coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+    gp_model <- GPModel(gp_coords = coords_multiple, cov_function = "exponential")
+    pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                             cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE)
+    expected_mu <- c(-0.1460550, 1.0042814, 0.7840301)
+    expected_cov <- c(0.6739502109, 0.0008824337, -0.0003815281, 0.0008824337,
+                      0.6060039551, -0.0004157361, -0.0003815281, -0.0004157361, 0.7851787946)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+    # Predict variances
+    pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+                             cov_pars = c(0.1,1,0.15), predict_var = TRUE)
+    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
+  })
   
   test_that("Vecchia approximation for Gaussian process model ", {
     
@@ -550,7 +547,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE)
     expected_mu_vecchia <- c(0.06968068, 0.06967750, 0.44208925)
     expected_cov_vecchia <- c(0.6214955, 0.0000000, 0.0000000, 0.0000000, 0.6215069,
-                      0.0000000, 0.0000000, 0.0000000, 0.4199531)
+                              0.0000000, 0.0000000, 0.0000000, 0.4199531)
     expect_lt(sum(abs(pred$mu-expected_mu_vecchia)),1E-6)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_vecchia)),1E-6)
     
@@ -684,7 +681,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred_var$var)-expected_cov[c(1,5,9)])),1E-6)
     # Predict latent process
     pred_var2 <- predict(gp_model, y=y, gp_coords_pred = coord_test,
-                        cov_pars = cov_pars_pred, predict_var = TRUE, predict_response = FALSE)
+                         cov_pars = cov_pars_pred, predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred_var$mu - pred_var2$mu)),1E-6)
     expect_lt(sum(abs(pred_var$var - cov_pars_pred[1] - pred_var2$var)),1E-6)
     
@@ -714,7 +711,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
     gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all")
     capture.output( pred <- predict(gp_model, gp_coords_pred = coord_test,
-                    X_pred = X_test, predict_cov_mat = TRUE, predict_response = TRUE)
+                                    X_pred = X_test, predict_cov_mat = TRUE, predict_response = TRUE)
                     , file='NUL')
     expected_mu <- c(1.196952, 4.063324, 3.156427)
     expected_cov <- c(6.305383e-01, 1.358861e-05, 8.317903e-08, 1.358861e-05,
@@ -797,7 +794,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                   vecchia_ordering = "none"), file='NUL')
               gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
               capture.output( pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-                                       cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE), file='NUL')
+                                                       cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE), file='NUL')
               expected_mu <- c(-0.1460550, 1.0042814, 0.7840301)
               expected_cov <- c(0.6739502109, 0.0008824337, -0.0003815281, 0.0008824337,
                                 0.6060039551, -0.0004157361, -0.0003815281, -0.0004157361, 0.7851787946)
@@ -830,8 +827,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
     capture.output( pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
-                             gp_rand_coef_data_pred = Z_SVC_test,
-                             cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE)
+                                             gp_rand_coef_data_pred = Z_SVC_test,
+                                             cov_pars = c(0.1,1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE)
                     , file='NUL')
     expected_mu <- c(-0.1669209, 1.6166381, 0.2861320)
     expected_cov <- c(9.643323e-01, 3.536846e-04, -1.783557e-04, 3.536846e-04,

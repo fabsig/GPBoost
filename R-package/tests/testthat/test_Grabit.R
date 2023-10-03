@@ -38,23 +38,31 @@ y[y<=yl] <- yl
 # sum(y==yu) / n
 # sum(y==yl) / n
 
-# train model and make predictions
-dtrain <- gpb.Dataset(data = X, label = y)
-bst <- gpb.train(data = dtrain, nrounds = 100, objective = "tobit",
-                 verbose = 0, yl = yl, yu = yu)
-y_pred <- predict(bst, data = X_test)
-expect_lt(sum(abs(tail(y_pred)-c(4.5605215, 2.0462860, -0.4051916, 
-                                 1.6789510, 8.4034647, 4.7509841))),TOLERANCE)
-# applying no censoring
-bst <- gpb.train(data = dtrain, nrounds = 100, objective = "tobit",
-                 verbose = 0, yl = -Inf, yu = Inf)
-y_pred_no_censor <- predict(bst, data = X_test)
-bst <- gpb.train(data = dtrain, nrounds = 100, objective = "regression_l2",
-                 verbose = 0)
-y_pred_l2 <- predict(bst, data = X_test)
-expect_lt(sum(abs(y_pred_no_censor - y_pred_l2)),TOLERANCE)
-# not providing limits = no censoring
-bst <- gpb.train(data = dtrain, nrounds = 100, objective = "tobit",
-                 verbose = 0)
-y_pred_no_limits <- predict(bst, data = X_test)
-expect_lt(sum(abs(y_pred_no_limits - y_pred_l2)),TOLERANCE)
+expect_lt(sum(abs(tail(y)-c(4.594936, 3.500000, 3.500000,
+                            3.500000, 4.800000, 4.724953))),TOLERANCE)
+
+# Avoid that long tests get executed on CRAN
+if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+  
+  # train model and make predictions
+  dtrain <- gpb.Dataset(data = X, label = y)
+  bst <- gpb.train(data = dtrain, nrounds = 100, objective = "tobit",
+                   verbose = 0, yl = yl, yu = yu)
+  y_pred <- predict(bst, data = X_test)
+  expect_lt(sum(abs(tail(y_pred)-c(4.5605215, 2.0462860, -0.4051916, 
+                                   1.6789510, 8.4034647, 4.7509841))),TOLERANCE)
+  # applying no censoring
+  bst <- gpb.train(data = dtrain, nrounds = 100, objective = "tobit",
+                   verbose = 0, yl = -Inf, yu = Inf)
+  y_pred_no_censor <- predict(bst, data = X_test)
+  bst <- gpb.train(data = dtrain, nrounds = 100, objective = "regression_l2",
+                   verbose = 0)
+  y_pred_l2 <- predict(bst, data = X_test)
+  expect_lt(sum(abs(y_pred_no_censor - y_pred_l2)),TOLERANCE)
+  # not providing limits = no censoring
+  bst <- gpb.train(data = dtrain, nrounds = 100, objective = "tobit",
+                   verbose = 0)
+  y_pred_no_limits <- predict(bst, data = X_test)
+  expect_lt(sum(abs(y_pred_no_limits - y_pred_l2)),TOLERANCE)
+  
+}
