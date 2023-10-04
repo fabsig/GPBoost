@@ -2888,7 +2888,12 @@ namespace GPBoost {
 					}
 					vec_t W_diag_sqrt = second_deriv_neg_ll_.cwiseSqrt();
 					sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * D_inv_rm_.cwiseSqrt();
-					int num_threads = omp_get_max_threads();
+					int num_threads;
+#ifdef _OPENMP
+					num_threads = omp_get_max_threads();
+#else
+					num_threads = 1;
+#endif
 					std::uniform_int_distribution<> unif(0, 2147483646);
 					std::vector<RNG_t> parallel_rngs;
 					for (int ig = 0; ig < num_threads; ++ig) {
@@ -2900,7 +2905,12 @@ namespace GPBoost {
 #pragma omp for nowait
 						for (int i = 0; i < nsim_var_pred_; ++i) {
 							//z_i ~ N(0,I)
-							int thread_nb = omp_get_thread_num();
+							int thread_nb;
+#ifdef _OPENMP
+							thread_nb = omp_get_thread_num();
+#else
+							thread_nb = 0;
+#endif
 							std::normal_distribution<double> ndist(0.0, 1.0);
 							vec_t rand_vec_pred_I_1(num_data), rand_vec_pred_I_2(num_data);
 							for (int j = 0; j < num_data; j++) {
@@ -3103,7 +3113,12 @@ namespace GPBoost {
 				pred_var = vec_t::Zero(num_re_);
 				vec_t W_diag_sqrt = second_deriv_neg_ll_.cwiseSqrt();
 				sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * D_inv_rm_.cwiseSqrt();
-				int num_threads = omp_get_max_threads();
+				int num_threads;
+#ifdef _OPENMP
+				num_threads = omp_get_max_threads();
+#else
+				num_threads = 1;
+#endif
 				std::uniform_int_distribution<> unif(0, 2147483646);
 				std::vector<RNG_t> parallel_rngs;
 				for (int ig = 0; ig < num_threads; ++ig) {
@@ -3115,7 +3130,12 @@ namespace GPBoost {
 #pragma omp for nowait
 					for (int i = 0; i < nsim_var_pred_; ++i) {
 						//z_i ~ N(0,I)
-						int thread_nb = omp_get_thread_num();
+						int thread_nb;
+#ifdef _OPENMP
+						thread_nb = omp_get_thread_num();
+#else
+						thread_nb = 0;
+#endif
 						std::normal_distribution<double> ndist(0.0, 1.0);
 						vec_t rand_vec_pred_I_1(num_re_), rand_vec_pred_I_2(num_re_);
 						for (int j = 0; j < num_re_; j++) {
