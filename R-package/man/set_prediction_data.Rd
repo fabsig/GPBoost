@@ -35,7 +35,7 @@ for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neig
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
 checking convergence in conjugate gradient algorithms when being used for prediction
-Default value if NULL: 1e-3}
+Default value if NULL: 1E-3}
 
 \item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
 is used for calculating predictive variances

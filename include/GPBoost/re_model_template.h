@@ -3239,7 +3239,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		/*! \brief Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization */
 		int cg_max_num_it_tridiag_ = 1000;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation */
-		double cg_delta_conv_ = 1e-3;
+		double cg_delta_conv_ = 1e-2;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
 		double cg_delta_conv_pred_ = 1e-3;
 		/*! \brief Number of samples when simulation is used for calculating predictive variances */

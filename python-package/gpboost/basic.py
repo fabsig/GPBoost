@@ -4256,7 +4256,7 @@ class GPModel(object):
                        "std_dev": False,
                        "cg_max_num_it": 1000,
                        "cg_max_num_it_tridiag": 1000,
-                       "cg_delta_conv": 1e-3,
+                       "cg_delta_conv": 1e-2,
                        "num_rand_vec_trace": 50,
                        "reuse_rand_vec_trace": True,
                        "seed_rand_vec_trace": 1,
@@ -4664,7 +4664,7 @@ class GPModel(object):
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm
                     for tridiagonalization
-                - cg_delta_conv: double, optional (default = 1e-3)
+                - cg_delta_conv: double, optional (default = 1e-2)
                     Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                     when being used for parameter estimation
                 - num_rand_vec_trace: integer, optional (default = 50)
@@ -4891,7 +4891,7 @@ class GPModel(object):
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm
                     for tridiagonalization
-                - cg_delta_conv: double, optional (default = 1e-3)
+                - cg_delta_conv: double, optional (default = 1e-2)
                     Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                     when being used for parameter estimation
                 - num_rand_vec_trace: integer, optional (default = 50)

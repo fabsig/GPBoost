@@ -80,7 +80,7 @@ fixed effects linear regression term (if there is one)}
     \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 
     Maximal number of iterations for conjugate gradient algorithm 
     when being run as Lanczos algorithm for tridiagonalization }
-    \item{cg_delta_conv: \code{numeric} (default = 1E-3).
+    \item{cg_delta_conv: \code{numeric} (default = 1E-2).
     Tolerance level for L2 norm of residuals for checking convergence 
     in conjugate gradient algorithm when being used for parameter estimation }
     \item{num_rand_vec_trace: \code{integer} (default = 50). 

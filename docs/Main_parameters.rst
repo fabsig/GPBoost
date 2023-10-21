@@ -233,6 +233,8 @@ Model specification parameters
 
       -  ``cholesky`` : Cholesky factorization
 
+      -  ``iterative`` : iterative methods. Only supported for non-Gaussian likelihoods with a Vecchia-Laplace approximation. This a combination of conjugate gradient, Lanczos algorithm, and other methods
+
 -  ``seed`` : integer, (default = 0)
 
    -  The seed used for model creation (e.g., random ordering in Vecchia approximation)
