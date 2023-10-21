@@ -413,6 +413,29 @@ namespace GPBoost {
 	}//end CalcLtLGivenSparsityPattern (dense)
 
 	/*!
+	* \brief Calculate A * B only at non-zero entries for a given sparsiy pattern of AB
+	* \param A Matrix A
+	* \param B Square matrix B
+	* \param AB[out] Matrix which contains a sparsity pattern and on which A * B is calculated at the non-zero entries of A
+	*/
+	//T_mat needs to be a sp_mat_t or sp_mat_rm_t
+	template <class T_mat>
+	void CalcAtimesBGivenSparsityPattern(const T_mat& A, const T_mat& B, T_mat& AB) {
+		CHECK(B.rows() == B.cols());
+		CHECK(A.cols() == B.rows());
+		CHECK(AB.rows() == A.rows());
+		CHECK(AB.cols() == A.cols());
+#pragma omp parallel for schedule(static)
+			for (int k = 0; k < AB.outerSize(); ++k) {
+				for (typename T_mat::InnerIterator it(AB, k); it; ++it) {
+					int i = (int)it.row();
+					int j = (int)it.col();
+					it.valueRef() = (A.row(i)).dot(B.col(j));
+				}
+			}
+	}//end CalcAtimesBGivenSparsityPattern (sparse)
+
+	/*!
 	* \brief Multiplies a vector v by the (transposed) incidence matrix Zt when only indices that indicate to which random effect every data point is related are given
 	* \param num_data Number of data points
 	* \param num_re Number of random effects

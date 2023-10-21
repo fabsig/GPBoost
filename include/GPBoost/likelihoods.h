@@ -2717,26 +2717,41 @@ namespace GPBoost {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			vec_t v_aux = Zt * first_deriv_ll_;
-			vec_t v_aux2 = Sigma * v_aux;
-			pred_mean = Ztilde * v_aux2;
+			pred_mean = Ztilde * (Sigma * (Zt * first_deriv_ll_));
 			if (calc_pred_cov || calc_pred_var) {
-				// calculate Maux = L\(Z^T * second_deriv_neg_ll_.asDiagonal() * Cross_Cov^T)
-				sp_mat_t Cross_Cov = Ztilde * Sigma * Zt;
-				sp_mat_t Maux = Zt * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose();
-				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux, Maux, false);
+				sp_mat_t SigmaI_plus_ZtWZ_I(Sigma.cols(), Sigma.cols());
+				SigmaI_plus_ZtWZ_I.setIdentity();
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, false);
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, true);
+				sp_mat_t Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I = (Sigma * (Zt * second_deriv_neg_ll_.asDiagonal() * Zt.transpose())) * SigmaI_plus_ZtWZ_I;
 				if (calc_pred_cov) {
-					pred_cov += (T_mat)(Maux.transpose() * Maux);
-					pred_cov -= (T_mat)(Cross_Cov * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose());
+					pred_cov -= (T_mat)(Ztilde * Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I * Ztilde.transpose());
 				}
 				if (calc_pred_var) {
-					sp_mat_t Maux3 = Cross_Cov.cwiseProduct(Cross_Cov * second_deriv_neg_ll_.asDiagonal());
-					Maux = Maux.cwiseProduct(Maux);
+					sp_mat_t Maux = Ztilde;
+					CalcAtimesBGivenSparsityPattern<sp_mat_t>(Ztilde, Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I, Maux);
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < (int)pred_mean.size(); ++i) {
-						pred_var[i] += Maux.col(i).sum() - Maux3.row(i).sum();
+						pred_var[i] -= (Ztilde.row(i)).dot(Maux.row(i));
 					}
 				}
+				//Old code (not used anymore)
+//				// calculate Maux = L\(Z^T * second_deriv_neg_ll_.asDiagonal() * Cross_Cov^T)
+//				sp_mat_t Cross_Cov = Ztilde * Sigma * Zt;
+//				sp_mat_t Maux = Zt * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose();
+//				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux, Maux, false);
+//				if (calc_pred_cov) {
+//					pred_cov += (T_mat)(Maux.transpose() * Maux);
+//					pred_cov -= (T_mat)(Cross_Cov * second_deriv_neg_ll_.asDiagonal() * Cross_Cov.transpose());
+//				}
+//				if (calc_pred_var) {
+//					sp_mat_t Maux3 = Cross_Cov.cwiseProduct(Cross_Cov * second_deriv_neg_ll_.asDiagonal());
+//					Maux = Maux.cwiseProduct(Maux);
+//#pragma omp parallel for schedule(static)
+//					for (int i = 0; i < (int)pred_mean.size(); ++i) {
+//						pred_var[i] += Maux.col(i).sum() - Maux3.row(i).sum();
+//					}
+//				}
 			}
 		}//end PredictLaplaceApproxGroupedRE
 
