@@ -69,7 +69,7 @@
 #' the 'vecchia_pred_type' parameter in the 'set_prediction_data' function
 #' @param vecchia_ordering A \code{string} specifying the ordering used in 
 #' the Vecchia approximation. Available options:
-#' #' \itemize{
+#' \itemize{
 #' \item{"none": the default ordering in the data is used }
 #' \item{"random": a random ordering }
 #' }
@@ -103,7 +103,7 @@
 #' for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors
 #' @param cg_delta_conv_pred a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
 #' checking convergence in conjugate gradient algorithms when being used for prediction
-#' Default value if NULL: 1E-3
+#' Default value if NULL: 1e-3
 #' @param nsim_var_pred an \code{integer} specifying the number of samples when simulation 
 #' is used for calculating predictive variances
 #' Default value if NULL: 1000

@@ -94,7 +94,7 @@ the 'vecchia_pred_type' parameter in the 'set_prediction_data' function}
 
 \item{vecchia_ordering}{A \code{string} specifying the ordering used in 
 the Vecchia approximation. Available options:
-#' \itemize{
+\itemize{
 \item{"none": the default ordering in the data is used }
 \item{"random": a random ordering }
 }}
