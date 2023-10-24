@@ -16,28 +16,28 @@ gpb.train(params = list(), data, nrounds = 100L, gp_model = NULL,
 See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst}{the parameter documentation} for more information. 
 A few key parameters:
            \itemize{
-               \item{\code{learning_rate}}{ The learning rate, also called shrinkage or damping parameter 
+               \item{\code{learning_rate}: The learning rate, also called shrinkage or damping parameter 
                (default = 0.1). An important tuning parameter for boosting. Lower values usually 
                lead to higher predictive accuracy but more boosting iterations are needed }
-               \item{\code{num_leaves}}{ Number of leaves in a tree. Tuning parameter for 
+               \item{\code{num_leaves}: Number of leaves in a tree. Tuning parameter for 
                tree-boosting (default = 31)}
-               \item{\code{max_depth}}{ Maximal depth of a tree. Tuning parameter for tree-boosting (default = no limit)}
-               \item{\code{min_data_in_leaf}}{ Minimal number of samples per leaf. Tuning parameter for 
+               \item{\code{max_depth}: Maximal depth of a tree. Tuning parameter for tree-boosting (default = no limit)}
+               \item{\code{min_data_in_leaf}: Minimal number of samples per leaf. Tuning parameter for 
                tree-boosting (default = 20)}
-               \item{\code{lambda_l2}}{ L2 regularization (default = 0)}
-               \item{\code{lambda_l1}}{ L1 regularization (default = 0)}
-               \item{\code{max_bin}}{ Maximal number of bins that feature values will be bucketed in (default = 255)}
-               \item{\code{train_gp_model_cov_pars}}{ If TRUE, the covariance parameters of the Gaussian process 
+               \item{\code{lambda_l2}: L2 regularization (default = 0)}
+               \item{\code{lambda_l1}: L1 regularization (default = 0)}
+               \item{\code{max_bin}: Maximal number of bins that feature values will be bucketed in (default = 255)}
+               \item{\code{train_gp_model_cov_pars}: If TRUE, the covariance parameters of the Gaussian process 
                are stimated in every boosting iterations, 
                otherwise the gp_model parameters are not estimated. In the latter case, you need to 
                either esimate them beforehand or provide the values via 
                the 'init_cov_pars' parameter when creating the gp_model (default = TRUE).}
-               \item{\code{use_gp_model_for_validation}}{ If TRUE, the Gaussian process is also used 
+               \item{\code{use_gp_model_for_validation}: If TRUE, the Gaussian process is also used 
                (in addition to the tree model) for calculating predictions on the validation data 
                (default = TRUE)}
-               \item{\code{leaves_newton_update}}{ Set this to TRUE to do a Newton update step for the tree leaves 
+               \item{\code{leaves_newton_update}: Set this to TRUE to do a Newton update step for the tree leaves 
                after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
-               \item{num_threads}{ Number of threads. For the best speed, set this to
+               \item{num_threads: Number of threads. For the best speed, set this to
                             the number of real CPU cores(\code{parallel::detectCores(logical = FALSE)}),
                             not the number of threads (most CPU using hyper-threading to generate 2 threads
                             per CPU core).}
