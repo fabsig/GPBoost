@@ -65,15 +65,19 @@ Installing a 64-bit version of [Rtools](https://cran.r-project.org/bin/windows/R
 After installing `Rtools` and `CMake`, be sure the following paths are added to the environment variable `PATH`. These may have been automatically added when installing other software.
 
 * `Rtools`
-    - If you have `Rtools` 3.x, example:
+    - If you have `Rtools` 3.x, for example:
         - `C:\Rtools\mingw_64\bin`
-    - If you have `Rtools` 4.x, example (NOTE: two paths are required):
+    - If you have `Rtools` 4.0, for example:
         - `C:\rtools40\mingw64\bin`
         - `C:\rtools40\usr\bin`
-        - For instance, when installing in R with `install.packages()`, these paths can be added locally in R as follows prior to installation:
-```R 
-Sys.setenv(PATH=paste0(Sys.getenv("PATH"),";C:\\Rtools\\mingw_64\\bin\\;C:\\rtools40\\usr\\bin\\"))
-```
+    - If you have Rtools 4.2+, for example:
+        - `C:\rtools42\x86_64-w64-mingw32.static.posix\bin`
+        - `C:\rtools42\usr\bin`
+        - NOTE: this is, e.g., `rtools43\` for R 4.3
+   - NOTE: 
+      - Two `Rtools` paths are required from `Rtools` 4.0 onwards
+      - When installing in R with `install.packages()`, these paths can be added locally in R, e.g., as follows prior to installation: `Sys.setenv(PATH=paste0(Sys.getenv("PATH"),";C:\\Rtools\\mingw_64\\bin\\;C:\\rtools40\\usr\\bin\\"))` 
+
 * `CMake`
     - example: `C:\Program Files\CMake\bin`
 * `R`
