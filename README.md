@@ -56,19 +56,24 @@ Compared to classical independent boosting, the GPBoost algorithm allows for
 
 ### Modeling details
 
-**For Gaussian likelihoods (GPBoost algorithm)**, it is assumed that the response variable (aka label) $y$ is the sum of a potentially non-linear mean function $F(X)$ and random effects $Z_b$:
+**For Gaussian likelihoods (GPBoost algorithm)**, it is assumed that the response variable (aka label) $y$ is the sum of a potentially non-linear mean function $F(X)$ and random effects $Zb$:
 
-$$y = F(X) + Z_b + x_i$$
+$$y = F(X) + Zb + x_i$$
 
-where $F(X)$ is a sum (="ensemble") of trees, $x_i$ is an independent error term, and $X$ are predictor variables (aka covariates or features). The random effects $Z_b$ can currently consist of:
+where $F(X)$ is a sum (="ensemble") of trees, $x_i$ is an independent error term, and $X$ are predictor variables (aka covariates or features). The random effects $Zb$ can currently consist of:
 
 - Gaussian processes (including random coefficient processes)
 - Grouped random effects (including nested, crossed, and random coefficient effects)
 - Combinations of the above
 
-**For non-Gaussian likelihoods (LaGaBoost algorithm)**, it is assumed that the response variable y follows a distribution $p(y|m)$ and that a (potentially multivariate) parameter $m$ of this distribution is related to a non-linear function $F(X)$ and random effects $Z_b$:
-$$y \sim p(y | m)$$
-$$m = G(F(X) + Zb)$$
+**For non-Gaussian likelihoods (LaGaBoost algorithm)**, it is assumed that the response variable y follows a distribution $p(y|m)$ and that a (potentially multivariate) parameter $m$ of this distribution is related to a non-linear function $F(X)$ and random effects $Zb$:
+
+$$
+\begin{equation} \begin{split}
+y & \sim p(y | m) \\
+m & = G(F(X) + Zb) \\
+\end{split} \end{equation}
+$$
 
 where $G()$ is a so-called link function. See [here](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) for a list of [currently supported likelihoods](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) $p(y|m)$.
 
