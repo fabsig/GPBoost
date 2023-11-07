@@ -56,24 +56,23 @@ Compared to classical independent boosting, the GPBoost algorithm allows for
 
 ### Modeling details
 
-**For Gaussian likelihoods (GPBoost algorithm)**, it is assumed that the response variable (aka label) y is the sum of a potentially non-linear mean function F(X) and random effects Zb:
-```
-y = F(X) + Zb + xi
-```
-where F(X) is a sum (="ensemble") of trees, xi is an independent error term, and X are predictor variables (aka covariates or features). The random effects Zb can currently consist of:
+**For Gaussian likelihoods (GPBoost algorithm)**, it is assumed that the response variable (aka label) $y$ is the sum of a potentially non-linear mean function $F(X)$ and random effects $Z_b$:
+
+$$y = F(X) + Z_b + x_i$$
+
+where $F(X)$ is a sum (="ensemble") of trees, $x_i$ is an independent error term, and $X$ are predictor variables (aka covariates or features). The random effects $Z_b$ can currently consist of:
 
 - Gaussian processes (including random coefficient processes)
 - Grouped random effects (including nested, crossed, and random coefficient effects)
 - Combinations of the above
 
-**For non-Gaussian likelihoods (LaGaBoost algorithm)**, it is assumed that the response variable y follows a distribution p(y|m) and that a (potentially multivariate) parameter m of this distribution is related to a non-linear function F(X) and random effects Zb:
-```
-y ~ p(y|m)
-m = G(F(X) + Zb)
-```
-where G() is a so-called link function. See [here](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) for a list of [currently supported likelihoods](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) p(y|m).
+**For non-Gaussian likelihoods (LaGaBoost algorithm)**, it is assumed that the response variable y follows a distribution $p(y|m)$ and that a (potentially multivariate) parameter $m$ of this distribution is related to a non-linear function $F(X)$ and random effects $Z_b$:
+$$y \sim p(y | m)$$
+$$m = G(F(X) + Zb)$$
 
-**Estimating or training** the above-mentioned models means learning both the covariance parameters (aka hyperparameters) of the random effects and the predictor function F(X). Both the GPBoost and the LaGaBoost algorithms iteratively learn the covariance parameters and add a tree to the ensemble of trees F(X) using a [functional gradient and/or a Newton boosting step](https://www.sciencedirect.com/science/article/abs/pii/S0957417420308381). See [Sigrist (2022, JMLR)](https://www.jmlr.org/papers/v23/20-322.html) and [Sigrist (2023, TPAMI)](https://ieeexplore.ieee.org/document/9759834) for more details.
+where $G()$ is a so-called link function. See [here](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) for a list of [currently supported likelihoods](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) $p(y|m)$.
+
+**Estimating or training** the above-mentioned models means learning both the covariance parameters (aka hyperparameters) of the random effects and the predictor function $F(X)$. Both the GPBoost and the LaGaBoost algorithms iteratively learn the covariance parameters and add a tree to the ensemble of trees $F(X)$ using a [functional gradient and/or a Newton boosting step](https://www.sciencedirect.com/science/article/abs/pii/S0957417420308381). See [Sigrist (2022, JMLR)](https://www.jmlr.org/papers/v23/20-322.html) and [Sigrist (2023, TPAMI)](https://ieeexplore.ieee.org/document/9759834) for more details.
 
 ### Strength and weaknesses of tree-boosting and linear mixed effects and GP models
 
