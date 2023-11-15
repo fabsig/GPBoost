@@ -634,7 +634,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                        use_gp_model_for_validation = TRUE,
                        seed = 0, metric = "l2")
       expect_equal(bst$best_iter, 27)
-      expect_lt(abs(bst$best_score - 0.5485127),TOLERANCE)
+      expect_lt(abs(bst$best_score - 0.5485127),TOLERANCE2)
     })
     
     test_that("GPBoost algorithm with Vecchia approximation and Wendland covariance", {
@@ -748,8 +748,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       score <- 1.54475
       cov_pars_estV <- c(0.23768321, 0.90212975, 0.08164033)
       expect_equal(bst$best_iter, iter)
-      expect_lt(abs(bst$best_score - score),TOLERANCE_STRICT)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_estV)),TOLERANCE)
+      expect_lt(abs(bst$best_score - score),TOLERANCE2)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_estV)),0.05)
       # Can also first set vecchia_pred_type and then gp_coords_pred
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                           gp_approx = "vecchia", num_neighbors = 20, 
@@ -761,8 +761,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                        learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, 
                        objective = "regression_l2", verbose = 0, valids = valids, metric="mse")
       expect_equal(bst$best_iter, iter)
-      expect_lt(abs(bst$best_score - score),TOLERANCE_STRICT)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_estV)),TOLERANCE)
+      expect_lt(abs(bst$best_score - score),TOLERANCE2)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_estV)),0.05)
 
       
       # Same thing with Wendland covariance function

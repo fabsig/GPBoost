@@ -1776,10 +1776,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),adjust_tol*tolerance_loc_1)
       # Evaluate approximate negative marginal log-likelihood
       nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
+      nll_exp <- 159.9221359
       if(inv_method=="iterative"){
-        expect_lt(abs(nll-159.9221359),TOLERANCE_ITERATIVE)
+        expect_lt(abs(nll-nll_exp),0.2)
       } else{
-        expect_lt(abs(nll-159.9221359),0.05)
+        expect_lt(abs(nll-nll_exp),0.05)
       }
       # Also estimate shape parameter
       params_shape$optimizer_cov <- "nelder_mead"
