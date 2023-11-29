@@ -356,6 +356,11 @@ gpb.GPModel <- R6::R6Class(
           private$coefs_loaded_from_file = model_list[["coefs"]]
           private$num_coef = model_list[["num_coef"]]
           private$X_loaded_from_file = model_list[["X"]]
+          if (is.null(colnames(private$X_loaded_from_file))) {
+            private$coef_names <- c(private$coef_names,paste0("Covariate_",1:private$num_coef))
+          } else {
+            private$coef_names <- c(private$coef_names,colnames(private$X_loaded_from_file))
+          }
         }
         private$model_fitted = model_list[["model_fitted"]]
       }# end !is.null(modelfile) | !is.null(model_list)
@@ -634,12 +639,12 @@ gpb.GPModel <- R6::R6Class(
         private$gp_rand_coef_data <- NULL
         private$cluster_ids <- NULL
       }
-      if (!is.null(modelfile)) {
+      if (private$model_has_been_loaded_from_saved_file) {
         self$set_optim_params(params = model_list[["params"]])
       }
     }, # End initialize
     
-    # Find parameters that minimize the negative log-ligelihood (=MLE)
+    # Find parameters that minimize the negative log-likelihood (=MLE)
     fit = function(y,
                    X = NULL,
                    params = list(),
@@ -930,12 +935,12 @@ gpb.GPModel <- R6::R6Class(
           , optim_pars
         )
         cov_pars <- optim_pars[1:private$num_cov_pars]
-        names(cov_pars) <- private$cov_par_names
-        if (private$params[["std_dev"]] & self$get_likelihood_name() == "gaussian") {
-          cov_pars_std_dev <- optim_pars[1:private$num_cov_pars+private$num_cov_pars]
-          cov_pars <- rbind(cov_pars,cov_pars_std_dev)
-          rownames(cov_pars) <- c("Param.", "Std. dev.")
-        }
+      }
+      names(cov_pars) <- private$cov_par_names
+      if (private$params[["std_dev"]] & self$get_likelihood_name() == "gaussian") {
+        cov_pars_std_dev <- optim_pars[1:private$num_cov_pars+private$num_cov_pars]
+        cov_pars <- rbind(cov_pars,cov_pars_std_dev)
+        rownames(cov_pars) <- c("Param.", "Std. dev.")
       }
       return(cov_pars)
     },
@@ -959,32 +964,28 @@ gpb.GPModel <- R6::R6Class(
           , optim_pars
         )
         coef <- optim_pars[1:private$num_coef]
-        names(coef) <- private$coef_names
-        if (private$params[["std_dev"]]) {
-          coef_std_dev <- optim_pars[1:private$num_coef+private$num_coef]
-          coef <- rbind(coef,coef_std_dev)
-          rownames(coef) <- c("Param.", "Std. dev.")
-        }
+      }
+      names(coef) <- private$coef_names
+      if (private$params[["std_dev"]]) {
+        coef_std_dev <- optim_pars[1:private$num_coef+private$num_coef]
+        coef <- rbind(coef,coef_std_dev)
+        rownames(coef) <- c("Param.", "Std. dev.")
       }
       return(coef)
     },
     
     get_aux_pars = function() {
-      if (private$model_has_been_loaded_from_saved_file) {
-        aux_pars <- private$cov_pars_loaded_from_file
+      num_aux_pars <- self$get_num_aux_pars()
+      if (num_aux_pars > 0) {
+        aux_pars <- numeric(num_aux_pars)
+        aux_pars_name <- .Call(
+          GPB_GetAuxPars_R
+          , private$handle
+          , aux_pars
+        )
+        names(aux_pars) <- rep(aux_pars_name, num_aux_pars)
       } else {
-        num_aux_pars <- self$get_num_aux_pars()
-        if (num_aux_pars > 0) {
-          aux_pars <- numeric(num_aux_pars)
-          aux_pars_name <- .Call(
-            GPB_GetAuxPars_R
-            , private$handle
-            , aux_pars
-          )
-          names(aux_pars) <- rep(aux_pars_name, num_aux_pars)
-        } else {
-          aux_pars <- NULL
-        }
+        aux_pars <- NULL
       }
       return(aux_pars)
     },
@@ -1765,7 +1766,7 @@ gpb.GPModel <- R6::R6Class(
     summary = function() {
       cov_pars <- self$get_cov_pars()
       cat("=====================================================\n")
-      if (private$model_fitted) {
+      if (private$model_fitted && !private$model_has_been_loaded_from_saved_file) {
         cat("Model summary:\n")
         ll <- -self$get_current_neg_log_likelihood()
         npar <- private$num_cov_pars
@@ -1937,7 +1938,8 @@ gpb.GPModel <- R6::R6Class(
           stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("params$init_cov_pars"))
         }
         if (length(params[["init_cov_pars"]]) != private$num_cov_pars) {
-          stop("GPModel: Number of parameters in ", sQuote("params$init_cov_pars"), " does not correspond to numbers of parameters")
+          stop("GPModel: Number of parameters in ", sQuote("params$init_cov_pars"), 
+               " is not correct")
         }
       }
       if (!is.null(params[["init_coef"]])) {
@@ -1954,7 +1956,8 @@ gpb.GPModel <- R6::R6Class(
           stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("init_coef"))
         }
         if (length(params[["init_coef"]]) != private$num_coef) {
-          stop("GPModel: Number of parameters in ", sQuote("init_coef"), " does not correspond to numbers of covariates in ", sQuote("X"))
+          stop("GPModel: Number of parameters in ", sQuote("init_coef"), 
+               " does not correspond to numbers of covariates in ", sQuote("X"))
         }
       }
       if (!is.null(params[["init_aux_pars"]])) {
@@ -1967,7 +1970,8 @@ gpb.GPModel <- R6::R6Class(
           stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("params$init_aux_pars"))
         }
         if (length(params[["init_aux_pars"]]) != self$get_num_aux_pars()) {
-          stop("GPModel: Number of parameters in ", sQuote("params$init_aux_pars"), " is not correct ")
+          stop("GPModel: Number of parameters in ", sQuote("params$init_aux_pars"), 
+               " is not correct")
         }
       }
       ## Update private$params

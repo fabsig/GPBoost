@@ -70,12 +70,12 @@ def get_nested_categories(outer_var, inner_var):
     """
     nested_var = np.arange(len(outer_var))
     nb_groups = 0
-    for i in np.unique(outer_var):# loop over outer variable
+    for i in np.unique(outer_var):  # loop over outer variable
         aux_var = np.array(inner_var[outer_var == i])
         aux_var_unique = list(np.unique(aux_var))
         # TODO: make the following line faster
-        nested_var[outer_var == i] = [ aux_var_unique.index(x) + nb_groups for x in aux_var ]
-        nb_groups= nb_groups + len(aux_var_unique)
+        nested_var[outer_var == i] = [aux_var_unique.index(x) + nb_groups for x in aux_var]
+        nb_groups = nb_groups + len(aux_var_unique)
     return nested_var
 
 
@@ -633,7 +633,7 @@ def _format_check_data(data, get_variable_names=False, data_name="data", check_d
                 variable_names = list(data.dtype.names)
             else:
                 try:
-                    variable_names = data.design_info.column_names # get names for patsy DesignMatrix
+                    variable_names = data.design_info.column_names  # get names for patsy DesignMatrix
                 except BaseException:
                     pass
     elif is_1d_list(data):
@@ -1345,8 +1345,8 @@ class Dataset:
         # process for args
         params = {} if params is None else params
         args_names = (getattr(self.__class__, '_lazy_init')
-                          .__code__
-                          .co_varnames[:getattr(self.__class__, '_lazy_init').__code__.co_argcount])
+                      .__code__
+                      .co_varnames[:getattr(self.__class__, '_lazy_init').__code__.co_argcount])
         for key, _ in params.items():
             if key in args_names:
                 _log_warning('{0} keyword has been found in `params` and will be ignored.\n'
@@ -2053,7 +2053,7 @@ class Dataset:
         if reserved_string_buffer_size < required_string_buffer_size.value:
             raise BufferError(
                 "Allocated feature name buffer size ({}) was inferior to the needed size ({})."
-                    .format(reserved_string_buffer_size, required_string_buffer_size.value)
+                .format(reserved_string_buffer_size, required_string_buffer_size.value)
             )
         return [string_buffers[i].value.decode('utf-8') for i in range(num_feature)]
 
@@ -2545,7 +2545,8 @@ class Booster:
                 bst_str = save_data['booster_str']
                 state['gp_model'] = GPModel(model_dict=save_data['gp_model_str'])
                 if save_data.get("raw_data") is not None:
-                    state['train_set'] = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
+                    state['train_set'] = Dataset(data=save_data['raw_data']['data'],
+                                                 label=save_data['raw_data']['label'])
                 else:
                     if state['gp_model']._get_likelihood_name() == "gaussian":
                         state['residual_loaded_from_file'] = np.array(save_data['residual'])
@@ -2554,7 +2555,7 @@ class Booster:
                         state['label_loaded_from_file'] = np.array(save_data['label'])
                     state['gp_model_prediction_data_loaded_from_file'] = True
             else:  # has no gp_model
-                bst_str =model_str
+                bst_str = model_str
             handle = ctypes.c_void_p()
             out_num_iterations = ctypes.c_int(0)
             _safe_call(_LIB.LGBM_BoosterLoadModelFromString(
@@ -3321,7 +3322,7 @@ class Booster:
                     save_data['fixed_effect_train'] = fixed_effect_train
                     save_data['label'] = self.train_set.label
             model_str = json.dumps(save_data, default=json_default_with_numpy, indent="")
-        else: # not self.has_gp_model
+        else:  # not self.has_gp_model
             model_str = booster_str
 
         return model_str
@@ -3452,11 +3453,11 @@ class Booster:
             This is discontinued. Use the renamed equivalent argument 'pred_latent' instead
         vecchia_pred_type : string, optional (default=None)
             The type of Vecchia approximation used for making predictions.
-            This is discontinued here. Use the function 'set_prediction_data' 
+            This is discontinued here. Use the function 'set_prediction_data'
             of the 'gp_model' to specify this
         num_neighbors_pred : integer or None, optional (default=None)
             The number of neighbors for making predictions.
-            This is discontinued here. Use the function 'set_prediction_data' 
+            This is discontinued here. Use the function 'set_prediction_data'
             of the 'gp_model' to specify this
         **kwargs
             Other parameters for the prediction.
@@ -3507,13 +3508,13 @@ class Booster:
         """
 
         if raw_score is not None:
-            raise GPBoostError("The argument 'raw_score' is discontinued. " 
+            raise GPBoostError("The argument 'raw_score' is discontinued. "
                                "Use the renamed equivalent argument 'pred_latent' instead")
         if vecchia_pred_type is not None:
-            raise GPBoostError("The argument 'vecchia_pred_type' is discontinued. " 
+            raise GPBoostError("The argument 'vecchia_pred_type' is discontinued. "
                                "Use the function 'set_prediction_data' to specify this")
         if num_neighbors_pred is not None:
-            raise GPBoostError("The argument 'num_neighbors_pred' is discontinued. " 
+            raise GPBoostError("The argument 'num_neighbors_pred' is discontinued. "
                                "Use the function 'set_prediction_data' to specify this")
         predictor = self._to_predictor(deepcopy(kwargs))
         if num_iteration is None:
@@ -3765,7 +3766,7 @@ class Booster:
         if reserved_string_buffer_size < required_string_buffer_size.value:
             raise BufferError(
                 "Allocated feature name buffer size ({}) was inferior to the needed size ({})."
-                    .format(reserved_string_buffer_size, required_string_buffer_size.value)
+                .format(reserved_string_buffer_size, required_string_buffer_size.value)
             )
         return [string_buffers[i].value.decode('utf-8') for i in range(num_feature)]
 
@@ -3965,7 +3966,7 @@ class Booster:
                 if reserved_string_buffer_size < required_string_buffer_size.value:
                     raise BufferError(
                         "Allocated eval name buffer size ({}) was inferior to the needed size ({})."
-                            .format(reserved_string_buffer_size, required_string_buffer_size.value)
+                        .format(reserved_string_buffer_size, required_string_buffer_size.value)
                     )
                 self.__name_inner_eval = \
                     [string_buffers[i].value.decode('utf-8') for i in range(self.__num_inner_eval)]
@@ -4054,11 +4055,11 @@ class GPModel(object):
 
                     - "gaussian"
 
-                    - "bernoulli_probit": 
+                    - "bernoulli_probit":
 
                         Binary data with a Bernoulli likelihood and a probit link function
 
-                    - "bernoulli_logit": 
+                    - "bernoulli_logit":
 
                         Binary data with a Bernoulli likelihood and a logit link function
 
@@ -4094,7 +4095,7 @@ class GPModel(object):
 
                     - For "exponential", "gaussian", and "powered_exponential", we use the parametrization of Diggle and Ribeiro (2007)
 
-                    - For "matern", we use the parametrization of Rasmussen and Williams (2006) 
+                    - For "matern", we use the parametrization of Rasmussen and Williams (2006)
 
                     - For "wendland", we use the parametrization of Bevilacqua et al. (2019, AOS).
 
@@ -4183,13 +4184,13 @@ class GPModel(object):
         """
 
         if vecchia_approx is not None:
-            raise GPBoostError("The argument 'vecchia_approx' is discontinued. " 
+            raise GPBoostError("The argument 'vecchia_approx' is discontinued. "
                                "Use the argument 'gp_approx' instead")
         if vecchia_pred_type is not None:
-            raise GPBoostError("The argument 'vecchia_pred_type' is discontinued. " 
+            raise GPBoostError("The argument 'vecchia_pred_type' is discontinued. "
                                "Use the function 'set_prediction_data' to specify this")
         if num_neighbors_pred is not None:
-            raise GPBoostError("The argument 'num_neighbors_pred' is discontinued. " 
+            raise GPBoostError("The argument 'num_neighbors_pred' is discontinued. "
                                "Use the function 'set_prediction_data' to specify this")
         # Initialize variables with default values
         self.handle = ctypes.c_void_p()
@@ -4213,7 +4214,7 @@ class GPModel(object):
         self.cov_fct_shape = 0.5
         self.gp_approx = "none"
         self.cov_fct_taper_range = 1.
-        self.cov_fct_taper_shape= 0.
+        self.cov_fct_taper_shape = 0.
         self.num_neighbors = 20
         self.vecchia_ordering = "random"
         self.vecchia_pred_type = None
@@ -4242,10 +4243,10 @@ class GPModel(object):
         self.X_loaded_from_file = None
         self.model_fitted = False
         self.params = {"maxit": 1000,
-                       "delta_rel_conv": -1, # default value is set in C++
+                       "delta_rel_conv": -1,  # default value is set in C++
                        "init_coef": None,
                        "lr_coef": 0.1,
-                       "lr_cov": -1., # default value is set in C++
+                       "lr_cov": -1.,  # default value is set in C++
                        "use_nesterov_acc": True,
                        "acc_rate_coef": 0.5,
                        "acc_rate_cov": 0.5,
@@ -4262,7 +4263,7 @@ class GPModel(object):
                        "seed_rand_vec_trace": 1,
                        "piv_chol_rank": 50,
                        "estimate_aux_pars": True
-        }
+                       }
 
         if (model_file is not None) or (model_dict is not None):
             if model_file is not None:
@@ -4296,7 +4297,7 @@ class GPModel(object):
                 cluster_ids = np.array(model_dict.get("cluster_ids"))
             likelihood = model_dict.get("likelihood")
             matrix_inversion_method = model_dict.get("matrix_inversion_method")
-            # Set additionaly required data
+            # Set additionally required data
             self.model_has_been_loaded_from_saved_file = True
             if model_dict.get("cov_pars") is not None:
                 self.cov_pars_loaded_from_file = np.array(model_dict.get("cov_pars"))
@@ -4309,6 +4310,15 @@ class GPModel(object):
                 self.num_coef = model_dict.get("num_coef")
                 if model_dict.get("X") is not None:
                     self.X_loaded_from_file = np.array(model_dict.get("X"))
+                    _, X_names = _format_check_data(data=self.X_loaded_from_file, get_variable_names=True, data_name="X",
+                                                    check_data_type=True,
+                                                    convert_to_type=np.float64)
+                    self.coef_names = []
+                    for ii in range(self.num_coef):
+                        if X_names is None:
+                            self.coef_names.append("Covariate_" + str(ii + 1))
+                        else:
+                            self.coef_names.append(X_names[ii])
             self.model_fitted = model_dict.get("model_fitted")
 
         if group_data is None and gp_coords is None:
@@ -4350,8 +4360,8 @@ class GPModel(object):
                 nb_groups = [len(np.unique(group_data))]
             else:
                 nb_groups = []
-                for i in np.arange(0,group_data.shape[1]):
-                    nb_groups = nb_groups + [len(np.unique(group_data[:,i]))]
+                for i in np.arange(0, group_data.shape[1]):
+                    nb_groups = nb_groups + [len(np.unique(group_data[:, i]))]
             self.nb_groups = np.array(nb_groups)
             # Set data for grouped random coefficients
             if group_rand_coef_data is not None:
@@ -4378,10 +4388,12 @@ class GPModel(object):
                 if drop_intercept_group_rand_effect is not None:
                     drop_intercept_group_rand_effect = _format_check_1D_data(drop_intercept_group_rand_effect,
                                                                              data_name="drop_intercept_group_rand_effect",
-                                                                             check_data_type=False, check_must_be_int=False,
+                                                                             check_data_type=False,
+                                                                             check_must_be_int=False,
                                                                              convert_to_type=np.dtype(bool))
                     if drop_intercept_group_rand_effect.shape[0] != self.num_group_re:
-                        raise ValueError("Length of 'drop_intercept_group_rand_effect' does not match number of random effects")
+                        raise ValueError(
+                            "Length of 'drop_intercept_group_rand_effect' does not match number of random effects")
                 self.drop_intercept_group_rand_effect = deepcopy(drop_intercept_group_rand_effect)
                 offset = 0
                 if likelihood != "gaussian":
@@ -4391,7 +4403,9 @@ class GPModel(object):
                     if group_rand_coef_data_names is None:
                         new_name = self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_nb_" \
                                    + str(int(counter_re[self.ind_effect_group_rand_coef[ii] - 1] + 1))
-                        counter_re[self.ind_effect_group_rand_coef[ii] - 1] = counter_re[self.ind_effect_group_rand_coef[ii] - 1] + 1
+                        counter_re[self.ind_effect_group_rand_coef[ii] - 1] = counter_re[
+                                                                                  self.ind_effect_group_rand_coef[
+                                                                                      ii] - 1] + 1
                     else:
                         new_name = self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_" + \
                                    group_rand_coef_data_names[ii]
@@ -4400,7 +4414,7 @@ class GPModel(object):
                 if self.drop_intercept_group_rand_effect is not None:
                     if self.drop_intercept_group_rand_effect.sum() > 0:
                         offset = int(likelihood == "gaussian")
-                        for i in np.arange(0,self.num_group_re):
+                        for i in np.arange(0, self.num_group_re):
                             if self.drop_intercept_group_rand_effect[i]:
                                 del self.cov_par_names[i + offset]
                                 del self.re_comp_names[i]
@@ -4457,7 +4471,8 @@ class GPModel(object):
                             self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + "_var"])
                         else:
                             self.cov_par_names.extend(
-                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var", "GP_rand_coef_nb_" + str(ii + 1) + "_range"])
+                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
+                                 "GP_rand_coef_nb_" + str(ii + 1) + "_range"])
                         self.re_comp_names.append("GP_rand_coef_nb_" + str(ii + 1))
                     else:
                         if self.cov_function == "wendland":
@@ -4525,7 +4540,7 @@ class GPModel(object):
             self.gp_rand_coef_data = None
             self.cluster_ids = None
 
-        if model_file is not None:
+        if self.model_has_been_loaded_from_saved_file:
             if model_dict["params"]['init_cov_pars'] is not None:
                 model_dict["params"]['init_cov_pars'] = np.array(model_dict["params"]['init_cov_pars'])
             if model_dict["params"]['init_aux_pars'] is not None:
@@ -4536,7 +4551,7 @@ class GPModel(object):
         if self.cov_function == "wendland":
             num_par_per_GP = 1
         else:
-            num_par_per_GP =2
+            num_par_per_GP = 2
         self.num_cov_pars = self.num_group_re + self.num_group_rand_coef + \
                             num_par_per_GP * (self.num_gp + self.num_gp_rand_coef)
         if self.drop_intercept_group_rand_effect is not None:
@@ -4555,14 +4570,14 @@ class GPModel(object):
                                                               check_data_type=True, check_must_be_int=False,
                                                               convert_to_type=np.float64)
                         if params[param].shape[0] != self.num_cov_pars:
-                            raise ValueError("params['init_cov_pars'] does not contain the correct number"
+                            raise ValueError("params['init_cov_pars'] does not contain the correct number "
                                              "of parameters")
                 if param == "init_coef":
                     if params[param] is not None:
                         params[param] = _format_check_1D_data(params[param], data_name="params['init_coef']",
                                                               check_data_type=True, check_must_be_int=False,
                                                               convert_to_type=np.float64)
-                        if self.num_coef is None or self.num_coef==0:
+                        if self.num_coef is None or self.num_coef == 0:
                             self.num_coef = params["init_coef"].shape[0]
                         if params["init_coef"].shape[0] != self.num_coef:
                             raise ValueError("params['init_coef'] does not contain the correct number of parameters")
@@ -4572,7 +4587,7 @@ class GPModel(object):
                                                               check_data_type=True, check_must_be_int=False,
                                                               convert_to_type=np.float64)
                         if params[param].shape[0] != self._get_num_aux_pars():
-                            raise ValueError("params['init_aux_pars'] does not contain the correct number"
+                            raise ValueError("params['init_aux_pars'] does not contain the correct number "
                                              "of parameters")
                 if param in self.params:
                     self.params[param] = params[param]
@@ -4654,10 +4669,10 @@ class GPModel(object):
                     (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
                     square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for additional parameters for non-Gaussian likelihoods 
+                    Initial values for additional parameters for non-Gaussian likelihoods
                     (e.g., shape parameter of gamma likelihood) (can be None)
                 - estimate_aux_pars : bool, (default = True)
-                    If True, any additional parameters for non-Gaussian likelihoods are also estimated 
+                    If True, any additional parameters for non-Gaussian likelihoods are also estimated
                     (e.g., shape parameter of gamma likelihood)
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms
@@ -4881,10 +4896,10 @@ class GPModel(object):
                     (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
                     square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for additional parameters for non-Gaussian likelihoods 
+                    Initial values for additional parameters for non-Gaussian likelihoods
                     (e.g., shape parameter of gamma likelihood) (can be None)
                 - estimate_aux_pars : bool, (default = True)
-                    If True, any additional parameters for non-Gaussian likelihoods are also estimated 
+                    If True, any additional parameters for non-Gaussian likelihoods are also estimated
                     (e.g., shape parameter of gamma likelihood)
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms
@@ -4932,24 +4947,24 @@ class GPModel(object):
         optimizer_coef_c = ctypes.c_void_p()
         cg_preconditioner_type_c = ctypes.c_void_p()
         if params is not None:
-            if "init_cov_pars" in params:
-                if params["init_cov_pars"] is not None:
-                    init_cov_pars_c = params["init_cov_pars"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
             if "optimizer_cov" in params:
                 if params["optimizer_cov"] is not None:
                     optimizer_cov_c = c_str(params["optimizer_cov"])
-            if "init_coef" in self.params:
-                if self.params["init_coef"] is not None:
-                    init_coef_c = self.params["init_coef"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-            if "init_aux_pars" in self.params:
-                if self.params["init_aux_pars"] is not None:
-                    init_aux_pars_c = self.params["init_aux_pars"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            if "init_cov_pars" in params:
+                if params["init_cov_pars"] is not None:
+                    init_cov_pars_c = params["init_cov_pars"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
             if "optimizer_coef" in params:
                 if params["optimizer_coef"] is not None:
                     optimizer_coef_c = c_str(params["optimizer_coef"])
             if "cg_preconditioner_type" in params:
                 if params["cg_preconditioner_type"] is not None:
                     cg_preconditioner_type_c = c_str(params["cg_preconditioner_type"])
+            if "init_aux_pars" in params:
+                if params["init_aux_pars"] is not None:
+                    init_aux_pars_c = params["init_aux_pars"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            if "init_coef" in self.params:
+                if self.params["init_coef"] is not None:
+                    init_coef_c = self.params["init_coef"].ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         _safe_call(_LIB.GPB_SetOptimConfig(
             self.handle,
             init_cov_pars_c,
@@ -5038,15 +5053,14 @@ class GPModel(object):
         >>> gp_model.fit(y=y, X=X)
         >>> gp_model.get_cov_pars()
         """
+        self.__update_cov_par_names(self._get_likelihood_name())
         if self.model_has_been_loaded_from_saved_file:
             cov_pars = self.cov_pars_loaded_from_file
         else:
-            self.__update_cov_par_names(self._get_likelihood_name())
             if self.params["std_dev"]:
                 optim_pars = np.zeros(2 * self.num_cov_pars, dtype=np.float64)
             else:
                 optim_pars = np.zeros(self.num_cov_pars, dtype=np.float64)
-
             _safe_call(_LIB.GPB_GetCovPar(
                 self.handle,
                 optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
@@ -5054,12 +5068,13 @@ class GPModel(object):
             if self.params["std_dev"] and self._get_likelihood_name() == "gaussian":
                 cov_pars = np.row_stack((optim_pars[0:self.num_cov_pars],
                                          optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
-                if format_pandas:
-                    cov_pars = pd.DataFrame(cov_pars, columns=self.cov_par_names, index=['Param.', 'Std. dev.'])
             else:
                 cov_pars = optim_pars[0:self.num_cov_pars]
-                if format_pandas:
-                    cov_pars = pd.DataFrame(cov_pars.reshape((1, -1)), columns=self.cov_par_names, index=['Param.'])
+        if format_pandas:
+            if self.params["std_dev"] and self._get_likelihood_name() == "gaussian":
+                cov_pars = pd.DataFrame(cov_pars, columns=self.cov_par_names, index=['Param.', 'Std. dev.'])
+            else:
+                cov_pars = pd.DataFrame(cov_pars.reshape((1, -1)), columns=self.cov_par_names, index=['Param.'])
         return cov_pars
 
     def get_coef(self, format_pandas=True):
@@ -5090,7 +5105,6 @@ class GPModel(object):
                 optim_pars = np.zeros(2 * self.num_coef, dtype=np.float64)
             else:
                 optim_pars = np.zeros(self.num_coef, dtype=np.float64)
-
             _safe_call(_LIB.GPB_GetCoef(
                 self.handle,
                 optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
@@ -5098,33 +5112,32 @@ class GPModel(object):
             if self.params["std_dev"]:
                 coef = np.row_stack((optim_pars[0:self.num_coef],
                                      optim_pars[self.num_coef:(2 * self.num_coef)]))
-                if format_pandas:
-                    coef = pd.DataFrame(coef, columns=self.coef_names, index=['Param.', 'Std. dev.'])
             else:
                 coef = optim_pars[0:self.num_coef]
-                if format_pandas:
-                    coef = pd.DataFrame(coef.reshape((1, -1)), columns=self.coef_names, index=['Param.'])
+        if format_pandas:
+            if self.params["std_dev"]:
+                coef = pd.DataFrame(coef, columns=self.coef_names, index=['Param.', 'Std. dev.'])
+            else:
+                coef = pd.DataFrame(coef.reshape((1, -1)), columns=self.coef_names, index=['Param.'])
         return coef
 
     def get_aux_pars(self, format_pandas=True):
-        if self.model_has_been_loaded_from_saved_file:
-            cov_pars = self.cov_pars_loaded_from_file
+        num_aux_pars = self._get_num_aux_pars()
+        if num_aux_pars > 0:
+            aux_pars = np.zeros(num_aux_pars, dtype=np.float64)
+            buffer_len = 1 << 20
+            string_buffer = ctypes.create_string_buffer(buffer_len)
+            ptr_string_buffer = ctypes.c_char_p(*[ctypes.addressof(string_buffer)])
+            _safe_call(_LIB.GPB_GetAuxPars(
+                self.handle,
+                aux_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+                ptr_string_buffer))
+            name = string_buffer.value.decode()
+            if format_pandas:
+                aux_pars = pd.DataFrame(aux_pars.reshape((1, -1)), columns=[name for i in range(num_aux_pars)],
+                                        index=['Param.'])
         else:
-            num_aux_pars = self._get_num_aux_pars()
-            if num_aux_pars > 0:
-                aux_pars = np.zeros(num_aux_pars, dtype=np.float64)
-                buffer_len = 1 << 20
-                string_buffer = ctypes.create_string_buffer(buffer_len)
-                ptr_string_buffer = ctypes.c_char_p(*[ctypes.addressof(string_buffer)])
-                _safe_call(_LIB.GPB_GetAuxPars(
-                    self.handle,
-                    aux_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                    ptr_string_buffer))
-                name = string_buffer.value.decode()
-                if format_pandas:
-                    aux_pars = pd.DataFrame(aux_pars.reshape((1, -1)), columns=[name for i in range(num_aux_pars)], index=['Param.'])
-            else:
-                aux_pars = None
+            aux_pars = None
         return aux_pars
 
     def summary(self):
@@ -5138,7 +5151,7 @@ class GPModel(object):
         """
         cov_pars = self.get_cov_pars(format_pandas=True)
         print("=====================================================")
-        if self.model_fitted:
+        if self.model_fitted and not self.model_has_been_loaded_from_saved_file:
             print("Model summary:")
             ll = -self.get_current_neg_log_likelihood()
             npar = self.num_cov_pars
@@ -5161,7 +5174,7 @@ class GPModel(object):
                 print(outstr)
             print("-----------------------------------------------------")
         print("Covariance parameters (random effects):")
-        print(round(cov_pars.transpose(),4))
+        print(round(cov_pars.transpose(), 4))
         if self.has_covariates:
             print("-----------------------------------------------------")
             print("Linear regression coefficients (fixed effects):")
@@ -5171,14 +5184,14 @@ class GPModel(object):
                 p_values = 2 * scipy.stats.norm.cdf(-np.abs(z_values))
                 coefs = coefs.transpose()
                 print(round(pd.concat([coefs, pd.DataFrame({"z value": z_values, "P(>|z|)": p_values},
-                                                           index=coefs.index)], axis=1),4))
+                                                           index=coefs.index)], axis=1), 4))
             else:
-               print(round(coefs.transpose(),4))
+                print(round(coefs.transpose(), 4))
         if self._get_num_aux_pars() > 0:
             print("-----------------------------------------------------")
             print("Additional parameters:")
             aux_pars = self.get_aux_pars(format_pandas=True)
-            print(round(aux_pars.transpose(),4))
+            print(round(aux_pars.transpose(), 4))
         if self.params["maxit"] == self._get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
             print("-----------------------------------------------------")
             print("Note: no convergence after the maximal number of iterations")
@@ -5286,10 +5299,10 @@ class GPModel(object):
         """
 
         if vecchia_pred_type is not None:
-            raise GPBoostError("The argument 'vecchia_pred_type' is discontinued. " 
+            raise GPBoostError("The argument 'vecchia_pred_type' is discontinued. "
                                "Use the function 'set_prediction_data' to specify this")
         if num_neighbors_pred is not None:
-            raise GPBoostError("The argument 'num_neighbors_pred' is discontinued. " 
+            raise GPBoostError("The argument 'num_neighbors_pred' is discontinued. "
                                "Use the function 'set_prediction_data' to specify this")
         if self.model_has_been_loaded_from_saved_file:
             if y is None:
@@ -5757,7 +5770,7 @@ class GPModel(object):
             re_preds = np.zeros(self.num_data * num_re_comps * 2, dtype=np.float64)
         else:
             re_preds = np.zeros(self.num_data * num_re_comps, dtype=np.float64)
-        
+
         _safe_call(_LIB.GPB_PredictREModelTrainingDataRandomEffects(
             self.handle,
             ctypes.c_void_p(),
@@ -5853,7 +5866,7 @@ class GPModel(object):
             model_dict["num_coef"] = self.num_coef
             model_dict["X"] = self._get_covariate_data()
         # Additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
-        model_dict["params"]["init_aux_pars"] = self.get_aux_pars(format_pandas=False) 
+        model_dict["params"]["init_aux_pars"] = self.get_aux_pars(format_pandas=False)
         # Note: for simplicity, this is put into 'init_aux_pars'. When loading the model, 'init_aux_pars' are correctly set
         model_dict["model_fitted"] = self.model_fitted
         return model_dict
