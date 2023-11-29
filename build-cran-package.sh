@@ -69,7 +69,10 @@ cd ${TEMP_R_DIR}
     echo "Removing files not needed for CRAN"
     rm src/install.libs.R
     rm -r src/cmake/
-    rm -r inst/
+    rm -r inst/bin/
+    rm inst/make-r-def.R
+    rm inst/Makevars
+    rm inst/Makevars.win
     rm AUTOCONF_UBUNTU_VERSION
     rm recreate-configure.sh
     rm -f README.html
