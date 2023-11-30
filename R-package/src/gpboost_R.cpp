@@ -35,7 +35,7 @@
 
 #define CHECK_CALL(x) \
   if ((x) != 0) { \
-    Rf_error(LGBM_GetLastError()); \
+    Rf_error("%s", LGBM_GetLastError()); \
   }
 
 using LightGBM::Common::Split;
