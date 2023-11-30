@@ -24,9 +24,10 @@ Approximations for Gaussian processes
 -------------------------------------
 
 **In brief, try:**
-   * ``GPModel(..., gp_approx = "vecchia")`` or ``GPModel(..., gp_approx = "tapering")`` for Gaussian process models
 
-   * For ``GPModel(..., gp_approx = "vecchia", matrix_inversion_method = "iterative")`` for Gaussian processes with non-Gaussian likelihoods (e.g., classification)
+* ``GPModel(..., gp_approx = "vecchia")`` or ``GPModel(..., gp_approx = "tapering")`` for Gaussian process models
+
+* For ``GPModel(..., gp_approx = "vecchia", matrix_inversion_method = "iterative")`` for Gaussian processes with non-Gaussian likelihoods (e.g., classification)
 
 
 **In more detail:**
