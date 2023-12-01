@@ -5407,7 +5407,7 @@ class GPModel(object):
                                                          convert_to_type=None)
                 if cluster_ids_pred.shape[0] != num_data_pred:
                     raise ValueError("Incorrect number of data points in cluster_ids_pred")
-                if self.cluster_ids_map_to_int is None and not np.issubdtype(cluster_ids_pred.dtype, np.int):
+                if self.cluster_ids_map_to_int is None and not np.issubdtype(cluster_ids_pred.dtype, np.integer):
                     error_message = True
                     if np.issubdtype(cluster_ids_pred.dtype, np.double):
                         if (np.floor(cluster_ids_pred) == cluster_ids_pred).all():
@@ -5675,7 +5675,7 @@ class GPModel(object):
                                                      convert_to_type=None)
             if cluster_ids_pred.shape[0] != num_data_pred:
                 raise ValueError("Incorrect number of data points in cluster_ids_pred")
-            if self.cluster_ids_map_to_int is None and not np.issubdtype(cluster_ids_pred.dtype, np.int):
+            if self.cluster_ids_map_to_int is None and not np.issubdtype(cluster_ids_pred.dtype, np.integer):
                 error_message = True
                 if np.issubdtype(cluster_ids_pred.dtype, np.double):
                     if (np.floor(cluster_ids_pred) == cluster_ids_pred).all():
