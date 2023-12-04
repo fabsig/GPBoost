@@ -37,6 +37,12 @@ Visual Studio (or VS Build Tools)
      cmake -A x64 ..
      cmake --build . --target ALL_BUILD --config Release
 
+*Note*: sometimes running ``cmake -A x64 ..`` gives an error ``Generator X does not support platform specification, but platform x64 was specified.`` In this case, you need to explicitly provide the generator, for instance: 
+
+   .. code::
+
+     cmake -G "Visual Studio 17 2022" ..``
+
 The ``.exe`` and ``.dll`` files will be in the ``GPBoost/Release`` folder.
 
 MinGW-w64
@@ -154,4 +160,4 @@ gcc
 
 .. _VS Build Tools: https://visualstudio.microsoft.com/downloads/
 
-.. _MinGW-w64: https://mingw-w64.org/doku.php/download
+.. _MinGW-w64: https://www.mingw-w64.org/downloads/
