@@ -5841,10 +5841,10 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		}
 
 		/*!
-		* \brief Calculate the Fisher information for covariance parameters on the log-scale. Note: you need to call CalcCovFactor first
+		* \brief Calculate the Fisher information for covariance parameters. Note: you need to call CalcCovFactor first
 		* \param cov_pars Covariance parameters
 		* \param[out] FI Fisher information
-		* \param transf_scale If true, the derivative is taken on the transformed scale otherwise on the original scale. Default = true
+		* \param transf_scale If true, the derivative is taken on the transformed scale (log-scale) otherwise on the original scale. Default = true
 		* \param include_error_var If true, the error variance parameter (=nugget effect) is also included, otherwise not
 		* \param use_saved_psi_inv If false, the inverse covariance matrix Psi^-1 is calculated, otherwise a saved version is used
 		*/
