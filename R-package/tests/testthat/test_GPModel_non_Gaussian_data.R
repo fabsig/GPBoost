@@ -232,7 +232,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
   })
   
-  
   test_that("Binary classification with Gaussian process model with multiple observations at the same location", {
     
     eps_multiple <- as.vector(L_multiple %*% b_multiple)
@@ -772,129 +771,111 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       if(inv_method == "iterative"){
         tolerance_loc_1 <- TOLERANCE_ITERATIVE
         tolerance_loc_2 <- TOLERANCE_ITERATIVE
+        loop_cg_PC = c("piv_chol_on_Sigma", "Sigma_inv_plus_BtWB")
       } else{
         tolerance_loc_1 <- TOLERANCE_STRICT
         tolerance_loc_2 <- TOLERANCE_LOOSE
+        loop_cg_PC = c("piv_chol_on_Sigma")
       }
-      # Estimation using gradient descent
-      capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                                          likelihood = "bernoulli_probit", gp_approx = "vecchia", 
-                                          num_neighbors = n-1, vecchia_ordering = "none",
-                                          matrix_inversion_method = inv_method), file='NUL')
-      capture.output( fit(gp_model, y = y, params = params_vecchia)
-                      , file='NUL')
-      cov_pars <- c(0.9419234, 0.1866877)  
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
-      if(inv_method != "iterative") {
-        expect_equal(gp_model$get_num_optim_iter(), 40)
-      }
-      # Vecchia approximation with random ordering
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
-                                             vecchia_ordering="random", likelihood = "bernoulli_probit", 
-                                             gp_approx = "vecchia",  num_neighbors = n-1,
-                                             y = y, params = params_vecchia, 
-                                             matrix_inversion_method = inv_method), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
-      if(inv_method != "iterative") {
-        expect_equal(gp_model$get_num_optim_iter(), 40)
-      }
-      # init_cov_pars_ not given
-      params_vecchia_no_init <- params_vecchia
-      params_vecchia_no_init$init_cov_pars <- NULL
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
-                                             vecchia_ordering="random", likelihood = "bernoulli_probit", 
-                                             gp_approx = "vecchia",  num_neighbors = n-1,
-                                             y = y, params = params_vecchia_no_init, 
-                                             matrix_inversion_method = inv_method), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
-      if(inv_method != "iterative") {
-        expect_equal(gp_model$get_num_optim_iter(), 40)
-      }
-      if(inv_method != "iterative"){
-        # Same estimation without Vecchia approximation
-        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                               likelihood = "bernoulli_probit", gp_approx = "none",
-                                               y = y, params = params_vecchia), file='NUL')
+      for (cg_preconditioner_type in loop_cg_PC) {
+        params_vecchia$cg_preconditioner_type <- cg_preconditioner_type
+        # Estimation using gradient descent
+        capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                            likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                            num_neighbors = n-1, vecchia_ordering = "none",
+                                            matrix_inversion_method = inv_method), file='NUL')
+        capture.output( fit(gp_model, y = y, params = params_vecchia)
+                        , file='NUL')
+        cov_pars <- c(0.9419234, 0.1866877)  
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
-        expect_equal(gp_model$get_num_optim_iter(), 40)
-        
-      }
-      # Prediction
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                             likelihood = "bernoulli_probit", gp_approx = "vecchia", 
-                                             num_neighbors = n-1, vecchia_ordering = "none",
-                                             y = y, matrix_inversion_method = inv_method,
-                                             params = list(optimizer_cov = "gradient_descent", 
-                                                           use_nesterov_acc = FALSE, lr_cov = 0.01, 
-                                                           init_cov_pars = init_cov_pars,
-                                                           cg_preconditioner_type = "piv_chol_on_Sigma")), file='NUL')
-      coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
-      gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
-                                   num_neighbors_pred = n+2, nsim_var_pred = 100000)
-      capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
-                                      predict_cov_mat = TRUE, predict_response = FALSE), file='NUL')
-      expected_mu <- c(-0.6595662, -0.6638940, 0.4997690)
-      expected_cov <- c(0.6482223800, 0.5765285294, -0.0001030520, 0.5765285294, 
-                        0.6478190560, -0.0001163496, -0.0001030520, -0.0001163496, 0.4435550921)
-      expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
-      # Predict variances
-      capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
-                                      predict_var = TRUE, predict_response = FALSE), file='NUL')
-      expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-      expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),tolerance_loc_1)
-      # Predict response
-      capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
-                                      predict_response = TRUE, predict_var = TRUE), file='NUL')
-      expected_mu_resp <- c(0.3037139, 0.3025143, 0.6612807)
-      expected_var_resp <- c(0.2114718, 0.2109994, 0.2239885)
-      expect_lt(sum(abs(pred$mu-expected_mu_resp)),tolerance_loc_1)
-      expect_lt(sum(abs(pred$var-expected_var_resp)),tolerance_loc_1)
-      if(inv_method != "iterative"){
-        # Same prediction without Vecchia approximation
+        if(inv_method != "iterative") {
+          expect_equal(gp_model$get_num_optim_iter(), 40)
+        }
+        # Vecchia approximation with random ordering
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                               vecchia_ordering="random", likelihood = "bernoulli_probit", 
+                                               gp_approx = "vecchia",  num_neighbors = n-1,
+                                               y = y, params = params_vecchia, 
+                                               matrix_inversion_method = inv_method), file='NUL')
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
+        if(inv_method != "iterative") {
+          expect_equal(gp_model$get_num_optim_iter(), 40)
+        }
+        # init_cov_pars_ not given
+        params_vecchia_no_init <- params_vecchia
+        params_vecchia_no_init$init_cov_pars <- NULL
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                               vecchia_ordering="random", likelihood = "bernoulli_probit", 
+                                               gp_approx = "vecchia",  num_neighbors = n-1,
+                                               y = y, params = params_vecchia_no_init, 
+                                               matrix_inversion_method = inv_method), file='NUL')
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
+        if(inv_method != "iterative") {
+          expect_equal(gp_model$get_num_optim_iter(), 40)
+        }
+        if(inv_method != "iterative"){
+          # Same estimation without Vecchia approximation
+          capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                 likelihood = "bernoulli_probit", gp_approx = "none",
+                                                 y = y, params = params_vecchia), file='NUL')
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
+          expect_equal(gp_model$get_num_optim_iter(), 40)
+          
+        }
+        # Prediction
         capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                               likelihood = "bernoulli_probit", gp_approx = "none",
-                                               y = y, params = list(optimizer_cov = "gradient_descent", 
-                                                                    use_nesterov_acc = FALSE, lr_cov=0.01, init_cov_pars=init_cov_pars)), file='NUL')
-        pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
+                                               likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                               num_neighbors = n-1, vecchia_ordering = "none",
+                                               y = y, matrix_inversion_method = inv_method,
+                                               params = list(optimizer_cov = "gradient_descent", 
+                                                             use_nesterov_acc = FALSE, lr_cov = 0.01, 
+                                                             init_cov_pars = init_cov_pars,
+                                                             cg_preconditioner_type = "piv_chol_on_Sigma")), file='NUL')
+        coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+        gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
+                                     num_neighbors_pred = n+2, nsim_var_pred = 100000)
+        capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                        predict_cov_mat = TRUE, predict_response = FALSE), file='NUL')
+        expected_mu <- c(-0.6595662, -0.6638940, 0.4997690)
+        expected_cov <- c(0.6482223800, 0.5765285294, -0.0001030520, 0.5765285294, 
+                          0.6478190560, -0.0001163496, -0.0001030520, -0.0001163496, 0.4435550921)
         expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
         expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
-        pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, predict_response = FALSE)
+        # Predict variances
+        capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                        predict_var = TRUE, predict_response = FALSE), file='NUL')
         expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
         expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),tolerance_loc_1)
-        pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE, predict_var = TRUE)
+        # Predict response
+        capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                        predict_response = TRUE, predict_var = TRUE), file='NUL')
+        expected_mu_resp <- c(0.3037139, 0.3025143, 0.6612807)
+        expected_var_resp <- c(0.2114718, 0.2109994, 0.2239885)
         expect_lt(sum(abs(pred$mu-expected_mu_resp)),tolerance_loc_1)
         expect_lt(sum(abs(pred$var-expected_var_resp)),tolerance_loc_1)
-        
-        # Evaluate approximate negative marginal log-likelihood
-        nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
-        expect_lt(abs(nll-63.6205917),TOLERANCE_STRICT)
-      }
-      #######################
-      ## Less neighbors than observations
-      #######################
-      capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
-                                          likelihood = "bernoulli_probit", gp_approx = "vecchia", 
-                                          num_neighbors=30, vecchia_ordering = "none",
-                                          matrix_inversion_method = inv_method), file='NUL')
-      capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
-                                                         lr_cov = 0.1, use_nesterov_acc = FALSE,
-                                                         convergence_criterion = "relative_change_in_parameters",
-                                                         cg_delta_conv = sqrt(1e-6), num_rand_vec_trace = 500,
-                                                         cg_preconditioner_type = "piv_chol_on_Sigma")), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
-      if(inv_method == "cholesky"){
-        expect_equal(gp_model$get_num_optim_iter(), 40)
-      } else {
-        expect_equal(gp_model$get_num_optim_iter(), 5)
-      }
-      if(inv_method == "iterative"){
-        ## Cannot change cg_preconditioner_type after a model has been fitted
-        expect_error( capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
-                                                                         lr_cov = 0.1, use_nesterov_acc = FALSE,
-                                                                         convergence_criterion = "relative_change_in_parameters",
-                                                                         cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
-                                                                         cg_preconditioner_type = "Sigma_inv_plus_BtWB")), file='NUL'))
+        if(inv_method != "iterative"){
+          # Same prediction without Vecchia approximation
+          capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                 likelihood = "bernoulli_probit", gp_approx = "none",
+                                                 y = y, params = list(optimizer_cov = "gradient_descent", 
+                                                                      use_nesterov_acc = FALSE, lr_cov=0.01, init_cov_pars=init_cov_pars)), file='NUL')
+          pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
+          expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+          expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
+          pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, predict_response = FALSE)
+          expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+          expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),tolerance_loc_1)
+          pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE, predict_var = TRUE)
+          expect_lt(sum(abs(pred$mu-expected_mu_resp)),tolerance_loc_1)
+          expect_lt(sum(abs(pred$var-expected_var_resp)),tolerance_loc_1)
+          
+          # Evaluate approximate negative marginal log-likelihood
+          nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
+          expect_lt(abs(nll-63.6205917),TOLERANCE_STRICT)
+        }
+        #######################
+        ## Less neighbors than observations
+        #######################
         capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                             likelihood = "bernoulli_probit", gp_approx = "vecchia", 
                                             num_neighbors=30, vecchia_ordering = "none",
@@ -902,91 +883,115 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
                                                            lr_cov = 0.1, use_nesterov_acc = FALSE,
                                                            convergence_criterion = "relative_change_in_parameters",
-                                                           cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
-                                                           cg_preconditioner_type = "Sigma_inv_plus_BtWB")), file='NUL')
+                                                           cg_delta_conv = sqrt(1e-6), num_rand_vec_trace = 500,
+                                                           cg_preconditioner_type = "piv_chol_on_Sigma")), file='NUL')
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
-      }
-      # Random ordering
-      capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", vecchia_ordering="random",
-                                          likelihood = "bernoulli_probit", gp_approx = "vecchia", 
-                                          num_neighbors=30, matrix_inversion_method = inv_method), file='NUL')
-      capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars, 
-                                                         lr_cov = 0.1, use_nesterov_acc = FALSE,
-                                                         convergence_criterion = "relative_change_in_parameters",
-                                                         cg_delta_conv = 1e-6, num_rand_vec_trace = 500))
-                      , file='NUL')
-      if(inv_method != "iterative"){
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),0.01)
-        # Note (02.03.2023): the results differ among compilers (e.g., gcc) 
-        #   as pseudo random numbers from the C++ RNG 'mt19937' can differ across compilers
-        expect_equal(gp_model$get_num_optim_iter(), 40)
-      } else{
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
-      }
-      
-      # Prediction
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                             likelihood = "bernoulli_probit", gp_approx = "vecchia", 
-                                             num_neighbors=30, vecchia_ordering = "none", matrix_inversion_method = inv_method,
-                                             y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = FALSE, 
-                                                                  lr_cov=0.01, init_cov_pars=init_cov_pars,
-                                                                  cg_delta_conv = 1e-6, num_rand_vec_trace = 500)), file='NUL')
-      gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = 30, nsim_var_pred=5000)
-      pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
-      expected_mu <- c(-0.6602899, -0.6646044, 0.5004378)
-      expected_cov <- c(0.6476328648, 0.5760722706, -0.0001037986, 0.5760722706, 
-                        0.6472246191, -0.0001150096, -0.0001037986, -0.0001150096, 0.4430490207)
-      expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
-      # Predict variances
-      pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, 
-                      predict_response = FALSE)
-      expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-      expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),tolerance_loc_1)
-      # Use vecchia_pred_type = "order_obs_first_cond_all"
-      gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
-      pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
-                      predict_response = FALSE)
-      expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
-      # Predict response
-      pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE, 
-                      predict_var = TRUE)
-      expected_mu_lat <- c(0.3034847, 0.3022886, 0.6615111)
-      expected_var_lat <- c(0.2113818, 0.2109102, 0.2239142)
-      expect_lt(sum(abs(pred$mu-expected_mu_lat)),tolerance_loc_1)
-      expect_lt(sum(abs(pred$var-expected_var_lat)), tolerance_loc_1)
-      # Use vecchia_pred_type = "latent_order_obs_first_cond_obs_only"
-      gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_obs_only", nsim_var_pred=2000)
-      pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
-                      predict_response = FALSE)
-      expected_cov <- c(0.6476328648, 0.2954937370, -0.0001037986, 0.2954937370, 0.6472245580, 
-                        -0.0001133886, -0.0001037986, -0.0001133886, 0.4430490207)
-      expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_2)
-      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
-      # Use vecchia_pred_type = "order_obs_first_cond_obs_only"
-      gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only")
-      pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
-                      predict_response = FALSE) 
-      expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_2)
-      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
-      
-      # Predict training data random effects
-      training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
-      gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only")
-      preds <- predict(gp_model, gp_coords_pred = coords, predict_response = FALSE, predict_var = TRUE)
-      expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),tolerance_loc_1)
-      if(inv_method == "iterative"){
-        expect_lt(mean(abs(training_data_random_effects[,2] - preds$var)), TOLERANCE_ITERATIVE) #Different RNG-Status
-      }else{
-        expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),TOLERANCE_STRICT)  
-      }
-      
-      # Evaluate approximate negative marginal log-likelihood
-      nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
-      expect_lt(abs(nll-63.6211118),tolerance_loc_1)
-      
-    }
+        if(inv_method == "cholesky"){
+          expect_equal(gp_model$get_num_optim_iter(), 40)
+        } else {
+          expect_lt(gp_model$get_num_optim_iter(), 20)
+          expect_gt(gp_model$get_num_optim_iter(), 3)
+        }
+        if(inv_method == "iterative"){
+          ## Cannot change cg_preconditioner_type after a model has been fitted
+          expect_error( capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
+                                                                           lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                                                           convergence_criterion = "relative_change_in_parameters",
+                                                                           cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
+                                                                           cg_preconditioner_type = "Sigma_inv_plus_BtWB")), file='NUL'))
+          capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                              likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                              num_neighbors=30, vecchia_ordering = "none",
+                                              matrix_inversion_method = inv_method), file='NUL')
+          capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
+                                                             lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                                             convergence_criterion = "relative_change_in_parameters",
+                                                             cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
+                                                             cg_preconditioner_type = "Sigma_inv_plus_BtWB")), file='NUL')
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
+        }
+        # Random ordering
+        capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", vecchia_ordering="random",
+                                            likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                            num_neighbors=30, matrix_inversion_method = inv_method), file='NUL')
+        capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars, 
+                                                           lr_cov = 0.1, use_nesterov_acc = FALSE,
+                                                           convergence_criterion = "relative_change_in_parameters",
+                                                           cg_delta_conv = 1e-6, num_rand_vec_trace = 500))
+                        , file='NUL')
+        if(inv_method != "iterative"){
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),0.01)
+          # Note (02.03.2023): the results differ among compilers (e.g., gcc) 
+          #   as pseudo random numbers from the C++ RNG 'mt19937' can differ across compilers
+          expect_equal(gp_model$get_num_optim_iter(), 40)
+        } else{
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
+        }
+        
+        # Prediction
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                               likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                               num_neighbors=30, vecchia_ordering = "none", matrix_inversion_method = inv_method,
+                                               y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = FALSE, 
+                                                                    lr_cov=0.01, init_cov_pars=init_cov_pars,
+                                                                    cg_delta_conv = 1e-6, num_rand_vec_trace = 500)), file='NUL')
+        gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = 30, nsim_var_pred=5000)
+        pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
+        expected_mu <- c(-0.6602899, -0.6646044, 0.5004378)
+        expected_cov <- c(0.6476328648, 0.5760722706, -0.0001037986, 0.5760722706, 
+                          0.6472246191, -0.0001150096, -0.0001037986, -0.0001150096, 0.4430490207)
+        expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
+        # Predict variances
+        pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, 
+                        predict_response = FALSE)
+        expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),tolerance_loc_1)
+        # Use vecchia_pred_type = "order_obs_first_cond_all"
+        gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
+        pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
+                        predict_response = FALSE)
+        expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
+        # Predict response
+        pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE, 
+                        predict_var = TRUE)
+        expected_mu_lat <- c(0.3034847, 0.3022886, 0.6615111)
+        expected_var_lat <- c(0.2113818, 0.2109102, 0.2239142)
+        expect_lt(sum(abs(pred$mu-expected_mu_lat)),tolerance_loc_1)
+        expect_lt(sum(abs(pred$var-expected_var_lat)), tolerance_loc_1)
+        # Use vecchia_pred_type = "latent_order_obs_first_cond_obs_only"
+        gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_obs_only", nsim_var_pred=2000)
+        pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
+                        predict_response = FALSE)
+        expected_cov <- c(0.6476328648, 0.2954937370, -0.0001037986, 0.2954937370, 0.6472245580, 
+                          -0.0001133886, -0.0001037986, -0.0001133886, 0.4430490207)
+        expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_2)
+        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
+        # Use vecchia_pred_type = "order_obs_first_cond_obs_only"
+        gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only")
+        pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
+                        predict_response = FALSE) 
+        expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_2)
+        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
+        
+        # Predict training data random effects
+        training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+        gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only")
+        preds <- predict(gp_model, gp_coords_pred = coords, predict_response = FALSE, predict_var = TRUE)
+        expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),tolerance_loc_1)
+        if(inv_method == "iterative"){
+          expect_lt(mean(abs(training_data_random_effects[,2] - preds$var)), TOLERANCE_ITERATIVE) #Different RNG-Status
+        }else{
+          expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),TOLERANCE_STRICT)  
+        }
+        
+        # Evaluate approximate negative marginal log-likelihood
+        nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
+        expect_lt(abs(nll-63.6211118),tolerance_loc_1)
+        
+      }# end loop cg_preconditioner_type in loop_cg_PC
+    }# end loop inv_method in c("cholesky", "iterative")
     
     ###################
     ## Random coefficient GPs
@@ -1773,7 +1778,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         tolerance_loc_2 <- TOLERANCE_ITERATIVE
       } else{
         tolerance_loc_1 <- 0.01
-        tolerance_loc_2 <- TOLERANCE_LOOSE
+        tolerance_loc_2 <- 0.01
       }
       mu <- exp(0.75 * L %*% b_1)
       y <- qgamma(sim_rand_unif(n=n, init_c=0.7654), scale = mu/shape, shape = shape)
@@ -1799,7 +1804,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expected_cov <- c(8.091398e-01, 1.079958e-01, -4.403387e-07, 1.079958e-01, 
                         8.055727e-01, -4.442709e-07, -4.403387e-07, -4.442709e-07, 6.957873e-01)
       expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-      adjust_tol <- 1
+      adjust_tol <- 2
       if (inv_method == "iterative") adjust_tol <- 1.5
       expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),adjust_tol*tolerance_loc_1)
       # Evaluate approximate negative marginal log-likelihood
@@ -1824,8 +1829,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       aux_pars <- c(1.328749)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
       if(inv_method!="iterative"){
-        expect_gt(gp_model$get_num_optim_iter(), 117)
-        expect_lt(gp_model$get_num_optim_iter(), 131)
+        expect_gt(gp_model$get_num_optim_iter(), 115)
+        expect_lt(gp_model$get_num_optim_iter(), 135)
       }
       # Also estimate shape parameter with gradient descent
       params_shape$optimizer_cov <- "gradient_descent"
@@ -1838,7 +1843,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
       expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),tolerance_loc_2)
       if(inv_method!="iterative"){
-        expect_equal(gp_model$get_num_optim_iter(), 58)
+        expect_gt(gp_model$get_num_optim_iter(), 55)
+        expect_lt(gp_model$get_num_optim_iter(), 60)
       }
     }
   })

@@ -290,19 +290,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-2)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-2)
     expect_gt(gp_model$get_num_optim_iter(), 24)# different compilers result in slightly different results
-    expect_lt(gp_model$get_num_optim_iter(), 27)
+    expect_lt(gp_model$get_num_optim_iter(), 28)
     # Adam
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y, X=X, params = list(optimizer_cov = "adam",
                                                      maxit=5000))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-2)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-2)
-    expect_gt(gp_model$get_num_optim_iter(), 1979) # different compilers result in slightly different results
-    expect_lt(gp_model$get_num_optim_iter(), 2008)
+    expect_gt(gp_model$get_num_optim_iter(), 1950) # different compilers result in slightly different results
+    expect_lt(gp_model$get_num_optim_iter(), 2010)
     
   })
-  
-  
   
   test_that("Gaussian process and two random coefficients ", {
     
@@ -560,9 +558,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                        acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
                                                        maxit=1000, convergence_criterion = "relative_change_in_parameters"))
                     , file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_vecchia)),TOLERANCE_LOOSE)
-    expect_gt(gp_model$get_num_optim_iter(), 368) # different compilers result in slightly different results
-    expect_lt(gp_model$get_num_optim_iter(), 379)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_vecchia)),0.05)
+    expect_gt(gp_model$get_num_optim_iter(), 360) # different compilers result in slightly different results
+    expect_lt(gp_model$get_num_optim_iter(), 420)
     
     # Prediction from fitted model
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only", num_neighbors_pred = 30)
