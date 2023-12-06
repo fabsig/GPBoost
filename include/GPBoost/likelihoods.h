@@ -1689,7 +1689,10 @@ namespace GPBoost {
 							}
 							//Dependent on the preconditioner: Generate t (= num_rand_vec_trace_) or 2*t random vectors
 							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-								rand_vec_trace_I_.resize(num_data, 2 * num_rand_vec_trace_);
+								//rand_vec_trace_I_.resize(num_data, 2 * num_rand_vec_trace_);//DELETE
+								rand_vec_trace_I_.resize(num_data, num_rand_vec_trace_);
+								rand_vec_trace_I2_.resize(piv_chol_rank_, num_rand_vec_trace_);
+								GenRandVecTrace(cg_generator_, rand_vec_trace_I2_);
 								WI_plus_Sigma_inv_Z_.resize(num_data, num_rand_vec_trace_);
 							}
 							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
@@ -3158,16 +3161,22 @@ namespace GPBoost {
 			den_mat_t& I_k_plus_Sigma_L_kt_W_Sigma_L_k,
 			bool& has_NA_or_Inf,
 			double& log_det_Sigma_W_plus_I) {
-
+			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
+			CHECK(rand_vec_trace_P_.cols() == num_rand_vec_trace_);
 			if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+				CHECK(rand_vec_trace_I2_.cols() == num_rand_vec_trace_);
+				CHECK(rand_vec_trace_I2_.rows() == Sigma_L_k_.cols());
 				std::vector<vec_t> Tdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
 				std::vector<vec_t> Tsubdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 				//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
 				//For P = W^(-1) + Sigma_L_k Sigma_L_k^T: z_i = W^(-1/2) r_j + Sigma_L_k r_i, where r_i, r_j ~ N(0,I)
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					rand_vec_trace_P_.col(i) = Sigma_L_k_ * rand_vec_trace_I_.col(i) + ((second_deriv_neg_ll_.cwiseInverse().cwiseSqrt()).array() * rand_vec_trace_I_.col(i + num_rand_vec_trace_).array()).matrix();
+					rand_vec_trace_P_.col(i) = Sigma_L_k_ * rand_vec_trace_I2_.col(i) + ((second_deriv_neg_ll_.cwiseInverse().cwiseSqrt()).array() * rand_vec_trace_I_.col(i).array()).matrix();
 				}
+				//for (int i = 0; i < num_rand_vec_trace_; ++i) {//DELETE
+				//	rand_vec_trace_P_.col(i) = Sigma_L_k_ * rand_vec_trace_I_.col(i) + ((second_deriv_neg_ll_.cwiseInverse().cwiseSqrt()).array() * rand_vec_trace_I_.col(i + num_rand_vec_trace_).array()).matrix();
+				//}
 				I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
 				I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * second_deriv_neg_ll_.asDiagonal() * Sigma_L_k_;
 				chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
@@ -3598,9 +3607,11 @@ namespace GPBoost {
 		bool cg_generator_seeded_ = false;
 		/*! If reuse_rand_vec_trace_ is true and rand_vec_trace_I_ has been generated for the first time, then saved_rand_vec_trace_ is set to true*/
 		bool saved_rand_vec_trace_ = false;
-		/*! Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I*/
+		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension num_data, and t = num_rand_vec_trace_ */
 		den_mat_t rand_vec_trace_I_;
-		/*! Matrix Z of random vectors (z_1, ..., z_t), where z_i is of dimension n & Cov(z_i) = P (P being the preconditioner matrix)*/
+		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension piv_chol_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "piv_chol_on_Sigma" */
+		den_mat_t rand_vec_trace_I2_;
+		/*! Matrix Z of random vectors (z_1, ..., z_t) with Cov(z_i) = P (P being the preconditioner matrix), z_i is of dimension num_data, and t = num_rand_vec_trace_ */
 		den_mat_t rand_vec_trace_P_;
 		/*! Matrix to store (Sigma^(-1) + W)^(-1) (z_1, ..., z_t) calculated in CGTridiagVecchiaLaplace() for later use in the stochastic trace approximation when calculating the gradient*/
 		den_mat_t SigmaI_plus_W_inv_Z_;
