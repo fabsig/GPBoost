@@ -165,7 +165,7 @@ namespace GPBoost {
 		*/
 		void AddPredUncondVar(double* pred_uncond_var,
 			int num_data_pred,
-			const double* const rand_coef_data_pred = nullptr) const {
+			const double* const rand_coef_data_pred) const {
 			if (this->is_rand_coef_) {
 #pragma omp for schedule(static)
 				for (int i = 0; i < num_data_pred; ++i) {

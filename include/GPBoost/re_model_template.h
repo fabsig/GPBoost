@@ -1418,27 +1418,10 @@ namespace GPBoost {
 							grad_cluster_i.data() + num_cov_par_,
 							false);
 					}
-					else if (only_one_GP_calculations_on_RE_scale_) {
-						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGPCalculationsOnREScale(y_[cluster_i].data(),
-							y_int_[cluster_i].data(),
-							fixed_effects_cluster_i_ptr,
-							num_data_per_cluster_[cluster_i],
-							ZSigmaZt_[cluster_i], //Note: ZSigmaZt_ contains only Sigma if only_one_GP_calculations_on_RE_scale_==true
-							re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
-							re_comps_[cluster_i],
-							true,
-							false,
-							estimate_aux_pars_,
-							grad_cluster_i.data(),
-							empty_unused_vec,
-							grad_cluster_i.data() + num_cov_par_,
-							false);
-					}
 					else {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxStable(y_[cluster_i].data(),
 							y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr,
-							num_data_per_cluster_[cluster_i],
 							ZSigmaZt_[cluster_i],
 							re_comps_[cluster_i],
 							true,
@@ -3839,31 +3822,41 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
 						num_data_per_cluster_[cluster_i],
 						num_data_per_cluster_[cluster_i],
-						false));
+						false,
+						false,
+						nullptr));
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
 						num_data_per_cluster_[cluster_i],
 						cum_num_rand_eff_[cluster_i][num_re_group_total_],
-						false));
+						false,
+						false,
+						nullptr));
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
 						num_data_per_cluster_[cluster_i],
 						re_comps_[cluster_i][0]->GetNumUniqueREs(),
-						false));
+						false,
+						false,
+						nullptr));
 				}
 				else if (only_one_GP_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
 						num_data_per_cluster_[cluster_i],
 						re_comps_[cluster_i][0]->GetNumUniqueREs(),
-						true));
+						true,
+						true,
+						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data()));
 				}
 				else {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
 						num_data_per_cluster_[cluster_i],
 						num_data_per_cluster_[cluster_i],
-						true));
+						true,
+						false,
+						nullptr));
 				}
 				if (!gauss_likelihood_) {
 					likelihood_[cluster_i]->InitializeModeAvec();
@@ -4712,27 +4705,10 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						nullptr,
 						false);
 				}
-				else if (only_one_GP_calculations_on_RE_scale_) {
-					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGPCalculationsOnREScale(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
-						ZSigmaZt_[cluster_i], //Note: ZSigmaZt_ contains only Sigma if only_one_GP_calculations_on_RE_scale_==true
-						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
-						re_comps_[cluster_i],
-						false,
-						true,
-						false,
-						nullptr,
-						grad_F_cluster_i,
-						nullptr,
-						false);
-				}
 				else {
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxStable(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
 						ZSigmaZt_[cluster_i],
 						re_comps_[cluster_i],
 						false,
@@ -5402,23 +5378,13 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
 						mll_cluster_i);
 				}
-				else if (only_one_GP_calculations_on_RE_scale_) {
-					likelihood_[cluster_i]->FindModePostRandEffCalcMLLOnlyOneGPCalculationsOnREScale(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
-						ZSigmaZt_[cluster_i], //Note: ZSigmaZt_ contains only Sigma if only_one_GP_calculations_on_RE_scale_==true
-						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
-						mll_cluster_i);
-					//Note: ZSigmaZt_[cluster_i] contains Sigma=Cov(b) and not Z*Sigma*Zt since has_Z_==false for this random effects component
-				}
 				else {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLStable(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
 						ZSigmaZt_[cluster_i],
 						mll_cluster_i);
+					//Note: if(only_one_GP_calculations_on_RE_scale_), ZSigmaZt_[cluster_i] contains Sigma=Cov(b) and not Z*Sigma*Zt since has_Z_==false for this random effects component
 				}
 				mll += mll_cluster_i;
 			}
@@ -6662,26 +6628,10 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						predict_var,
 						false);
 				}
-				else if (only_one_GP_calculations_on_RE_scale_) {
-					likelihood_[cluster_i]->PredictLaplaceApproxOnlyOneGPCalculationsOnREScale(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
-						ZSigmaZt_[cluster_i], //Note: ZSigmaZt_ contains only Sigma if only_one_GP_calculations_on_RE_scale_==true
-						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
-						cross_cov,
-						mean_pred_id,
-						cov_mat_pred_id,
-						var_pred_id,
-						predict_cov_mat,
-						predict_var,
-						false);
-				}
 				else {
 					likelihood_[cluster_i]->PredictLaplaceApproxStable(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
 						ZSigmaZt_[cluster_i],
 						cross_cov,
 						mean_pred_id,

@@ -233,7 +233,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   
-  
   test_that("Binary classification with Gaussian process model with multiple observations at the same location", {
     
     eps_multiple <- as.vector(L_multiple %*% b_multiple)
@@ -281,6 +280,35 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                   cov_pars = c(1.5,0.15), predict_var = TRUE, predict_response = TRUE)
     expect_lt(sum(abs(pred_resp$mu-c(0.4253296, 0.5000000, 0.5000000))),TOLERANCE_STRICT)
     expect_lt(sum(abs(pred_resp$var-c(0.2444243, 0.2500000, 0.2500000))),TOLERANCE_STRICT)
+    
+    # With linear regression term
+    probs <- pnorm(eps_multiple + X%*%beta)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.67981) < probs)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", 
+                                           likelihood = "bernoulli_probit", gp_approx = "none",
+                                           y = y, X=X, params = DEFAULT_OPTIM_PARAMS), file='NUL')
+    cov_pars <- c(0.74629148, 0.05008149 )
+    coefs <- c(0.8545045, 1.7286020)
+    num_it <- 39
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it)
+    # Prediction
+    coord_test <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                    predict_var = TRUE, predict_response = FALSE)
+    expected_mu <- c(0.07791956, 1.27273974, 2.65562131)
+    expected_var <- c(0.7267896, 0.7329027, 0.7329027)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
+    # Evaluate approximate negative marginal log-likelihood
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2), y=y)
+    expect_lt(abs(nll-59.9183192),TOLERANCE_STRICT)
+    # With fixed effects
+    fixed_effects <- as.numeric(X%*%beta)
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2), y=y, fixed_effects=fixed_effects)
+    expect_lt(abs(nll-42.8518187),TOLERANCE_STRICT)
   })
   
   test_that("Binary classification with one grouped random effects ", {
