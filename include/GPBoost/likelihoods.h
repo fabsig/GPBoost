@@ -1679,14 +1679,14 @@ namespace GPBoost {
 					CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data(), num_data);
 				}
 				if (matrix_inversion_method_ == "iterative") {
+					//Seed Generator
+					if (!cg_generator_seeded_) {
+						cg_generator_ = RNG_t(seed_rand_vec_trace_);
+						cg_generator_seeded_ = true;
+					}
 					if (calc_mll) {//calculate determinant term for approx_marginal_ll
 						//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
 						if (!saved_rand_vec_trace_) {
-							//Seed Generator
-							if (!cg_generator_seeded_) {
-								cg_generator_ = RNG_t(seed_rand_vec_trace_);
-								cg_generator_seeded_ = true;
-							}
 							//Dependent on the preconditioner: Generate t (= num_rand_vec_trace_) or 2*t random vectors
 							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
 								//rand_vec_trace_I_.resize(num_data, 2 * num_rand_vec_trace_);//DELETE
