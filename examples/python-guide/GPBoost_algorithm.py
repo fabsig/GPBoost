@@ -44,11 +44,16 @@ def simulate_response_variable(lp, rand_eff, likelihood):
         mu = np.exp(lp + rand_eff)
         shape = 10
         y = mu / shape * stats.gamma.ppf(np.random.uniform(size=n), a=shape)
+    elif likelihood == "negative_binomial":
+        mu = np.exp(lp + rand_eff)
+        shape = 1.5
+        p = shape / (shape + mu)
+        y = stats.nbinom.ppf(np.random.uniform(size=n), p=p, n=shape)
     return y
 
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
-#                     "poisson", or "gamma"
+#                     "poisson", "gamma", or "negative_binomial"
 likelihood = "gaussian"
 
 """

@@ -3,7 +3,7 @@
 # for various likelihoods:
 #   - "gaussian" (=regression)
 #   - "bernoulli" (=classification)
-#   - "poisson" and "gamma" (=Poisson and gamma regression)
+#   - "poisson", "gamma", "negative_binomial" (= Poisson, gamma, and negative binomial regression)
 # and various random effects models:
 #   - grouped (aka clustered) random effects models
 #   - Gaussian process (GP) models
@@ -36,13 +36,16 @@ simulate_response_variable <- function (lp, rand_eff, likelihood) {
     mu <- exp(lp + rand_eff)
     shape <- 10
     y <- qgamma(runif(n), scale = mu / shape, shape = shape)
+  } else if (likelihood == "negative_binomial") {
+    mu <- exp(lp + rand_eff)
+    y <- qnbinom(runif(n), mu = mu, size = 1.5)
   }
   return(y)
 }
 
-# Choose likelihood: either "gaussian" ("=" regression), 
-#                     "bernoulli_probit", "bernoulli_logit", (= classification)
-#                     "poisson", or "gamma"
+# Choose likelihood: either "gaussian" (=regression), 
+#                     "bernoulli_probit", "bernoulli_logit", (=classification)
+#                     "poisson", "gamma", or "negative_binomial"
 likelihood <- "gaussian"
 
 #################################

@@ -18,7 +18,7 @@ Covariance parameters of Gaussian process and  random effects}
 \item{fixed_effects}{A \code{vector} of optional external fixed effects (length = number of data points)}
 
 \item{aux_pars}{A \code{vector} with \code{numeric} elements. 
-Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of gamma likelihood)}
+Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)}
 }
 \description{
 Evaluate the negative log-likelihood. If there is a linear fixed effects

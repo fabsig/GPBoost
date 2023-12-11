@@ -4,7 +4,7 @@ Examples on how to do inference and prediction for generalized linear
 mixed effects models with various likelihoods:
     - "gaussian" (=regression)
     - "bernoulli" (=classification)
-    - "poisson" and "gamma" (=Poisson and gamma regression)
+    - "poisson", "gamma", "negative_binomial" (= Poisson, gamma, and negative binomial regression)
 and various random effects models:
     - grouped (aka clustered) random effects models including random slopes
     - Gaussian process (GP) models
@@ -41,11 +41,16 @@ def simulate_response_variable(lp, rand_eff, likelihood):
     elif likelihood == "gamma":
         mu = np.exp(lp + rand_eff)
         y = mu * stats.gamma.ppf(np.random.uniform(size=n), a=1)
+    elif likelihood == "negative_binomial":
+        mu = np.exp(lp + rand_eff)
+        shape = 1.5
+        p = shape / (shape + mu)
+        y = stats.nbinom.ppf(np.random.uniform(size=n), p=p, n=shape)
     return y
 
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
-#                     "poisson", or "gamma"
+#                     "poisson", "gamma", or "negative_binomial"
 likelihood = "gaussian"
 
 """

@@ -22,8 +22,9 @@ Available options:
 \item{ "gaussian" }
 \item{ "bernoulli_probit": binary data with Bernoulli likelihood and a probit link function }
 \item{ "bernoulli_logit": binary data with Bernoulli likelihood and a logit link function }
-\item{ "gamma" }
-\item{ "poisson" }
+\item{ "gamma": gamma distribution with a with log link function }
+\item{ "poisson": Poisson distribution with a with log link function }
+\item{ "negative_binomial": negative binomial distribution with a with log link function }
 }}
 
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 

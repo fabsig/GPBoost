@@ -23,8 +23,9 @@ Available options:
 \item{ "gaussian" }
 \item{ "bernoulli_probit": binary data with Bernoulli likelihood and a probit link function }
 \item{ "bernoulli_logit": binary data with Bernoulli likelihood and a logit link function }
-\item{ "gamma" }
-\item{ "poisson" }
+\item{ "gamma": gamma distribution with a with log link function }
+\item{ "poisson": Poisson distribution with a with log link function }
+\item{ "negative_binomial": negative binomial distribution with a with log link function }
 }}
 
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
@@ -181,10 +182,10 @@ fixed effects linear regression term (if there is one)}
     square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods) }
     \item{init_aux_pars: \code{vector} with \code{numeric} elements (default = NULL). 
     Initial values for additional parameters for non-Gaussian likelihoods 
-    (e.g., shape parameter of gamma likelihood) }
+    (e.g., shape parameter of a gamma or negative_binomial likelihood) }
     \item{estimate_aux_pars: \code{boolean} (default = TRUE). 
     If TRUE, additional parameters for non-Gaussian likelihoods 
-    are also estimated (e.g., shape parameter of gamma likelihood) }
+    are also estimated (e.g., shape parameter of a gamma or negative_binomial likelihood) }
     \item{cg_max_num_it: \code{integer} (default = 1000). 
     Maximal number of iterations for conjugate gradient algorithms }
     \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 

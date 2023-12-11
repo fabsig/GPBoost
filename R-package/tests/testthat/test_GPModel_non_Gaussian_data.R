@@ -8,7 +8,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   TOLERANCE_ITERATIVE <- 1e-1
   
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent",
-                               use_nesterov_acc = TRUE, lr_cov=0.1, lr_coef = 0.1, maxit = 1000)
+                               use_nesterov_acc = TRUE, lr_cov=0.1, lr_coef = 0.1, maxit = 1000,
+                               acc_rate_cov = 0.5)
   DEFAULT_OPTIM_PARAMS_STD <- c(DEFAULT_OPTIM_PARAMS, list(std_dev = TRUE))
   
   # Function that simulates uniform random variables
@@ -1525,6 +1526,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Single level grouped random effects
     mu <- exp(Z1 %*% b_gr_1)
     y <- qgamma(sim_rand_unif(n=n, init_c=0.04532), scale = mu/shape, shape = shape)
+    # Cannot have 0 in response variable
+    y_zero <- y
+    y_zero[1] <- 0
+    expect_error(gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
+                                           y = y_zero, params = params))
     # Estimation 
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
                                            y = y, params = params)
@@ -1847,7 +1853,222 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         expect_lt(gp_model$get_num_optim_iter(), 60)
       }
     }
-  })
+  }) # end Gamma regression
+  
+  test_that("negative binomial regression regression ", {
+    params <- DEFAULT_OPTIM_PARAMS
+    params$estimate_aux_pars <- TRUE
+    params$init_aux_pars <- 1.
+    params_shape <- params
+    params_shape$estimate_aux_pars <- TRUE
+    shape <- 1.8
+    likelihood <- "negative_binomial"
+    
+    # Single level grouped random effects
+    mu <- exp(Z1 %*% b_gr_1)
+    y <- qnbinom(sim_rand_unif(n=n, init_c=0.156), mu = mu, size = shape)
+    # Estimation 
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
+                                           y = y, params = params)
+                    , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.3356339)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 11)
+    # Prediction
+    group_test <- c(1,3,3,9999)
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, predict_cov_mat = TRUE, predict_response = FALSE)
+    expected_mu <- c(0.1856629, -0.4022728, -0.4022728, 0.0000000)
+    expected_cov <- c(0.09849537, 0.00000000, 0.00000000, 0.00000000, 0.00000000, 
+                      0.13548864, 0.13548864, 0.00000000, 0.00000000, 0.13548864, 
+                      0.13548864, 0.00000000, 0.00000000, 0.00000000, 0.00000000, 0.33563392)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    # Predict response
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, predict_var=TRUE, predict_response = TRUE)
+    expected_mu <- c(1.2647957, 0.7156755, 0.7156755, 1.18272011)
+    expected_var <- c(2.508242, 1.148106, 1.148106, 2.935353)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+    # Evaluate negative log-likelihood
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y)
+    expect_lt(abs(nll-145.8511891),TOLERANCE_LOOSE)
+    # Also estimate shape parameter
+    params_shape$optimizer_cov <- "nelder_mead"
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
+                                           y = y, params = params_shape), file='NUL')
+    cov_pars <- c(0.3371432)
+    aux_pars <- c(1.735066)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 46)
+    # Also estimate shape parameter with gradient descent
+    params_shape$optimizer_cov <- "gradient_descent"
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
+                                           y = y, params = params_shape), file='NUL')
+    cov_pars <- c(0.3356339)
+    aux_pars <- c(1.637772)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 11)
+    
+    # Multiple random effects
+    mu <- exp(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
+    y <- qnbinom(sim_rand_unif(n=n, init_c=0.1468), mu = mu, size = shape)
+    # Estimation 
+    capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
+                                           ind_effect_group_rand_coef = 1, likelihood = likelihood,
+                                           y = y, params = params)
+                    , file='NUL')
+    cov_pars <- c(0.5503418, 2.7228365, 0.6656752)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 6)
+    # Prediction
+    group_data_pred = cbind(c(1,1,77),c(2,1,98))
+    group_rand_coef_data_pred = c(0,0.1,0.3)
+    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
+                             cov_pars = c(0.9,0.8,1.2), predict_var = TRUE, predict_response = FALSE)
+    expected_mu <- c(0.365256, -1.618925, 0.000000)
+    expected_var <- c(0.2766743, 0.4021417, 1.8080000)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
+    # Also estimate shape parameter with gradient descent
+    params_shape$optimizer_cov <- "gradient_descent"
+    capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
+                                           ind_effect_group_rand_coef = 1, likelihood = likelihood,
+                                           y = y, params = params_shape), file='NUL')
+    cov_pars <- c(0.5503418, 2.7228365, 0.6656752)
+    aux_pars <- c(2.180879)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 6)
+    
+    # Also estimate shape parameter with gradient descent using internal initialization
+    params_shape_no_init <- params_shape
+    params_shape_no_init$init_aux_pars <- NULL
+    params_shape_no_init$optimizer_cov <- "gradient_descent"
+    capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
+                                           ind_effect_group_rand_coef = 1, likelihood = likelihood,
+                                           y = y, params = params_shape_no_init), file='NUL')
+    cov_pars <- c(0.5486444, 2.7506274, 0.6688556)
+    aux_pars <- c(2.231622)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 6)
+    
+    # Gaussian process model
+    mu <- exp(L %*% b_1)
+    y <- qnbinom(sim_rand_unif(n=n, init_c=0.546), mu = mu, size = shape)
+    # Estimation 
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                           likelihood = likelihood, y = y, params = params)
+                    , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.1615931, 0.1677131))),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 2)
+    # Prediction
+    coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, predict_response = FALSE)
+    expected_mu <- c(-0.3683090, -0.3657134, 0.5807237)
+    expected_var <- c(0.8239828, 0.8174733, 0.5547150)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
+    # Evaluate approximate negative marginal log-likelihood
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
+    expect_lt(abs(nll-180.3098483),TOLERANCE_STRICT)
+    # Also estimate shape parameter
+    params_shape$optimizer_cov <- "nelder_mead"
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                           likelihood = likelihood, y = y, params = params_shape)
+                    , file='NUL')
+    cov_pars <- c(1.3238396, 0.1613754 )
+    aux_pars <- c(1.091764 )
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 102)
+    # Also estimate shape parameter with gradient descent
+    params_shape$optimizer_cov <- "gradient_descent"
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                           likelihood = likelihood, y = y, params = params_shape)
+                    , file='NUL')
+    cov_pars <- c(1.1615931, 0.1677131 )
+    aux_pars <- c(0.8235968)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 2)
+    
+    ## Grouped random effects model with a linear predictor
+    mu_lin <- exp(Z1 %*% b_gr_1 + X%*%beta)
+    y_lin <- qnbinom(sim_rand_unif(n=n, init_c=0.13278), mu = mu_lin, size = shape)
+    gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
+                           y = y_lin, X=X, params = params)
+    cov_pars <- c(0.2465099)
+    coef <- c(-0.0265488, 2.2445935 )
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 21)
+    # Also estimate shape parameter with gradient descent
+    params_shape$optimizer_cov <- "gradient_descent"
+    gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
+                           y = y_lin, X=X, params = params_shape)
+    cov_pars <- c(0.2465099 )
+    coef <- c( -0.0265488, 2.2445935)
+    aux_pars <- c(1.859462 )
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 21)
+    
+    # Gaussian process model with Vecchia approximation
+    for(inv_method in c("cholesky", "iterative")){
+      if(inv_method == "iterative"){
+        tolerance_loc_1 <- TOLERANCE_ITERATIVE
+        tolerance_loc_2 <- TOLERANCE_ITERATIVE
+      } else{
+        tolerance_loc_1 <- 0.01
+        tolerance_loc_2 <- 0.01
+      }
+      mu <- exp(0.75 * L %*% b_1)
+      y <- qnbinom(sim_rand_unif(n=n, init_c=0.4819), mu = mu, size = shape)
+      # Estimation 
+      if(inv_method=="iterative"){
+        params$cg_delta_conv = 1e-6
+        params$num_rand_vec_trace=500
+      }
+      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                             likelihood = likelihood, y = y, params = params,
+                                             gp_approx = "vecchia", num_neighbors = 30, vecchia_ordering = "random",
+                                             matrix_inversion_method = inv_method), file='NUL')
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.400761, 0.143670))),tolerance_loc_2)
+      # Prediction
+      coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+      gp_model$set_prediction_data(nsim_var_pred = 10000)
+      pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
+      expected_mu <- c(-0.1924198, -0.2171927, 0.4252168)
+      expected_cov <- c(0.3457035342, 0.1671072475, 0.0001336443, 0.1671072475, 0.3481552180, 
+                        0.0001349335, 0.0001336443, 0.0001349335, 0.2529442560)
+      expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+      adjust_tol <- 2
+      if (inv_method == "iterative") adjust_tol <- 1.5
+      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),adjust_tol*tolerance_loc_1)
+      # Evaluate approximate negative marginal log-likelihood
+      nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
+      nll_exp <- 164.4182898
+      if(inv_method=="iterative"){
+        expect_lt(abs(nll-nll_exp),0.2)
+      } else{
+        expect_lt(abs(nll-nll_exp),0.05)
+      }
+      # Also estimate shape parameter with gradient descent
+      params_shape$optimizer_cov <- "gradient_descent"
+      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                             likelihood = likelihood, y = y, params = params_shape,
+                                             gp_approx = "vecchia", num_neighbors = 30, vecchia_ordering = "random")
+                      , file='NUL')
+      cov_pars <- c(0.400761, 0.143670 )
+      aux_pars <- c(0.9492465)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
+      expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),tolerance_loc_2)
+
+    }
+  }) # end negative binomial regression
   
   test_that("Saving a GPModel and loading from file works for non-Gaussian data", {
     

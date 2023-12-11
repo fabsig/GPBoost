@@ -4895,10 +4895,10 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		//	for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
 		//		if (ih > 0) {
 		//			halving_done = true;
-		//			learning_rate_decreased_first_time_ = true;
-		//			if (learning_rate_increased_after_descrease_) {
-		//				learning_rate_decreased_after_increase_ = true;
-		//			}
+		//			//learning_rate_decreased_first_time_ = true;
+		//			//if (learning_rate_increased_after_descrease_) {
+		//			//	learning_rate_decreased_after_increase_ = true;
+		//			//}
 		//			lr_cov *= LR_SHRINKAGE_FACTOR_;
 		//			acc_rate_cov *= 0.5;
 		//			if (!gauss_likelihood_) {

@@ -135,6 +135,8 @@ Model specification parameters
 
       -  ``gamma``: Gamma likelihood with log link function
 
+      -  ``negative_binomial``: Negative binomial likelihood with log link function
+
 -  ``group_data`` : two dimensional array / matrix of doubles or strings, optional (default = None)
 
    -  Labels of group levels for grouped random effects

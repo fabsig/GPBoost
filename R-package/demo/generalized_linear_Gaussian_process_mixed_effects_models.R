@@ -32,13 +32,16 @@ simulate_response_variable <- function (lp, rand_eff, likelihood) {
   } else if (likelihood == "gamma") {
     mu <- exp(lp + rand_eff)
     y <- qgamma(runif(n), scale = mu, shape = 1)
+  } else if (likelihood == "negative_binomial") {
+    mu <- exp(lp + rand_eff)
+    y <- qnbinom(runif(n), mu = mu, size = 1.5)
   }
   return(y)
 }
 
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
-#                     "poisson", or "gamma"
+#                     "poisson", "gamma", or "negative_binomial"
 likelihood <- "gaussian"
 
 #################################

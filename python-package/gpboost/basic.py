@@ -4063,9 +4063,17 @@ class GPModel(object):
 
                         Binary data with a Bernoulli likelihood and a logit link function
 
-                    - "gamma"
+                    - "gamma":
 
-                    - "poisson"
+                        Gamma binomial distribution with a with log link function
+
+                    - "poisson":
+
+                        Poisson distribution with a with log link function
+
+                    - "negative_binomial":
+
+                        Negative binomial distribution with a with log link function
 
             group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 Either a vector or a matrix whose columns are categorical grouping variables. The elements are group
@@ -4670,10 +4678,10 @@ class GPModel(object):
                     square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for additional parameters for non-Gaussian likelihoods
-                    (e.g., shape parameter of gamma likelihood) (can be None)
+                    (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None)
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated
-                    (e.g., shape parameter of gamma likelihood)
+                    (e.g., shape parameter of a gamma or negative binomial likelihood)
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
@@ -4791,7 +4799,7 @@ class GPModel(object):
         fixed_effects : numpy 1-D array or None, optional (default=None)
             Additional fixed effects component of location parameter for observed data. (length = number of data points)
         aux_pars : numpy array or pandas DataFrame, optional (default = None)
-            Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of gamma likelihood) (can be None)
+            Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None)
 
         Returns
         -------
@@ -4897,10 +4905,10 @@ class GPModel(object):
                     square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for additional parameters for non-Gaussian likelihoods
-                    (e.g., shape parameter of gamma likelihood) (can be None)
+                    (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None)
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated
-                    (e.g., shape parameter of gamma likelihood)
+                    (e.g., shape parameter of a gamma or negative binomial likelihood)
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
@@ -5664,7 +5672,6 @@ class GPModel(object):
                     raise ValueError("Incorrect number of covariates in gp_rand_coef_data_pred")
                 gp_rand_coef_data_pred_c, _, _ = c_float_array(gp_rand_coef_data_pred.flatten(order='F'))
         # Prediction type for Vecchia approximation
-        # Prediction type for Vecchia approximation
         if vecchia_pred_type is not None:
             self.vecchia_pred_type = vecchia_pred_type
             vecchia_pred_type_c = c_str(vecchia_pred_type)
@@ -5865,7 +5872,7 @@ class GPModel(object):
             model_dict["coefs"] = self.get_coef(format_pandas=False)
             model_dict["num_coef"] = self.num_coef
             model_dict["X"] = self._get_covariate_data()
-        # Additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+        # Additional likelihood parameters (e.g., shape parameter for a a gamma or negative binomial likelihood)
         model_dict["params"]["init_aux_pars"] = self.get_aux_pars(format_pandas=False)
         # Note: for simplicity, this is put into 'init_aux_pars'. When loading the model, 'init_aux_pars' are correctly set
         model_dict["model_fitted"] = self.model_fitted

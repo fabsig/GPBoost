@@ -11,8 +11,9 @@
 #' \item{ "gaussian" }
 #' \item{ "bernoulli_probit": binary data with Bernoulli likelihood and a probit link function }
 #' \item{ "bernoulli_logit": binary data with Bernoulli likelihood and a logit link function }
-#' \item{ "gamma" }
-#' \item{ "poisson" }
+#' \item{ "gamma": gamma distribution with a with log link function }
+#' \item{ "poisson": Poisson distribution with a with log link function }
+#' \item{ "negative_binomial": negative binomial distribution with a with log link function }
 #' }
 #' @param group_data A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 #' The elements being group levels defining grouped random effects.
@@ -174,10 +175,10 @@
 #'                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods) }
 #'                \item{init_aux_pars: \code{vector} with \code{numeric} elements (default = NULL). 
 #'                Initial values for additional parameters for non-Gaussian likelihoods 
-#'                (e.g., shape parameter of gamma likelihood) }
+#'                (e.g., shape parameter of a gamma or negative_binomial likelihood) }
 #'                \item{estimate_aux_pars: \code{boolean} (default = TRUE). 
 #'                If TRUE, additional parameters for non-Gaussian likelihoods 
-#'                are also estimated (e.g., shape parameter of gamma likelihood) }
+#'                are also estimated (e.g., shape parameter of a gamma or negative_binomial likelihood) }
 #'                \item{cg_max_num_it: \code{integer} (default = 1000). 
 #'                Maximal number of iterations for conjugate gradient algorithms }
 #'                \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 
@@ -1725,7 +1726,7 @@ gpb.GPModel <- R6::R6Class(
         model_list[["num_coef"]] <- private$num_coef
         model_list[["X"]] <- self$get_covariate_data()
       }
-      # Additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+      # Additional likelihood parameters (e.g., shape parameter for a gamma or negative_binomial likelihood)
       model_list[["params"]]["init_aux_pars"] <- self$get_aux_pars()
       # Note: for simplicity, this is put into 'init_aux_pars'. When loading the model, 'init_aux_pars' are correctly set
       model_list[["model_fitted"]] <- private$model_fitted
@@ -2706,7 +2707,7 @@ set_prediction_data.GPModel <- function(gp_model
 #' @param cov_pars A \code{vector} with \code{numeric} elements. 
 #' Covariance parameters of Gaussian process and  random effects
 #' @param aux_pars A \code{vector} with \code{numeric} elements. 
-#' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of gamma likelihood)
+#' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)
 #' @inheritParams GPModel_shared_params
 #'
 #' @examples
@@ -2738,7 +2739,7 @@ neg_log_likelihood <- function(gp_model
 #' @param cov_pars A \code{vector} with \code{numeric} elements. 
 #' Covariance parameters of Gaussian process and  random effects
 #' @param aux_pars A \code{vector} with \code{numeric} elements. 
-#' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of gamma likelihood)
+#' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)
 #' @inheritParams GPModel_shared_params
 #'
 #' @return A \code{GPModel}

@@ -104,6 +104,7 @@ namespace LightGBM {
 		// descl2 = ``bernoulli_logit``, binary Bernoulli likelihood with a logit link function, aliases: ``binary_logit``
 		// descl2 = ``poisson``, Poisson likelihood with a log link function
 		// descl2 = ``gamma``, Gamma likelihood with a log link function
+		// descl2 = ``negative_binomial``, negative binomial likelihood with a log link function
 		std::string objective = "gaussian";
 
 		// alias = num_iteration, n_iter, num_tree, num_trees, num_round, num_rounds, num_boost_round, n_estimators

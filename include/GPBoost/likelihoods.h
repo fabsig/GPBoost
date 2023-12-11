@@ -12,7 +12,12 @@
 * For a "gamma" likelihood, the following density is used:
 *	f(y) = lambda^gamma / Gamma(gamma) * y^(gamma - 1) * exp(-lambda * y)
 *		- lambda = gamma * exp(-location_par) (i.e., mean(y) = exp(location_par)
-*		- lambda = rate parameter, gamma = shape parameter, location_par = random plus fixed effects
+*		- lambda = rate parameter, gamma = shape parameter, location_par = random + fixed effects
+* 
+* For a "negative_binomial" likelihood, the following density is used:
+*	f(y) = Gamma(y + r) / Gamma(y + 1) / Gamma(r) * (1 - p)^y * p^r
+*		- p = r / (mu + r), where mu = mean(y) = exp(location_par)
+*		- p = success probability, r = shape parameter, location_par = random + fixed effects
 *
 */
 #ifndef GPB_LIKELIHOODS_
@@ -90,10 +95,15 @@ namespace GPBoost {
 				names_aux_pars_ = { "shape" };
 				num_aux_pars_ = 1;
 			}
+			else if (likelihood_type_ == "negative_binomial") {
+				aux_pars_ = { 1. };//shape parameter (aka size, theta, or "number of successes")
+				names_aux_pars_ = { "shape" };
+				num_aux_pars_ = 1;
+			}
 			else if (likelihood_type_ == "gaussian") {
 				aux_pars_ = { 1. };//1 / sqrt(variance)
 				names_aux_pars_ = { "inverse_std_dev" };
-			}
+			} 
 			chol_fact_pattern_analyzed_ = false;
 			has_a_vec_ = has_a_vec;
 			use_Z_for_duplicates_ = use_Z_for_duplicates;
@@ -111,7 +121,8 @@ namespace GPBoost {
 		* \brief Determine cap_change_mode_newton_
 		*/
 		void DetermineWhetherToCapChangeModeNewton() {
-			if (likelihood_type_ == "gamma" || likelihood_type_ == "poisson") {
+			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+				likelihood_type_ == "negative_binomial") {
 				cap_change_mode_newton_ = true;
 			}
 			else {
@@ -181,7 +192,7 @@ namespace GPBoost {
 		*/
 		string_t label_type() const {
 			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" ||
-				likelihood_type_ == "poisson") {
+				likelihood_type_ == "poisson" || likelihood_type_ == "negative_binomial") {
 				return("int");
 			}
 			else {
@@ -219,7 +230,7 @@ namespace GPBoost {
 					}
 				}
 			}
-			else if (likelihood_type_ == "poisson") {
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "negative_binomial") {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (y_data[i] < 0) {
 						Log::REFatal("Found negative response variable. Response variable cannot be negative for likelihood of type '%s' ", likelihood_type_.c_str());
@@ -234,8 +245,8 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "gamma") {
 				for (data_size_t i = 0; i < num_data; ++i) {
-					if (y_data[i] < 0) {
-						Log::REFatal("Found negative response variable. Response variable cannot be negative for likelihood of type '%s' ", likelihood_type_.c_str());
+					if (y_data[i] <= 0) {
+						Log::REFatal("Found non-positive response variable. Response variable must be positive for likelihood of type '%s' ", likelihood_type_.c_str());
 					}
 				}
 			}
@@ -278,7 +289,8 @@ namespace GPBoost {
 					init_intercept = normalQF(pavg);
 				}
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma") {
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || 
+				likelihood_type_ == "negative_binomial") {
 				double avg = 0.;
 #pragma omp parallel for schedule(static) reduction(+:avg)
 				for (data_size_t i = 0; i < num_data; ++i) {
@@ -294,7 +306,7 @@ namespace GPBoost {
 		}//end FindInitialIntercept
 
 		/*!
-		* \brief Determine initial value for intercept (=constant)
+		* \brief Should there be an intercept or not (might raise a warning)
 		* \param y_data Response variable data
 		* \param num_data Number of data points
 		* \param rand_eff_var Variance of random effects
@@ -303,7 +315,8 @@ namespace GPBoost {
 			const data_size_t num_data,
 			double rand_eff_var) const {
 			bool ret_val = false;
-			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma") {
+			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || 
+				likelihood_type_ == "negative_binomial") {
 				ret_val = true;
 			}
 			else {
@@ -338,6 +351,25 @@ namespace GPBoost {
 				double s = log_avg - avg_log;
 				aux_pars_[0] = (3. - s + std::sqrt((s - 3.) * (s - 3.) + 24. * s)) / (12. * s);
 			}
+			else if (likelihood_type_ == "negative_binomial") {
+				// Use a method of moments estimator
+				double avg = 0., sum_sq = 0.;
+#pragma omp parallel for schedule(static) reduction(+:avg, sum_sq)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					avg += y_data[i];
+					sum_sq += y_data[i] * y_data[i];
+				}
+				avg /= num_data;
+				double avg_sq = avg * avg;
+				double sample_var = (sum_sq - num_data * avg_sq) / (num_data - 1);
+				if (sample_var <= avg) {
+					aux_pars_[0] = 100 * avg_sq;//marginally no over-disperson in data -> set shape parameter to a large value
+					Log::REDebug("FindInitialAuxPars: the internally found initial estimate (MoM) for the shape parameter (%g) might be not very good as there is there is marginally no over-disperion in the data ", aux_pars_[0]);
+				}
+				else {
+					aux_pars_[0] = avg_sq / (sample_var - avg);
+				}
+			}
 			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
 				likelihood_type_ != "bernoulli_logit" && likelihood_type_ != "poisson") {
 				Log::REFatal("FindInitialAuxPars: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
@@ -364,11 +396,8 @@ namespace GPBoost {
 		* \param aux_pars New values for aux_pars_
 		*/
 		void SetAuxPars(const double* aux_pars) {
-			if (likelihood_type_ == "gamma") {
-				CHECK(aux_pars[0] > 0);
-				aux_pars_[0] = aux_pars[0];
-			}
-			else if (likelihood_type_ == "gaussian") {
+			if (likelihood_type_ == "gaussian" || likelihood_type_ == "gamma" || 
+				likelihood_type_ == "negative_binomial") {
 				CHECK(aux_pars[0] > 0);
 				aux_pars_[0] = aux_pars[0];
 			}
@@ -390,20 +419,28 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate auxiliary quantity for the logarithm of normalizing constant of the likelihood
+		* \brief Calculate the part of the logarithmic normalizing constant of the likelihood that does not depend on aux_pars_ and location_par
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param num_data Number of data points
 		*/
 		void CalculateAuxQuantLogNormalizingConstant(const double* y_data,
-			const int*,
+			const int* y_data_int,
 			const data_size_t num_data) {
 			if (!aux_normalizing_constant_has_been_calculated_) {
 				if (likelihood_type_ == "gamma") {
 					double log_aux_normalizing_constant = 0.;
 #pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						log_aux_normalizing_constant += AuxQuantLogNormalizingConstantGamma(y_data[i]);
+						log_aux_normalizing_constant += AuxQuantLogNormalizingConstantGammaOneSample(y_data[i]);
+					}
+					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
+				}
+				else if (likelihood_type_ == "negative_binomial") {
+					double log_aux_normalizing_constant = 0.;
+#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						log_aux_normalizing_constant += AuxQuantLogNormalizingConstantNegBinOneSample(y_data_int[i]);
 					}
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
@@ -415,12 +452,16 @@ namespace GPBoost {
 			}
 		}//end CalculateAuxQuantLogNormalizingConstant
 
-		inline double AuxQuantLogNormalizingConstantGamma(const double y) const {
+		inline double AuxQuantLogNormalizingConstantGammaOneSample(const double y) const {
 			return(std::log(y));
 		}
 
+		inline double AuxQuantLogNormalizingConstantNegBinOneSample(const int y) const {
+			return(-std::lgamma(y + 1));
+		}
+
 		/*!
-		* \brief Calculate the logarithm of the normalizing constant of the likelihood
+		* \brief Calculate the logarithmic normalizing constant of the likelihood (not depending on location_par)
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param num_data Number of data points
@@ -429,17 +470,19 @@ namespace GPBoost {
 			const int* y_data_int,
 			const data_size_t num_data) {
 			if (!normalizing_constant_has_been_calculated_) {
-				CalculateAuxQuantLogNormalizingConstant(y_data, y_data_int, num_data);
 				if (likelihood_type_ == "poisson") {
 					double aux_const = 0.;
 #pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:aux_const)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						aux_const += LogNormalizingConstantPoisson(y_data_int[i]);
+						aux_const += LogNormalizingConstantPoissonOneSample(y_data_int[i]);
 					}
 					log_normalizing_constant_ = aux_const;
 				}
 				else if (likelihood_type_ == "gamma") {
-					log_normalizing_constant_ = LogNormalizingConstantGamma(1., num_data, false);//note: the first argument is not used
+					log_normalizing_constant_ = LogNormalizingConstantGamma(y_data, y_data_int, num_data);
+				}
+				else if (likelihood_type_ == "negative_binomial") {
+					log_normalizing_constant_ = LogNormalizingConstantNegBin(y_data, y_data_int, num_data);
 				}
 				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
 					likelihood_type_ != "bernoulli_logit") {
@@ -449,7 +492,7 @@ namespace GPBoost {
 			}
 		}//end CalculateLogNormalizingConstant
 
-		inline double LogNormalizingConstantPoisson(const int y) const {
+		inline double LogNormalizingConstantPoissonOneSample(const int y) const {
 			if (y > 1) {
 				double log_factorial = 0.;
 				for (int k = 2; k <= y; ++k) {
@@ -462,20 +505,43 @@ namespace GPBoost {
 			}
 		}
 
-		inline double LogNormalizingConstantGamma(const double y, const int num_data, bool calculate_aux_const) const {
+		inline double LogNormalizingConstantGamma(const double* y_data, const int* y_data_int, const data_size_t num_data) {
+			CalculateAuxQuantLogNormalizingConstant(y_data, y_data_int, num_data);//note: the second argument is not used
 			if (TwoNumbersAreEqual<double>(aux_pars_[0], 1.)) {
 				return(0.);
 			}
 			else {
-				if (calculate_aux_const) {
-					return((aux_pars_[0] - 1.) * AuxQuantLogNormalizingConstantGamma(y) +
-						num_data * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0])));
-				}
-				else {
-					return((aux_pars_[0] - 1.) * aux_log_normalizing_constant_ +
-						num_data * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0])));
-				}
+				return((aux_pars_[0] - 1.) * aux_log_normalizing_constant_ +
+					num_data * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0])));
 			}
+		}
+
+		inline double LogNormalizingConstantGammaOneSample(const double y) const {
+			if (TwoNumbersAreEqual<double>(aux_pars_[0], 1.)) {
+				return(0.);
+			}
+			else {
+				return((aux_pars_[0] - 1.) * AuxQuantLogNormalizingConstantGammaOneSample(y) +
+					aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]));
+			}
+		}
+
+		inline double LogNormalizingConstantNegBin(const double* y_data, const int* y_data_int, const data_size_t num_data) {
+			CalculateAuxQuantLogNormalizingConstant(y_data, y_data_int, num_data);//note: the first argument is not used
+			double aux_const = 0.;
+#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:aux_const)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				aux_const += std::lgamma(y_data_int[i] + aux_pars_[0]);
+			}
+			double norm_const = aux_const + aux_log_normalizing_constant_ +
+				num_data * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]));
+			return(norm_const);
+		}
+
+		inline double LogNormalizingConstantNegBinOneSample(const int y) const {
+			double norm_const = std::lgamma(y + aux_pars_[0]) + AuxQuantLogNormalizingConstantNegBinOneSample(y) + 
+				 aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]);
+			return(norm_const);
 		}
 
 		/*!
@@ -517,6 +583,13 @@ namespace GPBoost {
 				}
 				ll += log_normalizing_constant_;
 			}
+			else if (likelihood_type_ == "negative_binomial") {
+#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					ll += LogLikNegBin(y_data_int[i], location_par[i], false);
+				}
+				ll += log_normalizing_constant_;
+			}
 			else if (likelihood_type_ == "gaussian") {
 #pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
 				for (data_size_t i = 0; i < num_data; ++i) {
@@ -530,12 +603,12 @@ namespace GPBoost {
 		}//end LogLikelihood
 
 		/*!
-		* \brief Evaluate the log-likelihood conditional on the latent variable (=location_par)
+		* \brief Evaluate the log-likelihood conditional on the latent variable (=location_par) for one sample
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param location_par Location parameter (random plus fixed effects)
 		*/
-		inline double LogLikelihood(const double y_data,
+		inline double LogLikelihoodOneSample(const double y_data,
 			const int y_data_int,
 			const double location_par) const {
 			if (likelihood_type_ == "bernoulli_probit") {
@@ -549,6 +622,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "gamma") {
 				return(LogLikGamma(y_data, location_par, true));
+			}
+			else if (likelihood_type_ == "negative_binomial") {
+				return(LogLikNegBin(y_data_int, location_par, true));
 			}
 			else if (likelihood_type_ == "gaussian") {
 				return(LogLikGaussian(y_data, location_par));
@@ -580,20 +656,32 @@ namespace GPBoost {
 		}
 
 		inline double LogLikPoisson(const int y, const double location_par, bool incl_norm_const) const {
+			double ll = y * location_par - std::exp(location_par);
 			if (incl_norm_const) {
-				return (y * location_par - std::exp(location_par) + LogNormalizingConstantPoisson(y));
+				return (ll + LogNormalizingConstantPoissonOneSample(y));
 			}
 			else {
-				return (y * location_par - std::exp(location_par));
+				return (ll);
 			}
 		}
 
 		inline double LogLikGamma(const double y, const double location_par, bool incl_norm_const) const {
+			double ll = -aux_pars_[0] * (location_par + y * std::exp(-location_par));
 			if (incl_norm_const) {
-				return (-aux_pars_[0] * (location_par + y * std::exp(-location_par)) + LogNormalizingConstantGamma(y, 1, true));
+				return (ll + LogNormalizingConstantGammaOneSample(y));
 			}
 			else {
-				return (-aux_pars_[0] * (location_par + y * std::exp(-location_par)));
+				return (ll);
+			}
+		}
+
+		inline double LogLikNegBin(const int y, const double location_par, bool incl_norm_const) const {
+			double ll = y * location_par - (y + aux_pars_[0]) * std::log(std::exp(location_par) + aux_pars_[0]);
+			if (incl_norm_const) {
+				return (ll + LogNormalizingConstantNegBinOneSample(y));
+			}
+			else {
+				return (ll);
 			}
 		}
 
@@ -636,6 +724,12 @@ namespace GPBoost {
 					first_deriv_ll_[i] = FirstDerivLogLikGamma(y_data[i], location_par[i]);
 				}
 			}
+			else if (likelihood_type_ == "negative_binomial") {
+#pragma omp parallel for schedule(static) if (num_data >= 128)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					first_deriv_ll_[i] = FirstDerivLogLikNegBin(y_data_int[i], location_par[i]);
+				}
+			}
 			else if (likelihood_type_ == "gaussian") {
 #pragma omp parallel for schedule(static) if (num_data >= 128)
 				for (data_size_t i = 0; i < num_data; ++i) {
@@ -653,7 +747,7 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param location_par Location parameter (random plus fixed effects)
 		*/
-		inline double CalcFirstDerivLogLik(const double y_data,
+		inline double CalcFirstDerivLogLikOneSample(const double y_data,
 			const int y_data_int,
 			const double location_par) const {
 			if (likelihood_type_ == "bernoulli_probit") {
@@ -667,6 +761,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "gamma") {
 				return(FirstDerivLogLikGamma(y_data, location_par));
+			}
+			else if (likelihood_type_ == "negative_binomial") {
+				return(FirstDerivLogLikNegBin(y_data_int, location_par));
 			}
 			else if (likelihood_type_ == "gaussian") {
 				return(FirstDerivLogLikGaussian(y_data, location_par));
@@ -696,6 +793,11 @@ namespace GPBoost {
 
 		inline double FirstDerivLogLikGamma(const double y, const double location_par) const {
 			return (aux_pars_[0] * (y * std::exp(-location_par) - 1.));
+		}
+
+		inline double FirstDerivLogLikNegBin(const int y, const double location_par) const {
+			double mu = std::exp(location_par);
+			return (y - (y + aux_pars_[0]) / (mu + aux_pars_[0]) * mu);
 		}
 
 		inline double FirstDerivLogLikGaussian(const double y, const double location_par) const {
@@ -737,6 +839,12 @@ namespace GPBoost {
 					second_deriv_neg_ll_[i] = SecondDerivNegLogLikGamma(y_data[i], location_par[i]);
 				}
 			}
+			else if (likelihood_type_ == "negative_binomial") {
+#pragma omp parallel for schedule(static) if (num_data >= 128)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					second_deriv_neg_ll_[i] = SecondDerivNegLogLikNegBin(y_data_int[i], location_par[i]);
+				}
+			}
 			else if (likelihood_type_ == "gaussian") {
 #pragma omp parallel for schedule(static) if (num_data >= 128)
 				for (data_size_t i = 0; i < num_data; ++i) {
@@ -754,7 +862,7 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param location_par Location parameter (random plus fixed effects)
 		*/
-		inline double CalcSecondDerivNegLogLik(const double y_data,
+		inline double CalcSecondDerivNegLogLikOneSample(const double y_data,
 			const int y_data_int,
 			const double location_par) const {
 			if (likelihood_type_ == "bernoulli_probit") {
@@ -768,6 +876,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "gamma") {
 				return(SecondDerivNegLogLikGamma(y_data, location_par));
+			}
+			else if (likelihood_type_ == "negative_binomial") {
+				return(SecondDerivNegLogLikNegBin(y_data_int, location_par));
 			}
 			else if (likelihood_type_ == "gaussian") {
 				return(SecondDerivNegLogLikGaussian());
@@ -802,6 +913,12 @@ namespace GPBoost {
 
 		inline double SecondDerivNegLogLikGamma(const double y, const double location_par) const {
 			return (aux_pars_[0] * y * std::exp(-location_par));
+		}
+
+		inline double SecondDerivNegLogLikNegBin(const int y, const double location_par) const {
+			double mu = std::exp(location_par);
+			double mu_plus_r = mu + aux_pars_[0];
+			return ((y + aux_pars_[0]) * mu * aux_pars_[0] / (mu_plus_r * mu_plus_r));
 		}
 
 		inline double SecondDerivNegLogLikGaussian() const {
@@ -857,23 +974,35 @@ namespace GPBoost {
 					third_deriv[i] = aux_pars_[0] * y_data[i] * std::exp(-location_par[i]);
 				}
 			}
+			else if (likelihood_type_ == "negative_binomial") {
+#pragma omp parallel for schedule(static) if (num_data >= 128)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					double mu = std::exp(location_par[i]);
+					double mu_plus_r = mu + aux_pars_[0];
+					third_deriv[i] = (y_data_int[i] + aux_pars_[0]) * mu * aux_pars_[0] * (mu - aux_pars_[0]) / (mu_plus_r * mu_plus_r * mu_plus_r);
+				}
+			}
 			else {
 				Log::REFatal("CalcThirdDerivLogLik: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
 		}//end CalcThirdDerivLogLik
 
 		/*!
-		* \brief Calculates the gradient of the negative log-likelihood with respect to the additional parameters of the likelihood (e.g., shape for gamma)
+		* \brief Calculates the gradient of the negative log-likelihood with respect to the 
+		*		additional parameters of the likelihood (e.g., shape for gamma). The gradient is usually calculated on the log-scale.
 		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param location_par Location parameter (random plus fixed effects)
 		* \param num_data Number of data points
 		* \param[out] grad Gradient
 		*/
 		void CalcGradNegLogLikAuxPars(const double* y_data,
+			const int* y_data_int,
 			const double* location_par,
 			const data_size_t num_data,
 			double* grad) const {
 			if (likelihood_type_ == "gamma") {
+				CHECK(aux_normalizing_constant_has_been_calculated_);
 				double neg_log_grad = 0.;//gradient for shape parameter is calculated on the log-scale
 #pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
 				for (data_size_t i = 0; i < num_data; ++i) {
@@ -882,6 +1011,18 @@ namespace GPBoost {
 				neg_log_grad -= num_data * (std::log(aux_pars_[0]) + 1. - digamma(aux_pars_[0]));
 				neg_log_grad -= aux_log_normalizing_constant_;
 				neg_log_grad *= aux_pars_[0];
+				grad[0] = neg_log_grad;
+			} 
+			else if (likelihood_type_ == "negative_binomial") {
+				//gradient for shape parameter is calculated on the log-scale
+				double neg_log_grad = 0.;
+#pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					double mu_plus_r = std::exp(location_par[i]) + aux_pars_[0];
+					double y_plus_r = y_data_int[i] + aux_pars_[0];
+					neg_log_grad += aux_pars_[0] * (-digamma(y_plus_r) + std::log(mu_plus_r) + y_plus_r / mu_plus_r);
+				}
+				neg_log_grad += num_data * aux_pars_[0] * (digamma(aux_pars_[0]) - std::log(aux_pars_[0]) - 1);
 				grad[0] = neg_log_grad;
 			}
 			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
@@ -892,8 +1033,10 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculates the second and the negative third derivative of the log-likelihood with respect to
-		*			(i) once and twice the location parameter and (ii) an additional parameter of the likelihood
+		*			(i) once and twice the location parameter and (ii) an additional parameter of the likelihood.
+		*			The gradient wrt to the additional parameter is usually calculated on the log-scale.
 		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param location_par Location parameter (random plus fixed effects)
 		* \param num_data Number of data points
 		* \param ind_aux_par Index of aux_pars_ wrt which the gradient is calculated (currently no used as there is only one)
@@ -901,17 +1044,31 @@ namespace GPBoost {
 		* \param[out] neg_third_deriv Negative third derivative
 		*/
 		void CalcSecondNegThirdDerivLogLikAuxParsLocPar(const double* y_data,
+			const int* y_data_int,
 			const double* location_par,
 			const data_size_t num_data,
 			int ind_aux_par,
 			double* second_deriv,
 			double* neg_third_deriv) const {
 			if (likelihood_type_ == "gamma") {
+				//note: gradient wrt to aux_pars_[0] on the log-scale
 				CHECK(ind_aux_par == 0);
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data; ++i) {
 					second_deriv[i] = aux_pars_[0] * (y_data[i] * std::exp(-location_par[i]) - 1.);
 					neg_third_deriv[i] = second_deriv[i] + aux_pars_[0];
+				}
+			}
+			else if (likelihood_type_ == "negative_binomial") {
+				//gradient for shape parameter is calculated on the log-scale
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					double mu = std::exp(location_par[i]);
+					double mu_plus_r = mu + aux_pars_[0];
+					double y_plus_r = y_data_int[i] + aux_pars_[0];
+					double mu_r_div_mu_plus_r_sqr = mu * aux_pars_[0] / (mu_plus_r * mu_plus_r);
+					second_deriv[i] = mu_r_div_mu_plus_r_sqr * (y_data_int[i] - mu);
+					neg_third_deriv[i] = -mu_r_div_mu_plus_r_sqr * (y_data_int[i] * (aux_pars_[0] - mu) - 2 * aux_pars_[0] * mu) / y_plus_r;
 				}
 			}
 			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
@@ -934,10 +1091,8 @@ namespace GPBoost {
 			else if (likelihood_type_ == "bernoulli_logit") {
 				return 1. / (1. + std::exp(-value));
 			}
-			else if (likelihood_type_ == "poisson") {
-				return std::exp(value);
-			}
-			else if (likelihood_type_ == "gamma") {
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+				likelihood_type_ == "negative_binomial") {
 				return std::exp(value);
 			}
 			else {
@@ -954,10 +1109,8 @@ namespace GPBoost {
 			if (likelihood_type_ == "bernoulli_logit") {
 				return 1. / (1. + std::exp(value));
 			}
-			else if (likelihood_type_ == "poisson") {
-				return 1.;
-			}
-			else if (likelihood_type_ == "gamma") {
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+				likelihood_type_ == "negative_binomial") {
 				return 1.;
 			}
 			else {
@@ -975,10 +1128,8 @@ namespace GPBoost {
 				double exp_x = std::exp(value);
 				return -exp_x / ((1. + exp_x) * (1. + exp_x));
 			}
-			else if (likelihood_type_ == "poisson") {
-				return 0.;
-			}
-			else if (likelihood_type_ == "gamma") {
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+				likelihood_type_ == "negative_binomial") {
 				return 0.;
 			}
 			else {
@@ -1413,6 +1564,10 @@ namespace GPBoost {
 				mode_has_been_calculated_ = true;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
+
+			double ll = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+			double mode_ml = -0.5 / sigma2 * (mode_.dot(mode_));
+
 		}//end FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale
 
 		/*!
@@ -1689,7 +1844,6 @@ namespace GPBoost {
 						if (!saved_rand_vec_trace_) {
 							//Dependent on the preconditioner: Generate t (= num_rand_vec_trace_) or 2*t random vectors
 							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
-								//rand_vec_trace_I_.resize(num_data, 2 * num_rand_vec_trace_);//DELETE
 								rand_vec_trace_I_.resize(num_data, num_rand_vec_trace_);
 								rand_vec_trace_I2_.resize(piv_chol_rank_, num_rand_vec_trace_);
 								GenRandVecTrace(cg_generator_, rand_vec_trace_I2_);
@@ -1898,9 +2052,9 @@ namespace GPBoost {
 				vec_t second_deriv(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 				vec_t neg_third_deriv(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 				vec_t d_mode_d_aux_par;
-				CalcGradNegLogLikAuxPars(y_data, location_par_ptr, num_data_, neg_likelihood_deriv.data());
+				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, num_data_, neg_likelihood_deriv.data());
 				for (int ind_ap = 0; ind_ap < num_aux_pars_; ++ind_ap) {
-					CalcSecondNegThirdDerivLogLikAuxParsLocPar(y_data, location_par_ptr, num_data_, ind_ap, second_deriv.data(), neg_third_deriv.data());
+					CalcSecondNegThirdDerivLogLikAuxParsLocPar(y_data, y_data_int, location_par_ptr, num_data_, ind_ap, second_deriv.data(), neg_third_deriv.data());
 					double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 					if (use_Z_for_duplicates_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
@@ -2050,9 +2204,9 @@ namespace GPBoost {
 				vec_t second_deriv(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 				vec_t neg_third_deriv(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 				vec_t d_mode_d_aux_par;
-				CalcGradNegLogLikAuxPars(y_data, location_par.data(), num_data, neg_likelihood_deriv.data());
+				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), num_data, neg_likelihood_deriv.data());
 				for (int ind_ap = 0; ind_ap < num_aux_pars_; ++ind_ap) {
-					CalcSecondNegThirdDerivLogLikAuxParsLocPar(y_data, location_par.data(), num_data, ind_ap, second_deriv.data(), neg_third_deriv.data());
+					CalcSecondNegThirdDerivLogLikAuxParsLocPar(y_data, y_data_int, location_par.data(), num_data, ind_ap, second_deriv.data(), neg_third_deriv.data());
 					sp_mat_t ZtdWZ = Zt * neg_third_deriv.asDiagonal() * Z;
 					SigmaI_plus_ZtWZ_inv = ZtdWZ;
 					CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
@@ -2151,9 +2305,9 @@ namespace GPBoost {
 				vec_t neg_likelihood_deriv(num_aux_pars_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
 				vec_t second_deriv(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 				vec_t neg_third_deriv(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
-				CalcGradNegLogLikAuxPars(y_data, location_par.data(), num_data, neg_likelihood_deriv.data());
+				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), num_data, neg_likelihood_deriv.data());
 				for (int ind_ap = 0; ind_ap < num_aux_pars_; ++ind_ap) {
-					CalcSecondNegThirdDerivLogLikAuxParsLocPar(y_data, location_par.data(), num_data, ind_ap, second_deriv.data(), neg_third_deriv.data());
+					CalcSecondNegThirdDerivLogLikAuxParsLocPar(y_data, y_data_int, location_par.data(), num_data, ind_ap, second_deriv.data(), neg_third_deriv.data());
 					double d_detmll_d_aux_par = 0.;
 					double implicit_derivative = 0.;// = implicit derivative = d_mll_d_mode * d_mode_d_aux_par
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
@@ -2299,9 +2453,9 @@ namespace GPBoost {
 					vec_t second_deriv(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 					vec_t neg_third_deriv(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 					vec_t d_mode_d_aux_par;
-					CalcGradNegLogLikAuxPars(y_data, location_par_ptr, num_data, neg_likelihood_deriv.data());
+					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, num_data, neg_likelihood_deriv.data());
 					for (int ind_ap = 0; ind_ap < num_aux_pars_; ++ind_ap) {
-						CalcSecondNegThirdDerivLogLikAuxParsLocPar(y_data, location_par_ptr, num_data, ind_ap, second_deriv.data(), neg_third_deriv.data());
+						CalcSecondNegThirdDerivLogLikAuxParsLocPar(y_data, y_data_int, location_par_ptr, num_data, ind_ap, second_deriv.data(), neg_third_deriv.data());
 						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 						CalcLogDetStochDerivAuxPar(neg_third_deriv, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, d_detmll_d_aux_par);
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
@@ -2377,9 +2531,9 @@ namespace GPBoost {
 					vec_t second_deriv(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 					vec_t neg_third_deriv(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 					vec_t d_mode_d_aux_par;
-					CalcGradNegLogLikAuxPars(y_data, location_par_ptr, num_data, neg_likelihood_deriv.data());
+					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, num_data, neg_likelihood_deriv.data());
 					for (int ind_ap = 0; ind_ap < num_aux_pars_; ++ind_ap) {
-						CalcSecondNegThirdDerivLogLikAuxParsLocPar(y_data, location_par_ptr, num_data, ind_ap, second_deriv.data(), neg_third_deriv.data());
+						CalcSecondNegThirdDerivLogLikAuxParsLocPar(y_data, y_data_int, location_par_ptr, num_data, ind_ap, second_deriv.data(), neg_third_deriv.data());
 						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
 						for (data_size_t i = 0; i < num_data; ++i) {
@@ -2981,8 +3135,8 @@ namespace GPBoost {
 
 		/*!
 		* \brief Make predictions for the response variable (label) based on predictions for the mean and variance of the latent random effects
-		* \param pred_mean[out] Predictive mean of latent random effects. The Predictive mean for the response variables is written on this
-		* \param pred_var[out] Predictive variances of latent random effects. The predicted variance for the response variables is written on this
+		* \param pred_mean[in & out] Predictive mean of latent random effects. The Predictive mean for the response variables is written on this
+		* \param pred_var[in & out] Predictive variances of latent random effects. The predicted variance for the response variables is written on this
 		* \param predict_var If true, predictive variances are also calculated
 		*/
 		void PredictResponse(vec_t& pred_mean,
@@ -3037,6 +3191,19 @@ namespace GPBoost {
 					}
 					pred_mean[i] = pm;
 				}
+			}
+			else if (likelihood_type_ == "negative_binomial") {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < (int)pred_mean.size(); ++i) {
+					double pm = std::exp(pred_mean[i] + 0.5 * pred_var[i]);
+					if (predict_var) {
+						pred_var[i] = std::exp(2 * (pred_mean[i] + pred_var[i])) * (1 + 1 / aux_pars_[0]) + pm * (1 - pm);
+					}
+					pred_mean[i] = pm;
+				}
+			}
+			else {
+				Log::REFatal("PredictResponse: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
 		}//end PredictResponse
 
@@ -3100,20 +3267,20 @@ namespace GPBoost {
 				double sqrt_sigma2_inv = std::sqrt(sigma2_inv);
 				for (int it = 0; it < 100; ++it) {
 					mode_integrand_last = mode_integrand;
-					update = (CalcFirstDerivLogLik(y_test_d, y_test_int, mode_integrand) - sigma2_inv * (mode_integrand - pred_mean[i]))
-						/ (-CalcSecondDerivNegLogLik(y_test_d, y_test_int, mode_integrand) - sigma2_inv);
+					update = (CalcFirstDerivLogLikOneSample(y_test_d, y_test_int, mode_integrand) - sigma2_inv * (mode_integrand - pred_mean[i]))
+						/ (-CalcSecondDerivNegLogLikOneSample(y_test_d, y_test_int, mode_integrand) - sigma2_inv);
 					mode_integrand -= update;
 					if (std::abs(update) / std::abs(mode_integrand_last) < DELTA_REL_CONV_) {
 						break;
 					}
 				}
 				// Adaptive GH quadrature
-				double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(CalcSecondDerivNegLogLik(y_test_d, y_test_int, mode_integrand) + sigma2_inv);
+				double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(CalcSecondDerivNegLogLikOneSample(y_test_d, y_test_int, mode_integrand) + sigma2_inv);
 				double x_val;
 				double likelihood = 0.;
 				for (int j = 0; j < order_GH_; ++j) {
 					x_val = sqrt2_sigma_hat * GH_nodes_[j] + mode_integrand;
-					likelihood += adaptive_GH_weights_[j] * std::exp(LogLikelihood(y_test_d, y_test_int, x_val)) * normalPDF(sqrt_sigma2_inv * (x_val - pred_mean[i]));
+					likelihood += adaptive_GH_weights_[j] * std::exp(LogLikelihoodOneSample(y_test_d, y_test_int, x_val)) * normalPDF(sqrt_sigma2_inv * (x_val - pred_mean[i]));
 				}
 				likelihood *= sqrt2_sigma_hat * sqrt_sigma2_inv;
 				ll += std::log(likelihood);
@@ -3174,9 +3341,6 @@ namespace GPBoost {
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
 					rand_vec_trace_P_.col(i) = Sigma_L_k_ * rand_vec_trace_I2_.col(i) + ((second_deriv_neg_ll_.cwiseInverse().cwiseSqrt()).array() * rand_vec_trace_I_.col(i).array()).matrix();
 				}
-				//for (int i = 0; i < num_rand_vec_trace_; ++i) {//DELETE
-				//	rand_vec_trace_P_.col(i) = Sigma_L_k_ * rand_vec_trace_I_.col(i) + ((second_deriv_neg_ll_.cwiseInverse().cwiseSqrt()).array() * rand_vec_trace_I_.col(i + num_rand_vec_trace_).array()).matrix();
-				//}
 				I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
 				I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * second_deriv_neg_ll_.asDiagonal() * Sigma_L_k_;
 				chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
@@ -3541,7 +3705,7 @@ namespace GPBoost {
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
 		/*! \brief List of supported covariance likelihoods */
-		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "poisson", "gamma" };
+		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "poisson", "gamma", "negative_binomial"};
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
 		int MAXIT_MODE_NEWTON_ = 100000;//1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */

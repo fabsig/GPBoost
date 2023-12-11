@@ -183,7 +183,8 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 				}
 				if (config_.objective != std::string("regression") && config_.objective != std::string("bernoulli_probit")
 					&& config_.objective != std::string("bernoulli_logit") && config_.objective != std::string("binary") 
-					&& config_.objective != std::string("poisson") && config_.objective != std::string("gamma")) {
+					&& config_.objective != std::string("poisson") && config_.objective != std::string("gamma") && 
+					config_.objective != std::string("negative_binomial")) {
 					Log::Fatal("GPBoost currently does not support 'objective = %s' ", config_.objective.c_str());
 				}
 				// Make sure that objective for boosting and likelihood for re_model match, otherwise change them accordingly

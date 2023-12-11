@@ -65,10 +65,10 @@ set_optim_params(gp_model, params = list())
     square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods) }
     \item{init_aux_pars: \code{vector} with \code{numeric} elements (default = NULL). 
     Initial values for additional parameters for non-Gaussian likelihoods 
-    (e.g., shape parameter of gamma likelihood) }
+    (e.g., shape parameter of a gamma or negative_binomial likelihood) }
     \item{estimate_aux_pars: \code{boolean} (default = TRUE). 
     If TRUE, additional parameters for non-Gaussian likelihoods 
-    are also estimated (e.g., shape parameter of gamma likelihood) }
+    are also estimated (e.g., shape parameter of a gamma or negative_binomial likelihood) }
     \item{cg_max_num_it: \code{integer} (default = 1000). 
     Maximal number of iterations for conjugate gradient algorithms }
     \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 

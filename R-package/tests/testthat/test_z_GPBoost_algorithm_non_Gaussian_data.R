@@ -1563,6 +1563,92 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-1.447807)),TOLERANCE)
     })
     
+    test_that("GPBoost algorithm with grouped random effects for negative binomial regression", {
+      
+      OPTIM_PARAMS_GAMMA <- DEFAULT_OPTIM_PARAMS_V2
+      OPTIM_PARAMS_GAMMA$estimate_aux_pars = FALSE
+      OPTIM_PARAMS_GAMMA$init_aux_pars = 1.
+      
+      ntrain <- ntest <- 1000
+      n <- ntrain + ntest
+      # Simulate fixed effects
+      sim_data <- sim_friedman3(n=n, n_irrelevant=5, init_c=0.2644234)
+      f <- sim_data$f
+      f <- f - mean(f)
+      X <- sim_data$X
+      # Simulate grouped random effects
+      sigma2_1 <- 0.6 # variance of first random effect
+      sigma2_2 <- 0.4 # variance of second random effect
+      m <- 40 # number of categories / levels for grouping variable
+      # first random effect
+      group <- rep(1,ntrain) # grouping variable
+      for(i in 1:m) group[((i-1)*ntrain/m+1):(i*ntrain/m)] <- i
+      group <- c(group, group)
+      n_new <- 3# number of new random effects in test data
+      group[(length(group)-n_new+1):length(group)] <- rep(99999,n_new)
+      Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
+      b1 <- sqrt(sigma2_1) * qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.5542))
+      # Second random effect
+      n_obs_gr <- ntrain/m# number of sampels per group
+      group2 <- rep(1,ntrain) # grouping variable
+      for(i in 1:m) group2[(1:n_obs_gr)+n_obs_gr*(i-1)] <- 1:n_obs_gr
+      group2 <- c(group2,group2)
+      group2[(length(group2)-n_new+1):length(group2)] <- rep(99999,n_new)
+      Z2 <- model.matrix(rep(1,n)~factor(group2)-1)
+      b2 <- sqrt(sigma2_2) * qnorm(sim_rand_unif(n=length(unique(group2)), init_c=0.82354))
+      eps <- Z1 %*% b1 + Z2 %*% b2
+      eps <- eps - mean(eps)
+      group_data <- cbind(group,group2)
+      # Observed data
+      mu <- exp(f + eps)
+      shape <- 0.9
+      y <- qnbinom(sim_rand_unif(n=n, init_c=0.134686), mu = mu, size = shape)
+      # Split in training and test data
+      y_train <- y[1:ntrain]
+      X_train <- X[1:ntrain,]
+      group_data_train <- group_data[1:ntrain,]
+      y_test <- y[1:ntest+ntrain]
+      X_test <- X[1:ntest+ntrain,]
+      f_test <- f[1:ntest+ntrain]
+      group_data_test <- group_data[1:ntest+ntrain,]
+      eps_test <- eps[1:ntest+ntrain]
+      # Data for Booster
+      dtrain <- gpb.Dataset(data = X_train, label = y_train)
+      
+      # Train model
+      gp_model <- GPModel(group_data = group_data_train, likelihood = "negative_binomial")
+      gp_model$set_optim_params(params=OPTIM_PARAMS_GAMMA)
+      bst <- gpboost(data = dtrain,
+                     gp_model = gp_model,
+                     nrounds = 30,
+                     learning_rate = 0.1,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     verbose = 0)
+      cov_pars_est <- c(0.5539764, 0.4821519 )
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
+      # Prediction
+      pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                      predict_var = TRUE, pred_latent = TRUE)
+      expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-0.0005228073, 0.5865594605, -0.5128394937, 0.6025058992))),TOLERANCE)
+      # Predict response
+      pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                      predict_var = TRUE, pred_latent = FALSE)
+      expect_lt(sum(abs(tail(pred$response_mean, n=4)-c( 0.2521111, 3.0180883, 1.0052383, 3.0666018))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$response_var, n=4)-c( 0.338194, 45.251929, 5.690510, 46.669110))),TOLERANCE)
+      
+      # Also estimate shape parameter
+      gp_model <- GPModel(group_data = group_data_train, likelihood = "negative_binomial")
+      params_shape <- OPTIM_PARAMS_GAMMA
+      params_shape$estimate_aux_pars <- TRUE
+      gp_model$set_optim_params(params=params_shape)
+      bst <- gpboost(data = dtrain,  gp_model = gp_model, nrounds = 30,
+                     learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5, verbose = 0)
+      cov_pars_est <- c(0.5693560, 0.4920208)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
+      expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-2.768788)),TOLERANCE)
+    })
+    
     test_that("Saving and loading a booster with a gp_model for non-Gaussian data ", {
       
       ntrain <- ntest <- 1000
