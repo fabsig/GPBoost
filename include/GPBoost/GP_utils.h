@@ -20,10 +20,22 @@ namespace GPBoost {
 	* \brief Determine unique locations and map duplicates in coordinates to first occurance of unique locations
 	* \param coords Coordinates
 	* \param num_data Number of data points
-	* \param[out] uniques Unique coordinates / points
-	* \param[out] unique_idx Every point has an index refering to the corresponding unique coordinates / point. Used for constructing incidence matrix Z_ if there are duplicates
+	* \param[out] uniques Index of unique coordinates / points
+	* \param[out] unique_idx Index that indicates for every data point the corresponding random effect / unique coordinates. Used for constructing incidence matrix Z_ if there are duplicates
 	*/
 	void DetermineUniqueDuplicateCoords(const den_mat_t& coords,
+		data_size_t num_data,
+		std::vector<int>& uniques,
+		std::vector<int>& unique_idx);
+
+	/*!
+	* \brief Determine unique locations and map duplicates in coordinates to first occurance of unique locations
+	* \param coords Coordinates
+	* \param num_data Number of data points
+	* \param[out] uniques Index of unique coordinates / points
+	* \param[out] unique_idx Index that indicates for every data point the corresponding random effect / unique coordinates. Used for constructing incidence matrix Z_ if there are duplicates
+	*/
+	void DetermineUniqueDuplicateCoordsFast(const den_mat_t& coords,
 		data_size_t num_data,
 		std::vector<int>& uniques,
 		std::vector<int>& unique_idx);

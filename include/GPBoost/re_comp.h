@@ -773,7 +773,7 @@ namespace GPBoost {
 				}
 				std::vector<int> uniques;//unique points
 				std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
-				DetermineUniqueDuplicateCoords(coords, this->num_data_, uniques, unique_idx);
+				DetermineUniqueDuplicateCoordsFast(coords, this->num_data_, uniques, unique_idx);
 				if ((data_size_t)uniques.size() == this->num_data_) {//no multiple observations at the same locations -> no incidence matrix needed
 					coords_ = coords;
 				}
@@ -1238,7 +1238,7 @@ namespace GPBoost {
 			std::vector<int>  unique_idx_pred;//used for constructing incidence matrix Z_ if there are duplicates
 			bool has_duplicates, has_Zstar;
 			if (!has_compact_cov_fct_) {
-				DetermineUniqueDuplicateCoords(coords_pred, num_data_pred, uniques_pred, unique_idx_pred);
+				DetermineUniqueDuplicateCoordsFast(coords_pred, num_data_pred, uniques_pred, unique_idx_pred);
 				has_duplicates = (int)uniques_pred.size() != num_data_pred;
 				has_Zstar = has_duplicates || this->is_rand_coef_;
 			}

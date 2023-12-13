@@ -2252,11 +2252,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						random_effects_indices_of_data_pred = std::vector<data_size_t>(num_data_per_cluster_pred[cluster_i]);
 						std::vector<int> uniques;//unique points
 						std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
-						if (gp_approx_ != "none") {
-							Log::REWarning("'DetermineUniqueDuplicateCoords' is called and a GP approximation is used. "
-								"Note that 'DetermineUniqueDuplicateCoords' is slow for large data ");
-						}
-						DetermineUniqueDuplicateCoords(gp_coords_mat_pred, num_data_per_cluster_pred[cluster_i], uniques, unique_idx);
+						DetermineUniqueDuplicateCoordsFast(gp_coords_mat_pred, num_data_per_cluster_pred[cluster_i], uniques, unique_idx);
 #pragma omp for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 							random_effects_indices_of_data_pred[i] = unique_idx[i];
@@ -7083,11 +7079,10 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			//Determine number of unique observartion locations
 			std::vector<int> uniques;//unique points
 			std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
-			// Note: 'DetermineUniqueDuplicateCoords' is slow for large data
-			DetermineUniqueDuplicateCoords(gp_coords_mat_obs, num_data_cli, uniques, unique_idx);
+			DetermineUniqueDuplicateCoordsFast(gp_coords_mat_obs, num_data_cli, uniques, unique_idx);
 			int num_coord_unique_obs = (int)uniques.size();
 			//Determine unique locations (observed and predicted)
-			DetermineUniqueDuplicateCoords(coords_all, num_data_tot, uniques, unique_idx);
+			DetermineUniqueDuplicateCoordsFast(coords_all, num_data_tot, uniques, unique_idx);
 			int num_coord_unique = (int)uniques.size();
 			den_mat_t coords_all_unique;
 			if ((int)uniques.size() == num_data_tot) {//no multiple observations at the same locations -> no incidence matrix needed

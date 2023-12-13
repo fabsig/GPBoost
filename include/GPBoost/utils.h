@@ -11,7 +11,7 @@
 
 #include <cmath>
 #include <GPBoost/type_defs.h>
-#include <algorithm>    // std::max
+#include <algorithm>    // std::max, std::sort
 #include <numeric>      // std::iota
 
 namespace GPBoost {
@@ -40,6 +40,12 @@ namespace GPBoost {
 		return std::abs(a - b) < EPSILON_NUMBERS * std::max<T>({ 1.0, std::abs(a), std::abs(b) });
 	}
 
+	/*! \brief Checking whether a number 'a' is smaller than another number 'b' */
+	template <typename T>//T can be double or float
+	inline bool NumberIsSmallerThan(const T a, const T b) {
+		return (b - a)  > EPSILON_NUMBERS * std::max<T>({ 1.0, std::abs(b) });
+	}
+
 	/*! \brief Get number of non-zero entries in a matrix */
 	template <class T_mat1, typename std::enable_if <std::is_same<sp_mat_t, T_mat1>::value ||
 		std::is_same<sp_mat_rm_t, T_mat1>::value>::type* = nullptr >
@@ -64,7 +70,7 @@ namespace GPBoost {
 	/*!
 	* \brief Finds the sorting index of vector v and saves it in idx
 	* \param v Vector with values
-	* \param idx Vector where sorting index is written to
+	* \param idx Vector where sorting index is written to. idx[k] corresponds to the index of the k-smallest element of v, i.e., v[idx[0]] <= v[idx[1]] <= v[idx[2]] <= ... 
 	*/
 	template <typename T>
 	void SortIndeces(const std::vector<T>& v,

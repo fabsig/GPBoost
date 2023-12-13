@@ -1564,10 +1564,6 @@ namespace GPBoost {
 				mode_has_been_calculated_ = true;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
-
-			double ll = LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-			double mode_ml = -0.5 / sigma2 * (mode_.dot(mode_));
-
 		}//end FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale
 
 		/*!
