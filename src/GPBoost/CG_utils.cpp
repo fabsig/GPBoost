@@ -411,6 +411,36 @@ namespace GPBoost {
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
 	} // end CGTridiagVecchiaLaplaceSigmaplusWinv
 
+	void simProbeVect(RNG_t& generator, den_mat_t& Z, const bool rademacher) {
+
+		double u;
+
+		if (rademacher) {
+			std::uniform_real_distribution<double> udist(0.0, 1.0);
+
+			for (int i = 0; i < Z.rows(); ++i) {
+				for (int j = 0; j < Z.cols(); j++) {
+					u = udist(generator);
+					if (u > 0.5) {
+						Z(i, j) = 1.;
+					}
+					else {
+						Z(i, j) = -1.;
+					}
+				}
+			}
+		}
+		else {
+			std::normal_distribution<double> ndist(0.0, 1.0);
+
+			for (int i = 0; i < Z.rows(); ++i) {
+				for (int j = 0; j < Z.cols(); j++) {
+					Z(i, j) = ndist(generator);
+				}
+			}
+		}
+	} // end simProbeVect
+
 	void GenRandVecTrace(RNG_t& generator, 
 		den_mat_t& R) {
 		
@@ -419,6 +449,24 @@ namespace GPBoost {
 		for (int i = 0; i < R.rows(); ++i) {
 			for (int j = 0; j < R.cols(); j++) {
 				R(i, j) = ndist(generator);
+			}
+		}
+	}
+
+	void GenRandVecDiag(RNG_t& generator,
+		den_mat_t& R) {
+		double u;
+		std::uniform_real_distribution<double> udist(0.0, 1.0);
+		//Do not parallelize! - Despite seed: no longer deterministic
+		for (int i = 0; i < R.rows(); ++i) {
+			for (int j = 0; j < R.cols(); j++) {
+				u = udist(generator);
+				if (u > 0.5) {
+					R(i, j) = 1.;
+				}
+				else {
+					R(i, j) = -1.;
+				}
 			}
 		}
 	}

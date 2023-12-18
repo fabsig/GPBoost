@@ -292,6 +292,250 @@ namespace GPBoost {
 		}
 	}//end CalculateDistancesTapering (sparse)
 
+	/*!
+	* \brief Subtract the inner product M^TM from a matrix Sigma
+	* \param[out] Sigma Matrix from which M^TM is subtracted
+	* \param M Matrix M
+	* \param only_triangular true/false only compute triangular matrix
+	*/
+	template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
+	void SubtractInnerProdFromMat(T_mat& Sigma,
+		const den_mat_t& M,
+		bool only_triangular) {
+		CHECK(Sigma.rows() == M.cols());
+		CHECK(Sigma.cols() == M.cols());
+#pragma omp parallel for schedule(static)
+		for (int i = 0; i < Sigma.rows(); ++i) {
+			for (int j = i; j < Sigma.cols(); ++j) {
+				Sigma(i, j) -= M.col(i).dot(M.col(j));
+				if (!only_triangular) {
+					if (j > i) {
+						Sigma(j, i) = Sigma(i, j);
+					}
+				}
+			}
+		}
+	}//end SubtractInnerProdFromMat (dense)
+	template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
+	void SubtractInnerProdFromMat(T_mat & Sigma,
+		const den_mat_t & M,
+		bool only_triangular) {
+		CHECK(Sigma.rows() == M.cols());
+		CHECK(Sigma.cols() == M.cols());
+#pragma omp parallel for schedule(static)
+		for (int k = 0; k < Sigma.outerSize(); ++k) {
+			for (typename T_mat::InnerIterator it(Sigma, k); it; ++it) {
+				int i = (int)it.row();
+				int j = (int)it.col();
+				if (i <= j) {
+					it.valueRef() -= M.col(i).dot(M.col(j));
+					if (!only_triangular) {
+						if (i < j) {
+							Sigma.coeffRef(j, i) = Sigma.coeff(i, j);
+						}
+					}
+				}
+			}
+		}
+	}//end SubtractInnerProdFromMat (sparse)
+
+	/*!
+	* \brief Subtract the product M1^T * M2 from a matrix Sigma
+	* \param[out] Sigma Matrix from which M1^T * M2 is subtracted
+	* \param M1 Matrix M1
+	* \param M2 Matrix M2
+	* \param only_triangular true/false only compute triangular matrix
+	*/
+	template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
+	void SubtractProdFromMat(T_mat& Sigma,
+		const den_mat_t& M1,
+		const den_mat_t& M2,
+		bool only_triangular) {
+		CHECK(Sigma.rows() == M1.cols());
+		CHECK(Sigma.cols() == M2.cols());
+#pragma omp parallel for schedule(static)
+		for (int i = 0; i < Sigma.rows(); ++i) {
+			for (int j = i; j < Sigma.cols(); ++j) {
+				Sigma(i, j) -= M1.col(i).dot(M2.col(j));
+				if (!only_triangular) {
+					if (j > i) {
+						Sigma(j, i) = Sigma(i, j);
+					}
+				}
+			}
+		}
+	}//end SubtractProdFromMat (dense)
+	template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
+	void SubtractProdFromMat(T_mat & Sigma,
+		const den_mat_t & M1,
+		const den_mat_t & M2,
+		bool only_triangular) {
+		CHECK(Sigma.rows() == M1.cols());
+		CHECK(Sigma.cols() == M2.cols());
+#pragma omp parallel for schedule(static)
+		for (int k = 0; k < Sigma.outerSize(); ++k) {
+			for (typename T_mat::InnerIterator it(Sigma, k); it; ++it) {
+				int i = (int)it.row();
+				int j = (int)it.col();
+				if (i <= j) {
+					it.valueRef() -= M1.col(i).dot(M2.col(j));
+					if (!only_triangular) {
+						if (i < j) {
+							Sigma.coeffRef(j, i) = Sigma.coeff(i, j);
+						}
+					}
+				}
+			}
+		}
+	}//end SubtractProdFromMat (sparse)
+
+	/*!
+	* \brief Subtract the product M1^T * M2 from a matrix non square Sigma (prediction)
+	* \param[out] Sigma Matrix from which M1^T * M2 is subtracted
+	* \param M1 Matrix M1
+	* \param M2 Matrix M2
+	*/
+	template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
+	void SubtractProdFromNonSqMat(T_mat& Sigma,
+		const den_mat_t& M1,
+		const den_mat_t& M2) {
+		CHECK(Sigma.rows() == M1.cols());
+		CHECK(Sigma.cols() == M2.cols());
+#pragma omp parallel for schedule(static)
+		for (int i = 0; i < Sigma.rows(); ++i) {
+			for (int j = 0; j < Sigma.cols(); ++j) {
+				Sigma(i, j) -= M1.col(i).dot(M2.col(j));
+			}
+		}
+	}//end SubtractProdFromNonSqMat (dense)
+	template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
+	void SubtractProdFromNonSqMat(T_mat & Sigma,
+		const den_mat_t & M1,
+		const den_mat_t & M2) {
+		CHECK(Sigma.rows() == M1.cols());
+		CHECK(Sigma.cols() == M2.cols());
+#pragma omp parallel for schedule(static)
+		for (int k = 0; k < Sigma.outerSize(); ++k) {
+			for (typename T_mat::InnerIterator it(Sigma, k); it; ++it) {
+				int i = (int)it.row();
+				int j = (int)it.col();
+				it.valueRef() -= M1.col(i).dot(M2.col(j));
+			}
+		}
+	}//end SubtractProdFromNonSqMat (sparse)
+
+	/*!
+	* \brief Subtract the matrix from a matrix Sigma
+	* \param[out] Sigma Matrix from which M is subtracted
+	* \param M Matrix
+	*/
+	template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
+	void SubtractMatFromMat(T_mat& Sigma,
+		const den_mat_t& M) {
+#pragma omp parallel for schedule(static)
+		for (int i = 0; i < Sigma.rows(); ++i) {
+			for (int j = i; j < Sigma.cols(); ++j) {
+				Sigma(i, j) -= M(i, j);
+				if (j > i) {
+					Sigma(j, i) = Sigma(i, j);
+				}
+			}
+		}
+	}//end SubtractMatFromMat (dense)
+	template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
+	void SubtractMatFromMat(T_mat & Sigma,
+		const den_mat_t & M) {
+#pragma omp parallel for schedule(static)
+		for (int k = 0; k < Sigma.outerSize(); ++k) {
+			for (typename T_mat::InnerIterator it(Sigma, k); it; ++it) {
+				int i = (int)it.row();
+				int j = (int)it.col();
+				if (i <= j) {
+					it.valueRef() -= M(i, j);
+					if (i < j) {
+						Sigma.coeffRef(j, i) = Sigma.coeff(i, j);
+					}
+				}
+			}
+		}
+	}//end SubtractMatFromMat (sparse)
+
+	/*
+	Calculate the smallest distance between each of the data points and any of the input means.
+	* \param means data cluster means that determine the inducing points
+	* \param data data coordinates
+	* \param[out] distances smallest distance between each of the data points and any of the input means
+	*/
+	void closest_distance(const den_mat_t& means,
+		const den_mat_t& data,
+		vec_t& distances);
+
+	/*
+	This is an alternate initialization method based on the [kmeans++](https://en.wikipedia.org/wiki/K-means%2B%2B)
+	initialization algorithm.
+	* \param data data coordinates
+	* \param k Size of inducing points
+	* \param gen RNG
+	* \param[out] means data cluster means that determine the inducing points
+	*/
+	void random_plusplus(const den_mat_t& data,
+		int k,
+		RNG_t& gen,
+		den_mat_t& means);
+
+	/*
+	Calculate means based on data points and their cluster assignments.
+	* \param data data coordinates
+	* \param  clusters index of the mean each data point is closest to
+	* \param[out] means data cluster means that determine the inducing points
+	* \param[out] indices indices of closest data points to means
+	*/
+	void calculate_means(const den_mat_t& data,
+		vec_t& clusters,
+		den_mat_t& means,
+		vec_t& indices);
+
+	/*
+	This implementation of k-means uses [Lloyd's Algorithm](https://en.wikipedia.org/wiki/Lloyd%27s_algorithm)
+	with the [kmeans++](https://en.wikipedia.org/wiki/K-means%2B%2B) used for initializing the means.
+	* \param data data coordinates
+	* \param k Size of inducing points
+	* \param gen RNG
+	* \param[out] means data cluster means that determine the inducing points
+	* \param[out] max_int maximal number of iterations
+	*/
+	void kmeans_plusplus(const den_mat_t& data,
+		int k,
+		RNG_t& gen,
+		den_mat_t& means,
+		int max_it);
+
+	/*
+	Determines indices of data which is inside a ball with given radius around given point
+	* \param data data coordinates
+	* \param indices_start indices of data considered
+	* \param radius radius of ball
+	* \param mid centre of ball
+	* \param[out] indices indices of data points inside ball
+	*/
+	void data_in_ball(const den_mat_t& data,
+		const std::vector<int>& indices_start,
+		double radius,
+		const vec_t& mid,
+		std::vector<int>& indices);
+
+	/*
+	CoverTree Algorithmus
+	* \param data data coordinates
+	* \param eps size of cover part
+	* \param gen RNG
+	* \param[out] means data cluster means that determine the inducing points
+	*/
+	void CoverTree(const den_mat_t& data,
+		double eps,
+		RNG_t& gen,
+		den_mat_t& means);
+
 }  // namespace GPBoost
 
 #endif   // GPB_GP_UTIL_H_
