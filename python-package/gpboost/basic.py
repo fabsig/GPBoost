@@ -4653,7 +4653,15 @@ class GPModel(object):
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
                 - init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for covariance parameters of Gaussian process and random effects (can be None)
+                    Initial values for covariance parameters of Gaussian process and random effects (can be None).
+                    The order it the same as the order of the parameters in the summary function: first is the error
+                    variance (only for "gaussian" likelihood), next follow the variances of the grouped random effects
+                    (if there are any, in the order provided in 'group_data'), and then follow the marginal variance
+                    and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances
+                    and ranges follow alternatingly. If 'init_cov_pars = None', an internatl choice is used that depends
+                    on the likelihood and the random effects type and covariance function. If you select the option
+                    'trace = True' in the 'params' argument, you will see the first initial covariance parameters
+                    in iteration 0.
                 - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring")
@@ -4880,7 +4888,15 @@ class GPModel(object):
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
                 - init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for covariance parameters of Gaussian process and random effects (can be None)
+                    Initial values for covariance parameters of Gaussian process and random effects (can be None).
+                    The order it the same as the order of the parameters in the summary function: first is the error
+                    variance (only for "gaussian" likelihood), next follow the variances of the grouped random effects
+                    (if there are any, in the order provided in 'group_data'), and then follow the marginal variance
+                    and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances
+                    and ranges follow alternatingly. If 'init_cov_pars = None', an internatl choice is used that depends
+                    on the likelihood and the random effects type and covariance function. If you select the option
+                    'trace = True' in the 'params' argument, you will see the first initial covariance parameters
+                    in iteration 0.
                 - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring")
