@@ -370,12 +370,12 @@ namespace GPBoost {
 			for (const auto& cluster_i : unique_clusters_) {
 				std::vector<std::shared_ptr<RECompBase<T_mat>>> re_comps_cluster_i;
 				if (gp_approx_ == "vecchia") {
-					std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_data_per_cluster_[cluster_i]);
-					std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_data_per_cluster_[cluster_i]);
-					std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_per_cluster_[cluster_i]);
+					std::vector<std::vector<int>> nearest_neighbors_cluster_i;
+					std::vector<den_mat_t> dist_obs_neighbors_cluster_i;
+					std::vector<den_mat_t> dist_between_neighbors_cluster_i;
 					std::vector<Triplet_t> entries_init_B_cluster_i;
 					std::vector<Triplet_t> entries_init_B_grad_cluster_i;
-					std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_per_cluster_[cluster_i]);
+					std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i;
 					CreateREComponentsVecchia(num_data_, data_indices_per_cluster_, cluster_i,
 						num_data_per_cluster_, gp_coords_data, gp_rand_coef_data,
 						re_comps_cluster_i, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
@@ -457,6 +457,9 @@ namespace GPBoost {
 				}
 			}
 			else if (!gauss_likelihood_before && gauss_likelihood_) {
+				if (only_one_GP_calculations_on_RE_scale_before && gp_approx_ == "vecchia") {
+					Log::REFatal("Cannot change the likelihood to 'gaussian' when using a Vecchia approximation and having duplicate coordinates");
+				}
 				if (only_one_GP_calculations_on_RE_scale_before || only_one_grouped_RE_calculations_on_RE_scale_before) {
 					for (const auto& cluster_i : unique_clusters_) {
 						re_comps_[cluster_i][0]->AddZ();
@@ -1373,7 +1376,6 @@ namespace GPBoost {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxVecchia(y_[cluster_i].data(),
 							y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr,
-							num_data_per_cluster_[cluster_i],
 							B_[cluster_i],
 							D_inv_[cluster_i],
 							B_grad_[cluster_i],
@@ -2292,12 +2294,12 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 									num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
 							}
 							if (vecchia_pred_type_ == "order_obs_first_cond_obs_only") {
-								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
+								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, data_indices_per_cluster_pred,
 									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
 									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
 							}
 							else if (vecchia_pred_type_ == "order_obs_first_cond_all") {
-								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
+								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, data_indices_per_cluster_pred,
 									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
 									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
 							}
@@ -2350,19 +2352,19 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 							// The mode has been calculated already before in the Predict() function above
 							// mean_pred_id and cov_mat_pred_id are not calculate in 'CalcPredVecchiaObservedFirstOrder', only Bpo, Bp, and Dp for non-Gaussian likelihoods
 							if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
-								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
+								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, data_indices_per_cluster_pred,
 									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
 									false, false, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
-								likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
+								likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
 									B_[cluster_i], D_inv_[cluster_i], Bpo, Bp, Dp,
 									mean_pred_id, cov_mat_pred_id, var_pred_id,
 									predict_cov_mat, predict_var_or_response, false, true);
 							}
 							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
-								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
+								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, data_indices_per_cluster_pred,
 									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred,
 									false, false, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
-								likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
+								likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
 									B_[cluster_i], D_inv_[cluster_i], Bpo, Bp, Dp,
 									mean_pred_id, cov_mat_pred_id, var_pred_id,
 									predict_cov_mat, predict_var_or_response, false, false);
@@ -2738,8 +2740,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						if (calc_var) {
 							vec_t var_pred_id;
 							if (only_one_GP_calculations_on_RE_scale_) {
-								likelihood_[cluster_i]->CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale(ZSigmaZt_[cluster_i], 
-									re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
+								likelihood_[cluster_i]->CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale(ZSigmaZt_[cluster_i],
 									var_pred_id);
 							}
 							else if (only_one_grouped_RE_calculations_on_RE_scale_){
@@ -3085,7 +3086,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		bool only_one_grouped_RE_calculations_on_RE_scale_ = false;
 		/*! \brief True if there is only one grouped random effect component for Gaussian data, can calculations for predictions (only) are done on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods) */
 		bool only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = false;
-		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (only for non-Gaussian likelihoods when no approximation is used) */
+		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (only for non-Gaussian likelihoods) */
 		bool only_one_GP_calculations_on_RE_scale_ = false;
 
 		// COVARIANCE MATRIX AND CHOLESKY FACTORS OF IT
@@ -3817,10 +3818,10 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				if (gp_approx_ == "vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
 						num_data_per_cluster_[cluster_i],
-						num_data_per_cluster_[cluster_i],
+						re_comps_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs(),
 						false,
-						false,
-						nullptr));
+						only_one_GP_calculations_on_RE_scale_,
+						re_comps_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_.data()));
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -3838,7 +3839,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						false,
 						nullptr));
 				}
-				else if (only_one_GP_calculations_on_RE_scale_) {
+				else if (only_one_GP_calculations_on_RE_scale_ && gp_approx_ != "vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
 						num_data_per_cluster_[cluster_i],
 						re_comps_[cluster_i][0]->GetNumUniqueREs(),
@@ -3899,7 +3900,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				only_grouped_REs_use_woodbury_identity_ = false;
 			}
 			// Define options for faster calculations for special cases of RE models (these options depend on the type of likelihood)
-			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ == "none";//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (only for non-Gaussian likelihoods when no approximation is used)
+			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ == "none";//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (only for non-Gaussian likelihoods)
 			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods)
 			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods)
 		}//end DetermineSpecialCasesModelsEstimationPrediction
@@ -4022,17 +4023,17 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			if (only_one_GP_calculations_on_RE_scale_ && only_one_grouped_RE_calculations_on_RE_scale_) {
 				Log::REFatal("Cannot set both 'only_one_GP_calculations_on_RE_scale_' and 'only_one_grouped_RE_calculations_on_RE_scale_' to 'true'");
 			}
-			if (gp_approx_ == "vecchia") {
+			if (gp_approx_ != "none") {
 				if (num_re_group_total_ > 0) {
-					Log::REFatal("Vecchia approximation can currently not be used when there are grouped random effects");
+					Log::REFatal("The approximation '%s' can currently not be used when there are grouped random effects ", gp_approx_.c_str());
 				}
 			}
 			if (only_one_GP_calculations_on_RE_scale_) {//only_one_GP_calculations_on_RE_scale_
 				if (gauss_likelihood_) {
 					Log::REFatal("Option 'only_one_GP_calculations_on_RE_scale_' is currently not implemented for Gaussian data");
 				}
-				if (gp_approx_ == "vecchia") {
-					Log::REFatal("Option 'only_one_GP_calculations_on_RE_scale_' is currently not implemented for the Vecchia approximation");
+				if (gp_approx_ != "vecchia" && gp_approx_ != "none") {
+					Log::REFatal("Option 'only_one_GP_calculations_on_RE_scale_' is currently not implemented for the approximation '%s' ", gp_approx_.c_str());
 				}
 				CHECK(num_gp_total_ == 1);
 				CHECK(num_comps_total_ == 1);
@@ -4042,13 +4043,13 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				if (gauss_likelihood_) {
 					Log::REFatal("Option 'only_one_grouped_RE_calculations_on_RE_scale_' is currently not implemented for Gaussian data");
 				}
-				CHECK(gp_approx_ != "vecchia");
+				CHECK(gp_approx_ == "none");
 				CHECK(num_gp_total_ == 0);
 				CHECK(num_comps_total_ == 1);
 				CHECK(num_re_group_total_ == 1);
 			}
 			if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {//only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
-				CHECK(gp_approx_ != "vecchia");
+				CHECK(gp_approx_ == "none");
 				CHECK(num_gp_total_ == 0);
 				CHECK(num_comps_total_ == 1);
 				CHECK(num_re_group_total_ == 1);
@@ -4246,6 +4247,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				}
 			}
 			den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords_);
+			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;
 			re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 				gp_coords_mat,
 				cov_fct_,
@@ -4255,10 +4257,17 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				gp_approx_ == "tapering",
 				false,
 				false,
-				false,
-				false)));
+				only_one_GP_calculations_on_RE_scale_,
+				only_one_GP_calculations_on_RE_scale_)));
+			std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp]);
+			if (re_comp->GetNumUniqueREs() == num_data_per_cluster[cluster_i]) {
+				only_one_GP_calculations_on_RE_scale_ = false;
+			}
 			bool has_duplicates = check_has_duplicates;
-			find_nearest_neighbors_Vecchia_fast(gp_coords_mat, num_data_per_cluster[cluster_i], num_neighbors,
+			nearest_neighbors_cluster_i = std::vector<std::vector<int>>(re_comp->GetNumUniqueREs());
+			dist_obs_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
+			dist_between_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
+			find_nearest_neighbors_Vecchia_fast(re_comp->coords_, re_comp->GetNumUniqueREs(), num_neighbors,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates,
 				vecchia_neighbor_selection_, rng_);
 			if (check_has_duplicates) {
@@ -4267,7 +4276,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					Log::REFatal(DUPLICATES_COORDS_VECCHIA_NONGAUSS_);
 				}
 			}
-			for (int i = 0; i < num_data_per_cluster[cluster_i]; ++i) {
+			for (int i = 0; i < re_comp->num_random_effects_; ++i) {
 				for (int j = 0; j < (int)nearest_neighbors_cluster_i[i].size(); ++j) {
 					entries_init_B_cluster_i.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.));
 					entries_init_B_grad_cluster_i.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.));
@@ -4276,7 +4285,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			}
 			//Random coefficients
 			if (num_gp_rand_coef_ > 0) {
-				std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp]);
+				z_outer_z_obs_neighbors_cluster_i = std::vector<std::vector<den_mat_t>>(re_comp->GetNumUniqueREs());
 				for (int j = 0; j < num_gp_rand_coef_; ++j) {
 					std::vector<double> rand_coef_data;
 					for (const auto& id : data_indices_per_cluster[cluster_i]) {
@@ -4309,8 +4318,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					}
 				}
 			}// end random coefficients
-		}
-
+		}//end CreateREComponentsVecchia
 
 		/*!
 		* \brief Set the covariance parameters of the components
@@ -4656,7 +4664,6 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxVecchia(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
 						B_[cluster_i],
 						D_inv_[cluster_i],
 						B_grad_[cluster_i],
@@ -5343,12 +5350,11 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_Sigma") {
 						//Do pivoted Cholesky decomposition for Sigma
 						//TODO: only after cov-pars step, not after fixed-effect step
-						PivotedCholsekyFactorizationSigma(re_comps_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, num_data_per_cluster_[cluster_i], PIV_CHOL_STOP_TOL);
+						PivotedCholsekyFactorizationSigma(re_comps_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, PIV_CHOL_STOP_TOL);
 					}
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(),
 						y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
 						B_[cluster_i],
 						D_inv_[cluster_i],
 						first_update_,
@@ -5390,7 +5396,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 
 		/*!
 		* \brief Calculate matrices A and D_inv as well as their derivatives for the Vecchia approximation for one cluster (independent realization of GP)
-		* \param num_data_cluster_i Number of data points
+		* \param num_re_cluster_i Number of random effects
 		* \param calc_gradient If true, the gradient also be calculated (only for Vecchia approximation)
 		* \param re_comps_cluster_i Container that collects the individual component models
 		* \param nearest_neighbors_cluster_i Collects indices of nearest neighbors
@@ -5407,7 +5413,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale = false to transform back)
 		* \param calc_gradient_nugget If true, derivatives are also taken with respect to the nugget / noise variance
 		*/
-		void CalcCovFactorVecchia(int num_data_cluster_i,
+		void CalcCovFactorVecchia(data_size_t num_re_cluster_i,
 			bool calc_gradient,
 			const std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i,
 			const std::vector<std::vector<int>>& nearest_neighbors_cluster_i,
@@ -5426,9 +5432,9 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			int num_par_comp = re_comps_cluster_i[ind_intercept_gp_]->num_cov_par_;
 			int num_par_gp = num_par_comp * num_gp_total_ + calc_gradient_nugget;
 			//Initialize matrices B = I - A and D^-1 as well as their derivatives (in order that the code below can be run in parallel)
-			B_cluster_i = sp_mat_t(num_data_cluster_i, num_data_cluster_i);//B = I - A
+			B_cluster_i = sp_mat_t(num_re_cluster_i, num_re_cluster_i);//B = I - A
 			B_cluster_i.setFromTriplets(entries_init_B_cluster_i.begin(), entries_init_B_cluster_i.end());//Note: 1's are put on the diagonal
-			D_inv_cluster_i = sp_mat_t(num_data_cluster_i, num_data_cluster_i);//D^-1. Note: we first calculate D, and then take the inverse below
+			D_inv_cluster_i = sp_mat_t(num_re_cluster_i, num_re_cluster_i);//D^-1. Note: we first calculate D, and then take the inverse below
 			D_inv_cluster_i.setIdentity();//Put 1's on the diagonal for nugget effect (entries are not overriden but added below)
 			if (!transf_scale && gauss_likelihood_) {
 				D_inv_cluster_i.diagonal().array() = nugget_var;//nugget effect is not 1 if not on transformed scale
@@ -5442,16 +5448,16 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				D_grad_cluster_i = std::vector<sp_mat_t>(num_par_gp);//derivative of D
 				for (int ipar = 0; ipar < num_par_gp; ++ipar) {
 					if (!(exclude_marg_var_grad && ipar == 0)) {
-						B_grad_cluster_i[ipar] = sp_mat_t(num_data_cluster_i, num_data_cluster_i);
+						B_grad_cluster_i[ipar] = sp_mat_t(num_re_cluster_i, num_re_cluster_i);
 						B_grad_cluster_i[ipar].setFromTriplets(entries_init_B_grad_cluster_i.begin(), entries_init_B_grad_cluster_i.end());
-						D_grad_cluster_i[ipar] = sp_mat_t(num_data_cluster_i, num_data_cluster_i);
+						D_grad_cluster_i[ipar] = sp_mat_t(num_re_cluster_i, num_re_cluster_i);
 						D_grad_cluster_i[ipar].setIdentity();//Put 0 on the diagonal
 						D_grad_cluster_i[ipar].diagonal().array() = 0.;
 					}
 				}
 			}//end initialization
 #pragma omp parallel for schedule(static)
-			for (int i = 0; i < num_data_cluster_i; ++i) {
+			for (data_size_t i = 0; i < num_re_cluster_i; ++i) {
 				int num_nn = (int)nearest_neighbors_cluster_i[i].size();
 				//calculate covariance matrices between observations and neighbors and among neighbors as well as their derivatives
 				den_mat_t cov_mat_obs_neighbors(1, num_nn);
@@ -5630,8 +5636,8 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			bool calc_gradient_nugget) {
 			if (gp_approx_ == "vecchia") {
 				for (const auto& cluster_i : unique_clusters_) {
-					int num_data_cl_i = num_data_per_cluster_[cluster_i];
-					CalcCovFactorVecchia(num_data_cl_i, calc_gradient, re_comps_[cluster_i], nearest_neighbors_[cluster_i],
+					data_size_t num_re_cluster_i = re_comps_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs();
+					CalcCovFactorVecchia(num_re_cluster_i, calc_gradient, re_comps_[cluster_i], nearest_neighbors_[cluster_i],
 						dist_obs_neighbors_[cluster_i], dist_between_neighbors_[cluster_i],
 						entries_init_B_[cluster_i], entries_init_B_grad_[cluster_i], z_outer_z_obs_neighbors_[cluster_i],
 						B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i], transf_scale, nugget_var, calc_gradient_nugget);
@@ -6645,7 +6651,6 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		* \param CondObsOnly If true, the nearest neighbors for the predictions are found only among the observed data
 		* \param cluster_i Cluster index for which prediction are made
 		* \param num_data_pred Total number of prediction locations (over all clusters)
-		* \param num_data_per_cluster_pred Keys: Labels of independent realizations of REs/GPs, values: number of prediction locations per independent realization
 		* \param data_indices_per_cluster_pred Keys: labels of independent clusters, values: vectors with indices for data points that belong to the every cluster
 		* \param gp_coords_mat_obs Coordinates for observed locations
 		* \param gp_coords_mat_pred Coordinates for prediction locations
@@ -6662,8 +6667,6 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 		void CalcPredVecchiaObservedFirstOrder(bool CondObsOnly,
 			data_size_t cluster_i,
 			int num_data_pred,
-			std::map<data_size_t,
-			int>& num_data_per_cluster_pred,
 			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
 			const den_mat_t& gp_coords_mat_obs,
 			const den_mat_t& gp_coords_mat_pred,
@@ -6676,33 +6679,33 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			sp_mat_t& Bpo,
 			sp_mat_t& Bp,
 			vec_t& Dp) {
-			int num_data_cli = num_data_per_cluster_[cluster_i];
-			int num_data_pred_cli = num_data_per_cluster_pred[cluster_i];
+			data_size_t num_re_cli = re_comps_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs();
+			int num_re_pred_cli = (int)gp_coords_mat_pred.rows();
 			//Find nearest neighbors
-			den_mat_t coords_all(num_data_cli + num_data_pred_cli, dim_gp_coords_);
+			den_mat_t coords_all(num_re_cli + num_re_pred_cli, dim_gp_coords_);
 			coords_all << gp_coords_mat_obs, gp_coords_mat_pred;
-			std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_data_pred_cli);
-			std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_data_pred_cli);
-			std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_pred_cli);
+			std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_re_pred_cli);
+			std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_re_pred_cli);
+			std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_re_pred_cli);
 			bool check_has_duplicates = false;
 			if (CondObsOnly) {
-				find_nearest_neighbors_Vecchia_fast(coords_all, num_data_cli + num_data_pred_cli, num_neighbors_pred_,
-					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, num_data_cli - 1, check_has_duplicates,
+				find_nearest_neighbors_Vecchia_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred_,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, num_re_cli - 1, check_has_duplicates,
 					vecchia_neighbor_selection_, rng_);
 			}
 			else {//find neighbors among both the observed and prediction locations
 				if (!gauss_likelihood_) {
 					check_has_duplicates = true;
 				}
-				find_nearest_neighbors_Vecchia_fast(coords_all, num_data_cli + num_data_pred_cli, num_neighbors_pred_,
-					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_data_cli, -1, check_has_duplicates,
+				find_nearest_neighbors_Vecchia_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred_,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, -1, check_has_duplicates,
 					vecchia_neighbor_selection_, rng_);
 				if (check_has_duplicates) {
 					Log::REFatal(DUPLICATES_PRED_VECCHIA_COND_ALL_NONGAUSS_);
 				}
 			}
 			//Random coefficients
-			std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_pred_cli);
+			std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_re_pred_cli);
 			if (num_gp_rand_coef_ > 0) {
 				for (int j = 0; j < num_gp_rand_coef_; ++j) {
 					std::vector<double> rand_coef_data = re_comps_[cluster_i][ind_intercept_gp_ + j + 1]->rand_coef_data_;//First entries are the observed data, then the predicted data
@@ -6710,14 +6713,14 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						rand_coef_data.push_back(gp_rand_coef_data_pred[j * num_data_pred + id]);
 					}
 #pragma omp for schedule(static)
-					for (int i = 0; i < num_data_pred_cli; ++i) {
+					for (int i = 0; i < num_re_pred_cli; ++i) {
 						if (j == 0) {
 							z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef_);
 						}
 						int dim_z = (int)nearest_neighbors_cluster_i[i].size() + 1;
 						vec_t coef_vec(dim_z);
-						coef_vec(0) = rand_coef_data[num_data_cli + i];
-						if ((num_data_cli + i) > 0) {
+						coef_vec(0) = rand_coef_data[num_re_cli + i];
+						if ((num_re_cli + i) > 0) {
 							for (int ii = 1; ii < dim_z; ++ii) {
 								coef_vec(ii) = rand_coef_data[nearest_neighbors_cluster_i[i][ii - 1]];
 							}
@@ -6728,20 +6731,20 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			}
 			// Determine Triplet for initializing Bpo and Bp
 			std::vector<Triplet_t> entries_init_Bpo, entries_init_Bp;
-			for (int i = 0; i < num_data_pred_cli; ++i) {
+			for (int i = 0; i < num_re_pred_cli; ++i) {
 				entries_init_Bp.push_back(Triplet_t(i, i, 1.));//Put 1 on the diagonal
 				for (int inn = 0; inn < (int)nearest_neighbors_cluster_i[i].size(); ++inn) {
-					if (nearest_neighbors_cluster_i[i][inn] < num_data_cli) {//nearest neighbor belongs to observed data
+					if (nearest_neighbors_cluster_i[i][inn] < num_re_cli) {//nearest neighbor belongs to observed data
 						entries_init_Bpo.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][inn], 0.));
 					}
 					else {//nearest neighbor belongs to predicted data
-						entries_init_Bp.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][inn] - num_data_cli, 0.));
+						entries_init_Bp.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][inn] - num_re_cli, 0.));
 					}
 				}
 			}
-			Bpo = sp_mat_t(num_data_pred_cli, num_data_cli);
-			Bp = sp_mat_t(num_data_pred_cli, num_data_pred_cli);
-			Dp = vec_t(num_data_pred_cli);
+			Bpo = sp_mat_t(num_re_pred_cli, num_re_cli);
+			Bp = sp_mat_t(num_re_pred_cli, num_re_pred_cli);
+			Dp = vec_t(num_re_pred_cli);
 			Bpo.setFromTriplets(entries_init_Bpo.begin(), entries_init_Bpo.end());//initialize matrices (in order that the code below can be run in parallel)
 			Bp.setFromTriplets(entries_init_Bp.begin(), entries_init_Bp.end());
 			if (gauss_likelihood_) {
@@ -6751,7 +6754,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				Dp.setZero();
 			}
 #pragma omp parallel for schedule(static)
-			for (int i = 0; i < num_data_pred_cli; ++i) {
+			for (int i = 0; i < num_re_pred_cli; ++i) {
 				int num_nn = (int)nearest_neighbors_cluster_i[i].size();
 				den_mat_t cov_mat_obs_neighbors(1, num_nn);//dim = 1 x nn
 				den_mat_t cov_mat_between_neighbors(num_nn, num_nn);//dim = nn x nn
@@ -6796,11 +6799,11 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 				den_mat_t A_i(1, num_nn);//dim = 1 x nn
 				A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors.transpose())).transpose();
 				for (int inn = 0; inn < num_nn; ++inn) {
-					if (nearest_neighbors_cluster_i[i][inn] < num_data_cli) {//nearest neighbor belongs to observed data
+					if (nearest_neighbors_cluster_i[i][inn] < num_re_cli) {//nearest neighbor belongs to observed data
 						Bpo.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) -= A_i(0, inn);
 					}
 					else {
-						Bp.coeffRef(i, nearest_neighbors_cluster_i[i][inn] - num_data_cli) -= A_i(0, inn);
+						Bp.coeffRef(i, nearest_neighbors_cluster_i[i][inn] - num_re_cli) -= A_i(0, inn);
 					}
 				}
 				Dp[i] -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
@@ -6808,11 +6811,11 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 			if (gauss_likelihood_) {
 				pred_mean = -Bpo * y_[cluster_i];
 				if (!CondObsOnly) {
-					sp_L_solve(Bp.valuePtr(), Bp.innerIndexPtr(), Bp.outerIndexPtr(), num_data_pred_cli, pred_mean.data());
+					sp_L_solve(Bp.valuePtr(), Bp.innerIndexPtr(), Bp.outerIndexPtr(), num_re_pred_cli, pred_mean.data());
 				}
 				if (calc_pred_cov || calc_pred_var) {
 					if (calc_pred_var) {
-						pred_var = vec_t(num_data_pred_cli);
+						pred_var = vec_t(num_re_pred_cli);
 					}
 					if (CondObsOnly) {
 						if (calc_pred_cov) {
@@ -6823,7 +6826,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						}
 					}
 					else {
-						sp_mat_t Bp_inv(num_data_pred_cli, num_data_pred_cli);
+						sp_mat_t Bp_inv(num_re_pred_cli, num_re_pred_cli);
 						Bp_inv.setIdentity();
 						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
 						sp_mat_t Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
@@ -6832,7 +6835,7 @@ negll = yTPsiInvy_ / 2. / sigma2 + log_det_Psi_ / 2. + num_data_ / 2. * (std::lo
 						}
 						if (calc_pred_var) {
 #pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_data_pred_cli; ++i) {
+							for (int i = 0; i < num_re_pred_cli; ++i) {
 								pred_var[i] = (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i));
 							}
 						}

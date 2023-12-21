@@ -112,6 +112,9 @@ namespace GPBoost {
 
 		p = std::min(p, (int)B_rm.cols());
 
+		CHECK(Sigma_L_k.rows() == B_rm.cols());
+		CHECK(Sigma_L_k.rows() == diag_W.size());
+
 		vec_t r, r_old;
 		vec_t z, z_old;
 		vec_t h, v, diag_W_inv, B_invt_u, B_invt_h, B_invt_rhs, Sigma_Lkt_W_r, Sigma_rhs, W_r;
