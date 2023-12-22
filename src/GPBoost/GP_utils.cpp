@@ -110,7 +110,7 @@ namespace GPBoost {
 		std::vector<int> inv_order_uniques(uniques_sorted.size());
 		uniques = std::vector<int>(uniques_sorted.size());
 #pragma omp parallel for schedule(static)
-		for (int i = 0; i < uniques_sorted.size(); ++i) {
+		for (int i = 0; i < (int)uniques_sorted.size(); ++i) {
 			inv_order_uniques[order_uniques[i]] = i;
 			uniques[i] = uniques_sorted[order_uniques[i]];
 		}

@@ -184,6 +184,15 @@ namespace GPBoost {
 			return(is_rand_coef_);
 		}
 
+		const std::vector<double>& RandCoefData() const {
+			CHECK(is_rand_coef_);
+			return(rand_coef_data_);
+		}
+
+		const vec_t& CovPars() const {
+			return(cov_pars_);
+		}
+
 	protected:
 		/*! \brief Number of data points */
 		data_size_t num_data_;
@@ -1386,6 +1395,10 @@ namespace GPBoost {
 				}
 			}
 			return(has_duplicates);
+		}
+
+		const den_mat_t& GetCoords() const {
+			return(coords_);
 		}
 
 	private:
