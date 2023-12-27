@@ -214,7 +214,6 @@ namespace GPBoost {
 	* \param var_f Pointer to fuction which accesses the diagonal of Sigma which equals the marginal variance and is the same for all entries (i,i)
 	* \param Sigma_L_k[out] Matrix of dimension nxmax_it such that Sigma_L_k Sigma_L_k^T ~ Sigma and rank(Sigma_L_k) <= max_it (solution written on input)
 	* \param max_it Max rank of Sigma_L_k
-	* \param num_data n-Dimension
 	* \param err_tol Error tolerance - stop the algorithm if the sum of the diagonal elements of the Schur complement is smaller than err_tol
 	*/
 	template<typename T_mat>
@@ -222,20 +221,20 @@ namespace GPBoost {
 		RECompBase<T_mat>* re_comp,
 		den_mat_t& Sigma_L_k,
 		int max_it,
-		const data_size_t num_data,
 		const double err_tol) {
 
 		int m = 0;
 		int i, pi_m_old;
 		double err, L_jm;
-		vec_t diag(num_data), L_row_m;
-		vec_int_t pi(num_data);
-		max_it = std::min(max_it, num_data);
-		Sigma_L_k.resize(num_data, max_it);
+		data_size_t num_re = re_comp->GetNumUniqueREs();//number of random effects, usually this equals num_data, but it can be smaller if there are duplicates
+		vec_t diag(num_re), L_row_m;
+		vec_int_t pi(num_re);
+		max_it = std::min(max_it, num_re);
+		Sigma_L_k.resize(num_re, max_it);
 		Sigma_L_k.setZero();
 		double diag_ii = re_comp->GetZSigmaZtii();
 
-		for (int h = 0; h < num_data; ++h) {
+		for (int h = 0; h < num_re; ++h) {
 			pi(h) = h;
 			//The diagonal of the covariance matrix equals the marginal variance and is the same for all entries (i,i). 
 			diag(h) = diag_ii;
@@ -244,7 +243,7 @@ namespace GPBoost {
 
 		while (m == 0 || (m < max_it && err > err_tol)) {
 
-			diag(pi.tail(num_data - m)).maxCoeff(&i);
+			diag(pi.tail(num_re - m)).maxCoeff(&i);
 			i += m;
 
 			pi_m_old = pi(m);
@@ -252,13 +251,13 @@ namespace GPBoost {
 			pi(i) = pi_m_old;
 
 			//L[(m+1):n,m]
-			if ((m + 1) < num_data) {
+			if ((m + 1) < num_re) {
 
 				if (m > 0) {
 					L_row_m = Sigma_L_k.row(pi(m)).transpose();
 				}
 
-				for (int j = m + 1; j < num_data; ++j) {
+				for (int j = m + 1; j < num_re; ++j) {
 
 					L_jm = re_comp->GetZSigmaZtij(pi(j), pi(m));
 
@@ -273,7 +272,7 @@ namespace GPBoost {
 
 					diag(pi(j)) -= L_jm * L_jm;
 				}
-				err = diag(pi.tail(num_data - (m + 1))).lpNorm<1>();
+				err = diag(pi.tail(num_re - (m + 1))).lpNorm<1>();
 			}
 
 			//L[m,m] - Update post L[(m+1):n,m] to be able to multiply with L[m,] beforehand

@@ -41,7 +41,7 @@ Visual Studio (or VS Build Tools)
 
    .. code::
 
-     cmake -G "Visual Studio 17 2022" ..``
+     cmake -G "Visual Studio 17 2022" ..
 
 The ``.exe`` and ``.dll`` files will be in the ``GPBoost/Release`` folder.
 

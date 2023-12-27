@@ -62,6 +62,8 @@ namespace GPBoost {
 		const string_t& neighbor_selection,
 		RNG_t& gen) {
 		CHECK((int)neighbors.size() == (num_data - start_at));
+		CHECK((int)dist_obs_neighbors.size() == (num_data - start_at));
+		CHECK((int)dist_between_neighbors.size() == (num_data - start_at));
 		CHECK((int)coords.rows() == num_data);
 		if (end_search_at < 0) {
 			end_search_at = num_data - 2;

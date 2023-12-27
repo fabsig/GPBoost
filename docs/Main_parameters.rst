@@ -281,7 +281,7 @@ The following list shows options for the optimization of the variance and covari
 
 -  ``init_cov_pars`` : numeric vector / array of doubles, optional (default = Null)
 
-   -  Initial values for covariance parameters of Gaussian process and random effects (can be Null)
+   -  Initial values for covariance parameters of Gaussian process and random effects (can be Null). The order it the same as the order of the parameters in the summary function: first is the error variance (only for "gaussian" likelihood), next follow the variances of the grouped random effects (if there are any, in the order provided in 'group_data'), and then follow the marginal variance and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances and ranges follow alternatingly.  If 'init_cov_pars = Null', an internatl choice is used that depends on the likelihood and the random effects type and covariance function. If you select the option 'trace = true' in the 'params' argument, you will see the first initial covariance parameters in iteration 0.
 
 -  ``init_coef`` : numeric vector / array of doubles, optional (default = Null)
 

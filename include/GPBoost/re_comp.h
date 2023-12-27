@@ -184,6 +184,15 @@ namespace GPBoost {
 			return(is_rand_coef_);
 		}
 
+		const std::vector<double>& RandCoefData() const {
+			CHECK(is_rand_coef_);
+			return(rand_coef_data_);
+		}
+
+		const vec_t& CovPars() const {
+			return(cov_pars_);
+		}
+
 	protected:
 		/*! \brief Number of data points */
 		data_size_t num_data_;
@@ -730,9 +739,9 @@ namespace GPBoost {
 		* \param taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param apply_tapering If true, tapering is applied to the covariance function (element-wise multiplication with a compactly supported Wendland correlation function)
 		* \param apply_tapering_manually If true, tapering is applied to the covariance function manually and not directly in 'CalcSigma'
-		* \param save_dist If true, distances are calculated and saved here
-		* \param use_Z_for_duplicates If true, an incidendce matrix Z_ is used for duplicate locations
-		*           use_Z_for_duplicates = false is used for the Vecchia approximation which saves the required distances in the REModel (REModelTemplate)
+		* \param save_dist If true, distances are calculated and saved here. 
+		*					save_dist = false is used for the Vecchia approximation which saves the required distances in the REModel (REModelTemplate)
+		* \param use_Z_for_duplicates If true, an incidendce matrix Z_ is used for duplicate locations      
 		* \param save_random_effects_indices_of_data_and_no_Z If true a vector random_effects_indices_of_data_, which relates random effects b to samples Zb, is used (the matrix Z_ is then not constructed)
 		*           save_random_effects_indices_of_data_and_no_Z = true is currently only used when doing calculations on the random effects scale b and not on the "data scale" Zb for non-Gaussian data
 		*			This option can only be selected when save_dist_use_Z_for_duplicates = true
@@ -749,9 +758,6 @@ namespace GPBoost {
 			bool save_random_effects_indices_of_data_and_no_Z) {
 			if (save_random_effects_indices_of_data_and_no_Z && !use_Z_for_duplicates) {
 				Log::REFatal("RECompGP: 'use_Z_for_duplicates' cannot be 'false' when 'save_random_effects_indices_of_data_and_no_Z' is 'true'");
-			}
-			if (use_Z_for_duplicates && !save_dist) {
-				Log::REFatal("RECompGP: 'save_dist' cannot be 'false' when 'use_Z_for_duplicates' is 'true'");
 			}
 			this->num_data_ = (data_size_t)coords.rows();
 			this->is_rand_coef_ = false;
@@ -773,7 +779,7 @@ namespace GPBoost {
 				}
 				std::vector<int> uniques;//unique points
 				std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
-				DetermineUniqueDuplicateCoords(coords, this->num_data_, uniques, unique_idx);
+				DetermineUniqueDuplicateCoordsFast(coords, this->num_data_, uniques, unique_idx);
 				if ((data_size_t)uniques.size() == this->num_data_) {//no multiple observations at the same locations -> no incidence matrix needed
 					coords_ = coords;
 				}
@@ -1139,6 +1145,10 @@ namespace GPBoost {
 				Log::REFatal("The function 'GetZSigmaZtij' is currently not implemented when 'has_Z_' is true.");
 			}
 			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
+			CHECK(i >= 0);
+			CHECK(j >= 0);
+			CHECK(i < num_random_effects_);
+			CHECK(j < num_random_effects_);
 			double dij = (this->coords_(i, Eigen::all) - this->coords_(j, Eigen::all)).template lpNorm<2>();
 			double covij;
 			cov_function_->GetCovMat(dij, this->cov_pars_, covij);
@@ -1267,7 +1277,7 @@ namespace GPBoost {
 			std::vector<int>  unique_idx_pred;//used for constructing incidence matrix Z_ if there are duplicates
 			bool has_duplicates, has_Zstar;
 			if (!has_compact_cov_fct_) {
-				DetermineUniqueDuplicateCoords(coords_pred, num_data_pred, uniques_pred, unique_idx_pred);
+				DetermineUniqueDuplicateCoordsFast(coords_pred, num_data_pred, uniques_pred, unique_idx_pred);
 				has_duplicates = (int)uniques_pred.size() != num_data_pred;
 				has_Zstar = has_duplicates || this->is_rand_coef_;
 			}
@@ -1414,6 +1424,10 @@ namespace GPBoost {
 				}
 			}
 			return(has_duplicates);
+		}
+
+		const den_mat_t& GetCoords() const {
+			return(coords_);
 		}
 
 	private:
