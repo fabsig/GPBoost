@@ -275,7 +275,6 @@ namespace GPBoost {
 				for (int jj = 0; jj < means_c.rows(); ++jj) {
 					distances_jj[jj] = (means_c(jj, Eigen::all) - data(ii, Eigen::all)).lpNorm<2>();
 				}
-				double min_c = distances_jj.minCoeff(&i);
 				if (covert_points.find(i) == covert_points.end()) {
 					std::vector<int> id_min_c{ ii };
 					covert_points.insert({ i, id_min_c });
