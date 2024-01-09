@@ -167,7 +167,7 @@ namespace GPBoost {
 		double eps,
 		RNG_t& gen,
 		den_mat_t& means) {
-
+		
 		//max distance
 		den_mat_t z_0 = data.colwise().mean();
 		double max_dist_d = (data(0, Eigen::all) - z_0).lpNorm<2>();
@@ -179,6 +179,9 @@ namespace GPBoost {
 		}
 		//Tree depth
 		int L = (int)(ceil(log2(max_dist_d / eps)));
+		if (L < 1) {
+			L = 1;
+		}
 		//number of nodes
 		int M_l_minus = 1;
 		//radius
@@ -211,17 +214,20 @@ namespace GPBoost {
 			covert_points_old.clear();
 			covert_points_old = covert_points;
 			covert_points.clear();
-
+			
 			for (int p = 0; p < M_l_minus; ++p) {
 				children[p].clear();
-
-
+				
+				
 				do {
+					if ((int)covert_points_old[p].size() == 0) {
+						break;
+					}
 					int v = std::uniform_int_distribution<>(0, (int)(covert_points_old[p].size()) - 1)(gen);
 					means(c, Eigen::all) = data(covert_points_old[p][v], Eigen::all);
 					std::vector<int> indices_ball;
 					data_in_ball(data, covert_points_old[p], R_l, means(c, Eigen::all), indices_ball);
-
+					
 					std::vector<int> intersection_vect = indices_ball;
 					den_mat_t zeta_opt = data(intersection_vect, Eigen::all).colwise().mean();
 					vec_t distance_to_others(children[p].size());
@@ -238,7 +244,7 @@ namespace GPBoost {
 					else {
 						means(c, Eigen::all) = zeta_opt;
 					}
-
+					
 					// Remove Covert indices
 					for (int ii = 0; ii < R_neighbors[p].size(); ++ii) {
 						int index_R_neighbors = R_neighbors[p][ii];
@@ -251,7 +257,7 @@ namespace GPBoost {
 						covert_points_old[index_R_neighbors] = diff_vect;
 					}
 
-
+					
 					if (children.find(p) == children.end()) {
 						std::vector<int> id_c{ c };
 						children.insert({ p, id_c });
@@ -259,12 +265,12 @@ namespace GPBoost {
 					else {
 						children[p].push_back(c);
 					}
-
+					
 					c += 1;
 					count_ip += 1;
 					M_l += 1;
 				} while (covert_points_old[p].size() != 0);
-
+				
 			}
 			// Voroni
 			den_mat_t means_c = means.topRows(c + 1);
