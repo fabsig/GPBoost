@@ -882,7 +882,7 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
 	R_RegisterCFinalizerEx(ret, _REModelFinalizer, TRUE);
-	UNPROTECT(6);
+	UNPROTECT(7);
 	return ret;
 }
 
