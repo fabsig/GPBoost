@@ -258,7 +258,7 @@ namespace GPBoost {
 					z_outer_z_obs_neighbors_.insert({ cluster_i, z_outer_z_obs_neighbors_cluster_i });
 					re_comps_.insert({ cluster_i, re_comps_cluster_i });
 				}//end gp_approx_ == "vecchia"
-				if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+				else if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
@@ -2198,78 +2198,77 @@ namespace GPBoost {
 							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B_cluster_i, D_sqrt, B_inv_D_sqrt, false);
 							psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
 						}//end gp_approx_ == "vecchia"
-						else {//not gp_approx_ == "vecchia"
-							if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
-								psi = T_mat(num_REs_pred, num_REs_pred);
-								if (gauss_likelihood_ && predict_response) {
-									psi.setIdentity();//nugget effect
-								}
-								else {
-									psi.setZero();
-								}
-								std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
-								std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
-								std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
-								CreateREComponentsPPFSA(num_data_pred, data_indices_per_cluster_pred, cluster_i, gp_coords_data_pred,
-									re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i);
-								for (int j = 0; j < num_comps_total_; ++j) {
-									const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
-									re_comps_ip_cluster_i[j]->SetCovPars(pars);
-									re_comps_cross_cov_cluster_i[j]->SetCovPars(pars);
-									re_comps_ip_cluster_i[j]->CalcSigma();
-									re_comps_cross_cov_cluster_i[j]->CalcSigma();
-									den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[j]->GetZSigmaZt());
-									den_mat_t cross_cov = *(re_comps_cross_cov_cluster_i[j]->GetZSigmaZt());
-									sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE;
-									chol_den_mat_t chol_fact_sigma_ip;
-									chol_fact_sigma_ip.compute(sigma_ip_stable);
-									den_mat_t sigma_interim = cross_cov * chol_fact_sigma_ip.solve(cross_cov.transpose());
-									ConvertTo_T_mat_FromDense<T_mat>(sigma_interim, psi); // for all T_mat? see ConvertTo_T_mat_FromDense from Pascal
-									//psi = cross_cov * chol_fact_sigma_ip.solve(cross_cov.transpose());
-									if (gp_approx_ == "full_scale_tapering") {
-										re_comps_resid_cluster_i[j]->SetCovPars(pars);
-										re_comps_resid_cluster_i[j]->CalcSigma();
-										// Subtract predictive process covariance
-										re_comps_resid_cluster_i[j]->SubtractMatFromSigmaForResidInFullScale(psi);
-										// Apply Taper
-										re_comps_resid_cluster_i[j]->ApplyTaper();
-
-										psi += *(re_comps_resid_cluster_i[j]->GetZSigmaZt());
-									}
-									else {
-										vec_t FITC_Diag = vec_t::Zero(cross_cov.rows());
-										FITC_Diag = FITC_Diag.array() + sigma_ip_stable.coeffRef(0, 0);
-										FITC_Diag -= psi.diagonal();
-										psi += FITC_Diag.asDiagonal();
-									}
-								}
+						else if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+							psi = T_mat(num_REs_pred, num_REs_pred);
+							if (gauss_likelihood_ && predict_response) {
+								psi.setIdentity();//nugget effect
 							}
 							else {
-								CreateREComponents(num_data_pred, data_indices_per_cluster_pred,
-									cluster_i, re_group_levels_pred, num_data_per_cluster_pred,
-									re_group_rand_coef_data_pred, gp_coords_data_pred,
-									gp_rand_coef_data_pred, true, re_comps_cluster_i);
-								if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
-									num_REs_pred = re_comps_cluster_i[0]->GetNumUniqueREs();
+								psi.setZero();
+							}
+							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
+							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
+							std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
+							CreateREComponentsPPFSA(num_data_pred, data_indices_per_cluster_pred, cluster_i, gp_coords_data_pred,
+								re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i);
+							for (int j = 0; j < num_comps_total_; ++j) {
+								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
+								re_comps_ip_cluster_i[j]->SetCovPars(pars);
+								re_comps_cross_cov_cluster_i[j]->SetCovPars(pars);
+								re_comps_ip_cluster_i[j]->CalcSigma();
+								re_comps_cross_cov_cluster_i[j]->CalcSigma();
+								den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[j]->GetZSigmaZt());
+								den_mat_t cross_cov = *(re_comps_cross_cov_cluster_i[j]->GetZSigmaZt());
+								sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE;
+								chol_den_mat_t chol_fact_sigma_ip;
+								chol_fact_sigma_ip.compute(sigma_ip_stable);
+								den_mat_t sigma_interim = cross_cov * chol_fact_sigma_ip.solve(cross_cov.transpose());
+								ConvertTo_T_mat_FromDense<T_mat>(sigma_interim, psi); // for all T_mat? see ConvertTo_T_mat_FromDense from Pascal
+								//psi = cross_cov * chol_fact_sigma_ip.solve(cross_cov.transpose());
+								if (gp_approx_ == "full_scale_tapering") {
+									re_comps_resid_cluster_i[j]->SetCovPars(pars);
+									re_comps_resid_cluster_i[j]->CalcSigma();
+									// Subtract predictive process covariance
+									re_comps_resid_cluster_i[j]->SubtractMatFromSigmaForResidInFullScale(psi);
+									// Apply Taper
+									re_comps_resid_cluster_i[j]->ApplyTaper();
+
+									psi += *(re_comps_resid_cluster_i[j]->GetZSigmaZt());
 								}
 								else {
-									num_REs_pred = num_data_per_cluster_pred[cluster_i];
-								}
-								psi = T_mat(num_REs_pred, num_REs_pred);
-								if (gauss_likelihood_ && predict_response) {
-									psi.setIdentity();//nugget effect
-								}
-								else {
-									psi.setZero();
-								}
-								for (int j = 0; j < num_comps_total_; ++j) {
-									const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
-									re_comps_cluster_i[j]->SetCovPars(pars);
-									re_comps_cluster_i[j]->CalcSigma();
-									psi += (*(re_comps_cluster_i[j]->GetZSigmaZt().get()));
+									vec_t FITC_Diag = vec_t::Zero(cross_cov.rows());
+									FITC_Diag = FITC_Diag.array() + sigma_ip_stable.coeffRef(0, 0);
+									FITC_Diag -= psi.diagonal();
+									psi += FITC_Diag.asDiagonal();
 								}
 							}
-						}
+						}//end gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering"
+						else if (gp_approx_ == "none") {
+							CreateREComponents(num_data_pred, data_indices_per_cluster_pred,
+								cluster_i, re_group_levels_pred, num_data_per_cluster_pred,
+								re_group_rand_coef_data_pred, gp_coords_data_pred,
+								gp_rand_coef_data_pred, true, re_comps_cluster_i);
+							if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
+								num_REs_pred = re_comps_cluster_i[0]->GetNumUniqueREs();
+							}
+							else {
+								num_REs_pred = num_data_per_cluster_pred[cluster_i];
+							}
+							psi = T_mat(num_REs_pred, num_REs_pred);
+							if (gauss_likelihood_ && predict_response) {
+								psi.setIdentity();//nugget effect
+							}
+							else {
+								psi.setZero();
+							}
+							for (int j = 0; j < num_comps_total_; ++j) {
+								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
+								re_comps_cluster_i[j]->SetCovPars(pars);
+								re_comps_cluster_i[j]->CalcSigma();
+								psi += (*(re_comps_cluster_i[j]->GetZSigmaZt().get()));
+							}
+
+						}//end gp_approx_ == "none"
 						if (gauss_likelihood_) {
 							psi *= cov_pars[0];//back-transform
 						}
