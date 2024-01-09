@@ -152,9 +152,6 @@ python-package/gpboost/VERSION.txt
 **/autom4te.cache/
 conftest*
 R-package/config.status
-!R-package/data/agaricus.test.rda
-!R-package/data/agaricus.train.rda
-!R-package/data/bank.rda
 R-package/docs
 R-package/src/CMakeLists.txt
 R-package/src/Makevars
@@ -180,7 +177,11 @@ miktex*.zip
 **/.Rapp.history
 **/.Rhistory
 *.rda
+!R-package/data/agaricus.test.rda
+!R-package/data/agaricus.train.rda
+!R-package/data/bank.rda
 *.RData
+!R-package/data/GPBoost_data.RData
 *.rds
 
 # credentials and key material
