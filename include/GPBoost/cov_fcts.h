@@ -12,7 +12,7 @@
 #include <GPBoost/type_defs.h>
 #include <GPBoost/utils.h>
 #include <GPBoost/sparse_matrix_utils.h>
-//#include <GPBoost/GP_utils.h>
+#include <GPBoost/GP_utils.h>
 
 #include <string>
 #include <set>

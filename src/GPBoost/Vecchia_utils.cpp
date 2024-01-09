@@ -7,7 +7,6 @@
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 */
 #include <GPBoost/Vecchia_utils.h>
-#include <GPBoost/GP_utils.h>
 #include <GPBoost/utils.h>
 #include <cmath>
 #include <algorithm> // copy

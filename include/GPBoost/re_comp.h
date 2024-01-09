@@ -11,7 +11,7 @@
 
 #include <GPBoost/type_defs.h>
 #include <GPBoost/cov_fcts.h>
-//#include <GPBoost/GP_utils.h>
+#include <GPBoost/GP_utils.h>
 
 #include <memory>
 #include <mutex>
@@ -1430,12 +1430,11 @@ namespace GPBoost {
 			return(coords_);
 		}
 
+		private:
 		/*! \brief Coordinates (=features) */
 		den_mat_t coords_;
 		/*! \brief Coordinates of inducint points */
 		den_mat_t coords_ind_point_;
-
-	private:
 		/*! \brief Distance matrix (between unique coordinates in coords_) */
 		std::shared_ptr<T_mat> dist_;
 		/*! \brief If true, the distancess among all observations are calculated and saved here (false for Vecchia approximation) */
