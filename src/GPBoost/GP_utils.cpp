@@ -147,7 +147,6 @@ namespace GPBoost {
 			count += 1;
 		} while ((means != old_means && means != old_old_means)
 			&& !(max_it == count));
-		Log::REInfo("Kmeans Iterations: %i", count);
 	}//end kmeans_plusplus
 
 	void data_in_ball(const den_mat_t& data,
@@ -302,7 +301,6 @@ namespace GPBoost {
 			M_l_minus = M_l;
 		}
 		means.conservativeResize(count_ip, means.cols());
-		Log::REInfo("Number of inducing points: %i", count_ip);
 	}//end CoverTree
   
 	void DetermineUniqueDuplicateCoordsFast(const den_mat_t& coords,

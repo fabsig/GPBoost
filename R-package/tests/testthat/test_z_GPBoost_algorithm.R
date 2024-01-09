@@ -824,6 +824,39 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
     })
     
     test_that("GPBoost algorithm with FITC", {
+      ntrain <- ntest <- 100
+      n <- ntrain + ntest
+      # Simulate fixed effects
+      sim_data <- sim_friedman3(n=n, n_irrelevant=5)
+      f <- sim_data$f
+      X <- sim_data$X
+      # Simulate grouped random effects
+      sigma2_1 <- 1 # marginal variance of GP
+      rho <- 0.1 # range parameter
+      sigma2 <- 0.1 # error variance
+      d <- 2 # dimension of GP locations
+      coords <- matrix(sim_rand_unif(n=n*d, init_c=0.63), ncol=d)
+      D <- as.matrix(dist(coords))
+      Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
+      C <- t(chol(Sigma))
+      b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.864))
+      eps <- as.vector(C %*% b_1)
+      # Error term
+      xi <- sqrt(sigma2) * qnorm(sim_rand_unif(n=n, init_c=0.36))
+      # Observed data
+      y <- f + eps + xi
+      # Split in training and test data
+      y_train <- y[1:ntrain]
+      X_train <- X[1:ntrain,]
+      coords_train <- coords[1:ntrain,]
+      dtrain <- gpb.Dataset(data = X_train, label = y_train)
+      y_test <- y[1:ntest+ntrain]
+      X_test <- X[1:ntest+ntrain,]
+      f_test <- f[1:ntest+ntrain]
+      coords_test <- coords[1:ntest+ntrain,]
+      dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+      valids <- list(test = dtest)
+      
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                                           gp_approx = "FITC",num_ind_points = 50), file='NUL')
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="gradient_descent"))
@@ -838,6 +871,39 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
     })  
     
     test_that("GPBoost algorithm with FSA", {
+      ntrain <- ntest <- 100
+      n <- ntrain + ntest
+      # Simulate fixed effects
+      sim_data <- sim_friedman3(n=n, n_irrelevant=5)
+      f <- sim_data$f
+      X <- sim_data$X
+      # Simulate grouped random effects
+      sigma2_1 <- 1 # marginal variance of GP
+      rho <- 0.1 # range parameter
+      sigma2 <- 0.1 # error variance
+      d <- 2 # dimension of GP locations
+      coords <- matrix(sim_rand_unif(n=n*d, init_c=0.63), ncol=d)
+      D <- as.matrix(dist(coords))
+      Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
+      C <- t(chol(Sigma))
+      b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.864))
+      eps <- as.vector(C %*% b_1)
+      # Error term
+      xi <- sqrt(sigma2) * qnorm(sim_rand_unif(n=n, init_c=0.36))
+      # Observed data
+      y <- f + eps + xi
+      # Split in training and test data
+      y_train <- y[1:ntrain]
+      X_train <- X[1:ntrain,]
+      coords_train <- coords[1:ntrain,]
+      dtrain <- gpb.Dataset(data = X_train, label = y_train)
+      y_test <- y[1:ntest+ntrain]
+      X_test <- X[1:ntest+ntrain,]
+      f_test <- f[1:ntest+ntrain]
+      coords_test <- coords[1:ntest+ntrain,]
+      dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+      valids <- list(test = dtest)
+      
       vec_chol_or_iterative <- c("cholesky","iterative")
       for (i in vec_chol_or_iterative) {
         if(i == "iterative"){

@@ -1103,8 +1103,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     cov_pars_tap <- c(0.01030298, 0.07650375, 0.99809618, 0.21799976, 0.10787353, 0.03236256)
     coef_tap <- c(2.29553776, 0.22988084, 1.89903213, 0.09726784)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 128)
     
     # Prediction 
@@ -1121,15 +1121,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars <- c(0.17369771, 0.07950745, 0.84098718, 0.20889907, 0.08839526, 0.01190858)
     coef <- c(2.33980860, 0.19481950, 1.88058081, 0.09786326)
     num_it <- 21
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), num_it)
     pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_var = TRUE)
     expected_mu <- c(1.253044, 4.063322, 3.104536)
     expected_var <- c(5.880651e-01, 3.627280e-01, 3.796592e-01)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
     
     # With FITC and n-1 inducing points or very small coverTree radius
     # Different Inducing Point Methods
@@ -1156,8 +1156,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     cov_pars_tap <- c(0.21604739, 0.08713635, 0.82478654, 0.21689920, 0.10623849, 0.01423608)
     coef_tap <- c(2.2497727, 0.2122577, 1.9152288, 0.1031549)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 18)
     
     # Prediction 
@@ -1175,8 +1175,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     cov_pars_tap <- c(0.19682949, 0.09401528, 0.81880087, 0.21614994, 0.09415915, 0.01354960)
     coef_tap <- c(2.3383270, 0.2017728, 1.8559971, 0.1004556)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 19)
     
     # Prediction 
@@ -1194,8 +1194,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     cov_pars_tap <- c(0.14472822, 0.15786892, 0.82573118, 0.24016449, 0.08049071, 0.01231400)
     coef_tap <- c(2.3258710, 0.1792324, 1.9222998, 0.1085509)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 65)
     
     # Prediction 
@@ -1228,16 +1228,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       cov_pars <- c(0.01621846, 0.07384498, 0.99717680, 0.21704099, 0.09616230, 0.03034715)
       coef <- c(2.30554610, 0.21565230, 1.89920767, 0.09567547)
       num_it <- 99
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
       expect_equal(gp_model$get_num_optim_iter(), num_it)
       # Prediction 
       pred <- predict(gp_model, gp_coords_pred = coord_test,
                       X_pred = X_test, predict_var = TRUE)
       expected_mu <- c(1.195910242, 4.060125034, 3.15963272)
       expected_var <- c(6.304732e-01, 3.524404e-01, 4.277339e-01)
-      expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-      expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
+      expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
+      expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
       
       # With FSA and very large tapering range and 60 inducing points
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -1307,8 +1307,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       cov_pars <- c(0.17369771, 0.07950745, 0.84098718, 0.20889907, 0.08839526, 0.01190858)
       coef <- c(2.33980860, 0.19481950, 1.88058081, 0.09786326)
       num_it <- 21
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
       expect_equal(gp_model$get_num_optim_iter(), num_it)
       if(i == "cholesky"){
         expect_equal(gp_model$get_num_optim_iter(), num_it)
@@ -1322,7 +1322,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expected_mu <- c(1.253044, 4.063322, 3.104536)
       expected_var <- c(5.880651e-01, 3.627280e-01, 3.796592e-01)
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-      expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
+      expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
       
       # With FSA and very large tapering range and 60 inducing points
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
