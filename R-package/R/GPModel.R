@@ -74,8 +74,17 @@
 #' \item{"none": the default ordering in the data is used }
 #' \item{"random": a random ordering }
 #' }
+#' @param ind_points_selection A \code{string} specifying the method for choosing inducing points
+#' Available options:
+#' \itemize{
+#' \item{"kmeans++: the k-means++ algorithm }
+#' \item{"cover_tree": the cover tree algorithm }
+#' \item{"random": random selection from data points }
+#' }
 #' @param num_ind_points An \code{integer} specifying the number of inducing 
 #' points / knots for, e.g., a predictive process approximation
+#' @param cover_tree_radius A \code{numeric} specifying the radius (= "spatial resolution") 
+#' for the cover tree algorithm
 #' @param matrix_inversion_method A \code{string} specifying the method used for inverting covariance matrices. 
 #' Available options:
 #' \itemize{
@@ -278,7 +287,9 @@ gpb.GPModel <- R6::R6Class(
                           cov_fct_taper_shape = 0.,
                           num_neighbors = 20L,
                           vecchia_ordering = "random",
+                          ind_points_selection = "kmeans++",
                           num_ind_points = 500L,
+                          cover_tree_radius = 1.,
                           matrix_inversion_method = "cholesky",
                           seed = 0L,
                           cluster_ids = NULL,
@@ -351,6 +362,8 @@ gpb.GPModel <- R6::R6Class(
         num_neighbors = model_list[["num_neighbors"]]
         vecchia_ordering = model_list[["vecchia_ordering"]]
         num_ind_points = model_list[["num_ind_points"]]
+        ind_points_selection = model_list[["ind_points_selection"]]
+        cover_tree_radius = model_list[["cover_tree_radius"]]
         seed = model_list[["seed"]]
         cluster_ids = model_list[["cluster_ids"]]
         likelihood = model_list[["likelihood"]]
@@ -526,6 +539,8 @@ gpb.GPModel <- R6::R6Class(
         private$num_neighbors <- as.integer(num_neighbors)
         private$vecchia_ordering <- as.character(vecchia_ordering)
         private$num_ind_points <- as.integer(num_ind_points)
+        private$cover_tree_radius <- as.numeric(cover_tree_radius)
+        private$ind_points_selection <- as.character(ind_points_selection)
         if (private$cov_function == "wendland") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var")
         } else {
@@ -628,6 +643,8 @@ gpb.GPModel <- R6::R6Class(
         , private$num_neighbors
         , private$vecchia_ordering
         , private$num_ind_points
+        , private$cover_tree_radius
+        , private$ind_points_selection
         , likelihood
         , private$matrix_inversion_method
         , private$seed
@@ -1726,6 +1743,8 @@ gpb.GPModel <- R6::R6Class(
       model_list[["cov_fct_taper_range"]] <- private$cov_fct_taper_range
       model_list[["cov_fct_taper_shape"]] <- private$cov_fct_taper_shape
       model_list[["num_ind_points"]] <- private$num_ind_points
+      model_list[["cover_tree_radius"]] <- private$cover_tree_radius
+      model_list[["ind_points_selection"]] <- private$ind_points_selection
       model_list[["matrix_inversion_method"]] <- private$matrix_inversion_method
       model_list[["seed"]] <- private$seed
       # Covariate data
@@ -1872,6 +1891,8 @@ gpb.GPModel <- R6::R6Class(
     nsim_var_pred = -1,
     rank_pred_approx_matrix_lanczos = -1,
     num_ind_points = 500L,
+    cover_tree_radius = 1.,
+    ind_points_selection = "kmeans++",
     matrix_inversion_method = "cholesky",
     seed = 0L,
     cluster_ids = NULL,
@@ -2083,7 +2104,9 @@ GPModel <- function(likelihood = "gaussian",
                     cov_fct_taper_shape = 0.,
                     num_neighbors = 20L,
                     vecchia_ordering = "random",
+                    ind_points_selection = "kmeans++",
                     num_ind_points = 500L,
+                    cover_tree_radius = 1.,
                     matrix_inversion_method = "cholesky",
                     seed = 0L,
                     cluster_ids = NULL,
@@ -2107,7 +2130,9 @@ GPModel <- function(likelihood = "gaussian",
                             , cov_fct_taper_shape = cov_fct_taper_shape
                             , num_neighbors = num_neighbors
                             , vecchia_ordering = vecchia_ordering
+                            , ind_points_selection = ind_points_selection
                             , num_ind_points = num_ind_points
+                            , cover_tree_radius = cover_tree_radius
                             , matrix_inversion_method = matrix_inversion_method
                             , seed = seed
                             , cluster_ids = cluster_ids
@@ -2281,7 +2306,9 @@ fitGPModel <- function(likelihood = "gaussian",
                        cov_fct_taper_shape = 0.,
                        num_neighbors = 20L,
                        vecchia_ordering = "random",
+                       ind_points_selection = "kmeans++",
                        num_ind_points = 500L,
+                       cover_tree_radius = 1.,
                        matrix_inversion_method = "cholesky",
                        seed = 0L,
                        cluster_ids = NULL,
@@ -2307,7 +2334,9 @@ fitGPModel <- function(likelihood = "gaussian",
                              , cov_fct_taper_shape = cov_fct_taper_shape
                              , num_neighbors = num_neighbors
                              , vecchia_ordering = vecchia_ordering
+                             , ind_points_selection = ind_points_selection
                              , num_ind_points = num_ind_points
+                             , cover_tree_radius = cover_tree_radius
                              , matrix_inversion_method = matrix_inversion_method
                              , seed = seed
                              , cluster_ids = cluster_ids

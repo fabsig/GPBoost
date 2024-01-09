@@ -4036,7 +4036,9 @@ class GPModel(object):
                  cov_fct_taper_shape=0.,
                  num_neighbors=20,
                  vecchia_ordering="random",
+                 ind_points_selection="kmeans++",
                  num_ind_points=500,
+                 cover_tree_radius=1.,
                  matrix_inversion_method="cholesky",
                  seed=0,
                  cluster_ids=None,
@@ -4147,8 +4149,25 @@ class GPModel(object):
 
                         a random ordering
 
+            ind_points_selection : string, optional (default="kmeans++")
+                Specifies the method for choosing inducing points. Available options:
+
+                    - "kmeans++":
+
+                        The k-means++ algorithm
+
+                    - "cover_tree":
+
+                        The cover tree algorithm
+
+                    - "random":
+
+                        Random selection from data points
+
             num_ind_points : integer, optional (default=500)
                 Number of inducing points / knots for, e.g., a predictive process approximation
+            cover_tree_radius : float, optional (default=1.)
+                The radius (= "spatial resolution") for the cover tree algorithm
             matrix_inversion_method : string, optional (default="cholesky")
                 Method used for inverting covariance matrices. Available options:
 
@@ -4230,7 +4249,9 @@ class GPModel(object):
         self.cg_delta_conv_pred = -1
         self.nsim_var_pred = -1
         self.rank_pred_approx_matrix_lanczos = -1
+        self.ind_points_selection = "kmeans++"
         self.num_ind_points = 500
+        self.cover_tree_radius = 1.
         self.matrix_inversion_method = "cholesky"
         self.seed = 0
         self.cluster_ids = None
@@ -4300,6 +4321,8 @@ class GPModel(object):
             num_neighbors = model_dict.get("num_neighbors")
             vecchia_ordering = model_dict.get("vecchia_ordering")
             num_ind_points = model_dict.get("num_ind_points")
+            cover_tree_radius = model_dict.get("cover_tree_radius")
+            ind_points_selection = model_dict.get("ind_points_selection")
             seed = model_dict.get("seed")
             if model_dict.get("cluster_ids") is not None:
                 cluster_ids = np.array(model_dict.get("cluster_ids"))
@@ -4454,7 +4477,9 @@ class GPModel(object):
             self.vecchia_approx = vecchia_approx
             self.vecchia_ordering = vecchia_ordering
             self.num_neighbors = num_neighbors
+            self.ind_points_selection = ind_points_selection
             self.num_ind_points = num_ind_points
+            self.cover_tree_radius = cover_tree_radius
             if self.cov_function == "wendland":
                 self.cov_par_names.extend(["GP_var"])
             else:
@@ -4534,6 +4559,8 @@ class GPModel(object):
             ctypes.c_int(self.num_neighbors),
             c_str(self.vecchia_ordering),
             ctypes.c_int(self.num_ind_points),
+            ctypes.c_double(self.cover_tree_radius),
+            c_str(self.ind_points_selection),
             c_str(likelihood),
             c_str(self.matrix_inversion_method),
             ctypes.c_int(self.seed),
@@ -5880,6 +5907,8 @@ class GPModel(object):
         model_dict["cov_fct_taper_range"] = self.cov_fct_taper_range
         model_dict["cov_fct_taper_shape"] = self.cov_fct_taper_shape
         model_dict["num_ind_points"] = self.num_ind_points
+        model_dict["cover_tree_radius"] = self.cover_tree_radius
+        model_dict["ind_points_selection"] = self.ind_points_selection
         model_dict["matrix_inversion_method"] = self.matrix_inversion_method
         model_dict["seed"] = self.seed
         # Covariate data

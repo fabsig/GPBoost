@@ -39,6 +39,8 @@ namespace GPBoost {
 		int num_neighbors,
 		const char* vecchia_ordering,
 		int num_ind_points,
+		double cover_tree_radius,
+		const char* ind_points_selection,
 		const char* likelihood,
 		const char* matrix_inversion_method,
 		int seed) {
@@ -90,6 +92,8 @@ namespace GPBoost {
 				num_neighbors, 
 				vecchia_ordering,
 				num_ind_points,
+				cover_tree_radius,
+				ind_points_selection,
 				likelihood,
 				matrix_inversion_method,
 				seed));
@@ -118,6 +122,8 @@ namespace GPBoost {
 				num_neighbors,
 				vecchia_ordering,
 				num_ind_points,
+				cover_tree_radius,
+				ind_points_selection,
 				likelihood,
 				matrix_inversion_method,
 				seed));
@@ -146,6 +152,8 @@ namespace GPBoost {
 				num_neighbors,
 				vecchia_ordering,
 				num_ind_points,
+				cover_tree_radius,
+				ind_points_selection,
 				likelihood,
 				matrix_inversion_method,
 				seed));

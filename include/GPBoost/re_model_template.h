@@ -78,6 +78,8 @@ namespace GPBoost {
 		* \param num_neighbors The number of neighbors used in the Vecchia approximation
 		* \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
 		* \param num_ind_points Number of inducing points / knots for, e.g., a predictive process approximation
+		* \param cover_tree_radius Radius (= "spatial resolution") for the cover tree algorithm
+		* \param ind_points_selection Method for choosing inducing points
 		* \param likelihood Likelihood function for the observed response variable
 		* \param matrix_inversion_method Method which is used for matrix inversion
 		* \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
@@ -103,6 +105,8 @@ namespace GPBoost {
 			int num_neighbors,
 			const char* vecchia_ordering,
 			int num_ind_points,
+			double cover_tree_radius,
+			const char* ind_points_selection,
 			const char* likelihood,
 			const char* matrix_inversion_method,
 			int seed) {
@@ -197,8 +201,6 @@ namespace GPBoost {
 				cov_fct_shape_ = cov_fct_shape;
 				cov_fct_taper_range_ = cov_fct_taper_range;
 				cov_fct_taper_shape_ = cov_fct_taper_shape;
-				CHECK(num_ind_points >= 0);
-				num_ind_points_ = num_ind_points;
 				if (gp_approx_ == "vecchia") {
 					Log::REInfo("Starting nearest neighbor search for Vecchia approximation");
 					CHECK(num_neighbors > 0);
@@ -210,10 +212,20 @@ namespace GPBoost {
 					else {
 						vecchia_ordering_ = std::string(vecchia_ordering);
 						if (SUPPORTED_VECCHIA_ORDERING_.find(vecchia_ordering_) == SUPPORTED_VECCHIA_ORDERING_.end()) {
-							Log::REFatal("Ordering of type '%s' is not supported for the Veccia approximation.", vecchia_ordering_.c_str());
+							Log::REFatal("Ordering of type '%s' is not supported for the Veccia approximation ", vecchia_ordering_.c_str());
 						}
 					}
 				}//end if gp_approx_ == "vecchia"
+				else if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+					CHECK(num_ind_points > 0);
+					num_ind_points_ = num_ind_points;
+					CHECK(cover_tree_radius > 0);
+					cover_tree_radius_ = cover_tree_radius;
+					ind_points_selection_ = std::string(ind_points_selection);
+					if (SUPPORTED_METHOD_INDUCING_POINTS_.find(ind_points_selection_) == SUPPORTED_METHOD_INDUCING_POINTS_.end()) {
+						Log::REFatal("Method '%s' is not supported for choosing the inducing points ", ind_points_selection_.c_str());
+					}
+				}
 				if (num_gp_rand_coef > 0) {//Random slopes
 					CHECK(gp_rand_coef_data != nullptr);
 					num_gp_rand_coef_ = num_gp_rand_coef;
@@ -3216,12 +3228,6 @@ namespace GPBoost {
 		string_t gp_approx_ = "none";
 		/*! \brief List of supported optimizers for covariance parameters */
 		const std::set<string_t> SUPPORTED_GP_APPROX_{ "none", "vecchia", "tapering", "FITC", "full_scale_tapering"};
-		/*! \brief Number of inducing points */
-		int num_ind_points_ = 500;
-		/*! \brief Coordinates of inducing points */
-		den_mat_t gp_coords_ip_mat_;
-		/*! \brief Coordinates of all observed points */
-		den_mat_t gp_coords_obs_mat_;
 
 		// RANDOM EFFECT / GP COMPONENTS
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components */
@@ -3489,12 +3495,18 @@ namespace GPBoost {
 		bool vecchia_pred_type_has_been_set_ = false;
 
 		// PREDICTIVE PROCESS AND FULL SCALE APPROXIMATION FOR GP
-		/*! \brief Number of inducing points */
-		//int num_ind_points_;
-		/*! \brief Method for inducing points */
-		string_t method_ind_points_ = "kmeans++";
+		/*! \brief Method for choosing inducing points */
+		string_t ind_points_selection_ = "kmeans++";
 		/*! \brief List of supported inducing point methods*/
-		const std::set<string_t> SUPPORTED_METHOD_INDUCING_POINTS_{ "random", "kmeans++", "CoverTree" };
+		const std::set<string_t> SUPPORTED_METHOD_INDUCING_POINTS_{ "random", "kmeans++", "cover_tree" };
+		/*! \brief Number of inducing points */
+		int num_ind_points_;
+		/*! \brief Radius (= "spatial resolution") for the cover tree algorithm */
+		double cover_tree_radius_;
+		/*! \brief Coordinates of inducing points */
+		den_mat_t gp_coords_ip_mat_;
+		/*! \brief Coordinates of all observed points */
+		den_mat_t gp_coords_obs_mat_;
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with inducing points GP components */
 		std::map<data_size_t, std::vector<std::shared_ptr<RECompGP<den_mat_t>>>> re_comps_ip_;
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with cross-covariance GP components */
@@ -4516,11 +4528,11 @@ namespace GPBoost {
 			std::vector<int> indices;
 			std::vector<double> gp_coords_ip;
 			den_mat_t gp_coords_ip_mat;
-			if (method_ind_points_ == "CoverTree") {
-				CoverTree(gp_coords_all_mat, 1 / ((double)num_ind_points_), rng_, gp_coords_ip_mat);
+			if (ind_points_selection_ == "cover_tree") {
+				CoverTree(gp_coords_all_mat, cover_tree_radius_, rng_, gp_coords_ip_mat);
 				num_ind_points_ = (int)gp_coords_ip_mat.rows();
 			}
-			else if (method_ind_points_ == "random") {
+			else if (ind_points_selection_ == "random") {
 				SampleIntNoReplaceSort(num_data_per_cluster_[cluster_i], num_ind_points_, rng_, indices);
 				for (int j = 0; j < dim_gp_coords_; ++j) {
 					for (const auto& ind : indices) {
@@ -4529,13 +4541,13 @@ namespace GPBoost {
 				}
 				gp_coords_ip_mat = Eigen::Map<den_mat_t>(gp_coords_ip.data(), num_ind_points_, dim_gp_coords_);
 			}
-			else if (method_ind_points_ == "kmeans++") {
+			else if (ind_points_selection_ == "kmeans++") {
 				gp_coords_ip_mat.resize(num_ind_points_, gp_coords_all_mat.cols());
 				int max_it_kmeans = 1000;
 				kmeans_plusplus(gp_coords_all_mat, num_ind_points_, rng_, gp_coords_ip_mat, max_it_kmeans);
 			}
 			else {
-				Log::REFatal("Method '%s' is not supported for finding inducing points ", method_ind_points_.c_str());
+				Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
 			}
 			gp_coords_ip_mat_ = gp_coords_ip_mat;
 
@@ -4554,7 +4566,7 @@ namespace GPBoost {
 			}
 			//Random slope GPs
 			if (num_gp_rand_coef_ > 0) {
-				Log::REFatal("Random coefficients are currently not supported for '%s' approximation ", method_ind_points_.c_str());
+				Log::REFatal("Random coefficients are currently not supported for '%s' approximation ", ind_points_selection_.c_str());
 			}
 		}//end CreateREComponentsPPFSA
 

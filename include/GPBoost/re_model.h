@@ -53,6 +53,8 @@ namespace GPBoost {
 		* \param num_neighbors The number of neighbors used in the Vecchia approximation
 		* \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
 		* \param num_ind_points Number of inducing points / knots for, e.g., a predictive process approximation
+		* \param cover_tree_radius Radius (= "spatial resolution") for the cover tree algorithm
+		* \param ind_points_selection Method for choosing inducing points
 		* \param likelihood Likelihood function for the observed response variable
 		* \param matrix_inversion_method Method which is used for matrix inversion
 		* \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
@@ -78,6 +80,8 @@ namespace GPBoost {
 			int num_neighbors,
 			const char* vecchia_ordering,
 			int num_ind_points,
+			double cover_tree_radius,
+			const char* ind_points_selection,
 			const char* likelihood,
 			const char* matrix_inversion_method,
 			int seed);
