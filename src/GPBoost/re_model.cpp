@@ -57,7 +57,7 @@ namespace GPBoost {
 			matrix_inversion_method_str = std::string(matrix_inversion_method);
 		}
 		bool use_sparse_matrices = (num_gp + num_gp_rand_coef) == 0 || (COMPACT_SUPPORT_COVS_.find(cov_fct_str) != COMPACT_SUPPORT_COVS_.end()) || 
-			gp_approx_str == "tapering";
+			gp_approx_str == "tapering" || gp_approx_str == "full_scale_tapering";
 		if (use_sparse_matrices) {
 			if (matrix_inversion_method_str == "iterative") {
 				matrix_format_ = "sp_mat_rm_t";
