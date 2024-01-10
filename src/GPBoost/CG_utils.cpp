@@ -516,5 +516,11 @@ namespace GPBoost {
 		vec_t c_cov = (centered_Z_AI_A_deriv_PI_Z.cwiseProduct(centered_Z_BI_B_deriv_PI_Z)).rowwise().mean();
 		vec_t c_var = (centered_Z_BI_B_deriv_PI_Z.cwiseProduct(centered_Z_BI_B_deriv_PI_Z)).rowwise().mean();
 		c_opt = c_cov.array() / c_var.array();
+#pragma omp parallel for schedule(static)   
+		for (int i = 0; i < c_opt.size(); ++i) {
+			if (c_var.coeffRef(i) == 0) {
+				c_opt[i] = 1;
+			}
+		}
 	} // end CalcOptimalCVectorized
 }
