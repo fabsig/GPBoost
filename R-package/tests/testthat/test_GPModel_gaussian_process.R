@@ -1216,8 +1216,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     for (i in vec_chol_or_iterative) {
       if(i == "iterative"){
         DEFAULT_OPTIM_PARAMS_STD <- DEFAULT_OPTIM_PARAMS_STD_iterative
-      }
-      if(i == "iterative"){
         TOLERANCE <- TOLERANCE_ITERATIVE
       } else {
         TOLERANCE <- TOLERANCE_LOOSE
@@ -1258,16 +1256,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
       
-      # With FSA and n-1 inducing points and taperrange 0.5
+      # With FSA and n-1 inducing points and taper range 0.4
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                             gp_approx = "full_scale_tapering",num_ind_points = n-1, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
+                                             gp_approx = "full_scale_tapering",num_ind_points = n-1, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.4,
                                              y = y, X = X,matrix_inversion_method = i, 
                                              params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
       expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
-      if(i == "cholesky"){
-        expect_equal(gp_model$get_num_optim_iter(), num_it)
-      }
+      expect_equal(gp_model$get_num_optim_iter(), num_it)
       # Prediction 
       if(i == "iterative"){
         gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
@@ -1282,8 +1278,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = "full_scale_tapering",num_ind_points = 50, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
                                              y = y, X = X,matrix_inversion_method = i, 
                                              params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-      cov_pars <- c(0.02198767, 0.07272683, 0.98858985, 0.21226424, 0.09917958, 0.03035821)
-      coef <- c(2.30265097, 0.21852823, 1.89903318, 0.09585356)
+      cov_pars <- c(0.02198056, 0.07272336, 0.98861262, 0.21226651, 0.09918065, 0.03035852)
+      coef <- c(2.3026503, 0.2185320, 1.8990335, 0.0958528)
       num_it <- 94
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
       expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
@@ -1296,8 +1292,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       pred <- predict(gp_model, gp_coords_pred = coord_test,
                       X_pred = X_test, predict_var = TRUE)
-      expected_mu <- c(1.190720, 4.109395, 3.168878) 
-      expected_var <- c(0.6195130, 0.3417342, 0.4169498)
+      expected_mu <- c(1.190651, 4.109485, 3.168872) 
+      expected_var <- c(0.6195131, 0.3417278, 0.4169462)
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
       
@@ -1368,8 +1364,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = "full_scale_tapering",num_ind_points = 50, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
                                              y = y, X = X,matrix_inversion_method = i, 
                                              params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-      cov_pars <- c(0.17446609, 0.07891911, 0.83718259, 0.20493796, 0.08900363, 0.01175278)
-      coef <- c(2.34059415, 0.19555714, 1.87720688, 0.09787805)
+      cov_pars <- c(0.17447166, 0.07892249, 0.83714036, 0.20492924, 0.08900017, 0.01175310)
+      coef <- c(2.34059628, 0.19554785, 1.87720907, 0.09787905)
       num_it <- 23
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
       expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
@@ -1382,8 +1378,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       pred <- predict(gp_model, gp_coords_pred = coord_test,
                       X_pred = X_test, predict_var = TRUE)
-      expected_mu <- c(1.256235, 4.079693, 3.061357) 
-      expected_var <- c(0.5897890, 0.3628840, 0.3751883)
+      expected_mu <- c(1.256353, 4.079687, 3.061322) 
+      expected_var <- c(0.5897983, 0.3628945, 0.3751998)
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
     }

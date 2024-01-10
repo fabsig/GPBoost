@@ -907,10 +907,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       vec_chol_or_iterative <- c("cholesky","iterative")
       for (i in vec_chol_or_iterative) {
         if(i == "iterative"){
-          tolerance_loc <- 0.1
           DEFAULT_OPTIM_PARAMS <- DEFAULT_OPTIM_PARAMS_iterative
         } else{
-          tolerance_loc <- TOLERANCE
           DEFAULT_OPTIM_PARAMS <- list(maxit=10, optimizer_cov="gradient_descent", delta_rel_conv = 1e-2)
         }
         
@@ -921,17 +919,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                          learning_rate = 0.05, max_depth = 6,
                          min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.51370964, 0.64628132, 0.08811963))),tolerance_loc)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.51371801, 0.64626805, 0.08811922))),TOLERANCE2)
         if(i == "iterative"){
           gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
         }
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
-        expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4389101, -0.7653901, -0.5527775, -0.2307114))),tolerance_loc)
-        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.7659457, 0.8673310, 0.8897653, 1.1152913))),tolerance_loc)
-        if(i == "iterative"){
-          tolerance_loc <- 0.3
-        }
-        expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(4.640281, 4.522294, 4.568945, 4.472406))),tolerance_loc)
+        expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4388347, -0.7655122, -0.5527419, -0.2308968))),TOLERANCE2)
+        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.7659535, 0.8673367, 0.8897703, 1.1152888))),TOLERANCE2)
+        expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(4.640281, 4.522294, 4.568945, 4.472407))),TOLERANCE2)
       }
     })  
     
