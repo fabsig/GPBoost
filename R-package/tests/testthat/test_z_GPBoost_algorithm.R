@@ -919,14 +919,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                          learning_rate = 0.05, max_depth = 6,
                          min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.51371801, 0.64626805, 0.08811922))),TOLERANCE2)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.49224227, 0.69948047, 0.08842094))),TOLERANCE2)
         if(i == "iterative"){
           gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
         }
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
-        expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4388347, -0.7655122, -0.5527419, -0.2308968))),TOLERANCE2)
-        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.7659535, 0.8673367, 0.8897703, 1.1152888))),TOLERANCE2)
-        expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(4.640281, 4.522294, 4.568945, 4.472407))),TOLERANCE2)
+        expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4672591, -0.8086326, -0.6178553, -0.1621476))),TOLERANCE2)
+        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.7547910, 0.8706967, 0.8887207, 1.1682794))),TOLERANCE2)
+        expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(4.683135, 4.608892, 4.571550, 4.406394))),TOLERANCE2)
       }
     })  
     
