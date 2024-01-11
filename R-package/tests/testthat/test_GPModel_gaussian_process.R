@@ -1278,9 +1278,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = "full_scale_tapering",num_ind_points = 50, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
                                              y = y, X = X,matrix_inversion_method = i, 
                                              params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-      cov_pars <- c(0.02198056, 0.07272336, 0.98861262, 0.21226651, 0.09918065, 0.03035852)
-      coef <- c(2.3026503, 0.2185320, 1.8990335, 0.0958528)
-      num_it <- 94
+      cov_pars <- c(0.01503776, 0.06968536, 1.00219308, 0.21262000, 0.09835141, 0.02968291)
+      coef <- c(2.30508771, 0.21857115, 1.89918852, 0.09536239)
+      num_it <- 103
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
       expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
       if(i == "cholesky"){
@@ -1292,8 +1292,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       pred <- predict(gp_model, gp_coords_pred = coord_test,
                       X_pred = X_test, predict_var = TRUE)
-      expected_mu <- c(1.190651, 4.109485, 3.168872) 
-      expected_var <- c(0.6195131, 0.3417278, 0.4169462)
+      expected_mu <- c(1.186786, 4.048299, 3.173789) 
+      expected_var <- c(0.6428104, 0.3562637, 0.4344309)
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
       
@@ -1364,9 +1364,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = "full_scale_tapering",num_ind_points = 50, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
                                              y = y, X = X,matrix_inversion_method = i, 
                                              params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-      cov_pars <- c(0.17447166, 0.07892249, 0.83714036, 0.20492924, 0.08900017, 0.01175310)
-      coef <- c(2.34059628, 0.19554785, 1.87720907, 0.09787905)
-      num_it <- 23
+      cov_pars <- c(0.16783429, 0.07818710, 0.84903511, 0.20697391, 0.08811171, 0.01153137)
+      coef <- c(2.34108249, 0.19532774, 1.87704014, 0.09748291)
+      num_it <- 21
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
       expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
       if(i == "cholesky"){
@@ -1378,8 +1378,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       pred <- predict(gp_model, gp_coords_pred = coord_test,
                       X_pred = X_test, predict_var = TRUE)
-      expected_mu <- c(1.256353, 4.079687, 3.061322) 
-      expected_var <- c(0.5897983, 0.3628945, 0.3751998)
+      expected_mu <- c(1.250332, 4.049631, 3.160899) 
+      expected_var <- c(0.5981874, 0.3632729, 0.3848723)
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
     }
