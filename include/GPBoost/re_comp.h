@@ -1112,7 +1112,7 @@ namespace GPBoost {
 		* \param sigma Covariance matrix to which tapering is applied
 		*/
 		void ApplyTaper(const T_mat& dist,
-			T_mat sigma) {
+			T_mat& sigma) {
 			CHECK(apply_tapering_);
 			cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(dist, sigma, false);
 		}
