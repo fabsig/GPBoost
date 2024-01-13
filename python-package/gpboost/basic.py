@@ -4099,13 +4099,34 @@ class GPModel(object):
                 Covariate data for Gaussian process random coefficients
             cov_function : string, optional (default="exponential")
                 Covariance function for the Gaussian process. Available options:
-                "exponential", "gaussian", "matern", "powered_exponential", "wendland"
 
-                    - For "exponential", "gaussian", and "powered_exponential", we use the parametrization of Diggle and Ribeiro (2007)
+                "exponential":
 
-                    - For "matern", we use the parametrization of Rasmussen and Williams (2006)
+                    Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007)
 
-                    - For "wendland", we use the parametrization of Bevilacqua et al. (2019, AOS).
+                "gaussian":
+
+                    Gaussian, aka squared expnential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
+
+                "matern":
+
+                    Matern covariance function with the smoothness specified by the 'cov_fct_shape' parameter
+                    (using the parametrization of Rasmussen and Williams, 2006)
+
+                "powered_exponential":
+
+                    Powered exponential covariance function with the exponent specified by 'cov_fct_shape' parameter
+                    (using the parametrization of Diggle and Ribeiro, 2007)
+
+                "wendland":
+
+                    Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
+
+                "space_time_separable_matern_ar1":
+
+                    Separable spatio-temporal covariance function with a Matern  covariance for the spatial domain
+                    and an exponential covariance for the temporal domain ( = AR(1)).
+                    Note that the first column in 'gp_coords' must correspond to the time dimension
 
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance).
@@ -4455,7 +4476,9 @@ class GPModel(object):
             self.vecchia_ordering = vecchia_ordering
             self.num_neighbors = num_neighbors
             self.num_ind_points = num_ind_points
-            if self.cov_function == "wendland":
+            if self.cov_function == "space_time_separable_matern_ar1":
+                self.cov_par_names.extend(["GP_var", "GP_range_time", "GP_range_space"])
+            elif self.cov_function == "wendland":
                 self.cov_par_names.extend(["GP_var"])
             else:
                 self.cov_par_names.extend(["GP_var", "GP_range"])
@@ -4475,7 +4498,12 @@ class GPModel(object):
                 gp_rand_coef_data_c, _, _ = c_float_array(self.gp_rand_coef_data.flatten(order='F'))
                 for ii in range(self.num_gp_rand_coef):
                     if gp_rand_coef_data_names is None:
-                        if self.cov_function == "wendland":
+                        if self.cov_function == "space_time_separable_matern_ar1":
+                            self.cov_par_names.extend(
+                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
+                                 "GP_rand_coef_nb_" + str(ii + 1) + "_range_time",
+                                 "GP_rand_coef_nb_" + str(ii + 1) + "_range_space"])
+                        elif self.cov_function == "wendland":
                             self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + "_var"])
                         else:
                             self.cov_par_names.extend(
@@ -4483,7 +4511,12 @@ class GPModel(object):
                                  "GP_rand_coef_nb_" + str(ii + 1) + "_range"])
                         self.re_comp_names.append("GP_rand_coef_nb_" + str(ii + 1))
                     else:
-                        if self.cov_function == "wendland":
+                        if self.cov_function == "space_time_separable_matern_ar1":
+                            self.cov_par_names.extend(
+                                ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
+                                 "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range_time",
+                                 "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range_space"])
+                        elif self.cov_function == "wendland":
                             self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"])
                         else:
                             self.cov_par_names.extend(
@@ -4556,7 +4589,9 @@ class GPModel(object):
             self.set_optim_params(params=model_dict["params"])
 
     def __determine_num_cov_pars(self, likelihood):
-        if self.cov_function == "wendland":
+        if self.cov_function == "space_time_separable_matern_ar1":
+            num_par_per_GP = 3
+        elif self.cov_function == "wendland":
             num_par_per_GP = 1
         else:
             num_par_per_GP = 2

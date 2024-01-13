@@ -22,8 +22,8 @@ namespace GPBoost {
 	* \param num_neighbors Maximal number of neighbors
 	* \param[out] nearest_neighbor Vector with indices of nearest neighbors for every observations
 	*/
-	void find_nearest_neighbors_Vecchia(den_mat_t& dist, 
-		int num_data, 
+	void find_nearest_neighbors_Vecchia(den_mat_t& dist,
+		int num_data,
 		int num_neighbors,
 		std::vector<std::vector<int>>& neighbors);
 
@@ -40,18 +40,20 @@ namespace GPBoost {
 	* \param[out] check_has_duplicates If true, it is checked whether there are duplicates in coords among the neighbors (result written on output)
 	* \param neighbor_selection The way how neighbors are selected
 	* \param gen RNG
+	* \param save_distances If true, distances are saved in dist_obs_neighbors and dist_between_neighbors
 	*/
-	void find_nearest_neighbors_Vecchia_fast(const den_mat_t& coords, 
-		int num_data, 
+	void find_nearest_neighbors_Vecchia_fast(const den_mat_t& coords,
+		int num_data,
 		int num_neighbors,
-		std::vector<std::vector<int>>& neighbors, 
+		std::vector<std::vector<int>>& neighbors,
 		std::vector<den_mat_t>& dist_obs_neighbors,
-		std::vector<den_mat_t>& dist_between_neighbors, 
-		int start_at, 
-		int end_search_at, 
+		std::vector<den_mat_t>& dist_between_neighbors,
+		int start_at,
+		int end_search_at,
 		bool& check_has_duplicates,
 		const string_t& neighbor_selection,
-		RNG_t& gen);
+		RNG_t& gen,
+		bool save_distances);
 
 	void find_nearest_neighbors_fast_internal(const int i,
 		const int num_data,
@@ -161,7 +163,7 @@ namespace GPBoost {
 		dist_between_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
 		find_nearest_neighbors_Vecchia_fast(re_comp->GetCoords(), re_comp->GetNumUniqueREs(), num_neighbors,
 			nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates,
-			vecchia_neighbor_selection, rng);
+			vecchia_neighbor_selection, rng, re_comp->ShouldSaveDistances());
 		if (check_has_duplicates) {
 			has_duplicates_coords = has_duplicates_coords || has_duplicates;
 			if (!gauss_likelihood && has_duplicates_coords) {
@@ -282,44 +284,54 @@ namespace GPBoost {
 				}
 			}
 		}//end initialization
+		std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp]);
+		bool distances_saved = re_comp->ShouldSaveDistances();
 #pragma omp parallel for schedule(static)
 		for (data_size_t i = 0; i < num_re_cluster_i; ++i) {
 			int num_nn = (int)nearest_neighbors_cluster_i[i].size();
 			//calculate covariance matrices between observations and neighbors and among neighbors as well as their derivatives
-			den_mat_t cov_mat_obs_neighbors(1, num_nn);
-			den_mat_t cov_mat_between_neighbors(num_nn, num_nn);
+			den_mat_t cov_mat_obs_neighbors;
+			den_mat_t cov_mat_between_neighbors;
 			std::vector<den_mat_t> cov_grad_mats_obs_neighbors(num_par_gp);//covariance matrix plus derivative wrt to every parameter
 			std::vector<den_mat_t> cov_grad_mats_between_neighbors(num_par_gp);
+			den_mat_t coords_i, coords_nn_i;
 			if (i > 0) {
 				for (int j = 0; j < num_gp_total; ++j) {
 					int ind_first_par = j * num_par_comp;//index of first parameter (variance) of component j in gradient vectors
 					if (j == 0) {
-						re_comps_cluster_i[ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_obs_neighbors_cluster_i[i],
-							cov_mat_obs_neighbors, cov_grad_mats_obs_neighbors[ind_first_par], cov_grad_mats_obs_neighbors[ind_first_par + 1],
+
+						if (!distances_saved) {
+							std::vector<int> ind{ i };
+							re_comp->GetSubSetCoords(ind, coords_i);
+							re_comp->GetSubSetCoords(nearest_neighbors_cluster_i[i], coords_nn_i);
+						}
+						re_comps_cluster_i[ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_obs_neighbors_cluster_i[i], coords_i, coords_nn_i,
+							cov_mat_obs_neighbors, cov_grad_mats_obs_neighbors.data() + ind_first_par,
 							calc_gradient, transf_scale, nugget_var, false);//write on matrices directly for first GP component
-						re_comps_cluster_i[ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_between_neighbors_cluster_i[i],
-							cov_mat_between_neighbors, cov_grad_mats_between_neighbors[ind_first_par], cov_grad_mats_between_neighbors[ind_first_par + 1],
+						re_comps_cluster_i[ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_between_neighbors_cluster_i[i], coords_nn_i, coords_nn_i,
+							cov_mat_between_neighbors, cov_grad_mats_between_neighbors.data() + ind_first_par,
 							calc_gradient, transf_scale, nugget_var, true);
 					}
 					else {//random coefficient GPs
 						den_mat_t cov_mat_obs_neighbors_j;
 						den_mat_t cov_mat_between_neighbors_j;
-						re_comps_cluster_i[ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_obs_neighbors_cluster_i[i],
-							cov_mat_obs_neighbors_j, cov_grad_mats_obs_neighbors[ind_first_par], cov_grad_mats_obs_neighbors[ind_first_par + 1],
+						re_comps_cluster_i[ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_obs_neighbors_cluster_i[i], coords_i, coords_nn_i,
+							cov_mat_obs_neighbors_j, cov_grad_mats_obs_neighbors.data() + ind_first_par,
 							calc_gradient, transf_scale, nugget_var, false);
-						re_comps_cluster_i[ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_between_neighbors_cluster_i[i],
-							cov_mat_between_neighbors_j, cov_grad_mats_between_neighbors[ind_first_par], cov_grad_mats_between_neighbors[ind_first_par + 1],
+						re_comps_cluster_i[ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_between_neighbors_cluster_i[i], coords_nn_i, coords_nn_i,
+							cov_mat_between_neighbors_j, cov_grad_mats_between_neighbors.data() + ind_first_par,
 							calc_gradient, transf_scale, nugget_var, true);
 						//multiply by coefficient matrix
-						cov_mat_obs_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(0, 1, 1, num_nn)).array();//cov_mat_obs_neighbors_j.cwiseProduct()
+						cov_mat_obs_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 0, num_nn, 1)).array();//cov_mat_obs_neighbors_j.cwiseProduct()
+						//cov_mat_obs_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(0, 1, 1, num_nn)).array();//cov_mat_obs_neighbors_j.cwiseProduct()//DELETE_FIRST
 						cov_mat_between_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 1, num_nn, num_nn)).array();
 						cov_mat_obs_neighbors += cov_mat_obs_neighbors_j;
 						cov_mat_between_neighbors += cov_mat_between_neighbors_j;
 						if (calc_gradient) {
-							cov_grad_mats_obs_neighbors[ind_first_par].array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(0, 1, 1, num_nn)).array();
-							cov_grad_mats_obs_neighbors[ind_first_par + 1].array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(0, 1, 1, num_nn)).array();
-							cov_grad_mats_between_neighbors[ind_first_par].array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 1, num_nn, num_nn)).array();
-							cov_grad_mats_between_neighbors[ind_first_par + 1].array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 1, num_nn, num_nn)).array();
+							for (int ipar = 0; ipar < (int)num_par_comp; ++ipar) {
+								cov_grad_mats_obs_neighbors[ind_first_par + ipar].array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 0, num_nn, 1)).array();
+								cov_grad_mats_between_neighbors[ind_first_par + ipar].array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 1, num_nn, num_nn)).array();
+							}
 						}
 					}
 				}//end loop over components j
@@ -370,29 +382,11 @@ namespace GPBoost {
 				den_mat_t A_i(1, num_nn);
 				den_mat_t A_i_grad_sigma2;
 				Eigen::LLT<den_mat_t> chol_fact_between_neighbors = cov_mat_between_neighbors.llt();
-				A_i = (chol_fact_between_neighbors.solve(cov_mat_obs_neighbors.transpose())).transpose();
-
-				// Alternative version where cov_mat_between_neighbors_inv is first calculated and then multiplication with this is done
-				// This can be faster (approx. 1.5-2 times) compared tp always using the Cholesky factor of cov_mat_between_neighbors to calculate cov_mat_between_neighbors_inv * (a matrix)
-				// But it leads to numerical instabilities if locations / input features are close together (e.g., large num_data)
-				//den_mat_t cov_mat_between_neighbors_inv;
-				//if (calc_gradient) {
-				//	den_mat_t I(num_nn, num_nn);
-				//	I.setIdentity();
-				//	cov_mat_between_neighbors_inv = cov_mat_between_neighbors.llt().solve(I);
-				//	A_i = cov_mat_obs_neighbors * cov_mat_between_neighbors_inv;
-				//	if (calc_gradient_nugget) {
-				//		A_i_grad_sigma2 = -A_i * cov_mat_between_neighbors_inv;
-				//	}
-				//}
-				//else {
-				//	A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors.transpose())).transpose();
-				//}
-
+				A_i = (chol_fact_between_neighbors.solve(cov_mat_obs_neighbors)).transpose();
 				for (int inn = 0; inn < num_nn; ++inn) {
 					B_cluster_i.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i(0, inn);
 				}
-				D_inv_cluster_i.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
+				D_inv_cluster_i.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors)(0, 0);
 				if (calc_gradient) {
 					if (calc_gradient_nugget) {
 						A_i_grad_sigma2 = -(chol_fact_between_neighbors.solve(A_i.transpose())).transpose();
@@ -402,24 +396,18 @@ namespace GPBoost {
 						int ind_first_par = j * num_par_comp;
 						for (int ipar = 0; ipar < num_par_comp; ++ipar) {
 							if (!(exclude_marg_var_grad && ipar == 0)) {
-								A_i_grad = (chol_fact_between_neighbors.solve(cov_grad_mats_obs_neighbors[ind_first_par + ipar].transpose())).transpose() -
+								A_i_grad = (chol_fact_between_neighbors.solve(cov_grad_mats_obs_neighbors[ind_first_par + ipar])).transpose() -
 									A_i * ((chol_fact_between_neighbors.solve(cov_grad_mats_between_neighbors[ind_first_par + ipar])).transpose());
-
-								// Alternative version where cov_mat_between_neighbors_inv is calculated first
-								//A_i_grad = (cov_grad_mats_obs_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv) -
-								//	(cov_mat_obs_neighbors * cov_mat_between_neighbors_inv *
-								//		cov_grad_mats_between_neighbors[ind_first_par + ipar] * cov_mat_between_neighbors_inv);
-
 								for (int inn = 0; inn < num_nn; ++inn) {
 									B_grad_cluster_i[ind_first_par + ipar].coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i_grad(0, inn);
 								}
 								if (ipar == 0) {
-									D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) -= ((A_i_grad * cov_mat_obs_neighbors.transpose())(0, 0) +
-										(A_i * cov_grad_mats_obs_neighbors[ind_first_par + ipar].transpose())(0, 0));//add to derivative of diagonal elements for marginal variance 
+									D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) -= ((A_i_grad * cov_mat_obs_neighbors)(0, 0) +
+										(A_i * cov_grad_mats_obs_neighbors[ind_first_par + ipar])(0, 0));//add to derivative of diagonal elements for marginal variance 
 								}
 								else {
-									D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) = -((A_i_grad * cov_mat_obs_neighbors.transpose())(0, 0) +
-										(A_i * cov_grad_mats_obs_neighbors[ind_first_par + ipar].transpose())(0, 0));//don't add to existing values since derivative of diagonal is zero for range
+									D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) = -((A_i_grad * cov_mat_obs_neighbors)(0, 0) +
+										(A_i * cov_grad_mats_obs_neighbors[ind_first_par + ipar])(0, 0));//don't add to existing values since derivative of diagonal is zero for range
 								}
 							}
 						}
@@ -428,7 +416,7 @@ namespace GPBoost {
 						for (int inn = 0; inn < num_nn; ++inn) {
 							B_grad_cluster_i[num_par_gp - 1].coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i_grad_sigma2(0, inn);
 						}
-						D_grad_cluster_i[num_par_gp - 1].coeffRef(i, i) -= (A_i_grad_sigma2 * cov_mat_obs_neighbors.transpose())(0, 0);
+						D_grad_cluster_i[num_par_gp - 1].coeffRef(i, i) -= (A_i_grad_sigma2 * cov_mat_obs_neighbors)(0, 0);
 					}
 				}//end calc_gradient
 			}//end if i > 0
@@ -462,7 +450,7 @@ namespace GPBoost {
 	* \param re_comps Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components
 	* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps') of the intercept GP associated with the random coefficient GPs
 	* \param num_gp_rand_coef Number of random coefficient GPs
-	* \param num_gp_total Total number of GPs (random intercepts plus random coefficients) 
+	* \param num_gp_total Total number of GPs (random intercepts plus random coefficients)
 	* \param y_cluster_i Reponse variable data
 	* \param gauss_likelihood If true, the response variables have a Gaussian likelihood, otherwise not
 	* \param rng Random number generator
@@ -501,6 +489,7 @@ namespace GPBoost {
 		sp_mat_t& Bp,
 		vec_t& Dp) {
 		data_size_t num_re_cli = re_comps[cluster_i][ind_intercept_gp]->GetNumUniqueREs();
+		std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps[cluster_i][ind_intercept_gp]);
 		int num_re_pred_cli = (int)gp_coords_mat_pred.rows();
 		//Find nearest neighbors
 		den_mat_t coords_all(num_re_cli + num_re_pred_cli, gp_coords_mat_obs.cols());
@@ -509,10 +498,11 @@ namespace GPBoost {
 		std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_re_pred_cli);
 		std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_re_pred_cli);
 		bool check_has_duplicates = false;
+		bool distances_saved = re_comp->ShouldSaveDistances();
 		if (CondObsOnly) {
 			find_nearest_neighbors_Vecchia_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, num_re_cli - 1, check_has_duplicates,
-				vecchia_neighbor_selection, rng);
+				vecchia_neighbor_selection, rng, distances_saved);
 		}
 		else {//find neighbors among both the observed and prediction locations
 			if (!gauss_likelihood) {
@@ -520,7 +510,7 @@ namespace GPBoost {
 			}
 			find_nearest_neighbors_Vecchia_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, -1, check_has_duplicates,
-				vecchia_neighbor_selection, rng);
+				vecchia_neighbor_selection, rng, distances_saved);
 			if (check_has_duplicates) {
 				Log::REFatal("Duplicates found among training and test coordinates. "
 					"This is not supported for predictions with a Vecchia approximation for non-Gaussian likelihoods "
@@ -579,25 +569,30 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 		for (int i = 0; i < num_re_pred_cli; ++i) {
 			int num_nn = (int)nearest_neighbors_cluster_i[i].size();
-			den_mat_t cov_mat_obs_neighbors(1, num_nn);//dim = 1 x nn
-			den_mat_t cov_mat_between_neighbors(num_nn, num_nn);//dim = nn x nn
-			den_mat_t cov_grad_mats_obs_neighbors, cov_grad_mats_between_neighbors; //not used, just as mock argument for functions below
+			den_mat_t cov_mat_obs_neighbors, cov_mat_between_neighbors;
+			den_mat_t cov_grad_dummy; //not used, just as mock argument for functions below
+			den_mat_t coords_i, coords_nn_i;
 			for (int j = 0; j < num_gp_total; ++j) {
 				if (j == 0) {
-					re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_obs_neighbors_cluster_i[i],
-						cov_mat_obs_neighbors, cov_grad_mats_obs_neighbors, cov_grad_mats_obs_neighbors, false, true, 1., false);//write on matrices directly for first GP component
-					re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_between_neighbors_cluster_i[i],
-						cov_mat_between_neighbors, cov_grad_mats_between_neighbors, cov_grad_mats_between_neighbors, false, true, 1., true);
+					if (!distances_saved) {
+						std::vector<int> ind{ num_re_cli + i };
+						coords_i = coords_all(ind, Eigen::all);
+						coords_nn_i = coords_all(nearest_neighbors_cluster_i[i], Eigen::all);
+					}
+					re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_obs_neighbors_cluster_i[i], coords_i, coords_nn_i,
+						cov_mat_obs_neighbors, &cov_grad_dummy, false, true, 1., false);//write on matrices directly for first GP component
+					re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_between_neighbors_cluster_i[i], coords_nn_i, coords_nn_i,
+						cov_mat_between_neighbors, &cov_grad_dummy, false, true, 1., true);
 				}
 				else {//random coefficient GPs
 					den_mat_t cov_mat_obs_neighbors_j;
 					den_mat_t cov_mat_between_neighbors_j;
-					re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_obs_neighbors_cluster_i[i],
-						cov_mat_obs_neighbors_j, cov_grad_mats_obs_neighbors, cov_grad_mats_obs_neighbors, false, true, 1., false);
-					re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_between_neighbors_cluster_i[i],
-						cov_mat_between_neighbors_j, cov_grad_mats_between_neighbors, cov_grad_mats_between_neighbors, false, true, 1., true);
+					re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_obs_neighbors_cluster_i[i], coords_i, coords_nn_i,
+						cov_mat_obs_neighbors_j, &cov_grad_dummy, false, true, 1., false);
+					re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_between_neighbors_cluster_i[i], coords_nn_i, coords_nn_i,
+						cov_mat_between_neighbors_j, &cov_grad_dummy, false, true, 1., true);
 					//multiply by coefficient matrix
-					cov_mat_obs_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(0, 1, 1, num_nn)).array();
+					cov_mat_obs_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 0, num_nn, 1)).array();
 					cov_mat_between_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 1, num_nn, num_nn)).array();
 					cov_mat_obs_neighbors += cov_mat_obs_neighbors_j;
 					cov_mat_between_neighbors += cov_mat_between_neighbors_j;
@@ -620,7 +615,7 @@ namespace GPBoost {
 				//	If predict_response == false, the nugget variance is simply subtracted from the predictive covariance matrix later again.
 			}
 			den_mat_t A_i(1, num_nn);//dim = 1 x nn
-			A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors.transpose())).transpose();
+			A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors)).transpose();
 			for (int inn = 0; inn < num_nn; ++inn) {
 				if (nearest_neighbors_cluster_i[i][inn] < num_re_cli) {//nearest neighbor belongs to observed data
 					Bpo.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) -= A_i(0, inn);
@@ -629,7 +624,7 @@ namespace GPBoost {
 					Bp.coeffRef(i, nearest_neighbors_cluster_i[i][inn] - num_re_cli) -= A_i(0, inn);
 				}
 			}
-			Dp[i] -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
+			Dp[i] -= (A_i * cov_mat_obs_neighbors)(0, 0);
 		}//end loop over data i
 		if (gauss_likelihood) {
 			pred_mean = -Bpo * y_cluster_i;
@@ -684,7 +679,7 @@ namespace GPBoost {
 	* \param re_comps Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components
 	* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps') of the intercept GP associated with the random coefficient GPs
 	* \param num_gp_rand_coef Number of random coefficient GPs
-	* \param num_gp_total Total number of GPs (random intercepts plus random coefficients) 
+	* \param num_gp_total Total number of GPs (random intercepts plus random coefficients)
 	* \param y_cluster_i Reponse variable data
 	* \param rng Random number generator
 	* \param calc_pred_cov If true, the covariance matrix is also calculated
@@ -723,9 +718,11 @@ namespace GPBoost {
 		std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_data_tot);
 		std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_tot);
 		bool check_has_duplicates = false;
+		std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps[cluster_i][ind_intercept_gp]);
+		bool distances_saved = re_comp->ShouldSaveDistances();
 		find_nearest_neighbors_Vecchia_fast(coords_all, num_data_tot, num_neighbors_pred,
 			nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
-			vecchia_neighbor_selection, rng);
+			vecchia_neighbor_selection, rng, distances_saved);
 		//Prepare data for random coefficients
 		std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_tot);
 		if (num_gp_rand_coef > 0) {
@@ -789,26 +786,31 @@ namespace GPBoost {
 		for (int i = 0; i < num_data_tot; ++i) {
 			int num_nn = (int)nearest_neighbors_cluster_i[i].size();
 			//define covariance and gradient matrices
-			den_mat_t cov_mat_obs_neighbors(1, num_nn);//dim = 1 x nn
-			den_mat_t cov_mat_between_neighbors(num_nn, num_nn);//dim = nn x nn
-			den_mat_t cov_grad_mats_obs_neighbors, cov_grad_mats_between_neighbors; //not used, just as mock argument for functions below
+			den_mat_t cov_mat_obs_neighbors, cov_mat_between_neighbors;
+			den_mat_t cov_grad_dummy; //not used, just as mock argument for functions below
+			den_mat_t coords_i, coords_nn_i;
 			if (i > 0) {
 				for (int j = 0; j < num_gp_total; ++j) {
 					if (j == 0) {
-						re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_obs_neighbors_cluster_i[i],
-							cov_mat_obs_neighbors, cov_grad_mats_obs_neighbors, cov_grad_mats_obs_neighbors, false, true, 1., false);//write on matrices directly for first GP component
-						re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_between_neighbors_cluster_i[i],
-							cov_mat_between_neighbors, cov_grad_mats_between_neighbors, cov_grad_mats_between_neighbors, false, true, 1., true);
+						if (!distances_saved) {
+							std::vector<int> ind{ i };
+							coords_i = coords_all(ind, Eigen::all);
+							coords_nn_i = coords_all(nearest_neighbors_cluster_i[i], Eigen::all);
+						}
+						re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_obs_neighbors_cluster_i[i], coords_i, coords_nn_i,
+							cov_mat_obs_neighbors, &cov_grad_dummy, false, true, 1., false);//write on matrices directly for first GP component
+						re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_between_neighbors_cluster_i[i], coords_nn_i, coords_nn_i,
+							cov_mat_between_neighbors, &cov_grad_dummy, false, true, 1., true);
 					}
 					else {//random coefficient GPs
 						den_mat_t cov_mat_obs_neighbors_j;
 						den_mat_t cov_mat_between_neighbors_j;
-						re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_obs_neighbors_cluster_i[i],
-							cov_mat_obs_neighbors_j, cov_grad_mats_obs_neighbors, cov_grad_mats_obs_neighbors, false, true, 1., false);
-						re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGrad(dist_between_neighbors_cluster_i[i],
-							cov_mat_between_neighbors_j, cov_grad_mats_between_neighbors, cov_grad_mats_between_neighbors, false, true, 1., true);
+						re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_obs_neighbors_cluster_i[i], coords_i, coords_nn_i,
+							cov_mat_obs_neighbors_j, &cov_grad_dummy, false, true, 1., false);
+						re_comps[cluster_i][ind_intercept_gp + j]->CalcSigmaAndSigmaGradVecchia(dist_between_neighbors_cluster_i[i], coords_nn_i, coords_nn_i,
+							cov_mat_between_neighbors_j, &cov_grad_dummy, false, true, 1., true);
 						//multiply by coefficient matrix
-						cov_mat_obs_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(0, 1, 1, num_nn)).array();
+						cov_mat_obs_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 0, num_nn, 1)).array();
 						cov_mat_between_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 1, num_nn, num_nn)).array();
 						cov_mat_obs_neighbors += cov_mat_obs_neighbors_j;
 						cov_mat_between_neighbors += cov_mat_between_neighbors_j;
@@ -833,7 +835,7 @@ namespace GPBoost {
 			if (i > 0) {
 				cov_mat_between_neighbors.diagonal().array() += 1.;//add nugget effect
 				den_mat_t A_i(1, num_nn);//dim = 1 x nn
-				A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors.transpose())).transpose();
+				A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors)).transpose();
 				for (int inn = 0; inn < num_nn; ++inn) {
 					if (i < num_data_pred_cli) {
 						Bp.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) -= A_i(0, inn);
@@ -848,10 +850,10 @@ namespace GPBoost {
 					}
 				}
 				if (i < num_data_pred_cli) {
-					Dp_inv[i] -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
+					Dp_inv[i] -= (A_i * cov_mat_obs_neighbors)(0, 0);
 				}
 				else {
-					Do_inv[i - num_data_pred_cli] -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
+					Do_inv[i - num_data_pred_cli] -= (A_i * cov_mat_obs_neighbors)(0, 0);
 				}
 			}
 			if (i < num_data_pred_cli) {
@@ -920,6 +922,7 @@ namespace GPBoost {
 		T_mat& pred_cov,
 		vec_t& pred_var) {
 		int num_data_cli = (int)gp_coords_mat_obs.rows();
+		CHECK(num_data_cli == re_comps[cluster_i][ind_intercept_gp]->GetNumUniqueREs());
 		int num_data_pred_cli = (int)gp_coords_mat_pred.rows();
 		int num_data_tot = num_data_cli + num_data_pred_cli;
 		//Find nearest neighbors
@@ -958,15 +961,17 @@ namespace GPBoost {
 		std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_coord_unique);
 		std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_coord_unique);
 		bool check_has_duplicates = true;
+		std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps[cluster_i][ind_intercept_gp]);
+		bool distances_saved = re_comp->ShouldSaveDistances();
 		if (CondObsOnly) {//find neighbors among both the observed locations only
 			find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1, check_has_duplicates,
-				vecchia_neighbor_selection, rng);
+				vecchia_neighbor_selection, rng, distances_saved);
 		}
 		else {//find neighbors among both the observed and prediction locations
 			find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
-				vecchia_neighbor_selection, rng);
+				vecchia_neighbor_selection, rng, distances_saved);
 		}
 		if (check_has_duplicates) {
 			Log::REFatal("Duplicates found among training and test coordinates. "
@@ -987,14 +992,19 @@ namespace GPBoost {
 		for (int i = 0; i < num_coord_unique; ++i) {
 			int num_nn = (int)nearest_neighbors_cluster_i[i].size();
 			//define covariance and gradient matrices
-			den_mat_t cov_mat_obs_neighbors(1, num_nn);//dim = 1 x nn
-			den_mat_t cov_mat_between_neighbors(num_nn, num_nn);//dim = nn x nn
-			den_mat_t cov_grad_mats_obs_neighbors, cov_grad_mats_between_neighbors; //not used, just as mock argument for functions below
+			den_mat_t cov_mat_obs_neighbors, cov_mat_between_neighbors;
+			den_mat_t cov_grad_dummy; //not used, just as mock argument for functions below
+			den_mat_t coords_i, coords_nn_i;
 			if (i > 0) {
-				re_comps[cluster_i][ind_intercept_gp]->CalcSigmaAndSigmaGrad(dist_obs_neighbors_cluster_i[i],
-					cov_mat_obs_neighbors, cov_grad_mats_obs_neighbors, cov_grad_mats_obs_neighbors, false, true, 1., false);//write on matrices directly for first GP component
-				re_comps[cluster_i][ind_intercept_gp]->CalcSigmaAndSigmaGrad(dist_between_neighbors_cluster_i[i],
-					cov_mat_between_neighbors, cov_grad_mats_between_neighbors, cov_grad_mats_between_neighbors, false, true, 1., true);
+				if (!distances_saved) {
+					std::vector<int> ind{ i };
+					coords_i = coords_all_unique(ind, Eigen::all);
+					coords_nn_i = coords_all_unique(nearest_neighbors_cluster_i[i], Eigen::all);
+				}
+				re_comps[cluster_i][ind_intercept_gp]->CalcSigmaAndSigmaGradVecchia(dist_obs_neighbors_cluster_i[i], coords_i, coords_nn_i,
+					cov_mat_obs_neighbors, &cov_grad_dummy, false, true, 1., false);//write on matrices directly for first GP component
+				re_comps[cluster_i][ind_intercept_gp]->CalcSigmaAndSigmaGradVecchia(dist_between_neighbors_cluster_i[i], coords_nn_i, coords_nn_i,
+					cov_mat_between_neighbors, &cov_grad_dummy, false, true, 1., true);
 			}
 			//Calculate matrices A and D as well as their derivatives
 			//1. add first summand of matrix D (ZCZ^T_{ii})
@@ -1002,13 +1012,12 @@ namespace GPBoost {
 			//2. remaining terms
 			if (i > 0) {
 				den_mat_t A_i(1, num_nn);//dim = 1 x nn
-				A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors.transpose())).transpose();
+				A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors)).transpose();
 				for (int inn = 0; inn < num_nn; ++inn) {
 					B.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) -= A_i(0, inn);
 				}
-				D[i] -= (A_i * cov_mat_obs_neighbors.transpose())(0, 0);
+				D[i] -= (A_i * cov_mat_obs_neighbors)(0, 0);
 			}
-
 		}//end loop over data i
 		//Calculate D_inv and B_inv in order to calcualte Sigma and Sigma^-1
 		vec_t D_inv = D.cwiseInverse();

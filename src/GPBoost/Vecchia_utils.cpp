@@ -60,10 +60,13 @@ namespace GPBoost {
 		int end_search_at, 
 		bool& check_has_duplicates,
 		const string_t& neighbor_selection,
-		RNG_t& gen) {
+		RNG_t& gen,
+		bool save_distances) {
 		CHECK((int)neighbors.size() == (num_data - start_at));
-		CHECK((int)dist_obs_neighbors.size() == (num_data - start_at));
-		CHECK((int)dist_between_neighbors.size() == (num_data - start_at));
+		if (save_distances) {
+			CHECK((int)dist_obs_neighbors.size() == (num_data - start_at));
+			CHECK((int)dist_between_neighbors.size() == (num_data - start_at));
+		}
 		CHECK((int)coords.rows() == num_data);
 		if (end_search_at < 0) {
 			end_search_at = num_data - 2;
@@ -103,15 +106,21 @@ namespace GPBoost {
 		for (int i = start_at; i < num_data; ++i) {
 			if (i > 0 && i <= num_neighbors) {
 				neighbors[i - start_at].resize(i);
-				dist_obs_neighbors[i - start_at].resize(1, i);
+				if (save_distances) {
+					dist_obs_neighbors[i - start_at].resize(i, 1);
+				}
 				for (int j = 0; j < i; ++j) {
 					neighbors[i - start_at][j] = j;
-					dist_obs_neighbors[i - start_at](0, j) = (coords(j, Eigen::all) - coords(i, Eigen::all)).lpNorm<2>();
-					if (check_has_duplicates) {
-						if (!has_duplicates) {
-							if (dist_obs_neighbors[i - start_at](0, j) < EPSILON_NUMBERS) {
-								has_duplicates = true;
-							}
+					double dij = 0.;
+					if (save_distances || (check_has_duplicates && !has_duplicates)) {
+						dij = (coords(j, Eigen::all) - coords(i, Eigen::all)).lpNorm<2>();
+					}
+					if (save_distances) {
+						dist_obs_neighbors[i - start_at](j, 0) = dij;
+					}
+					if (check_has_duplicates && !has_duplicates) {
+						if (dij < EPSILON_NUMBERS) {
+							has_duplicates = true;
 						}
 					}//end check_has_duplicates
 				}
@@ -139,16 +148,19 @@ namespace GPBoost {
 						dim_coords, coords, sort_sum, sort_inv_sum, coords_sum, neighbors[i - start_at], nn_square_dist);
 				}
 				//Save distances between points and neighbors
-				dist_obs_neighbors[i - start_at].resize(1, num_neighbors);
+				if (save_distances) {
+					dist_obs_neighbors[i - start_at].resize(num_neighbors, 1);
+				}
 				for (int j = 0; j < num_nearest_neighbors; ++j) {
-					dist_obs_neighbors[i - start_at](0, j) = std::sqrt(nn_square_dist[j]);
-					if (check_has_duplicates) {
-						if (!has_duplicates) {
-							if (dist_obs_neighbors[i - start_at](0, j) < EPSILON_NUMBERS) {
+					double dij = std::sqrt(nn_square_dist[j]);
+					if (save_distances) {
+						dist_obs_neighbors[i - start_at](j, 0) = dij;
+					}
+					if (check_has_duplicates && !has_duplicates) {
+						if (dij < EPSILON_NUMBERS) {
 #pragma omp critical
-								{
-									has_duplicates = true;
-								}
+							{
+								has_duplicates = true;
 							}
 						}
 					}//end check_has_duplicates
@@ -171,14 +183,18 @@ namespace GPBoost {
 					}
 					//Calculate distances between points and neighbors
 					for (int j = 0; j < num_non_nearest_neighbors; ++j) {
-						dist_obs_neighbors[i - start_at](0, num_nearest_neighbors + j) = (coords(neighbors[i - start_at][num_nearest_neighbors + j], Eigen::all) - coords(i, Eigen::all)).norm();;
-						if (check_has_duplicates) {
-							if (!has_duplicates) {
-								if (dist_obs_neighbors[i - start_at](0, num_nearest_neighbors + j) < EPSILON_NUMBERS) {
+						double dij = 0.;
+						if (save_distances || (check_has_duplicates && !has_duplicates)) {
+							dij = (coords(neighbors[i - start_at][num_nearest_neighbors + j], Eigen::all) - coords(i, Eigen::all)).norm();
+						}
+						if (save_distances) {
+							dist_obs_neighbors[i - start_at](num_nearest_neighbors + j, 0) = dij;
+						}
+						if (check_has_duplicates && !has_duplicates) {
+							if (dij < EPSILON_NUMBERS) {
 #pragma omp critical
-									{
-										has_duplicates = true;
-									}
+								{
+									has_duplicates = true;
 								}
 							}
 						}//end check_has_duplicates
@@ -191,24 +207,34 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 		for (int i = first_i; i < num_data; ++i) {
 			int nn_i = (int)neighbors[i - start_at].size();
-			dist_between_neighbors[i - start_at].resize(nn_i, nn_i);
+			if (save_distances) {
+				dist_between_neighbors[i - start_at].resize(nn_i, nn_i);
+			}
 			for (int j = 0; j < nn_i; ++j) {
-				dist_between_neighbors[i - start_at](j, j) = 0.;
+				if (save_distances) {
+					dist_between_neighbors[i - start_at](j, j) = 0.;
+				}
 				for (int k = j + 1; k < nn_i; ++k) {
-					dist_between_neighbors[i - start_at](j, k) = (coords(neighbors[i - start_at][j], Eigen::all) - coords(neighbors[i - start_at][k], Eigen::all)).lpNorm<2>();
-					if (check_has_duplicates) {
-						if (!has_duplicates){
-							if (dist_between_neighbors[i - start_at](j, k) < EPSILON_NUMBERS) {
+					double dij = 0.;
+					if (save_distances || (check_has_duplicates && !has_duplicates)) {
+						dij = (coords(neighbors[i - start_at][j], Eigen::all) - coords(neighbors[i - start_at][k], Eigen::all)).lpNorm<2>();
+					}
+					if (save_distances) {
+						dist_between_neighbors[i - start_at](j, k) = dij;
+					}
+					if (check_has_duplicates && !has_duplicates) {
+						if (dij < EPSILON_NUMBERS) {
 #pragma omp critical
-								{
-									has_duplicates = true;
-								}
+							{
+								has_duplicates = true;
 							}
 						}
 					}//end check_has_duplicates
 				}
 			}
-			dist_between_neighbors[i - start_at].triangularView<Eigen::StrictlyLower>() = dist_between_neighbors[i - start_at].triangularView<Eigen::StrictlyUpper>().transpose();
+			if (save_distances) {
+				dist_between_neighbors[i - start_at].triangularView<Eigen::StrictlyLower>() = dist_between_neighbors[i - start_at].triangularView<Eigen::StrictlyUpper>().transpose();
+			}
 		}
 		if (check_has_duplicates) {
 			check_has_duplicates = has_duplicates;

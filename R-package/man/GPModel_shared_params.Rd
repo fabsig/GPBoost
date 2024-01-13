@@ -44,12 +44,17 @@ Gaussian process random coefficients}
 
 \item{cov_function}{A \code{string} specifying the covariance function for the Gaussian process. 
 Available options:
-"exponential", "gaussian", "matern", "powered_exponential", "wendland"
 \itemize{
-\item{ For "exponential", "gaussian", and "powered_exponential", 
-we use parametrization of Diggle and Ribeiro (2007) }
-\item{ For "matern", we use the parametrization of Rasmussen and Williams (2006) }
-\item{ For "wendland", we use the parametrization of Bevilacqua et al. (2019, AOS) }
+\item{"exponential": Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
+\item{"gaussian": Gaussian, aka squared expnential, covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
+\item{ "matern": Matern covariance function with the smoothness specified by 
+the \code{cov_fct_shape} parameter (using the parametrization of Rasmussen and Williams, 2006) }
+\item{"powered_exponential": powered exponential covariance function with the exponent specified by 
+the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribeiro, 2007) }
+\item{ "wendland": Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS) }
+\item{ "space_time_separable_matern_ar1": Separable spatio-temporal covariance 
+function with a Matern covariance for the spatial domain and an exponential covariance for the temporal domain ( = AR(1)). 
+Note that the first column in \code{gp_coords} must correspond to the time dimension }
 }}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
