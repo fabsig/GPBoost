@@ -156,6 +156,14 @@ namespace GPBoost {
 		den_mat_t& R);
 	
 	/*!
+	* \brief Fills a given matrix with Rademacher RV's.
+	* \param generator Random number generator
+	* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
+	*/
+	void GenRandVecDiag(RNG_t& generator,
+		den_mat_t& R);
+
+	/*!
 	* \brief Stochastic estimation of log(det(A)) given t approximative Lanczos tridiagonalizations T of a symmetric matrix A = Q T Q^T of dimension nxn,
 	*		 where T is given in vector form (diagonal + subdiagonal of T).
 	*		 Lanczos was previously run t-times based on t random vectors r_1, ..., r_t with r_i ~ N(0,I).
@@ -272,5 +280,537 @@ namespace GPBoost {
 			m = m + 1;
 		}
 	}//end PivotedCholsekyFactorizationSigma
+
+	/*!
+	* \brief Preconditioned conjugate gradient descent to solve Au=rhs when rhs is a vector
+	*		 A = (C_s + C_nm*(C_m)^(-1)*C_mn) is a symmetric matrix of dimension nxn and a full-scale-approximation for Sigma
+	*		 P = diag(C_s) + C_nm*(C_m)^(-1)*C_mn is used as preconditioner.
+	* \param sigma_resid Residual Matrix C_s
+	* \param sigma_cross_cov Matrix C_mn in Predictive Process Part C_nm*(C_m)^(-1)*C_mn
+	* \param chol_ip_cross_cov Cholesky Factor of C_m, the inducing point matrix, times cross-covariance
+	* \param rhs Vector of dimension nx1 on the rhs
+	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NaN_found Is set to true, if NaN is found in the residual of conjugate gradient algorithm
+	* \param p Number of conjugate gradient steps
+	* \param delta_conv tolerance for checking convergence
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned
+	* \param cg_preconditioner_type Type of preconditoner used for the conjugate gradient algorithm
+	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
+	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	*/
+	template <class T_mat>
+	void CGFSA(const T_mat& sigma_resid,
+		const den_mat_t& sigma_cross_cov,
+		const den_mat_t& chol_ip_cross_cov,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NaN_found,
+		int p,
+		const double delta_conv,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const string_t cg_preconditioner_type,
+		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
+		const vec_t& diagonal_approx_inv_preconditioner) {
+
+		p = std::min(p, (int)rhs.size());
+
+		vec_t r, r_old;
+		vec_t z, z_old;
+		vec_t h;
+		vec_t v;
+
+		vec_t diag_sigma_resid_inv_r, sigma_cross_cov_diag_sigma_resid_inv_r, mean_diag_sigma_resid_inv_r, sigma_cross_cov_mean_diag_sigma_resid_inv_r;
+		bool early_stop_alg = false;
+		double a = 0;
+		double b = 1;
+		double r_norm;
+
+		//Avoid numerical instabilites when rhs is de facto 0
+		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+			u.setZero();
+			return;
+		}
+		bool is_zero = u.isZero(0);
+
+		if (is_zero) {
+			r = rhs;
+		}
+		else {
+			r = rhs - sigma_resid * u - (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * u));//r = rhs - A * u
+		}
+
+		//z = P^(-1) r
+		if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+			//D^-1*r
+			diag_sigma_resid_inv_r = diagonal_approx_inv_preconditioner.asDiagonal() * r; // ??? cwiseProd (TODO)
+
+			//Cmn*D^-1*r
+			sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov.transpose() * diag_sigma_resid_inv_r;
+			//P^-1*r using Woodbury Identity
+			z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
+
+		}
+		else if (cg_preconditioner_type == "none") {
+			z = r;
+		}
+		else {
+			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+		}
+		h = z;
+
+		for (int j = 0; j < p; ++j) {
+
+			v = sigma_resid * h + (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * h));
+
+
+			a = r.transpose() * z;
+			a /= h.transpose() * v;
+
+			u += a * h;
+			r_old = r;
+			r -= a * v;
+
+			r_norm = r.norm();
+			if (std::isnan(r_norm) || std::isinf(r_norm)) {
+				NaN_found = true;
+				return;
+			}
+			if (r_norm < delta_conv) {
+				early_stop_alg = true;
+			}
+
+			z_old = z;
+
+			//z = P^(-1) r 
+			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+				diag_sigma_resid_inv_r = diagonal_approx_inv_preconditioner.asDiagonal() * r; // ??? cwiseProd (TODO)
+				sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov.transpose() * diag_sigma_resid_inv_r;
+				z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
+
+			}
+			else if (cg_preconditioner_type == "none") {
+				z = r;
+			}
+			else {
+				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			}
+
+			b = r.transpose() * z;
+			b /= r_old.transpose() * z_old;
+
+			h = z + b * h;
+
+			if (early_stop_alg) {
+
+				//Log::REInfo("CGFSA stop after %i CG-Iterations.", j + 1);
+
+				return;
+			}
+		}
+		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+	}// end CGFSA
+
+	/*!
+	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm
+	*		 Given the linear system AU=rhs where rhs is a matrix of dimension nxt of t probe column-vectors and
+	*		 A = (C_s + C_nm*(C_m)^(-1)*C_mn) is a symmetric matrix of dimension nxn and a full-fcale-approximation for Sigma
+	*		 P = diag(C_s) + C_nm*(C_m)^(-1)*C_mn is used as preconditioner.
+	*		 The function returns t approximative tridiagonalizations T of the symmetric matrix A=QTQ' in vector form (diagonal + subdiagonal of T).
+	* \param sigma_resid Residual Matrix C_s
+	* \param sigma_cross_cov Matrix C_mn in Predictive Process Part C_nm*(C_m)^(-1)*C_mn
+	* \param chol_ip_cross_cov Cholesky Factor of C_m, the inducing point matrix, times cross-covariance
+	* \param rhs Matrix of dimension nxt that contains (column-)probe vectors z_1,...,z_t with Cov[z_i] = P
+	* \param[out] Tdiags The diagonals of the t approximative tridiagonalizations of A in vector form (solution written on input)
+	* \param[out] Tsubdiags The subdiagonals of the t approximative tridiagonalizations of A in vector form (solution written on input)
+	* \param[out] U Approximative solution of the linear system (solution written on input) (must have been declared with the correct nxt dimensions)
+	* \param[out] NaN_found Is set to true, if NaN is found in the residual of conjugate gradient algorithm
+	* \param num_data n-Dimension of the linear system
+	* \param t t-Dimension of the linear system
+	* \param p Number of conjugate gradient steps
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param cg_preconditioner_type Type of preconditoner used for the conjugate gradient algorithm
+	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
+	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	*/
+	template <class T_mat>
+	void CGTridiagFSA(const T_mat& sigma_resid,
+		const den_mat_t& sigma_cross_cov,
+		const den_mat_t& chol_ip_cross_cov,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NaN_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const string_t cg_preconditioner_type,
+		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
+		const vec_t& diagonal_approx_inv_preconditioner) {
+		p = std::min(p, (int)num_data);
+
+		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t), diag_sigma_resid_inv_R, sigma_cross_cov_diag_sigma_resid_inv_R,
+			mean_diag_sigma_resid_inv_R, sigma_cross_cov_mean_diag_sigma_resid_inv_R; 
+		vec_t v1(num_data);
+		vec_t a(t), a_old(t);
+		vec_t b(t), b_old(t);
+		bool early_stop_alg = false;
+		double mean_R_norm;
+
+		U.setZero();
+		v1.setOnes();
+		a.setOnes();
+		b.setZero();
+
+		bool is_zero = U.isZero(0);
+
+		if (is_zero) {
+			R = rhs;
+		}
+		else {
+			R = rhs - (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * U));
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				R.col(i) -= sigma_resid * U.col(i); //parallelization in for loop is much faster
+			}
+		}
+		//Z = P^(-1) R 
+		if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+			//D^-1*R
+			diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
+			//Cmn*D^-1*R
+			sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+			//P^-1*R using Woodbury Identity
+			Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+
+		}
+		else if (cg_preconditioner_type == "none") {
+			Z = R;
+		}
+		else {
+			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+		}
+
+		H = Z;
+		for (int j = 0; j < p; ++j) {
+
+			V = (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H));
+
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				V.col(i) += sigma_resid * H.col(i);
+			}
+			a_old = a;
+			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+
+			U += H * a.asDiagonal();
+			R_old = R;
+			R -= V * a.asDiagonal();
+
+			mean_R_norm = R.colwise().norm().mean();
+			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
+				NaN_found = true;
+				return;
+			}
+			if (mean_R_norm < delta_conv) {
+				early_stop_alg = true;
+			}
+
+			Z_old = Z;
+
+			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+				diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
+				//Cmn*D^-1*R
+				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+				//P^-1*R using Woodbury Identity
+				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+
+			}
+			else if (cg_preconditioner_type == "none") {
+				Z = R;
+			}
+			else {
+				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			}
+
+			b_old = b;
+			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+
+			H = Z + H * b.asDiagonal();
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < t; ++i) {
+				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
+				if (j > 0) {
+					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
+				}
+			}
+			if (early_stop_alg) {
+				for (int i = 0; i < t; ++i) {
+					Tdiags[i].conservativeResize(j + 1, 1);
+					Tsubdiags[i].conservativeResize(j, 1);
+				}
+				return;
+			}
+		}
+		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+	} // end CGTridiagFSA
+
+	/*!
+	* \brief Preconditioned conjugate gradient descent to solve Au=rhs when rhs is a Matrix
+	*		 A = (C_s + C_nm*(C_m)^(-1)*C_mn) is a symmetric matrix of dimension nxn and a full-scale-approximation for Sigma
+	*		 P = diag(C_s) + C_nm*(C_m)^(-1)*C_mn is used as preconditioner.
+	* \param sigma_resid Residual Matrix C_s
+	* \param sigma_cross_cov Matrix C_mn in Predictive Process Part C_nm*(C_m)^(-1)*C_mn
+	* \param chol_ip_cross_cov Cholesky Factor of C_m, the inducing point matrix, times cross-covariance
+	* \param rhs Matrix of dimension nx1 on the rhs
+	* \param[out] U Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NaN_found Is set to true, if NaN is found in the residual of conjugate gradient algorithm
+	* \param num_data n-Dimension of the linear system
+	* \param t t-Dimension of the linear system
+	* \param p Number of conjugate gradient steps
+	* \param delta_conv tolerance for checking convergence
+	* \param cg_preconditioner_type Type of preconditoner used for the conjugate gradient algorithm
+	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
+	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	*/
+	template <class T_mat>
+	void CGFSA_MULTI_RHS(const T_mat& sigma_resid,
+		const den_mat_t& sigma_cross_cov,
+		const chol_den_mat_t& chol_fact_sigma_ip,
+		const den_mat_t& rhs,
+		den_mat_t& U,
+		bool& NaN_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const string_t cg_preconditioner_type,
+		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
+		const vec_t& diagonal_approx_inv_preconditioner) {
+		p = std::min(p, (int)num_data);
+
+		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t), diag_sigma_resid_inv_R, sigma_cross_cov_diag_sigma_resid_inv_R,
+			mean_diag_sigma_resid_inv_R, sigma_cross_cov_mean_diag_sigma_resid_inv_R;
+		vec_t v1(num_data);
+		vec_t a(t), a_old(t);
+		vec_t b(t), b_old(t);
+		bool early_stop_alg = false;
+		double mean_R_norm;
+
+		U.setZero();
+		v1.setOnes();
+		a.setOnes();
+		b.setZero();
+
+		bool is_zero = U.isZero(0);
+
+		if (is_zero) {
+			R = rhs;
+		}
+		else {
+			R = rhs - (sigma_cross_cov * (chol_fact_sigma_ip.solve(sigma_cross_cov.transpose() * U)));
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				R.col(i) -= sigma_resid * U.col(i); //parallelization in for loop is much faster
+			}
+		}
+		//Z = P^(-1) R 
+		if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+			//D^-1*R
+			diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
+			//Cmn*D^-1*R
+			sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+			//P^-1*R using Woodbury Identity
+			Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+
+		}
+		else if (cg_preconditioner_type == "none") {
+			Z = R;
+		}
+		else {
+			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+		}
+
+		H = Z;
+
+		for (int j = 0; j < p; ++j) {
+
+			V = (sigma_cross_cov * (chol_fact_sigma_ip.solve(sigma_cross_cov.transpose() * H)));
+
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				V.col(i) += sigma_resid * H.col(i);
+			}
+			a_old = a;
+			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+
+			U += H * a.asDiagonal();
+			R_old = R;
+			R -= V * a.asDiagonal();
+
+			mean_R_norm = R.colwise().norm().mean();
+
+			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
+				NaN_found = true;
+				return;
+			}
+			if (mean_R_norm < delta_conv) {
+				early_stop_alg = true;
+			}
+
+			Z_old = Z;
+
+			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+				diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
+				//Cmn*D^-1*R
+				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+				//P^-1*R using Woodbury Identity
+				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+
+			}
+			else if (cg_preconditioner_type == "none") {
+				Z = R;
+			}
+			else {
+				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			}
+
+			b_old = b;
+			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+
+			H = Z + H * b.asDiagonal();
+
+			if (early_stop_alg) {
+
+				return;
+			}
+		}
+		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+	} // end CGFSA_MULTI_RHS
+
+	/*!
+	* \brief Preconditioned conjugate gradient descent to solve Au=rhs when rhs is a Matrix
+	*		 A = (C_s) is a symmetric matrix of dimension nxn and the residual part of the full-scale-approximation for Sigma
+	*		 P = diag(C_s) is used as preconditioner.
+	* \param sigma_resid Residual Matrix C_s
+	* \param rhs Matrix of dimension nx1 on the rhs
+	* \param[out] U Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NaN_found Is set to true, if NaN is found in the residual of conjugate gradient algorithm
+	* \param num_data n-Dimension of the linear system
+	* \param t t-Dimension of the linear system
+	* \param p Number of conjugate gradient steps
+	* \param delta_conv tolerance for checking convergence
+	* \param cg_preconditioner_type Type of preconditoner used for the conjugate gradient algorithm
+	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	*/
+	template <class T_mat>
+	void CGFSA_RESID(const T_mat& sigma_resid,
+		const den_mat_t& rhs,
+		den_mat_t& U,
+		bool& NaN_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const string_t cg_preconditioner_type,
+		const vec_t& diagonal_approx_inv_preconditioner) {
+		p = std::min(p, (int)num_data);
+
+		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t), diag_sigma_resid_inv_R, sigma_cross_cov_diag_sigma_resid_inv_R,
+			mean_diag_sigma_resid_inv_R, sigma_cross_cov_mean_diag_sigma_resid_inv_R; //NEW V(num_data, t)
+		vec_t v1(num_data);
+		vec_t a(t), a_old(t);
+		vec_t b(t), b_old(t);
+		bool early_stop_alg = false;
+		double mean_R_norm;
+
+		U.setZero();
+		v1.setOnes();
+		a.setOnes();
+		b.setZero();
+
+		bool is_zero = U.isZero(0);
+
+		if (is_zero) {
+			R = rhs;
+		}
+		else {
+			R = rhs;
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				R.col(i) -= sigma_resid * U.col(i); //parallelization in for loop is much faster
+			}
+		}
+		//Z = P^(-1) R 
+		if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+			//D^-1*R
+			Z = diagonal_approx_inv_preconditioner.asDiagonal() * R;
+
+		}
+		else if (cg_preconditioner_type == "none") {
+			Z = R;
+		}
+		else {
+			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+		}
+
+		H = Z;
+
+		for (int j = 0; j < p; ++j) {
+
+			V.setZero();
+
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				V.col(i) += sigma_resid * H.col(i);
+			}
+			a_old = a;
+			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+
+			U += H * a.asDiagonal();
+			R_old = R;
+			R -= V * a.asDiagonal();
+
+			mean_R_norm = R.colwise().norm().mean();
+
+			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
+				NaN_found = true;
+				return;
+			}
+			if (mean_R_norm < delta_conv) {
+				early_stop_alg = true;
+			}
+
+			Z_old = Z;
+
+			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+				Z = diagonal_approx_inv_preconditioner.asDiagonal() * R;
+
+			}
+			else if (cg_preconditioner_type == "none") {
+				Z = R;
+			}
+			else {
+				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			}
+
+			b_old = b;
+			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+
+			H = Z + H * b.asDiagonal();
+
+			if (early_stop_alg) {
+
+				return;
+			}
+		}
+		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+	} // end CGFSA_RESID
+
 }
 #endif   // GPB_CG_UTILS_

@@ -87,8 +87,19 @@ the Vecchia approximation. Available options:
 \item{"random": a random ordering }
 }}
 
+\item{ind_points_selection}{A \code{string} specifying the method for choosing inducing points
+Available options:
+\itemize{
+\item{"kmeans++: the k-means++ algorithm }
+\item{"cover_tree": the cover tree algorithm }
+\item{"random": random selection from data points }
+}}
+
 \item{num_ind_points}{An \code{integer} specifying the number of inducing 
 points / knots for, e.g., a predictive process approximation}
+
+\item{cover_tree_radius}{A \code{numeric} specifying the radius (= "spatial resolution") 
+for the cover tree algorithm}
 
 \item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices. 
 Available options:
