@@ -99,16 +99,22 @@ set_optim_params(gp_model, params = list())
     \item{piv_chol_rank: \code{integer} (default = 50). 
     Rank of the pivoted Cholesky decomposition used as 
     preconditioner in conjugate gradient algorithms }
-    \item{cg_preconditioner_type: \code{string} 
-    (default = "Sigma_inv_plus_BtWB" for non-Gaussian likelihoods and a Vecchia-Laplace approximation). 
+    \item{cg_preconditioner_type: \code{string}.
     Type of preconditioner used for conjugate gradient algorithms.
-    Options for non-Gaussian likelihoods and a Vecchia-Laplace approximation: 
     \itemize{
-      \item{"piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
+      \item Options for non-Gaussian likelihoods and gp_approx = "vecchia": 
+        \itemize{
+          \item{"piv_chol_on_Sigma" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
       where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
-      \item{"Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
+          \item{"Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
       where B^T * D^-1 * B approx= Sigma^-1 }
-     }
+      }
+      \item Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering": 
+        \itemize{
+          \item{"predictive_process_plus_diagonal" (= default): predictive process preconditiioner }
+          \item{"none": no preconditioner }
+      }
+    }
    }
 }}
 }

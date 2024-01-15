@@ -4102,29 +4102,29 @@ class GPModel(object):
             cov_function : string, optional (default="exponential")
                 Covariance function for the Gaussian process. Available options:
 
-                "exponential":
+                - "exponential":
 
                     Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007)
 
-                "gaussian":
+                - "gaussian":
 
                     Gaussian, aka squared expnential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
 
-                "matern":
+                - "matern":
 
                     Matern covariance function with the smoothness specified by the 'cov_fct_shape' parameter
                     (using the parametrization of Rasmussen and Williams, 2006)
 
-                "powered_exponential":
+                - "powered_exponential":
 
                     Powered exponential covariance function with the exponent specified by 'cov_fct_shape' parameter
                     (using the parametrization of Diggle and Ribeiro, 2007)
 
-                "wendland":
+                - "wendland":
 
                     Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
 
-                "space_time_separable_matern_ar1":
+                - "space_time_separable_matern_ar1":
 
                     Separable spatio-temporal covariance function with a Matern  covariance for the spatial domain
                     and an exponential covariance for the temporal domain ( = AR(1)).
@@ -4142,11 +4142,21 @@ class GPModel(object):
 
                     - "vecchia":
 
-                        A Vecchia approximation; see Sigrist (2022, JMLR for more details)
+                        A Vecchia approximation; see Sigrist (2022, JMLR) for more details
 
                     - "tapering":
 
                         The covariance function is multiplied by a compactly supported Wendland correlation function
+
+                    - "fitc":
+
+                        Fully Independent Training Conditional approximation aka modified predictive process
+                        approximation; see Gyger, Furrer, and Sigrist (2024) for more details
+
+                    - "full_scale_tapering":
+
+                        A full scale approximation combining an inducing point / predictive process approximation with
+                        tapering on the residual process; see Gyger, Furrer, and Sigrist (2024) for more details
 
             cov_fct_taper_range : float, optional (default=1.)
                 Range parameter of the Wendland covariance function and Wendland correlation taper function.
@@ -4771,16 +4781,20 @@ class GPModel(object):
                     Seed number to generate random vectors (e.g., Rademacher)
                 - piv_chol_rank: integer, optional (default = 50)
                     Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms
-                - cg_preconditioner_type: string, optional (default = "Sigma_inv_plus_BtWB" for non-Gaussian likelihoods and a Vecchia-Laplace approximation)
+                - cg_preconditioner_type: string, optional
                     Type of preconditioner used for conjugate gradient algorithms.
-                    Options for non-Gaussian likelihoods and a Vecchia-Laplace approximation:
 
-                        - "piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting
-                            (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma
-                            and B^-1 * D * B^-T approx= Sigma
+                        - Options for non-Gaussian likelihoods and gp_approx = "vecchia":
 
-                        - "Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting
-                            (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
+                            - "piv_chol_on_Sigma" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
+
+                            - "Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
+
+                        - Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering":
+
+                            - "predictive_process_plus_diagonal" (= default): predictive process preconditiioner
+
+                            - "none": no preconditioner
 
         fixed_effects : numpy 1-D array or None, optional (default=None)
             Additional fixed effects component of location parameter for observed data.
@@ -5006,16 +5020,20 @@ class GPModel(object):
                     Seed number to generate random vectors (e.g., Rademacher)
                 - piv_chol_rank: integer, optional (default = 50)
                     Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms
-                - cg_preconditioner_type: string, optional (default = "Sigma_inv_plus_BtWB" for non-Gaussian likelihoods and a Vecchia-Laplace approximation)
+                - cg_preconditioner_type: string, optional
                     Type of preconditioner used for conjugate gradient algorithms.
-                    Options for non-Gaussian likelihoods and a Vecchia-Laplace approximation:
 
-                        - "piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting
-                            (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma
-                            and B^-1 * D * B^-T approx= Sigma
+                        - Options for non-Gaussian likelihoods and gp_approx = "vecchia":
 
-                        - "Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting
-                            (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
+                            - "piv_chol_on_Sigma" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
+
+                            - "Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
+
+                        - Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering":
+
+                            - "predictive_process_plus_diagonal" (= default): predictive process preconditiioner
+
+                            - "none": no preconditioner
 
         Example
         -------

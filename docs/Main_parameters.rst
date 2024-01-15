@@ -125,17 +125,17 @@ Model specification parameters
 
    -  Currently supported likelihoods:
 
-      -  ``gaussian``: Gaussian likelihood
+      -  ``gaussian`` : Gaussian likelihood
 
-      -  ``bernoulli_probit``: Bernoulli likelihood with a probit link function. Aliases: ``binary``, ``binary_probit``
+      -  ``bernoulli_probit`` : Bernoulli likelihood with a probit link function. Aliases: ``binary``, ``binary_probit``
 
-      -  ``bernoulli_probit``: Bernoulli likelihood with a logit link function. Aliases: ``binary``, ``binary_logit``
+      -  ``bernoulli_probit`` : Bernoulli likelihood with a logit link function. Aliases: ``binary``, ``binary_logit``
 
-      -  ``poisson``: Poisson likelihood with log link function
+      -  ``poisson`` : Poisson likelihood with log link function
 
-      -  ``gamma``: Gamma likelihood with log link function
+      -  ``gamma`` : Gamma likelihood with log link function
 
-      -  ``negative_binomial``: Negative binomial likelihood with log link function
+      -  ``negative_binomial`` : Negative binomial likelihood with log link function
 
 -  ``group_data`` : two dimensional array / matrix of doubles or strings, optional (default = None)
 
@@ -161,19 +161,17 @@ Model specification parameters
 
    -  Covariance function for the Gaussian process. Available options: 
 
-      - ``exponential``: Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007)
+      - ``exponential`` : Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007)
 
-      - ``gaussian``: Gaussian, aka squared expnential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
+      - ``gaussian`` : Gaussian, aka squared expnential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
 
-      - ``matern``: Matern covariance function with the smoothness specified by the ``cov_fct_shape`` parameter
-           (using the parametrization of Rasmussen and Williams, 2006)
+      - ``matern`` : Matern covariance function with the smoothness specified by the ``cov_fct_shape`` parameter (using the parametrization of Rasmussen and Williams, 2006)
 
-      - ``powered_exponential``: Powered exponential covariance function with the exponent specified by ``cov_fct_shape`` parameter
-           (using the parametrization of Diggle and Ribeiro, 2007)
+      - ``powered_exponential`` : Powered exponential covariance function with the exponent specified by ``cov_fct_shape`` parameter (using the parametrization of Diggle and Ribeiro, 2007)
 
-      - ``wendland``: Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
+      - ``wendland`` : Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
 
-      - ``space_time_separable_matern_ar1``: Separable spatio-temporal covariance function with a Matern  covariance for the spatial domain and an exponential covariance for the temporal domain ( = AR(1))
+      - ``space_time_separable_matern_ar1`` : Separable spatio-temporal covariance function with a Matern  covariance for the spatial domain and an exponential covariance for the temporal domain ( = AR(1))
 
          - Note that the first column in ``gp_coords`` must correspond to the time dimension
 
@@ -190,6 +188,10 @@ Model specification parameters
       - ``vecchia`` : A Vecchia approximation; see Sigrist (2022, JMLR for more details)
 
       - ``tapering`` : The covariance function is multiplied by a compactly supported Wendland correlation function
+
+      - ``fitc``: Fully Independent Training Conditional approximation aka modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024) for more details
+
+      - ``full_scale_tapering``: A full scale approximation combining an inducing point / predictive process approximation with tapering on the residual process; see Gyger, Furrer, and Sigrist (2024) for more details
 
 -  ``cov_fct_taper_range`` : double, (default = 1.)
 

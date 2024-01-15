@@ -78,9 +78,14 @@ This parameter is irrelevant for some covariance functions such as the exponenti
 for Gaussian processes. Available options: 
 \itemize{
 \item{"none": No approximation }
-\item{"vecchia": A Vecchia approximation; see Sigrist (2022, JMLR for more details) }
+\item{"vecchia": A Vecchia approximation; see Sigrist (2022, JMLR) for more details }
 \item{"tapering": The covariance function is multiplied by 
 a compactly supported Wendland correlation function }
+\item{"fitc": Fully Independent Training Conditional approximation aka 
+modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024) for more details }
+\item{"full_scale_tapering": A full scale approximation combining an 
+inducing point / predictive process approximation with tapering on the residual process; 
+see Gyger, Furrer, and Sigrist (2024) for more details }
 }}
 
 \item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter 

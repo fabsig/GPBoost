@@ -23,7 +23,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                          cg_max_num_it = 1000,
                                          cg_max_num_it_tridiag = 1000,
                                          num_rand_vec_trace = 1000,
-                                         reuse_rand_vec_trace = T)
+                                         reuse_rand_vec_trace = TRUE)
   DEFAULT_OPTIM_PARAMS_STD_iterative <- c(DEFAULT_OPTIM_PARAMS_iterative, list(std_dev = TRUE))
   
   # Function that simulates uniform random variables
