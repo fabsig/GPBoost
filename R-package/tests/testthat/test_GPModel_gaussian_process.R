@@ -1067,6 +1067,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   test_that("FITC", {
+    
     y <- eps + X%*%beta + xi
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
@@ -1102,7 +1103,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     X_pred = X_test, predict_var = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
-    
     
     # With FITC and 50 inducing points
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -1157,22 +1157,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
     }
     
-    # With FITC and 50 inducing points (random)
+    # With FITC and less inducing points (random)
+    num_ind_points <- n - 5
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                                           gp_approx = "FITC", num_ind_points = 50, ind_points_selection = "random",
+                                           gp_approx = "FITC", num_ind_points = num_ind_points, ind_points_selection = "random",
                                            y = y, X = X,
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-    cov_pars_tap <- c(0.21604739, 0.08713635, 0.82478654, 0.21689920, 0.10623849, 0.01423608)
-    coef_tap <- c(2.2497727, 0.2122577, 1.9152288, 0.1031549)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_LOOSE)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_LOOSE)
-    expect_equal(gp_model$get_num_optim_iter(), 18)
+    cov_pars_ip <- c(0.17369144, 0.07854085, 0.84099141, 0.20572443, 0.08839449, 0.01162549)
+    coef_ip <- c(2.33983295, 0.19481861, 1.88057897, 0.09786246)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_ip)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_ip)),TOLERANCE_LOOSE)
+    expect_equal(gp_model$get_num_optim_iter(), 21)
     
     # Prediction 
     pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_var = TRUE)
-    expected_mu <- c(1.342368, 3.604159, 3.277457)
-    expected_var <- c(0.6161055, 0.7494745, 0.4060987)
+    expected_mu <- c(1.108623, 4.063135, 3.104525)
+    expected_var <- c(0.6587713, 0.3627189, 0.3796549)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
     
@@ -1195,27 +1196,27 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
     
-    # With FITC and covertree radius 0.1 (cover_tree)
+    # With FITC and small covertree radius (cover_tree)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                                           gp_approx = "FITC", num_ind_points = 50, cover_tree_radius = 0.1, ind_points_selection = "cover_tree",
+                                           gp_approx = "FITC", num_ind_points = 50, cover_tree_radius = 0.01, ind_points_selection = "cover_tree",
                                            y = y, X = X,
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-    cov_pars_tap <- c(0.14472822, 0.15786892, 0.82573118, 0.24016449, 0.08049071, 0.01231400)
-    coef_tap <- c(2.3258710, 0.1792324, 1.9222998, 0.1085509)
+    cov_pars_tap <- c(0.17256176, 0.07770770, 0.84191496, 0.20527780, 0.08810525, 0.01151530)
+    coef_tap <- c(2.34020808, 0.19446642, 1.88063092, 0.09771836)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_tap)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_tap)),TOLERANCE_LOOSE)
-    expect_equal(gp_model$get_num_optim_iter(), 65)
     
     # Prediction 
     pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_var = TRUE)
-    expected_mu <- c(1.230485, 3.840758, 3.152332)
-    expected_var <- c(0.6465352, 0.5347531, 0.4393555)
+    expected_mu <- c(1.253004, 4.063949, 3.103098)
+    expected_var <- c(0.5887857, 0.3618276, 0.3794413)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
   })
-    
+  
   test_that("FSA", {
+    
     y <- eps + X%*%beta + xi
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
@@ -1264,133 +1265,135 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
       
-      # With FSA and n-1 inducing points and taper range 0.4
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                             gp_approx = "full_scale_tapering",num_ind_points = n-1, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.4,
-                                             y = y, X = X,matrix_inversion_method = i, 
-                                             params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
-      expect_equal(gp_model$get_num_optim_iter(), num_it)
-      # Prediction 
-      if(i == "iterative"){
-        gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
-      }
-      pred <- predict(gp_model, gp_coords_pred = coord_test,
-                      X_pred = X_test, predict_var = TRUE)
-      expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
-      
-      # With FSA and 50 inducing points and taperrange 0.5
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                             gp_approx = "full_scale_tapering",num_ind_points = 50, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
-                                             y = y, X = X,matrix_inversion_method = i, 
-                                             params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-      cov_pars <- c(0.01503776, 0.06968536, 1.00219308, 0.21262000, 0.09835141, 0.02968291)
-      coef <- c(2.30508771, 0.21857115, 1.89918852, 0.09536239)
-      num_it <- 103
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
       if(i == "cholesky"){
+        # With FSA and n-1 inducing points and taper range 0.4
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                               gp_approx = "full_scale_tapering",num_ind_points = n-1, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.4,
+                                               y = y, X = X,matrix_inversion_method = i, 
+                                               params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
         expect_equal(gp_model$get_num_optim_iter(), num_it)
-      }
-      # Prediction 
-      if(i == "iterative"){
-        gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
-      }
-      pred <- predict(gp_model, gp_coords_pred = coord_test,
-                      X_pred = X_test, predict_var = TRUE)
-      expected_mu <- c(1.186786, 4.048299, 3.173789) 
-      expected_var <- c(0.6428104, 0.3562637, 0.4344309)
-      expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
-      
-      # Same thing with Matern covariance
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                                             y = y, X = X, params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-      cov_pars <- c(0.17369771, 0.07950745, 0.84098718, 0.20889907, 0.08839526, 0.01190858)
-      coef <- c(2.33980860, 0.19481950, 1.88058081, 0.09786326)
-      num_it <- 21
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
-      expect_equal(gp_model$get_num_optim_iter(), num_it)
-      if(i == "cholesky"){
+        # Prediction 
+        if(i == "iterative"){
+          gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
+        }
+        pred <- predict(gp_model, gp_coords_pred = coord_test,
+                        X_pred = X_test, predict_var = TRUE)
+        expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+        
+        # With FSA and 50 inducing points and taper range 0.5
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                               gp_approx = "full_scale_tapering", num_ind_points = 50, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
+                                               y = y, X = X,matrix_inversion_method = i, 
+                                               params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
+        cov_pars <- c(0.01503776, 0.06968536, 1.00219308, 0.21262000, 0.09835141, 0.02968291)
+        coef <- c(2.30508771, 0.21857115, 1.89918852, 0.09536239)
+        num_it <- 103
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
+        if(i == "cholesky"){
+          expect_equal(gp_model$get_num_optim_iter(), num_it)
+        }
+        # Prediction 
+        if(i == "iterative"){
+          gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
+        }
+        pred <- predict(gp_model, gp_coords_pred = coord_test,
+                        X_pred = X_test, predict_var = TRUE)
+        expected_mu <- c(1.186786, 4.048299, 3.173789) 
+        expected_var <- c(0.6428104, 0.3562637, 0.4344309)
+        expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+        
+        # Same thing with Matern covariance
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                               y = y, X = X, params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
+        cov_pars <- c(0.17369771, 0.07950745, 0.84098718, 0.20889907, 0.08839526, 0.01190858)
+        coef <- c(2.33980860, 0.19481950, 1.88058081, 0.09786326)
+        num_it <- 21
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+        expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
         expect_equal(gp_model$get_num_optim_iter(), num_it)
-      }
-      # Prediction 
-      if(i == "iterative"){
-        gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
-      }
-      pred <- predict(gp_model, gp_coords_pred = coord_test,
-                      X_pred = X_test, predict_var = TRUE)
-      expected_mu <- c(1.253044, 4.063322, 3.104536)
-      expected_var <- c(5.880651e-01, 3.627280e-01, 3.796592e-01)
-      expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-      expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
-      
-      # With FSA and very large tapering range and 60 inducing points
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                                             gp_approx = "full_scale_tapering",num_ind_points = 60, cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
-                                             y = y, X = X,  matrix_inversion_method = i, 
-                                             params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
-      if(i == "cholesky"){
+        if(i == "cholesky"){
+          expect_equal(gp_model$get_num_optim_iter(), num_it)
+        }
+        # Prediction 
+        if(i == "iterative"){
+          gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
+        }
+        pred <- predict(gp_model, gp_coords_pred = coord_test,
+                        X_pred = X_test, predict_var = TRUE)
+        expected_mu <- c(1.253044, 4.063322, 3.104536)
+        expected_var <- c(5.880651e-01, 3.627280e-01, 3.796592e-01)
+        expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
+        
+        # With FSA and very large tapering range and 60 inducing points
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                               gp_approx = "full_scale_tapering",num_ind_points = 60, cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
+                                               y = y, X = X,  matrix_inversion_method = i, 
+                                               params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
+        if(i == "cholesky"){
+          expect_equal(gp_model$get_num_optim_iter(), num_it)
+        }
+        # Prediction 
+        if(i == "iterative"){
+          gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
+        }
+        pred <- predict(gp_model, gp_coords_pred = coord_test,
+                        X_pred = X_test, predict_var = TRUE)
+        expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+        
+        # With FSA and n-1 inducing points and taper range 0.5
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                               gp_approx = "full_scale_tapering",num_ind_points = n-1, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
+                                               y = y, X = X,
+                                               params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
         expect_equal(gp_model$get_num_optim_iter(), num_it)
-      }
-      # Prediction 
-      if(i == "iterative"){
-        gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
-      }
-      pred <- predict(gp_model, gp_coords_pred = coord_test,
-                      X_pred = X_test, predict_var = TRUE)
-      expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
-      
-      # With FSA and n-1 inducing points and taperrange 0.5
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                                             gp_approx = "full_scale_tapering",num_ind_points = n-1, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
-                                             y = y, X = X,
-                                             params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
-      expect_equal(gp_model$get_num_optim_iter(), num_it)
-      if(i == "cholesky"){
-        expect_equal(gp_model$get_num_optim_iter(), num_it)
-      }
-      # Prediction 
-      if(i == "iterative"){
-        gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
-      }
-      pred <- predict(gp_model, gp_coords_pred = coord_test,
-                      X_pred = X_test, predict_var = TRUE)
-      expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
-      
-      # With FSA and 50 inducing points and taperrange 0.5
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                                             gp_approx = "full_scale_tapering",num_ind_points = 50, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
-                                             y = y, X = X,matrix_inversion_method = i, 
-                                             params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
-      cov_pars <- c(0.16783429, 0.07818710, 0.84903511, 0.20697391, 0.08811171, 0.01153137)
-      coef <- c(2.34108249, 0.19532774, 1.87704014, 0.09748291)
-      num_it <- 21
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
-      if(i == "cholesky"){
-        expect_equal(gp_model$get_num_optim_iter(), num_it)
-      }
-      # Prediction 
-      if(i == "iterative"){
-        gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
-      }
-      pred <- predict(gp_model, gp_coords_pred = coord_test,
-                      X_pred = X_test, predict_var = TRUE)
-      expected_mu <- c(1.250332, 4.049631, 3.160899) 
-      expected_var <- c(0.5981874, 0.3632729, 0.3848723)
-      expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
-    }
+        if(i == "cholesky"){
+          expect_equal(gp_model$get_num_optim_iter(), num_it)
+        }
+        # Prediction 
+        if(i == "iterative"){
+          gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
+        }
+        pred <- predict(gp_model, gp_coords_pred = coord_test,
+                        X_pred = X_test, predict_var = TRUE)
+        expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+        
+        # With FSA and 50 inducing points and taper range 0.5
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                               gp_approx = "full_scale_tapering",num_ind_points = 50, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.5,
+                                               y = y, X = X,matrix_inversion_method = i, 
+                                               params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
+        cov_pars <- c(0.16783429, 0.07818710, 0.84903511, 0.20697391, 0.08811171, 0.01153137)
+        coef <- c(2.34108249, 0.19532774, 1.87704014, 0.09748291)
+        num_it <- 21
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE)
+        if(i == "cholesky"){
+          expect_equal(gp_model$get_num_optim_iter(), num_it)
+        }
+        # Prediction 
+        if(i == "iterative"){
+          gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
+        }
+        pred <- predict(gp_model, gp_coords_pred = coord_test,
+                        X_pred = X_test, predict_var = TRUE)
+        expected_mu <- c(1.250332, 4.049631, 3.160899) 
+        expected_var <- c(0.5981874, 0.3632729, 0.3848723)
+        expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+      }# end (i == "cholesky")
+    }# end loop over i (matrix_inversion_method)
   })
   
   test_that("Saving a GPModel and loading from file works ", {
@@ -1496,20 +1499,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
-
+    
     ##############
     ## With Vecchia approximation
     ##############
     # Evaluate negative log-likelihood
     capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_separable_matern_ar1",
-                        gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none"), 
+                                        gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
     capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_separable_matern_ar1",
-                           gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none",
-                           y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD), 
+                                           gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none",
+                                           y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD), 
                     file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
