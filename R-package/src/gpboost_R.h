@@ -633,6 +633,8 @@ GPBOOST_C_EXPORT SEXP LGBM_BoosterDumpModel_R(
 * \param num_neighbors The number of neighbors used in the Vecchia approximation
 * \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
 * \param num_ind_points Number of inducing points / knots for, e.g., a predictive process approximation
+* \param cover_tree_radius Radius (= "spatial resolution") for the cover tree algorithm
+* \param ind_points_selection Method for choosing inducing points
 * \param likelihood Likelihood function for the observed response variable
 * \param matrix_inversion_method Method which is used for matrix inversion
 * \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
@@ -660,6 +662,8 @@ GPBOOST_C_EXPORT SEXP GPB_CreateREModel_R(
 	SEXP num_neighbors,
 	SEXP vecchia_ordering,
 	SEXP num_ind_points,
+	SEXP cover_tree_radius,
+	SEXP ind_points_selection,
 	SEXP likelihood,
 	SEXP matrix_inversion_method,
 	SEXP seed

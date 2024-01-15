@@ -10,7 +10,8 @@ fitGPModel(likelihood = "gaussian", group_data = NULL,
   gp_rand_coef_data = NULL, cov_function = "exponential",
   cov_fct_shape = 0.5, gp_approx = "none", cov_fct_taper_range = 1,
   cov_fct_taper_shape = 0, num_neighbors = 20L,
-  vecchia_ordering = "random", num_ind_points = 500L,
+  vecchia_ordering = "random", ind_points_selection = "kmeans++",
+  num_ind_points = 500L, cover_tree_radius = 1,
   matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
   free_raw_data = FALSE, y, X = NULL, params = list(),
   vecchia_approx = NULL, vecchia_pred_type = NULL,
@@ -105,8 +106,19 @@ the Vecchia approximation. Available options:
 \item{"random": a random ordering }
 }}
 
+\item{ind_points_selection}{A \code{string} specifying the method for choosing inducing points
+Available options:
+\itemize{
+\item{"kmeans++: the k-means++ algorithm }
+\item{"cover_tree": the cover tree algorithm }
+\item{"random": random selection from data points }
+}}
+
 \item{num_ind_points}{An \code{integer} specifying the number of inducing 
 points / knots for, e.g., a predictive process approximation}
+
+\item{cover_tree_radius}{A \code{numeric} specifying the radius (= "spatial resolution") 
+for the cover tree algorithm}
 
 \item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices. 
 Available options:

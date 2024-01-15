@@ -39,6 +39,8 @@ namespace GPBoost {
 		int num_neighbors,
 		const char* vecchia_ordering,
 		int num_ind_points,
+		double cover_tree_radius,
+		const char* ind_points_selection,
 		const char* likelihood,
 		const char* matrix_inversion_method,
 		int seed) {
@@ -55,7 +57,7 @@ namespace GPBoost {
 			matrix_inversion_method_str = std::string(matrix_inversion_method);
 		}
 		bool use_sparse_matrices = (num_gp + num_gp_rand_coef) == 0 || (COMPACT_SUPPORT_COVS_.find(cov_fct_str) != COMPACT_SUPPORT_COVS_.end()) || 
-			gp_approx_str == "tapering";
+			gp_approx_str == "tapering" || gp_approx_str == "full_scale_tapering";
 		if (use_sparse_matrices) {
 			if (matrix_inversion_method_str == "iterative") {
 				matrix_format_ = "sp_mat_rm_t";
@@ -90,6 +92,8 @@ namespace GPBoost {
 				num_neighbors, 
 				vecchia_ordering,
 				num_ind_points,
+				cover_tree_radius,
+				ind_points_selection,
 				likelihood,
 				matrix_inversion_method,
 				seed));
@@ -118,6 +122,8 @@ namespace GPBoost {
 				num_neighbors,
 				vecchia_ordering,
 				num_ind_points,
+				cover_tree_radius,
+				ind_points_selection,
 				likelihood,
 				matrix_inversion_method,
 				seed));
@@ -146,6 +152,8 @@ namespace GPBoost {
 				num_neighbors,
 				vecchia_ordering,
 				num_ind_points,
+				cover_tree_radius,
+				ind_points_selection,
 				likelihood,
 				matrix_inversion_method,
 				seed));

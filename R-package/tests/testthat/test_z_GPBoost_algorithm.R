@@ -6,7 +6,15 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
   TOLERANCE <- 1E-3
   TOLERANCE2 <- 1E-2
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov="fisher_scoring", delta_rel_conv=1E-6)
-  
+  DEFAULT_OPTIM_PARAMS_iterative <- list(maxit = 10,
+                                         delta_rel_conv = 1e-2,
+                                         optimizer_cov = "gradient_descent",
+                                         cg_delta_conv = 1e-8,
+                                         cg_preconditioner_type = "predictive_process_plus_diagonal",
+                                         cg_max_num_it = 1000,
+                                         cg_max_num_it_tridiag = 1000,
+                                         num_rand_vec_trace = 1000,
+                                         reuse_rand_vec_trace = T)
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
     mod_lcg <- 134456 # modulus for linear congruential generator (random0 used)
@@ -814,6 +822,113 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4893557, -0.7984212, -0.5994199, -0.2511335))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(4.650092, 4.574518, 4.618443, 4.409184))),TOLERANCE)
     })
+    
+    test_that("GPBoost algorithm with FITC", {
+      ntrain <- ntest <- 100
+      n <- ntrain + ntest
+      # Simulate fixed effects
+      sim_data <- sim_friedman3(n=n, n_irrelevant=5)
+      f <- sim_data$f
+      X <- sim_data$X
+      # Simulate grouped random effects
+      sigma2_1 <- 1 # marginal variance of GP
+      rho <- 0.1 # range parameter
+      sigma2 <- 0.1 # error variance
+      d <- 2 # dimension of GP locations
+      coords <- matrix(sim_rand_unif(n=n*d, init_c=0.63), ncol=d)
+      D <- as.matrix(dist(coords))
+      Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
+      C <- t(chol(Sigma))
+      b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.864))
+      eps <- as.vector(C %*% b_1)
+      # Error term
+      xi <- sqrt(sigma2) * qnorm(sim_rand_unif(n=n, init_c=0.36))
+      # Observed data
+      y <- f + eps + xi
+      # Split in training and test data
+      y_train <- y[1:ntrain]
+      X_train <- X[1:ntrain,]
+      coords_train <- coords[1:ntrain,]
+      dtrain <- gpb.Dataset(data = X_train, label = y_train)
+      y_test <- y[1:ntest+ntrain]
+      X_test <- X[1:ntest+ntrain,]
+      f_test <- f[1:ntest+ntrain]
+      coords_test <- coords[1:ntest+ntrain,]
+      dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+      valids <- list(test = dtest)
+      
+      capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
+                                          gp_approx = "FITC",num_ind_points = 50), file='NUL')
+      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="gradient_descent"))
+      bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
+                       learning_rate = 0.05, max_depth = 6,
+                       min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.009778865, 1.142124739, 0.072746954))),TOLERANCE)
+      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
+      expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-1.09009608, -1.02661256, -1.06180549, -0.04424235))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.3742586, 0.6970324, 0.5897960, 1.1453712))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(4.255524, 4.807404, 4.659824, 4.499290))),TOLERANCE)
+    })  
+    
+    test_that("GPBoost algorithm with FSA", {
+      ntrain <- ntest <- 100
+      n <- ntrain + ntest
+      # Simulate fixed effects
+      sim_data <- sim_friedman3(n=n, n_irrelevant=5)
+      f <- sim_data$f
+      X <- sim_data$X
+      # Simulate grouped random effects
+      sigma2_1 <- 1 # marginal variance of GP
+      rho <- 0.1 # range parameter
+      sigma2 <- 0.1 # error variance
+      d <- 2 # dimension of GP locations
+      coords <- matrix(sim_rand_unif(n=n*d, init_c=0.63), ncol=d)
+      D <- as.matrix(dist(coords))
+      Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
+      C <- t(chol(Sigma))
+      b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.864))
+      eps <- as.vector(C %*% b_1)
+      # Error term
+      xi <- sqrt(sigma2) * qnorm(sim_rand_unif(n=n, init_c=0.36))
+      # Observed data
+      y <- f + eps + xi
+      # Split in training and test data
+      y_train <- y[1:ntrain]
+      X_train <- X[1:ntrain,]
+      coords_train <- coords[1:ntrain,]
+      dtrain <- gpb.Dataset(data = X_train, label = y_train)
+      y_test <- y[1:ntest+ntrain]
+      X_test <- X[1:ntest+ntrain,]
+      f_test <- f[1:ntest+ntrain]
+      coords_test <- coords[1:ntest+ntrain,]
+      dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+      valids <- list(test = dtest)
+      
+      vec_chol_or_iterative <- c("cholesky","iterative")
+      for (i in vec_chol_or_iterative) {
+        if(i == "iterative"){
+          DEFAULT_OPTIM_PARAMS <- DEFAULT_OPTIM_PARAMS_iterative
+        } else{
+          DEFAULT_OPTIM_PARAMS <- list(maxit=10, optimizer_cov="gradient_descent", delta_rel_conv = 1e-2)
+        }
+        
+        capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
+                                            gp_approx = "full_scale_tapering",num_ind_points = 50, cov_fct_taper_shape = 2, 
+                                            cov_fct_taper_range = 0.5, matrix_inversion_method = i), file='NUL')
+        gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+        bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
+                         learning_rate = 0.05, max_depth = 6,
+                         min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.49224227, 0.69948047, 0.08842094))),TOLERANCE2)
+        if(i == "iterative"){
+          gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
+        }
+        pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
+        expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4672591, -0.8086326, -0.6178553, -0.1621476))),TOLERANCE2)
+        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.7547910, 0.8706967, 0.8887207, 1.1682794))),TOLERANCE2)
+        expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(4.683135, 4.608892, 4.571550, 4.406394))),TOLERANCE2)
+      }
+    })  
     
     test_that("GPBoost algorithm with Nesterov acceleration for grouped random effects model ", {
       

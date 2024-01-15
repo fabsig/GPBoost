@@ -1075,6 +1075,35 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Subtract the predicitive process covariance matrix to get the residual covariance matrix in the full scale approximation with tapering
+		* \param sigma_ip_Ihalf_sigma_cross_cov Matrix (sigma_{IP}^{-0.5}Sigma_{cros_cov}^T
+		*/
+		void SubtractPredProcFromSigmaForResidInFullScale(const den_mat_t& sigma_ip_Ihalf_sigma_cross_cov,
+			const bool only_triangular) {
+			CHECK(sigma_defined_);
+			SubtractInnerProdFromMat<T_mat>(sigma_, sigma_ip_Ihalf_sigma_cross_cov, only_triangular);
+		}
+
+		/*!
+		* \brief Subtract matrix to get the residual covariance matrix in the full scale approximation with tapering
+		* \param M Matrix sigma_cross_cov * sigma_ip^-1 * sigma_cross_cov
+		*/
+		void SubtractMatFromSigmaForResidInFullScale(const den_mat_t& M) {
+			CHECK(sigma_defined_);
+			SubtractMatFromMat<T_mat>(sigma_, M);
+		}
+
+		/*!
+		* \brief Add a constant to the diagonal of the covariamce matrix
+		* \param c Constant which is added
+		*/
+		void AddConstantToDiagonalSigma(const double c) {
+			CHECK(sigma_defined_);
+			CHECK(c >= 0.);
+			sigma_.diagonal().array() += c;
+		}
+
+		/*!
 		* \brief Multiply covariance with taper function (only relevant for tapered covariance functions)
 		*/
 		void ApplyTaper() {
@@ -1091,7 +1120,7 @@ namespace GPBoost {
 		* \param sigma Covariance matrix to which tapering is applied
 		*/
 		void ApplyTaper(const T_mat& dist,
-			T_mat sigma) {
+			T_mat& sigma) {
 			CHECK(apply_tapering_);
 			cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(dist, sigma, false);
 		}
