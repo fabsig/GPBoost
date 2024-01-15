@@ -5,6 +5,7 @@ Version: ~~VERSION~~
 Date: ~~DATE~~
 Authors@R: c(
 	person("Fabio", "Sigrist", email = "fabiosigrist@gmail.com", role = c("aut", "cre")),
+    person("Tim", "Gyger", role = c("aut")),
     person("Pascal", "Kuendig", role = c("aut")),
 	person("Benoit", "Jacob", role = c("cph")),
 	person("Gael", "Guennebaud", role = c("cph")),

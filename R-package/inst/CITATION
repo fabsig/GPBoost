@@ -5,8 +5,9 @@ bibentry(bibtype="Misc",
    mheader = "Please cite gpboost including its version as ",
    title = "gpboost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models",
     author = c(
-          person("Fabio Sigrist"),           
-	       person("Pascal Kuendig")
+          person("Fabio Sigrist"),
+          person("Tim Gyger"),
+          person("Pascal Kuendig")
 	       ),
 	       note = NOTE,
     year = 2021,
