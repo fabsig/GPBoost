@@ -823,7 +823,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(4.650092, 4.574518, 4.618443, 4.409184))),TOLERANCE)
     })
     
-    test_that("GPBoost algorithm with FITC", {
+    test_that("GPBoost algorithm with fitc", {
       ntrain <- ntest <- 100
       n <- ntrain + ntest
       # Simulate fixed effects
@@ -858,7 +858,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       valids <- list(test = dtest)
       
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
-                                          gp_approx = "FITC",num_ind_points = 50), file='NUL')
+                                          gp_approx = "fitc",num_ind_points = 50), file='NUL')
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="gradient_descent"))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,

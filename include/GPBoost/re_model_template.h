@@ -216,7 +216,7 @@ namespace GPBoost {
 						}
 					}
 				}//end if gp_approx_ == "vecchia"
-				else if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+				else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 					CHECK(num_ind_points > 0);
 					num_ind_points_ = num_ind_points;
 					CHECK(cover_tree_radius > 0);
@@ -258,7 +258,7 @@ namespace GPBoost {
 					z_outer_z_obs_neighbors_.insert({ cluster_i, z_outer_z_obs_neighbors_cluster_i });
 					re_comps_.insert({ cluster_i, re_comps_cluster_i });
 				}//end gp_approx_ == "vecchia"
-				else if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+				else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
@@ -332,7 +332,7 @@ namespace GPBoost {
 			//Make adaptions in re_comps_ for special options when switching between Gaussian and non-Gaussian likelihoods
 			if (gauss_likelihood_before && !gauss_likelihood_) {
 				if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
-					CHECK(gp_approx_ != "FITC" && gp_approx_ != "full_scale_tapering");
+					CHECK(gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering");
 					for (const auto& cluster_i : unique_clusters_) {
 						re_comps_[cluster_i][0]->DropZ();
 					}
@@ -343,7 +343,7 @@ namespace GPBoost {
 					Log::REFatal("Cannot change the likelihood to 'gaussian' when using a Vecchia approximation and having duplicate coordinates");
 				}
 				if (only_one_GP_calculations_on_RE_scale_before || only_one_grouped_RE_calculations_on_RE_scale_before) {
-					CHECK(gp_approx_ != "FITC" && gp_approx_ != "full_scale_tapering");
+					CHECK(gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering");
 					for (const auto& cluster_i : unique_clusters_) {
 						re_comps_[cluster_i][0]->AddZ();
 					}
@@ -871,7 +871,7 @@ namespace GPBoost {
 							AvoidTooLargeLearningRatesCovAuxPars(nat_grad, it);
 						}
 						else if (optimizer_cov_pars_ == "fisher_scoring") {//Fisher scoring
-							if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+							if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 								Log::REFatal("Fisher scoring is not supported for the GP approximation '%s' ", gp_approx_.c_str());
 							}
 							// We don't profile out sigma2 (=don't use closed-form expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
@@ -1171,7 +1171,7 @@ namespace GPBoost {
 						}
 					}//end gp_approx_ == "vecchia"
 					else {//not gp_approx_ == "vecchia"
-						if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 							if (include_error_var) {
 								grad_cov_aux_par[0] += -1. * ((double)(y_[cluster_i].transpose() * y_aux_[cluster_i])) / cov_pars[0] / 2. + num_data_per_cluster_[cluster_i] / 2.;
 							}
@@ -1198,7 +1198,7 @@ namespace GPBoost {
 									chol_fact_resid_inv.resize(0, 0);
 								}
 								else if (matrix_inversion_method_ == "iterative") {
-									if (gp_approx_ == "FITC") {
+									if (gp_approx_ == "fitc") {
 										Log::REFatal("The iterative methods are not implemented for Predictive Processes. Please use Cholesky.");
 									}
 									// P^-1 * sample vectors
@@ -1306,7 +1306,7 @@ namespace GPBoost {
 										}
 										grad_cov_aux_par[first_cov_par + ind_par_[j] - 1 + ipar] -= 0.5 * y_aux_[cluster_i].dot((*sigma_resid_grad) * y_aux_[cluster_i]) / cov_pars[0];
 									}
-									else { // FITC
+									else { // fitc
 										// Derivative of diagonal part
 										vec_t FITC_Diag_grad = vec_t::Zero(num_data_per_cluster_[cluster_i]);
 										FITC_Diag_grad = FITC_Diag_grad.array() + sigma_ip_stable_grad.coeffRef(0, 0);
@@ -1396,7 +1396,7 @@ namespace GPBoost {
 									}
 								}
 							}//end not only_grouped_REs_use_woodbury_identity_
-						} //end not (GP_approx_ == "FITC" || GP_approx_ == "full_scale_tapering")
+						} //end not (GP_approx_ == "fitc" || GP_approx_ == "full_scale_tapering")
 					}//end not gp_approx_ == "vecchia"
 				}// end loop over clusters
 			}//end gauss_likelihood_
@@ -1722,7 +1722,7 @@ namespace GPBoost {
 					log_det_Psi_ -= D_inv_[cluster_i].diagonal().array().log().sum();
 				}
 				else {
-					if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 						if (matrix_inversion_method_ == "cholesky") {//Cholesky
 							log_det_Psi_ -= 2. * (((den_mat_t)chol_fact_sigma_ip_[cluster_i].matrixL()).diagonal().array().log().sum());
 							log_det_Psi_ += 2. * (((den_mat_t)chol_fact_sigma_woodbury_[cluster_i].matrixL()).diagonal().array().log().sum());
@@ -1785,7 +1785,7 @@ namespace GPBoost {
 						else {
 							Log::REFatal("Matrix inversion method '%s' is not supported.", matrix_inversion_method_.c_str());
 						}
-					}//end gp_approx_ == "FITC" or "full_scale_tapering"
+					}//end gp_approx_ == "fitc" or "full_scale_tapering"
 					else {
 						if (only_grouped_REs_use_woodbury_identity_) {
 							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {
@@ -2198,7 +2198,7 @@ namespace GPBoost {
 							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B_cluster_i, D_sqrt, B_inv_D_sqrt, false);
 							psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
 						}//end gp_approx_ == "vecchia"
-						else if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+						else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 							psi = T_mat(num_REs_pred, num_REs_pred);
 							if (gauss_likelihood_ && predict_response) {
 								psi.setIdentity();//nugget effect
@@ -2242,7 +2242,7 @@ namespace GPBoost {
 									psi += FITC_Diag.asDiagonal();
 								}
 							}
-						}//end gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering"
+						}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
 						else if (gp_approx_ == "none") {
 							CreateREComponents(num_data_pred, data_indices_per_cluster_pred,
 								cluster_i, re_group_levels_pred, num_data_per_cluster_pred,
@@ -2526,7 +2526,7 @@ namespace GPBoost {
 						}//end not gauss_likelihood_
 					}//end gp_approx_ == "vecchia"
 					else {// not gp_approx_ == "vecchia"
-						if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 							CalcPredPPFSA(cluster_i, num_data_per_cluster_pred, num_data_per_cluster_, gp_coords_mat_pred, predict_cov_mat, 
 								predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id, nsim_var_pred_, cg_delta_conv_pred_);
 						}
@@ -3027,7 +3027,7 @@ namespace GPBoost {
 				for (int j = 0; j < num_comps_total_; ++j) {
 					int num_par_j = ind_par_[j + 1] - ind_par_[j];
 					vec_t pars = vec_t(num_par_j);
-					if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 						re_comps_ip_[unique_clusters_[0]][j]->FindInitCovPar(rng_, pars, init_marg_var);
 					}
 					else {
@@ -3226,7 +3226,7 @@ namespace GPBoost {
 		/*! \brief Type of GP-approximation for handling large data */
 		string_t gp_approx_ = "none";
 		/*! \brief List of supported optimizers for covariance parameters */
-		const std::set<string_t> SUPPORTED_GP_APPROX_{ "none", "vecchia", "tapering", "FITC", "full_scale_tapering"};
+		const std::set<string_t> SUPPORTED_GP_APPROX_{ "none", "vecchia", "tapering", "fitc", "full_scale_tapering"};
 
 		// RANDOM EFFECT / GP COMPONENTS
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components */
@@ -3841,7 +3841,7 @@ namespace GPBoost {
 		*/
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
 		void CalcPsiInv(T_mat& psi_inv, data_size_t cluster_i, bool only_at_non_zeros_of_psi) {
-			if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+			if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				Log::REFatal("'CalcPsiInv': no implemented for approximation '%s' ", gp_approx_.c_str());
 			}
 			if (only_grouped_REs_use_woodbury_identity_) {
@@ -3895,7 +3895,7 @@ namespace GPBoost {
 		}// end CalcPsiInv for sparse matrices
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
 		void CalcPsiInv(den_mat_t& psi_inv, data_size_t cluster_i, bool) {
-			if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+			if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				Log::REFatal("'CalcPsiInv': no implemented for approximation '%s' ", gp_approx_.c_str());
 			}
 			if (only_grouped_REs_use_woodbury_identity_) {//typically currently not called as only_grouped_REs_use_woodbury_identity_ is only true for grouped REs only i.e. sparse matrices
@@ -3922,7 +3922,7 @@ namespace GPBoost {
 		* \param[out] XT_psi_inv_X X^TPsi^(-1)X
 		*/
 		void CalcXTPsiInvX(const den_mat_t& X, den_mat_t& XT_psi_inv_X) {
-			if (num_clusters_ == 1 && (gp_approx_ != "vecchia" || vecchia_ordering_ == "none") && gp_approx_ != "full_scale_tapering" && gp_approx_ != "FITC") {//only one cluster / idependent GP realization
+			if (num_clusters_ == 1 && (gp_approx_ != "vecchia" || vecchia_ordering_ == "none") && gp_approx_ != "full_scale_tapering" && gp_approx_ != "fitc") {//only one cluster / idependent GP realization
 				if (gp_approx_ == "vecchia") {
 					den_mat_t BX = B_[unique_clusters_[0]] * X;
 					XT_psi_inv_X = BX.transpose() * D_inv_[unique_clusters_[0]] * BX;
@@ -3955,10 +3955,10 @@ namespace GPBoost {
 						BX = B_[cluster_i] * X(data_indices_per_cluster_[cluster_i], Eigen::all);
 						XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
 					}
-					else if (gp_approx_ == "full_scale_tapering" || gp_approx_ == "FITC") {
+					else if (gp_approx_ == "full_scale_tapering" || gp_approx_ == "fitc") {
 						std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
 						if (matrix_inversion_method_ == "cholesky") {
-							if (gp_approx_ == "FITC") {
+							if (gp_approx_ == "fitc") {
 								den_mat_t cross_covT_X = (*cross_cov).transpose() * (FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * X);
 								den_mat_t sigma_woodbury_I_cross_covT_X = chol_fact_sigma_woodbury_[cluster_i].solve(cross_covT_X);
 								cross_covT_X.resize(0, 0);
@@ -4150,7 +4150,7 @@ namespace GPBoost {
 				ind_par_.push_back(0);
 			}
 			//Add indices of parameters of individual components in joint parameter vector
-			if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+			if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				for (int j = 0; j < (int)re_comps_ip_[unique_clusters_[0]].size(); ++j) {
 					ind_par_.push_back(ind_par_.back() + re_comps_ip_[unique_clusters_[0]][j]->NumCovPar());//end points of parameter indices of components
 					num_cov_par_ += re_comps_ip_[unique_clusters_[0]][j]->NumCovPar();
@@ -4284,7 +4284,7 @@ namespace GPBoost {
 		* \brief Initialize identity matrices required for Gaussian data
 		*/
 		void InitializeIdentityMatricesForGaussianData() {
-			if (gauss_likelihood_ && gp_approx_ != "vecchia" && gp_approx_ != "FITC" && gp_approx_ != "full_scale_tapering") {
+			if (gauss_likelihood_ && gp_approx_ != "vecchia" && gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering") {
 				for (const auto& cluster_i : unique_clusters_) {
 					ConstructI(cluster_i);//Idendity matrices needed for computing inverses of covariance matrices used in gradient descent for Gaussian data
 				}
@@ -4343,7 +4343,7 @@ namespace GPBoost {
 				CHECK(num_gp_total_ == 0);
 				CHECK(num_comps_total_ == num_re_group_total_);
 			}
-			if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+			if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				if (!gauss_likelihood_) {
 					Log::REFatal("Approximation '%s' is currently not supported for non-Gaussian likelihoods ", gp_approx_.c_str());
 				}
@@ -4504,7 +4504,7 @@ namespace GPBoost {
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 			std::vector<std::shared_ptr<RECompGP<T_mat>>>& re_comps_resid_cluster_i) {
-			if (gp_approx_ == "FITC") {
+			if (gp_approx_ == "fitc") {
 				if (num_data_per_cluster_[cluster_i] < num_ind_points_) {
 					Log::REFatal("Cannot have more inducing points than data points for '%s' approximation ", gp_approx_.c_str());
 				}
@@ -4578,7 +4578,7 @@ namespace GPBoost {
 			for (const auto& cluster_i : unique_clusters_) {
 				for (int j = 0; j < num_comps_total_; ++j) {
 					const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
-					if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 						re_comps_ip_[cluster_i][j]->SetCovPars(pars);
 						re_comps_cross_cov_[cluster_i][j]->SetCovPars(pars);
 						if (gp_approx_ == "full_scale_tapering") {
@@ -4626,7 +4626,7 @@ namespace GPBoost {
 			for (int j = 0; j < num_comps_total_; ++j) {
 				const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 				vec_t pars_trans = pars;
-				if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 					if (gauss_likelihood_) {
 						re_comps_ip_[unique_clusters_[0]][j]->TransformCovPars(cov_pars[0], pars, pars_trans);
 					}
@@ -4661,7 +4661,7 @@ namespace GPBoost {
 			for (int j = 0; j < num_comps_total_; ++j) {
 				const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 				vec_t pars_orig = pars;
-				if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 					if (gauss_likelihood_) {
 						re_comps_ip_[unique_clusters_[0]][j]->TransformBackCovPars(cov_pars[0], pars, pars_orig);
 					}
@@ -4794,7 +4794,7 @@ namespace GPBoost {
 		void CalcSigmaComps() {
 			for (const auto& cluster_i : unique_clusters_) {
 				for (int j = 0; j < num_comps_total_; ++j) {
-					if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 						re_comps_ip_[cluster_i][j]->CalcSigma();
 						re_comps_cross_cov_[cluster_i][j]->CalcSigma();
 						den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][j]->GetZSigmaZt());
@@ -4815,7 +4815,7 @@ namespace GPBoost {
 								re_comps_resid_[cluster_i][j]->AddConstantToDiagonalSigma(1.);//add nugget effect variance
 							}
 						}
-					}//end gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering"
+					}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
 					else {
 						re_comps_[cluster_i][j]->CalcSigma();
 					}
@@ -5703,7 +5703,7 @@ namespace GPBoost {
 				den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][0]->GetZSigmaZt());
 				den_mat_t sigma_woodbury;// sigma_woodbury = sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov or for Preconditioner sigma_ip + cross_cov^T * D^-1 * cross_cov
 				if (matrix_inversion_method_ == "iterative") {
-					if (gp_approx_ == "FITC") {
+					if (gp_approx_ == "fitc") {
 						Log::REFatal("The iterative methods are not implemented for Predictive Processes. Please use Cholesky.");
 					}
 					else if (gp_approx_ == "full_scale_tapering") {
@@ -5723,7 +5723,7 @@ namespace GPBoost {
 					}
 				}
 				else if (matrix_inversion_method_ == "cholesky") {
-					if (gp_approx_ == "FITC") {
+					if (gp_approx_ == "fitc") {
 						den_mat_t sigma_ip_Ihalf_sigma_cross_covT;
 						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i],
 							(*cross_cov).transpose(), sigma_ip_Ihalf_sigma_cross_covT, false);
@@ -5786,7 +5786,7 @@ namespace GPBoost {
 			}
 			else {
 				CalcSigmaComps();
-				if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 					CalcCovFactorsPPFSA();
 				}
 				else {
@@ -5831,10 +5831,10 @@ namespace GPBoost {
 					y_aux_[cluster_i] = B_[cluster_i].transpose() * D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];
 				}
 				else {//not gp_approx_ == "vecchia"
-					if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 						std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
 						if (matrix_inversion_method_ == "cholesky") {
-							if (gp_approx_ == "FITC") {
+							if (gp_approx_ == "fitc") {
 								vec_t cross_covT_y = (*cross_cov).transpose() * (FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * y_[cluster_i]);
 								vec_t sigma_woodbury_I_cross_covT_y = chol_fact_sigma_woodbury_[cluster_i].solve(cross_covT_y);
 								cross_covT_y.resize(0);
@@ -5953,7 +5953,7 @@ namespace GPBoost {
 					}
 				}//end gp_approx_ == "vecchia"
 				else {//not gp_approx_ == "vecchia"
-					if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 						if (!CalcYAux_already_done) {
 							CalcYAux(1.);//TODO Fabio (low prio): two tringular solves could be saved here, see CalcYAux()
 						}
@@ -6154,7 +6154,7 @@ namespace GPBoost {
 						}
 					}//end only_grouped_REs_use_woodbury_identity_
 					else {//not only_grouped_REs_use_woodbury_identity_
-						if (gp_approx_ == "FITC" || gp_approx_ == "full_scale_tapering") {
+						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 							// Hutchinson's Trace estimator
 							// Sample Vectors
 							cg_generator_ = RNG_t(seed_rand_vec_trace_);
@@ -6990,7 +6990,7 @@ namespace GPBoost {
 							re_comps_resid_pp_cluster_i->ApplyTaper(cross_dist_resid_pred, sigma_resid_pred);
 							pred_cov += sigma_resid_pred;
 						}
-						else if (gp_approx_ == "FITC") {
+						else if (gp_approx_ == "fitc") {
 							vec_t diagonal_resid(num_data_pred_cli);
 							diagonal_resid.setZero();
 							diagonal_resid = diagonal_resid.array() + sigma_ip_stable.coeffRef(0, 0);
@@ -7026,7 +7026,7 @@ namespace GPBoost {
 								pred_cov += woodbury_Part;
 							}
 						}
-						else if (gp_approx_ == "FITC") {
+						else if (gp_approx_ == "fitc") {
 							ConvertTo_T_mat_FromDense<T_mat>(cross_cov_pred_ip * chol_fact_sigma_ip_[cluster_i].solve(cross_cov_pred_ip.transpose()), cross_cov_part);
 							pred_cov -= cross_cov_part;
 							ConvertTo_T_mat_FromDense<T_mat>(cross_cov_pred_ip * chol_fact_sigma_woodbury_[cluster_i].solve(cross_cov_pred_ip.transpose()), woodbury_Part);
@@ -7177,7 +7177,7 @@ namespace GPBoost {
 								}
 							}
 						}//end FSA 
-						else if (gp_approx_ == "FITC") { // Predictive Process
+						else if (gp_approx_ == "fitc") { // Predictive Process
 							den_mat_t sigma_ip_inv_cross_cov_pred = chol_fact_sigma_ip_[cluster_i].solve(cross_cov_pred_ip.transpose());
 							den_mat_t Fact_FITC_R = (((*cross_cov).transpose() * FITC_Diag_[cluster_i].cwiseInverse().asDiagonal()) * (*cross_cov)) * sigma_ip_inv_cross_cov_pred;
 							den_mat_t Woodburry_fact;

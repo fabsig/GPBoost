@@ -1066,7 +1066,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 25)
   })
   
-  test_that("FITC", {
+  test_that("fitc", {
     
     y <- eps + X%*%beta + xi
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
@@ -1089,9 +1089,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
     
-    # With FITC and n-1 inducing points
+    # With fitc and n-1 inducing points
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                           gp_approx = "FITC",num_ind_points = n-1, 
+                                           gp_approx = "fitc",num_ind_points = n-1, 
                                            y = y, X = X,
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
@@ -1104,9 +1104,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
     
-    # With FITC and 50 inducing points
+    # With fitc and 50 inducing points
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                           gp_approx = "FITC", num_ind_points = 50, 
+                                           gp_approx = "fitc", num_ind_points = 50, 
                                            y = y, X = X,
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     cov_pars_tap <- c(0.01030298, 0.07650375, 0.99809618, 0.21799976, 0.10787353, 0.03236256)
@@ -1139,12 +1139,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
     
-    # With FITC and n-1 inducing points or very small coverTree radius
+    # With fitc and n-1 inducing points or very small coverTree radius
     # Different Inducing Point Methods
     ind_point_methods <- c("random","kmeans++","cover_tree")
     for (i in ind_point_methods) {
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                                             gp_approx = "FITC",num_ind_points = n-1,cover_tree_radius = 1e-2,
+                                             gp_approx = "fitc",num_ind_points = n-1,cover_tree_radius = 1e-2,
                                              ind_points_selection = i, y = y, X = X,
                                              params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
@@ -1157,10 +1157,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
     }
     
-    # With FITC and less inducing points (random)
+    # With fitc and less inducing points (random)
     num_ind_points <- n - 5
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                                           gp_approx = "FITC", num_ind_points = num_ind_points, ind_points_selection = "random",
+                                           gp_approx = "fitc", num_ind_points = num_ind_points, ind_points_selection = "random",
                                            y = y, X = X,
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     cov_pars_ip <- c(0.17369144, 0.07854085, 0.84099141, 0.20572443, 0.08839449, 0.01162549)
@@ -1177,9 +1177,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
     
-    # With FITC and 50 inducing points (kmeans++)
+    # With fitc and 50 inducing points (kmeans++)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                                           gp_approx = "FITC", num_ind_points = 50, ind_points_selection = "kmeans++",
+                                           gp_approx = "fitc", num_ind_points = 50, ind_points_selection = "kmeans++",
                                            y = y, X = X,
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     cov_pars_tap <- c(0.19682949, 0.09401528, 0.81880087, 0.21614994, 0.09415915, 0.01354960)
@@ -1196,9 +1196,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
     
-    # With FITC and small covertree radius (cover_tree)
+    # With fitc and small covertree radius (cover_tree)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                                           gp_approx = "FITC", num_ind_points = 50, cover_tree_radius = 0.01, ind_points_selection = "cover_tree",
+                                           gp_approx = "fitc", num_ind_points = 50, cover_tree_radius = 0.01, ind_points_selection = "cover_tree",
                                            y = y, X = X,
                                            params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     cov_pars_tap <- c(0.17256176, 0.07770770, 0.84191496, 0.20527780, 0.08810525, 0.01151530)
