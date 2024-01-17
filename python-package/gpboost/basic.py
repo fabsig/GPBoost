@@ -4124,10 +4124,9 @@ class GPModel(object):
 
                     Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
 
-                - "space_time_separable_matern_ar1":
+                - "matern_space_time":
 
-                    Separable spatio-temporal covariance function with a Matern  covariance for the spatial domain
-                    and an exponential covariance for the temporal domain ( = AR(1)).
+                    Spatio-temporal Matern covariance function with different range parameters for space and time.
                     Note that the first column in 'gp_coords' must correspond to the time dimension
 
             cov_fct_shape : float, optional (default=0.)
@@ -4511,7 +4510,7 @@ class GPModel(object):
             self.ind_points_selection = ind_points_selection
             self.num_ind_points = num_ind_points
             self.cover_tree_radius = cover_tree_radius
-            if self.cov_function == "space_time_separable_matern_ar1":
+            if self.cov_function == "matern_space_time":
                 self.cov_par_names.extend(["GP_var", "GP_range_time", "GP_range_space"])
             elif self.cov_function == "wendland":
                 self.cov_par_names.extend(["GP_var"])
@@ -4533,7 +4532,7 @@ class GPModel(object):
                 gp_rand_coef_data_c, _, _ = c_float_array(self.gp_rand_coef_data.flatten(order='F'))
                 for ii in range(self.num_gp_rand_coef):
                     if gp_rand_coef_data_names is None:
-                        if self.cov_function == "space_time_separable_matern_ar1":
+                        if self.cov_function == "matern_space_time":
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
                                  "GP_rand_coef_nb_" + str(ii + 1) + "_range_time",
@@ -4546,7 +4545,7 @@ class GPModel(object):
                                  "GP_rand_coef_nb_" + str(ii + 1) + "_range"])
                         self.re_comp_names.append("GP_rand_coef_nb_" + str(ii + 1))
                     else:
-                        if self.cov_function == "space_time_separable_matern_ar1":
+                        if self.cov_function == "matern_space_time":
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
                                  "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range_time",
@@ -4626,7 +4625,7 @@ class GPModel(object):
             self.set_optim_params(params=model_dict["params"])
 
     def __determine_num_cov_pars(self, likelihood):
-        if self.cov_function == "space_time_separable_matern_ar1":
+        if self.cov_function == "matern_space_time":
             num_par_per_GP = 3
         elif self.cov_function == "wendland":
             num_par_per_GP = 1

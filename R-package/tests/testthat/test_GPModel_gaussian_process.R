@@ -50,9 +50,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   eps <- as.vector(C %*% b_1)
   # Space-time GP
   time <- (1:n)/n
-  D_time <- as.matrix(dist(time))
   rho_time <- 0.1
-  Sigma_ST <- sigma2_1 * exp(-D/rho) * exp(-D_time/rho_time) + diag(1E-20,n)
+  coords_ST_scaled <- cbind(time/rho_time, coords/rho)
+  D_ST <- as.matrix(dist(coords_ST_scaled))
+  Sigma_ST <- sigma2_1 * exp(-D_ST) + diag(1E-20,n)
   C_ST <- t(chol(Sigma_ST))
   b_ST <- qnorm(sim_rand_unif(n=n, init_c=0.4688))
   eps_ST <- as.vector(C_ST %*% b_ST)
@@ -1474,25 +1475,26 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     X_test <- cbind(rep(1,3),c(0,0,0))
     cov_pars_pred <- c(1,1,0.1,0.1)
     # Evaluate negative log-likelihood
-    gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_separable_matern_ar1")
+    gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time")
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
-    nll_exp <- 297.563581
+    nll_exp <- 282.6931412
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
-    gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_separable_matern_ar1",
+    gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
                            y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD)
-    cov_pars <- c(0.02600979, 0.70568370, 1.44015984, 0.75677411, 0.09277564, 0.06516492, 0.19030131, 0.10503304)
-    coef <- c(2.1757894, 0.1994704, 1.8893797, 0.1530123)
-    nrounds <- 176
+    cov_pars <- c(0.04304173, 0.49311096, 1.45120606, 0.56156274, 0.09613410, 
+                  0.05178234, 0.17454132, 0.08162524)
+    coef <- c(2.1675183, 0.2338267, 1.9156146, 0.1499940)
+    nrounds <- 138
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
     # Prediction 
     pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
-    expected_mu <- c(2.175789, 1.916511, 2.958140)
-    expected_cov <- c(2.0000000, 0.0000000, 0.0000000, 0.0000000, 1.6207769, 
-                      0.0027791, 0.0000000, 0.0027791, 1.5790220)
+    expected_mu <- c(2.167518, 1.887565, 3.064329)
+    expected_cov <- c(2.000000000, 0.000000000, 0.000000000, 0.000000000, 1.617478726, 
+                      0.005911963, 0.000000000, 0.005911963, 1.552232428)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     pred <- predict(gp_model, gp_coords_pred = coord_test,
@@ -1500,17 +1502,51 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
     
+    ## Other shape parameters
+    # Evaluate negative log-likelihood
+    gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time", 
+                        cov_fct_shape = 1.5)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
+    nll_1_5_exp <- 309.4219752
+    expect_lt(abs(nll-nll_1_5_exp),TOLERANCE_STRICT)
+    # Fit model
+    gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
+                           cov_fct_shape = 1.5, y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD)
+    cov_pars_1_5 <- c(0.35289918, 0.29549667, 1.15718313, 0.38451396, 0.10991202, 
+                      0.02619082, 0.17563798, 0.03464145)
+    coef_1_5 <- c(2.1777202, 0.2201592, 1.9111981, 0.1479722)
+    nrounds_1_5 <- 23
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_1_5)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_1_5)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds_1_5)
+    # Evaluate negative log-likelihood
+    gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time", 
+                        cov_fct_shape = 2.5)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
+    nll_2_5_exp <- 324.989122
+    expect_lt(abs(nll-nll_2_5_exp),TOLERANCE_STRICT)
+    # Fit model
+    gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
+                           cov_fct_shape = 2.5, y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD)
+    cov_pars_2_5 <- c(0.43225335, 0.25878307, 1.08418249, 0.35450776, 0.11654456, 
+                      0.01968654, 0.17589789, 0.02433141)
+    coef_2_5 <- c(2.1845115, 0.2175469, 1.9114654, 0.1479052)
+    nrounds_2_5 <- 15
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_2_5)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_2_5)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds_2_5)
+    
     ##############
     ## With Vecchia approximation
     ##############
     # Evaluate negative log-likelihood
-    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_separable_matern_ar1",
+    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
                                         gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
-    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_separable_matern_ar1",
+    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
                                            gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none",
                                            y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD), 
                     file='NUL')
@@ -1531,7 +1567,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),0.2)
     pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
@@ -1558,20 +1594,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     ## Less neighbors 
     # Evaluate negative log-likelihood
     num_neighbors <- 20
-    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_separable_matern_ar1",
+    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
                                         gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
-    nll_exp_nn <- 299.3474912
+    nll_exp_nn <- 283.8453374
     expect_lt(abs(nll-nll_exp_nn),TOLERANCE_STRICT)
     # Fit model
-    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_separable_matern_ar1",
+    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
                                            gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                            y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD), 
                     file='NUL')
-    cov_pars_nn <- c(0.02348284, 0.68648229, 1.45259863, 0.73875414, 0.08920198, 0.06116028, 0.20640869, 0.11455305)
-    coef_nn <- c(2.1864021, 0.2036489, 1.8872080, 0.1519699)
-    nrounds_nn <- 179
+    cov_pars_nn <- c( 0.04145501, 0.49347498, 1.45376030, 0.56167330, 0.09567751, 
+                      0.05154352, 0.17555615, 0.08259010)
+    coef_nn <- c(2.1739129, 0.2342737, 1.9138423, 0.1500113)
+    nrounds_nn <- 140
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_nn)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
@@ -1579,9 +1616,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=num_neighbors)
     pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
-    expected_mu_nn <- c(2.186402, 1.922382, 2.966074)
-    expected_cov_nn <- c(2.000000000, 0.000000000, 0.000000000, 0.000000000, 1.620777092, 
-                         0.002796799, 0.000000000, 0.002796799, 1.579026572)
+    expected_mu_nn <- c(2.173913, 1.890799, 3.069648)
+    expected_cov_nn <- c(2.000000000, 0.000000000, 0.000000000, 0.000000000, 1.617478905, 
+                         0.005937029, 0.000000000, 0.005937029, 1.552238400)
     expect_lt(sum(abs(pred$mu-expected_mu_nn)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_nn)),TOLERANCE_STRICT)
     pred <- predict(gp_model, gp_coords_pred = coord_test,

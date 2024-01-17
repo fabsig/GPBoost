@@ -46,8 +46,7 @@
 #' \item{"powered_exponential": powered exponential covariance function with the exponent specified by 
 #' the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribeiro, 2007) }
 #' \item{ "wendland": Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS) }
-#' \item{ "space_time_separable_matern_ar1": Separable spatio-temporal covariance 
-#' function with a Matern covariance for the spatial domain and an exponential covariance for the temporal domain ( = AR(1)). 
+#' \item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time. 
 #' Note that the first column in \code{gp_coords} must correspond to the time dimension }
 #' }
 #' @param cov_fct_shape A \code{numeric} specifying the shape parameter of the covariance function 
@@ -557,7 +556,7 @@ gpb.GPModel <- R6::R6Class(
         private$num_ind_points <- as.integer(num_ind_points)
         private$cover_tree_radius <- as.numeric(cover_tree_radius)
         private$ind_points_selection <- as.character(ind_points_selection)
-        if (private$cov_function == "space_time_separable_matern_ar1") {
+        if (private$cov_function == "matern_space_time") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range_time", "GP_range_space")
         } else if (private$cov_function == "wendland") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var")
@@ -586,7 +585,7 @@ gpb.GPModel <- R6::R6Class(
           gp_rand_coef_data <- as.vector(matrix(private$gp_rand_coef_data)) #convert to correct format for sending to C
           for (ii in 1:private$num_gp_rand_coef) {
             if (is.null(colnames(private$gp_rand_coef_data))) {
-              if (private$cov_function == "space_time_separable_matern_ar1") {
+              if (private$cov_function == "matern_space_time") {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_nb_", ii,"_var"),
                                            paste0("GP_rand_coef_nb_", ii,"_range_time"),
@@ -600,7 +599,7 @@ gpb.GPModel <- R6::R6Class(
                                            paste0("GP_rand_coef_nb_", ii,"_range"))
               }
             } else {
-              if (private$cov_function == "space_time_separable_matern_ar1") {
+              if (private$cov_function == "matern_space_time") {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"),
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range_time"),
@@ -1959,7 +1958,7 @@ gpb.GPModel <- R6::R6Class(
                   estimate_aux_pars = TRUE),
     
     determine_num_cov_pars = function(likelihood) {
-      if (private$cov_function == "space_time_separable_matern_ar1") {
+      if (private$cov_function == "matern_space_time") {
         num_par_per_GP <- 3L
       } else if (private$cov_function == "wendland") {
         num_par_per_GP <- 1L

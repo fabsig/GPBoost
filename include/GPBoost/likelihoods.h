@@ -34,7 +34,6 @@
 
 #include <string>
 #include <set>
-#include <string>
 #include <vector>
 
 #include <LightGBM/utils/log.h>

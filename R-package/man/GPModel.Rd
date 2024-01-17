@@ -65,8 +65,7 @@ the \code{cov_fct_shape} parameter (using the parametrization of Rasmussen and W
 \item{"powered_exponential": powered exponential covariance function with the exponent specified by 
 the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribeiro, 2007) }
 \item{ "wendland": Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS) }
-\item{ "space_time_separable_matern_ar1": Separable spatio-temporal covariance 
-function with a Matern covariance for the spatial domain and an exponential covariance for the temporal domain ( = AR(1)). 
+\item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time. 
 Note that the first column in \code{gp_coords} must correspond to the time dimension }
 }}
 

@@ -171,7 +171,7 @@ Model specification parameters
 
       - ``wendland`` : Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
 
-      - ``space_time_separable_matern_ar1`` : Separable spatio-temporal covariance function with a Matern  covariance for the spatial domain and an exponential covariance for the temporal domain ( = AR(1))
+      - ``matern_space_time`` : Spatio-temporal Matern covariance function with different range parameters for space and time
 
          - Note that the first column in ``gp_coords`` must correspond to the time dimension
 
