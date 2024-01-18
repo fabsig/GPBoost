@@ -968,11 +968,27 @@ namespace GPBoost {
 		~RECompGP() {
 		}
 
+		/*! \brief Dimension of coordinates */
+		int GetDimCoords() const {
+			CHECK(coord_saved_);
+			return(coords_.cols());
+		}
+
+		/*! \brief Dimension of spatial coordinates in for space-time models*/
+		int GetDimSpace() const {
+			CHECK(coord_saved_);
+			return(cov_function_->GetDimSpace(coords_));
+		}
+
 		/*!
-		* \brief True if distances should be saved (in re_model_template or here) depending on the covariance function
+		* \brief True if distances should be saved (in re_model_template or here) depending on the covariance function. If false, neighbors are selected dynamically based on scaled distances for the Vecchia approximation
 		*/
 		bool ShouldSaveDistances() const {
 			return(cov_function_->ShouldSaveDistances());
+		}
+
+		bool IsSpaceTimeModel() const {
+			return(cov_function_->IsSpaceTimeModel());
 		}
 
 		/*!

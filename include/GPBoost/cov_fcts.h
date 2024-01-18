@@ -106,6 +106,19 @@ namespace GPBoost {
 			return(save_distances_);
 		}
 
+		bool IsSpaceTimeModel() const {
+			return(cov_fct_type_ == "matern_space_time");
+		}
+
+		/*! \brief Dimension of spatial coordinates in for space-time models */
+		int GetDimSpace(const den_mat_t& coords) const {
+			int dim_space = (int)coords.cols();
+			if (cov_fct_type_ == "matern_space_time") {
+				dim_space = (int)coords.cols() - 1;
+			}
+			return(dim_space);
+		}
+
 		/*!
 		* \brief Transform the covariance parameters
 		* \param sigma2 Marginal variance

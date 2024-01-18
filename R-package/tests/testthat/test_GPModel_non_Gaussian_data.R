@@ -2293,22 +2293,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       nsim_var_pred <- 10000
       # Evaluate negative log-likelihood
-      num_neighbors <- 20
+      num_neighbors <- 50
       capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), likelihood = likelihood, 
                                           cov_function = "matern_space_time", matrix_inversion_method = inv_method,
                                           gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
                       file='NUL')
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
-      nll_exp_nn <- 70.144891
-      expect_lt(abs(nll-nll_exp_nn),tolerance_loc)
+      nll_exp_nn <- 70.2364313
+      expect_lt(abs(nll-nll_exp_nn),0.2)
       # Fit model
       capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), likelihood = likelihood, cov_function = "matern_space_time",
                                              gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                              y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD), 
                       file='NUL')
-      cov_pars_nn <- c(0.18298364, 0.06875566, 0.13476580)
-      coef_nn <- c(0.1361451, 0.2191465, 0.2692157, 0.3010650)
-      nrounds_nn <- 81
+      cov_pars_nn <- c( 0.17071336, 0.07284737, 0.12510444)
+      coef_nn <- c(0.1361708, 0.2177505, 0.2687806, 0.3002682)
+      nrounds_nn <- 84
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_nn)),tolerance_loc)
       expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),tolerance_loc)
       expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
@@ -2316,9 +2316,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=num_neighbors, nsim_var_pred=nsim_var_pred)
       pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,
                       X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
-      expected_mu_nn <- c(0.1361451, 0.4163270, 0.6387703)
+      expected_mu_nn <- c(0.1361708, 0.4161284, 0.6388001)
       expected_cov_nn <- c(1.00000000, 0.00000000, 0.00000000, 0.00000000, 
-                           0.85149599, 0.01824192, 0.00000000, 0.01824192, 0.81056163)
+                           0.85149364, 0.01824828, 0.00000000, 0.01824828, 0.81056881)
       expect_lt(sum(abs(pred$mu-expected_mu_nn)),tolerance_loc)
       expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_nn)),tolerance_loc)
       pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,

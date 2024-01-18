@@ -29,18 +29,21 @@ namespace GPBoost {
 			const double* fixed_effects,
 			bool learn_covariance_parameters,
 			const vec_t& cov_pars,
-			bool profile_out_marginal_variance) {
+			bool profile_out_marginal_variance,
+			optim::algo_settings_t* settings) {
 			re_model_templ_ = re_model_templ;
 			fixed_effects_ = fixed_effects;
 			learn_covariance_parameters_ = learn_covariance_parameters;
 			cov_pars_ = cov_pars;
 			profile_out_marginal_variance_ = profile_out_marginal_variance;
+			settings_ = settings;
 		}
 		REModelTemplate<T_mat, T_chol>* re_model_templ_;
 		const double* fixed_effects_;//Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
 		bool learn_covariance_parameters_;//Indicates whether covariance parameters are optimized or not
 		vec_t cov_pars_;//vector of covariance parameters (only used in case the covariance parameters are not estimated)
 		bool profile_out_marginal_variance_;// If true, the error variance sigma is profiled out(= use closed - form expression for error / nugget variance)
+		optim::algo_settings_t* settings_;
 
 	};//end EvalLLforOptim class definition
 
@@ -61,6 +64,7 @@ namespace GPBoost {
 		const double* fixed_effects_ptr;
 		bool gradient_contains_error_var = re_model_templ_->GetLikelihood() == "gaussian" && !(objfn_data->profile_out_marginal_variance_);//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
 		bool has_covariates = re_model_templ_->HasCovariates();
+		re_model_templ_->SetNumIter(objfn_data->settings_->opt_iter);
 		// Determine number of covariance and linear regression coefficient parameters
 		int num_cov_pars_optim, num_covariates, num_aux_pars;
 		if (objfn_data->learn_covariance_parameters_) {
@@ -253,10 +257,10 @@ namespace GPBoost {
 			}
 		}
 		//Do optimization
-		OptDataOptimLib<T_mat, T_chol> opt_data = OptDataOptimLib<T_mat, T_chol>(re_model_templ, fixed_effects, learn_covariance_parameters,
-			cov_pars.segment(0, num_cov_par), profile_out_marginal_variance);
 		optim::algo_settings_t settings;
 		settings.iter_max = max_iter;
+		OptDataOptimLib<T_mat, T_chol> opt_data = OptDataOptimLib<T_mat, T_chol>(re_model_templ, fixed_effects, learn_covariance_parameters,
+			cov_pars.segment(0, num_cov_par), profile_out_marginal_variance, &settings);
 		if (convergence_criterion == "relative_change_in_parameters") {
 			settings.rel_sol_change_tol = delta_rel_conv;
 		}

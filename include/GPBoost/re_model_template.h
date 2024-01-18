@@ -585,6 +585,7 @@ namespace GPBoost {
 			//learning_rate_increased_after_descrease_ = false;
 			//learning_rate_decreased_after_increase_ = false;
 			num_ll_evaluations_ = 0;
+			num_iter_ = 0;
 			num_it = max_iter_;
 			bool profile_out_marginal_variance = gauss_likelihood_ &&
 				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam");
@@ -801,7 +802,7 @@ namespace GPBoost {
 			else {
 				// Start optimization with "gradient_descent" or "fisher_scoring"
 				bool lr_cov_is_small = false, lr_aux_pars_is_small = false, lr_coef_is_small = false;
-				for (int it = 0; it < max_iter_; ++it) {
+				for (num_iter_ = 0; num_iter_ < max_iter_; ++num_iter_) {
 					neg_log_likelihood_lag1_ = neg_log_likelihood_;
 					cov_aux_pars_lag1 = cov_aux_pars;
 					// Update linear regression coefficients using gradient descent or generalized least squares (the latter option only for Gaussian data)
@@ -812,7 +813,7 @@ namespace GPBoost {
 							// Calculate gradient for linear regression coefficients
 							CalcGradLinCoef(cov_aux_pars[0], beta, grad_beta, fixed_effects_ptr);
 							// Update linear regression coefficients, apply step size safeguard, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
-							UpdateLinCoef(beta, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, it, beta_after_grad_aux, beta_after_grad_aux_lag1,
+							UpdateLinCoef(beta, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, num_iter_, beta_after_grad_aux, beta_after_grad_aux_lag1,
 								acc_rate_coef_, nesterov_schedule_version_, momentum_offset_, fixed_effects, fixed_effects_vec);
 							fixed_effects_ptr = fixed_effects_vec.data();
 							// In case lr_coef_ is very small, we monitor whether cov_aux_pars continues to change. If it does, we will reset lr_coef_ to its initial value
@@ -868,7 +869,7 @@ namespace GPBoost {
 						if (optimizer_cov_pars_ == "gradient_descent") {//gradient descent
 							CalcGradCovParAuxPars(cov_aux_pars.segment(0, num_cov_par_), nat_grad, gradient_contains_error_var, false, fixed_effects_ptr);
 							// Avoid too large learning rates for covariance parameters and aux_pars
-							AvoidTooLargeLearningRatesCovAuxPars(nat_grad, it);
+							AvoidTooLargeLearningRatesCovAuxPars(nat_grad, num_iter_);
 						}
 						else if (optimizer_cov_pars_ == "fisher_scoring") {//Fisher scoring
 							if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
@@ -882,7 +883,7 @@ namespace GPBoost {
 							nat_grad = FI.llt().solve(grad);
 						}
 						// Update covariance and additional likelihood parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
-						UpdateCovAuxPars(cov_aux_pars, nat_grad, profile_out_marginal_variance, use_nesterov_acc, it,
+						UpdateCovAuxPars(cov_aux_pars, nat_grad, profile_out_marginal_variance, use_nesterov_acc, num_iter_,
 							cov_pars_after_grad_aux, cov_aux_pars_after_grad_aux_lag1, acc_rate_cov_, nesterov_schedule_version_, momentum_offset_, fixed_effects_ptr);
 						// In case lr_cov_ is very small, we monitor whether the other parameters (beta, aux_pars) continue to change. If yes, we will reset lr_cov_ to its initial value
 						if (lr_cov_ < LR_IS_SMALL_THRESHOLD_ && (has_covariates_ || estimate_aux_pars_) && !lr_cov_is_small) {
@@ -980,9 +981,9 @@ namespace GPBoost {
 							}
 						} // end check convergence
 						// Trace output for convergence monitoring
-						if ((it < 10 || ((it + 1) % 10 == 0 && (it + 1) < 100) || ((it + 1) % 100 == 0 && (it + 1) < 1000) ||
-							((it + 1) % 1000 == 0 && (it + 1) < 10000) || ((it + 1) % 10000 == 0)) && (it != (max_iter_ - 1)) && !terminate_optim) {
-							Log::REDebug("GPModel: parameters after optimization iteration number %d: ", it + 1);
+						if ((num_iter_ < 10 || ((num_iter_ + 1) % 10 == 0 && (num_iter_ + 1) < 100) || ((num_iter_ + 1) % 100 == 0 && (num_iter_ + 1) < 1000) ||
+							((num_iter_ + 1) % 1000 == 0 && (num_iter_ + 1) < 10000) || ((num_iter_ + 1) % 10000 == 0)) && (num_iter_ != (max_iter_ - 1)) && !terminate_optim) {
+							Log::REDebug("GPModel: parameters after optimization iteration number %d: ", num_iter_ + 1);
 							PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, has_intercept, intercept_col,
 								scale_covariates, loc_transf, scale_transf, cov_aux_pars.data() + num_cov_par_);
 							if (gauss_likelihood_) {
@@ -995,11 +996,11 @@ namespace GPBoost {
 					}// end not na_or_inf_occurred
 					// Check whether to terminate
 					if (terminate_optim) {
-						num_it = it + 1;
+						num_it = num_iter_ + 1;
 						break;
 					}
 					////increase learning rates again (not used)
-					//else if (optimizer_cov_pars_ == "gradient_descent" && (it + 1) >= 10 && learning_rate_decreased_first_time_ &&
+					//else if (optimizer_cov_pars_ == "gradient_descent" && (num_iter_ + 1) >= 10 && learning_rate_decreased_first_time_ &&
 					//	!learning_rate_increased_after_descrease_ && !na_or_inf_occurred) {
 					//	if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < INCREASE_LR_CHANGE_LL_THRESHOLD_ * std::abs(neg_log_likelihood_lag1_)) {
 					//		if (has_covariates_) {
@@ -1012,7 +1013,7 @@ namespace GPBoost {
 					//			lr_aux_pars_ /= LR_SHRINKAGE_FACTOR_;
 					//		}
 					//		learning_rate_increased_after_descrease_ = true;
-					//		Log::REDebug("GPModel covariance parameter estimation: The learning rates have been increased in iteration number %d ", it + 1);
+					//		Log::REDebug("GPModel covariance parameter estimation: The learning rates have been increased in iteration number %d ", num_iter_ + 1);
 					//	}
 					//}
 				}//end for loop for optimization
@@ -1616,6 +1617,14 @@ namespace GPBoost {
 
 		void GetNameFirstAuxPar(string_t& name) {
 			likelihood_[unique_clusters_[0]]->GetNameFirstAuxPar(name);
+		}
+
+		/*!
+		* \brief Set num_iter_. Used by external optimizers from OptimLib
+		* \param num_iter New values for num_iter_
+		*/
+		void SetNumIter(int num_iter) {
+			num_iter_ = num_iter;
 		}
 
 		/*!
@@ -3356,6 +3365,8 @@ namespace GPBoost {
 		bool first_update_ = false;
 		/*! \brief Number of likelihood evaluations during optimization */
 		int num_ll_evaluations_ = 0;
+		/*! \brief Number of iterations during optimization */
+		int num_iter_ = 0;
 		/*! \brief True, if 'OptimLinRegrCoefCovPar' has been called */
 		bool model_has_been_estimated_ = false;
 		// The following variables are not used anymore (increasing learning rate again does not seem beneficial)
@@ -3448,7 +3459,7 @@ namespace GPBoost {
 		/*! \brief Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering */
 		string_t vecchia_ordering_ = "random";
 		/*! \brief List of supported options for orderings of the Vecchia approximation */
-		const std::set<string_t> SUPPORTED_VECCHIA_ORDERING_{ "none", "random" };
+		const std::set<string_t> SUPPORTED_VECCHIA_ORDERING_{ "none", "random", "time", "time_random_space"};
 		/*! \brief The way how neighbors are selected */
 		string_t vecchia_neighbor_selection_ = "nearest";
 		/*! \brief The number of neighbors used in the Vecchia approximation for making predictions */
@@ -5776,6 +5787,16 @@ namespace GPBoost {
 			bool calc_gradient_nugget) {
 			if (gp_approx_ == "vecchia") {
 				for (const auto& cluster_i : unique_clusters_) {
+					std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][ind_intercept_gp_]);
+					if (!(re_comp->ShouldSaveDistances())) {
+						if ((num_iter_ & (num_iter_ - 1)) == 0) {//num_iter_ is power of 2 or 0
+							// redetermine nearest neighbors for models for which neighbors are selected based on correlations / scaled distances
+							UpdateNearestNeighbors(re_comps_[cluster_i], nearest_neighbors_[cluster_i],
+								entries_init_B_[cluster_i], entries_init_B_grad_[cluster_i],
+								num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_);
+							Log::REDebug("Nearest neighbors redetermined in iteration number = %d, ", num_iter_);
+						}
+					}
 					data_size_t num_re_cluster_i = re_comps_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs();
 					CalcCovFactorVecchia<T_mat>(num_re_cluster_i, calc_gradient, re_comps_[cluster_i], nearest_neighbors_[cluster_i],
 						dist_obs_neighbors_[cluster_i], dist_between_neighbors_[cluster_i],

@@ -131,7 +131,7 @@ namespace GPBoost {
 		double cov_fct_taper_shape,
 		bool apply_tapering) {
 		int ind_intercept_gp = (int)re_comps_cluster_i.size();
-		if (vecchia_ordering == "random") {
+		if (vecchia_ordering == "random" || vecchia_ordering == "time_random_space") {
 			std::shuffle(data_indices_per_cluster[cluster_i].begin(), data_indices_per_cluster[cluster_i].end(), rng);
 		}
 		std::vector<double> gp_coords;
@@ -141,6 +141,29 @@ namespace GPBoost {
 			}
 		}
 		den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords);
+
+		for (int i = 0; i < (int)gp_coords_mat.rows(); ++i) {//DELETE
+			Log::REInfo("data_indices_per_cluster[cluster_i][%d] = %d, gp_coords_mat(%d,0) = %g ", 
+				i, data_indices_per_cluster[cluster_i][i], i, gp_coords_mat.coeff(i,0));//DELETE
+		}
+
+		if (vecchia_ordering == "time" || vecchia_ordering == "time_random_space") {
+			std::vector<double> coord_time(gp_coords_mat.rows());
+#pragma omp for schedule(static)
+			for (int i = 0; i < (int)gp_coords_mat.rows(); ++i) {
+				coord_time[i] = gp_coords_mat.coeff(i, 0);
+			}
+			std::vector<int> sort_time;
+			SortIndeces<double>(coord_time, sort_time);
+			den_mat_t gp_coords_mat_not_sort = gp_coords_mat;
+			gp_coords_mat = gp_coords_mat_not_sort(sort_time, Eigen::all);
+			gp_coords_mat_not_sort.resize(0, 0);
+			std::vector<int> dt_idx_unsorted = data_indices_per_cluster[cluster_i];
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < (int)gp_coords_mat.rows(); ++i) {
+				data_indices_per_cluster[cluster_i][i] = dt_idx_unsorted[sort_time[i]];
+			}
+		}
 		only_one_GP_calculations_on_RE_scale = num_gp_total == 1 && num_comps_total == 1 && !gauss_likelihood;
 		re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 			gp_coords_mat,
@@ -164,6 +187,9 @@ namespace GPBoost {
 		find_nearest_neighbors_Vecchia_fast(re_comp->GetCoords(), re_comp->GetNumUniqueREs(), num_neighbors,
 			nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates,
 			vecchia_neighbor_selection, rng, re_comp->ShouldSaveDistances());
+		if ((vecchia_ordering == "time" || vecchia_ordering == "time_random_space") && !(re_comp->IsSpaceTimeModel())) {
+			Log::REFatal("'vecchia_ordering' is '%s' but the 'cov_function' is not a space-time covariance function ", vecchia_ordering.c_str());
+		}
 		if (check_has_duplicates) {
 			has_duplicates_coords = has_duplicates_coords || has_duplicates;
 			if (!gauss_likelihood && has_duplicates_coords) {
@@ -180,6 +206,10 @@ namespace GPBoost {
 		}
 		//Random coefficients
 		if (num_gp_rand_coef > 0) {
+			if (!(re_comp->ShouldSaveDistances())) {
+				Log::REFatal("Random coefficient processes are not supported for covariance functions "
+					"for which the neighbors are dynamically determined based on correlations");
+			}
 			z_outer_z_obs_neighbors_cluster_i = std::vector<std::vector<den_mat_t>>(re_comp->GetNumUniqueREs());
 			for (int j = 0; j < num_gp_rand_coef; ++j) {
 				std::vector<double> rand_coef_data;
@@ -214,6 +244,67 @@ namespace GPBoost {
 			}
 		}// end random coefficients
 	}//end CreateREComponentsVecchia
+
+	/*!
+	* \brief Update the nearest neighbors based on scaled coorrdinates
+	* \param[out] re_comps_cluster_i Container that collects the individual component models
+	* \param[out] nearest_neighbors_cluster_i Collects indices of nearest neighbors
+	* \param[out] entries_init_B_cluster_i Triplets for initializing the matrices B
+	* \param[out] entries_init_B_grad_cluster_i Triplets for initializing the matrices B_grad
+	* \param num_neighbors The number of neighbors used in the Vecchia approximation
+	* \param vecchia_neighbor_selection The way how neighbors are selected
+	* \param rng Random number generator
+	* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps') of the intercept GP associated with the random coefficient GPs
+	*/
+	template<typename T_mat>
+	void UpdateNearestNeighbors(std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i,
+		std::vector<std::vector<int>>& nearest_neighbors_cluster_i,
+		std::vector<Triplet_t>& entries_init_B_cluster_i,
+		std::vector<Triplet_t>& entries_init_B_grad_cluster_i,
+		int num_neighbors,
+		const string_t& vecchia_neighbor_selection,
+		RNG_t& rng,
+		int ind_intercept_gp) {
+		std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp]);
+		CHECK(re_comp->ShouldSaveDistances() == false);
+		int num_re = re_comp->GetNumUniqueREs();
+		CHECK((int)nearest_neighbors_cluster_i.size() == num_re);
+		// calculate scale coordinates
+		int dim_space = re_comp->GetDimSpace();
+		const vec_t pars = re_comp->CovPars();
+		den_mat_t coords_scaled(num_re, re_comp->GetDimCoords());
+		coords_scaled.col(0) = (re_comp->GetCoords()).col(0) * pars[1];
+		coords_scaled.rightCols(dim_space) = (re_comp->GetCoords()).rightCols(dim_space) * pars[2];
+		std::vector<den_mat_t> dist_dummy;
+		// find correlation-based nearest neighbors
+		bool check_has_duplicates = false;
+		find_nearest_neighbors_Vecchia_fast(coords_scaled, num_re, num_neighbors,
+			nearest_neighbors_cluster_i, dist_dummy, dist_dummy, 0, -1, check_has_duplicates,
+			vecchia_neighbor_selection, rng, false);
+		int ctr = 0, ctr_grad = 0;
+		for (int i = 0; i < std::min(num_re, num_neighbors); ++i) {
+			for (int j = 0; j < (int)nearest_neighbors_cluster_i[i].size(); ++j) {
+				entries_init_B_cluster_i[ctr] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
+				entries_init_B_grad_cluster_i[ctr_grad] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
+				ctr++;
+				ctr_grad++;
+			}
+			entries_init_B_cluster_i[ctr] = Triplet_t(i, i, 1.);//Put 1's on the diagonal since B = I - A
+			ctr++;
+		}
+		if (num_neighbors < num_re) {
+#pragma omp parallel for schedule(static)
+			for (int i = num_neighbors; i < num_re; ++i) {
+				CHECK((int)nearest_neighbors_cluster_i[i].size() == num_neighbors);
+				for (int j = 0; j < num_neighbors; ++j) {
+					entries_init_B_cluster_i[ctr + (i - num_neighbors) * (num_neighbors + 1) + j] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
+					entries_init_B_grad_cluster_i[ctr_grad + (i - num_neighbors) * num_neighbors + j] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
+				}
+				entries_init_B_cluster_i[ctr + (i - num_neighbors) * (num_neighbors + 1) + num_neighbors] = Triplet_t(i, i, 1.);//Put 1's on the diagonal since B = I - A
+			}
+		}
+
+	}//end UpdateNearestNeighbors
 
 	/*!
 	* \brief Calculate matrices A and D_inv as well as their derivatives for the Vecchia approximation for one cluster (independent realization of GP)
@@ -299,7 +390,6 @@ namespace GPBoost {
 				for (int j = 0; j < num_gp_total; ++j) {
 					int ind_first_par = j * num_par_comp;//index of first parameter (variance) of component j in gradient vectors
 					if (j == 0) {
-
 						if (!distances_saved) {
 							std::vector<int> ind{ i };
 							re_comp->GetSubSetCoords(ind, coords_i);
@@ -499,18 +589,40 @@ namespace GPBoost {
 		std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_re_pred_cli);
 		bool check_has_duplicates = false;
 		bool distances_saved = re_comp->ShouldSaveDistances();
+		den_mat_t coords_scaled;
+		if (!distances_saved) {
+			int dim_space = re_comp->GetDimSpace();
+			const vec_t pars = re_comp->CovPars();
+			coords_scaled = den_mat_t(coords_all.rows(), coords_all.cols());
+			coords_scaled.col(0) = coords_all.col(0) * pars[1];
+			coords_scaled.rightCols(dim_space) = coords_all.rightCols(dim_space) * pars[2];
+		}
 		if (CondObsOnly) {
-			find_nearest_neighbors_Vecchia_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred,
-				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, num_re_cli - 1, check_has_duplicates,
-				vecchia_neighbor_selection, rng, distances_saved);
+			if (distances_saved) {
+				find_nearest_neighbors_Vecchia_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, num_re_cli - 1, check_has_duplicates,
+					vecchia_neighbor_selection, rng, distances_saved);
+			}
+			else {
+				find_nearest_neighbors_Vecchia_fast(coords_scaled, num_re_cli + num_re_pred_cli, num_neighbors_pred,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, num_re_cli - 1, check_has_duplicates,
+					vecchia_neighbor_selection, rng, distances_saved);
+			}
 		}
 		else {//find neighbors among both the observed and prediction locations
 			if (!gauss_likelihood) {
 				check_has_duplicates = true;
 			}
-			find_nearest_neighbors_Vecchia_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred,
-				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, -1, check_has_duplicates,
-				vecchia_neighbor_selection, rng, distances_saved);
+			if (distances_saved) {
+				find_nearest_neighbors_Vecchia_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, -1, check_has_duplicates,
+					vecchia_neighbor_selection, rng, distances_saved);
+			}
+			else {
+				find_nearest_neighbors_Vecchia_fast(coords_scaled, num_re_cli + num_re_pred_cli, num_neighbors_pred,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, -1, check_has_duplicates,
+					vecchia_neighbor_selection, rng, distances_saved);
+			}
 			if (check_has_duplicates) {
 				Log::REFatal("Duplicates found among training and test coordinates. "
 					"This is not supported for predictions with a Vecchia approximation for non-Gaussian likelihoods "
@@ -720,9 +832,23 @@ namespace GPBoost {
 		bool check_has_duplicates = false;
 		std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps[cluster_i][ind_intercept_gp]);
 		bool distances_saved = re_comp->ShouldSaveDistances();
-		find_nearest_neighbors_Vecchia_fast(coords_all, num_data_tot, num_neighbors_pred,
-			nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
-			vecchia_neighbor_selection, rng, distances_saved);
+		den_mat_t coords_scaled;
+		if (distances_saved) {
+			find_nearest_neighbors_Vecchia_fast(coords_all, num_data_tot, num_neighbors_pred,
+				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
+				vecchia_neighbor_selection, rng, distances_saved);
+		}
+		else {
+			int dim_space = re_comp->GetDimSpace();
+			const vec_t pars = re_comp->CovPars();
+			coords_scaled = den_mat_t(coords_all.rows(), coords_all.cols());
+			coords_scaled.col(0) = coords_all.col(0) * pars[1];
+			coords_scaled.rightCols(dim_space) = coords_all.rightCols(dim_space) * pars[2];
+			find_nearest_neighbors_Vecchia_fast(coords_scaled, num_data_tot, num_neighbors_pred,
+				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
+				vecchia_neighbor_selection, rng, distances_saved);
+		}
+
 		//Prepare data for random coefficients
 		std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_tot);
 		if (num_gp_rand_coef > 0) {
@@ -963,15 +1089,37 @@ namespace GPBoost {
 		bool check_has_duplicates = true;
 		std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps[cluster_i][ind_intercept_gp]);
 		bool distances_saved = re_comp->ShouldSaveDistances();
+		den_mat_t coords_scaled;
+		if (!distances_saved) {
+			int dim_space = re_comp->GetDimSpace();
+			const vec_t pars = re_comp->CovPars();
+			coords_scaled = den_mat_t(coords_all_unique.rows(), coords_all_unique.cols());
+			coords_scaled.col(0) = coords_all_unique.col(0) * pars[1];
+			coords_scaled.rightCols(dim_space) = coords_all_unique.rightCols(dim_space) * pars[2];
+		}
 		if (CondObsOnly) {//find neighbors among both the observed locations only
-			find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred,
-				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1, check_has_duplicates,
-				vecchia_neighbor_selection, rng, distances_saved);
+			if (distances_saved) {
+				find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1, check_has_duplicates,
+					vecchia_neighbor_selection, rng, distances_saved);
+			}
+			else {
+				find_nearest_neighbors_Vecchia_fast(coords_scaled, num_coord_unique, num_neighbors_pred,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1, check_has_duplicates,
+					vecchia_neighbor_selection, rng, distances_saved);
+			}
 		}
 		else {//find neighbors among both the observed and prediction locations
-			find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred,
-				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
-				vecchia_neighbor_selection, rng, distances_saved);
+			if (distances_saved) {
+				find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
+					vecchia_neighbor_selection, rng, distances_saved);
+			}
+			else {
+				find_nearest_neighbors_Vecchia_fast(coords_scaled, num_coord_unique, num_neighbors_pred,
+					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
+					vecchia_neighbor_selection, rng, distances_saved);
+			}
 		}
 		if (check_has_duplicates) {
 			Log::REFatal("Duplicates found among training and test coordinates. "

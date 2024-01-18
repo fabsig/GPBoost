@@ -107,6 +107,9 @@ the Vecchia approximation. Available options:
 \itemize{
 \item{"none": the default ordering in the data is used }
 \item{"random": a random ordering }
+\item{"time": ordering accorrding to time (only for space-time models) }
+\item{"time_random_space": ordering according to time and randomly for all 
+spatial points with the same time points (only for space-time models) }
 }}
 
 \item{ind_points_selection}{A \code{string} specifying the method for choosing inducing points

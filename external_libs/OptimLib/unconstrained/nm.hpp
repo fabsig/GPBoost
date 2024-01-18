@@ -315,6 +315,9 @@ internal::nm_impl(
 
         //ChangedForGPBoost
         //OPTIM_NM_TRACE(iter, min_val, rel_objfn_change, rel_sol_change, simplex_fn_vals, simplex_points);
+        if (settings_inp) {
+            settings_inp->opt_iter = iter;
+        }
         if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
             (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
             Log::REDebug("GPModel parameter optimization iteration number %d", iter);

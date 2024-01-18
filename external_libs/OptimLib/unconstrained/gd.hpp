@@ -232,6 +232,9 @@ internal::gd_basic_impl(
 
         //ChangedForGPBoost
         //OPTIM_GD_TRACE(iter-1, grad_err, rel_sol_change, x, d, grad_p, adam_vec_m, adam_vec_v)
+        if (settings_inp) {
+            settings_inp->opt_iter = iter;
+        }
         if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
             (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
             Log::REDebug("GPModel parameter optimization iteration number %d", iter);

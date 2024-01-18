@@ -213,6 +213,10 @@ Model specification parameters
 
       - ``random``: a random ordering
 
+      - ``time``: ordering accorrding to time (only for space-time models)
+
+      - ``time_random_space``: ordering according to time and randomly for all spatial points with the same time points (only for space-time models)
+
 -  ``vecchia_pred_type`` : string, (default = Null)
 
    -  Type of Vecchia approximation used for making predictions

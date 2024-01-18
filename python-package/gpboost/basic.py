@@ -4179,6 +4179,10 @@ class GPModel(object):
 
                         a random ordering
 
+                    - "time": ordering accorrding to time (only for space-time models)
+
+                    - "time_random_space": ordering according to time and randomly for all spatial points with the same time points (only for space-time models)
+
             ind_points_selection : string, optional (default="kmeans++")
                 Specifies the method for choosing inducing points. Available options:
 
