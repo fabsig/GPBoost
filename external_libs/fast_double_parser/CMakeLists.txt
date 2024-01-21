@@ -39,7 +39,7 @@ target_link_libraries(unit  PUBLIC fast_double_parser)
 enable_testing()
 add_test(unit unit)
 
-option(FAST_DOUBLE_BENCHMARKS "Sanitize addresses" OFF)
+option(FAST_DOUBLE_BENCHMARKS "include benchmarks" OFF)
 
 
 

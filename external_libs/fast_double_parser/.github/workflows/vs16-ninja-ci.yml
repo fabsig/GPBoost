@@ -7,7 +7,7 @@ jobs:
     name: windows-vs16
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: 'Run CMake with VS16'
       uses: lukka/run-cmake@v2
       with:

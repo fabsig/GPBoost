@@ -65,7 +65,7 @@ class Translator(nodes.NodeVisitor):
         self.write('\n\n')
 
     def visit_paragraph(self, node):
-        pass
+        self.write('\n\n')
 
     def depart_paragraph(self, node):
         pass
@@ -137,6 +137,13 @@ class Translator(nodes.NodeVisitor):
 
     def depart_table(self, node):
         pass
+
+    def visit_system_message(self, node):
+        pass
+
+    def depart_system_message(self, node):
+        pass
+
 
 class MDWriter(writers.Writer):
     """GitHub-flavored markdown writer"""

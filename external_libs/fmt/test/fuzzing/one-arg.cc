@@ -1,17 +1,18 @@
 // Copyright (c) 2019, Paul Dreik
 // For the license information refer to format.h.
 
+#include <fmt/chrono.h>
+
 #include <cstdint>
 #include <exception>
-#include <fmt/chrono.h>
 
 #include "fuzzer-common.h"
 
-template <typename T, typename Repr>
-const T* from_repr(const Repr& r) { return &r; }
+template <typename T, typename Repr> const T* from_repr(const Repr& r) {
+  return &r;
+}
 
-template <>
-const std::tm* from_repr<std::tm>(const std::time_t& t) {
+template <> const std::tm* from_repr<std::tm>(const std::time_t& t) {
   return std::localtime(&t);
 }
 
@@ -29,8 +30,8 @@ void invoke_fmt(const uint8_t* data, size_t size) {
 #if FMT_FUZZ_FORMAT_TO_STRING
     std::string message = fmt::format(format_str.get(), *value);
 #else
-    fmt::memory_buffer message;
-    fmt::format_to(message, format_str.get(), *value);
+    auto buf = fmt::memory_buffer();
+    fmt::format_to(std::back_inserter(buf), format_str.get(), *value);
 #endif
   } catch (std::exception&) {
   }

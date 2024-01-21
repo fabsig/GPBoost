@@ -22,9 +22,9 @@ build_script:
   - mkdir build
   - cd build
   - cmake --version
-  - cmake %CMAKE_ARGS% --parallel ..
+  - cmake %CMAKE_ARGS% ..
   - cmake ..
-  - cmake --build . --config %Configuration% --verbose --parallel
+  - cmake --build . --config %Configuration% --verbose 
 
 for:
 -
@@ -33,7 +33,7 @@ for:
       - job_name: VS2019ARM
 
   test_script:
-    - ctest --output-on-failure -C %Configuration% --verbose %CTEST_ARGS% --parallel
+    - ctest --output-on-failure -C %Configuration% --verbose %CTEST_ARGS%
 
 clone_folder: c:\projects\fast_double_parser
 

@@ -1,10 +1,11 @@
 // Copyright (c) 2019, Paul Dreik
 // For the license information refer to format.h.
 
+#include <fmt/format.h>
+
 #include <cstdint>
 #include <exception>
 #include <string>
-#include <fmt/format.h>
 
 #include "fuzzer-common.h"
 
@@ -26,8 +27,8 @@ void invoke_fmt(const uint8_t* data, size_t size) {
 #if FMT_FUZZ_FORMAT_TO_STRING
   std::string message = fmt::format(format_str, item1, item2);
 #else
-  fmt::memory_buffer message;
-  fmt::format_to(message, format_str, item1, item2);
+  auto buf = fmt::memory_buffer();
+  fmt::format_to(std::back_inserter(buf), format_str, item1, item2);
 #endif
 }
 
