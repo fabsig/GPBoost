@@ -141,12 +141,6 @@ namespace GPBoost {
 			}
 		}
 		den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords);
-
-		for (int i = 0; i < (int)gp_coords_mat.rows(); ++i) {//DELETE
-			Log::REInfo("data_indices_per_cluster[cluster_i][%d] = %d, gp_coords_mat(%d,0) = %g ", 
-				i, data_indices_per_cluster[cluster_i][i], i, gp_coords_mat.coeff(i,0));//DELETE
-		}
-
 		if (vecchia_ordering == "time" || vecchia_ordering == "time_random_space") {
 			std::vector<double> coord_time(gp_coords_mat.rows());
 #pragma omp for schedule(static)
@@ -275,8 +269,8 @@ namespace GPBoost {
 		den_mat_t coords_scaled(num_re, re_comp->GetDimCoords());
 		coords_scaled.col(0) = (re_comp->GetCoords()).col(0) * pars[1];
 		coords_scaled.rightCols(dim_space) = (re_comp->GetCoords()).rightCols(dim_space) * pars[2];
-		std::vector<den_mat_t> dist_dummy;
 		// find correlation-based nearest neighbors
+		std::vector<den_mat_t> dist_dummy;
 		bool check_has_duplicates = false;
 		find_nearest_neighbors_Vecchia_fast(coords_scaled, num_re, num_neighbors,
 			nearest_neighbors_cluster_i, dist_dummy, dist_dummy, 0, -1, check_has_duplicates,
@@ -303,7 +297,6 @@ namespace GPBoost {
 				entries_init_B_cluster_i[ctr + (i - num_neighbors) * (num_neighbors + 1) + num_neighbors] = Triplet_t(i, i, 1.);//Put 1's on the diagonal since B = I - A
 			}
 		}
-
 	}//end UpdateNearestNeighbors
 
 	/*!

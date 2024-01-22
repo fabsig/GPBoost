@@ -1029,8 +1029,7 @@ namespace GPBoost {
 				Log::REWarning("NaN or Inf occurred in covariance parameter optimization using '%s'. "
 					"The optimization will be started a second time using 'nelder_mead'. "
 					"If you want to avoid this, try directly using a different optimizer. "
-					"If you have used 'gradient_descent', you can also consider using a smaller learning rate. "
-					"The following optimizers are currently implemented: %s ", optimizer_cov_pars_.c_str(), optimizer_cov_pars_.c_str());
+					"If you have used 'gradient_descent', you can also consider using a smaller learning rate ", optimizer_cov_pars_.c_str());
 				cov_aux_pars = cov_aux_pars_init;
 				if (has_covariates_) {
 					beta = beta_init;
@@ -5794,6 +5793,9 @@ namespace GPBoost {
 							UpdateNearestNeighbors(re_comps_[cluster_i], nearest_neighbors_[cluster_i],
 								entries_init_B_[cluster_i], entries_init_B_grad_[cluster_i],
 								num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_);
+							if (!gauss_likelihood_) {
+								likelihood_[cluster_i]->SetCholFactPatternAnalyzedFalse();
+							}
 							Log::REDebug("Nearest neighbors redetermined in iteration number = %d, ", num_iter_);
 						}
 					}

@@ -191,6 +191,13 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Set chol_fact_pattern_analyzed_ to false
+		*/
+		void SetCholFactPatternAnalyzedFalse() {
+			chol_fact_pattern_analyzed_ = false;
+		}
+
+		/*!
 		* \brief Returns the type of the response variable (label). Either "double" or "int"
 		*/
 		string_t label_type() const {
