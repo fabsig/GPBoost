@@ -761,13 +761,15 @@ GPBOOST_C_EXPORT SEXP GPB_OptimCovPar_R(
 * \param y_data Response variable data
 * \param covariate_data Covariate (=independent variable, feature) data
 * \param num_covariates Number of covariates
+* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_OptimLinRegrCoefCovPar_R(
 	SEXP handle,
 	SEXP y_data,
 	SEXP covariate_data,
-	SEXP num_covariates
+	SEXP num_covariates,
+	SEXP fixed_effects
 );
 
 /*!

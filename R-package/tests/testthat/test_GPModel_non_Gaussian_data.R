@@ -440,6 +440,77 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(opt$value-(65.2599674)),TOLERANCE_LOOSE)
   })
   
+  test_that("Binary classification with one grouped random effects and offset", {
+  
+    n <- 250000 # number of samples
+    m <- n / 500 # number of categories / levels for grouping variable
+    group <- rep(1,n) # grouping variable
+    for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
+    b_gr <- sqrt(0.5) * qnorm(sim_rand_unif(n=m, init_c=0.5455))
+    probs <- pnorm(b_gr[group])
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.23431) < probs)
+    offset <- (2*(sim_rand_unif(n=m, init_c=0.54) - 0.5))[group]
+    probs_o <- pnorm(b_gr[group] + offset)
+    y_o <- as.numeric(sim_rand_unif(n=n, init_c=0.23431) < probs_o)
+    group_test <- c(1,3,9999)
+
+    nrounds <- 5
+    cov_pars <- c(0.4872743)
+    expected_mu <- c(0.03985967, -0.42595831, 0.00000000)
+    expected_cov <- c(0.003123268, 0.000000000, 0.000000000, 0.000000000, 
+                      0.003334890, 0.000000000, 0.000000000, 0.000000000, 0.487274305)
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y, params = DEFAULT_OPTIM_PARAMS)
+    pred <- predict(gp_model, group_data_pred = group_test, 
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y_o, params = DEFAULT_OPTIM_PARAMS, fixed_effects = offset)
+    pred <- predict(gp_model, group_data_pred = group_test, fixed_effects = offset, 
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(sum(abs(pred$mu-expected_mu)),0.03)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_LOOSE)
+    
+    # With linear predictor and offset
+    X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # design matrix / covariate data for fixed effect
+    X_test <- cbind(rep(1,3),c(-0.5,0.4,1))
+    beta <- c(0.1,2) # regression coefficients
+    probs <- pnorm(b_gr[group] + X%*%beta)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.23431) < probs)
+    probs_o <- pnorm(b_gr[group] + offset + X%*%beta)
+    y_o <- as.numeric(sim_rand_unif(n=n, init_c=0.23431) < probs_o)
+    
+    nrounds <- 8
+    cov_pars <- c(0.4784317)
+    coefs <- c(0.032651058, 0.031126881, 2.006988705, 0.006637149)
+    expected_mu <- c(-0.8417404, 0.5597127, 2.0396398)
+    expected_cov <- c(0.005222087, 0.000000000, 0.000000000, 0.000000000, 
+                      0.005740345, 0.000000000, 0.000000000, 0.000000000, 0.478431721)
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD)
+    pred <- predict(gp_model, group_data_pred = group_test, X_pred = X_test,
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y_o, X=X, params = DEFAULT_OPTIM_PARAMS_STD, fixed_effects = offset)
+    pred <- predict(gp_model, group_data_pred = group_test, X_pred = X_test, fixed_effects = offset, 
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),0.01)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),0.4)
+    expect_equal(gp_model$get_num_optim_iter(), 5)
+    expect_lt(sum(abs(pred$mu-expected_mu)),0.15)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),0.01)
+  })
+  
   test_that("Binary classification with multiple grouped random effects ", {
     
     probs <- pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)

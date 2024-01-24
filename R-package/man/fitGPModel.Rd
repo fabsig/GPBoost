@@ -15,7 +15,7 @@ fitGPModel(likelihood = "gaussian", group_data = NULL,
   matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
   free_raw_data = FALSE, y, X = NULL, params = list(),
   vecchia_approx = NULL, vecchia_pred_type = NULL,
-  num_neighbors_pred = NULL)
+  num_neighbors_pred = NULL, fixed_effects = NULL)
 }
 \arguments{
 \item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable. 
@@ -266,6 +266,10 @@ This is discontinued here. Use the function 'set_prediction_data' to specify thi
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for making predictions.
 This is discontinued here. Use the function 'set_prediction_data' to specify this}
+
+\item{fixed_effects}{A \code{numeric} \code{vector} with 
+additional fixed effects that are added to the linear predictor (= offset). 
+The length of this vector needs to equal the number of training data points.}
 }
 \value{
 A fitted \code{GPModel}

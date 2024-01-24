@@ -269,17 +269,27 @@ namespace GPBoost {
 		* \brief Determine initial value for intercept (=constant)
 		* \param y_data Response variable data
 		* \param num_data Number of data points
-		* param rand_eff_var Variance of random effects
+		* \param rand_eff_var Variance of random effects
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
 		*/
 		double FindInitialIntercept(const double* y_data,
 			const data_size_t num_data,
-			double rand_eff_var) const {
+			double rand_eff_var,
+			const double* fixed_effects) const {
 			CHECK(rand_eff_var > 0.);
 			double init_intercept = 0.;
 			if (likelihood_type_ == "gaussian") {
+				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:init_intercept)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					init_intercept += y_data[i];
+					for (data_size_t i = 0; i < num_data; ++i) {
+						init_intercept += y_data[i];
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static) reduction(+:init_intercept)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						init_intercept += y_data[i] - fixed_effects[i];
+					}
 				}
 				init_intercept /= num_data;
 			}
@@ -320,17 +330,19 @@ namespace GPBoost {
 		* \param y_data Response variable data
 		* \param num_data Number of data points
 		* \param rand_eff_var Variance of random effects
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
 		*/
 		bool ShouldHaveIntercept(const double* y_data,
 			const data_size_t num_data,
-			double rand_eff_var) const {
+			double rand_eff_var,
+			const double* fixed_effects) const {
 			bool ret_val = false;
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || 
 				likelihood_type_ == "negative_binomial") {
 				ret_val = true;
 			}
 			else {
-				double beta_zero = FindInitialIntercept(y_data, num_data, rand_eff_var);
+				double beta_zero = FindInitialIntercept(y_data, num_data, rand_eff_var, fixed_effects);
 				if (std::abs(beta_zero) > 0.1) {
 					ret_val = true;
 				}

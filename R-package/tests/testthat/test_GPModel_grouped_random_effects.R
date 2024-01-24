@@ -6,6 +6,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   TOL_LOOSE <- 1E-2
   TOL_VERY_LOOSE <- 1E-1
   TOL_STRICT <- 1E-6
+  DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent",
+                               lr_cov = 0.1, use_nesterov_acc = TRUE,
+                               acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
+                               optimizer_coef = "gradient_descent", lr_coef = 0.1,
+                               convergence_criterion = "relative_change_in_log_likelihood")
+  DEFAULT_OPTIM_PARAMS_STD <- c(DEFAULT_OPTIM_PARAMS, list(std_dev = TRUE))
   
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
@@ -179,6 +185,32 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y_Inf <- y
     y_Inf[1] = -Inf
     expect_error(gp_model <- fitGPModel(group_data = group, y = y_Inf))
+    
+    # With offset / fixed_effects
+    offset <- 20 * sim_rand_unif(n=n, init_c=0.354)
+    y_o <- y + offset
+    cov_pars_pred = c(0.5,1.5)
+    nrounds <- 8
+    cov_pars <- c(0.49348233, 0.02326298, 1.22299112, 0.17995099)
+    expected_mu <- c(-0.1553877, -0.3945731, 0)
+    expected_cov <- c(0.5483871, 0.0000000, 0.0000000, 0.0000000,
+                      0.5483871, 0.0000000, 0.0000000, 0.0000000, 2)
+    gp_model <- fitGPModel(group_data = group,
+                           y = y,  params = DEFAULT_OPTIM_PARAMS_STD)
+    pred <- predict(gp_model, group_data_pred = group_test,
+                    cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_LOOSE)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOL_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOL_STRICT)
+    gp_model <- fitGPModel(group_data = group, y = y_o, fixed_effects = offset,
+                           params = DEFAULT_OPTIM_PARAMS_STD)
+    pred <- predict(gp_model,group_data_pred = group_test, fixed_effects = offset,
+                    cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_LOOSE)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOL_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOL_STRICT)
   })
   
   test_that("linear mixed effects model with grouped random effects ", {
@@ -255,6 +287,35 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_STRICT)
     # expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOL_STRICT)
     # expect_equal(gp_model$get_num_optim_iter(), 2)
+    
+    # With offset / fixed_effects
+    offset <- 20 * sim_rand_unif(n=n, init_c=0.1354)
+    y_o <- y + offset
+    group_test <- c(1,2,m+1)
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
+    cov_pars <- c(0.49203686, 0.02319484, 1.22013779, 0.17952698)
+    coef <- c(2.07490356, 0.11267013, 1.95068121, 0.03382416)
+    nrounds <- 35
+    expected_mu <- c(0.8843056, 2.0414001, 2.8551760)
+    expected_cov <- c(0.5393333, 0.0000000, 0.0000000, 0.0000000, 0.5393333, 0.0000000, 0.0000000, 0.0000000, 1.7121746)
+    gp_model <- fitGPModel(group_data = group,
+                           y = y, X = X, params = DEFAULT_OPTIM_PARAMS_STD)
+    pred <- predict(gp_model, group_data_pred = group_test,
+                    X_pred = X_test, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOL_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOL_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOL_STRICT)
+    gp_model <- fitGPModel(group_data = group, y = y_o, X = X, 
+                           fixed_effects = offset, params = DEFAULT_OPTIM_PARAMS_STD)
+    pred <- predict(gp_model, group_data_pred = group_test, fixed_effects = offset,
+                    X_pred = X_test, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOL_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOL_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOL_STRICT)
     
     # Large data
     n_L <- 1e6 # number of samples

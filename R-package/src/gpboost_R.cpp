@@ -980,12 +980,14 @@ SEXP GPB_OptimCovPar_R(SEXP handle,
 SEXP GPB_OptimLinRegrCoefCovPar_R(SEXP handle,
 	SEXP y_data,
 	SEXP covariate_data,
-	SEXP num_covariates) {
+	SEXP num_covariates,
+	SEXP fixed_effects) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_OptimLinRegrCoefCovPar(R_ExternalPtrAddr(handle),
 		R_REAL_PTR(y_data),
 		R_REAL_PTR(covariate_data),
-		Rf_asInteger(num_covariates)));
+		Rf_asInteger(num_covariates),
+		R_REAL_PTR(fixed_effects)));
 	R_API_END();
 	return R_NilValue;
 }
@@ -1317,7 +1319,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
   {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 28},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
-  {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 4},
+  {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 5},
   {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},
   {"GPB_GetCurrentNegLogLikelihood_R" , (DL_FUNC)&GPB_GetCurrentNegLogLikelihood_R , 2},
   {"GPB_GetCovPar_R"                  , (DL_FUNC)&GPB_GetCovPar_R                  , 3},

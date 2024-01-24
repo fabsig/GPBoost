@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+# Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
 # 
 # Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 
@@ -248,7 +248,9 @@
 #'                }
 #'               }
 #'            }
-#' @param fixed_effects A \code{vector} of optional external fixed effects (length = number of data points)
+#' @param fixed_effects A \code{numeric} \code{vector} with 
+#' additional fixed effects that are added to the linear predictor (= offset). 
+#' The length of this vector needs to equal the number of training data points.
 #' @param group_data_pred A \code{vector} or \code{matrix} with elements being group levels 
 #' for which predictions are made (if there are grouped random effects in the \code{GPModel})
 #' @param group_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data 
@@ -730,9 +732,6 @@ gpb.GPModel <- R6::R6Class(
         stop("fit.GPModel: Number of data points in ", sQuote("y"), " does not match number of data points of initialized model")
       }# end handling of y
       if (!is.null(fixed_effects)) {
-        if (!is.null(X)) {
-          stop("fit.GPModel: cannot provide both X and fixed_effects")
-        }
         if (!is.vector(fixed_effects)) {
           if (is.matrix(fixed_effects)) {
             if (dim(fixed_effects)[2] != 1) {
@@ -792,6 +791,7 @@ gpb.GPModel <- R6::R6Class(
           , y
           , X
           , private$num_coef
+          , fixed_effects
         )
       }
       if (private$params$trace) {
@@ -2350,7 +2350,8 @@ fitGPModel <- function(likelihood = "gaussian",
                        params = list(),
                        vecchia_approx = NULL,
                        vecchia_pred_type = NULL,
-                       num_neighbors_pred = NULL) {
+                       num_neighbors_pred = NULL,
+                       fixed_effects = NULL) {
   #Create model
   gpmodel <- gpb.GPModel$new(likelihood = likelihood
                              , group_data = group_data
@@ -2379,7 +2380,8 @@ fitGPModel <- function(likelihood = "gaussian",
   # Fit model
   gpmodel$fit(y = y,
               X = X,
-              params = params)
+              params = params,
+              fixed_effects = fixed_effects)
   return(gpmodel)
   
 }
@@ -2437,14 +2439,9 @@ summary.GPModel <- function(object, ...){
 #' a priory set data via the function '$set_prediction_data' (this option is not used by users directly)
 #' @param predict_response A \code{boolean}. If TRUE, the response variable (label) 
 #' is predicted, otherwise the latent random effects
-#' @param fixed_effects (usually not used) A \code{numeric} \code{vector} with 
-#' additional external training data fixed effects.
-#' The length of this vector needs to equal the number of training data points.
-#' Used only for non-Gaussian data. For Gaussian data, this is ignored
 #' @param fixed_effects_pred (usually not used) A \code{numeric} \code{vector} 
-#' with additional external prediction fixed effects.
+#' with additional prediction fixed effects.
 #' The length of this vector needs to equal the number of prediction points.
-#' Used only for non-Gaussian data. For Gaussian data, this is ignored
 #' @param ... (not used, ignore this, simply here that there is no CRAN warning)
 #' @inheritParams GPModel_shared_params 
 #' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for making predictions.

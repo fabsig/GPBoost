@@ -506,7 +506,7 @@ namespace GPBoost {
 		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters (can be nullptr, used only if calc_std_dev)
 		* \param[out] std_dev_coef Standard deviations for the coefficients (can be nullptr, used only if calc_std_dev and if covariate_data is not nullptr)
 		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
-		* \param fixed_effects Externally provided fixed effects component of location parameter (can be nullptr, only used for non-Gaussian likelihoods)
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset) (can be nullptr)
 		* \param learn_covariance_parameters If true, covariance parameters are estimated
 		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
 		*/
@@ -550,9 +550,6 @@ namespace GPBoost {
 						Log::REFatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian likelihoods ", optimizer_coef_.c_str());
 					}
 				}
-			}
-			if (gauss_likelihood_ && fixed_effects != nullptr) {
-				Log::REFatal("Additional external fixed effects in 'fixed_effects' can currently only be used for non-Gaussian likelihoods ");
 			}
 			// Check response variable data
 			if (y_data != nullptr) {
@@ -710,11 +707,11 @@ namespace GPBoost {
 						if (y_data == nullptr) {
 							vec_t y_aux_temp(num_data_);
 							GetY(y_aux_temp.data());
-							beta[intercept_col] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_aux_temp.data(), num_data_, tot_var);
+							beta[intercept_col] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_aux_temp.data(), num_data_, tot_var, fixed_effects);
 							y_aux_temp.resize(0);
 						}
 						else {
-							beta[intercept_col] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_, tot_var);
+							beta[intercept_col] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_, tot_var, fixed_effects);
 						}
 					}
 				}
@@ -732,10 +729,18 @@ namespace GPBoost {
 			else if (!called_in_GPBoost_algorithm && fixed_effects == nullptr) {//!has_covariates_ && !called_in_GPBoost_algorithm && fixed_effects == nullptr
 				CHECK(y_data != nullptr);
 				double tot_var = GetTotalVarComps(cov_aux_pars.segment(0, num_cov_par_));
-				if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_, tot_var)) {
+				if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_, tot_var, fixed_effects)) {
 					Log::REWarning("There is no intercept for modeling a possibly non-zero mean of the random effects. "
 						"Consider including an intercept (= a column of 1's) in the covariates 'X' ");
 				}
+			}
+			if (!has_covariates_ && fixed_effects != nullptr && gauss_likelihood_) {
+				vec_t resid = y_vec_;
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_data_; ++i) {
+					resid[i] -= fixed_effects[i];
+				}
+				SetY(resid.data());
 			}
 			Log::REDebug("GPModel: initial parameters: ");
 			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, has_intercept, intercept_col,
@@ -830,8 +835,7 @@ namespace GPBoost {
 							CalcYAux(1.);
 							UpdateCoefGLS(X_, beta);
 							// Set resid for updating covariance parameters
-							vec_t resid = y_vec_ - (X_ * beta);
-							SetY(resid.data());
+							UpdateFixedEffects(beta, fixed_effects, fixed_effects_vec);
 							EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_aux_pars[0], neg_log_likelihood_after_lin_coef_update_);
 						}
 						// Reset lr_cov_ to its initial values in case beta changes substantially after lr_cov_ is very small
@@ -1508,8 +1512,6 @@ namespace GPBoost {
 			vec_t& grad_beta,
 			const double* fixed_effects = nullptr) {
 			if (gauss_likelihood_) {
-				const vec_t resid = y_vec_ - (X_ * beta);
-				SetY(resid.data());
 				CalcYAux(1.);
 				vec_t y_aux(num_data_);
 				GetYAux(y_aux);
@@ -1669,6 +1671,12 @@ namespace GPBoost {
 			vec_t& fixed_effects_vec) {
 			if (gauss_likelihood_) {
 				vec_t resid = y_vec_ - (X_ * beta);
+				if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_; ++i) {
+						resid[i] -= fixed_effects[i];
+					}
+				}
 				SetY(resid.data());
 			}
 			else {
@@ -2983,9 +2991,11 @@ namespace GPBoost {
 		* \brief Find "reasonable" default values for the initial values of the covariance parameters (on transformed scale)
 		*		 Note: You should pre-allocate memory for optim_cov_pars (length = number of covariance parameters)
 		* \param y_data Response variable data
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
 		* \param[out] init_cov_pars Initial values for covariance parameters of RE components
 		*/
 		void FindInitCovPar(const double* y_data,
+			const double* fixed_effects,
 			double* init_cov_pars) {
 			double mean = 0;
 			double var = 0;
@@ -2993,14 +3003,30 @@ namespace GPBoost {
 			double init_marg_var = 1.;
 			if (gauss_likelihood_) {
 				//determine initial value for nugget effect
+				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:mean)
-				for (int i = 0; i < num_data_; ++i) {
-					mean += y_data[i];
+					for (int i = 0; i < num_data_; ++i) {
+						mean += y_data[i];
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static) reduction(+:mean)
+					for (int i = 0; i < num_data_; ++i) {
+						mean += y_data[i] - fixed_effects[i];
+					}
 				}
 				mean /= num_data_;
+				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:var)
-				for (int i = 0; i < num_data_; ++i) {
-					var += (y_data[i] - mean) * (y_data[i] - mean);
+					for (int i = 0; i < num_data_; ++i) {
+						var += (y_data[i] - mean) * (y_data[i] - mean);
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static) reduction(+:var)
+					for (int i = 0; i < num_data_; ++i) {
+						var += (y_data[i] - fixed_effects[i] - mean) * (y_data[i] - fixed_effects[i] - mean);
+					}
 				}
 				var /= (num_data_ - 1);
 				init_cov_pars[0] = var;

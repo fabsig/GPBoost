@@ -3,7 +3,7 @@
 Wrapper for C API of GPBoost.
 
 Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
-Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+Modified work Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
 Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 """
 import ctypes
@@ -4800,8 +4800,8 @@ class GPModel(object):
                             - "none": no preconditioner
 
         fixed_effects : numpy 1-D array or None, optional (default=None)
-            Additional fixed effects component of location parameter for observed data.
-            Used only for non-Gaussian data. For Gaussian data, this is ignored
+            Additional fixed effects that are added to the linear predictor (= offset).
+            The length of this vector needs to equal the number of training data points.
 
         Example
         -------
@@ -4825,8 +4825,6 @@ class GPModel(object):
         fixed_effects_c = ctypes.c_void_p()
 
         if fixed_effects is not None:  ##TODO: maybe add support for pandas for fixed_effects (low prio)
-            if X is not None:
-                raise ValueError("Cannot provide both X and fixed_effects")
             if not isinstance(fixed_effects, np.ndarray):
                 raise ValueError("fixed_effects needs to be a numpy.ndarray")
             if len(fixed_effects.shape) != 1:
@@ -4865,7 +4863,8 @@ class GPModel(object):
                 self.handle,
                 y_c,
                 X_c,
-                ctypes.c_int(self.num_coef)))
+                ctypes.c_int(self.num_coef),
+                fixed_effects_c))
         if self.params["trace"]:
             num_it = self._get_num_optim_iter()
             print("Number of iterations until convergence: " + str(num_it))
@@ -5357,13 +5356,12 @@ class GPModel(object):
             predict_response : bool (default=False)
                 If True, the response variable (label) is predicted, otherwise the latent random effects
             fixed_effects : numpy 1-D array or None, optional (default=None)
-                Additional external training data fixed effects.
+                Additional fixed effects that are added to the linear predictor (= offset).
                 The length of this vector needs to equal the number of training data points.
-                Used only for non-Gaussian data. For Gaussian data, this is ignored
             fixed_effects_pred : numpy 1-D array or None, optional (default=None)
                 Additional external prediction fixed effects.
                 The length of this vector needs to equal the number of prediction points.
-                Used only for non-Gaussian data. For Gaussian data, this is ignored
+                Used only for non-Gaussian data.
             vecchia_pred_type : string, optional (default=None)
                 The type of Vecchia approximation used for making predictions.
                 This is discontinued here. Use the function 'set_prediction_data' to specify this

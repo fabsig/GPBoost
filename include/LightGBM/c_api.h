@@ -1463,12 +1463,14 @@ GPBOOST_C_EXPORT int GPB_OptimCovPar(REModelHandle handle,
 * \param y_data Response variable data
 * \param covariate_data Covariate (=independent variable, feature) data
 * \param num_covariates Number of covariates
+* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_OptimLinRegrCoefCovPar(REModelHandle handle,
     const double* y_data,
     const double* covariate_data,
-    int num_covariates);
+    int num_covariates,
+    const double* fixed_effects);
 
 /*!
 * \brief Calculate the value of the negative log-likelihood

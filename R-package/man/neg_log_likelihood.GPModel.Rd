@@ -15,7 +15,9 @@ Covariance parameters of Gaussian process and  random effects}
 
 \item{y}{A \code{vector} with response variable data}
 
-\item{fixed_effects}{A \code{vector} of optional external fixed effects (length = number of data points)}
+\item{fixed_effects}{A \code{numeric} \code{vector} with 
+additional fixed effects that are added to the linear predictor (= offset). 
+The length of this vector needs to equal the number of training data points.}
 
 \item{aux_pars}{A \code{vector} with \code{numeric} elements. 
 Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)}

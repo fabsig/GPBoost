@@ -200,10 +200,12 @@ namespace GPBoost {
 		* \param y_data Response variable data
 		* \param covariate_data Covariate data (=independent variables, features)
 		* \param num_covariates Number of covariates
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data,
 			const double* covariate_data,
-			int num_covariates);
+			int num_covariates,
+			const double* fixed_effects);
 
 		/*!
 		* \brief Find constant initial value of ensenmble for boosting (used only for non-Gaussian data). 
@@ -390,8 +392,10 @@ namespace GPBoost {
 		/*!
 		* \brief If cov_pars_ is is not defined, define them as init_cov_pars_ or if init_cov_pars_ is not given, find "reasonable" default values for the intial values of the covariance parameters
 		* \param y_data Response variable data used for finding intial values if cov_pars_ is not defined
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
 		*/
-		void InitializeCovParsIfNotDefined(const double* y_data);
+		void InitializeCovParsIfNotDefined(const double* y_data,
+			const double* fixed_effects);
 
 		/*!
 		* \brief Return number of additional likelihood parameters (aux_pars_)

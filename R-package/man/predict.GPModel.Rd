@@ -53,15 +53,13 @@ a priory set data via the function '$set_prediction_data' (this option is not us
 \item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) 
 is predicted, otherwise the latent random effects}
 
-\item{fixed_effects}{(usually not used) A \code{numeric} \code{vector} with 
-additional external training data fixed effects.
-The length of this vector needs to equal the number of training data points.
-Used only for non-Gaussian data. For Gaussian data, this is ignored}
+\item{fixed_effects}{A \code{numeric} \code{vector} with 
+additional fixed effects that are added to the linear predictor (= offset). 
+The length of this vector needs to equal the number of training data points.}
 
 \item{fixed_effects_pred}{(usually not used) A \code{numeric} \code{vector} 
-with additional external prediction fixed effects.
-The length of this vector needs to equal the number of prediction points.
-Used only for non-Gaussian data. For Gaussian data, this is ignored}
+with additional prediction fixed effects.
+The length of this vector needs to equal the number of prediction points.}
 
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
 This is discontinued here. Use the function 'set_prediction_data' to specify this}

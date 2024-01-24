@@ -2821,10 +2821,11 @@ int GPB_OptimCovPar(REModelHandle handle,
 int GPB_OptimLinRegrCoefCovPar(REModelHandle handle,
 	const double* y_data,
 	const double* covariate_data,
-	int num_covariates) {
+	int num_covariates,
+	const double* fixed_effects) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
-	ref_remodel->OptimLinRegrCoefCovPar(y_data, covariate_data, num_covariates);
+	ref_remodel->OptimLinRegrCoefCovPar(y_data, covariate_data, num_covariates, fixed_effects);
 	API_END();
 }
 

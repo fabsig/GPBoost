@@ -345,7 +345,7 @@ namespace GPBoost {
 		const double* fixed_effects,
 		bool called_in_GPBoost_algorithm) {
 		if (y_data != nullptr) {
-			InitializeCovParsIfNotDefined(y_data);
+			InitializeCovParsIfNotDefined(y_data, fixed_effects);
 			// Note: y_data can be null_ptr for non-Gaussian data. For non-Gaussian data, the function 'InitializeCovParsIfNotDefined' is called in 'SetY'
 		}
 		CHECK(cov_pars_initialized_);
@@ -412,8 +412,9 @@ namespace GPBoost {
 
 	void REModel::OptimLinRegrCoefCovPar(const double* y_data,
 		const double* covariate_data,
-		int num_covariates) {
-		InitializeCovParsIfNotDefined(y_data);
+		int num_covariates,
+		const double* fixed_effects) {
+		InitializeCovParsIfNotDefined(y_data, fixed_effects);
 		double* coef_ptr;;
 		if (init_coef_given_) {
 			coef_ptr = coef_.data();
@@ -446,7 +447,7 @@ namespace GPBoost {
 				std_dev_cov_par,
 				std_dev_coef,
 				calc_std_dev_,
-				nullptr,
+				fixed_effects,
 				true,
 				false);
 		}
@@ -462,7 +463,7 @@ namespace GPBoost {
 				std_dev_cov_par,
 				std_dev_coef,
 				calc_std_dev_,
-				nullptr,
+				fixed_effects,
 				true,
 				false);
 		}
@@ -478,7 +479,7 @@ namespace GPBoost {
 				std_dev_cov_par,
 				std_dev_coef,
 				calc_std_dev_,
-				nullptr,
+				fixed_effects,
 				true,
 				false);
 		}
@@ -552,7 +553,7 @@ namespace GPBoost {
 		vec_t cov_pars_trafo;
 		if (cov_pars == nullptr) {
 			if (y_data != nullptr) {
-				InitializeCovParsIfNotDefined(y_data);
+				InitializeCovParsIfNotDefined(y_data, fixed_effects);
 				// Note: y_data can be null_ptr for non-Gaussian data. For non-Gaussian data, the function 'InitializeCovParsIfNotDefined' is called in 'SetY'
 			}
 			CHECK(cov_pars_initialized_);
@@ -621,7 +622,7 @@ namespace GPBoost {
 
 	void REModel::CalcGradient(double* y, const double* fixed_effects, bool calc_cov_factor) {
 		if (y != nullptr) {
-			InitializeCovParsIfNotDefined(y);
+			InitializeCovParsIfNotDefined(y, fixed_effects);
 		}
 		CHECK(cov_pars_initialized_);
 		if (matrix_format_ == "sp_mat_t") {
@@ -1088,7 +1089,8 @@ namespace GPBoost {
 		}
 	}
 
-	void REModel::InitializeCovParsIfNotDefined(const double* y_data) {
+	void REModel::InitializeCovParsIfNotDefined(const double* y_data,
+		const double* fixed_effects) {
 		if (!cov_pars_initialized_) {
 			if (init_cov_pars_provided_) {
 				cov_pars_ = init_cov_pars_;
@@ -1096,13 +1098,13 @@ namespace GPBoost {
 			else {
 				cov_pars_ = vec_t(num_cov_pars_);
 				if (matrix_format_ == "sp_mat_t") {
-					re_model_sp_->FindInitCovPar(y_data, cov_pars_.data());
+					re_model_sp_->FindInitCovPar(y_data, fixed_effects, cov_pars_.data());
 				}
 				else if (matrix_format_ == "sp_mat_rm_t") {
-					re_model_sp_rm_->FindInitCovPar(y_data, cov_pars_.data());
+					re_model_sp_rm_->FindInitCovPar(y_data, fixed_effects, cov_pars_.data());
 				}
 				else {
-					re_model_den_->FindInitCovPar(y_data, cov_pars_.data());
+					re_model_den_->FindInitCovPar(y_data, fixed_effects, cov_pars_.data());
 				}
 				covariance_matrix_has_been_factorized_ = false;
 				init_cov_pars_ = cov_pars_;
