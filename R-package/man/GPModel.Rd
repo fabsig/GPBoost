@@ -26,6 +26,7 @@ Available options:
 \item{ "gamma": gamma distribution with a with log link function }
 \item{ "poisson": Poisson distribution with a with log link function }
 \item{ "negative_binomial": negative binomial distribution with a with log link function }
+\item{ Note: other likelihoods could be implemented upon request }
 }}
 
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 

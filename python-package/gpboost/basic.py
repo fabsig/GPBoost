@@ -4077,6 +4077,8 @@ class GPModel(object):
 
                         Negative binomial distribution with a with log link function
 
+                    - Note: other likelihoods could be implemented upon request
+
             group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 Either a vector or a matrix whose columns are categorical grouping variables. The elements are group
                 levels defining grouped random effects. The number of columns corresponds to the number of grouped

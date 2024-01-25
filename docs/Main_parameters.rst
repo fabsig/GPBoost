@@ -137,6 +137,8 @@ Model specification parameters
 
       -  ``negative_binomial`` : Negative binomial likelihood with log link function
 
+      - Note: other likelihoods could be implemented upon request
+
 -  ``group_data`` : two dimensional array / matrix of doubles or strings, optional (default = None)
 
    -  Labels of group levels for grouped random effects
