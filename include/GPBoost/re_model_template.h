@@ -450,6 +450,34 @@ namespace GPBoost {
 			nesterov_schedule_version_ = nesterov_schedule_version;
 			if (optimizer != nullptr) {
 				optimizer_cov_pars_ = std::string(optimizer);
+				if (optimizer_cov_pars_ == "gradient_descent_increase_lr") {
+					optimizer_cov_pars_ = "gradient_descent";
+					increase_learning_rate_again_ = true;
+				}
+				else {
+					increase_learning_rate_again_ = false;
+				}
+				if (optimizer_cov_pars_ == "gradient_descent_reset_lr") {
+					optimizer_cov_pars_ = "gradient_descent";
+					reset_learning_rate_every_iteration_ = true;
+				}
+				else {
+					reset_learning_rate_every_iteration_ = false;
+				}
+				if (optimizer_cov_pars_ == "gradient_descent_wolfe" || optimizer_cov_pars_ == "gradient_descent_wolfe_constant_change") {
+					optimizer_cov_pars_ = "gradient_descent";
+					wolfe_condition_ = true;
+				}
+				else {
+					wolfe_condition_ = false;
+				}
+				if (optimizer_cov_pars_ == "gradient_descent_wolfe_constant_change") {
+					optimizer_cov_pars_ = "gradient_descent";
+					learning_rate_constant_first_order_change_ = true;
+				}
+				else {
+					learning_rate_constant_first_order_change_ = false;
+				}
 			}
 			momentum_offset_ = momentum_offset;
 			if (convergence_criterion != nullptr) {
@@ -578,9 +606,9 @@ namespace GPBoost {
 				optimizer_coef_ = optimizer_cov_pars_;
 			}
 			bool terminate_optim = false;
-			//learning_rate_decreased_first_time_ = false;
-			//learning_rate_increased_after_descrease_ = false;
-			//learning_rate_decreased_after_increase_ = false;
+			learning_rate_decreased_first_time_ = false;
+			learning_rate_increased_after_descrease_ = false;
+			learning_rate_decreased_after_increase_ = false;
 			num_ll_evaluations_ = 0;
 			num_iter_ = 0;
 			num_it = max_iter_;
@@ -808,6 +836,9 @@ namespace GPBoost {
 				// Start optimization with "gradient_descent" or "fisher_scoring"
 				bool lr_cov_is_small = false, lr_aux_pars_is_small = false, lr_coef_is_small = false;
 				for (num_iter_ = 0; num_iter_ < max_iter_; ++num_iter_) {
+					if (reset_learning_rate_every_iteration_) {
+						OptimConfigSetInitialValues();//reset learning rates to their initial values
+					}
 					neg_log_likelihood_lag1_ = neg_log_likelihood_;
 					cov_aux_pars_lag1 = cov_aux_pars;
 					// Update linear regression coefficients using gradient descent or generalized least squares (the latter option only for Gaussian data)
@@ -1003,23 +1034,23 @@ namespace GPBoost {
 						num_it = num_iter_ + 1;
 						break;
 					}
-					////increase learning rates again (not used)
-					//else if (optimizer_cov_pars_ == "gradient_descent" && (num_iter_ + 1) >= 10 && learning_rate_decreased_first_time_ &&
-					//	!learning_rate_increased_after_descrease_ && !na_or_inf_occurred) {
-					//	if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < INCREASE_LR_CHANGE_LL_THRESHOLD_ * std::abs(neg_log_likelihood_lag1_)) {
-					//		if (has_covariates_) {
-					//			lr_coef_ /= LR_SHRINKAGE_FACTOR_;
-					//		}
-					//		if (learn_covariance_parameters) {
-					//			lr_cov_ /= LR_SHRINKAGE_FACTOR_;
-					//		}
-					//		if (estimate_aux_pars_) {
-					//			lr_aux_pars_ /= LR_SHRINKAGE_FACTOR_;
-					//		}
-					//		learning_rate_increased_after_descrease_ = true;
-					//		Log::REDebug("GPModel covariance parameter estimation: The learning rates have been increased in iteration number %d ", num_iter_ + 1);
-					//	}
-					//}
+					//increase learning rates again
+					else if (increase_learning_rate_again_ && optimizer_cov_pars_ == "gradient_descent" && (num_iter_ + 1) >= 10 && 
+						learning_rate_decreased_first_time_ && !learning_rate_decreased_after_increase_ && !na_or_inf_occurred) {
+						if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < INCREASE_LR_CHANGE_LL_THRESHOLD_ * std::abs(neg_log_likelihood_lag1_)) {
+							if (has_covariates_) {
+								lr_coef_ /= LR_SHRINKAGE_FACTOR_;
+							}
+							if (learn_covariance_parameters) {
+								lr_cov_ /= LR_SHRINKAGE_FACTOR_;
+							}
+							if (estimate_aux_pars_) {
+								lr_aux_pars_ /= LR_SHRINKAGE_FACTOR_;
+							}
+							learning_rate_increased_after_descrease_ = true;
+							Log::REDebug("GPModel covariance parameter estimation: The learning rates have been increased in iteration number %d ", num_iter_ + 1);
+						}
+					}
 				}//end for loop for optimization
 			}//end "gradient_descent" or "fisher_scoring"
 			// redo optimization with "nelder_mead" in case NA or Inf occurred
@@ -3394,15 +3425,30 @@ namespace GPBoost {
 		int num_iter_ = 0;
 		/*! \brief True, if 'OptimLinRegrCoefCovPar' has been called */
 		bool model_has_been_estimated_ = false;
-		// The following variables are not used anymore (increasing learning rate again does not seem beneficial)
-		///*! \brief True if the learning rates have been descreased (only for gradient_descent) */
-		//bool learning_rate_decreased_first_time_ = false;
-		///*! \brief True if the learning rates have been increased after they have been descreased (only for gradient_descent) */
-		//bool learning_rate_increased_after_descrease_ = false;
-		///*! \brief True if the learning rates have been descreased again after they have been increased (only for gradient_descent) */
-		//bool learning_rate_decreased_after_increase_ = false;
-		///*! \brief Threshold value, for relative change in the log-likelihood, below which learning rates are increased again for gradient descent */
-		//double INCREASE_LR_CHANGE_LL_THRESHOLD_ = 1e-3;
+		/*! \brief If true, Wolfe's condition is used to check whether there is sufficient decrease in the negative log-likelighood (otherwise it is only checked for a decrease) */
+		bool wolfe_condition_ = false;
+		/*! \brief Constant c for Wolfe's condition */
+		double c_wolfe_condition_ = 1e-4;
+		/*! \brief Squared norm of gradient wrt covariance parameters */
+		double squared_norm_grad_cov_pars_;
+		/*! \brief Squared norm of gradient wrt auxiliary coefficients */
+		double squared_norm_grad_aux_pars_;
+		/*! \brief Squared norm of gradient wrt linear regression coefficients */
+		double squared_norm_grad_coef_;
+		/*! \brief If true, the initial learning rates in every iteration are set such that there is a constant first order change */
+		bool learning_rate_constant_first_order_change_ = false;
+		/*! \brief If true, the learning rates are reset to initial values in every iteration (only for gradient_descent) */
+		bool reset_learning_rate_every_iteration_ = false;
+		/*! \brief If true, the learning rates can be increased again in latter iterations after they have been decreased (only for gradient_descent) */
+		bool increase_learning_rate_again_ = false;
+		/*! \brief If true, the learning rates have been descreased (only for gradient_descent) */
+		bool learning_rate_decreased_first_time_ = false;
+		/*! \brief If true, the learning rates have been increased after they have been descreased (only for gradient_descent) */
+		bool learning_rate_increased_after_descrease_ = false;
+		/*! \brief If true, the learning rates have been descreased again after they have been increased (only for gradient_descent) */
+		bool learning_rate_decreased_after_increase_ = false;
+		/*! \brief Threshold value, for relative change in the log-likelihood, below which learning rates are increased again for gradient descent */
+		double INCREASE_LR_CHANGE_LL_THRESHOLD_ = 1e-3;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
@@ -5119,6 +5165,24 @@ namespace GPBoost {
 			else {
 				first_update_ = false;
 			}
+			if (learning_rate_constant_first_order_change_ && it > 0) {
+				double squared_norm_grad_cov_pars_new = nat_grad.segment(0, num_grad_cov_par).squaredNorm();
+				lr_cov_ *= squared_norm_grad_cov_pars_ / squared_norm_grad_cov_pars_new;
+				lr_cov = lr_cov_;
+				squared_norm_grad_cov_pars_ = squared_norm_grad_cov_pars_new;
+				if (estimate_aux_pars_) {
+					double squared_norm_grad_aux_pars_new = nat_grad.segment(num_grad_cov_par, NumAuxPars()).squaredNorm();
+					lr_aux_pars_ *= squared_norm_grad_aux_pars_ / squared_norm_grad_aux_pars_new;
+					lr_aux_pars = lr_aux_pars_;
+					squared_norm_grad_aux_pars_ = squared_norm_grad_aux_pars_new;
+				}
+			}
+			else if (wolfe_condition_) {
+				squared_norm_grad_cov_pars_ = nat_grad.segment(0, num_grad_cov_par).squaredNorm();
+				if (estimate_aux_pars_) {
+					squared_norm_grad_aux_pars_ = nat_grad.segment(num_grad_cov_par, NumAuxPars()).squaredNorm();
+				}
+			}
 			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
 				vec_t update(nat_grad.size());
 				update.segment(0, num_grad_cov_par) = lr_cov * nat_grad.segment(0, num_grad_cov_par);
@@ -5160,12 +5224,33 @@ namespace GPBoost {
 				}
 				CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
 				// Safeguard against too large steps by halving the learning rate when the objective increases
-				if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
-					decrease_found = true;
+				if (wolfe_condition_) {
+					if (estimate_aux_pars_) {
+						if ((neg_log_likelihood_ <= (neg_log_likelihood_after_lin_coef_update_ - c_wolfe_condition_ * lr_cov * squared_norm_grad_cov_pars_)) &&
+							(neg_log_likelihood_ <= (neg_log_likelihood_after_lin_coef_update_ - c_wolfe_condition_ * lr_aux_pars * squared_norm_grad_aux_pars_))) {
+							decrease_found = true;
+						}
+					}
+					else {
+						if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_ - c_wolfe_condition_ * lr_cov * squared_norm_grad_cov_pars_) {
+							decrease_found = true;
+						}
+					}
+				}
+				else {
+					if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_) {
+						decrease_found = true;
+					}
+				}
+				if(decrease_found){
 					break;
 				}
 				else {
 					halving_done = true;
+					learning_rate_decreased_first_time_ = true;
+					if (learning_rate_increased_after_descrease_) {
+						learning_rate_decreased_after_increase_ = true;
+					}
 					lr_cov *= LR_SHRINKAGE_FACTOR_;
 					if (estimate_aux_pars_) {
 						lr_aux_pars *= LR_SHRINKAGE_FACTOR_;
@@ -5561,6 +5646,15 @@ namespace GPBoost {
 			else {
 				first_update_ = false;
 			}
+			if (learning_rate_constant_first_order_change_ && it > 0) {
+				double squared_norm_grad_coef_new = grad.squaredNorm();
+				lr_coef_ *= squared_norm_grad_coef_ / squared_norm_grad_coef_new;
+				lr_coef = lr_coef_;
+				squared_norm_grad_coef_ = squared_norm_grad_coef_new;
+			}
+			else if (wolfe_condition_) {
+				squared_norm_grad_coef_ = grad.squaredNorm();
+			}
 			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
 				beta_new = beta - lr_coef * grad;
 				// Apply Nesterov acceleration
@@ -5578,17 +5672,26 @@ namespace GPBoost {
 					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEffCalcMLL(fixed_effects_vec.data(), true);//calculate mode and approximate marginal likelihood
 				}
 				// Safeguard against too large steps by halving the learning rate when the objective increases
-				if (neg_log_likelihood_after_lin_coef_update_ <= neg_log_likelihood_lag1_) {
-					decrease_found = true;
+				if (wolfe_condition_) {
+					if (neg_log_likelihood_after_lin_coef_update_ <= (neg_log_likelihood_lag1_ - c_wolfe_condition_ * lr_coef * squared_norm_grad_coef_)) {
+						decrease_found = true;
+					}
+				}
+				else {
+					if (neg_log_likelihood_after_lin_coef_update_ <= neg_log_likelihood_lag1_) {
+						decrease_found = true;
+					}
+				}
+				if (decrease_found) {
 					break;
 				}
 				else {
 					// Safeguard against too large steps by halving the learning rate
 					halving_done = true;
-					//learning_rate_decreased_first_time_ = true;
-					//if (learning_rate_increased_after_descrease_) {
-					//	learning_rate_decreased_after_increase_ = true;
-					//}
+					learning_rate_decreased_first_time_ = true;
+					if (learning_rate_increased_after_descrease_) {
+						learning_rate_decreased_after_increase_ = true;
+					}
 					lr_coef *= LR_SHRINKAGE_FACTOR_;
 					acc_rate_coef *= 0.5;
 					if (!gauss_likelihood_) {
