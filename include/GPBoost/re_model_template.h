@@ -2888,18 +2888,34 @@ namespace GPBoost {
 				else {//not gauss_likelihood_
 					const vec_t* mode = likelihood_[cluster_i]->GetMode();
 					if (gp_approx_ == "vecchia") {
+						if (only_one_GP_calculations_on_RE_scale_) {//there are duplicates
 #pragma omp parallel for schedule(static)// Write on output
-						for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-							out_predict[data_indices_per_cluster_[cluster_i][i]] = (*mode)[i];
+							for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
+								out_predict[data_indices_per_cluster_[cluster_i][i]] = (*mode)[(re_comps_[cluster_i][0]->random_effects_indices_of_data_)[i]];
+							}
+						}
+						else {//no duplicates
+#pragma omp parallel for schedule(static)// Write on output
+							for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
+								out_predict[data_indices_per_cluster_[cluster_i][i]] = (*mode)[i];
+							}
 						}
 						if (calc_var) {
 							vec_t var_pred_id;
 							likelihood_[cluster_i]->CalcVarLaplaceApproxVecchia(var_pred_id);
+							if (only_one_GP_calculations_on_RE_scale_) {//there are duplicates
 #pragma omp parallel for schedule(static)// Write on output
-							for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-								out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_] = var_pred_id[i];
+								for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
+									out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_] = var_pred_id[(re_comps_[cluster_i][0]->random_effects_indices_of_data_)[i]];
+								}
 							}
-						}
+							else {//no duplicates
+#pragma omp parallel for schedule(static)// Write on output
+								for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
+									out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_] = var_pred_id[i];
+								}
+							}
+						}//end calc_var
 					}//end gp_approx_ == "vecchia"
 					else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 						vec_t var_pred_all;
@@ -5884,12 +5900,9 @@ namespace GPBoost {
 						std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
 						CalcCholFSAResid(*sigma_resid, cluster_i);
 						den_mat_t sigma_resid_Ihalf_cross_cov;
-
 						//ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_fact_resid_[cluster_i], *cross_cov, sigma_resid_Ihalf_cross_cov, false);//DELETE_SOLVEINPLACE
 						//chol_fact_resid_[cluster_i].matrixL().solveInPlace(sigma_resid_Ihalf_cross_cov);
-
 						TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_fact_resid_[cluster_i], *cross_cov, sigma_resid_Ihalf_cross_cov, false);
-
 						sigma_woodbury = sigma_resid_Ihalf_cross_cov.transpose() * sigma_resid_Ihalf_cross_cov;
 					}
 					sigma_woodbury += sigma_ip_stable;

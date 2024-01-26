@@ -876,7 +876,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$var-expected_var_resp)),TOLERANCE_LOOSE)
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
     expect_lt(abs(nll-expected_nll),TOLERANCE_STRICT)
-    # No linear regression term
+    # No linear regression term without Vecchia approximation
     cov_pars_no_X <- c(0.6875476, 0.1062862 )
     mu_no_X <- c(0.01874013, 0.01200800, 0.20498871)
     var_no_X <- c(0.6105248, 0.6093745, 0.4235374)
@@ -888,10 +888,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_response = FALSE, cov_pars = cov_pars_pred_eval)
     expect_lt(sum(abs(pred$mu-mu_no_X)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-var_no_X)),TOLERANCE_LOOSE)
-    
-    ############################
-    ## With duplicates and linear regression term
-    ############################
+    # With duplicates and linear regression term without Vecchia approximation
     eps_multiple <- as.vector(L_multiple %*% b_multiple)
     probs_multiple <- pnorm(eps_multiple)
     y_multiple <- as.numeric(sim_rand_unif(n=n, init_c=0.2818) < probs_multiple)
@@ -902,7 +899,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_mu_multiple <- c(-0.01076580, 0.07873293, 0.18927032)
     expected_var_multiple <- c(0.5653402, 0.6019163, 0.6019163)
     nll_multiple <- 58.671494
-    # Estimation, prediction, and likelihood evaluation without Vecchia approximation
     capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", 
                                            likelihood = "bernoulli_probit", gp_approx = "none",
                                            y = y_multiple, X = X, params = DEFAULT_OPTIM_PARAMS), file='NUL')
@@ -918,11 +914,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(nll-nll_multiple),TOLERANCE_STRICT)
     
     for(inv_method in c("cholesky", "iterative")){
-      if(inv_method == "iterative"){
+      if(inv_method == "iterative") {
         tolerance_loc_1 <- TOLERANCE_ITERATIVE
         tolerance_loc_2 <- TOLERANCE_ITERATIVE
         loop_cg_PC = c("piv_chol_on_Sigma", "Sigma_inv_plus_BtWB")
-      } else{
+      } else {
         tolerance_loc_1 <- TOLERANCE_STRICT
         tolerance_loc_2 <- TOLERANCE_LOOSE
         loop_cg_PC = c("Sigma_inv_plus_BtWB")
@@ -1128,6 +1124,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         # Likelihood evaluation
         nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y_multiple)
         expect_lt(abs(nll-nll_multiple),tolerance_loc_1)
+        # Predict training data random effects
+        training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+        gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only", 
+                                     num_neighbors_pred = n/4, nsim_var_pred = nsim_var_pred)
+        preds <- predict(gp_model, gp_coords_pred = coords_multiple, predict_response = FALSE, 
+                         predict_var = TRUE, X_pred = X)
+        pred_mu_exp <- preds$mu - X %*% gp_model$get_coef()
+        expect_lt(sum(abs(training_data_random_effects[,1] - pred_mu_exp)),tolerance_loc_1)
+        if(inv_method == "iterative"){
+          expect_lt(mean(abs(training_data_random_effects[,2] - preds$var)), tolerance_loc_1) #Different RNG-Status
+        } else {
+          expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)), tolerance_loc_1)  
+        }
         
       }# end loop cg_preconditioner_type in loop_cg_PC
     }# end loop inv_method in c("cholesky", "iterative")
