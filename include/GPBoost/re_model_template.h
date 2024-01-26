@@ -907,9 +907,6 @@ namespace GPBoost {
 							AvoidTooLargeLearningRatesCovAuxPars(nat_grad, num_iter_);
 						}
 						else if (optimizer_cov_pars_ == "fisher_scoring") {//Fisher scoring
-							if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-								Log::REFatal("Fisher scoring is not supported for the GP approximation '%s' ", gp_approx_.c_str());
-							}
 							// We don't profile out sigma2 (=don't use closed-form expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
 							vec_t grad;
 							den_mat_t FI;

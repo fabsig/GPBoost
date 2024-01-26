@@ -25,6 +25,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                          num_rand_vec_trace = 1000,
                                          reuse_rand_vec_trace = TRUE)
   DEFAULT_OPTIM_PARAMS_STD_iterative <- c(DEFAULT_OPTIM_PARAMS_iterative, list(std_dev = TRUE))
+  DEFAULT_OPTIM_PARAMS_FISHER <- list(optimizer_cov = "fisher_scoring", delta_rel_conv = 1E-6,
+                                      optimizer_coef = "gradient_descent", lr_coef = 0.1,
+                                      convergence_criterion = "relative_change_in_log_likelihood")
+  DEFAULT_OPTIM_PARAMS_FISHER_STD <- c(DEFAULT_OPTIM_PARAMS_FISHER, list(std_dev = TRUE))
   
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
@@ -1097,18 +1101,25 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # With fitc and n-1 inducing points
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                           gp_approx = "fitc",num_ind_points = n-1, 
-                                           y = y, X = X,
-                                           params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
+                                           gp_approx = "fitc", num_ind_points = n-1, 
+                                           y = y, X = X, params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), num_it)
-    
     # Prediction 
     pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_var = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
+    
+    # Fisher scoring
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           gp_approx = "fitc", num_ind_points = n-1, 
+                                           y = y, X = X, params = DEFAULT_OPTIM_PARAMS_FISHER_STD), file='NUL')
+    cov_pars_FS <- c(0.008606874, 0.067462675, 1.001903559, 0.208839567, 0.094773935, 0.028174515)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_FS)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
+    expect_equal(gp_model$get_num_optim_iter(), 9)
     
     # With fitc and 50 inducing points
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -1270,6 +1281,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                       X_pred = X_test, predict_var = TRUE)
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+      # Fisher scoring
+      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                             gp_approx = "full_scale_tapering",num_ind_points = 60, cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
+                                             y = y, X = X,  matrix_inversion_method = i,
+                                             params = DEFAULT_OPTIM_PARAMS_FISHER_STD), file='NUL')
+      cov_pars_FS <- c(0.008650702, 0.067508861, 1.001834464, 0.208857745, 0.094778924, 0.028179309)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_FS)),TOLERANCE_LOOSE)
+      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
+      expect_equal(gp_model$get_num_optim_iter(), 9)
       
       if(i == "cholesky"){
         # With FSA and n-1 inducing points and taper range 0.4
