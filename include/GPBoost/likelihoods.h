@@ -102,6 +102,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "gaussian") {
 				aux_pars_ = { 1. };//1 / sqrt(variance)
 				names_aux_pars_ = { "inverse_std_dev" };
+				num_aux_pars_ = 0;
 			} 
 			chol_fact_pattern_analyzed_ = false;
 			has_a_vec_ = has_a_vec;

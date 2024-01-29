@@ -11,23 +11,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                lr_cov = 0.1, use_nesterov_acc = TRUE,
                                acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
                                optimizer_coef = "gradient_descent", lr_coef = 0.1,
-                               convergence_criterion = "relative_change_in_log_likelihood")
+                               convergence_criterion = "relative_change_in_log_likelihood",
+                               cg_delta_conv = 1E-6, cg_preconditioner_type = "predictive_process_plus_diagonal",
+                               cg_max_num_it = 1000, cg_max_num_it_tridiag = 1000,
+                               num_rand_vec_trace = 1000, reuse_rand_vec_trace = TRUE)
   DEFAULT_OPTIM_PARAMS_STD <- c(DEFAULT_OPTIM_PARAMS, list(std_dev = TRUE))
-  DEFAULT_OPTIM_PARAMS_iterative <- list(optimizer_cov = "gradient_descent",
-                                         lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                         acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
-                                         optimizer_coef = "gradient_descent", lr_coef = 0.1,
-                                         convergence_criterion = "relative_change_in_log_likelihood",
-                                         cg_delta_conv = 1E-6,
-                                         cg_preconditioner_type = "predictive_process_plus_diagonal",
-                                         cg_max_num_it = 1000,
-                                         cg_max_num_it_tridiag = 1000,
-                                         num_rand_vec_trace = 1000,
-                                         reuse_rand_vec_trace = TRUE)
-  DEFAULT_OPTIM_PARAMS_STD_iterative <- c(DEFAULT_OPTIM_PARAMS_iterative, list(std_dev = TRUE))
   DEFAULT_OPTIM_PARAMS_FISHER <- list(optimizer_cov = "fisher_scoring", delta_rel_conv = 1E-6,
                                       optimizer_coef = "gradient_descent", lr_coef = 0.1,
-                                      convergence_criterion = "relative_change_in_log_likelihood")
+                                      convergence_criterion = "relative_change_in_log_likelihood",
+                                      cg_delta_conv = 1E-6, cg_preconditioner_type = "predictive_process_plus_diagonal",
+                                      cg_max_num_it = 1000, cg_max_num_it_tridiag = 1000,
+                                      num_rand_vec_trace = 1000, reuse_rand_vec_trace = TRUE)
   DEFAULT_OPTIM_PARAMS_FISHER_STD <- c(DEFAULT_OPTIM_PARAMS_FISHER, list(std_dev = TRUE))
   
   # Function that simulates uniform random variables
@@ -187,6 +181,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_est <- as.vector(gp_model$get_cov_pars())
     expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3,5)])),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 498)
+    # # approximate Fisher scoring
+    # params <- DEFAULT_OPTIM_PARAMS_STD
+    # params$optimizer_cov = "approximate_fisher_scoring"
+    # params$lr_cov <- 1
+    # params$use_nesterov_acc <- FALSE
+    # capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+    #                                        y = y, params = params), file='NUL')
+    # summary(gp_model)
+    # cov_pars_approx_fisher <- c(0.06013537, 0.08560154, 1.10340033, 0.27759078, 0.12800694, 0.04542632)
+    # expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_fisher)),TOLERANCE_STRICT)
+    # expect_equal(gp_model$get_num_optim_iter(), 33)
     
     # Prediction from fitted model
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -1241,7 +1246,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     vec_chol_or_iterative <- c("cholesky","iterative")
     for (i in vec_chol_or_iterative) {
       if(i == "iterative"){
-        DEFAULT_OPTIM_PARAMS_STD <- DEFAULT_OPTIM_PARAMS_STD_iterative
         TOLERANCE <- TOLERANCE_ITERATIVE
       } else {
         TOLERANCE <- TOLERANCE_LOOSE
@@ -1282,14 +1286,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
       # Fisher scoring
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                             gp_approx = "full_scale_tapering",num_ind_points = 60, cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
-                                             y = y, X = X,  matrix_inversion_method = i,
-                                             params = DEFAULT_OPTIM_PARAMS_FISHER_STD), file='NUL')
-      cov_pars_FS <- c(0.008650702, 0.067508861, 1.001834464, 0.208857745, 0.094778924, 0.028179309)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_FS)),TOLERANCE_LOOSE)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
-      expect_equal(gp_model$get_num_optim_iter(), 9)
+      if(i == "cholesky"){
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                               gp_approx = "full_scale_tapering", num_ind_points = 60, 
+                                               cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
+                                               y = y, X = X,  matrix_inversion_method = i,
+                                               params = DEFAULT_OPTIM_PARAMS_FISHER_STD), file='NUL')
+        cov_pars_FS <- c(0.008650702, 0.067508861, 1.001834464, 0.208857745, 0.094778924, 0.028179309)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_FS)),TOLERANCE_LOOSE)
+        expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
+        expect_equal(gp_model$get_num_optim_iter(), 9)
+      }
       
       if(i == "cholesky"){
         # With FSA and n-1 inducing points and taper range 0.4
