@@ -253,7 +253,13 @@ Model specification parameters
 
       -  ``cholesky`` : Cholesky factorization
 
-      -  ``iterative`` : iterative methods. Only supported for non-Gaussian likelihoods with a Vecchia-Laplace approximation. This a combination of conjugate gradient, Lanczos algorithm, and other methods
+      -  ``iterative`` : iterative methods. A combination of conjugate gradient, Lanczos algorithm, and other methods. 
+
+         This is currently only supported for the following cases:
+
+         - ``likelihood`` != ``gaussian`` and ``gp_approx`` == ``vecchia`` (non-Gaussian likelihoods with a Vecchia-Laplace approximation)
+
+         - ``likelihood`` == ``gaussian`` and ``gp_approx`` == ``full_scale_tapering`` (Gaussian likelihood with a full-scale tapering approximation)
 
 -  ``seed`` : integer, (default = 0)
 

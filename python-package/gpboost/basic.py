@@ -4213,8 +4213,13 @@ class GPModel(object):
 
                     - "iterative":
 
-                        Iterative methods: Only supported for non-Gaussian likelihoods with a Vecchia-Laplace
-                        approximation. This a combination of conjugate gradient, Lanczos algorithm, and other methods
+                        Iterative methods: A combination of conjugate gradient, Lanczos algorithm, and other methods.
+
+                        This is currently only supported for the following cases:
+
+                        - likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation)
+
+                        - likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation)
 
             seed : integer, optional (default=0)
                 The seed used for model creation (e.g., random ordering in Vecchia approximation)

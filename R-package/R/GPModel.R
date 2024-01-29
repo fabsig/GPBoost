@@ -102,8 +102,14 @@
 #' Available options:
 #' \itemize{
 #' \item{"cholesky": Cholesky factorization }
-#' \item{"iterative": iterative methods. Only supported for non-Gaussian likelihoods
-#' with a Vecchia-Laplace approximation. This a combination of conjugate gradient, Lanczos algorithm, and other methods }
+#' \item{"iterative": iterative methods. A combination of conjugate gradient, Lanczos algorithm, and other methods. 
+#' 
+#' This is currently only supported for the following cases: 
+#' \itemize{
+#' \item{likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation) }
+#' \item{likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation) }
+#' }
+#' }
 #' }
 #' @param seed An \code{integer} specifying the seed used for model creation 
 #' (e.g., random ordering in Vecchia approximation)
