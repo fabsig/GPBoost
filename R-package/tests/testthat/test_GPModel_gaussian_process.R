@@ -91,10 +91,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     file='NUL')
     cov_pars <- c(0.03784221, 0.07943467, 1.07390943, 0.25351519, 0.11451432, 0.03840236)
     num_it <- 59
+    nll_opt <- 122.7771373
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_equal(dim(gp_model$get_cov_pars())[2], 3)
     expect_equal(dim(gp_model$get_cov_pars())[1], 2)
     expect_equal(gp_model$get_num_optim_iter(), num_it)
+    expect_lt(sum(abs(as.vector(gp_model$get_current_neg_log_likelihood() )-nll_opt)), TOLERANCE_STRICT)
     # Can switch between likelihoods
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
     gp_model$set_likelihood("gamma")
@@ -181,17 +183,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_est <- as.vector(gp_model$get_cov_pars())
     expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3,5)])),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 498)
-    # # approximate Fisher scoring
-    # params <- DEFAULT_OPTIM_PARAMS_STD
-    # params$optimizer_cov = "approximate_fisher_scoring"
-    # params$lr_cov <- 1
-    # params$use_nesterov_acc <- FALSE
-    # capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-    #                                        y = y, params = params), file='NUL')
-    # summary(gp_model)
-    # cov_pars_approx_fisher <- c(0.06013537, 0.08560154, 1.10340033, 0.27759078, 0.12800694, 0.04542632)
-    # expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_fisher)),TOLERANCE_STRICT)
-    # expect_equal(gp_model$get_num_optim_iter(), 33)
+    # Newton's method
+    params <- DEFAULT_OPTIM_PARAMS_STD
+    params$optimizer_cov = "newton"
+    params$lr_cov <- 1
+    params$use_nesterov_acc <- FALSE
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           y = y, params = params), file='NUL')
+    cov_pars_newton <- c(0.03280698, 0.07717154, 1.07613758, 0.25178532, 0.11353321, 0.03770620)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_newton)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 86)
+    expect_lt(sum(abs(as.vector(gp_model$get_current_neg_log_likelihood())-nll_opt)),TOLERANCE_LOOSE)
     
     # Prediction from fitted model
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",

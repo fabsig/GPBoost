@@ -453,6 +453,7 @@ namespace GPBoost {
 				if (optimizer_cov_pars_ == "gradient_descent_wolfe" || 
 					optimizer_cov_pars_ == "gradient_descent_wolfe_constant_change" ||
 					optimizer_cov_pars_ == "newton" ||
+					optimizer_cov_pars_ == "newton_wolfe_constant_change" ||
 					optimizer_cov_pars_ == "fisher_scoring_wolfe_constant_change") {
 					wolfe_condition_ = true;
 				}
@@ -460,7 +461,7 @@ namespace GPBoost {
 					wolfe_condition_ = false;
 				}
 				if (optimizer_cov_pars_ == "gradient_descent_wolfe_constant_change" || 
-					optimizer_cov_pars_ == "newton" ||
+					optimizer_cov_pars_ == "newton_wolfe_constant_change" ||
 					optimizer_cov_pars_ == "fisher_scoring_wolfe_constant_change") {
 					learning_rate_constant_first_order_change_ = true;
 				}
@@ -472,6 +473,9 @@ namespace GPBoost {
 					optimizer_cov_pars_ == "gradient_descent_increase_lr" || 
 					optimizer_cov_pars_ == "gradient_descent_reset_lr") {
 					optimizer_cov_pars_ = "gradient_descent";
+				}
+				if (optimizer_cov_pars_ == "newton_wolfe_constant_change") {
+					optimizer_cov_pars_ = "newton";
 				}
 				if (optimizer_cov_pars_ == "fisher_scoring_wolfe_constant_change") {
 					optimizer_cov_pars_ = "fisher_scoring";
@@ -947,8 +951,8 @@ namespace GPBoost {
 							CalcFisherInformation(cov_aux_pars.segment(0, num_cov_par_), approx_Hessian, true, gradient_contains_error_var, true);
 							neg_step_dir = approx_Hessian.llt().solve(grad);
 						}
-						if (optimizer_cov_pars_ != "fisher_scoring") {
-							AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir, num_iter_);// Avoid too large learning rates for covariance parameters and aux_pars
+						if (optimizer_cov_pars_ == "gradient_descent") {
+							AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir, num_iter_);// Avoid too large learning rates for covariance parameters and aux_pars (for fisher_scoring and newton, this is done non-permanently in 'UpdateCovAuxPars')
 						}
 						CalculateDirDerivArmijoAndLearningRateConstantFirstOrderChange(grad, neg_step_dir);
 						// Update covariance and additional likelihood parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
@@ -5259,7 +5263,7 @@ namespace GPBoost {
 				}
 				// Avoid to large steps on log-scale: updates on the log-scale in one Fisher scoring step are capped at a certain level
 				// This is not done for gradient_descent since the learning rate is already adjusted accordingly in 'AvoidTooLargeLearningRatesCovAuxPars'
-				if (optimizer_cov_pars_ == "fisher_scoring") {
+				if (optimizer_cov_pars_ == "fisher_scoring" || optimizer_cov_pars_ == "newton") {
 					for (int ip = 0; ip < (int)update.size(); ++ip) {
 						if (update[ip] > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
 							update[ip] = MAX_GRADIENT_UPDATE_LOG_SCALE_;
@@ -5333,9 +5337,10 @@ namespace GPBoost {
 				}
 			}//end loop over learnig rate halving procedure
 			if (halving_done) {
-				if (optimizer_cov_pars_ == "fisher_scoring") {
+				if ((optimizer_cov_pars_ == "fisher_scoring" || optimizer_cov_pars_ == "newton") && 
+					!learning_rate_constant_first_order_change_) {
 					Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d. "
-						"The learning rate has been decreased in this iteration.", it + 1);
+						"The learning rate has been decreased in this iteration ", it + 1);
 				}
 				else if (optimizer_cov_pars_ == "gradient_descent") {
 					lr_cov_ = lr_cov; //permanently decrease learning rate (for Fisher scoring, this is not done. I.e., step halving is done newly in every iterarion of Fisher scoring)
@@ -5353,7 +5358,7 @@ namespace GPBoost {
 			}
 			if (!decrease_found) {
 				Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d "
-					"after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+					"after the maximal number of halving steps (%d) ", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
 			}
 			if (use_nesterov_acc) {
 				cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
@@ -6394,19 +6399,15 @@ namespace GPBoost {
 									den_mat_t sigma_ip_inv_sigma_cross_cov = chol_fact_sigma_ip_[cluster_i].solve((*cross_cov).transpose());
 									den_mat_t sigma_ip_grad_inv_sigma_cross_cov = sigma_ip_stable_grad * sigma_ip_inv_sigma_cross_cov;
 									if (gp_approx_ == "full_scale_tapering") {
-
 										// Initialize Residual Process
 										re_comps_resid_[cluster_i][j]->CalcSigma();
 										std::shared_ptr<T_mat> sigma_resid_grad = re_comps_resid_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]);
-
 										// Subtract gradient of predictive process covariance
 										SubtractProdFromMat<T_mat>(*sigma_resid_grad, -sigma_ip_inv_sigma_cross_cov, sigma_ip_grad_inv_sigma_cross_cov, true);
 										SubtractProdFromMat<T_mat>(*sigma_resid_grad, (*cross_cov_grad).transpose(), sigma_ip_inv_sigma_cross_cov, false);
 										SubtractProdFromMat<T_mat>(*sigma_resid_grad, sigma_ip_inv_sigma_cross_cov, (*cross_cov_grad).transpose(), false);
-
 										// Apply taper
 										re_comps_resid_[cluster_i][j]->ApplyTaper(*(re_comps_resid_[cluster_i][j]->dist_), *sigma_resid_grad);
-
 										// Inverse times Gradient times Random vectors
 										// Gradient times Random vectors
 										den_mat_t sigma_resid_grad_rand_vec(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
@@ -6432,8 +6433,6 @@ namespace GPBoost {
 												chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
 											sigma_inv_sigma_grad_rand_vec[deriv_par_nb] = sigma_inv_sigma_grad_rand_vec_interim;
 										}
-
-
 										// Gradient times Inverse times Random vectors
 										// Inverse times Random vectors
 										den_mat_t sigma_inv_rand_vec(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
@@ -6448,8 +6447,6 @@ namespace GPBoost {
 												chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
 											sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
 										}
-
-
 										// Gradient times Inverse times Random vectors
 										sigma_grad_sigma_inv_rand_vec[deriv_par_nb] = (*sigma_resid_grad) * sigma_inv_rand_vec;
 										sigma_grad_sigma_inv_rand_vec[deriv_par_nb] += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * sigma_inv_rand_vec)
@@ -6683,15 +6680,21 @@ namespace GPBoost {
 				length_grad += NumAuxPars();
 			}
 			den_mat_t H(length_grad, length_grad);// Aproximate Hessian calculated as the Jacobian of the gradient
-			const double mach_eps = std::numeric_limits<double>::epsilon();
-			vec_t delta_step = cov_aux_pars * std::pow(mach_eps, 1.0 / 3.0);// based on https://math.stackexchange.com/questions/1039428/finite-difference-method
+			vec_t log_pars = cov_aux_pars.array().log().matrix();
+			const double h_eps = std::pow(std::numeric_limits<double>::epsilon(), 1.0 / 3.0);
+			vec_t delta_step = log_pars * h_eps;// based on https://math.stackexchange.com/questions/1039428/finite-difference-method
+			for (int i = 0; i < (int)delta_step.size(); ++i) {//avoid problems when log_pars is close to 0
+				if (delta_step[i] < h_eps) {
+					delta_step[i] = h_eps;
+				}
+			}
 			vec_t pars_change1, pars_change2, grad_change1, grad_change2;
 			for (int i = 0; i < length_grad; ++i) {
 				// cov_aux_pars plus / minus delta
 				pars_change1 = cov_aux_pars;
 				pars_change2 = cov_aux_pars;
-				pars_change1[i + offset] += delta_step[i + offset];
-				pars_change2[i + offset] -= delta_step[i + offset];
+				pars_change1[i + offset] *= std::exp(delta_step[i + offset]);//gradient is taken on log-scale
+				pars_change2[i + offset] *= std::exp(-delta_step[i + offset]);
 				if (estimate_aux_pars_) {
 					SetAuxPars(pars_change1.data() + num_cov_par_);
 				}
