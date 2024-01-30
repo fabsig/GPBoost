@@ -6429,7 +6429,7 @@ namespace GPBoost {
 										}
 										else if (matrix_inversion_method_ == "iterative") {
 											CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], sigma_resid_grad_rand_vec, sigma_inv_sigma_grad_rand_vec_interim, NaN_found,
-												num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_pred_, cg_preconditioner_type_,
+												num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 												chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
 											sigma_inv_sigma_grad_rand_vec[deriv_par_nb] = sigma_inv_sigma_grad_rand_vec_interim;
 										}
@@ -6442,7 +6442,7 @@ namespace GPBoost {
 										}
 										else if (matrix_inversion_method_ == "iterative") {
 											CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], rand_vec, sigma_inv_rand_vec, NaN_found,
-												num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_pred_, cg_preconditioner_type_,
+												num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 												chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
 											sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
 										}
