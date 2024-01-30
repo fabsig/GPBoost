@@ -510,6 +510,10 @@ namespace GPBoost {
 				optimizer_coef_ = std::string(optimizer_coef);
 				coef_optimizer_has_been_set_ = true;
 			}
+			// Used in Cholesky-based computations in Fisher Information
+			if (gp_approx_ == "full_scale_tapering") {
+				num_rand_vec_trace_ = num_rand_vec_trace;
+			}
 			// Conjugate gradient algorithm related parameters
 			if (matrix_inversion_method_ == "iterative") {
 				cg_max_num_it_ = cg_max_num_it;
@@ -6369,17 +6373,32 @@ namespace GPBoost {
 							den_mat_t sigma_inv_rand_vec_nugget;
 							int deriv_par_nb = 0;
 							for (int j = 0; j < num_comps_total_; ++j) {
-								if (gp_approx_ == "full_scale_tapering") {
+								if (gp_approx_ == "full_scale_tapering" && matrix_inversion_method_ == "iterative") {
+									re_comps_resid_[cluster_i][j]->CalcSigma();
+
+									// Subtract predictive process covariance
+									re_comps_resid_[cluster_i][j]->SubtractPredProcFromSigmaForResidInFullScale(chol_ip_cross_cov_[cluster_i], true);
+									// Apply Taper
+									re_comps_resid_[cluster_i][j]->ApplyTaper();
+									if (gauss_likelihood_) {
+										re_comps_resid_[cluster_i][j]->AddConstantToDiagonalSigma(1.);//add nugget effect variance
+									}
 									sigma_resid = re_comps_resid_[cluster_i][j]->GetZSigmaZt();
 								}
 								std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][j]->GetZSigmaZt();
-
+								den_mat_t sigma_ip_inv_sigma_cross_cov = chol_fact_sigma_ip_[cluster_i].solve((*cross_cov).transpose());
 								int num_par_comp = re_comps_ip_[cluster_i][j]->num_cov_par_;
+								// Inverse of Sigma residual times cross covariance
+								den_mat_t Sigma_inv_cross_cov;
+								den_mat_t Sigma_inv_rand_vec;
+								if (matrix_inversion_method_ == "cholesky" && gp_approx_ == "full_scale_tapering") {
+									Sigma_inv_cross_cov = chol_fact_resid_[cluster_i].solve(*cross_cov);
+									Sigma_inv_rand_vec = chol_fact_resid_[cluster_i].solve(rand_vec);
+								}
 								for (int jpar = 0; jpar < num_par_comp; ++jpar) {
 									// Derivative of Components
 									std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]);
 									den_mat_t sigma_ip_stable_grad = *(re_comps_ip_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]));
-									den_mat_t sigma_ip_inv_sigma_cross_cov = chol_fact_sigma_ip_[cluster_i].solve((*cross_cov).transpose());
 									den_mat_t sigma_ip_grad_inv_sigma_cross_cov = sigma_ip_stable_grad * sigma_ip_inv_sigma_cross_cov;
 									if (gp_approx_ == "full_scale_tapering") {
 										// Initialize Residual Process
@@ -6403,11 +6422,9 @@ namespace GPBoost {
 											+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * rand_vec)
 											- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * rand_vec);
 										// Inverse times Gradient times Random vectors
-										den_mat_t Sigma_inv_cross_cov;
 										den_mat_t sigma_inv_sigma_grad_rand_vec_interim(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
 										if (matrix_inversion_method_ == "cholesky") {
 											den_mat_t Sigma_inv_Grad_rand_vec = chol_fact_resid_[cluster_i].solve(sigma_resid_grad_rand_vec);
-											Sigma_inv_cross_cov = chol_fact_resid_[cluster_i].solve(*cross_cov);
 											sigma_inv_sigma_grad_rand_vec[deriv_par_nb] = Sigma_inv_Grad_rand_vec - Sigma_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * Sigma_inv_Grad_rand_vec));
 										}
 										else if (matrix_inversion_method_ == "iterative") {
@@ -6420,7 +6437,6 @@ namespace GPBoost {
 										// Inverse times Random vectors
 										den_mat_t sigma_inv_rand_vec(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
 										if (matrix_inversion_method_ == "cholesky") {
-											den_mat_t Sigma_inv_rand_vec = chol_fact_resid_[cluster_i].solve(rand_vec);
 											sigma_inv_rand_vec = Sigma_inv_rand_vec - Sigma_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * Sigma_inv_rand_vec));
 											sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
 										}
