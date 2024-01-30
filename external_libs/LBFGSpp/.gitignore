@@ -1,0 +1,10 @@
+*.o
+*.out
+include/Eigen/*
+archive/*
+issues/*
+.settings/*
+.project
+.cproject
+/Debug/
+/Release/

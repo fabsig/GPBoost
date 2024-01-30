@@ -50,6 +50,8 @@ recursive-include compile/external_libs/CSparse/Source *
 recursive-include compile/external_libs/CSparse/Include *
 include compile/external_libs/CSparse/Doc/LICENSE.txt
 recursive-include compile/external_libs/OptimLib *
+recursive-include compile/external_libs/LBFGSpp/include *
+include compile/external_libs/LBFGSpp/LICENSE.md
 include compile/external_libs/fast_double_parser/CMakeLists.txt
 include compile/external_libs/fast_double_parser/LICENSE
 include compile/external_libs/fast_double_parser/LICENSE.BSL

@@ -971,7 +971,7 @@ namespace GPBoost {
 		/*! \brief Dimension of coordinates */
 		int GetDimCoords() const {
 			CHECK(coord_saved_);
-			return(coords_.cols());
+			return((int)coords_.cols());
 		}
 
 		/*! \brief Dimension of spatial coordinates in for space-time models*/

@@ -319,15 +319,11 @@ internal::nm_impl(
             settings_inp->opt_iter = iter;
         }
         if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
-            (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
-            Log::REDebug("GPModel parameter optimization iteration number %d", iter);
-            for (int i = 0; i < std::min((int)n_vals, 5); ++i) { Log::REDebug("Current best (transformed) parameter[%d]: %g", i, simplex_points.row(index_min(simplex_fn_vals))[i]); }
-            if (n_vals > 5) {
-                Log::REDebug("Note: only the first 5 parameters are shown");
-            }
-            Log::REDebug("Relative change in objective value: %g", rel_objfn_change);
-            Log::REDebug("Relative change in paramters: %g", rel_sol_change);
-            Log::REDebug("Minimum simplex objective value:: %g", min_val);
+            (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {//"hack" for printing nice logging information with nelder_mead
+            Vec_t gradient(2);
+            gradient[0] = (double)iter;
+            gradient[1] = min_val;
+            opt_objfn(simplex_points.row(index_min(simplex_fn_vals)), &gradient, opt_data);
         }
     }
 

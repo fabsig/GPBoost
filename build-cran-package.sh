@@ -42,9 +42,13 @@ cp external_libs/CSparse/Source/*.c ${TEMP_R_DIR}/src/
 
 cp -R external_libs/OptimLib/* ${TEMP_R_DIR}/src/include/
 
+cp -R external_libs/LBFGSpp/include/* ${TEMP_R_DIR}/src/include/
+
+cp external_libs/LBFGSpp/LICENSE.md* ${TEMP_R_DIR}/src/include/
+
 # including only specific files from Eigen, to keep the R package
 # small and avoid redistributing code with licenses incompatible with
-# LightGBM's license
+# GPBoost's license
 EIGEN_R_DIR=${TEMP_R_DIR}/src/include/Eigen
 mkdir -p ${EIGEN_R_DIR}
 

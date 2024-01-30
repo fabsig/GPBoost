@@ -2,7 +2,7 @@
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
 
-Copyright (c) 2020 Fabio Sigrist
+Copyright (c) 2020-2024 Fabio Sigrist
 
 The GPBoost library includes several upstream projects:
 
@@ -13,6 +13,8 @@ The GPBoost library includes several upstream projects:
 - OptimLib is copyright 2016-2020 Keith O'Hara
 
 - CSparse is copyright 2006 Timothy A. Davis
+
+- LBFGSpp is copyright 1990 Jorge Nocedal, 2007-2010 Naoaki Okazaki, 2016-2023 Yixuan Qiu, 2018-2023 Dirk Toewe
 
 
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION

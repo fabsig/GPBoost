@@ -276,8 +276,8 @@ internal::bfgs_impl(
             if (x.size() > 5) {
                 Log::REDebug("Note: only the first 5 parameters are shown");
             }
-            Log::REDebug("L2 norm of gradient: %g", grad_err);
-            Log::REDebug("Relative change in paramters: %g", rel_sol_change);
+            //Log::REDebug("L2 norm of gradient: %g", grad_err);
+            //Log::REDebug("Relative change in paramters: %g", rel_sol_change);
             ////For debugging
             //for (int i = 0; i < std::min((int)grad.size(), 10); ++i) { Log::REDebug("grad[%d]: %g", i, grad[i]); }
         }

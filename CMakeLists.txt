@@ -90,11 +90,11 @@ include_directories(${CSparse_HEADER_DIR})
 SET(EIGEN_DIR "${PROJECT_SOURCE_DIR}/external_libs/eigen")
 include_directories(${EIGEN_DIR})
 
-SET(CPPOPTLIB_DIR "${PROJECT_SOURCE_DIR}/external_libs/CppNumericalSolvers/include")
-include_directories(${CPPOPTLIB_DIR})
-
 SET(OPTIMLIB_DIR "${PROJECT_SOURCE_DIR}/external_libs/OptimLib")
 include_directories(${OPTIMLIB_DIR})
+
+SET(LBFGSPP_DIR "${PROJECT_SOURCE_DIR}/external_libs/LBFGSpp/include")
+include_directories(${LBFGSPP_DIR})
 
 # See https://gitlab.com/libeigen/eigen/-/blob/master/COPYING.README
 ADD_DEFINITIONS(-DEIGEN_MPL2_ONLY)

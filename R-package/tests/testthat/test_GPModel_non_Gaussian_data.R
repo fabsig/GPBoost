@@ -1851,8 +1851,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 11)
     # Also estimate shape parameter
     params_shape$optimizer_cov <- "nelder_mead"
-    gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
-                           y = y_lin, X=X, params = params_shape)
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
+                           y = y_lin, X=X, params = params_shape), file='NUL')
     cov_pars <- c(0.5097316)
     coef <- c(-0.08623548, 1.90033132)
     aux_pars <- c(1.350364)
