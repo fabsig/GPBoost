@@ -447,35 +447,23 @@ namespace GPBoost {
 			nesterov_schedule_version_ = nesterov_schedule_version;
 			if (optimizer != nullptr) {
 				optimizer_cov_pars_ = std::string(optimizer);
-				if (optimizer_cov_pars_ == "gradient_descent_wolfe" || 
-					optimizer_cov_pars_ == "gradient_descent_wolfe_constant_change" ||
-					optimizer_cov_pars_ == "newton" ||
-					optimizer_cov_pars_ == "newton_wolfe_constant_change" ||
-					optimizer_cov_pars_ == "fisher_scoring_wolfe_constant_change") {
-					armijo_condition_ = true;
-				}
-				else {
-					armijo_condition_ = false;
-				}
-				armijo_condition_ = true;
-				if (optimizer_cov_pars_ == "gradient_descent_wolfe_constant_change" || 
-					optimizer_cov_pars_ == "newton_wolfe_constant_change" ||
-					optimizer_cov_pars_ == "fisher_scoring_wolfe_constant_change") {
+				if (optimizer_cov_pars_ == "gradient_descent_constant_change" || 
+					optimizer_cov_pars_ == "newton_constant_change" ||
+					optimizer_cov_pars_ == "fisher_scoring_constant_change") {
 					learning_rate_constant_first_order_change_ = true;
 				}
 				else {
 					learning_rate_constant_first_order_change_ = false;
 				}
-				if (optimizer_cov_pars_ == "gradient_descent_wolfe" ||
-					optimizer_cov_pars_ == "gradient_descent_wolfe_constant_change" ||
+				if (optimizer_cov_pars_ == "gradient_descent_constant_change" ||
 					optimizer_cov_pars_ == "gradient_descent_increase_lr" || 
 					optimizer_cov_pars_ == "gradient_descent_reset_lr") {
 					optimizer_cov_pars_ = "gradient_descent";
 				}
-				if (optimizer_cov_pars_ == "newton_wolfe_constant_change") {
+				if (optimizer_cov_pars_ == "newt_constant_change") {
 					optimizer_cov_pars_ = "newton";
 				}
-				if (optimizer_cov_pars_ == "fisher_scoring_wolfe_constant_change") {
+				if (optimizer_cov_pars_ == "fisher_scoring_constant_change") {
 					optimizer_cov_pars_ = "fisher_scoring";
 				}
 				if (optimizer_cov_pars_ == "gradient_descent_increase_lr") {
@@ -3537,7 +3525,7 @@ namespace GPBoost {
 		bool model_has_been_estimated_ = false;
 
 		/*! \brief If true, Armijo's condition is used to check whether there is sufficient decrease in the negative log-likelighood (otherwise it is only checked for a decrease) */
-		bool armijo_condition_ = false;
+		bool armijo_condition_ = true;
 		/*! \brief Constant c for Armijo's condition. Needs to be in (0,1) */
 		double c_armijo_ = 1e-4;
 		/*! \brief Constant c for Armijo's condition for the Nesterov momentum part. Needs to be in (0,1) */
