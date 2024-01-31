@@ -1288,22 +1288,24 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
       # Fisher scoring
-      if(i == "cholesky"){
-        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                               gp_approx = "full_scale_tapering", num_ind_points = 60, 
-                                               cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
-                                               y = y, X = X,  matrix_inversion_method = i,
-                                               params = DEFAULT_OPTIM_PARAMS_FISHER_STD), file='NUL')
-        cov_pars_FS <- c(0.008650702, 0.067508861, 1.001834464, 0.208857745, 0.094778924, 0.028179309)
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_FS)),TOLERANCE_LOOSE)
-        expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
-        expect_equal(gp_model$get_num_optim_iter(), 9)
-      }
+      params <- DEFAULT_OPTIM_PARAMS_FISHER_STD
+      params$num_rand_vec_trace <- 100
+      params$cg_delta_conv <- 0.01
+      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                             gp_approx = "full_scale_tapering", num_ind_points = 60, 
+                                             cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
+                                             y = y, X = X,  matrix_inversion_method = i,
+                                             params = params), file='NUL')
+      cov_pars_FS <- c(0.008455182, 0.071397109, 1.001585477, 0.213075606, 0.094658355, 0.029120969)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_FS)),TOLERANCE_LOOSE)
+      expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
+      expect_equal(gp_model$get_num_optim_iter(), 8)
       
       if(i == "cholesky"){
         # With FSA and n-1 inducing points and taper range 0.4
         capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                               gp_approx = "full_scale_tapering",num_ind_points = n-1, cov_fct_taper_shape = 2, cov_fct_taper_range = 0.4,
+                                               gp_approx = "full_scale_tapering",num_ind_points = n-1, 
+                                               cov_fct_taper_shape = 2, cov_fct_taper_range = 0.4,
                                                y = y, X = X,matrix_inversion_method = i, 
                                                params = DEFAULT_OPTIM_PARAMS_STD), file='NUL')
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
