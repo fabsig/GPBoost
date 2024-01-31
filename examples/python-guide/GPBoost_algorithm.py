@@ -207,7 +207,7 @@ cvbst = gpb.cv(params=params, train_set=data_train,
                num_boost_round=1000, early_stopping_rounds=10,
                nfold=4, verbose_eval=True, show_stdv=False, seed=1)
 metric_name = list(cvbst.keys())[0]
-print("Best number of iterations: " + str(np.argmin(cvbst[metric_name])))
+print("Best number of iterations: " + str(np.argmin(cvbst[metric_name])) + 1)
 
 #--------------------Using a validation set for finding number of iterations----------------
 # Partition data into training and validation data

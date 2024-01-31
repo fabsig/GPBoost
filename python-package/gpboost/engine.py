@@ -1125,9 +1125,9 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
             best_score = current_score
             best_params = param_comb
             if higher_better:
-                best_num_boost_round = np.argmax(cvbst[next(iter(cvbst))])
+                best_num_boost_round = np.argmax(cvbst[next(iter(cvbst))]) + 1
             else:
-                best_num_boost_round = np.argmin(cvbst[next(iter(cvbst))])
+                best_num_boost_round = np.argmin(cvbst[next(iter(cvbst))]) + 1
             if verbose_eval >= 1:
                 metric_name = list(cvbst.keys())[0]
                 metric_name = metric_name.split('-mean', 1)[0]
