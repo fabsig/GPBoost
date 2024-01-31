@@ -771,7 +771,11 @@ def cv(params, train_set, num_boost_round=100,
                                     begin_iteration=0,
                                     end_iteration=num_boost_round,
                                     evaluation_result_list=None))
-        cvfolds.update(fobj=fobj)
+        try:
+            cvfolds.update(fobj=fobj)
+        except Exception as e:
+            print('Error in boosting iteration ' + str(i))
+            break
         res = _agg_cv_result(cvfolds.eval_valid(feval), eval_train_metric)
         for _, key, mean, _, std in res:
             results[key + '-mean'].append(mean)
@@ -1113,11 +1117,10 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                 current_score = np.min(cvbst[next(iter(cvbst))])
                 if current_score < best_score:
                     current_score_is_better = True
-        except Exception as err:
+        except Exception as err: # Note: this is typically not called anymore since gpv.cv() now already contains a tryCatch statement
             if verbose_eval < 1:
                 print("Error for parameter combination " + str(counter_num_comb) +
-                      " of " + str(len(try_param_combs)) + ": " + str(param_comb) + ". Error message: ")
-            print(str(err))
+                      " of " + str(len(try_param_combs)) + ": " + str(param_comb))
         if current_score_is_better:
             best_score = current_score
             best_params = param_comb

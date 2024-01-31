@@ -556,14 +556,21 @@ gpb.cv <- function(params = list()
     }
     
     # Update one boosting iteration
-    msg <- lapply(cv_booster$boosters, function(fd) {
-      fd$booster$update(fobj = fobj)
-      out <- list()
-      for (eval_function in eval_functions) {
-        out <- append(out, fd$booster$eval_valid(feval = eval_function))
-      }
-      return(out)
-    })
+    tryCatch({
+      msg <- lapply(cv_booster$boosters, function(fd) {
+        fd$booster$update(fobj = fobj)
+        out <- list()
+        for (eval_function in eval_functions) {
+          out <- append(out, fd$booster$eval_valid(feval = eval_function))
+        }
+        return(out)
+      })
+    },
+    error = function(err) { 
+      message(paste0("Error in boosting iteration ", i,":"))
+      message(err)
+      env$met_early_stop <- TRUE
+    })# end tryCatch
     
     # Prepare collection of evaluation results
     merged_msg <- gpb.merge.cv.result(
@@ -1098,11 +1105,10 @@ gpb.grid.search.tune.parameters <- function(param_grid
           }
         }
       },
-      error = function(msg) {
+      error = function(msg) {# Note: this is typically not called anymore since gpv.cv() now already contains a tryCatch statement
         if (verbose_eval < 1L) {
           message(paste0("Error for parameter combination ", counter_num_comb, 
-                         " of ", length(try_param_combs), ": ", param_comb_str,
-                         ". Error message: "))
+                         " of ", length(try_param_combs), ": ", param_comb_str, ": "))
         }
         message(msg)
       })# end tryCatch
