@@ -452,11 +452,12 @@ namespace GPBoost {
 					optimizer_cov_pars_ == "newton" ||
 					optimizer_cov_pars_ == "newton_wolfe_constant_change" ||
 					optimizer_cov_pars_ == "fisher_scoring_wolfe_constant_change") {
-					wolfe_condition_ = true;
+					armijo_condition_ = true;
 				}
 				else {
-					wolfe_condition_ = false;
+					armijo_condition_ = false;
 				}
+				armijo_condition_ = true;
 				if (optimizer_cov_pars_ == "gradient_descent_wolfe_constant_change" || 
 					optimizer_cov_pars_ == "newton_wolfe_constant_change" ||
 					optimizer_cov_pars_ == "fisher_scoring_wolfe_constant_change") {
@@ -706,8 +707,8 @@ namespace GPBoost {
 			}
 			vec_t cov_aux_pars_lag1 = vec_t(num_cov_par_estimate);
 			vec_t cov_aux_pars_init = cov_aux_pars;
-			vec_t cov_aux_pars_after_grad_aux_lag1 = cov_aux_pars;//auxiliary variable used only if use_nesterov_acc == true
-			vec_t cov_pars_after_grad_aux, cov_aux_pars_before_lr_coef_small, aux_pars_before_lr_cov_small, cov_pars_before_lr_aux_pars_small;//auxiliary variables
+			vec_t cov_pars_after_grad_aux = cov_aux_pars, cov_aux_pars_after_grad_aux_lag1 = cov_aux_pars;//auxiliary variables used only if use_nesterov_acc == true
+			vec_t cov_aux_pars_before_lr_coef_small, aux_pars_before_lr_cov_small, cov_pars_before_lr_aux_pars_small;//auxiliary variables
 			// Set response variabla data (if needed). Note: for the GPBoost algorithm this is set a prior by calling SetY. For Gaussian data with covariates, this is set later repeatedly.
 			if ((!has_covariates_ || !gauss_likelihood_) && y_data != nullptr) {
 				SetY(y_data);
@@ -876,7 +877,8 @@ namespace GPBoost {
 							//	aFI.diagonal().array() += 1e-6;
 							//	grad_beta = aFI.llt().solve(grad);
 							//}
-							// Update linear regression coefficients, apply step size safeguard, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
+							CalcDirDerivArmijoAndLearningRateConstChangeCoef(grad_beta, beta, beta_after_grad_aux, use_nesterov_acc_coef);
+							// Update linear regression coefficients, do learning rate backtracking, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
 							UpdateLinCoef(beta, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, num_iter_, beta_after_grad_aux, beta_after_grad_aux_lag1,
 								acc_rate_coef_, nesterov_schedule_version_, momentum_offset_, fixed_effects, fixed_effects_vec);
 							fixed_effects_ptr = fixed_effects_vec.data();
@@ -947,7 +949,7 @@ namespace GPBoost {
 						}
 						else if (optimizer_cov_pars_ == "fisher_scoring") {
 							CHECK(gauss_likelihood_);
-							// We don't profile out sigma2 (=don't use closed-form expression for error / nugget variance) since this is better for Fisher scoring (otherwise much more iterations are needed)	
+							// We don't profile out sigma2 since this seems better for Fisher scoring (less iterations)	
 							CalcGradCovParAuxPars(cov_aux_pars.segment(0, num_cov_par_), grad, gradient_contains_error_var, true, fixed_effects_ptr);
 							CalcFisherInformation(cov_aux_pars.segment(0, num_cov_par_), approx_Hessian, true, gradient_contains_error_var, true);
 							neg_step_dir = approx_Hessian.llt().solve(grad);
@@ -955,8 +957,9 @@ namespace GPBoost {
 						if (optimizer_cov_pars_ == "gradient_descent") {
 							AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir, num_iter_);// Avoid too large learning rates for covariance parameters and aux_pars (for fisher_scoring and newton, this is done non-permanently in 'UpdateCovAuxPars')
 						}
-						CalculateDirDerivArmijoAndLearningRateConstantFirstOrderChange(grad, neg_step_dir);
-						// Update covariance and additional likelihood parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
+						CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(grad, neg_step_dir, cov_aux_pars, cov_pars_after_grad_aux,
+							profile_out_marginal_variance, use_nesterov_acc);
+						// Update covariance and additional likelihood parameters, do learning rate backtracking, factorize covariance matrix, and calculate new value of objective function
 						UpdateCovAuxPars(cov_aux_pars, neg_step_dir, profile_out_marginal_variance, use_nesterov_acc, num_iter_,
 							cov_pars_after_grad_aux, cov_aux_pars_after_grad_aux_lag1, acc_rate_cov_, nesterov_schedule_version_, momentum_offset_, fixed_effects_ptr);
 						// In case lr_cov_ is very small, we monitor whether the other parameters (beta, aux_pars) continue to change. If yes, we will reset lr_cov_ to its initial value
@@ -3529,16 +3532,24 @@ namespace GPBoost {
 		/*! \brief True, if 'OptimLinRegrCoefCovPar' has been called */
 		bool model_has_been_estimated_ = false;
 
-		/*! \brief If true, Wolfe's condition is used to check whether there is sufficient decrease in the negative log-likelighood (otherwise it is only checked for a decrease) */
-		bool wolfe_condition_ = false;
-		/*! \brief Constant c for Wolfe's condition */
-		double c_wolfe_condition_ = 1e-4;
+		/*! \brief If true, Armijo's condition is used to check whether there is sufficient decrease in the negative log-likelighood (otherwise it is only checked for a decrease) */
+		bool armijo_condition_ = false;
+		/*! \brief Constant c for Armijo's condition. Needs to be in (0,1) */
+		double c_armijo_ = 1e-4;
+		/*! \brief Constant c for Armijo's condition for the Nesterov momentum part. Needs to be in (0,1) */
+		double c_armijo_mom_ = 1e-4;
 		/*! \brief Directional derivative wrt covariance parameters for Armijo / Wolfe condition */
 		double dir_deriv_armijo_cov_pars_;
 		/*! \brief Directional derivativet wrt auxiliary coefficients for Armijo / Wolfe condition */
 		double dir_deriv_armijo_aux_pars_;
 		/*! \brief Directional derivative linear regression coefficients for Armijo / Wolfe condition */
 		double dir_deriv_armijo_coef_;
+		/*! \brief Momentum term directional derivative wrt covariance parameters for Armijo / Wolfe condition */
+		double mom_dir_deriv_armijo_cov_pars_;
+		/*! \brief Momentum term directional derivativet wrt auxiliary coefficients for Armijo / Wolfe condition */
+		double mom_dir_deriv_armijo_aux_pars_;
+		/*! \brief Momentum term directional derivative linear regression coefficients for Armijo / Wolfe condition */
+		double mom_dir_deriv_armijo_coef_;
 		/*! \brief If true, the initial learning rates in every iteration are set such that there is a constant first order change */
 		bool learning_rate_constant_first_order_change_ = false;
 		///*! \brief If true, an approximate form of Fisher scoring is used (FI \approx grad * t(grad)) *///not used
@@ -5050,13 +5061,22 @@ namespace GPBoost {
 		}//end AvoidTooLargeLearningRatesCovAuxPars
 
 		/*!
-		* \brief Calculate the directional derivative for the Armijo condition (ifwolfe_condition_) and update learning rate such that there is a constant first order change (learning_rate_constant_first_order_change_)
+		* \brief Calculate the directional derivative for the Armijo condition (if armijo_condition_) and 
+		*		update learning rate such that there is a constant first order change (if learning_rate_constant_first_order_change_)
 		* \param grad Gradient of covariance and additional auxiliary likelihood parameters
 		* \param neg_step_dir Negative step direction for making updates. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
+		* \param cov_aux_pars Covariance and additional auxiliary likelihood parameters
+		* \param cov_pars_after_grad_aux Covariance and auxiliary parameters after gradient step and before momentum step (of previous iteration)
+		* \param profile_out_marginal_variance If true, the first parameter (marginal variance, nugget effect) is ignored
+		* \param use_nesterov_acc If true, Nesterov acceleration is used
 		*/
-		void CalculateDirDerivArmijoAndLearningRateConstantFirstOrderChange(const vec_t& grad,
-			const vec_t& neg_step_dir) {
-			if ((learning_rate_constant_first_order_change_ && num_iter_ > 0) || wolfe_condition_) {
+		void CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(const vec_t& grad,
+			const vec_t& neg_step_dir,
+			const vec_t& cov_aux_pars,
+			const vec_t& cov_pars_after_grad_aux,
+			bool profile_out_marginal_variance,
+			bool use_nesterov_acc) {
+			if ((learning_rate_constant_first_order_change_ && num_iter_ > 0) || armijo_condition_) {
 				CHECK(grad.size() == neg_step_dir.size());
 				int num_grad_cov_par = (int)neg_step_dir.size();
 				if (estimate_aux_pars_) {
@@ -5072,14 +5092,58 @@ namespace GPBoost {
 						dir_deriv_armijo_aux_pars_ = dir_deriv_armijo_aux_pars_new;
 					}
 				}
-				else if (wolfe_condition_) {
+				else if (armijo_condition_) {
 					dir_deriv_armijo_cov_pars_ = -(grad.segment(0, num_grad_cov_par)).dot(neg_step_dir.segment(0, num_grad_cov_par));
 					if (estimate_aux_pars_) {
 						dir_deriv_armijo_aux_pars_ = -(grad.segment(num_grad_cov_par, NumAuxPars())).dot(neg_step_dir.segment(num_grad_cov_par, NumAuxPars()));
 					}
 				}
+				if (armijo_condition_ && use_nesterov_acc) {
+					vec_t delta_pars = cov_aux_pars.array().log().matrix() - cov_pars_after_grad_aux.array().log().matrix();//gradient steps / update is done on log-scale
+					vec_t delta_cov_pars;
+					if (profile_out_marginal_variance) {
+						delta_cov_pars = delta_pars.segment(1, num_grad_cov_par);
+					}
+					else {
+						delta_cov_pars = delta_pars.segment(0, num_grad_cov_par);
+					}
+					mom_dir_deriv_armijo_cov_pars_ = (grad.segment(0, num_grad_cov_par)).dot(delta_cov_pars);
+					if (estimate_aux_pars_) {
+						vec_t delta_aux_pars = delta_pars.segment(num_cov_par_, NumAuxPars());
+						mom_dir_deriv_armijo_aux_pars_ = (grad.segment(num_grad_cov_par, NumAuxPars())).dot(delta_aux_pars);
+					}
+				}
+				else {
+					mom_dir_deriv_armijo_cov_pars_ = 0.;
+					mom_dir_deriv_armijo_aux_pars_ = 0;
+				}
 			}
-		}//CalculateDirDerivArmijoAndLearningRateConstantFirstOrderChange
+		}//CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars
+
+		/*!
+		* \brief Calculate the directional derivative for the Armijo condition (if armijo_condition_) and 
+		*			update the learning rate such that there is a constant first order change (if learning_rate_constant_first_order_change_) for regression coefficients
+		* \param grad Gradient of linear regression coefficients
+		* \param beta Linear regression coefficients
+		* \param beta_after_grad_aux Linear regression coefficients after gradient step and before momentum step (of previous iteration)
+		* \param use_nesterov_acc If true, Nesterov acceleration is used
+		*/
+		void CalcDirDerivArmijoAndLearningRateConstChangeCoef(const vec_t& grad,
+			const vec_t& beta,
+			const vec_t& beta_after_grad_aux,
+			bool use_nesterov_acc) {
+			if (learning_rate_constant_first_order_change_ && num_iter_ > 0) {
+				double dir_deriv_armijo_coef_new = grad.squaredNorm();
+				lr_coef_ *= dir_deriv_armijo_coef_ / dir_deriv_armijo_coef_new;
+				dir_deriv_armijo_coef_ = dir_deriv_armijo_coef_new;
+			}
+			else if (armijo_condition_) {
+				dir_deriv_armijo_coef_ = grad.squaredNorm();
+			}
+			if (armijo_condition_ && use_nesterov_acc) {
+				mom_dir_deriv_armijo_coef_ = grad.dot(beta - beta_after_grad_aux);
+			}
+		}//end CalcDirDerivArmijoAndLearningRateConstChangeCoef
 
 		/*!
 		* \brief Recaculate mode for Laplace approximation after reseting them to zero
@@ -5220,6 +5284,9 @@ namespace GPBoost {
 			int nesterov_schedule_version,
 			int momentum_offset,
 			const double* fixed_effects) {
+			if (use_nesterov_acc && nesterov_schedule_version == 1 && armijo_condition_) {
+				Log::REFatal("Armijo condition backtracking is not implemented when nesterov_schedule_version = 1");
+			}
 			vec_t cov_pars_new(num_cov_par_);
 			if (profile_out_marginal_variance) {
 				cov_pars_new[0] = cov_pars[0];
@@ -5279,15 +5346,25 @@ namespace GPBoost {
 				}
 				CalcCovFactorOrModeAndNegLL(cov_pars_new.segment(0, num_cov_par_), fixed_effects);
 				// Safeguard against too large steps by halving the learning rate when the objective increases
-				if (wolfe_condition_) {
+				if (armijo_condition_) {
+					double mu;
+					if (use_nesterov_acc) {
+						mu = NesterovSchedule(it, nesterov_schedule_version, acc_rate_cov, momentum_offset);
+					}
+					else {
+						mu = 0.;
+					}
 					if (estimate_aux_pars_) {
-						if ((neg_log_likelihood_ <= (neg_log_likelihood_after_lin_coef_update_ + c_wolfe_condition_ * lr_cov * dir_deriv_armijo_cov_pars_)) &&
-							(neg_log_likelihood_ <= (neg_log_likelihood_after_lin_coef_update_ + c_wolfe_condition_ * lr_aux_pars * dir_deriv_armijo_aux_pars_))) {
+						if ((neg_log_likelihood_ <= (neg_log_likelihood_after_lin_coef_update_ + 
+							c_armijo_ * lr_cov * dir_deriv_armijo_cov_pars_ + c_armijo_mom_ * mu * mom_dir_deriv_armijo_cov_pars_)) &&
+							(neg_log_likelihood_ <= (neg_log_likelihood_after_lin_coef_update_ + 
+								c_armijo_ * lr_aux_pars * dir_deriv_armijo_aux_pars_ + c_armijo_mom_ * mu * mom_dir_deriv_armijo_aux_pars_))) {
 							decrease_found = true;
 						}
 					}
-					else {
-						if (neg_log_likelihood_ <= neg_log_likelihood_after_lin_coef_update_ + c_wolfe_condition_ * lr_cov * dir_deriv_armijo_cov_pars_) {
+					else {//!estimate_aux_pars_
+						if (neg_log_likelihood_ <= (neg_log_likelihood_after_lin_coef_update_ + 
+							c_armijo_ * lr_cov * dir_deriv_armijo_cov_pars_ + c_armijo_mom_ * mu * mom_dir_deriv_armijo_cov_pars_)) {
 							decrease_found = true;
 						}
 					}
@@ -5702,15 +5779,6 @@ namespace GPBoost {
 			else {
 				first_update_ = false;
 			}
-			if (learning_rate_constant_first_order_change_ && it > 0) {
-				double dir_deriv_armijo_coef_new = grad.squaredNorm();
-				lr_coef_ *= dir_deriv_armijo_coef_ / dir_deriv_armijo_coef_new;
-				lr_coef = lr_coef_;
-				dir_deriv_armijo_coef_ = dir_deriv_armijo_coef_new;
-			}
-			else if (wolfe_condition_) {
-				dir_deriv_armijo_coef_ = grad.squaredNorm();
-			}
 			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
 				beta_new = beta - lr_coef * grad;
 				// Apply Nesterov acceleration
@@ -5728,8 +5796,16 @@ namespace GPBoost {
 					neg_log_likelihood_after_lin_coef_update_ = -CalcModePostRandEffCalcMLL(fixed_effects_vec.data(), true);//calculate mode and approximate marginal likelihood
 				}
 				// Safeguard against too large steps by halving the learning rate when the objective increases
-				if (wolfe_condition_) {
-					if (neg_log_likelihood_after_lin_coef_update_ <= (neg_log_likelihood_lag1_ + c_wolfe_condition_ * lr_coef * dir_deriv_armijo_coef_)) {
+				if (armijo_condition_) {
+					double mu;
+					if (use_nesterov_acc) {
+						mu = NesterovSchedule(it, nesterov_schedule_version, acc_rate_coef, momentum_offset);
+					}
+					else {
+						mu = 0.;
+					}
+					if (neg_log_likelihood_after_lin_coef_update_ <= (neg_log_likelihood_lag1_ + 
+						c_armijo_ * lr_coef * dir_deriv_armijo_coef_ + c_armijo_mom_ * mu * mom_dir_deriv_armijo_coef_)) {
 						decrease_found = true;
 					}
 				}

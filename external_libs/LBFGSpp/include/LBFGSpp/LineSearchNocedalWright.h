@@ -82,7 +82,7 @@ public:
     ///
     template <typename Foo>
     static void LineSearch(Foo& f, const LBFGSParam<Scalar>& param,
-                           const Vector& xp, const Vector& drt, const Scalar& step_max,
+                           const Vector& xp, const Vector& drt, const Scalar& /* step_max */,
                            Scalar& step, Scalar& fx, Vector& grad, Scalar& dg, Vector& x)
     {
         // Check the value of step
