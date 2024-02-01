@@ -80,7 +80,7 @@ namespace GPBoost {
 				}
 			}
 		}
-		bool calc_likelihood = (re_model_templ_->ShouldRedetermineNearestNeighborsVecchia() || !should_redetermine_neighbors_vecchia) && !should_print_trace;
+		bool calc_likelihood = !should_redetermine_neighbors_vecchia && !should_print_trace;
 		// Determine number of covariance and linear regression coefficient parameters
 		int num_cov_pars_optim = 0, num_covariates = 0, num_aux_pars = 0;
 		if (objfn_data->learn_cov_aux_pars_) {
@@ -98,7 +98,7 @@ namespace GPBoost {
 		CHECK((int)pars.size() == num_cov_pars_optim + num_covariates + num_aux_pars);
 		// Extract covariance parameters, regression coefficients, and additional likelihood parameters from pars vector
 		vec_t cov_pars, beta, fixed_effects_vec, aux_pars;
-		const double* aux_pars_ptr;
+		const double* aux_pars_ptr = nullptr;
 		const double* fixed_effects_ptr = nullptr;
 		if (objfn_data->learn_cov_aux_pars_) {
 			if (objfn_data->profile_out_marginal_variance_) {
@@ -367,7 +367,7 @@ namespace GPBoost {
 			int iter, 
 			double fx) {
 			vec_t cov_pars, beta, aux_pars;
-			const double* aux_pars_ptr;
+			const double* aux_pars_ptr = nullptr;
 			bool has_covariates = re_model_templ_->HasCovariates();
 			// Determine number of covariance and linear regression coefficient parameters
 			int num_cov_pars_optim = 0, num_covariates = 0, num_aux_pars = 0;

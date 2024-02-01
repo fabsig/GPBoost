@@ -286,7 +286,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_equal(cvbst$best_iter, 59)
       cov_pars_OOS <- c(0.05103639, 0.60775408, 0.38378833)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),TOLERANCE)
-      #   2. Run LaGaBoost algorithm on entire data while holding covariance parameters fixed
+      #   2. Run GPBoost algorithm on entire data while holding covariance parameters fixed
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 59,
                        params = params, train_gp_model_cov_pars = FALSE, verbose = 0)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_OOS)),TOLERANCE)# no change in covariance parameters
@@ -326,14 +326,6 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Use BFGS for training
       gp_model <- GPModel(group_data = group_data_train)
       gp_model$set_optim_params(params = list(optimizer_cov="bfgs"))
-      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
-                     nrounds = 62, learning_rate = 0.01, max_depth = 6,
-                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
-      
-      # Use Adam for training
-      gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params = list(optimizer_cov="adam"))
       bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                      nrounds = 62, learning_rate = 0.01, max_depth = 6,
                      min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)

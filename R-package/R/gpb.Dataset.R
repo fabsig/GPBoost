@@ -392,7 +392,7 @@ Dataset <- R6::R6Class(
 
       # Check empty column names
       colnames <- as.character(colnames)
-      if (length(colnames) == 0L) {
+      if (length(colnames) == 0L || sum(colnames == "") > 0) {
         return(invisible(self))
       }
 
