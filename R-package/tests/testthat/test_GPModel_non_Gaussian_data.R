@@ -2388,7 +2388,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                              y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD), 
                       file='NUL')
-      cov_pars_nn <- c(0.17325163, 0.07047597, 0.12485021)
+      cov_pars_nn <- c(0.17325148, 0.07047675, 0.12484918)
       coef_nn <- c(0.1361984, 0.2177389, 0.2689333, 0.3004326)
       nrounds_nn <- 85
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_nn)),tolerance_loc)

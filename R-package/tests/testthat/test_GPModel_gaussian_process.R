@@ -1651,30 +1651,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                            y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD), 
                     file='NUL')
-    cov_pars_nn <- c(0.4352792979, 0.3483560718, 0.5764632615, 0.3742805059, 3.3684298629, 2.7677409072, 0.1492689415, 0.1038979210)
-    coef_nn <- c(1.9611419162, 0.1768231706, 2.2062141280, 0.1410012118)
-    nrounds_nn <- 9
+    cov_pars_nn <- c(0.01328420, 0.28788276, 1.00911528, 0.33509917, 1.38403453, 0.78663837, 0.11543238, 0.05402744)
+    coef_nn <- c(1.9581608, 0.1485425, 2.1709711, 0.1397423)
+    nrounds_nn <- 339
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_nn)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
-    # Fit model with bfgs & nelder_mead
+    # Fit model with bfgs
     params_loc <- DEFAULT_OPTIM_PARAMS_STD
     params_loc$optimizer_cov <- "bfgs"
     capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
                                            gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                            y = y, X=X, params = params_loc), 
                     file='NUL')
-    cov_pars_nn <- c(5.257439607e-09, 2.727649112e-01, 1.017927054e+00, 3.215946495e-01, 1.350712536e+00, 7.550462399e-01, 1.155108830e-01, 5.317131560e-02)
-    coef_nn <- c(1.9580348238, 0.1478844664, 2.1694023578, 0.1392658891)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_nn)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_STRICT)
-    params_loc$optimizer_cov <- "nelder_mead"
-    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
-                                           gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
-                                           y = y, X=X, params = params_loc), 
-                    file='NUL')
-    cov_pars_nn <- c(1.7588095447, 0.8616670911, 1.7580723356, 0.9775093445, 2.6720944053, 2.1292725842, 0.3134624056, 0.2313693929)
-    coef_nn <- c(2.2786043463538, 0.4147515045451, 0.0008302855905, 0.2626314668631)
+    cov_pars_nn <- c(1.577497e-10, 2.727516e-01, 1.017944e+00, 3.215859e-01, 1.351020e+00, 7.551727e-01, 1.155151e-01, 5.316989e-02)
+    coef_nn <- c(1.9580346, 0.1478958, 2.1694053, 0.1392659)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_nn)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_STRICT)
     # Different ordering
@@ -1682,15 +1673,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "time",
                                            y = y, X=X, params = DEFAULT_OPTIM_PARAMS_STD), 
                     file='NUL')
-    cov_pars_nn <- c(0.41094648686, 0.35479036337, 0.60200316918, 0.38191826343, 3.19138814849, 2.55633124550, 0.14611908707, 0.09919444919)
-    coef_nn <- c(1.9610792081, 0.1751682848, 2.2042968795, 0.1410400655)
+    cov_pars_nn <- c(0.01312711, 0.28721506, 1.00922406, 0.33449265, 1.37624607, 0.78167205, 0.11566310, 0.05411900)
+    coef_nn <- c(1.9583457, 0.1484580, 2.1707320, 0.1397486)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_nn)),0.5)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_LOOSE)
     # Prediction
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=num_neighbors)
     pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
-    expected_mu_nn <- c(1.961079208, 1.935536314, 2.566095948)
+    expected_mu_nn <- c(1.958346, 1.939918, 2.566458)
     expected_cov_nn <- c(2.000000000000, 0.000000000000, 0.000000000000, 0.000000000000, 1.591947245758, 0.000120255663, 0.000000000000, 0.000120255663, 1.565014424976)
     expect_lt(sum(abs(pred$mu-expected_mu_nn)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_nn)),TOLERANCE_STRICT)

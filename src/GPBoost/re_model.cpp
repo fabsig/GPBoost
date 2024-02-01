@@ -576,31 +576,31 @@ namespace GPBoost {
 		if (matrix_format_ == "sp_mat_t") {
 			if (re_model_sp_->gauss_likelihood_) {
 				re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), fixed_effects, 
-					negll, false, false, false);
+					negll, false, false, false, true);
 			}
 			else {
 				re_model_sp_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, 
-					fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+					fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done, true);
 			}
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			if (re_model_sp_rm_->gauss_likelihood_) {
 				re_model_sp_rm_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), fixed_effects, 
-					negll, false, false, false);
+					negll, false, false, false, true);
 			}
 			else {
 				re_model_sp_rm_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, 
-					fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+					fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done, true);
 			}
 		}
 		else {
 			if (re_model_den_->gauss_likelihood_) {
 				re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), fixed_effects, 
-					negll, false, false, false);
+					negll, false, false, false, true);
 			}
 			else {
 				re_model_den_->EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars_trafo.data(), negll, 
-					fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done);
+					fixed_effects, InitializeModeCovMat, CalcModePostRandEff_already_done, true);
 			}
 		}
 		covariance_matrix_has_been_factorized_ = false;

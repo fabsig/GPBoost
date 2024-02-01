@@ -186,8 +186,6 @@ internal::nm_impl(
     //        OPTIM_MATOPS_COUT << simplex_points << "\n";
     //    }
     //}
-    Log::REDebug("GPModel parameter optimization iteration number %d", 0);
-    for (int i = 0; i < std::min((int)n_vals, 5); ++i) { Log::REDebug("Current best (transformed) parameter[%d]: %g", i, init_out_vals[i]); }
 
     size_t iter = 0;
     double rel_objfn_change = 2*std::abs(rel_objfn_change_tol);
@@ -296,8 +294,6 @@ internal::nm_impl(
 
         min_val = OPTIM_MATOPS_MIN_VAL(simplex_fn_vals);
 
-        //
-
         // double change_val_min = std::abs(min_val - OPTIM_MATOPS_MIN_VAL(simplex_fn_vals));
         // double change_val_max = std::abs(min_val - OPTIM_MATOPS_MAX_VAL(simplex_fn_vals));
     
@@ -316,14 +312,20 @@ internal::nm_impl(
         //ChangedForGPBoost
         //OPTIM_NM_TRACE(iter, min_val, rel_objfn_change, rel_sol_change, simplex_fn_vals, simplex_points);
         if (settings_inp) {
-            settings_inp->opt_iter = iter;
+            settings_inp->opt_iter = iter - 1;
         }
+        //redetermine neighbors for the Vecchia approximation if applicable
+        Vec_t gradient_dummy(3);//"hack" for redermininig neighbors for the Vecchia approximation
+        gradient_dummy[0] = 1.00000000001e30;
+        gradient_dummy[1] = -1.00000000001e30;
+        opt_objfn(simplex_points.row(index_min(simplex_fn_vals)), &gradient_dummy, opt_data);
+        //print trace information
         if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
-            (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {//"hack" for printing nice logging information with nelder_mead
-            Vec_t gradient(2);
-            gradient[0] = (double)iter;
-            gradient[1] = min_val;
-            opt_objfn(simplex_points.row(index_min(simplex_fn_vals)), &gradient, opt_data);
+            (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
+            gradient_dummy[0] = -1.00000000001e30;//"hack" for printing nice logging information
+            gradient_dummy[1] = 1.00000000001e30;
+            gradient_dummy[2] = min_val;
+            opt_objfn(simplex_points.row(index_min(simplex_fn_vals)), &gradient_dummy, opt_data);
         }
     }
 

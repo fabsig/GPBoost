@@ -115,8 +115,6 @@ public:
         int k = 1;
         for (;;)
         {
-            // ChangedForGPBoost
-            f.SetNumIter(k);
 
             // std::cout << "Iter " << k << " begins" << std::endl << std::endl;
 
@@ -171,6 +169,12 @@ public:
             step = Scalar(1);
 
             // ChangedForGPBoost
+            f.SetNumIter(k - 1);
+            if (f.LearnCovarianceParameters() && f.ShouldRedetermineNearestNeighborsVecchia())
+            {
+                f.RedetermineNearestNeighborsVecchia();  // called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
+                fx = f(x, m_grad, false);
+            }
             if ((k < 10 || (k % 10 == 0 && k < 100) || (k % 100 == 0 && k < 1000) ||
                  (k % 1000 == 0 && k < 10000) || (k % 10000 == 0)))
             {
