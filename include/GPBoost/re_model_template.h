@@ -1278,8 +1278,8 @@ namespace GPBoost {
 									}
 									// P^-1 * sample vectors
 									if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
-										den_mat_t diag_sigma_resid_inv_Z = diagonal_approx_inv_preconditioner[cluster_i].asDiagonal() * rand_vec_probe_;
-										rand_vec_probe_P_inv = diag_sigma_resid_inv_Z - (diagonal_approx_inv_preconditioner[cluster_i].asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner[cluster_i].solve((*cross_cov).transpose() * diag_sigma_resid_inv_Z)));
+										den_mat_t diag_sigma_resid_inv_Z = diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * rand_vec_probe_;
+										rand_vec_probe_P_inv = diag_sigma_resid_inv_Z - (diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner_[cluster_i].solve((*cross_cov).transpose() * diag_sigma_resid_inv_Z)));
 									}
 									else {
 										rand_vec_probe_P_inv = rand_vec_probe_;
@@ -1333,8 +1333,8 @@ namespace GPBoost {
 											vec_t diagonal_approx_grad_preconditioner;
 											if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
 												diagonal_approx_grad_preconditioner = (*sigma_resid_grad).diagonal();
-												den_mat_t sigma_cross_cov_diag_sigma_resid_inv = (*cross_cov).transpose() * diagonal_approx_inv_preconditioner[cluster_i].asDiagonal();
-												den_mat_t cross_cov_grad_d_inv_cross_cov = (*cross_cov_grad).transpose() * (diagonal_approx_inv_preconditioner[cluster_i].asDiagonal() * (*cross_cov));
+												den_mat_t sigma_cross_cov_diag_sigma_resid_inv = (*cross_cov).transpose() * diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal();
+												den_mat_t cross_cov_grad_d_inv_cross_cov = (*cross_cov_grad).transpose() * (diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * (*cross_cov));
 												sigma_woodbury_preconditioner_grad = sigma_ip_stable_grad + cross_cov_grad_d_inv_cross_cov + cross_cov_grad_d_inv_cross_cov.transpose() - sigma_cross_cov_diag_sigma_resid_inv * ((diagonal_approx_grad_preconditioner.asDiagonal()) * sigma_cross_cov_diag_sigma_resid_inv.transpose());
 											}
 											den_mat_t sigma_ip_inv_sigma_ip_stable_grad;
@@ -1357,8 +1357,8 @@ namespace GPBoost {
 											// Variance Reduction 
 											if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
 
-												den_mat_t sigma_cross_cov_diag_sigma_resid_inv = (*cross_cov).transpose() * diagonal_approx_inv_preconditioner[cluster_i].asDiagonal();
-												den_mat_t cross_cov_grad_d_inv_cross_cov = (*cross_cov_grad).transpose() * (diagonal_approx_inv_preconditioner[cluster_i].asDiagonal() * (*cross_cov));
+												den_mat_t sigma_cross_cov_diag_sigma_resid_inv = (*cross_cov).transpose() * diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal();
+												den_mat_t cross_cov_grad_d_inv_cross_cov = (*cross_cov_grad).transpose() * (diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * (*cross_cov));
 												// (Derivative of P) * P^-1 * sample vectors
 												den_mat_t P_G_Z = sigma_grad_Z + (diagonal_approx_grad_preconditioner.asDiagonal()) * rand_vec_probe_P_inv - sigma_resid_grad_Z;
 												// Stochastic Trace (Preconditioner)
@@ -1368,8 +1368,8 @@ namespace GPBoost {
 												// Exact Trace (Preconditioner)
 												double Tr_P = 0;
 												Tr_P -= sigma_ip_inv_sigma_ip_stable_grad.trace();
-												Tr_P += diagonal_approx_inv_preconditioner[cluster_i].dot(diagonal_approx_grad_preconditioner);
-												den_mat_t sigma_woodbury_inv_sigma_woodbury_stable_grad = chol_fact_woodbury_preconditioner[cluster_i].solve(sigma_woodbury_preconditioner_grad);
+												Tr_P += diagonal_approx_inv_preconditioner_[cluster_i].dot(diagonal_approx_grad_preconditioner);
+												den_mat_t sigma_woodbury_inv_sigma_woodbury_stable_grad = chol_fact_woodbury_preconditioner_[cluster_i].solve(sigma_woodbury_preconditioner_grad);
 												Tr_P += sigma_woodbury_inv_sigma_woodbury_stable_grad.trace();
 												// Calculate optimal c
 												double c_opt;
@@ -1851,7 +1851,7 @@ namespace GPBoost {
 							}
 							if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
 								den_mat_t chol_ip_cross_cov_Z = chol_ip_cross_cov_[cluster_i].transpose() * rand_vec_probe_low_rank_;
-								rand_vec_probe_ = chol_ip_cross_cov_Z + diagonal_approx_preconditioner[cluster_i].cwiseSqrt().asDiagonal() * rand_vec_probe;
+								rand_vec_probe_ = chol_ip_cross_cov_Z + diagonal_approx_preconditioner_[cluster_i].cwiseSqrt().asDiagonal() * rand_vec_probe;
 							}
 
 							std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
@@ -1866,7 +1866,7 @@ namespace GPBoost {
 							CGTridiagFSA<T_mat>(*sigma_resid, (*cross_cov), chol_ip_cross_cov_[cluster_i], rand_vec_probe_,
 								Tdiags_, Tsubdiags_, solution_for_trace_[cluster_i], NaN_found, num_data_per_cluster_[cluster_i],
 								num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
-								chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
+								chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 							if (NaN_found) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 							}
@@ -1875,8 +1875,8 @@ namespace GPBoost {
 							// Correction for Preconditioner (necessary if using preconditioner)
 							if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
 								log_det_Psi_ -= 2. * (((den_mat_t)chol_fact_sigma_ip_[cluster_i].matrixL()).diagonal().array().log().sum());
-								log_det_Psi_ += 2. * (((den_mat_t)chol_fact_woodbury_preconditioner[cluster_i].matrixL()).diagonal().array().log().sum());
-								log_det_Psi_ -= diagonal_approx_inv_preconditioner[cluster_i].array().log().sum();
+								log_det_Psi_ += 2. * (((den_mat_t)chol_fact_woodbury_preconditioner_[cluster_i].matrixL()).diagonal().array().log().sum());
+								log_det_Psi_ -= diagonal_approx_inv_preconditioner_[cluster_i].array().log().sum();
 							}
 						}//end Conjugate Gradient
 						else {
@@ -3772,8 +3772,8 @@ namespace GPBoost {
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of Cholesky factor of inducing points matrix sigma_ip times cross-covariance */
 		std::map<data_size_t, den_mat_t> chol_ip_cross_cov_;
 
-		std::map<data_size_t, den_mat_t> sigma_inv_sigma_grad_rand_vec;
-		std::map<data_size_t, den_mat_t> sigma_grad_sigma_inv_rand_vec;
+		std::map<data_size_t, den_mat_t> sigma_inv_sigma_grad_rand_vec_;
+		std::map<data_size_t, den_mat_t> sigma_grad_sigma_inv_rand_vec_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of Cholesky factor of inducing points matrix sigma_ip times cross-covariance */
 		std::map<data_size_t, den_mat_t> resid_inv_cross_cov_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: diagonal of fully independent training conditional for predictive process */
@@ -3783,11 +3783,11 @@ namespace GPBoost {
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov used in Woodbury identity */
 		std::map<data_size_t, chol_den_mat_t> chol_fact_sigma_woodbury_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Diagonal of residual covariance matrix (Preconditioner) */
-		std::map<data_size_t, vec_t> diagonal_approx_preconditioner;
+		std::map<data_size_t, vec_t> diagonal_approx_preconditioner_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of diagonal of residual covariance matrix (Preconditioner) */
-		std::map<data_size_t, vec_t> diagonal_approx_inv_preconditioner;
+		std::map<data_size_t, vec_t> diagonal_approx_inv_preconditioner_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix sigma_ip + cross_cov^T * D^-1 * cross_cov used in Woodbury identity where D is given by the Preconditioner */
-		std::map<data_size_t, chol_den_mat_t> chol_fact_woodbury_preconditioner;
+		std::map<data_size_t, chol_den_mat_t> chol_fact_woodbury_preconditioner_;
 
 
 		// CLUSTERs of INDEPENDENT REALIZATIONS
@@ -4238,7 +4238,7 @@ namespace GPBoost {
 							psi_inv_X.setZero();
 							CGFSA_MULTI_RHS<T_mat>(*sigma_resid, (*cross_cov), chol_fact_sigma_ip_[cluster_i], X, psi_inv_X,
 								NaN_found, num_data_per_cluster_[cluster_i], (int)X.cols(), cg_max_num_it_, cg_delta_conv_,
-								cg_preconditioner_type_, chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
+								cg_preconditioner_type_, chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 							if (NaN_found) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 							}
@@ -6036,12 +6036,12 @@ namespace GPBoost {
 					else if (gp_approx_ == "full_scale_tapering") {
 						std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
 						if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
-							diagonal_approx_preconditioner[cluster_i] = (*sigma_resid).diagonal();
-							diagonal_approx_inv_preconditioner[cluster_i] = diagonal_approx_preconditioner[cluster_i].cwiseInverse();
-							sigma_woodbury = (*cross_cov).transpose() * (diagonal_approx_inv_preconditioner[cluster_i].asDiagonal() * (*cross_cov));
+							diagonal_approx_preconditioner_[cluster_i] = (*sigma_resid).diagonal();
+							diagonal_approx_inv_preconditioner_[cluster_i] = diagonal_approx_preconditioner_[cluster_i].cwiseInverse();
+							sigma_woodbury = (*cross_cov).transpose() * (diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * (*cross_cov));
 							sigma_woodbury += *(re_comps_ip_[cluster_i][0]->GetZSigmaZt());
 
-							chol_fact_woodbury_preconditioner[cluster_i].compute(sigma_woodbury);
+							chol_fact_woodbury_preconditioner_[cluster_i].compute(sigma_woodbury);
 						}
 						else if (cg_preconditioner_type_ != "none") {
 							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
@@ -6181,7 +6181,7 @@ namespace GPBoost {
 							y_aux_[cluster_i] = vec_t::Zero(num_data_per_cluster_[cluster_i]);
 							CGFSA<T_mat>(*sigma_resid, (*cross_cov), chol_ip_cross_cov_[cluster_i], y_[cluster_i], y_aux_[cluster_i],
 								NaN_found, cg_max_num_it_, cg_delta_conv_, THRESHOLD_ZERO_RHS_CG_, cg_preconditioner_type_,
-								chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
+								chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 							if (NaN_found) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 							}
@@ -6489,7 +6489,6 @@ namespace GPBoost {
 							for (int j = 0; j < num_comps_total_; ++j) {
 								if (gp_approx_ == "full_scale_tapering" && matrix_inversion_method_ == "iterative") {
 									re_comps_resid_[cluster_i][j]->CalcSigma();
-
 									// Subtract predictive process covariance
 									re_comps_resid_[cluster_i][j]->SubtractPredProcFromSigmaForResidInFullScale(chol_ip_cross_cov_[cluster_i], true);
 									// Apply Taper
@@ -6539,13 +6538,13 @@ namespace GPBoost {
 										den_mat_t sigma_inv_sigma_grad_rand_vec_interim(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
 										if (matrix_inversion_method_ == "cholesky") {
 											den_mat_t Sigma_inv_Grad_rand_vec = chol_fact_resid_[cluster_i].solve(sigma_resid_grad_rand_vec);
-											sigma_inv_sigma_grad_rand_vec[deriv_par_nb] = Sigma_inv_Grad_rand_vec - Sigma_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * Sigma_inv_Grad_rand_vec));
+											sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = Sigma_inv_Grad_rand_vec - Sigma_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * Sigma_inv_Grad_rand_vec));
 										}
 										else if (matrix_inversion_method_ == "iterative") {
 											CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], sigma_resid_grad_rand_vec, sigma_inv_sigma_grad_rand_vec_interim, NaN_found,
 												num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
-												chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
-											sigma_inv_sigma_grad_rand_vec[deriv_par_nb] = sigma_inv_sigma_grad_rand_vec_interim;
+												chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
+											sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = sigma_inv_sigma_grad_rand_vec_interim;
 										}
 										// Gradient times Inverse times Random vectors
 										// Inverse times Random vectors
@@ -6557,12 +6556,12 @@ namespace GPBoost {
 										else if (matrix_inversion_method_ == "iterative") {
 											CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], rand_vec, sigma_inv_rand_vec, NaN_found,
 												num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
-												chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
+												chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 											sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
 										}
 										// Gradient times Inverse times Random vectors
-										sigma_grad_sigma_inv_rand_vec[deriv_par_nb] = (*sigma_resid_grad) * sigma_inv_rand_vec;
-										sigma_grad_sigma_inv_rand_vec[deriv_par_nb] += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * sigma_inv_rand_vec)
+										sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] = (*sigma_resid_grad) * sigma_inv_rand_vec;
+										sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * sigma_inv_rand_vec)
 											+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * sigma_inv_rand_vec)
 											- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * sigma_inv_rand_vec);
 									}
@@ -6584,7 +6583,7 @@ namespace GPBoost {
 										// Inverse times Gradient times Random vectors
 										den_mat_t FITC_Diag_inv_Grad_rand_vec = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * sigma_resid_grad_rand_vec;
 										den_mat_t FITC_Diag_inv_cross_cov = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * (*cross_cov);
-										sigma_inv_sigma_grad_rand_vec[deriv_par_nb] = FITC_Diag_inv_Grad_rand_vec - FITC_Diag_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * FITC_Diag_inv_Grad_rand_vec));
+										sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = FITC_Diag_inv_Grad_rand_vec - FITC_Diag_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * FITC_Diag_inv_Grad_rand_vec));
 
 										// Gradient times Inverse times Random vectors
 										// Inverse times Random vectors
@@ -6592,8 +6591,8 @@ namespace GPBoost {
 										den_mat_t sigma_inv_rand_vec = FITC_Diag_inv_rand_vec - FITC_Diag_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * FITC_Diag_inv_rand_vec));
 										sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
 										// Gradient times Inverse times Random vectors
-										sigma_grad_sigma_inv_rand_vec[deriv_par_nb] = FITC_Diag_grad.asDiagonal() * sigma_inv_rand_vec;
-										sigma_grad_sigma_inv_rand_vec[deriv_par_nb] += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * sigma_inv_rand_vec)
+										sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] = FITC_Diag_grad.asDiagonal() * sigma_inv_rand_vec;
+										sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * sigma_inv_rand_vec)
 											+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * sigma_inv_rand_vec)
 											- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * sigma_inv_rand_vec);
 									}
@@ -6607,7 +6606,7 @@ namespace GPBoost {
 									//The derivative for the nugget variance on the transformed scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
 									FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
 									for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-										FI(0, par_nb + 1) += (rand_vec).cwiseProduct(sigma_inv_sigma_grad_rand_vec[par_nb]).colwise().sum().mean() / 2.;
+										FI(0, par_nb + 1) += (rand_vec).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb]).colwise().sum().mean() / 2.;
 									}
 								}
 								else {//Original scale for asymptotic covariance matrix
@@ -6615,14 +6614,14 @@ namespace GPBoost {
 									FI(0, 0) += (sigma_inv_rand_vec_nugget).cwiseProduct(sigma_inv_rand_vec_nugget).colwise().sum().mean() / 2.;
 									for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
 
-										FI(0, par_nb + 1) += (sigma_inv_rand_vec_nugget).cwiseProduct(sigma_inv_sigma_grad_rand_vec[par_nb]).colwise().sum().mean() / 2.;
+										FI(0, par_nb + 1) += (sigma_inv_rand_vec_nugget).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb]).colwise().sum().mean() / 2.;
 									}
 								}
 							}
 							//Remaining covariance parameters
 							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
 								for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
-									FI(par_nb + start_cov_pars, par_nb_cross + start_cov_pars) += (sigma_grad_sigma_inv_rand_vec[par_nb]).cwiseProduct(sigma_inv_sigma_grad_rand_vec[par_nb_cross]).colwise().sum().mean() / 2.;
+									FI(par_nb + start_cov_pars, par_nb_cross + start_cov_pars) += (sigma_grad_sigma_inv_rand_vec_[par_nb]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb_cross]).colwise().sum().mean() / 2.;
 								}
 							}
 							if (!transf_scale) {
@@ -7398,7 +7397,7 @@ namespace GPBoost {
 								den_mat_t sigma_inv_sigma_obs_pred;
 								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], sigma_obs_pred_dense, sigma_inv_sigma_obs_pred, NaN_found,
 									num_data_cli, num_data_pred_cli, cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
-									chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
+									chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								ConvertTo_T_mat_FromDense<T_mat>(sigma_obs_pred_dense.transpose() * sigma_inv_sigma_obs_pred, cross_cov_part);
 								pred_cov -= cross_cov_part;
 							}
@@ -7438,7 +7437,7 @@ namespace GPBoost {
 								den_mat_t sigma_resid_inv_pv(num_data_cli, rand_vec_probe_pred.cols());
 								CGFSA_RESID<T_mat>(*sigma_resid, rand_vec_probe_pred, sigma_resid_inv_pv, NaN_found, num_data_cli, (int)rand_vec_probe_pred.cols(),
 									cg_max_num_it_tridiag_, cg_delta_conv_pred,
-									cg_preconditioner_type_, diagonal_approx_inv_preconditioner[cluster_i]);
+									cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i]);
 								// sigma_resid_pred * sigma_resid_inv_pv
 								den_mat_t rand_vec_probe_final(num_data_pred_cli, sigma_resid_inv_pv.cols());
 								rand_vec_probe_final.setZero();
@@ -7451,7 +7450,7 @@ namespace GPBoost {
 
 								// Exact Diagonal (Preconditioner)
 								vec_t diag_P(num_data_pred_cli);
-								T_mat sigma_resid_pred_obs_pred_var = sigma_resid_pred_obs * (diagonal_approx_inv_preconditioner[cluster_i].cwiseSqrt()).asDiagonal();
+								T_mat sigma_resid_pred_obs_pred_var = sigma_resid_pred_obs * (diagonal_approx_inv_preconditioner_[cluster_i].cwiseSqrt()).asDiagonal();
 								T_mat* R_ptr_2 = &sigma_resid_pred_obs_pred_var;
 #pragma omp parallel for schedule(static)   
 								for (int i = 0; i < num_data_pred_cli; ++i) {
@@ -7461,7 +7460,7 @@ namespace GPBoost {
 								// Stochastic Diagonal (Preconditioner)
 								den_mat_t rand_vec_probe_cv(num_data_pred_cli, rand_vec_probe_init.cols());
 								rand_vec_probe_cv.setZero();
-								den_mat_t preconditioner_rand_vec_probe = diagonal_approx_inv_preconditioner[cluster_i].asDiagonal() * rand_vec_probe_pred;
+								den_mat_t preconditioner_rand_vec_probe = diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * rand_vec_probe_pred;
 #pragma omp parallel for schedule(static)   
 								for (int i = 0; i < preconditioner_rand_vec_probe.cols(); ++i) {
 									rand_vec_probe_cv.col(i) += sigma_resid_pred_obs * preconditioner_rand_vec_probe.col(i);
@@ -7479,12 +7478,12 @@ namespace GPBoost {
 								den_mat_t sigma_resid_inv_cross_cov(num_data_cli, (*cross_cov).cols());
 								CGFSA_RESID<T_mat>(*sigma_resid, *cross_cov, sigma_resid_inv_cross_cov, NaN_found, num_data_cli, (int)(*cross_cov).cols(),
 									cg_max_num_it_tridiag_, cg_delta_conv_pred,
-									cg_preconditioner_type_, diagonal_approx_inv_preconditioner[cluster_i]);
+									cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i]);
 								// CG: sigma^-1 * cross_cov
 								den_mat_t sigma_inv_cross_cov(num_data_cli, (*cross_cov).cols());
 								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], *cross_cov, sigma_inv_cross_cov, NaN_found,
 									num_data_cli, (int)(*cross_cov).cols(), cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
-									chol_fact_woodbury_preconditioner[cluster_i], diagonal_approx_inv_preconditioner[cluster_i]);
+									chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								// sigma_ip^-1 * cross_cov_pred
 								den_mat_t sigma_ip_inv_cross_cov_pred = chol_fact_sigma_ip_[cluster_i].solve(cross_cov_pred_ip.transpose());
 								// cross_cov^T * sigma^-1 * cross_cov
