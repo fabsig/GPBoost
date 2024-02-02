@@ -3822,7 +3822,7 @@ namespace GPBoost {
 		RNG_t cg_generator_;
 		/*! If the seed of the random number generator cg_generator_ is set, cg_generator_seeded_ is set to true*/
 		bool cg_generator_seeded_ = false;
-		/*! If reuse_rand_vec_trace_ is true and rand_vec_trace_I_ has been generated for the first time, then saved_rand_vec_trace_ is set to true*/
+		/*! If reuse_rand_vec_trace_ is true and rand_vec_trace_I_ has been generated for the first time, then saved_rand_vec_trace_ is set to true */
 		bool saved_rand_vec_trace_ = false;
 		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension num_data, and t = num_rand_vec_trace_ */
 		den_mat_t rand_vec_trace_I_;
