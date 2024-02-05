@@ -1274,11 +1274,11 @@ namespace GPBoost {
 									}
 									// P^-1 * sample vectors
 									if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
-										den_mat_t diag_sigma_resid_inv_Z = diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * rand_vec_probe_;
+										den_mat_t diag_sigma_resid_inv_Z = diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * rand_vec_probe_[cluster_i];
 										rand_vec_probe_P_inv = diag_sigma_resid_inv_Z - (diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner_[cluster_i].solve((*cross_cov).transpose() * diag_sigma_resid_inv_Z)));
 									}
 									else {
-										rand_vec_probe_P_inv = rand_vec_probe_;
+										rand_vec_probe_P_inv = rand_vec_probe_[cluster_i];
 									}
 								}
 								for (int ipar = 0; ipar < num_par_comp; ++ipar) {
@@ -1809,6 +1809,13 @@ namespace GPBoost {
 			//Calculate quadratic form y^T Psi^-1 y
 			CalcYTPsiIInvY(yTPsiInvy_, true, 1, CalcYAux_already_done, CalcYtilde_already_done);
 			//Calculate log determinant
+			if (matrix_inversion_method_ == "iterative") {
+				if (saved_rand_vec_.size() == 0) {
+					for (const auto& cluster_i : unique_clusters_) {
+						saved_rand_vec_[cluster_i] = false;
+					}
+				}
+			}
 			log_det_Psi_ = 0;
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gp_approx_ == "vecchia") {
@@ -1828,28 +1835,27 @@ namespace GPBoost {
 						}//end Cholesky
 						else if (matrix_inversion_method_ == "iterative") {//Conjugate Gradient
 							// Sample probe vectors
-							if (!saved_rand_vec_) {
+							if (!saved_rand_vec_[cluster_i]) {
 								if (!cg_generator_seeded_) {
 									cg_generator_ = RNG_t(seed_rand_vec_trace_);
 									cg_generator_seeded_ = true;
 								}
-								rand_vec_probe_.resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-								GenRandVecTrace(cg_generator_, rand_vec_probe_);
+								rand_vec_probe_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
+								GenRandVecTrace(cg_generator_, rand_vec_probe_[cluster_i]);
 								// Sample probe vectors from N(0,P)
 								if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
-									rand_vec_probe_low_rank_.resize(num_ind_points_, num_rand_vec_trace_);
-									GenRandVecTrace(cg_generator_, rand_vec_probe_low_rank_);
-									rand_vec_probe = rand_vec_probe_;
+									rand_vec_probe_low_rank_[cluster_i].resize(num_ind_points_, num_rand_vec_trace_);
+									GenRandVecTrace(cg_generator_, rand_vec_probe_low_rank_[cluster_i]);
+									rand_vec_probe_P_[cluster_i] = rand_vec_probe_[cluster_i];
 								}
 								if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
-									saved_rand_vec_ = true;
+									saved_rand_vec_[cluster_i] = true;
 								}
 							}
 							if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
-								den_mat_t chol_ip_cross_cov_Z = chol_ip_cross_cov_[cluster_i].transpose() * rand_vec_probe_low_rank_;
-								rand_vec_probe_ = chol_ip_cross_cov_Z + diagonal_approx_preconditioner_[cluster_i].cwiseSqrt().asDiagonal() * rand_vec_probe;
+								den_mat_t chol_ip_cross_cov_Z = chol_ip_cross_cov_[cluster_i].transpose() * rand_vec_probe_low_rank_[cluster_i];
+								rand_vec_probe_[cluster_i] = chol_ip_cross_cov_Z + diagonal_approx_preconditioner_[cluster_i].cwiseSqrt().asDiagonal() * rand_vec_probe_P_[cluster_i];
 							}
-
 							std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
 							std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
 							// Initialize Solution Sigma^-1 (u_1,...,u_t) 
@@ -1859,7 +1865,7 @@ namespace GPBoost {
 							std::vector<vec_t> Tdiags_(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag_));
 							std::vector<vec_t> Tsubdiags_(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag_ - 1));
 							// Conjuagte Gradient with Lanczos
-							CGTridiagFSA<T_mat>(*sigma_resid, (*cross_cov), chol_ip_cross_cov_[cluster_i], rand_vec_probe_,
+							CGTridiagFSA<T_mat>(*sigma_resid, (*cross_cov), chol_ip_cross_cov_[cluster_i], rand_vec_probe_[cluster_i],
 								Tdiags_, Tsubdiags_, solution_for_trace_[cluster_i], NaN_found, num_data_per_cluster_[cluster_i],
 								num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 								chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
@@ -3649,13 +3655,17 @@ namespace GPBoost {
 		/*! Random number generator used generate Rademacher-vectors in GenRandVecTrace() and GenRandVecDiag()*/
 		RNG_t cg_generator_;
 		/*! Matrix of random Rademacher vectors (u_1,...,u_t), where u_i is of dimension n & Cov(u_i) = I*/
-		den_mat_t rand_vec_probe_;
+		std::map<data_size_t, den_mat_t> rand_vec_probe_;
 		/*! Matrix of random Rademacher vectors (u_1,...,u_t), where u_i is of dimension n & Cov(u_i) = I or Cov(u_i) = P*/
-		den_mat_t rand_vec_probe;
+		std::map<data_size_t, den_mat_t> rand_vec_probe_P_;
 		/*! Matrix of random Rademacher vectors (u_1,...,u_t), where u_i is of dimension m & Cov(u_i) = I*/
-		den_mat_t rand_vec_probe_low_rank_;
-		/*! Indicates if we already sampled vectors for the current iteration */
-		bool saved_rand_vec_ = false;
+		std::map<data_size_t, den_mat_t> rand_vec_probe_low_rank_;
+		/*! Matrix of random Rademacher vectors for Fisher information (u_1,...,u_t), where u_i is of dimension n & Cov(u_i) = I*/
+		std::map<data_size_t, den_mat_t> rand_vec_fisher_info_;
+		/*! If reuse_rand_vec_trace_ is true and random probe vectors have been generated for the first time, then saved_rand_vec_ is set to true  */
+		std::map<data_size_t, bool> saved_rand_vec_;
+		/*! If reuse_rand_vec_trace_ is true and random probe vectors have been generated for the first time, then saved_rand_vec_ is set to true  */
+		std::map<data_size_t, bool> saved_rand_vec_fisher_info_;
 		/*! CG solution for Rademacher vectors:	Sigma^-1 (u_1,...,u_t) */
 		std::map<data_size_t, den_mat_t> solution_for_trace_;
 		/*! \brief Type of preconditioner used for conjugate gradient algorithms */
@@ -6342,20 +6352,37 @@ namespace GPBoost {
 			FI.setZero();
 			int start_cov_pars = include_error_var ? 1 : 0;
 
+			if (use_stochastic_trace_for_Fisher_information_Vecchia_) {
+				if (saved_rand_vec_fisher_info_.size() == 0) {
+					for (const auto& cluster_i : unique_clusters_) {
+						saved_rand_vec_fisher_info_[cluster_i] = false;
+					}
+				}
+			}
+
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gp_approx_ == "vecchia") {
 					//Note: if transf_scale==false, then all matrices and derivatives have been calculated on the original scale for the Vecchia approximation, that is why there is no adjustment here
 
 					if (use_stochastic_trace_for_Fisher_information_Vecchia_) {
 						// Using Hutchinson's trace estimator
-						sp_mat_t D(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]); // Sample Vectors
+						sp_mat_t D(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 						D.setIdentity();
 						D.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(-1);
-						cg_generator_ = RNG_t(seed_rand_vec_trace_);
-						den_mat_t rand_vec(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-						GenRandVecDiag(cg_generator_, rand_vec);
+						// Sample vectors
+						if (!saved_rand_vec_fisher_info_[cluster_i]) {
+							if (!cg_generator_seeded_) {
+								cg_generator_ = RNG_t(seed_rand_vec_trace_);
+								cg_generator_seeded_ = true;
+							}
+							rand_vec_fisher_info_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
+							GenRandVecTrace(cg_generator_, rand_vec_fisher_info_[cluster_i]);
+							if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
+								saved_rand_vec_fisher_info_[cluster_i] = true;
+							}
+						}
 						den_mat_t BT_inv_rand_vec;
-						TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(B_[cluster_i], rand_vec, BT_inv_rand_vec, true);
+						TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(B_[cluster_i], rand_vec_fisher_info_[cluster_i], BT_inv_rand_vec, true);
 						den_mat_t D_BT_inv_rand_vec = D * BT_inv_rand_vec;
 						den_mat_t Bi_D_BT_inv_rand_vec;
 						TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(B_[cluster_i], D_BT_inv_rand_vec, Bi_D_BT_inv_rand_vec, false);//Bi_D_BT_inv_rand_vec = B^-1 * D * B^-T * rand_vec
@@ -6368,7 +6395,7 @@ namespace GPBoost {
 						BT_inv_rand_vec.resize(0, 0);
 						if (include_error_var && !transf_scale) {
 							//The derivative for the nugget variance is the identity matrix on the orginal scale, i.e. psi_inv_grad_psi_sigma2 = psi_inv
-							sigma_inv_sigma_grad_rand_vec_[0] = B_[cluster_i].transpose() * (D_inv_[cluster_i] * (B_[cluster_i] * rand_vec));
+							sigma_inv_sigma_grad_rand_vec_[0] = B_[cluster_i].transpose() * (D_inv_[cluster_i] * (B_[cluster_i] * rand_vec_fisher_info_[cluster_i]));
 						}
 						//Calculate Fisher information
 						sp_mat_t D_inv_B_grad_B_inv, B_grad_B_inv_D;
@@ -6458,10 +6485,18 @@ namespace GPBoost {
 				}//end gp_approx_ == "vecchia"
 				else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 					// Hutchinson's Trace estimator
-					// Sample Vectors
-					cg_generator_ = RNG_t(seed_rand_vec_trace_);
-					den_mat_t rand_vec(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-					GenRandVecDiag(cg_generator_, rand_vec);
+						// Sample vectors
+					if (!saved_rand_vec_fisher_info_[cluster_i]) {
+						if (!cg_generator_seeded_) {
+							cg_generator_ = RNG_t(seed_rand_vec_trace_);
+							cg_generator_seeded_ = true;
+						}
+						rand_vec_fisher_info_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
+						GenRandVecTrace(cg_generator_, rand_vec_fisher_info_[cluster_i]);
+						if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
+							saved_rand_vec_fisher_info_[cluster_i] = true;
+						}
+					}
 					std::shared_ptr<T_mat> sigma_resid;
 					den_mat_t sigma_inv_rand_vec_nugget;
 					int deriv_par_nb = 0;
@@ -6485,7 +6520,7 @@ namespace GPBoost {
 						den_mat_t Sigma_inv_rand_vec;
 						if (matrix_inversion_method_ == "cholesky" && gp_approx_ == "full_scale_tapering") {
 							Sigma_inv_cross_cov = chol_fact_resid_[cluster_i].solve(*cross_cov);
-							Sigma_inv_rand_vec = chol_fact_resid_[cluster_i].solve(rand_vec);
+							Sigma_inv_rand_vec = chol_fact_resid_[cluster_i].solve(rand_vec_fisher_info_[cluster_i]);
 						}
 						for (int jpar = 0; jpar < num_par_comp; ++jpar) {
 							// Derivative of Components
@@ -6508,11 +6543,11 @@ namespace GPBoost {
 								sigma_resid_grad_rand_vec.setZero();
 #pragma omp parallel for schedule(static)   
 								for (int i = 0; i < num_rand_vec_trace_; ++i) {
-									sigma_resid_grad_rand_vec.col(i) += (*sigma_resid_grad) * rand_vec.col(i);
+									sigma_resid_grad_rand_vec.col(i) += (*sigma_resid_grad) * rand_vec_fisher_info_[cluster_i].col(i);
 								}
-								sigma_resid_grad_rand_vec += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * rand_vec)
-									+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * rand_vec)
-									- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * rand_vec);
+								sigma_resid_grad_rand_vec += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * rand_vec_fisher_info_[cluster_i])
+									+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i])
+									- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i]);
 								// Inverse times Gradient times Random vectors
 								den_mat_t sigma_inv_sigma_grad_rand_vec_interim(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
 								if (matrix_inversion_method_ == "cholesky") {
@@ -6533,7 +6568,7 @@ namespace GPBoost {
 									sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
 								}
 								else if (matrix_inversion_method_ == "iterative") {
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], rand_vec, sigma_inv_rand_vec, NaN_found,
+									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], rand_vec_fisher_info_[cluster_i], sigma_inv_rand_vec, NaN_found,
 										num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 									sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
@@ -6555,10 +6590,10 @@ namespace GPBoost {
 								}
 								// Inverse times Gradient times Random vectors
 								// Gradient times Random vectors
-								den_mat_t sigma_resid_grad_rand_vec = FITC_Diag_grad.asDiagonal() * rand_vec;
-								sigma_resid_grad_rand_vec += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * rand_vec)
-									+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * rand_vec)
-									- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * rand_vec);
+								den_mat_t sigma_resid_grad_rand_vec = FITC_Diag_grad.asDiagonal() * rand_vec_fisher_info_[cluster_i];
+								sigma_resid_grad_rand_vec += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * rand_vec_fisher_info_[cluster_i])
+									+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i])
+									- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i]);
 								// Inverse times Gradient times Random vectors
 								den_mat_t FITC_Diag_inv_Grad_rand_vec = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * sigma_resid_grad_rand_vec;
 								den_mat_t FITC_Diag_inv_cross_cov = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * (*cross_cov);
@@ -6566,7 +6601,7 @@ namespace GPBoost {
 
 								// Gradient times Inverse times Random vectors
 								// Inverse times Random vectors
-								den_mat_t FITC_Diag_inv_rand_vec = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * rand_vec;
+								den_mat_t FITC_Diag_inv_rand_vec = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * rand_vec_fisher_info_[cluster_i];
 								den_mat_t sigma_inv_rand_vec = FITC_Diag_inv_rand_vec - FITC_Diag_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * FITC_Diag_inv_rand_vec));
 								sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
 								// Gradient times Inverse times Random vectors
@@ -6584,7 +6619,7 @@ namespace GPBoost {
 							//The derivative for the nugget variance on the transformed scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
 							FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
 							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-								FI(0, par_nb + 1) += (rand_vec).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb]).colwise().sum().mean() / 2.;
+								FI(0, par_nb + 1) += (rand_vec_fisher_info_[cluster_i]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb]).colwise().sum().mean() / 2.;
 							}
 						}
 						else {//Original scale for asymptotic covariance matrix
