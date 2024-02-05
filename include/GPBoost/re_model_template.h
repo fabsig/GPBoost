@@ -3765,10 +3765,6 @@ namespace GPBoost {
 		int num_ind_points_;
 		/*! \brief Radius (= "spatial resolution") for the cover tree algorithm */
 		double cover_tree_radius_;
-		/*! \brief Coordinates of inducing points */
-		den_mat_t gp_coords_ip_mat_;
-		/*! \brief Coordinates of all observed points */
-		den_mat_t gp_coords_obs_mat_;
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with inducing points GP components */
 		std::map<data_size_t, std::vector<std::shared_ptr<RECompGP<den_mat_t>>>> re_comps_ip_;
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with cross-covariance GP components */
@@ -4785,34 +4781,42 @@ namespace GPBoost {
 				}
 			}
 			den_mat_t gp_coords_all_mat = Eigen::Map<den_mat_t>(gp_coords_all.data(), num_data_per_cluster_[cluster_i], dim_gp_coords_);
-			gp_coords_obs_mat_ = gp_coords_all_mat;
-			// Inducing points
+			// Determine inducing points on unique locataions
+			den_mat_t gp_coords_all_unique;
+			std::vector<int> uniques;//unique points
+			std::vector<int> unique_idx;//not used
+			DetermineUniqueDuplicateCoordsFast(gp_coords_all_mat, num_data_per_cluster_[cluster_i], uniques, unique_idx);
+			if ((data_size_t)uniques.size() == num_data_per_cluster_[cluster_i]) {//no multiple observations at the same locations -> no incidence matrix needed
+				gp_coords_all_unique = gp_coords_all_mat;
+			}
+			else {//there are multiple observations at the same locations
+				gp_coords_all_unique = gp_coords_all_mat(uniques, Eigen::all);
+				if ((int)gp_coords_all_unique.rows() < num_ind_points_) {
+					Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
+				}
+			}
 			std::vector<int> indices;
-			std::vector<double> gp_coords_ip;
 			den_mat_t gp_coords_ip_mat;
 			if (ind_points_selection_ == "cover_tree") {
-				CoverTree(gp_coords_all_mat, cover_tree_radius_, rng_, gp_coords_ip_mat);
+				CoverTree(gp_coords_all_unique, cover_tree_radius_, rng_, gp_coords_ip_mat);
 				num_ind_points_ = (int)gp_coords_ip_mat.rows();
 			}
 			else if (ind_points_selection_ == "random") {
-				SampleIntNoReplaceSort(num_data_per_cluster_[cluster_i], num_ind_points_, rng_, indices);
-				for (int j = 0; j < dim_gp_coords_; ++j) {
-					for (const auto& ind : indices) {
-						gp_coords_ip.push_back(gp_coords_data[j * num_data + data_indices_per_cluster[cluster_i][ind]]);
-					}
+				SampleIntNoReplaceSort((int)gp_coords_all_unique.rows(), num_ind_points_, rng_, indices);
+				gp_coords_ip_mat.resize(num_ind_points_, gp_coords_all_mat.cols());
+				for (int j = 0; j < num_ind_points_; ++j) {
+					gp_coords_ip_mat.row(j) = gp_coords_all_unique.row(indices[j]);
 				}
-				gp_coords_ip_mat = Eigen::Map<den_mat_t>(gp_coords_ip.data(), num_ind_points_, dim_gp_coords_);
 			}
 			else if (ind_points_selection_ == "kmeans++") {
 				gp_coords_ip_mat.resize(num_ind_points_, gp_coords_all_mat.cols());
 				int max_it_kmeans = 1000;
-				kmeans_plusplus(gp_coords_all_mat, num_ind_points_, rng_, gp_coords_ip_mat, max_it_kmeans);
+				kmeans_plusplus(gp_coords_all_unique, num_ind_points_, rng_, gp_coords_ip_mat, max_it_kmeans);
 			}
 			else {
 				Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
 			}
-			gp_coords_ip_mat_ = gp_coords_ip_mat;
-
+			gp_coords_all_unique.resize(0, 0);
 			std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
 				gp_coords_ip_mat, cov_fct_, cov_fct_shape_, cov_fct_taper_range_, cov_fct_taper_shape_, false, false, true, false, false));
 			if (gp_ip->HasDuplicatedCoords()) {
