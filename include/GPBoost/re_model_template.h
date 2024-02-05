@@ -478,13 +478,6 @@ namespace GPBoost {
 				else {
 					reset_learning_rate_every_iteration_ = false;
 				}
-				//if (optimizer_cov_pars_ == "approximate_fisher_scoring") {//not used
-				//	optimizer_cov_pars_ = "gradient_descent";
-				//	approximate_fisher_scoring_ = true;
-				//}
-				//else {
-				//	approximate_fisher_scoring_ = false;
-				//}
 			}
 			momentum_offset_ = momentum_offset;
 			if (convergence_criterion != nullptr) {
@@ -863,12 +856,6 @@ namespace GPBoost {
 							vec_t grad_beta;
 							// Calculate gradient for linear regression coefficients
 							CalcGradLinCoef(cov_aux_pars[0], beta, grad_beta, fixed_effects_ptr);
-							//if (approximate_fisher_scoring_) {//not used
-							//	vec_t grad = grad_beta;
-							//	den_mat_t aFI = grad * grad.transpose();
-							//	aFI.diagonal().array() += 1e-6;
-							//	grad_beta = aFI.llt().solve(grad);
-							//}
 							CalcDirDerivArmijoAndLearningRateConstChangeCoef(grad_beta, beta, beta_after_grad_aux, use_nesterov_acc_coef);
 							// Update linear regression coefficients, do learning rate backtracking, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
 							UpdateLinCoef(beta, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, num_iter_, beta_after_grad_aux, beta_after_grad_aux_lag1,
@@ -928,11 +915,6 @@ namespace GPBoost {
 							CalcGradCovParAuxPars(cov_aux_pars.segment(0, num_cov_par_), grad, gradient_contains_error_var, false, fixed_effects_ptr);
 							if (optimizer_cov_pars_ == "gradient_descent") {
 								neg_step_dir = grad;
-								//if (approximate_fisher_scoring_) {//not used
-								//	approx_Hessian = grad * grad.transpose();
-								//	approx_Hessian.diagonal().array() += 1e-6;
-								//	neg_step_dir = approx_Hessian.llt().solve(grad);
-								//}
 							}
 							else if (optimizer_cov_pars_ == "newton") {
 								CalcHessianCovParAuxPars(cov_aux_pars, gradient_contains_error_var, fixed_effects_ptr, approx_Hessian);
@@ -1579,7 +1561,9 @@ namespace GPBoost {
 			vec_t& grad_beta,
 			const double* fixed_effects = nullptr) {
 			if (gauss_likelihood_) {
-				CalcYAux(1.);
+				if (only_grouped_REs_use_woodbury_identity_) {// calculate y_aux = Psi^-1*y (in most cases, this has been already calculated when calling 'CalcCovFactorOrModeAndNegLL' before this)
+					CalcYAux(1.);
+				}
 				vec_t y_aux(num_data_);
 				GetYAux(y_aux);
 				grad_beta = (-1. / marg_var) * (X_.transpose()) * y_aux;
@@ -3610,8 +3594,6 @@ namespace GPBoost {
 		double mom_dir_deriv_armijo_coef_;
 		/*! \brief If true, the initial learning rates in every iteration are set such that there is a constant first order change */
 		bool learning_rate_constant_first_order_change_ = false;
-		///*! \brief If true, an approximate form of Fisher scoring is used (FI \approx grad * t(grad)) *///not used
-		//bool approximate_fisher_scoring_ = false;
 		/*! \brief If true, the learning rates are reset to initial values in every iteration (only for gradient_descent) */
 		bool reset_learning_rate_every_iteration_ = false;
 		/*! \brief If true, the learning rates can be increased again in latter iterations after they have been decreased (only for gradient_descent) */
