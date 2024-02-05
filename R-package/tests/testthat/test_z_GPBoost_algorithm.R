@@ -326,9 +326,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Use BFGS for training
       gp_model <- GPModel(group_data = group_data_train)
       gp_model$set_optim_params(params = list(optimizer_cov="bfgs"))
-      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+      capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                      nrounds = 62, learning_rate = 0.01, max_depth = 6,
-                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
+                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0) , file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
       
       # Newton updates for tree leaves
@@ -673,18 +673,19 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       valids <- list(test = dtest)
       
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+      params_gp <- list(maxit=100, optimizer_cov="gradient_descent", use_nesterov_acc = TRUE)
+      gp_model$set_optim_params(params=params_gp)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2",
                        verbose = 0)
-      cov_pars_est <- c(0.24800160, 0.89155814, 0.08301144)
+      cov_pars_est <- c(0.25092222818, 0.89280688318, 0.08302442786)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
       # Prediction
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
-      pred_re <- c(-0.4983553, -0.7873598, -0.5955449, -0.2461463)
-      pred_cov <- c(0.4768212, 0.5950547, 0.6215380, 0.8378539)
-      pred_fe <- c(4.683095, 4.534746, 4.602277, 4.457230)
+      pred_re <- c(-0.4977031114, -0.7868691089, -0.5953274636, -0.2458193940)
+      pred_cov <- c(0.4779545982, 0.5962427309, 0.6227537278, 0.8390838534)
+      pred_fe <- c(4.682603619, 4.534533783, 4.602049911, 4.457454183)
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-pred_re)),TOLERANCE)
       expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_cov)),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-pred_fe)),TOLERANCE)
@@ -693,7 +694,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                           gp_approx = "vecchia", num_neighbors = ntrain-1, 
                                           vecchia_ordering = "none"), file='NUL')
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+      gp_model$set_optim_params(params=params_gp)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -708,7 +709,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                           gp_approx = "vecchia", num_neighbors = ntrain-1, 
                                           vecchia_ordering = "random"), file='NUL')
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+      gp_model$set_optim_params(params=params_gp)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -740,13 +741,13 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                           vecchia_ordering = "random"), file='NUL')
       gp_model$set_prediction_data(gp_coords_pred = coords_test)
       gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred = 100)
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+      gp_model$set_optim_params(params=params_gp)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, 
                        objective = "regression_l2", verbose = 0, valids = valids, metric="mse")
       iter <- 20
       score <- 1.54475
-      cov_pars_estV <- c(0.23768321, 0.90212975, 0.08164033)
+      cov_pars_estV <- c(0.26721270772, 0.89424739300, 0.08439964419)
       expect_equal(bst$best_iter, iter)
       expect_lt(abs(bst$best_score - score),TOLERANCE2)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_estV)),0.05)
@@ -756,7 +757,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                           vecchia_ordering = "random"), file='NUL')
       gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred = 100)
       gp_model$set_prediction_data(gp_coords_pred = coords_test)
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+      gp_model$set_optim_params(params=params_gp)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, 
                        objective = "regression_l2", verbose = 0, valids = valids, metric="mse")

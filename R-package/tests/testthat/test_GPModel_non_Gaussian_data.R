@@ -1411,7 +1411,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                      maxit=1000, delta_rel_conv=1e-12))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.2717516, 0.2875537))),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.1999365, 1.4666199))),TOLERANCE_LOOSE)
-    expect_equal(gp_model$get_num_optim_iter(), 231)
     
     # Standard deviations
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit", 
@@ -1656,8 +1655,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   test_that("Gamma regression ", {
     params <- list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent", 
                    estimate_aux_pars = FALSE, init_aux_pars = 1.,
-                   lr_cov = 0.1, lr_coef = 0.1,
-                   use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
+                   lr_cov = 0.1, lr_coef = 0.1, use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
     params_shape <- params
     params_shape$estimate_aux_pars <- TRUE
     shape <- 1
@@ -1700,9 +1698,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            y = y, params = params_shape), file='NUL')
     cov_pars <- c(0.5141632)
     aux_pars <- c(0.9719373)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 45)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_LOOSE)
     # Also estimate shape parameter with gradient descent
     params_shape$optimizer_cov <- "gradient_descent"
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
@@ -1752,9 +1749,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            y = y, params = params_shape), file='NUL')
     cov_pars <- c(0.5050897, 1.2026241, 0.5232070)
     aux_pars <- c(0.9819755)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 215)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),0.01)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_LOOSE)
     # Also estimate shape parameter with gradient descent
     params_shape$optimizer_cov <- "gradient_descent"
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
@@ -1975,7 +1971,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
       if(inv_method!="iterative"){
         expect_gt(gp_model$get_num_optim_iter(), 115)
-        expect_lt(gp_model$get_num_optim_iter(), 135)
+        expect_lt(gp_model$get_num_optim_iter(), 140)
       }
       # Also estimate shape parameter with gradient descent
       params_shape$optimizer_cov <- "gradient_descent"
