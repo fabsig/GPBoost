@@ -1,4 +1,5 @@
 // Copyright (C) 2016-2023 Yixuan Qiu <yixuan.qiu@cos.name>
+//  Modified work Copyright (c) 2024 Fabio Sigrist. All rights reserved.
 // Under MIT license
 
 #ifndef LBFGSPP_LBFGS_H
