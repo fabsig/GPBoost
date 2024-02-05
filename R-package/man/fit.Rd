@@ -94,10 +94,9 @@ fixed effects linear regression term (if there is one)}
     \item{num_rand_vec_trace: \code{integer} (default = 50). 
     Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix }
     \item{reuse_rand_vec_trace: \code{boolean} (default = TRUE). 
-    If true, random vectors (e.g., Rademacher) for stochastic approximation 
-    of the trace of a matrix are sampled only once at the beginning of
-    Newton's method for finding the mode in the Laplace approximation
-    and are then reused in later trace approximations.
+    If true, random vectors (e.g., Rademacher) for stochastic approximations 
+    of the trace of a matrix are sampled only once at the beginning of 
+    the parameter estimation and reused in later trace approximations.
     Otherwise they are sampled every time a trace is calculated }
     \item{seed_rand_vec_trace: \code{integer} (default = 1). 
     Seed number to generate random vectors (e.g., Rademacher) }
