@@ -714,7 +714,7 @@ namespace GPBoost {
 			scale_covariates_ = false;
 			if (has_covariates_) {
 				scale_covariates_ = (optimizer_coef_ == "gradient_descent" || (optimizer_cov_pars_ == "bfgs" && !gauss_likelihood_) ||
-					(optimizer_cov_pars_ == "bfgs_v2" && !gauss_likelihood_)) && !only_intercept_for_GPBoost_algo;
+					optimizer_cov_pars_ == "bfgs_v2") && !only_intercept_for_GPBoost_algo;
 				// Scale covariates (in order that the gradient is less sample-size dependent)
 				if (scale_covariates_) {
 					loc_transf_ = vec_t(num_coef_);
