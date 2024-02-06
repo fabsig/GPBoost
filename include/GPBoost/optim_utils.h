@@ -230,6 +230,10 @@ namespace GPBoost {
 		double operator()(const vec_t& pars, 
 			vec_t& gradient,
 			bool calc_gradient = true) {
+
+			Log::REDebug("###  EvalLLforLBFGSpp: trying the following parameter combination (ignore iteration number and log-likelihood): ");//DELETE
+			Logging(pars, 9999, 0.);//DELETE
+
 			double neg_log_likelihood;
 			vec_t cov_pars, beta, fixed_effects_vec, aux_pars;
 			const double* fixed_effects_ptr;
