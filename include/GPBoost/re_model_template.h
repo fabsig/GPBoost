@@ -616,11 +616,11 @@ namespace GPBoost {
 			num_ll_evaluations_ = 0;
 			num_iter_ = 0;
 			num_it = max_iter_;
-			bool profile_out_marginal_variance = gauss_likelihood_ &&
+			profile_out_marginal_variance_ = gauss_likelihood_ &&
 				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam");
 			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data 
 			//	(the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
-			bool gradient_contains_error_var = gauss_likelihood_ && !profile_out_marginal_variance;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
+			bool gradient_contains_error_var = gauss_likelihood_ && !profile_out_marginal_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
 			has_intercept_ = false; //If true, the covariates contain an intercept column (only relevant if there are covariates)
 			bool only_intercept_for_GPBoost_algo = false;//If true, the covariates contain only an intercept (only relevant if there are covariates)
 			intercept_col_ = -1;
@@ -751,6 +751,7 @@ namespace GPBoost {
 					// transform initial coefficients
 					TransformCoef(beta, beta);
 				}
+				beta_after_grad_aux = beta;
 				beta_after_grad_aux_lag1 = beta;
 				beta_init = beta;
 				UpdateFixedEffects(beta, fixed_effects, fixed_effects_vec);
@@ -828,7 +829,7 @@ namespace GPBoost {
 			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
 				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
-					optimizer_cov_pars_, profile_out_marginal_variance,
+					optimizer_cov_pars_, profile_out_marginal_variance_,
 					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_);
 				// Check for NA or Inf
 				if (optimizer_cov_pars_ == "bfgs" || optimizer_cov_pars_ == "bfgs_v2") {
@@ -863,7 +864,7 @@ namespace GPBoost {
 						if (optimizer_coef_ == "gradient_descent") {// one step of gradient descent
 							vec_t grad_beta;
 							// Calculate gradient for linear regression coefficients
-							CalcGradLinCoef(cov_aux_pars[0], beta, grad_beta, fixed_effects_ptr);
+							CalcGradLinCoef(cov_aux_pars[0], grad_beta, fixed_effects_ptr);
 							AvoidTooLargeLearningRateCoef(beta, grad_beta);
 							CalcDirDerivArmijoAndLearningRateConstChangeCoef(grad_beta, beta, beta_after_grad_aux, use_nesterov_acc_coef);
 							// Update linear regression coefficients, do learning rate backtracking, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
@@ -920,7 +921,7 @@ namespace GPBoost {
 						// Calculate gradient or natural gradient = FI^-1 * grad (for Fisher scoring)
 						vec_t grad, neg_step_dir; // gradient and negative step direction. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
 						den_mat_t approx_Hessian;
-						if (profile_out_marginal_variance) {
+						if (profile_out_marginal_variance_) {
 							// Profile out sigma2 (=use closed-form expression for error / nugget variance) since this is better for gradient descent (the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 							cov_aux_pars[0] = yTPsiInvy_ / num_data_;
 						}
@@ -944,10 +945,9 @@ namespace GPBoost {
 						if (optimizer_cov_pars_ == "gradient_descent") {
 							AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir);// Avoid too large learning rates for covariance parameters and aux_pars (for fisher_scoring and newton, this is done non-permanently in 'UpdateCovAuxPars')
 						}
-						CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(grad, neg_step_dir, cov_aux_pars, cov_pars_after_grad_aux,
-							profile_out_marginal_variance, use_nesterov_acc);
+						CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(grad, neg_step_dir, cov_aux_pars, cov_pars_after_grad_aux, use_nesterov_acc);
 						// Update covariance and additional likelihood parameters, do learning rate backtracking, factorize covariance matrix, and calculate new value of objective function
-						UpdateCovAuxPars(cov_aux_pars, neg_step_dir, profile_out_marginal_variance, use_nesterov_acc, num_iter_,
+						UpdateCovAuxPars(cov_aux_pars, neg_step_dir, use_nesterov_acc, num_iter_,
 							cov_pars_after_grad_aux, cov_aux_pars_after_grad_aux_lag1, acc_rate_cov_, nesterov_schedule_version_, momentum_offset_, fixed_effects_ptr);
 						if (num_iter_ == 0) {
 							lr_cov_after_first_iteration_ = lr_cov_;
@@ -1117,7 +1117,7 @@ namespace GPBoost {
 				SetInitialValueDeltaRelConv();
 				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it,
-					learn_covariance_parameters, "nelder_mead", profile_out_marginal_variance,
+					learn_covariance_parameters, "nelder_mead", profile_out_marginal_variance_,
 					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_);
 			}
 			if (num_it == max_iter_) {
@@ -1573,14 +1573,12 @@ namespace GPBoost {
 		/*!
 		* \brief Calculate gradient for linear fixed-effect coefficients
 		* \param marg_var Marginal variance parameters sigma^2 (only used for Gaussian data)
-		* \param beta Linear regression coefficients
 		* \param[out] grad_beta Gradient for linear regression coefficients
 		 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		*/
 		void CalcGradLinCoef(double marg_var,
-			const vec_t beta,
 			vec_t& grad_beta,
-			const double* fixed_effects = nullptr) {
+			const double* fixed_effects) {
 			if (gauss_likelihood_) {
 				if (only_grouped_REs_use_woodbury_identity_) {// calculate y_aux = Psi^-1*y (in most cases, this has been already calculated when calling 'CalcCovFactorOrModeAndNegLL' before this)
 					CalcYAux(1.);
@@ -3687,6 +3685,8 @@ namespace GPBoost {
 		bool learning_rate_decreased_after_increase_ = false;
 		/*! \brief Threshold value, for relative change in the log-likelihood, below which learning rates are increased again for gradient descent */
 		double INCREASE_LR_CHANGE_LL_THRESHOLD_ = 1e-3;
+		/*! \brief If true, the nugget effect is profiled out for Gaussian likelihoods (=use closed-form expression for error / nugget variance) */
+		bool profile_out_marginal_variance_ = false;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
@@ -5202,14 +5202,12 @@ namespace GPBoost {
 		* \param neg_step_dir Negative step direction for making updates. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
 		* \param cov_aux_pars Covariance and additional auxiliary likelihood parameters
 		* \param cov_pars_after_grad_aux Covariance and auxiliary parameters after gradient step and before momentum step (of previous iteration)
-		* \param profile_out_marginal_variance If true, the first parameter (marginal variance, nugget effect) is ignored
 		* \param use_nesterov_acc If true, Nesterov acceleration is used
 		*/
 		void CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(const vec_t& grad,
 			const vec_t& neg_step_dir,
 			const vec_t& cov_aux_pars,
 			const vec_t& cov_pars_after_grad_aux,
-			bool profile_out_marginal_variance,
 			bool use_nesterov_acc) {
 			if ((learning_rate_constant_first_order_change_ && num_iter_ > 0) || armijo_condition_) {
 				CHECK(grad.size() == neg_step_dir.size());
@@ -5236,7 +5234,7 @@ namespace GPBoost {
 				if (armijo_condition_ && use_nesterov_acc) {
 					vec_t delta_pars = cov_aux_pars.array().log().matrix() - cov_pars_after_grad_aux.array().log().matrix();//gradient steps / update is done on log-scale
 					vec_t delta_cov_pars;
-					if (profile_out_marginal_variance) {
+					if (profile_out_marginal_variance_) {
 						delta_cov_pars = delta_pars.segment(1, num_grad_cov_par);
 					}
 					else {
@@ -5398,7 +5396,6 @@ namespace GPBoost {
 		* \brief Update covariance and potential additional likelihood parameters, apply step size safeguard, factorize covariance matrix, and calculate new value of objective function
 		* \param[out] cov_pars Covariance and additional auxiliary likelihood parameters
 		* \param neg_step_dir Negative step direction for making updates. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
-		* \param profile_out_marginal_variance If true, the first parameter (marginal variance, nugget effect) is ignored
 		* \param use_nesterov_acc If true, Nesterov acceleration is used
 		* \param it Iteration number
 		* \param[out] cov_pars_after_grad_aux Auxiliary variable used only if use_nesterov_acc == true (see the code below for a description)
@@ -5410,7 +5407,6 @@ namespace GPBoost {
 		*/
 		void UpdateCovAuxPars(vec_t& cov_pars,
 			const vec_t& neg_step_dir,
-			bool profile_out_marginal_variance,
 			bool use_nesterov_acc,
 			int it,
 			vec_t& cov_pars_after_grad_aux,
@@ -5423,7 +5419,7 @@ namespace GPBoost {
 				Log::REFatal("Armijo condition backtracking is not implemented when nesterov_schedule_version = 1");
 			}
 			vec_t cov_pars_new(num_cov_par_);
-			if (profile_out_marginal_variance) {
+			if (profile_out_marginal_variance_) {
 				cov_pars_new[0] = cov_pars[0];
 			}
 			double lr_cov = lr_cov_;
@@ -5458,7 +5454,7 @@ namespace GPBoost {
 						}
 					}
 				}
-				if (profile_out_marginal_variance) {
+				if (profile_out_marginal_variance_) {
 					cov_pars_new.segment(1, cov_pars.size() - 1) = (cov_pars.segment(1, cov_pars.size() - 1).array().log() - update.array()).exp().matrix();//make update on log-scale
 				}
 				else {
@@ -5468,7 +5464,7 @@ namespace GPBoost {
 				if (use_nesterov_acc) {
 					cov_pars_after_grad_aux = cov_pars_new;
 					ApplyMomentumStep(it, cov_pars_after_grad_aux, cov_pars_after_grad_aux_lag1, cov_pars_new, acc_rate_cov,
-						nesterov_schedule_version, profile_out_marginal_variance, momentum_offset, true);
+						nesterov_schedule_version, profile_out_marginal_variance_, momentum_offset, true);
 					// Note: (i) cov_pars_after_grad_aux and cov_pars_after_grad_aux_lag1 correspond to the parameters obtained after calculating the gradient before applying acceleration
 					//		 (ii) cov_pars (below this) are the parameters obtained after applying acceleration (and cov_pars_lag1 is simply the value of the previous iteration)
 					// We first apply a gradient step and then an acceleration step (and not the other way aroung) since this is computationally more efficient 
@@ -6912,10 +6908,10 @@ namespace GPBoost {
 				// Gradient vector at beta plus / minus delta
 				UpdateFixedEffects(beta_change1, fixed_effects, fixed_effects_vec);
 				CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_vec.data());
-				CalcGradLinCoef(1., beta_change1, grad_beta_change1, fixed_effects_vec.data());
+				CalcGradLinCoef(1., grad_beta_change1, fixed_effects_vec.data());
 				UpdateFixedEffects(beta_change2, fixed_effects, fixed_effects_vec);
 				CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_vec.data());
-				CalcGradLinCoef(1., beta_change2, grad_beta_change2, fixed_effects_vec.data());
+				CalcGradLinCoef(1., grad_beta_change2, fixed_effects_vec.data());
 				// Approximate gradient of gradient
 				H.row(i) = (grad_beta_change1 - grad_beta_change2) / (2. * delta_step[i]);
 			}

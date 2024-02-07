@@ -183,7 +183,7 @@ namespace GPBoost {
 				}
 				if (has_covariates) {
 					vec_t grad_beta;
-					re_model_templ_->CalcGradLinCoef(cov_pars[0], beta, grad_beta, fixed_effects_ptr);
+					re_model_templ_->CalcGradLinCoef(cov_pars[0], grad_beta, fixed_effects_ptr);
 					(*gradient).segment(num_cov_pars_optim, num_covariates) = grad_beta;
 				}
 			}
@@ -302,7 +302,7 @@ namespace GPBoost {
 				}
 				if (has_covariates) {
 					vec_t grad_beta;
-					re_model_templ_->CalcGradLinCoef(cov_pars[0], beta, grad_beta, fixed_effects_ptr);
+					re_model_templ_->CalcGradLinCoef(cov_pars[0], grad_beta, fixed_effects_ptr);
 					gradient.segment(num_cov_pars_optim, num_covariates) = grad_beta;
 				}
 				if (re_model_templ_->EstimateAuxPars()) {
