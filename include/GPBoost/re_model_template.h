@@ -3170,7 +3170,7 @@ namespace GPBoost {
 					}
 				}
 				var /= (num_data_ - 1);
-				init_cov_pars[0] = var;
+				init_cov_pars[0] = var / 2;
 				ind_par = 1;
 			}//end Gaussian data
 			else {//non-Gaussian likelihoods
