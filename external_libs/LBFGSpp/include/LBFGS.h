@@ -108,8 +108,6 @@ public:
         // Initial step size
         Scalar step = Scalar(1) / m_drt.norm();
 
-        Log::REDebug("*** minimize start: step = %g, fx = %g, m_grad = %g, %g, %g, %g, %g, %g ", step, fx, m_grad[0], m_grad[1], m_grad[2], m_grad[3], m_grad[4], m_grad[5]);  // DELETE
-
         // Tolerance for s'y >= eps * (y'y)
         constexpr Scalar eps = std::numeric_limits<Scalar>::epsilon();
         // s and y vectors
@@ -128,8 +126,13 @@ public:
             Scalar dg = m_grad.dot(m_drt);
             const Scalar step_max = m_param.max_step;
 
-            Log::REDebug("*** minimize: k = %d, step = %g, fx = %g, m_grad = %g, %g, %g, %g, %g, %g ", k, step, fx, m_grad[0], m_grad[1], m_grad[2], m_grad[3], m_grad[4], m_grad[5]);  // DELETE
-
+            // ChangedForGPBoost
+            Vector neg_mdrt = -m_drt;
+            double max_lr = f.GetMaximalLearningRate(x, neg_mdrt);
+            if (max_lr < step)
+            {
+                step = max_lr;
+            }
             // Line search to update x, fx and gradient
             LineSearch<Scalar>::LineSearch(f, m_param, m_xp, m_drt, step_max, step, fx, m_grad, dg, x);
 

@@ -227,13 +227,9 @@ namespace GPBoost {
 			cov_pars_ = cov_pars;
 			profile_out_marginal_variance_ = profile_out_marginal_variance;
 		}
-		double operator()(const vec_t& pars, 
+		double operator()(const vec_t& pars,
 			vec_t& gradient,
 			bool calc_gradient = true) {
-
-			Log::REDebug("###  EvalLLforLBFGSpp: trying the following parameter combination (ignore iteration number and log-likelihood): ");//DELETE
-			Logging(pars, 9999, 0.);//DELETE
-
 			double neg_log_likelihood;
 			vec_t cov_pars, beta, fixed_effects_vec, aux_pars;
 			const double* fixed_effects_ptr;
@@ -367,9 +363,9 @@ namespace GPBoost {
 		* \param iter iteration number
 		* \param fx current objective value (negative log-lilekihood
 		*/
-		void Logging(const vec_t& pars, 
-			int iter, 
-			double fx) {
+		void Logging(const vec_t& pars,
+			int iter,
+			double fx) const {
 			vec_t cov_pars, beta, aux_pars;
 			const double* aux_pars_ptr = nullptr;
 			bool has_covariates = re_model_templ_->HasCovariates();
@@ -419,6 +415,51 @@ namespace GPBoost {
 				Log::REDebug("Approximate negative marginal log-likelihood: %g", fx);
 			}
 		}//end Logging
+
+		/*!
+		* \brief Get the maximal step length along a direction such that the change in the parameters is not overly large
+		* \param pars Current / lag1 value of pars
+		* \param neg_step_dir Negative step direction for making updates
+		*/
+		double GetMaximalLearningRate(const vec_t& pars,
+			vec_t& neg_step_dir) const {
+			bool has_covariates = re_model_templ_->HasCovariates();
+			// Determine number of covariance and linear regression coefficient parameters
+			int num_cov_pars_optim = 0, num_covariates = 0, num_aux_pars = 0;
+			if (learn_cov_aux_pars_) {
+				num_cov_pars_optim = re_model_templ_->GetNumCovPar();
+				if (profile_out_marginal_variance_) {
+					num_cov_pars_optim -= 1;
+				}
+				if (re_model_templ_->EstimateAuxPars()) {
+					num_aux_pars = re_model_templ_->NumAuxPars();
+				}
+			}
+			if (has_covariates) {
+				num_covariates = re_model_templ_->GetNumCoef();
+			}
+			CHECK((int)pars.size() == num_cov_pars_optim + num_covariates + num_aux_pars);
+			CHECK((int)neg_step_dir.size() == num_cov_pars_optim + num_covariates + num_aux_pars);
+			double max_lr = 1e99;
+			if (learn_cov_aux_pars_) {
+				vec_t neg_step_dir_cov_aux_pars(num_cov_pars_optim + num_aux_pars);
+				neg_step_dir_cov_aux_pars.segment(0, num_cov_pars_optim) = neg_step_dir.segment(0, num_cov_pars_optim);
+				if (re_model_templ_->EstimateAuxPars()) {
+					neg_step_dir_cov_aux_pars.segment(num_cov_pars_optim, num_aux_pars) = neg_step_dir.segment(num_cov_pars_optim + num_covariates, num_aux_pars);
+				}
+				max_lr = re_model_templ_->MaximalLearningRateCovAuxPars(neg_step_dir_cov_aux_pars);
+			}
+			if (has_covariates) {
+				vec_t beta = pars.segment(num_cov_pars_optim, num_covariates);
+				vec_t neg_step_dir_beta = neg_step_dir.segment(num_cov_pars_optim, num_covariates);
+				double max_lr_beta = re_model_templ_->MaximalLearningRateCoef(beta, neg_step_dir_beta);
+				if (max_lr_beta < max_lr) {
+					max_lr = max_lr_beta;
+				}
+			}
+			return(max_lr);
+		}//end GetMaximalLearningRate
+
 	};//end EvalLLforLBFGSpp
 
 	/*!

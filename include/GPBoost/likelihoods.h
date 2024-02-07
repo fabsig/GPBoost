@@ -401,6 +401,65 @@ namespace GPBoost {
 		}//end FindInitialAuxPars
 
 		/*!
+		* \brief Determine constants C_mu and C_sigma2 used for checking whether step sizes for linear regression coefficients are clearly too large
+		* \param y_data Response variable data
+		* \param num_data Number of data points
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
+		* \param[out] C_mu
+		* \param[out] C_sigma2
+		*/
+		void FindConstantsCapTooLargeLearningRateCoef(const double* y_data,
+			const data_size_t num_data,
+			const double* fixed_effects,
+			double& C_mu,
+			double& C_sigma2) const {
+			if (likelihood_type_ == "gaussian") {
+				double mean = 0., sec_mom = 0;
+				if (fixed_effects == nullptr) {
+#pragma omp parallel for schedule(static) reduction(+:mean, sec_mom)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						mean += y_data[i];
+						sec_mom += y_data[i] * y_data[i];
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static) reduction(+:mean, sec_mom)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						mean += y_data[i] - fixed_effects[i];
+						sec_mom += (y_data[i] - fixed_effects[i]) * (y_data[i] - fixed_effects[i]);
+					}
+				}
+				mean /= num_data;
+				sec_mom /= num_data;
+				C_mu = std::abs(mean);
+				C_sigma2 = sec_mom - mean * mean;
+			}
+			else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit") {
+				C_mu = 1.;
+				C_sigma2 = 1.;
+			}
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+				likelihood_type_ == "negative_binomial") {
+				double mean = 0., sec_mom = 0;
+#pragma omp parallel for schedule(static) reduction(+:mean, sec_mom)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					mean += y_data[i];
+					sec_mom += y_data[i] * y_data[i];
+				}
+				mean /= num_data;
+				sec_mom /= num_data;
+				C_mu = std::abs(SafeLog(mean));
+				C_sigma2 = std::abs(SafeLog(sec_mom - mean * mean));
+			}
+			else {
+				Log::REFatal("FindConstantsCapTooLargeLearningRateCoef: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+			}
+			if (C_mu < 1.) {
+				C_mu = 1.;
+			}
+		}//end FindConstantsCapTooLargeLearningRateCoef
+
+		/*!
 		* \brief Returns the number of additional parameters
 		*/
 		int NumAuxPars() const {

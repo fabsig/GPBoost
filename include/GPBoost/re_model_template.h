@@ -738,10 +738,9 @@ namespace GPBoost {
 					if (has_intercept_) {
 						double tot_var = GetTotalVarComps(cov_aux_pars.segment(0, num_cov_par_));
 						if (y_data == nullptr) {
-							vec_t y_aux_temp(num_data_);
-							GetY(y_aux_temp.data());
-							beta[intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_aux_temp.data(), num_data_, tot_var, fixed_effects);
-							y_aux_temp.resize(0);
+							vec_t y_temp(num_data_);
+							GetY(y_temp.data());
+							beta[intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_temp.data(), num_data_, tot_var, fixed_effects);
 						}
 						else {
 							beta[intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_, tot_var, fixed_effects);
@@ -757,6 +756,15 @@ namespace GPBoost {
 				UpdateFixedEffects(beta, fixed_effects, fixed_effects_vec);
 				if (!gauss_likelihood_) {
 					fixed_effects_ptr = fixed_effects_vec.data();
+				}
+				// Determine constants C_mu and C_sigma2 used for checking whether step sizes for linear regression coefficients are clearly too large
+				if (y_data == nullptr) {
+					vec_t y_temp(num_data_);
+					GetY(y_temp.data());
+					likelihood_[unique_clusters_[0]]->FindConstantsCapTooLargeLearningRateCoef(y_temp.data(), num_data_, fixed_effects, C_mu_, C_sigma2_);
+				}
+				else {
+					likelihood_[unique_clusters_[0]]->FindConstantsCapTooLargeLearningRateCoef(y_data, num_data_, fixed_effects, C_mu_, C_sigma2_);
 				}
 			}//end if has_covariates_
 			else if (!called_in_GPBoost_algorithm && fixed_effects == nullptr) {//!has_covariates_ && !called_in_GPBoost_algorithm && fixed_effects == nullptr
@@ -856,6 +864,7 @@ namespace GPBoost {
 							vec_t grad_beta;
 							// Calculate gradient for linear regression coefficients
 							CalcGradLinCoef(cov_aux_pars[0], beta, grad_beta, fixed_effects_ptr);
+							AvoidTooLargeLearningRateCoef(beta, grad_beta);
 							CalcDirDerivArmijoAndLearningRateConstChangeCoef(grad_beta, beta, beta_after_grad_aux, use_nesterov_acc_coef);
 							// Update linear regression coefficients, do learning rate backtracking, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
 							UpdateLinCoef(beta, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, num_iter_, beta_after_grad_aux, beta_after_grad_aux_lag1,
@@ -929,7 +938,7 @@ namespace GPBoost {
 							neg_step_dir = approx_Hessian.llt().solve(grad);
 						}
 						if (optimizer_cov_pars_ == "gradient_descent") {
-							AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir, num_iter_);// Avoid too large learning rates for covariance parameters and aux_pars (for fisher_scoring and newton, this is done non-permanently in 'UpdateCovAuxPars')
+							AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir);// Avoid too large learning rates for covariance parameters and aux_pars (for fisher_scoring and newton, this is done non-permanently in 'UpdateCovAuxPars')
 						}
 						CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(grad, neg_step_dir, cov_aux_pars, cov_pars_after_grad_aux,
 							profile_out_marginal_variance, use_nesterov_acc);
@@ -3357,6 +3366,50 @@ namespace GPBoost {
 			}
 		}//end RedetermineNearestNeighborsVecchia
 
+		/*!
+		* \brief Get the maximal step length along a direction such that relative changes of covariance and auxiliary parameters are not larger than 'MAX_GRADIENT_UPDATE_LOG_SCALE_'
+		* \param neg_step_dir Negative step direction for making updates. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
+		*/
+		double MaximalLearningRateCovAuxPars(const vec_t& neg_step_dir) const {
+			double max_abs_neg_step_dir = 0.;
+			for (int ip = 0; ip < (int)neg_step_dir.size(); ++ip) {
+				if (std::abs(neg_step_dir[ip]) > max_abs_neg_step_dir) {
+					max_abs_neg_step_dir = std::abs(neg_step_dir[ip]);
+				}
+			}
+			return(MAX_GRADIENT_UPDATE_LOG_SCALE_ / max_abs_neg_step_dir);
+		}//end MaximalLearningRateCovAuxPars
+
+		/*!
+		* \brief Get the maximal step length along a direction such that the change in linear regression coefficients is not overly large (monitor relative change in linear predictor)
+		* \param beta Current / lag1 value of beta
+		* \param neg_step_dir Negative step direction for making updates
+		*/
+		double MaximalLearningRateCoef(const vec_t& beta,
+			const vec_t& neg_step_dir) const {
+			vec_t lp_change = X_ * neg_step_dir;
+			vec_t lp_lag1 = X_ * beta;
+			double mean_lp_change = 0., mean_lp_lag1 = 0., var_lp_change = 0, cov_lp_lag1_lp_change = 0;
+#pragma omp parallel for schedule(static) reduction(+:mean_lp_change, mean_lp_lag1, var_lp_change, cov_lp_lag1_lp_change)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				mean_lp_change += lp_change[i];
+				mean_lp_lag1 += lp_lag1[i];
+				var_lp_change += lp_change[i] * lp_change[i];
+				cov_lp_lag1_lp_change += lp_change[i] * lp_lag1[i];
+			}
+			mean_lp_change /= num_data_;
+			mean_lp_lag1 /= num_data_;
+			var_lp_change /= num_data_;
+			cov_lp_lag1_lp_change /= num_data_;
+			var_lp_change -= mean_lp_change * mean_lp_change;
+			cov_lp_lag1_lp_change -= mean_lp_change * mean_lp_lag1;
+			double max_lr_mu = C_mu_ * C_MAX_CHANGE_COEF_ / std::abs(mean_lp_change);
+			double max_lr_var = (std::abs(cov_lp_lag1_lp_change) +
+				std::sqrt(cov_lp_lag1_lp_change * cov_lp_lag1_lp_change + 4 * var_lp_change * C_sigma2_ * C_MAX_CHANGE_COEF_)) /
+				2 / var_lp_change;
+			return(std::min({ max_lr_mu , max_lr_var }));
+		}//end MaximalLearningRateCoef
+
 	private:
 
 		// RESPONSE DATA
@@ -3527,14 +3580,6 @@ namespace GPBoost {
 		int momentum_offset_ = 2;
 		/*! \brief Select Nesterov acceleration schedule 0 or 1 */
 		int nesterov_schedule_version_ = 0;
-		/*! \brief Maximal relative change for covariance parameters in one iteration */
-		int MAX_REL_CHANGE_GRADIENT_UPDATE_ = 100; // allow maximally a change by a factor of 'MAX_REL_CHANGE_GRADIENT_UPDATE_' in one iteration
-		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
-		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log((double)MAX_REL_CHANGE_GRADIENT_UPDATE_);
-		/*! \brief Maximal relative change for for auxiliary parameters in one iteration */
-		int MAX_REL_CHANGE_GRADIENT_UPDATE_AUX_PARS_ = 100;
-		/*! \brief Maximal value of gradient updates on log-scale for auxiliary parameters */
-		double MAX_GRADIENT_UPDATE_LOG_SCALE_AUX_PARS_ = std::log((double)MAX_REL_CHANGE_GRADIENT_UPDATE_AUX_PARS_);
 		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian likelihoods upon initialization). See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not */
 		string_t optimizer_coef_;
 		/*! \brief List of supported optimizers for regression coefficients for Gaussian likelihoods */
@@ -3573,6 +3618,20 @@ namespace GPBoost {
 		int num_iter_ = 0;
 		/*! \brief True, if 'OptimLinRegrCoefCovPar' has been called */
 		bool model_has_been_estimated_ = false;
+		/*! \brief Maximal relative change for covariance parameters in one iteration */
+		int MAX_REL_CHANGE_GRADIENT_UPDATE_ = 100; // allow maximally a change by a factor of 'MAX_REL_CHANGE_GRADIENT_UPDATE_' in one iteration
+		/*! \brief Maximal value of gradient updates on log-scale for covariance parameters */
+		double MAX_GRADIENT_UPDATE_LOG_SCALE_ = std::log((double)MAX_REL_CHANGE_GRADIENT_UPDATE_);
+		/*! \brief Maximal relative change for for auxiliary parameters in one iteration */
+		int MAX_REL_CHANGE_GRADIENT_UPDATE_AUX_PARS_ = 100;
+		/*! \brief Maximal value of gradient updates on log-scale for auxiliary parameters */
+		double MAX_GRADIENT_UPDATE_LOG_SCALE_AUX_PARS_ = std::log((double)MAX_REL_CHANGE_GRADIENT_UPDATE_AUX_PARS_);
+		/*! \brief Constant C_mu used for checking whether step sizes for linear regression coefficients are clearly too large */
+		double C_mu_;
+		/*! \brief Constant C_sigma2_ used for checking whether step sizes for linear regression coefficients are clearly too large */
+		double C_sigma2_;
+		/*! \brief Constant used for checking whether step sizes for linear regression coefficients are clearly too large */
+		double C_MAX_CHANGE_COEF_ = 10.;
 
 		/*! \brief If true, Armijo's condition is used to check whether there is sufficient decrease in the negative log-likelighood (otherwise it is only checked for a decrease) */
 		bool armijo_condition_ = true;
@@ -5070,45 +5129,49 @@ namespace GPBoost {
 				delta_rel_conv_ = delta_rel_conv_init_;
 			}
 		}//end SetInitialValueDeltaRelConv
-
+		
 		/*!
 		* \brief Avoid too large learning rates for covariance parameters and aux_pars
 		* \param neg_step_dir Negative step direction for making updates. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
-		* \param it Iteration number
 		*/
-		void AvoidTooLargeLearningRatesCovAuxPars(const vec_t& neg_step_dir,
-			int it) {
-			double max_abs_neg_step_dir_cov = 0.;
+		void AvoidTooLargeLearningRatesCovAuxPars(const vec_t& neg_step_dir) {
 			int num_grad_cov_par = (int)neg_step_dir.size();
 			if (estimate_aux_pars_) {
 				num_grad_cov_par -= NumAuxPars();
 			}
-			for (int ip = 0; ip < num_grad_cov_par; ++ip) {
-				if (std::abs(neg_step_dir[ip]) > max_abs_neg_step_dir_cov) {
-					max_abs_neg_step_dir_cov = std::abs(neg_step_dir[ip]);
-				}
-			}
-			if (lr_cov_ * max_abs_neg_step_dir_cov > MAX_GRADIENT_UPDATE_LOG_SCALE_) {
-				lr_cov_ = MAX_GRADIENT_UPDATE_LOG_SCALE_ / max_abs_neg_step_dir_cov;
-				Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased in iteration number %d since "
+			double max_lr_cov = MaximalLearningRateCovAuxPars(neg_step_dir.segment(0, num_grad_cov_par));
+			if (lr_cov_ > max_lr_cov) {
+				lr_cov_ = max_lr_cov;
+				Log::REDebug("GPModel: The learning rate for the covariance parameters has been decreased in iteration number %d since "
 					"the gradient update on the log-scale would have been too large (change by more than a factor %d). New learning rate = %g",
-					it + 1, MAX_REL_CHANGE_GRADIENT_UPDATE_, lr_cov_);
+					num_iter_ + 1, MAX_REL_CHANGE_GRADIENT_UPDATE_, lr_cov_);
 			}
 			if (estimate_aux_pars_) {
-				double max_abs_neg_step_dir_aux_par = 0.;
-				for (int ip = 0; ip < NumAuxPars(); ++ip) {
-					if (std::abs(neg_step_dir[num_cov_par_ + ip]) > max_abs_neg_step_dir_aux_par) {
-						max_abs_neg_step_dir_aux_par = std::abs(neg_step_dir[num_cov_par_ + ip]);
-					}
-				}
-				if (lr_aux_pars_ * max_abs_neg_step_dir_aux_par > MAX_GRADIENT_UPDATE_LOG_SCALE_AUX_PARS_) {
-					lr_aux_pars_ = MAX_GRADIENT_UPDATE_LOG_SCALE_AUX_PARS_ / max_abs_neg_step_dir_aux_par;
-					Log::REDebug("GPModel auxiliary parameter estimation: The learning rate has been decreased in iteration number %d since "
+				double max_lr_caux_pars = MaximalLearningRateCovAuxPars(neg_step_dir.segment(num_grad_cov_par, NumAuxPars()));
+				if (lr_cov_ > max_lr_caux_pars) {
+					lr_aux_pars_ = max_lr_caux_pars;
+					Log::REDebug("GPModel: The learning rate for the auxiliary parameters has been decreased in iteration number %d since "
 						"the gradient update on the log-scale would have been too large (change by more than a factor %d). New learning rate = %g",
-						it + 1, MAX_REL_CHANGE_GRADIENT_UPDATE_AUX_PARS_, lr_aux_pars_);
+						num_iter_ + 1, MAX_REL_CHANGE_GRADIENT_UPDATE_AUX_PARS_, lr_aux_pars_);
 				}
 			}
 		}//end AvoidTooLargeLearningRatesCovAuxPars
+
+		/*!
+		* \brief Avoid too large learning rates for linear regression coefficients
+		* \param beta Current / lag1 value of beta
+		* \param neg_step_dir Negative step direction for making updates. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
+		*/
+		void AvoidTooLargeLearningRateCoef(const vec_t& beta,
+			const vec_t& neg_step_dir) {
+			double max_lr_coef = MaximalLearningRateCoef(beta, neg_step_dir);
+			if (lr_coef_ > max_lr_coef) {
+				lr_coef_ = max_lr_coef;
+				Log::REDebug("GPModel: The learning rate for the regression coefficients has been decreased in iteration number %d since "
+					"the current one would have implied a too large change in the mean and variance of the linear predictor relative to the data. New learning rate = %g",
+					num_iter_ + 1, lr_coef_);
+			}
+		}//end AvoidTooLargeLearningRateCoef
 
 		/*!
 		* \brief Calculate the directional derivative for the Armijo condition (if armijo_condition_) and
@@ -5886,7 +5949,7 @@ namespace GPBoost {
 			}
 			if (halving_done) {
 				lr_coef_ = lr_coef; //permanently decrease learning rate
-				Log::REDebug("GPModel linear regression coefficient estimation: The learning rate has been decreased permanently since with the previous learning rate, "
+				Log::REDebug("GPModel: The learning rate for the regression coefficients has been decreased permanently since with the previous learning rate, "
 					"there was no decrease in the objective function in iteration number %d. New learning rate = %g", it + 1, lr_coef_);
 			}
 			if (!decrease_found) {
