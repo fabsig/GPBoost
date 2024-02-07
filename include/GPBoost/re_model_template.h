@@ -869,9 +869,13 @@ namespace GPBoost {
 							// Update linear regression coefficients, do learning rate backtracking, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
 							UpdateLinCoef(beta, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, num_iter_, beta_after_grad_aux, beta_after_grad_aux_lag1,
 								acc_rate_coef_, nesterov_schedule_version_, momentum_offset_, fixed_effects, fixed_effects_vec);
+							if (num_iter_ == 0) {
+								lr_coef_after_first_iteration_ = lr_coef_;
+								lr_is_small_threshold_coef_ = lr_coef_ / 1e4;
+							}
 							fixed_effects_ptr = fixed_effects_vec.data();
 							// In case lr_coef_ is very small, we monitor whether cov_aux_pars continues to change. If it does, we will reset lr_coef_ to its initial value
-							if (lr_coef_ < LR_IS_SMALL_THRESHOLD_ && learn_covariance_parameters && !lr_coef_is_small) {
+							if (lr_coef_ < lr_is_small_threshold_coef_ && learn_covariance_parameters && !lr_coef_is_small) {
 								if ((beta - beta_lag1).norm() < LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * beta_lag1.norm()) {//also require that relative change in parameters is small
 									lr_coef_is_small = true;
 									cov_aux_pars_before_lr_coef_small = cov_aux_pars;
@@ -891,7 +895,7 @@ namespace GPBoost {
 						bool mode_hast_just_been_recalculated = false;
 						if (lr_cov_is_small && learn_covariance_parameters) {
 							if ((beta - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
-								SetInitialValueLRCov();
+								lr_cov_ = lr_cov_after_first_iteration_;
 								lr_cov_is_small = false;
 								RecalculateModeLaplaceApprox(fixed_effects_ptr);
 								mode_hast_just_been_recalculated = true;
@@ -900,7 +904,7 @@ namespace GPBoost {
 						// Reset lr_aux_pars_ to its initial values in case beta changes substantially after lr_aux_pars_ is very small
 						if (lr_aux_pars_is_small && estimate_aux_pars_ && learn_covariance_parameters) {
 							if ((beta - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
-								lr_aux_pars_ = lr_aux_pars_init_;
+								lr_aux_pars_ = lr_aux_pars_after_first_iteration_;
 								lr_aux_pars_is_small = false;
 								if (!mode_hast_just_been_recalculated) {
 									RecalculateModeLaplaceApprox(fixed_effects_ptr);
@@ -945,8 +949,16 @@ namespace GPBoost {
 						// Update covariance and additional likelihood parameters, do learning rate backtracking, factorize covariance matrix, and calculate new value of objective function
 						UpdateCovAuxPars(cov_aux_pars, neg_step_dir, profile_out_marginal_variance, use_nesterov_acc, num_iter_,
 							cov_pars_after_grad_aux, cov_aux_pars_after_grad_aux_lag1, acc_rate_cov_, nesterov_schedule_version_, momentum_offset_, fixed_effects_ptr);
+						if (num_iter_ == 0) {
+							lr_cov_after_first_iteration_ = lr_cov_;
+							lr_is_small_threshold_cov_ = lr_cov_ / 1e4;
+							if (estimate_aux_pars_) {
+								lr_aux_pars_after_first_iteration_ = lr_aux_pars_;
+								lr_is_small_threshold_aux_ = lr_aux_pars_ / 1e4;
+							}
+						}
 						// In case lr_cov_ is very small, we monitor whether the other parameters (beta, aux_pars) continue to change. If yes, we will reset lr_cov_ to its initial value
-						if (lr_cov_ < LR_IS_SMALL_THRESHOLD_ && (has_covariates_ || estimate_aux_pars_) && !lr_cov_is_small) {
+						if (lr_cov_ < lr_is_small_threshold_cov_ && (has_covariates_ || estimate_aux_pars_) && !lr_cov_is_small) {
 							if ((cov_aux_pars.segment(0, num_cov_par_) - cov_aux_pars_lag1.segment(0, num_cov_par_)).norm() <
 								LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * cov_aux_pars_lag1.segment(0, num_cov_par_).norm()) {//also require that relative change in parameters is small
 								lr_cov_is_small = true;
@@ -960,7 +972,7 @@ namespace GPBoost {
 						}
 						// In case lr_aux_pars_ is very small, we monitor whether the other parameters (beta, covariance parameters) continue to change. If yes, we will reset lr_aux_pars_ to its initial value
 						if (estimate_aux_pars_) {
-							if (lr_aux_pars_ < LR_IS_SMALL_THRESHOLD_ && !lr_cov_is_small) {
+							if (lr_aux_pars_ < lr_is_small_threshold_aux_ && !lr_cov_is_small) {
 								if ((cov_aux_pars.segment(num_cov_par_, NumAuxPars()) - cov_aux_pars_lag1.segment(num_cov_par_, NumAuxPars())).norm() <
 									LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * cov_aux_pars_lag1.segment(num_cov_par_, NumAuxPars()).norm()) {//also require that relative change in parameters is small
 									lr_aux_pars_is_small = true;
@@ -975,7 +987,7 @@ namespace GPBoost {
 						bool mode_hast_just_been_recalculated = false;
 						if (lr_coef_is_small && has_covariates_) {
 							if ((cov_aux_pars - cov_aux_pars_before_lr_coef_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * cov_aux_pars_before_lr_coef_small.norm()) {
-								lr_coef_ = lr_coef_init_;
+								lr_coef_ = lr_coef_after_first_iteration_;
 								lr_coef_is_small = false;
 								RecalculateModeLaplaceApprox(fixed_effects_ptr);
 								mode_hast_just_been_recalculated = true;
@@ -984,7 +996,7 @@ namespace GPBoost {
 						// Reset lr_aux_pars_ to its initial values in case covariance paremeters change substantially after lr_aux_pars_ is very small
 						if (lr_aux_pars_is_small && estimate_aux_pars_) {
 							if ((cov_aux_pars.segment(0, num_cov_par_) - cov_pars_before_lr_aux_pars_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * cov_pars_before_lr_aux_pars_small.norm()) {
-								lr_aux_pars_ = lr_aux_pars_init_;
+								lr_aux_pars_ = lr_aux_pars_after_first_iteration_;
 								lr_aux_pars_is_small = false;
 								if (!mode_hast_just_been_recalculated) {
 									RecalculateModeLaplaceApprox(fixed_effects_ptr);
@@ -995,7 +1007,7 @@ namespace GPBoost {
 						// Reset lr_cov_ to its initial values in case aux_pars changes substantially after lr_cov_ is very small
 						if (lr_cov_is_small && estimate_aux_pars_) {
 							if ((cov_aux_pars.segment(num_cov_par_, NumAuxPars()) - aux_pars_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * aux_pars_before_lr_cov_small.norm()) {
-								SetInitialValueLRCov();
+								lr_cov_ = lr_cov_after_first_iteration_;
 								lr_cov_is_small = false;
 								if (!mode_hast_just_been_recalculated) {
 									RecalculateModeLaplaceApprox(fixed_effects_ptr);
@@ -3568,10 +3580,14 @@ namespace GPBoost {
 		double lr_cov_;
 		/*! \brief Initial learning rate for covariance parameters (to remember as lr_cov_ can be decreased) */
 		double lr_cov_init_ = -1;
-		/*! \brief Learning rate for additional parameters for non-Gaussian likelihoods (e.g., shape of a gamma likelihood) */
+		/*! \brief Learning rate for covariance parameters after first iteration (to remember as lr_cov_ can be decreased) */
+		double lr_cov_after_first_iteration_ = 0.1;
+		/*! \brief Learning rate for auxiliary parameters for non-Gaussian likelihoods (e.g., shape of a gamma likelihood) */
 		double lr_aux_pars_;
-		/*! \brief Initial learning rate for additional parameters for non-Gaussian likelihoods (e.g., shape of a gamma likelihood) */
+		/*! \brief Initial learning rate for auxiliary parameters for non-Gaussian likelihoods (e.g., shape of a gamma likelihood) */
 		double lr_aux_pars_init_ = 0.1;
+		/*! \brief Learning rate for auxiliary parameters after first iteration (to remember as lr_cov_ can be decreased) */
+		double lr_aux_pars_after_first_iteration_ = 0.1;
 		/*! \brief Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent") */
 		bool use_nesterov_acc_ = true;
 		/*! \brief Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
@@ -3590,6 +3606,8 @@ namespace GPBoost {
 		double lr_coef_;
 		/*! \brief Initial learning rate for fixed-effect linear coefficients (to remember as lr_coef_ can be decreased) */
 		double lr_coef_init_ = 0.1;
+		/*! \brief Learning rate for fixed-effect linear coefficients after first iteration (to remember as lr_coef_ can be decreased) */
+		double lr_coef_after_first_iteration_ = 0.1;
 		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
 		double acc_rate_coef_ = 0.5;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done for gradient-based optimization of covariance parameters and regression coefficients */
@@ -3597,7 +3615,11 @@ namespace GPBoost {
 		/*! \brief Learning rate shrinkage factor for gradient-based optimization of covariance parameters and regression coefficients */
 		double LR_SHRINKAGE_FACTOR_ = 0.5;
 		/*! \brief Threshold value for a learning rate below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
-		double LR_IS_SMALL_THRESHOLD_ = 1e-6;
+		double lr_is_small_threshold_cov_ = 1e-6;
+		/*! \brief Threshold value for a learning rate below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
+		double lr_is_small_threshold_coef_ = 1e-6;
+		/*! \brief Threshold value for a learning rate below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
+		double lr_is_small_threshold_aux_ = 1e-6;
 		/*! \brief Threshold value for relative change in parameters below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
 		double LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ = 1e-4;
 		/*! \brief Threshold value for relative change in other parameters above which a learning rate is again set to its initial value (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
