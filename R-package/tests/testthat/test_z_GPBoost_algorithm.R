@@ -194,12 +194,12 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
                                      objective = "regression_l2", train_gp_model_cov_pars=FALSE, nrounds=1), file='NUL')
       record_results <- gpb.get.eval.result(bst, "train", "Negative log-likelihood")
-      expect_lt(abs(record_results[1]-1573.9417522), TOLERANCE)
+      expect_lt(abs(record_results[1]-1411.924206), TOLERANCE)
       
       bst <- gpb.train(data = dtrain, gp_model = gp_model, verbose = 0, valids = list(train=dtrain),
                        objective = "regression_l2", train_gp_model_cov_pars=FALSE, nrounds=1)
       record_results <- gpb.get.eval.result(bst, "train", "Negative log-likelihood")
-      expect_lt(abs(record_results[1]-1573.9417522), TOLERANCE)
+      expect_lt(abs(record_results[1]-1411.924206), TOLERANCE)
       
       # CV for finding number of boosting iterations with use_gp_model_for_validation = FALSE
       gp_model <- GPModel(group_data = group_data_train)

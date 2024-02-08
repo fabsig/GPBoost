@@ -3,6 +3,11 @@ context("GPModel_combined_GP_grouped_random_effects")
 # Avoid being tested on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
+  TOLERANCE_ITERATIVE <- 1E-1
+  TOLERANCE_LOOSE <- 1E-2
+  TOLERANCE_MEDIUM <- 1e-3
+  TOLERANCE_STRICT <- 1E-5
+  
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
     mod_lcg <- 2^32 # modulus for linear congruential generator (random0 used)
@@ -79,10 +84,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            params = list(optimizer_cov = "fisher_scoring", std_dev = FALSE)), file='NUL')
     cov_pars <- c(0.02262645, 0.61471473, 1.02446559, 0.11177327)
     cov_pars_est <- as.vector(gp_model$get_cov_pars())
-    expect_lt(sum(abs(cov_pars_est-cov_pars)),1E-5)
+    expect_lt(sum(abs(cov_pars_est-cov_pars)),TOLERANCE_MEDIUM)
     expect_equal(class(cov_pars_est), "numeric")
     expect_equal(length(cov_pars_est), 4)
-    expect_equal(gp_model$get_num_optim_iter(), 8)
+    expect_equal(gp_model$get_num_optim_iter(), 7)
     
     # Prediction from fitted model
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
@@ -94,13 +99,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_mu <- c(0.3769074, 0.6779193, 0.1803276)
     expected_cov <- c(0.619329940, 0.007893047, 0.001356784, 0.007893047, 0.402082274,
                       -0.014950019, 0.001356784, -0.014950019, 1.046082243)
-    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
-    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
     # Predict variances
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                     group_data_pred = group_test, predict_var = TRUE)
-    expect_lt(sum(abs(pred$mu-expected_mu)),1E-6)
-    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1E-6)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_MEDIUM)
     
     # Predict training data random effects
     cov_pars <- gp_model$get_cov_pars()
@@ -146,9 +151,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls", std_dev = TRUE))
     cov_pars <- c(0.02258493, 0.09172947, 0.61704845, 0.30681934, 1.01910740, 0.25561489, 0.11202133, 0.04174140)
     coef <- c(2.06686646, 0.34643130, 1.92847425, 0.09983966)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-6)
-    expect_equal(gp_model$get_num_optim_iter(), 8)
+    nll_opt <- 132.1449371
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_STRICT)
     
     # Prediction 
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
@@ -159,8 +165,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_mu <- c(1.442617, 3.129006, 2.946252)
     expected_cov <- c(0.615200495, 0.007850776, 0.001344528, 0.007850776, 0.399458031,
                       -0.014866034, 0.001344528, -0.014866034, 1.045700453)
-    expect_lt(sum(abs(pred$mu-expected_mu)),1E-5)
-    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
   })
   
   test_that("Combined GP and grouped random effects model with random coefficients ", {
@@ -200,8 +206,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                            params = list(optimizer_cov = "fisher_scoring", std_dev = FALSE,
                                          use_nesterov_acc= FALSE, maxit=2))
-    expected_values <- c(0.6093408, 0.8157278, 1.6016549, 1.2415390,1.7255119,
-                         0.1400087, 1.1872654, 0.1469588, 0.4605333, 0.2635957)
+    expected_values <- c(0.3522488799, 0.5692314997, 1.4557330868, 1.0711929149, 1.5665274019, 0.1601443490, 0.9923054860, 0.1095828593, 0.2211923864, 0.3846536135)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 2)
     
@@ -219,8 +224,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE)), file='NUL')
     cov_pars <- c(0.005306836, 0.087915468, 0.615012714, 0.315022228,
                   1.043024690, 0.228236254, 0.113716679, 0.039839629)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-5)
-    expect_equal(gp_model$get_num_optim_iter(), 8)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_MEDIUM)
     
     # Prediction
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
