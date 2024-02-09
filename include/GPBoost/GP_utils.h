@@ -21,7 +21,7 @@ namespace GPBoost {
 	* \param coords Coordinates
 	* \param num_data Number of data points
 	* \param[out] uniques Index of unique coordinates / points
-	* \param[out] unique_idx Index that indicates for every data point the corresponding random effect / unique coordinates. Used for constructing incidence matrix Z_ if there are duplicates
+	* \param[out] unique_idx Index that indicates for every data point the corresponding unique point. Used for constructing incidence matrix Z_ if there are duplicates
 	*/
 	void DetermineUniqueDuplicateCoords(const den_mat_t& coords,
 		data_size_t num_data,
@@ -33,7 +33,7 @@ namespace GPBoost {
 	* \param coords Coordinates
 	* \param num_data Number of data points
 	* \param[out] uniques Index of unique coordinates / points
-	* \param[out] unique_idx Index that indicates for every data point the corresponding random effect / unique coordinates. Used for constructing incidence matrix Z_ if there are duplicates
+	* \param[out] unique_idx Index that indicates for every data point the corresponding unique point. Used for constructing incidence matrix Z_ if there are duplicates
 	*/
 	void DetermineUniqueDuplicateCoordsFast(const den_mat_t& coords,
 		data_size_t num_data,

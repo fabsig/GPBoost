@@ -154,7 +154,7 @@ namespace GPBoost {
 		double radius,
 		const vec_t& mid,
 		std::vector<int>& indices) {
-		for (int i = 0; i < indices_start.size(); ++i) {
+		for (int i = 0; i < (int)indices_start.size(); ++i) {
 			double distance = (data(indices_start[i], Eigen::all) - (den_mat_t)mid.transpose()).lpNorm<2>();
 			if (distance <= radius) {
 				indices.push_back(indices_start[i]);
@@ -231,7 +231,7 @@ namespace GPBoost {
 					den_mat_t zeta_opt = data(intersection_vect, Eigen::all).colwise().mean();
 					vec_t distance_to_others(children[p].size());
 #pragma omp parallel for schedule(static)
-					for (int i = 0; i < children[p].size(); ++i) {
+					for (int i = 0; i < (int)children[p].size(); ++i) {
 						distance_to_others[i] = (means(children[p][i], Eigen::all) - zeta_opt).lpNorm<2>();
 
 					}
@@ -245,7 +245,7 @@ namespace GPBoost {
 					}
 					
 					// Remove Covert indices
-					for (int ii = 0; ii < R_neighbors[p].size(); ++ii) {
+					for (int ii = 0; ii < (int)R_neighbors[p].size(); ++ii) {
 						int index_R_neighbors = R_neighbors[p][ii];
 						std::vector<int> indices_ball_c;
 						data_in_ball(data, covert_points_old[index_R_neighbors], R_l, means(c, Eigen::all), indices_ball_c);
@@ -311,7 +311,7 @@ namespace GPBoost {
 		double EPSILON_NUMBERS_SQUARE = EPSILON_NUMBERS * EPSILON_NUMBERS;
 		std::vector<double> coords_sum(num_data);
 		std::vector<int> sort_sum(num_data);
-		std::vector<int> uniques_sorted;//index of unique locations on sorted mean scale
+		std::vector<int> uniques_sorted;//index of unique points on sorted mean scale
 #pragma omp parallel for schedule(static)
 		for (int i = 0; i < num_data; ++i) {
 			coords_sum[i] = coords(i, Eigen::all).sum();
@@ -320,41 +320,45 @@ namespace GPBoost {
 		for (int i_sort = 0; i_sort < num_data; ++i_sort) {
 			//find potential duplicates in coordinates for point i (= points with same mean)
 			int i_actual = sort_sum[i_sort];
-			unique_idx[i_actual] = (int)uniques_sorted.size();
-			uniques_sorted.push_back(i_actual);
+			uniques_sorted.push_back(i_actual);//assume that 'i_sort' / 'i_actual' is a new unique point -> add it to 'uniques_sorted' (might be changed below)
+			unique_idx[i_actual] = (int)uniques_sorted.size() - 1;//'i_sort' / 'i_actual' is a new unique point -> its index stored in 'unique_idx' is its position in 'uniques_sorted', i.e., the last position of 'uniques_sorted' 
 			int j_sort;
+			//check for potential duplicates: find all points that have the same mean / 'coords_sum' value as 'i_actual'
 			for (j_sort = i_sort + 1; j_sort < num_data; ++j_sort) {
-				//if (coords_sum[i_actual] < coords_sum[sort_sum[j_sort]]) {
 				if (NumberIsSmallerThan<double>(coords_sum[i_actual], coords_sum[sort_sum[j_sort]])) {
-					break;
+					break;//the loop end when 'j_sort' > 'i_sort' is for sure not a duplicate
 				}
 			}
-			j_sort--;
+			j_sort--;//'j_sort' = index of last potential duplicate with i_sort
 			//identify true duplicates among potential duplicates
 			if (j_sort > i_sort) {//more than one potential duplicates
-				std::vector<int> index_data_uniques;//index that linkes every unique coordinate / random effect in unique_idx to a random effect
-				index_data_uniques.push_back((int)uniques_sorted.size() - 1);
-				std::vector<int> uniques_i = std::vector<int>();//index of unique locations among the potential duplicates i_sort,...,j_sort
-				uniques_i.push_back(0);
-				for (int ii = 1; ii < (j_sort - i_sort + 1); ++ii) {
-					int ii_actual = sort_sum[i_sort + ii];
+				std::vector<int> uniques_i = std::vector<int>();//index of "local" unique points among the potential duplicates (i_sort,...,j_sort) - i_sort = (0,...,j_sort - i_sort) , length(uniques_i) = number of unique "local" points among (i_sort,...,j_sort) - i_sort
+				uniques_i.push_back(0);//'i_sort' / '0' is the first "local" unique point
+				std::vector<int> index_data_uniques(j_sort - i_sort + 1);//index that linkes every "local" unique point in 'uniques_i' to a "global" unique point in 'uniques_sorted'
+				index_data_uniques[0] = (int)uniques_sorted.size() - 1; // the first "local" unique point is the last one added to 'uniques_sorted'
+				for (int jj = 1; jj < (j_sort - i_sort + 1); ++jj) {//loop over all potential duplicates and check whether they are true duplicates
+					int jj_actual = sort_sum[i_sort + jj];
 					bool is_duplicate = false;
-					for (int jj = 0; jj < (int)uniques_i.size(); ++jj) {
-						int jj_actual = sort_sum[i_sort + uniques_i[jj]];
-						if ((coords.row(jj_actual) - coords.row(ii_actual)).squaredNorm() < EPSILON_NUMBERS_SQUARE) {
-							if (ii_actual < jj_actual) {
-								uniques_sorted[index_data_uniques[uniques_i[jj]]] = ii_actual;//make sure that the first appearance of a coordinate is chosen
+					//check whether 'jj' / 'jj_actual' is a duplicate by comparing it to all true unique points in 'uniques_i'
+					for (int ind_uniques_i = 0; ind_uniques_i < (int)uniques_i.size(); ++ind_uniques_i) {
+						int ii_actual = sort_sum[i_sort + uniques_i[ind_uniques_i]];
+						if ((coords.row(ii_actual) - coords.row(jj_actual)).squaredNorm() < EPSILON_NUMBERS_SQUARE) {
+							//make sure that the first appearance of a coordinate is chosen: -> if jj_actual < ii_actual switch them
+							if (jj_actual < ii_actual) {
+								uniques_sorted[index_data_uniques[uniques_i[ind_uniques_i]]] = jj_actual;
+								index_data_uniques[jj] = index_data_uniques[uniques_i[ind_uniques_i]];//the new "local" unique point 'jj' obtains the same index as the one that is replaces ('uniques_i[ind_uniques_i]')
+								uniques_i[ind_uniques_i] = jj;//'ind_uniques_i' now longer a unique point but rather 'jj'
 							}
-							unique_idx[ii_actual] = index_data_uniques[uniques_i[jj]];
+							unique_idx[jj_actual] = index_data_uniques[uniques_i[ind_uniques_i]];
 							is_duplicate = true;
 							break;
 						}
 					}
 					if (!is_duplicate) {
-						uniques_i.push_back(ii);
-						unique_idx[ii_actual] = (int)uniques_sorted.size();
-						index_data_uniques.push_back((int)uniques_sorted.size());
-						uniques_sorted.push_back(ii_actual);
+						uniques_i.push_back(jj);
+						uniques_sorted.push_back(jj_actual);
+						unique_idx[jj_actual] = (int)uniques_sorted.size() - 1;
+						index_data_uniques[jj] = (int)uniques_sorted.size() -1 ;
 					}
 				}
 				i_sort = j_sort;
