@@ -221,7 +221,7 @@ public:
             if (fx - fx_init > step * test_decr || fx >= fx_lo)
             {
                 if (step == step_hi)
-                    Log::REFatal(("the line search routine failed, possibly due to insufficient numeric precision");
+                    Log::REFatal("the line search routine failed, possibly due to insufficient numeric precision");
 
                 step_hi = step;
                 fx_hi = fx;
@@ -241,7 +241,7 @@ public:
                 }
 
                 if (step == step_lo)
-                    Log::REFatal(("the line search routine failed, possibly due to insufficient numeric precision");
+                    Log::REFatal("the line search routine failed, possibly due to insufficient numeric precision");
 
                 // If reaching here, then the current step satisfies sufficient decrease condition
                 step_lo = step;
@@ -261,7 +261,7 @@ public:
             {
                 // throw std::runtime_error("the line search routine reached the maximum number of iterations");
                 if (step_lo <= Scalar(0))
-                    Log::REFatal(("the line search routine failed, unable to sufficiently decrease the function value");
+                    Log::REFatal("the line search routine failed, unable to sufficiently decrease the function value");
 
                 // Return everything with _lo
                 step = step_lo;
