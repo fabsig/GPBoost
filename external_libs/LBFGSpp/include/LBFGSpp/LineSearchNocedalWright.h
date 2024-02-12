@@ -87,10 +87,10 @@ public:
     {
         // Check the value of step
         if (step <= Scalar(0))
-            throw std::invalid_argument("'step' must be positive");
+            Log::REFatal("'step' must be positive");
 
         if (param.linesearch != LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE)
-            throw std::invalid_argument("'param.linesearch' must be 'LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE' for LineSearchNocedalWright");
+            Log::REFatal("'param.linesearch' must be 'LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE' for LineSearchNocedalWright");
 
         // To make this implementation more similar to the other line search
         // methods in LBFGSpp, the symbol names from the literature
@@ -111,7 +111,7 @@ public:
         const Scalar dg_init = dg;
         // Make sure d points to a descent direction
         if (dg_init > Scalar(0))
-            throw std::logic_error("the moving direction increases the objective function value");
+            Log::REFatal("the moving direction increases the objective function value");
 
         const Scalar test_decr = param.ftol * dg_init,  // Sufficient decrease
             test_curv = -param.wolfe * dg_init;         // Curvature
@@ -221,7 +221,7 @@ public:
             if (fx - fx_init > step * test_decr || fx >= fx_lo)
             {
                 if (step == step_hi)
-                    throw std::runtime_error("the line search routine failed, possibly due to insufficient numeric precision");
+                    Log::REFatal(("the line search routine failed, possibly due to insufficient numeric precision");
 
                 step_hi = step;
                 fx_hi = fx;
@@ -241,7 +241,7 @@ public:
                 }
 
                 if (step == step_lo)
-                    throw std::runtime_error("the line search routine failed, possibly due to insufficient numeric precision");
+                    Log::REFatal(("the line search routine failed, possibly due to insufficient numeric precision");
 
                 // If reaching here, then the current step satisfies sufficient decrease condition
                 step_lo = step;
@@ -261,7 +261,7 @@ public:
             {
                 // throw std::runtime_error("the line search routine reached the maximum number of iterations");
                 if (step_lo <= Scalar(0))
-                    throw std::runtime_error("the line search routine failed, unable to sufficiently decrease the function value");
+                    Log::REFatal(("the line search routine failed, unable to sufficiently decrease the function value");
 
                 // Return everything with _lo
                 step = step_lo;
