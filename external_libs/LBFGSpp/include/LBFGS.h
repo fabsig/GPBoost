@@ -19,7 +19,7 @@ namespace LBFGSpp {
 /// L-BFGS solver for unconstrained numerical optimization
 ///
 template <typename Scalar,
-          template <class> class LineSearch = LineSearchNocedalWright>
+          template <class> class LineSearch = LineSearchBacktracking>
 class LBFGSSolver
 {
 private:
