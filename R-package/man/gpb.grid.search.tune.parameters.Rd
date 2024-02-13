@@ -7,8 +7,9 @@
 gpb.grid.search.tune.parameters(param_grid, data, params = list(),
   num_try_random = NULL, nrounds = 100L, gp_model = NULL,
   use_gp_model_for_validation = TRUE, train_gp_model_cov_pars = TRUE,
-  folds = NULL, nfold = 4L, label = NULL, weight = NULL, obj = NULL,
-  eval = NULL, verbose_eval = 1L, stratified = TRUE, init_model = NULL,
+  reuse_learning_rates_gp_model = FALSE, folds = NULL, nfold = 4L,
+  label = NULL, weight = NULL, obj = NULL, eval = NULL,
+  verbose_eval = 1L, stratified = TRUE, init_model = NULL,
   colnames = NULL, categorical_feature = NULL,
   early_stopping_rounds = NULL, callbacks = list(), ...)
 }
@@ -37,6 +38,10 @@ of the \code{gp_model} (Gaussian process and/or random effects) are estimated in
 boosting iterations, otherwise the \code{gp_model} parameters are not estimated. 
 In the latter case, you need to either estimate them beforehand or provide the values via 
 the \code{init_cov_pars} parameter when creating the \code{gp_model}}
+
+\item{reuse_learning_rates_gp_model}{Boolean. If TRUE, the learning rates for the covariance and potential 
+auxiliary parameters are kept at the values from the previous boosting iteration and 
+not re-initialized when optimizing them. Applies only to Gaussian process boosting (GPBoost algorithm)}
 
 \item{folds}{\code{list} provides a possibility to use a list of pre-defined CV folds
 (each element must be a vector of test fold's indices). When folds are supplied,

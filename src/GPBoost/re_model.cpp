@@ -343,7 +343,8 @@ namespace GPBoost {
 
 	void REModel::OptimCovPar(const double* y_data,
 		const double* fixed_effects,
-		bool called_in_GPBoost_algorithm) {
+		bool called_in_GPBoost_algorithm,
+		bool reuse_learning_rates_from_previous_call) {
 		if (y_data != nullptr) {
 			InitializeCovParsIfNotDefined(y_data, fixed_effects);
 			// Note: y_data can be null_ptr for non-Gaussian data. For non-Gaussian data, the function 'InitializeCovParsIfNotDefined' is called in 'SetY'
@@ -371,7 +372,8 @@ namespace GPBoost {
 				calc_std_dev_,
 				fixed_effects,
 				true,
-				called_in_GPBoost_algorithm);
+				called_in_GPBoost_algorithm,
+				reuse_learning_rates_from_previous_call);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->OptimLinRegrCoefCovPar(y_data,
@@ -387,7 +389,8 @@ namespace GPBoost {
 				calc_std_dev_,
 				fixed_effects,
 				true,
-				called_in_GPBoost_algorithm);
+				called_in_GPBoost_algorithm,
+				reuse_learning_rates_from_previous_call);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(y_data,
@@ -403,12 +406,13 @@ namespace GPBoost {
 				calc_std_dev_,
 				fixed_effects,
 				true,
-				called_in_GPBoost_algorithm);
+				called_in_GPBoost_algorithm,
+				reuse_learning_rates_from_previous_call);
 		}
 		has_covariates_ = false;
 		covariance_matrix_has_been_factorized_ = true;
 		model_has_been_estimated_ = true;
-	}
+	}//end OptimCovPar
 
 	void REModel::OptimLinRegrCoefCovPar(const double* y_data,
 		const double* covariate_data,
@@ -449,6 +453,7 @@ namespace GPBoost {
 				calc_std_dev_,
 				fixed_effects,
 				true,
+				false,
 				false);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
@@ -465,6 +470,7 @@ namespace GPBoost {
 				calc_std_dev_,
 				fixed_effects,
 				true,
+				false,
 				false);
 		}
 		else {
@@ -481,13 +487,14 @@ namespace GPBoost {
 				calc_std_dev_,
 				fixed_effects,
 				true,
+				false,
 				false);
 		}
 		has_covariates_ = true;
 		coef_given_or_estimated_ = true;
 		covariance_matrix_has_been_factorized_ = true;
 		model_has_been_estimated_ = true;
-	}
+	}//end OptimLinRegrCoefCovPar
 
 	void REModel::FindInitialValueBoosting(double* init_score) {
 		CHECK(cov_pars_initialized_);
@@ -508,7 +515,8 @@ namespace GPBoost {
 				false,
 				nullptr,
 				false,//learn_covariance_parameters=false
-				true);
+				true,
+				false);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->OptimLinRegrCoefCovPar(nullptr,
@@ -524,7 +532,8 @@ namespace GPBoost {
 				false,
 				nullptr,
 				false,//learn_covariance_parameters=false
-				true);
+				true,
+				false);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(nullptr,
@@ -540,9 +549,10 @@ namespace GPBoost {
 				false,
 				nullptr,
 				false,//learn_covariance_parameters=false
-				true);
+				true,
+				false);
 		}
-	}
+	}//end FindInitialValueBoosting
 
 	void REModel::EvalNegLogLikelihood(const double* y_data,
 		double* cov_pars,

@@ -5,11 +5,12 @@
 \title{Train a GPBoost model}
 \usage{
 gpboost(data, label = NULL, weight = NULL, params = list(),
-  nrounds = 100L, gp_model = NULL, use_gp_model_for_validation = TRUE,
-  train_gp_model_cov_pars = TRUE, valids = list(), obj = NULL,
-  eval = NULL, verbose = 1L, record = TRUE, eval_freq = 1L,
-  early_stopping_rounds = NULL, init_model = NULL, colnames = NULL,
-  categorical_feature = NULL, callbacks = list(), ...)
+  nrounds = 100L, gp_model = NULL, reuse_learning_rates_gp_model = FALSE,
+  use_gp_model_for_validation = TRUE, train_gp_model_cov_pars = TRUE,
+  valids = list(), obj = NULL, eval = NULL, verbose = 1L,
+  record = TRUE, eval_freq = 1L, early_stopping_rounds = NULL,
+  init_model = NULL, colnames = NULL, categorical_feature = NULL,
+  callbacks = list(), ...)
 }
 \arguments{
 \item{data}{a \code{gpb.Dataset} object, used for training. Some functions, such as \code{\link{gpb.cv}},
@@ -35,6 +36,9 @@ A few key parameters:
                \item{\code{lambda_l2}: L2 regularization (default = 0)}
                \item{\code{lambda_l1}: L1 regularization (default = 0)}
                \item{\code{max_bin}: Maximal number of bins that feature values will be bucketed in (default = 255)}
+               \item{\code{reuse_learning_rates_gp_model}: If TRUE, the learning rates for the covariance and potential 
+               auxiliary parameters are kept at the values from the previous boosting iteration and 
+               not re-initialized when optimizing them. Applies only to Gaussian process boosting (GPBoost algorithm) (default = FALSE)}
                \item{\code{train_gp_model_cov_pars}: If TRUE, the covariance parameters of the Gaussian process 
                are stimated in every boosting iterations, 
                otherwise the gp_model parameters are not estimated. In the latter case, you need to 
@@ -44,7 +48,7 @@ A few key parameters:
                (in addition to the tree model) for calculating predictions on the validation data 
                (default = TRUE)}
                \item{\code{leaves_newton_update}: Set this to TRUE to do a Newton update step for the tree leaves 
-               after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
+               after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm) (default = FALSE)}
                \item{num_threads: Number of threads. For the best speed, set this to
                             the number of real CPU cores(\code{parallel::detectCores(logical = FALSE)}),
                             not the number of threads (most CPU using hyper-threading to generate 2 threads
@@ -54,6 +58,10 @@ A few key parameters:
 \item{nrounds}{number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting}
 
 \item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
+
+\item{reuse_learning_rates_gp_model}{Boolean. If TRUE, the learning rates for the covariance and potential 
+auxiliary parameters are kept at the values from the previous boosting iteration and 
+not re-initialized when optimizing them. Applies only to Gaussian process boosting (GPBoost algorithm)}
 
 \item{use_gp_model_for_validation}{Boolean. If TRUE, the \code{gp_model} 
 (Gaussian process and/or random effects) is also used (in addition to the tree model) for calculating 

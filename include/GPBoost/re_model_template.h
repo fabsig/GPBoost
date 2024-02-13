@@ -537,6 +537,7 @@ namespace GPBoost {
 		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset) (can be nullptr)
 		* \param learn_covariance_parameters If true, covariance parameters are estimated
 		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
+		* \param reuse_learning_rates_from_previous_call If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous call and not re-initialized (can only be set to true if called_in_GPBoost_algorithm is true)
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data,
 			const double* covariate_data,
@@ -551,7 +552,11 @@ namespace GPBoost {
 			bool calc_std_dev,
 			const double* fixed_effects,
 			bool learn_covariance_parameters,
-			bool called_in_GPBoost_algorithm) {
+			bool called_in_GPBoost_algorithm,
+			bool reuse_learning_rates_from_previous_call) {
+			if (reuse_learning_rates_from_previous_call) {
+				CHECK(called_in_GPBoost_algorithm);
+			}
 			if (NumAuxPars() == 0) {
 				estimate_aux_pars_ = false;
 			}
@@ -586,7 +591,15 @@ namespace GPBoost {
 				}
 			}
 			// Initialization of variables
-			OptimConfigSetInitialValues();
+			OptimParamsSetInitialValues();
+			if (reuse_learning_rates_from_previous_call) {
+				if (!lr_have_been_initialized_) {//do not reset learning rates to their initial values in every boosting iteration
+					InitializeLearningRatesConvTol();
+				}
+			}
+			else {
+				InitializeLearningRatesConvTol();
+			}
 			if (covariate_data == nullptr) {
 				has_covariates_ = false;
 			}
@@ -858,7 +871,7 @@ namespace GPBoost {
 				bool lr_cov_is_small = false, lr_aux_pars_is_small = false, lr_coef_is_small = false;
 				for (num_iter_ = 0; num_iter_ < max_iter_; ++num_iter_) {
 					if (reset_learning_rate_every_iteration_) {
-						OptimConfigSetInitialValues();//reset learning rates to their initial values
+						InitializeLearningRatesConvTol();//reset learning rates to their initial values
 					}
 					neg_log_likelihood_lag1_ = neg_log_likelihood_;
 					cov_aux_pars_lag1 = cov_aux_pars;
@@ -950,6 +963,9 @@ namespace GPBoost {
 							AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir);// Avoid too large learning rates for covariance parameters and aux_pars (for fisher_scoring and newton, this is done non-permanently in 'UpdateCovAuxPars')
 						}
 						CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(grad, neg_step_dir, cov_aux_pars, cov_pars_after_grad_aux, use_nesterov_acc);
+						if (reuse_learning_rates_from_previous_call && cov_pars_have_been_estimated_once_ && optimizer_cov_pars_ == "gradient_descent") {//potentially increase learning rates again
+							PotentiallyIncreaseLearningRatesForGPBoostAlgorithm();
+						}//end called_in_GPBoost_algorithm / potentially increase learning rates again
 						// Update covariance and additional likelihood parameters, do learning rate backtracking, factorize covariance matrix, and calculate new value of objective function
 						UpdateCovAuxPars(cov_aux_pars, neg_step_dir, use_nesterov_acc, num_iter_,
 							cov_pars_after_grad_aux, cov_aux_pars_after_grad_aux_lag1, acc_rate_cov_, nesterov_schedule_version_, momentum_offset_, fixed_effects_ptr);
@@ -1118,7 +1134,7 @@ namespace GPBoost {
 						likelihood_[cluster_i]->InitializeModeAvec();
 					}
 				}
-				SetInitialValueDeltaRelConv();
+				delta_rel_conv_ = delta_rel_conv_init_;
 				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it,
 					learn_covariance_parameters, "nelder_mead", profile_out_marginal_variance_,
@@ -1202,6 +1218,9 @@ namespace GPBoost {
 				}
 			}
 			model_has_been_estimated_ = true;
+			if (learn_covariance_parameters) {
+				cov_pars_have_been_estimated_once_ = true;
+			}
 		}//end OptimLinRegrCoefCovPar
 
 		/*!
@@ -3581,15 +3600,19 @@ namespace GPBoost {
 		\brief Convergence tolerance for covariance and linear regression coefficient estimation.
 			The algorithm stops if the relative change in either the (approximate) log-likelihood or the parameters is below this value.
 			For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood.
-			If delta_rel_conv_init_ < 0, internal default values are set in 'OptimConfigSetInitialValues'
+			If delta_rel_conv_init_ < 0, internal default values are set in 'InitializeLearningRatesConvTol'
 		*/
 		double delta_rel_conv_;
 		/*! \brief Initial convergence tolerance (to remember as default values for delta_rel_conv_ are different for 'nelder_mead' vs. other optimizers and the optimization might get restarted) */
 		double delta_rel_conv_init_ = -1;
-		/*! \brief Learning rate for covariance parameters. If lr_cov_init_ < 0, internal default values are set in 'OptimConfigSetInitialValues' */
+		/*! \brief Learning rate for covariance parameters. If lr_cov_init_ < 0, internal default values are set in 'InitializeLearningRatesConvTol' */
 		double lr_cov_;
 		/*! \brief Initial learning rate for covariance parameters (to remember as lr_cov_ can be decreased) */
 		double lr_cov_init_ = -1;
+		/*! \brief True if 'lr_cov_' and other learning rates have been initialized, i.e., if 'InitializeLearningRatesConvTol' has been called */
+		bool lr_have_been_initialized_ = false;
+		/*! \brief True if 'lr_cov_' and other learning rates have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
+		bool cov_pars_have_been_estimated_once_ = false;
 		/*! \brief Learning rate for covariance parameters after first iteration (to remember as lr_cov_ can be decreased) */
 		double lr_cov_after_first_iteration_ = 0.1;
 		/*! \brief Learning rate for auxiliary parameters for non-Gaussian likelihoods (e.g., shape of a gamma likelihood) */
@@ -5136,46 +5159,49 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Set initial values for some of the optimizer parameters.
+		* \brief Set initial values for some of the optimizer parameters
 		* Internal default values are used if the corresponding parameters have not been set
 		*/
-		void OptimConfigSetInitialValues() {
-			lr_coef_ = lr_coef_init_;
-			lr_aux_pars_ = lr_aux_pars_init_;
+		void OptimParamsSetInitialValues() {
 			SetInitialValueLRCov();
 			SetInitialValueDeltaRelConv();
-		}//end SetInternalDefaultValues
+		}//end OptimParamsSetInitialValues
 
-		/*! * \brief Set initial values for lr_cov_ */
+		/*!
+		* \brief Initialitze learning rates and convergence tolerance
+		*/
+		void InitializeLearningRatesConvTol() {
+			lr_coef_ = lr_coef_init_;
+			lr_aux_pars_ = lr_aux_pars_init_;
+			lr_cov_ = lr_cov_init_;
+			delta_rel_conv_ = delta_rel_conv_init_;
+			lr_have_been_initialized_ = true;
+		}//end InitializeLearningRatesConvTol
+
+		/*! * \brief Set initial values 'lr_cov_init_' for lr_cov_ */
 		void SetInitialValueLRCov() {
 			if (lr_cov_init_ < 0.) {//A value below 0 indicates that default values should be used
 				if (optimizer_cov_pars_ == "gradient_descent") {
-					lr_cov_ = 0.1;
+					lr_cov_init_ = 0.1;
 				}
 				else {
-					lr_cov_ = 1.;
+					lr_cov_init_ = 1.;
 				}
-			}
-			else {
-				lr_cov_ = lr_cov_init_;
 			}
 		}//end SetInitialValueLRCov
 
-		/*! * \brief Set initial values for delta_rel_conv_ */
+		/*! * \brief Set initial values 'delta_rel_conv_init_' for delta_rel_conv_ */
 		void SetInitialValueDeltaRelConv() {
 			if (delta_rel_conv_init_ < 0) {
 				if (optimizer_cov_pars_ == "nelder_mead") {
-					delta_rel_conv_ = 1e-8;
+					delta_rel_conv_init_ = 1e-8;
 				}
 				else {
-					delta_rel_conv_ = 1e-6;
+					delta_rel_conv_init_ = 1e-6;
 				}
 			}
-			else {
-				delta_rel_conv_ = delta_rel_conv_init_;
-			}
 		}//end SetInitialValueDeltaRelConv
-		
+
 		/*!
 		* \brief Avoid too large learning rates for covariance parameters and aux_pars
 		* \param neg_step_dir Negative step direction for making updates. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
@@ -5301,6 +5327,49 @@ namespace GPBoost {
 				mom_dir_deriv_armijo_coef_ = grad.dot(beta - beta_after_grad_aux);
 			}
 		}//end CalcDirDerivArmijoAndLearningRateConstChangeCoef
+
+		/*!
+		* \brief For the GPBoost algorithm, learning rates (lr_cov_ and lr_aux_pars_) are no reset to initial values in every boosting iteration 
+		* but rather kept at their previous valzues. This can, however, imply that learning rates might become too small in later boosting iterations.
+		* This function checks whether we should increase (double) the learing rates again and does the increase if necessary
+		*/
+		void PotentiallyIncreaseLearningRatesForGPBoostAlgorithm() {
+			bool double_learning_rate = false;
+			if (num_iter_ == 0) {
+				if (!estimate_aux_pars_) {
+					if ((-dir_deriv_armijo_cov_pars_ * lr_cov_) <= (delta_rel_conv_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.))) {
+						if ((-dir_deriv_armijo_cov_pars_ * lr_cov_init_) >= std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
+							// Increase the learning again if 
+							//		(i) likely no change will be detected in the log-likelihood, i.e., convergence is achieved, (=first "if" condition) 
+							//		(ii) but this is due a very small learning rate and for larger learning rates the log-likelihood would still change (=second "if" condition).
+							//		In other words, if lr_cov_ is small but the directional derivative of the log-likelihood in the search direction (=first order change of log-likelihood) is large relative to the log-likelihood
+							//		Note that (-dir_deriv_armijo_cov_pars_) is approximately equal to (neg_log_likelihood_lag1_ - neg_log_likelihood_) for small lr_cov_
+							double_learning_rate = true;
+						}
+					}
+				}
+				else {//estimate_aux_pars_
+					if ((-dir_deriv_armijo_cov_pars_ * lr_cov_ + -dir_deriv_armijo_aux_pars_ * lr_aux_pars_) <= (delta_rel_conv_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.))) {
+						if ((-dir_deriv_armijo_cov_pars_ * lr_cov_init_ + dir_deriv_armijo_aux_pars_ * lr_aux_pars_init_) >= std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
+							double_learning_rate = true;
+						}
+					}
+				}
+			}//end num_iter_ == 0
+			else if (num_iter_ == 1) {//always increase the learning rate in the second iteration if more than one iteration is needed 
+				double_learning_rate = true;
+			}
+			if (double_learning_rate) {
+				if (2 * lr_cov_ <= lr_cov_init_) {
+					lr_cov_ *= 2;
+				}
+				if (estimate_aux_pars_) {
+					if (2 * lr_aux_pars_ <= lr_aux_pars_init_) {
+						lr_aux_pars_ *= 2;
+					}
+				}
+			}//end double_learning_rate
+		}//end PotentiallyIncreaseLearningRatesForGPBoostAlgorithm
 
 		/*!
 		* \brief Recaculate mode for Laplace approximation after reseting them to zero
