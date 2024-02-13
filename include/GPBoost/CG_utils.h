@@ -402,7 +402,7 @@ namespace GPBoost {
 
 			if (early_stop_alg) {
 
-				//Log::REInfo("CGFSA stop after %i CG-Iterations.", j + 1);
+				Log::REInfo("CGFSA stop after %i CG-Iterations.", j + 1);
 
 				return;
 			}
@@ -551,6 +551,7 @@ namespace GPBoost {
 					Tdiags[i].conservativeResize(j + 1, 1);
 					Tsubdiags[i].conservativeResize(j, 1);
 				}
+				Log::REInfo("CGFSAT stop after %i CG-Iterations.", j + 1);
 				return;
 			}
 		}

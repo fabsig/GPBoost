@@ -1865,12 +1865,17 @@ namespace GPBoost {
 							solution_for_trace_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
 							solution_for_trace_[cluster_i].setZero();
 							// Initialize tridiagonal Matrices
-							std::vector<vec_t> Tdiags_(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag_));
-							std::vector<vec_t> Tsubdiags_(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag_ - 1));
+							int cg_max_num_it_tridiag = cg_max_num_it_tridiag_;
+							if (first_update_) {
+								cg_max_num_it_tridiag = (int)round(cg_max_num_it_tridiag_ / 3);
+							}
+							std::vector<vec_t> Tdiags_(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
+							std::vector<vec_t> Tsubdiags_(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
+							Log::REInfo("cg_max2 %i", cg_max_num_it_tridiag);
 							// Conjuagte Gradient with Lanczos
 							CGTridiagFSA<T_mat>(*sigma_resid, (*cross_cov), chol_ip_cross_cov_[cluster_i], rand_vec_probe_[cluster_i],
 								Tdiags_, Tsubdiags_, solution_for_trace_[cluster_i], NaN_found, num_data_per_cluster_[cluster_i],
-								num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
+								num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
 								chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 							if (NaN_found) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
@@ -3445,6 +3450,12 @@ namespace GPBoost {
 		//			For Gaussian data with covariates, the response variables is saved in y_vec_ and y_ is replaced by y - X * beta during the optimization
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: Psi^-1*y_ (used for various computations) */
 		std::map<data_size_t, vec_t> y_aux_;
+		/*! \brief Key: labels of independent realizations of REs/GPs, value: Psi^-1*y_ (from last iteration) */
+		std::map<data_size_t, vec_t> last_y_aux_;
+		/*! \brief Indicates wether use last solution as initial guess in CG */
+		bool take_last_solution_X_;
+		/*! \brief Psi^-1*X_ (from last iteration) */
+		den_mat_t last_psi_inv_X_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when only_grouped_REs_use_woodbury_identity_==true) */
 		std::map<data_size_t, vec_t> y_tilde_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: Z * L ^ -T * L ^ -1 * Z ^ T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when only_grouped_REs_use_woodbury_identity_==true) */
@@ -4300,12 +4311,33 @@ namespace GPBoost {
 							}
 						}
 						else {
+							//Use last solution as initial guess
+							Log::REInfo("nro %i", psi_inv_X.rows());
+							if (take_last_solution_X_) {
+								psi_inv_X = last_psi_inv_X_;
+								Log::REInfo("True11");
+							}
+							else {
+								psi_inv_X.resize(num_data_per_cluster_[cluster_i], X.cols());
+								psi_inv_X.setZero();
+								Log::REInfo("False11");
+							}
+							//Reduce max. number of iterations for the CG in first update
+							int cg_max_num_it = cg_max_num_it_;
+							if (first_update_) {
+								cg_max_num_it = (int)round(cg_max_num_it_ / 3);
+								Log::REInfo("True0");
+							}
+							else {
+								take_last_solution_X_ = true;
+								Log::REInfo("False0");
+							}
 							std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
-							psi_inv_X.resize(num_data_per_cluster_[cluster_i], X.cols());
-							psi_inv_X.setZero();
+							
 							CGFSA_MULTI_RHS<T_mat>(*sigma_resid, (*cross_cov), chol_fact_sigma_ip_[cluster_i], X, psi_inv_X,
-								NaN_found, num_data_per_cluster_[cluster_i], (int)X.cols(), cg_max_num_it_, cg_delta_conv_,
+								NaN_found, num_data_per_cluster_[cluster_i], (int)X.cols(), cg_max_num_it, cg_delta_conv_,
 								cg_preconditioner_type_, chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
+							last_psi_inv_X_ = psi_inv_X;
 							if (NaN_found) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 							}
@@ -6252,11 +6284,28 @@ namespace GPBoost {
 							}
 						}
 						else {
+							//Use last solution as initial guess
+							if (last_y_aux_[cluster_i].size() != 0) {
+								y_aux_[cluster_i] = last_y_aux_[cluster_i];
+								Log::REInfo("True1");
+							}
+							else {
+								y_aux_[cluster_i] = vec_t::Zero(num_data_per_cluster_[cluster_i]);
+								Log::REInfo("False1");
+							}
+							//Reduce max. number of iterations for the CG in first update
+							int cg_max_num_it = cg_max_num_it_;
+							if (first_update_) {
+								cg_max_num_it = (int)round(cg_max_num_it_ / 3);
+								Log::REInfo("True");
+							}
+							
 							std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
-							y_aux_[cluster_i] = vec_t::Zero(num_data_per_cluster_[cluster_i]);
+							Log::REInfo("cg_max %i", cg_max_num_it);
 							CGFSA<T_mat>(*sigma_resid, (*cross_cov), chol_ip_cross_cov_[cluster_i], y_[cluster_i], y_aux_[cluster_i],
-								NaN_found, cg_max_num_it_, cg_delta_conv_, THRESHOLD_ZERO_RHS_CG_, cg_preconditioner_type_,
+								NaN_found, cg_max_num_it, cg_delta_conv_, THRESHOLD_ZERO_RHS_CG_, cg_preconditioner_type_,
 								chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
+							last_y_aux_[cluster_i] = y_aux_[cluster_i];
 							if (NaN_found) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 							}
@@ -7590,9 +7639,11 @@ namespace GPBoost {
 								}
 								// sigma_resid^-1 * rand_vec_probe_pred
 								den_mat_t sigma_resid_inv_pv(num_data_cli, rand_vec_probe_pred.cols());
+								Log::REInfo("s1 %g",(*sigma_resid).coeffRef(0,0));
 								CGFSA_RESID<T_mat>(*sigma_resid, rand_vec_probe_pred, sigma_resid_inv_pv, NaN_found, num_data_cli, (int)rand_vec_probe_pred.cols(),
 									cg_max_num_it_tridiag_, cg_delta_conv_pred,
 									cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i]);
+								Log::REInfo("s2 %g", diagonal_approx_inv_preconditioner_[cluster_i].coeffRef(0));
 								// sigma_resid_pred * sigma_resid_inv_pv
 								den_mat_t rand_vec_probe_final(num_data_pred_cli, sigma_resid_inv_pv.cols());
 								rand_vec_probe_final.setZero();
