@@ -564,23 +564,31 @@ namespace GPBoost {
 			settings.gd_settings.ada_max = false;
 			optim::gd(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 		}
-		else if (optimizer == "bfgs_v2") {
+		else if (optimizer == "bfgs_v2" || optimizer == "lbfgs_linesearch_nocedal_wright") {
 			LBFGSpp::LBFGSParam<double> param_LBFGSpp;
 			param_LBFGSpp.max_iterations = max_iter;
 			param_LBFGSpp.past = 1;//convergence should be determined by checking the change in the obejctive function and not the norm of the gradient
 			param_LBFGSpp.delta = delta_rel_conv;
 			param_LBFGSpp.epsilon = 1e-10;
 			param_LBFGSpp.epsilon_rel = 1e-10;
-			LBFGSpp::LBFGSSolver<double> solver(param_LBFGSpp);
 			EvalLLforLBFGSpp<T_mat, T_chol> ll_fun(re_model_templ, fixed_effects, learn_cov_aux_pars,
 				cov_pars.segment(0, num_cov_par), profile_out_marginal_variance);
-			num_it = solver.minimize(ll_fun, pars_init, neg_log_likelihood);
+			if (optimizer == "bfgs_v2") {
+				param_LBFGSpp.linesearch = 1;//LBFGS_LINESEARCH_BACKTRACKING_ARMIJO
+				LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(param_LBFGSpp);
+				num_it = solver.minimize(ll_fun, pars_init, neg_log_likelihood);
+			}
+			else if (optimizer == "lbfgs_linesearch_nocedal_wright") {
+				param_LBFGSpp.linesearch = 3;//LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE
+				LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchNocedalWright> solver(param_LBFGSpp);
+				num_it = solver.minimize(ll_fun, pars_init, neg_log_likelihood);
+			}
 		}
 		//else if (optimizer == "adadelta") {// adadelta currently not supported as default settings do not always work
 		//	settings.gd_settings.method = 5;
 		//	optim::gd(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 		//}
-		if (optimizer != "bfgs_v2") {
+		if (optimizer != "bfgs_v2" && optimizer != "lbfgs_linesearch_nocedal_wright") {
 			num_it = (int)settings.opt_iter;
 			neg_log_likelihood = settings.opt_fn_value;
 		}

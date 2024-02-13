@@ -617,7 +617,8 @@ namespace GPBoost {
 			num_iter_ = 0;
 			num_it = max_iter_;
 			profile_out_marginal_variance_ = gauss_likelihood_ &&
-				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam" || optimizer_cov_pars_ == "bfgs_v3");
+				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam" || 
+					optimizer_cov_pars_ == "bfgs_v3" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright");
 			if (optimizer_cov_pars_ == "bfgs_v3") {
 				optimizer_cov_pars_ = "bfgs_v2";
 			}
@@ -710,7 +711,7 @@ namespace GPBoost {
 			scale_covariates_ = false;
 			if (has_covariates_) {
 				scale_covariates_ = (optimizer_coef_ == "gradient_descent" || (optimizer_cov_pars_ == "bfgs" && !gauss_likelihood_) ||
-					optimizer_cov_pars_ == "bfgs_v2") && !only_intercept_for_GPBoost_algo;
+					optimizer_cov_pars_ == "bfgs_v2" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") && !only_intercept_for_GPBoost_algo;
 				// Scale covariates (in order that the gradient is less sample-size dependent)
 				if (scale_covariates_) {
 					loc_transf_ = vec_t(num_coef_);
@@ -835,7 +836,7 @@ namespace GPBoost {
 					optimizer_cov_pars_, profile_out_marginal_variance_,
 					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_);
 				// Check for NA or Inf
-				if (optimizer_cov_pars_ == "bfgs" || optimizer_cov_pars_ == "bfgs_v2") {
+				if (optimizer_cov_pars_ == "bfgs" || optimizer_cov_pars_ == "bfgs_v2" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
 					if (learn_covariance_parameters) {
 						for (int i = 0; i < (int)cov_aux_pars.size(); ++i) {
 							if (std::isnan(cov_aux_pars[i]) || std::isinf(cov_aux_pars[i])) {
@@ -1051,7 +1052,7 @@ namespace GPBoost {
 							}
 						}
 						else if (convergence_criterion_ == "relative_change_in_log_likelihood") {
-							if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < delta_rel_conv_ * std::abs(neg_log_likelihood_lag1_)) {
+							if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < delta_rel_conv_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
 								terminate_optim = true;
 							}
 						} // end check convergence
@@ -1080,7 +1081,7 @@ namespace GPBoost {
 					//increase learning rates again
 					else if (increase_learning_rate_again_ && optimizer_cov_pars_ == "gradient_descent" && (num_iter_ + 1) >= 10 &&
 						learning_rate_decreased_first_time_ && !learning_rate_decreased_after_increase_ && !na_or_inf_occurred) {
-						if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < INCREASE_LR_CHANGE_LL_THRESHOLD_ * std::abs(neg_log_likelihood_lag1_)) {
+						if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < INCREASE_LR_CHANGE_LL_THRESHOLD_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
 							if (has_covariates_) {
 								lr_coef_ /= LR_SHRINKAGE_FACTOR_;
 							}
@@ -3561,7 +3562,7 @@ namespace GPBoost {
 		/*! \brief Optimizer for covariance parameters */
 		string_t optimizer_cov_pars_ = "gradient_descent";
 		/*! \brief List of supported optimizers for covariance parameters */
-		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring", "newton", "nelder_mead", "bfgs", "adam", "bfgs_v2", "bfgs_v3" };
+		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring", "newton", "nelder_mead", "bfgs", "adam", "bfgs_v2", "bfgs_v3", "lbfgs_linesearch_nocedal_wright" };
 		/*! \brief Convergence criterion for terminating the 'OptimLinRegrCoefCovPar' optimization algorithm */
 		string_t convergence_criterion_ = "relative_change_in_log_likelihood";
 		/*! \brief List of supported convergence criteria used for terminating the optimization algorithm */
@@ -3600,9 +3601,9 @@ namespace GPBoost {
 		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian likelihoods upon initialization). See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not */
 		string_t optimizer_coef_;
 		/*! \brief List of supported optimizers for regression coefficients for Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_OPTIM_COEF_GAUSS_{ "gradient_descent", "wls", "nelder_mead", "bfgs", "adam", "bfgs_v2" };
+		const std::set<string_t> SUPPORTED_OPTIM_COEF_GAUSS_{ "gradient_descent", "wls", "nelder_mead", "bfgs", "adam", "bfgs_v2", "bfgs_v3", "lbfgs_linesearch_nocedal_wright" };
 		/*! \brief List of supported optimizers for regression coefficients for non-Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_OPTIM_COEF_NONGAUSS_{ "gradient_descent", "nelder_mead", "bfgs", "adam", "bfgs_v2" };
+		const std::set<string_t> SUPPORTED_OPTIM_COEF_NONGAUSS_{ "gradient_descent", "nelder_mead", "bfgs", "adam", "bfgs_v2", "bfgs_v3", "lbfgs_linesearch_nocedal_wright" };
 		/*! \brief Learning rate for fixed-effect linear coefficients */
 		double lr_coef_;
 		/*! \brief Initial learning rate for fixed-effect linear coefficients (to remember as lr_coef_ can be decreased) */
@@ -3628,7 +3629,7 @@ namespace GPBoost {
 		/*! \brief true if 'optimizer_coef_' has been set */
 		bool coef_optimizer_has_been_set_ = false;
 		/*! \brief List of optimizers which are externally handled by OptimLib */
-		const std::set<string_t> OPTIM_EXTERNAL_{ "nelder_mead", "bfgs", "adam", "bfgs_v2" };
+		const std::set<string_t> OPTIM_EXTERNAL_{ "nelder_mead", "bfgs", "adam", "bfgs_v2", "lbfgs_linesearch_nocedal_wright" };
 		/*! \brief If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood) */
 		bool estimate_aux_pars_ = false;
 		/*! \brief True if the function 'SetOptimConfig' has been called */
