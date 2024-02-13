@@ -19,7 +19,7 @@ namespace LBFGSpp {
 /// L-BFGS solver for unconstrained numerical optimization
 ///
 template <typename Scalar,
-          template <class> class LineSearch = LineSearchNocedalWright>
+          template <class> class LineSearch = LineSearchBacktracking>
 class LBFGSSolver
 {
 private:
@@ -183,6 +183,11 @@ public:
             {
                 f.RedetermineNearestNeighborsVecchia();  // called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
                 fx = f(x, m_grad, false);
+                m_bfgs.apply_Hv(m_grad, -Scalar(1), m_drt);
+                if (fpast > 0)
+                {
+                    m_fx[k % fpast] = fx;
+                }
             }
             if ((k < 10 || (k % 10 == 0 && k < 100) || (k % 100 == 0 && k < 1000) ||
                  (k % 1000 == 0 && k < 10000) || (k % 10000 == 0)))

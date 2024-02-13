@@ -570,6 +570,7 @@ namespace GPBoost {
 			param_LBFGSpp.past = 1;//convergence should be determined by checking the change in the obejctive function and not the norm of the gradient
 			param_LBFGSpp.delta = delta_rel_conv;
 			param_LBFGSpp.epsilon = 1e-10;
+			param_LBFGSpp.epsilon_rel = 1e-10;
 			LBFGSpp::LBFGSSolver<double> solver(param_LBFGSpp);
 			EvalLLforLBFGSpp<T_mat, T_chol> ll_fun(re_model_templ, fixed_effects, learn_cov_aux_pars,
 				cov_pars.segment(0, num_cov_par), profile_out_marginal_variance);

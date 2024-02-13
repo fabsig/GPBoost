@@ -174,7 +174,8 @@ public:
         past           = 0;
         delta          = Scalar(0);
         max_iterations = 0;
-        linesearch     = LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE;
+        // ChangedForGPBoost
+        linesearch     = LBFGS_LINESEARCH_BACKTRACKING_ARMIJO;
         max_linesearch = 20;
         min_step       = Scalar(1e-20);
         max_step       = Scalar(1e+20);
