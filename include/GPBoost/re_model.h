@@ -189,10 +189,12 @@ namespace GPBoost {
 		*		For the GPBoost algorithm for non-Gaussian data, this is ignored (and can be nullptr) as the response data has been set before.
 		* \param fixed_effects Fixed effects component F of location parameter (only used for non-Gaussian data). For Gaussian data, this is ignored
 		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
+		* \param reuse_learning_rates_from_previous_call If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous call and not re-initialized (can only be set to true if called_in_GPBoost_algorithm is true)
 		*/
 		void OptimCovPar(const double* y_data,
 			const double* fixed_effects,
-			bool called_in_GPBoost_algorithm);
+			bool called_in_GPBoost_algorithm,
+			bool reuse_learning_rates_from_previous_call);
 
 		/*!
 		* \brief Find covariance parameters and linear regression coefficients (if there are any) that minimize the (approximate) negative log-ligelihood

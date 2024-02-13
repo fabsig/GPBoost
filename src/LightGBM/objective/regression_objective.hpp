@@ -106,14 +106,19 @@ namespace LightGBM {
 		explicit RegressionL2loss(const Config& config)
 			: deterministic_(config.deterministic) {
 			sqrt_ = config.reg_sqrt;
+			reuse_learning_rates_gp_model_ = config.reuse_learning_rates_gp_model;
 		}
 
 		explicit RegressionL2loss(const std::vector<std::string>& strs)
 			: deterministic_(false) {
 			sqrt_ = false;
+			reuse_learning_rates_gp_model_ = false;
 			for (auto str : strs) {
 				if (str == std::string("sqrt")) {
 					sqrt_ = true;
+				}
+				else if (str == std::string("reuse_learning_rates_gp_model")) {
+					reuse_learning_rates_gp_model_ = true;
 				}
 			}
 		}
@@ -146,7 +151,7 @@ namespace LightGBM {
 							hessians[i] = 1.0f;
 						}
 						if (train_gp_model_cov_pars_) {//also train covariance parameters
-							re_model_->OptimCovPar(gradients, nullptr, true);
+							re_model_->OptimCovPar(gradients, nullptr, true, reuse_learning_rates_gp_model_);
 							re_model_->CalcGradient(gradients, nullptr, false);//calc_cov_factor = false since this has already been done in OptimCovPar()
 						}
 						else {//don't train covariance parameters
@@ -160,7 +165,7 @@ namespace LightGBM {
 							hessians[i] = 1.0f;
 						}
 						if (train_gp_model_cov_pars_) {//also train covariance parameters
-							re_model_->OptimCovPar(nullptr, score, true);
+							re_model_->OptimCovPar(nullptr, score, true, reuse_learning_rates_gp_model_);
 							re_model_->CalcGradient(gradients, score, false);//calc_cov_factor = false since this has already been done in OptimCovPar()
 						}
 						else {//don't train covariance parameters
@@ -290,6 +295,8 @@ namespace LightGBM {
 		const bool deterministic_;
 		/*! \brief Indicates whether the covariance matrix should also be factorized when calling re_model_->CalcGradient(). Only relevant if has_gp_model_ = true and train_gp_model_cov_pars_ = true */
 		mutable bool calc_cov_factor_ = true;
+		/*! \brief If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them */
+		bool reuse_learning_rates_gp_model_ = false;
 		std::function<bool(label_t)> is_pos_ = [](label_t label) { return label > 0; };
 	};
 

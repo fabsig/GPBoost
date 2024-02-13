@@ -85,6 +85,9 @@ A few key parameters:
                \item{\code{lambda_l2}: L2 regularization (default = 0)}
                \item{\code{lambda_l1}: L1 regularization (default = 0)}
                \item{\code{max_bin}: Maximal number of bins that feature values will be bucketed in (default = 255)}
+               \item{\code{reuse_learning_rates_gp_model}: If TRUE, the learning rates for the covariance and potential 
+               auxiliary parameters are kept at the values from the previous boosting iteration and 
+               not re-initialized when optimizing them. Applies only to Gaussian process boosting (GPBoost algorithm) (default = FALSE)}
                \item{\code{train_gp_model_cov_pars}: If TRUE, the covariance parameters of the Gaussian process 
                are stimated in every boosting iterations, 
                otherwise the gp_model parameters are not estimated. In the latter case, you need to 
@@ -94,7 +97,7 @@ A few key parameters:
                (in addition to the tree model) for calculating predictions on the validation data 
                (default = TRUE)}
                \item{\code{leaves_newton_update}: Set this to TRUE to do a Newton update step for the tree leaves 
-               after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm)}
+               after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm) (default = FALSE)}
                \item{num_threads: Number of threads. For the best speed, set this to
                             the number of real CPU cores(\code{parallel::detectCores(logical = FALSE)}),
                             not the number of threads (most CPU using hyper-threading to generate 2 threads
@@ -115,6 +118,10 @@ of the \code{gp_model} (Gaussian process and/or random effects) are estimated in
 boosting iterations, otherwise the \code{gp_model} parameters are not estimated. 
 In the latter case, you need to either estimate them beforehand or provide the values via 
 the \code{init_cov_pars} parameter when creating the \code{gp_model}}
+
+\item{reuse_learning_rates_gp_model}{Boolean. If TRUE, the learning rates for the covariance and potential 
+auxiliary parameters are kept at the values from the previous boosting iteration and 
+not re-initialized when optimizing them. Applies only to Gaussian process boosting (GPBoost algorithm)}
 }
 \description{
 Parameter docs shared by \code{gpb.train}, \code{gpb.cv}, and \code{gpboost}

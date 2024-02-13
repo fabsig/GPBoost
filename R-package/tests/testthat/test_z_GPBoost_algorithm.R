@@ -15,6 +15,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                          cg_max_num_it_tridiag = 1000,
                                          num_rand_vec_trace = 1000,
                                          reuse_rand_vec_trace = T)
+  OPTIM_PARAMS_GRAD_DESC <- list(optimizer_cov = "gradient_descent",
+                                 lr_cov = 0.1, use_nesterov_acc = TRUE,
+                                 acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
+                                 optimizer_coef = "gradient_descent", lr_coef = 0.1,
+                                 convergence_criterion = "relative_change_in_log_likelihood")
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
     mod_lcg <- 134456 # modulus for linear congruential generator (random0 used)
@@ -327,8 +332,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       gp_model <- GPModel(group_data = group_data_train)
       gp_model$set_optim_params(params = list(optimizer_cov="bfgs"))
       capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
-                     nrounds = 62, learning_rate = 0.01, max_depth = 6,
-                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0) , file='NUL')
+                                     nrounds = 62, learning_rate = 0.01, max_depth = 6,
+                                     min_data_in_leaf = 5, objective = "regression_l2", verbose = 0) , file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
       
       # Newton updates for tree leaves
@@ -501,6 +506,48 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                        verbose = 0,
                        leaves_newton_update = FALSE)
       })
+    })
+    
+    test_that("Combine tree-boosting and grouped random effects model: large data", {
+      
+      n <- 1e5
+      X_train <- matrix(rnorm(sim_rand_unif(n=2*n, init_c=0.135)), ncol=2)
+      # Simulate grouped random effects
+      sigma2_1 <- 0.6 # variance of first random effect 
+      sigma2 <- 0.1^2 # error variance
+      m <- n / 100 # number of categories / levels for grouping variable
+      group <- rep(1,n) # grouping variable
+      for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
+      b1 <- sqrt(sigma2_1) * qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.462))
+      xi <- sqrt(sigma2) * qnorm(sim_rand_unif(n=n, init_c=0.17556))
+      xi[xi<(-100)] = 0
+      y <- eps + xi
+      params <- list(learning_rate = 0.01,
+                     max_depth = 6,
+                     min_data_in_leaf = 5,
+                     objective = "regression_l2",
+                     feature_pre_filter = FALSE)
+      
+      # Create random effects model and train GPBoost model
+      gp_model <- GPModel(group_data = group)
+      set_optim_params(gp_model, params=OPTIM_PARAMS_GRAD_DESC)
+      bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
+                     nrounds = 62, params = params, verbose = 0, 
+                     reuse_learning_rates_gp_model = FALSE)
+      cov_pars <- c(0.74546864, 0.04524116)
+      nll <- 128184.7820864
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll),TOLERANCE)
+      # With the option reuse_learning_rates_gp_model
+      gp_model <- GPModel(group_data = group)
+      set_optim_params(gp_model, params=OPTIM_PARAMS_GRAD_DESC)
+      bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
+                     nrounds = 62, params = params, verbose = 0,
+                     reuse_learning_rates_gp_model = TRUE)
+      nll <- 128184.7820917
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll),TOLERANCE)
+      
     })
     
     test_that("Combine tree-boosting and Gaussian process model ", {
@@ -764,7 +811,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_equal(bst$best_iter, iter)
       expect_lt(abs(bst$best_score - score),TOLERANCE2)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_estV)),0.05)
-
+      
       
       # Same thing with Wendland covariance function
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",

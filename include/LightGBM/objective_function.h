@@ -138,7 +138,7 @@ namespace LightGBM {
 		bool has_gp_model_ = false;
 		bool train_gp_model_cov_pars_ = true;
 		bool use_gp_model_for_validation_ = false;
-		std::string likelihood_type_ = "gaussian";//used only for re_model_. 
+		std::string likelihood_type_ = "gaussian";//used only for re_model_
 		// Note: likelihood_type_ is only used for re_model_ (i.e. if has_gp_model_==true).
 		// In this case, a regression objective function is always used (no matter the data distribution),
 		// but this string than keeps track of the likelihood. This is a copy of re_model_->GetLikelihood(). It is saved here for speed-up
