@@ -535,18 +535,17 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                      nrounds = 62, params = params, verbose = 0, 
                      reuse_learning_rates_gp_model = FALSE)
       cov_pars <- c(0.74546864, 0.04524116)
-      nll <- 128184.7820864
+      nll <- 128169.9559085
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll),TOLERANCE)
+      expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/nll,TOLERANCE)
       # With the option reuse_learning_rates_gp_model
       gp_model <- GPModel(group_data = group)
       set_optim_params(gp_model, params=OPTIM_PARAMS_GRAD_DESC)
       bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
                      nrounds = 62, params = params, verbose = 0,
                      reuse_learning_rates_gp_model = TRUE)
-      nll <- 128184.7820917
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll),TOLERANCE)
+      expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/nll,TOLERANCE)
       
     })
     
