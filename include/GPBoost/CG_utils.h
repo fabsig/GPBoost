@@ -402,13 +402,13 @@ namespace GPBoost {
 
 			if (early_stop_alg) {
 
-				Log::REInfo("CGFSA stop after %i CG-Iterations.", j + 1);
+				//Log::REInfo("CGFSA stop after %i CG-Iterations.", j + 1);
 
 				return;
 			}
 		}
 		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 	}// end CGFSA
 
 	/*!
@@ -551,7 +551,7 @@ namespace GPBoost {
 					Tdiags[i].conservativeResize(j + 1, 1);
 					Tsubdiags[i].conservativeResize(j, 1);
 				}
-				Log::REInfo("CGFSAT stop after %i CG-Iterations.", j + 1);
+				//Log::REInfo("CGFSAT stop after %i CG-Iterations.", j + 1);
 				return;
 			}
 		}
