@@ -963,7 +963,8 @@ namespace GPBoost {
 							AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir);// Avoid too large learning rates for covariance parameters and aux_pars (for fisher_scoring and newton, this is done non-permanently in 'UpdateCovAuxPars')
 						}
 						CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(grad, neg_step_dir, cov_aux_pars, cov_pars_after_grad_aux, use_nesterov_acc);
-						if (reuse_learning_rates_from_previous_call && cov_pars_have_been_estimated_once_ && optimizer_cov_pars_ == "gradient_descent") {//potentially increase learning rates again
+						if (reuse_learning_rates_from_previous_call && cov_pars_have_been_estimated_once_ &&
+							optimizer_cov_pars_ == "gradient_descent") {//potentially increase learning rates again
 							PotentiallyIncreaseLearningRatesForGPBoostAlgorithm();
 						}//end called_in_GPBoost_algorithm / potentially increase learning rates again
 						// Update covariance and additional likelihood parameters, do learning rate backtracking, factorize covariance matrix, and calculate new value of objective function
@@ -3603,8 +3604,6 @@ namespace GPBoost {
 		double lr_cov_init_ = -1;
 		/*! \brief True if 'lr_cov_' and other learning rates have been initialized, i.e., if 'InitializeLearningRatesConvTol' has been called */
 		bool lr_have_been_initialized_ = false;
-		/*! \brief True if 'lr_cov_' and other learning rates have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
-		bool cov_pars_have_been_estimated_once_ = false;
 		/*! \brief Learning rate for covariance parameters after first iteration (to remember as lr_cov_ can be decreased) */
 		double lr_cov_after_first_iteration_ = 0.1;
 		/*! \brief Learning rate for auxiliary parameters for non-Gaussian likelihoods (e.g., shape of a gamma likelihood) */
@@ -3679,6 +3678,10 @@ namespace GPBoost {
 		double C_sigma2_;
 		/*! \brief Constant used for checking whether step sizes for linear regression coefficients are clearly too large */
 		double C_MAX_CHANGE_COEF_ = 10.;
+		/*! \brief True if 'lr_cov_' and other learning rates have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
+		bool cov_pars_have_been_estimated_once_ = false;
+		/*! \brief True if 'lr_cov_' and other learning rates have been doubled in the first optimization iteration (num_iter_ == 0) (applies only to the GPBoost algorithm) */
+		bool learning_rates_have_been_doubled_in_first_iteration_ = false;
 
 		/*! \brief If true, Armijo's condition is used to check whether there is sufficient decrease in the negative log-likelighood (otherwise it is only checked for a decrease) */
 		bool armijo_condition_ = true;
@@ -5336,16 +5339,22 @@ namespace GPBoost {
 					}
 				}
 			}//end num_iter_ == 0
-			else if (num_iter_ == 1) {//always increase the learning rate in the second iteration if more than one iteration is needed 
+			else if (num_iter_ == 1 && !learning_rates_have_been_doubled_in_first_iteration_) {//always increase the learning rate in the second iteration if more than one iteration is needed 
 				double_learning_rate = true;
 			}
 			if (double_learning_rate) {
 				if (2 * lr_cov_ <= lr_cov_init_) {
 					lr_cov_ *= 2;
+					if (num_iter_ == 0) {
+						learning_rates_have_been_doubled_in_first_iteration_ = true;
+					}
 				}
 				if (estimate_aux_pars_) {
 					if (2 * lr_aux_pars_ <= lr_aux_pars_init_) {
 						lr_aux_pars_ *= 2;
+						if (num_iter_ == 0) {
+							learning_rates_have_been_doubled_in_first_iteration_ = true;
+						}
 					}
 				}
 			}//end double_learning_rate
