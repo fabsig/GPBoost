@@ -547,6 +547,31 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
       expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/nll,TOLERANCE)
       
+      # CV
+      ycv <- y + X_train %*% c(1,1)
+      params_cv <- params
+      params_cv$learning_rate = 0.2
+      dtrain <- gpb.Dataset(data = X_train, label = ycv)
+      folds <- list()
+      for(i in 1:4) folds[[i]] <- as.integer(1:(n/4) + (n/4) * (i-1))
+      best_iter_max <- 25
+      best_iter_min <- 23
+      score <- 0.799142076749994
+      cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
+                      nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
+                      use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
+                      reuse_learning_rates_gp_model = FALSE)
+      expect_lt(cvbst$best_iter, best_iter_max + 1)
+      expect_gt(cvbst$best_iter, best_iter_min - 1)
+      expect_lt(abs(cvbst$best_score-score), TOLERANCE)
+      cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
+                      nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
+                      use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
+                      reuse_learning_rates_gp_model = TRUE)
+      expect_lt(cvbst$best_iter, best_iter_max + 1)
+      expect_gt(cvbst$best_iter, best_iter_min - 1)
+      expect_lt(abs(cvbst$best_score-score), TOLERANCE)
+      
     })
     
     test_that("Combine tree-boosting and Gaussian process model ", {
