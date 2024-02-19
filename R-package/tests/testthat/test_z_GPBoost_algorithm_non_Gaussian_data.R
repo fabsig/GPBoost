@@ -161,7 +161,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                      nrounds = 30, learning_rate = 0.1, max_depth = 6,
                      min_data_in_leaf = 5, objective = "binary", verbose = 0)
       cov_pars <- c(0.4578282, 0.3456973)
+      nll_opt <- 372.1352713
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE)
       # Prediction
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                       predict_var = TRUE, pred_latent = TRUE)
@@ -346,15 +348,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
       gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6,
                                             init_cov_pars = c(1,1)))
-      bst <- gpboost(data = X_train,
-                     label = y_train,
-                     gp_model = gp_model,
-                     nrounds = 30,
-                     learning_rate = 0.1,
-                     max_depth = 6,
-                     min_data_in_leaf = 5,
-                     objective = "binary",
-                     verbose = 0)
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 30, learning_rate = 0.1,  max_depth = 6,
+                     min_data_in_leaf = 5, objective = "binary", verbose = 0)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4682746, 0.3544995))),TOLERANCE)
       # Prediction
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
@@ -365,19 +361,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1294601, 0.1286418, 0.1289668,
                                                        rep(0.8227741,n_new)))),TOLERANCE)
       
-      # # Training using BFGS (sometimes crashes)
-      # gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      # gp_model$set_optim_params(params=list(optimizer_cov="bfgs"))
-      # bst <- gpboost(data = X_train,
-      #                label = y_train,
-      #                gp_model = gp_model,
-      #                nrounds = 1,
-      #                learning_rate = 0.1,
-      #                max_depth = 6,
-      #                min_data_in_leaf = 5,
-      #                objective = "binary",
-      #                verbose = 0)
-      # expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3806467, 0.2682585))),TOLERANCE)
+      # Training using lbfgs
+      gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+      gp_model$set_optim_params(params=list(optimizer_cov="lbfgs"))
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "binary", verbose = 0)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4711222, 0.3547390))),TOLERANCE)
+      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-376.5699216), TOLERANCE)
       
       # Validation metrics for training data
       # Default metric is "Approx. negative marginal log-likelihood" if there is only one training set
@@ -734,15 +725,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
       gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6,
                                             init_cov_pars = 1))
-      bst <- gpboost(data = X_train,
-                     label = y_train,
-                     gp_model = gp_model,
-                     nrounds = 30,
-                     learning_rate = 0.1,
-                     max_depth = 6,
-                     min_data_in_leaf = 5,
-                     objective = "binary",
-                     verbose = 0)
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "binary", verbose = 0)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9927358)),TOLERANCE)
       # Prediction
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
@@ -751,17 +736,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Training using BFGS
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=list(optimizer_cov="bfgs"))
-      bst <- gpboost(data = X_train,
-                     label = y_train,
-                     gp_model = gp_model,
-                     nrounds = 30,
-                     learning_rate = 0.1,
-                     max_depth = 6,
-                     min_data_in_leaf = 5,
-                     objective = "binary",
-                     verbose = 0)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9855134)),TOLERANCE)
+      gp_model$set_optim_params(params=list(optimizer_cov="lbfgs"))
+      bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
+                     nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                     min_data_in_leaf = 5, objective = "binary", verbose = 0)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.9918843)),TOLERANCE)
       
     })
     

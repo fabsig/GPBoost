@@ -541,7 +541,7 @@ namespace GPBoost {
 		if (has_covariates) {
 			pars_init.segment(num_cov_pars_optim, num_covariates) = beta;//regresion coefficients
 		}
-		//Do optimization optimizer == "bfgs_v2"
+		//Do optimization
 		optim::algo_settings_t settings;
 		settings.iter_max = max_iter;
 		OptDataOptimLib<T_mat, T_chol> 	opt_data = OptDataOptimLib<T_mat, T_chol>(re_model_templ, fixed_effects, learn_cov_aux_pars,
@@ -556,7 +556,7 @@ namespace GPBoost {
 		if (optimizer == "nelder_mead") {
 			optim::nm(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 		}
-		else if (optimizer == "bfgs") {
+		else if (optimizer == "bfgs_optim_lib") {
 			optim::bfgs(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 		}
 		else if (optimizer == "adam") {
@@ -564,7 +564,7 @@ namespace GPBoost {
 			settings.gd_settings.ada_max = false;
 			optim::gd(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 		}
-		else if (optimizer == "bfgs_v2" || optimizer == "lbfgs_linesearch_nocedal_wright") {
+		else if (optimizer == "lbfgs" || optimizer == "lbfgs_linesearch_nocedal_wright") {
 			LBFGSpp::LBFGSParam<double> param_LBFGSpp;
 			param_LBFGSpp.max_iterations = max_iter;
 			param_LBFGSpp.past = 1;//convergence should be determined by checking the change in the obejctive function and not the norm of the gradient
@@ -573,7 +573,7 @@ namespace GPBoost {
 			param_LBFGSpp.epsilon_rel = 1e-10;
 			EvalLLforLBFGSpp<T_mat, T_chol> ll_fun(re_model_templ, fixed_effects, learn_cov_aux_pars,
 				cov_pars.segment(0, num_cov_par), profile_out_marginal_variance);
-			if (optimizer == "bfgs_v2") {
+			if (optimizer == "lbfgs") {
 				param_LBFGSpp.linesearch = 1;//LBFGS_LINESEARCH_BACKTRACKING_ARMIJO
 				LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(param_LBFGSpp);
 				num_it = solver.minimize(ll_fun, pars_init, neg_log_likelihood);
@@ -588,7 +588,7 @@ namespace GPBoost {
 		//	settings.gd_settings.method = 5;
 		//	optim::gd(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 		//}
-		if (optimizer != "bfgs_v2" && optimizer != "lbfgs_linesearch_nocedal_wright") {
+		if (optimizer != "lbfgs" && optimizer != "lbfgs_linesearch_nocedal_wright") {
 			num_it = (int)settings.opt_iter;
 			neg_log_likelihood = settings.opt_fn_value;
 		}

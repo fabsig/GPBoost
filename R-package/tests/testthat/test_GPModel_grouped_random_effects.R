@@ -259,7 +259,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_LOOSE)
-    
     # Fit model using Nelder-Mead
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
@@ -268,6 +267,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(1,3)])),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef[c(1,3)])),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 125)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_LOOSE)
     # Fit model using Adam
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
@@ -276,14 +276,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef[c(1,3)])),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 354)
     
-    # "bfgs" produces large discrepancies -> not run (15.11.2023)
-    # # Fit model using BFGS
-    # gp_model <- fitGPModel(group_data = group,
-    #                        y = y, X = X,
-    #                        params = list(optimizer_cov = "bfgs", std_dev = TRUE))
-    # expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    # expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
-    # expect_equal(gp_model$get_num_optim_iter(), 2)
+    # Fit model using lbfgs
+    gp_model <- fitGPModel(group_data = group,
+                           y = y, X = X,
+                           params = list(optimizer_cov = "lbfgs", std_dev = TRUE))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_LOOSE)
+    expect_equal(gp_model$get_num_optim_iter(), 8)
     
     # With offset / fixed_effects
     offset <- 20 * sim_rand_unif(n=n, init_c=0.1354)
@@ -489,12 +489,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            y = y,
                            params = list(optimizer_cov = "nelder_mead", std_dev = FALSE, delta_rel_conv=1e-6))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_VERY_LOOSE)
-    # BFGS
-    gp_model <- fitGPModel(group_data = cbind(group,group2),
-                           group_rand_coef_data = x,
-                           ind_effect_group_rand_coef = 1,
-                           y = y,
-                           params = list(optimizer_cov = "bfgs", std_dev = FALSE))
+    # lbfgs
+    gp_model <- fitGPModel(group_data = cbind(group,group2),  group_rand_coef_data = x,
+                           ind_effect_group_rand_coef = 1, y = y,
+                           params = list(optimizer_cov = "lbfgs", std_dev = FALSE))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+    # bfgs_optim_lib
+    gp_model <- fitGPModel(group_data = cbind(group,group2),  group_rand_coef_data = x,
+                           ind_effect_group_rand_coef = 1, y = y,
+                           params = list(optimizer_cov = "bfgs_optim_lib", std_dev = FALSE))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
     # Adam
     gp_model <- fitGPModel(group_data = cbind(group,group2),

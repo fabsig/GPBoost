@@ -281,19 +281,19 @@ Optimization parameters
 
 The following list shows options for the optimization of the variance and covariance parameters of ``gp_model`` objects which contain Gaussian process and/or grouped random effects models. These parameters are passed to either the ``fit`` function of a ``gp_model`` object in Python and R or to the ``set_optim_params`` function prior to running the GPBoost algorithm.
 
--  ``optimizer_cov`` : string, optional (default = ``gradient_descent``)
+-  ``optimizer_cov`` : string, optional (default = "lbfgs" for linear mixed effects models and "gradient_descent" for the GPBoost algorithm)
 
    -  Optimizer used for estimating covariance parameters
 
-   -  Options: ``gradient_descent``, ``fisher_scoring``, ``nelder_mead``, ``bfgs``, ``adam``
+   -  Options: ``gradient_descent``, ``lbfgs``, ``fisher_scoring``, ``nelder_mead``, ``adam``
 
 -  ``optimizer_coef`` : string, optional (default = ``wls`` for Gaussian data and ``gradient_descent`` for other likelihoods)
 
    -  Optimizer used for estimating linear regression coefficients, if there are any (for the GPBoost algorithm there are usually none)
 
-   -  Options: ``gradient_descent``, ``wls``, ``nelder_mead``, ``bfgs``, ``adam``. Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. ``wls`` refers to doing coordinate descent for the regression coefficients using weighted least squares
+   -  Options: ``gradient_descent``, ``lbfgs``, ``wls``, ``nelder_mead``, ``adam``. Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. ``wls`` refers to doing coordinate descent for the regression coefficients using weighted least squares
 
-   -  If ``optimizer_cov`` is set to ``nelder_mead``, ``bfgs``, or ``adam``, ``optimizer_coef`` is automatically also set to the same value
+   -  If ``optimizer_cov`` is set to ``nelder_mead``, ``lbfgs``, or ``adam``, ``optimizer_coef`` is automatically also set to the same value
 
 -  ``maxit`` : integer, optional (default = 1000)
 
@@ -301,7 +301,7 @@ The following list shows options for the optimization of the variance and covari
 
 -  ``delta_rel_conv`` : double, optional (default = 1e-6 except for ``nelder_mead`` for which the default is 1e-8)
 
-   -  Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For ``bfgs`` and ``adam``, the L2 norm of the gradient is used instead of the relative change in the log-likelihood
+   -  Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For ``adam``, the L2 norm of the gradient is used instead of the relative change in the log-likelihood
 
    -  If < 0, internal default values are used (= 1e-6 except for ``nelder_mead`` for which the default is 1e-8)
 
