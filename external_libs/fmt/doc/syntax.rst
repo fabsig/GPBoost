@@ -82,7 +82,7 @@ The general form of a *standard format specifier* is:
    width: `integer` | "{" [`arg_id`] "}"
    precision: `integer` | "{" [`arg_id`] "}"
    type: "a" | "A" | "b" | "B" | "c" | "d" | "e" | "E" | "f" | "F" | "g" | "G" |
-       : "o" | "p" | "s" | "x" | "X"
+       : "o" | "p" | "s" | "x" | "X" | "?"
 
 The *fill* character can be any Unicode code point other than ``'{'`` or
 ``'}'``. The presence of a fill character is signaled by the character following
@@ -153,7 +153,8 @@ Preceding the *width* field by a zero (``'0'``) character enables sign-aware
 zero-padding for numeric types. It forces the padding to be placed after the
 sign or base (if any) but before the digits. This is used for printing fields in
 the form '+000000120'. This option is only valid for numeric types and it has no
-effect on formatting of infinity and NaN.
+effect on formatting of infinity and NaN. This option is ignored when any
+alignment specifier is present.
 
 The *precision* is a decimal number indicating how many digits should be
 displayed after the decimal point for a floating-point value formatted with
@@ -177,6 +178,9 @@ The available string presentation types are:
 | ``'s'`` | String format. This is the default type for strings and  |
 |         | may be omitted.                                          |
 +---------+----------------------------------------------------------+
+| ``'?'`` | Debug format. The string is quoted and special           |
+|         | characters escaped.                                      |
++---------+----------------------------------------------------------+
 | none    | The same as ``'s'``.                                     |
 +---------+----------------------------------------------------------+
 
@@ -187,6 +191,9 @@ The available character presentation types are:
 +=========+==========================================================+
 | ``'c'`` | Character format. This is the default type for           |
 |         | characters and may be omitted.                           |
++---------+----------------------------------------------------------+
+| ``'?'`` | Debug format. The character is quoted and special        |
+|         | characters escaped.                                      |
 +---------+----------------------------------------------------------+
 | none    | The same as ``'c'``.                                     |
 +---------+----------------------------------------------------------+
@@ -223,9 +230,10 @@ The available integer presentation types are:
 | none    | The same as ``'d'``.                                     |
 +---------+----------------------------------------------------------+
 
-Integer presentation types can also be used with character and Boolean values.
-Boolean values are formatted using textual representation, either ``true`` or
-``false``, if the presentation type is not specified.
+Integer presentation types can also be used with character and Boolean values
+with the only exception that ``'c'`` cannot be used with `bool`. Boolean values
+are formatted using textual representation, either ``true`` or ``false``, if the
+presentation type is not specified.
 
 The available presentation types for floating-point values are:
 
@@ -346,7 +354,7 @@ The available presentation types (*chrono_type*) are:
 |         | The modified command ``%Ec`` produces the locale's alternate date  |
 |         | and time representation.                                           |
 +---------+--------------------------------------------------------------------+
-| ``'C'`` | The year divided by 100 using floored division, e.g. "55". If the  |
+| ``'C'`` | The year divided by 100 using floored division, e.g. "19". If the  |
 |         | result is a single decimal digit, it is prefixed with 0.           |
 |         | The modified command ``%EC`` produces the locale's alternative     |
 |         | representation of the century.                                     |

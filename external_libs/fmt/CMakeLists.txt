@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.8...3.26)
 
 # Fallback for using newer policies on CMake <3.12.
-if(${CMAKE_VERSION} VERSION_LESS 3.12)
+if (${CMAKE_VERSION} VERSION_LESS 3.12)
   cmake_policy(VERSION ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION})
-endif()
+endif ()
 
 # Determine if fmt is built as a subproject (using add_subdirectory)
 # or if it is the master project.
@@ -150,7 +150,7 @@ option(FMT_INSTALL "Generate the install target." ON)
 option(FMT_TEST "Generate the test target." ${FMT_MASTER_PROJECT})
 option(FMT_FUZZ "Generate the fuzz target." OFF)
 option(FMT_CUDA_TEST "Generate the cuda-test target." OFF)
-option(FMT_OS "Include core requiring OS (Windows/Posix) " ON)
+option(FMT_OS "Include OS-specific APIs." ON)
 option(FMT_MODULE "Build a module instead of a traditional library." OFF)
 option(FMT_SYSTEM_HEADERS "Expose headers with marking them as system." OFF)
 
@@ -162,15 +162,15 @@ set(FMT_SYSTEM_HEADERS_ATTRIBUTE "")
 if (FMT_SYSTEM_HEADERS)
   set(FMT_SYSTEM_HEADERS_ATTRIBUTE SYSTEM)
 endif ()
-if(CMAKE_SYSTEM_NAME STREQUAL "MSDOS")
+if (CMAKE_SYSTEM_NAME STREQUAL "MSDOS")
   set(FMT_TEST OFF)
   message(STATUS "MSDOS is incompatible with gtest")
-endif()
+endif ()
 
-# Get version from core.h
-file(READ include/fmt/core.h core_h)
-if (NOT core_h MATCHES "FMT_VERSION ([0-9]+)([0-9][0-9])([0-9][0-9])")
-  message(FATAL_ERROR "Cannot get FMT_VERSION from core.h.")
+# Get version from base.h
+file(READ include/fmt/base.h base_h)
+if (NOT base_h MATCHES "FMT_VERSION ([0-9]+)([0-9][0-9])([0-9][0-9])")
+  message(FATAL_ERROR "Cannot get FMT_VERSION from base.h.")
 endif ()
 # Use math to skip leading zeros if any.
 math(EXPR CPACK_PACKAGE_VERSION_MAJOR ${CMAKE_MATCH_1})
@@ -274,20 +274,22 @@ function(add_headers VAR)
 endfunction()
 
 # Define the fmt library, its includes and the needed defines.
-add_headers(FMT_HEADERS args.h chrono.h color.h compile.h core.h format.h
+add_headers(FMT_HEADERS args.h base.h chrono.h color.h compile.h core.h format.h
                         format-inl.h os.h ostream.h printf.h ranges.h std.h
                         xchar.h)
 set(FMT_SOURCES src/format.cc)
-if (FMT_OS)
-  set(FMT_SOURCES ${FMT_SOURCES} src/os.cc)
-endif ()
 
 add_module_library(fmt src/fmt.cc FALLBACK
-                   ${FMT_SOURCES} ${FMT_HEADERS} README.rst ChangeLog.rst
+                   ${FMT_SOURCES} ${FMT_HEADERS} README.md ChangeLog.md
                    IF FMT_MODULE)
 add_library(fmt::fmt ALIAS fmt)
 if (FMT_MODULE)
   enable_module(fmt)
+endif ()
+if (FMT_OS)
+  target_sources(fmt PRIVATE src/os.cc)
+else()
+  target_compile_definitions(fmt PRIVATE FMT_OS=0)
 endif ()
 
 if (FMT_WERROR)
@@ -312,7 +314,15 @@ set(FMT_DEBUG_POSTFIX d CACHE STRING "Debug library postfix.")
 set_target_properties(fmt PROPERTIES
   VERSION ${FMT_VERSION} SOVERSION ${CPACK_PACKAGE_VERSION_MAJOR}
   PUBLIC_HEADER "${FMT_HEADERS}"
-  DEBUG_POSTFIX "${FMT_DEBUG_POSTFIX}")
+  DEBUG_POSTFIX "${FMT_DEBUG_POSTFIX}"
+
+  # Workaround for Visual Studio 2017:
+  # Ensure the .pdb is created with the same name and in the same directory
+  # as the .lib. Newer VS versions already do this by default, but there is no
+  # harm in setting it for those too. Ignored by other generators.
+  COMPILE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+  COMPILE_PDB_NAME "fmt"
+  COMPILE_PDB_NAME_DEBUG "fmt${FMT_DEBUG_POSTFIX}")
 
 # Set FMT_LIB_NAME for pkg-config fmt.pc. We cannot use the OUTPUT_NAME target
 # property because it's not set by default.
@@ -326,7 +336,7 @@ if (BUILD_SHARED_LIBS)
 endif ()
 if (FMT_SAFE_DURATION_CAST)
   target_compile_definitions(fmt PUBLIC FMT_SAFE_DURATION_CAST)
-endif()
+endif ()
 
 add_library(fmt-header-only INTERFACE)
 add_library(fmt::fmt-header-only ALIAS fmt-header-only)
@@ -334,7 +344,8 @@ add_library(fmt::fmt-header-only ALIAS fmt-header-only)
 target_compile_definitions(fmt-header-only INTERFACE FMT_HEADER_ONLY=1)
 target_compile_features(fmt-header-only INTERFACE cxx_std_11)
 
-target_include_directories(fmt-header-only ${FMT_SYSTEM_HEADERS_ATTRIBUTE} INTERFACE
+target_include_directories(fmt-header-only
+  ${FMT_SYSTEM_HEADERS_ATTRIBUTE} INTERFACE
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${FMT_INC_DIR}>)
 
@@ -439,6 +450,6 @@ if (FMT_MASTER_PROJECT AND EXISTS ${gitignore})
   set(CPACK_SOURCE_IGNORE_FILES ${ignored_files})
   set(CPACK_SOURCE_PACKAGE_FILE_NAME fmt-${FMT_VERSION})
   set(CPACK_PACKAGE_NAME fmt)
-  set(CPACK_RESOURCE_FILE_README ${PROJECT_SOURCE_DIR}/README.rst)
+  set(CPACK_RESOURCE_FILE_README ${PROJECT_SOURCE_DIR}/README.md)
   include(CPack)
 endif ()
