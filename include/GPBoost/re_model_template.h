@@ -7231,7 +7231,7 @@ namespace GPBoost {
 					}//end not gauss_likelihood_
 				}//end if calc_cov_factor
 				if (gauss_likelihood_) {
-					if (optimizer_cov_pars_ == "bfgs_v2" || optimizer_cov_pars_ == "bfgs_v3") {
+					if (optimizer_cov_pars_ == "lbfgs_not_profile_out_nugget" || optimizer_cov_pars_ == "lbfgs") {
 						CalcSigmaComps();
 					}
 					CalcYAux(1.);//note: in some cases a call to CalcYAux() could be avoided (e.g. no covariates and not GPBoost algorithm)...
