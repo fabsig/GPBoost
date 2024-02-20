@@ -4955,6 +4955,9 @@ namespace GPBoost {
 		*/
 		void SetCovParsComps(const vec_t& cov_pars) {
 			CHECK(cov_pars.size() == num_cov_par_);
+			if (gauss_likelihood_) {
+				sigma2_ = cov_pars[0];
+			}
 			for (const auto& cluster_i : unique_clusters_) {
 				for (int j = 0; j < num_comps_total_; ++j) {
 					const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
