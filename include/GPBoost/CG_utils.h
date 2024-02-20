@@ -551,7 +551,7 @@ namespace GPBoost {
 					Tdiags[i].conservativeResize(j + 1, 1);
 					Tsubdiags[i].conservativeResize(j, 1);
 				}
-				//Log::REInfo("CGFSAT stop after %i CG-Iterations.", j + 1);
+				//Log::REInfo("CGTridiagFSA stop after %i CG-Iterations.", j + 1);
 				return;
 			}
 		}
