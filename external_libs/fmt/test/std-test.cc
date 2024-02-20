@@ -26,10 +26,13 @@ TEST(std_test, path) {
   EXPECT_EQ(fmt::format("{}", path("foo\"bar")), "foo\"bar");
   EXPECT_EQ(fmt::format("{:?}", path("foo\"bar")), "\"foo\\\"bar\"");
 
+  EXPECT_EQ(fmt::format("{:g}", path("/usr/bin")), "/usr/bin");
 #  ifdef _WIN32
-  EXPECT_EQ(fmt::format("{}", path(
-                                  L"\x0428\x0447\x0443\x0447\x044B\x043D\x0448"
-                                  L"\x0447\x044B\x043D\x0430")),
+  EXPECT_EQ(fmt::format("{}", path("C:\\foo")), "C:\\foo");
+  EXPECT_EQ(fmt::format("{:g}", path("C:\\foo")), "C:/foo");
+
+  EXPECT_EQ(fmt::format("{}", path(L"\x0428\x0447\x0443\x0447\x044B\x043D\x0448"
+                                   L"\x0447\x044B\x043D\x0430")),
             "Шчучыншчына");
   EXPECT_EQ(fmt::format("{}", path(L"\xd800")), "�");
   EXPECT_EQ(fmt::format("{:?}", path(L"\xd800")), "\"\\ud800\"");
@@ -62,6 +65,15 @@ TEST(std_test, thread_id) {
   EXPECT_FALSE(fmt::format("{}", std::this_thread::get_id()).empty());
 }
 
+#ifdef __cpp_lib_source_location
+TEST(std_test, source_location) {
+  std::source_location loc = std::source_location::current();
+  EXPECT_EQ(fmt::format("{}", loc),
+            fmt::format("{}:{}:{}: {}", loc.file_name(), loc.line(),
+                        loc.column(), loc.function_name()));
+}
+#endif
+
 TEST(std_test, optional) {
 #ifdef __cpp_lib_optional
   EXPECT_EQ(fmt::format("{}", std::optional<int>{}), "none");
@@ -87,6 +99,56 @@ TEST(std_test, optional) {
   EXPECT_FALSE((fmt::is_formattable<unformattable>::value));
   EXPECT_FALSE((fmt::is_formattable<std::optional<unformattable>>::value));
   EXPECT_TRUE((fmt::is_formattable<std::optional<int>>::value));
+#endif
+}
+
+TEST(std_test, expected) {
+#ifdef __cpp_lib_expected
+  EXPECT_EQ(fmt::format("{}", std::expected<int, int>{1}), "expected(1)");
+  EXPECT_EQ(fmt::format("{}", std::expected<int, int>{std::unexpected(1)}), "unexpected(1)");
+  EXPECT_EQ(fmt::format("{}", std::expected<std::string, int>{"test"}), "expected(\"test\")");
+  EXPECT_EQ(fmt::format("{}", std::expected<int, std::string>{std::unexpected("test")}), "unexpected(\"test\")");
+  EXPECT_EQ(fmt::format("{}", std::expected<char, int>{'a'}), "expected('a')");
+  EXPECT_EQ(fmt::format("{}", std::expected<int, char>{std::unexpected('a')}), "unexpected('a')");
+
+  struct unformattable1 {};
+  struct unformattable2 {};
+  EXPECT_FALSE((fmt::is_formattable<unformattable1>::value));
+  EXPECT_FALSE((fmt::is_formattable<unformattable2>::value));
+  EXPECT_FALSE((fmt::is_formattable<std::expected<unformattable1, unformattable2>>::value));
+  EXPECT_FALSE((fmt::is_formattable<std::expected<unformattable1, int>>::value));
+  EXPECT_FALSE((fmt::is_formattable<std::expected<int, unformattable2>>::value));
+  EXPECT_TRUE((fmt::is_formattable<std::expected<int, int>>::value));
+#endif
+}
+
+namespace my_nso {
+enum class my_number {
+  one,
+  two,
+};
+auto format_as(my_number number) -> fmt::string_view {
+  return number == my_number::one ? "first" : "second";
+}
+
+class my_class {
+ public:
+  int av;
+
+ private:
+  friend auto format_as(const my_class& elm) -> std::string {
+    return fmt::to_string(elm.av);
+  }
+};
+}  // namespace my_nso
+TEST(std_test, optional_format_as) {
+#ifdef __cpp_lib_optional
+  EXPECT_EQ(fmt::format("{}", std::optional<my_nso::my_number>{}), "none");
+  EXPECT_EQ(fmt::format("{}", std::optional{my_nso::my_number::one}),
+            "optional(\"first\")");
+  EXPECT_EQ(fmt::format("{}", std::optional<my_nso::my_class>{}), "none");
+  EXPECT_EQ(fmt::format("{}", std::optional{my_nso::my_class{7}}),
+            "optional(\"7\")");
 #endif
 }
 
@@ -237,6 +299,13 @@ TEST(std_test, format_const_bit_reference) {
   EXPECT_EQ(fmt::format("{} {}", v[0], v[1]), "true false");
 }
 
+TEST(std_test, format_bitset) {
+  auto bs = std::bitset<6>(42);
+  EXPECT_EQ(fmt::format("{}", bs), "101010");
+  EXPECT_EQ(fmt::format("{:0>8}", bs), "00101010");
+  EXPECT_EQ(fmt::format("{:-^12}", bs), "---101010---");
+}
+
 TEST(std_test, format_atomic) {
   std::atomic<bool> b(false);
   EXPECT_EQ(fmt::format("{}", b), "false");
@@ -248,10 +317,28 @@ TEST(std_test, format_atomic) {
 #ifdef __cpp_lib_atomic_flag_test
 TEST(std_test, format_atomic_flag) {
   std::atomic_flag f = ATOMIC_FLAG_INIT;
-  (void) f.test_and_set();
+  (void)f.test_and_set();
   EXPECT_EQ(fmt::format("{}", f), "true");
 
   const std::atomic_flag cf = ATOMIC_FLAG_INIT;
   EXPECT_EQ(fmt::format("{}", cf), "false");
 }
-#endif // __cpp_lib_atomic_flag_test
+#endif  // __cpp_lib_atomic_flag_test
+
+TEST(std_test, format_unique_ptr) {
+  std::unique_ptr<int> up(new int(1));
+  EXPECT_EQ(fmt::format("{}", fmt::ptr(up.get())),
+            fmt::format("{}", fmt::ptr(up)));
+  struct custom_deleter {
+    void operator()(int* p) const { delete p; }
+  };
+  std::unique_ptr<int, custom_deleter> upcd(new int(1));
+  EXPECT_EQ(fmt::format("{}", fmt::ptr(upcd.get())),
+            fmt::format("{}", fmt::ptr(upcd)));
+}
+
+TEST(std_test, format_shared_ptr) {
+  std::shared_ptr<int> sp(new int(1));
+  EXPECT_EQ(fmt::format("{}", fmt::ptr(sp.get())),
+            fmt::format("{}", fmt::ptr(sp)));
+}

@@ -12,7 +12,7 @@ obtained from https://github.com/settings/tokens.
 
 from __future__ import print_function
 import datetime, docopt, errno, fileinput, json, os
-import re, requests, shutil, sys, tempfile
+import re, requests, shutil, sys
 from contextlib import contextmanager
 from distutils.version import LooseVersion
 from subprocess import check_call
@@ -229,12 +229,50 @@ def release(args):
     if not fmt_repo.update('-b', branch, fmt_repo_url):
         clean_checkout(fmt_repo, branch)
 
-    # Convert changelog from RST to GitHub-flavored Markdown and get the
-    # version.
-    changelog = 'ChangeLog.rst'
+    # Update the date in the changelog and extract the version and the first
+    # section content.
+    changelog = 'ChangeLog.md'
     changelog_path = os.path.join(fmt_repo.dir, changelog)
-    import rst2md
-    changes, version = rst2md.convert(changelog_path)
+    is_first_section = True
+    first_section = []
+    for i, line in enumerate(fileinput.input(changelog_path, inplace=True)):
+        if i == 0:
+            version = re.match(r'# (.*) - TBD', line).group(1)
+            line = '# {} - {}\n'.format(
+                version, datetime.date.today().isoformat())
+        elif not is_first_section:
+            pass
+        elif line.startswith('#'):
+            is_first_section = False
+        else:
+            first_section.append(line)
+        sys.stdout.write(line)
+    if first_section[0] == '\n':
+        first_section.pop(0)
+
+    changes = ''
+    code_block = False
+    stripped = False
+    for line in first_section:
+        if re.match(r'^\s*```', line):
+            code_block = not code_block
+            changes += line
+            stripped = False
+            continue
+        if code_block:
+            changes += line
+            continue
+        if line == '\n':
+            changes += line
+            if stripped:
+                changes += line
+                stripped = False
+            continue
+        if stripped:
+            line = ' ' + line.lstrip()
+        changes += line.rstrip()
+        stripped = True
+
     cmakelists = 'CMakeLists.txt'
     for line in fileinput.input(os.path.join(fmt_repo.dir, cmakelists),
                                 inplace=True):
@@ -243,23 +281,11 @@ def release(args):
             line = prefix + version + ')\n'
         sys.stdout.write(line)
 
-    # Update the version in the changelog.
-    title_len = 0
-    for line in fileinput.input(changelog_path, inplace=True):
-        if line.startswith(version + ' - TBD'):
-            line = version + ' - ' + datetime.date.today().isoformat()
-            title_len = len(line)
-            line += '\n'
-        elif title_len:
-            line = '-' * title_len + '\n'
-            title_len = 0
-        sys.stdout.write(line)
-
     # Add the version to the build script.
     script = os.path.join('doc', 'build.py')
     script_path = os.path.join(fmt_repo.dir, script)
     for line in fileinput.input(script_path, inplace=True):
-      m = re.match(r'( *versions = )\[(.+)\]', line)
+      m = re.match(r'( *versions \+= )\[(.+)\]', line)
       if m:
         line = '{}[{}, \'{}\']\n'.format(m.group(1), m.group(2), version)
       sys.stdout.write(line)
@@ -272,7 +298,6 @@ def release(args):
     run = Runner(fmt_repo.dir)
     run('cmake', '.')
     run('make', 'doc', 'package_source')
-    update_site(env)
 
     # Create a release on GitHub.
     fmt_repo.push('origin', 'release')
@@ -294,6 +319,7 @@ def release(args):
     if r.status_code != 201:
         raise Exception('Failed to upload an asset ' + str(r))
 
+    update_site(env)
 
 if __name__ == '__main__':
     args = docopt.docopt(__doc__)

@@ -399,7 +399,7 @@ namespace GPBoost {
 		* \param lr Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param max_iter Maximal number of iterations
-		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
+		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value
 		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent")e
 		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc)
 		* \param optimizer_cov Optimizer for covariance parameters
@@ -446,37 +446,40 @@ namespace GPBoost {
 			use_nesterov_acc_ = use_nesterov_acc;
 			nesterov_schedule_version_ = nesterov_schedule_version;
 			if (optimizer != nullptr) {
-				optimizer_cov_pars_ = std::string(optimizer);
-				if (optimizer_cov_pars_ == "gradient_descent_constant_change" ||
-					optimizer_cov_pars_ == "newton_constant_change" ||
-					optimizer_cov_pars_ == "fisher_scoring_constant_change") {
-					learning_rate_constant_first_order_change_ = true;
-				}
-				else {
-					learning_rate_constant_first_order_change_ = false;
-				}
-				if (optimizer_cov_pars_ == "gradient_descent_constant_change" ||
-					optimizer_cov_pars_ == "gradient_descent_increase_lr" ||
-					optimizer_cov_pars_ == "gradient_descent_reset_lr") {
-					optimizer_cov_pars_ = "gradient_descent";
-				}
-				if (optimizer_cov_pars_ == "newt_constant_change") {
-					optimizer_cov_pars_ = "newton";
-				}
-				if (optimizer_cov_pars_ == "fisher_scoring_constant_change") {
-					optimizer_cov_pars_ = "fisher_scoring";
-				}
-				if (optimizer_cov_pars_ == "gradient_descent_increase_lr") {
-					increase_learning_rate_again_ = true;
-				}
-				else {
-					increase_learning_rate_again_ = false;
-				}
-				if (optimizer_cov_pars_ == "gradient_descent_reset_lr") {
-					reset_learning_rate_every_iteration_ = true;
-				}
-				else {
-					reset_learning_rate_every_iteration_ = false;
+				if (std::string(optimizer) != "") {
+					optimizer_cov_pars_ = std::string(optimizer);
+					optimizer_cov_pars_has_been_set_ = true;
+					if (optimizer_cov_pars_ == "gradient_descent_constant_change" ||
+						optimizer_cov_pars_ == "newton_constant_change" ||
+						optimizer_cov_pars_ == "fisher_scoring_constant_change") {
+						learning_rate_constant_first_order_change_ = true;
+					}
+					else {
+						learning_rate_constant_first_order_change_ = false;
+					}
+					if (optimizer_cov_pars_ == "gradient_descent_constant_change" ||
+						optimizer_cov_pars_ == "gradient_descent_increase_lr" ||
+						optimizer_cov_pars_ == "gradient_descent_reset_lr") {
+						optimizer_cov_pars_ = "gradient_descent";
+					}
+					if (optimizer_cov_pars_ == "newt_constant_change") {
+						optimizer_cov_pars_ = "newton";
+					}
+					if (optimizer_cov_pars_ == "fisher_scoring_constant_change") {
+						optimizer_cov_pars_ = "fisher_scoring";
+					}
+					if (optimizer_cov_pars_ == "gradient_descent_increase_lr") {
+						increase_learning_rate_again_ = true;
+					}
+					else {
+						increase_learning_rate_again_ = false;
+					}
+					if (optimizer_cov_pars_ == "gradient_descent_reset_lr") {
+						reset_learning_rate_every_iteration_ = true;
+					}
+					else {
+						reset_learning_rate_every_iteration_ = false;
+					}
 				}
 			}
 			momentum_offset_ = momentum_offset;
@@ -537,7 +540,7 @@ namespace GPBoost {
 		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset) (can be nullptr)
 		* \param learn_covariance_parameters If true, covariance parameters are estimated
 		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
-		* \param reuse_learning_rates_from_previous_call If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous call and not re-initialized (can only be set to true if called_in_GPBoost_algorithm is true)
+		* \param reuse_learning_rates_from_previous_call If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from a previous call and not re-initialized (can only be set to true if called_in_GPBoost_algorithm is true)
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data,
 			const double* covariate_data,
@@ -556,10 +559,13 @@ namespace GPBoost {
 			bool reuse_learning_rates_from_previous_call) {
 			if (reuse_learning_rates_from_previous_call) {
 				CHECK(called_in_GPBoost_algorithm);
+				CHECK(learn_covariance_parameters);
 			}
 			if (NumAuxPars() == 0) {
 				estimate_aux_pars_ = false;
 			}
+			OptimParamsSetInitialValues();
+			InitializeOptimSettings(called_in_GPBoost_algorithm, reuse_learning_rates_from_previous_call);
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov_pars_) == SUPPORTED_OPTIM_COV_PAR_.end()) {
 				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters ", optimizer_cov_pars_.c_str());
@@ -591,14 +597,10 @@ namespace GPBoost {
 				}
 			}
 			// Initialization of variables
-			OptimParamsSetInitialValues();
-			if (reuse_learning_rates_from_previous_call) {
-				if (!lr_have_been_initialized_) {//do not reset learning rates to their initial values in every boosting iteration
-					InitializeLearningRatesConvTol();
-				}
-			}
-			else {
-				InitializeLearningRatesConvTol();
+			bool first_boosting_iteration = false;
+			if (!cov_pars_have_been_estimated_once_ && reuse_learning_rates_from_previous_call &&
+				optimizer_cov_pars_ == "gradient_descent") {//do not reset learning rates to their initial values in every boosting iteration
+				first_boosting_iteration = true;
 			}
 			if (covariate_data == nullptr) {
 				has_covariates_ = false;
@@ -615,13 +617,6 @@ namespace GPBoost {
 			if (optimizer_coef_ != "gradient_descent") {
 				use_nesterov_acc_coef = false;
 			}
-			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
-				if (coef_optimizer_has_been_set_ && optimizer_coef_ != optimizer_cov_pars_) {
-					Log::REWarning("'%s' is also used for estimating regression coefficients (optimizer_coef = '%s' is ignored)",
-						optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
-				}
-				optimizer_coef_ = optimizer_cov_pars_;
-			}
 			bool terminate_optim = false;
 			learning_rate_decreased_first_time_ = false;
 			learning_rate_increased_after_descrease_ = false;
@@ -629,14 +624,21 @@ namespace GPBoost {
 			num_ll_evaluations_ = 0;
 			num_iter_ = 0;
 			num_it = max_iter_;
+			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data 
+//	(the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 			profile_out_marginal_variance_ = gauss_likelihood_ &&
 				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam" || 
-					optimizer_cov_pars_ == "bfgs_v3" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright");
-			if (optimizer_cov_pars_ == "bfgs_v3") {
-				optimizer_cov_pars_ = "bfgs_v2";
+					optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright");
+			if (optimizer_cov_pars_ == "lbfgs_not_profile_out_nugget") {
+				optimizer_cov_pars_ = "lbfgs";
 			}
-			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data 
-			//	(the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
+			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
+				if (coef_optimizer_has_been_set_ && optimizer_coef_ != optimizer_cov_pars_) {
+					Log::REWarning("'%s' is also used for estimating regression coefficients (optimizer_coef = '%s' is ignored)",
+						optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
+				}
+				optimizer_coef_ = optimizer_cov_pars_;
+			}
 			bool gradient_contains_error_var = gauss_likelihood_ && !profile_out_marginal_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
 			has_intercept_ = false; //If true, the covariates contain an intercept column (only relevant if there are covariates)
 			bool only_intercept_for_GPBoost_algo = false;//If true, the covariates contain only an intercept (only relevant if there are covariates)
@@ -723,8 +725,8 @@ namespace GPBoost {
 			vec_t beta, beta_lag1, beta_init, beta_after_grad_aux, beta_after_grad_aux_lag1, beta_before_lr_cov_small, beta_before_lr_aux_pars_small, fixed_effects_vec;
 			scale_covariates_ = false;
 			if (has_covariates_) {
-				scale_covariates_ = (optimizer_coef_ == "gradient_descent" || (optimizer_cov_pars_ == "bfgs" && !gauss_likelihood_) ||
-					optimizer_cov_pars_ == "bfgs_v2" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") && !only_intercept_for_GPBoost_algo;
+				scale_covariates_ = (optimizer_coef_ == "gradient_descent" || (optimizer_cov_pars_ == "bfgs_optim_lib" && !gauss_likelihood_) ||
+					optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") && !only_intercept_for_GPBoost_algo;
 				// Scale covariates (in order that the gradient is less sample-size dependent)
 				if (scale_covariates_) {
 					loc_transf_ = vec_t(num_coef_);
@@ -849,7 +851,7 @@ namespace GPBoost {
 					optimizer_cov_pars_, profile_out_marginal_variance_,
 					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_);
 				// Check for NA or Inf
-				if (optimizer_cov_pars_ == "bfgs" || optimizer_cov_pars_ == "bfgs_v2" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
+				if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
 					if (learn_covariance_parameters) {
 						for (int i = 0; i < (int)cov_aux_pars.size(); ++i) {
 							if (std::isnan(cov_aux_pars[i]) || std::isinf(cov_aux_pars[i])) {
@@ -871,7 +873,7 @@ namespace GPBoost {
 				bool lr_cov_is_small = false, lr_aux_pars_is_small = false, lr_coef_is_small = false;
 				for (num_iter_ = 0; num_iter_ < max_iter_; ++num_iter_) {
 					if (reset_learning_rate_every_iteration_) {
-						InitializeLearningRatesConvTol();//reset learning rates to their initial values
+						InitializeOptimSettings(called_in_GPBoost_algorithm, reuse_learning_rates_from_previous_call);//reset learning rates to their initial values
 					}
 					neg_log_likelihood_lag1_ = neg_log_likelihood_;
 					cov_aux_pars_lag1 = cov_aux_pars;
@@ -963,7 +965,8 @@ namespace GPBoost {
 							AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir);// Avoid too large learning rates for covariance parameters and aux_pars (for fisher_scoring and newton, this is done non-permanently in 'UpdateCovAuxPars')
 						}
 						CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(grad, neg_step_dir, cov_aux_pars, cov_pars_after_grad_aux, use_nesterov_acc);
-						if (reuse_learning_rates_from_previous_call && cov_pars_have_been_estimated_once_ && optimizer_cov_pars_ == "gradient_descent") {//potentially increase learning rates again
+						if (reuse_learning_rates_from_previous_call && cov_pars_have_been_estimated_once_ &&
+							optimizer_cov_pars_ == "gradient_descent") {//potentially increase learning rates again
 							PotentiallyIncreaseLearningRatesForGPBoostAlgorithm();
 						}//end called_in_GPBoost_algorithm / potentially increase learning rates again
 						// Update covariance and additional likelihood parameters, do learning rate backtracking, factorize covariance matrix, and calculate new value of objective function
@@ -975,6 +978,12 @@ namespace GPBoost {
 							if (estimate_aux_pars_) {
 								lr_aux_pars_after_first_iteration_ = lr_aux_pars_;
 								lr_is_small_threshold_aux_ = lr_aux_pars_ / 1e4;
+							}
+							if (first_boosting_iteration && reuse_learning_rates_from_previous_call && optimizer_cov_pars_ == "gradient_descent") {
+								lr_cov_after_first_optim_boosting_iteration_ = lr_cov_;
+								if (estimate_aux_pars_) {
+									lr_aux_pars_after_first_optim_boosting_iteration_ = lr_aux_pars_;
+								}
 							}
 						}
 						// In case lr_cov_ is very small, we monitor whether the other parameters (beta, aux_pars) continue to change. If yes, we will reset lr_cov_ to its initial value
@@ -3586,10 +3595,12 @@ namespace GPBoost {
 		vec_t scale_transf_;
 
 		// OPTIMIZER PROPERTIES
-		/*! \brief Optimizer for covariance parameters */
-		string_t optimizer_cov_pars_ = "gradient_descent";
+		/*! \brief Optimizer for covariance parameters. Internal default values are set in 'InitializeOptimSettings' */
+		string_t optimizer_cov_pars_;
+		/*! \brief true if 'optimizer_coef_' has been set */
+		bool optimizer_cov_pars_has_been_set_ = false;
 		/*! \brief List of supported optimizers for covariance parameters */
-		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring", "newton", "nelder_mead", "bfgs", "adam", "bfgs_v2", "bfgs_v3", "lbfgs_linesearch_nocedal_wright" };
+		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring", "newton", "nelder_mead", "bfgs_optim_lib", "adam", "lbfgs", "lbfgs_not_profile_out_nugget", "lbfgs_linesearch_nocedal_wright" };
 		/*! \brief Convergence criterion for terminating the 'OptimLinRegrCoefCovPar' optimization algorithm */
 		string_t convergence_criterion_ = "relative_change_in_log_likelihood";
 		/*! \brief List of supported convergence criteria used for terminating the optimization algorithm */
@@ -3599,28 +3610,30 @@ namespace GPBoost {
 		/*!
 		\brief Convergence tolerance for covariance and linear regression coefficient estimation.
 			The algorithm stops if the relative change in either the (approximate) log-likelihood or the parameters is below this value.
-			For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood.
-			If delta_rel_conv_init_ < 0, internal default values are set in 'InitializeLearningRatesConvTol'
+			For "bfgs_optim_lib", the L2 norm of the gradient is used instead of the relative change in the log-likelihood.
+			If delta_rel_conv_init_ < 0, internal default values are set in 'InitializeOptimSettings'
 		*/
 		double delta_rel_conv_;
 		/*! \brief Initial convergence tolerance (to remember as default values for delta_rel_conv_ are different for 'nelder_mead' vs. other optimizers and the optimization might get restarted) */
 		double delta_rel_conv_init_ = -1;
-		/*! \brief Learning rate for covariance parameters. If lr_cov_init_ < 0, internal default values are set in 'InitializeLearningRatesConvTol' */
+		/*! \brief Learning rate for covariance parameters. If lr_cov_init_ < 0, internal default values are set in 'InitializeOptimSettings' */
 		double lr_cov_;
 		/*! \brief Initial learning rate for covariance parameters (to remember as lr_cov_ can be decreased) */
 		double lr_cov_init_ = -1;
-		/*! \brief True if 'lr_cov_' and other learning rates have been initialized, i.e., if 'InitializeLearningRatesConvTol' has been called */
+		/*! \brief True if 'lr_cov_' and other learning rates have been initialized, i.e., if 'InitializeOptimSettings' has been called */
 		bool lr_have_been_initialized_ = false;
-		/*! \brief True if 'lr_cov_' and other learning rates have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
-		bool cov_pars_have_been_estimated_once_ = false;
 		/*! \brief Learning rate for covariance parameters after first iteration (to remember as lr_cov_ can be decreased) */
 		double lr_cov_after_first_iteration_ = 0.1;
+		/*! \brief Learning rate for covariance parameters after first optimization iteration in the first boosting iteration (only for the GPBoost algorithm) */
+		double lr_cov_after_first_optim_boosting_iteration_ = -1.;
 		/*! \brief Learning rate for auxiliary parameters for non-Gaussian likelihoods (e.g., shape of a gamma likelihood) */
 		double lr_aux_pars_;
 		/*! \brief Initial learning rate for auxiliary parameters for non-Gaussian likelihoods (e.g., shape of a gamma likelihood) */
 		double lr_aux_pars_init_ = 0.1;
 		/*! \brief Learning rate for auxiliary parameters after first iteration (to remember as lr_cov_ can be decreased) */
 		double lr_aux_pars_after_first_iteration_ = 0.1;
+		/*! \brief Learning rate for auxiliary parameters after first optimization iteration in the first boosting iteration (only for the GPBoost algorithm) */
+		double lr_aux_pars_after_first_optim_boosting_iteration_ = -1.;
 		/*! \brief Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent") */
 		bool use_nesterov_acc_ = true;
 		/*! \brief Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
@@ -3632,9 +3645,9 @@ namespace GPBoost {
 		/*! \brief Optimizer for linear regression coefficients (The default = "wls" is changed to "gradient_descent" for non-Gaussian likelihoods upon initialization). See the constructor REModelTemplate() for the default values which depend on whether the likelihood is Gaussian or not */
 		string_t optimizer_coef_;
 		/*! \brief List of supported optimizers for regression coefficients for Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_OPTIM_COEF_GAUSS_{ "gradient_descent", "wls", "nelder_mead", "bfgs", "adam", "bfgs_v2", "bfgs_v3", "lbfgs_linesearch_nocedal_wright" };
+		const std::set<string_t> SUPPORTED_OPTIM_COEF_GAUSS_{ "gradient_descent", "wls", "nelder_mead", "bfgs_optim_lib", "adam", "lbfgs", "lbfgs_not_profile_out_nugget", "lbfgs_linesearch_nocedal_wright" };
 		/*! \brief List of supported optimizers for regression coefficients for non-Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_OPTIM_COEF_NONGAUSS_{ "gradient_descent", "nelder_mead", "bfgs", "adam", "bfgs_v2", "bfgs_v3", "lbfgs_linesearch_nocedal_wright" };
+		const std::set<string_t> SUPPORTED_OPTIM_COEF_NONGAUSS_{ "gradient_descent", "nelder_mead", "bfgs_optim_lib", "adam", "lbfgs", "lbfgs_linesearch_nocedal_wright" };
 		/*! \brief Learning rate for fixed-effect linear coefficients */
 		double lr_coef_;
 		/*! \brief Initial learning rate for fixed-effect linear coefficients (to remember as lr_coef_ can be decreased) */
@@ -3644,7 +3657,9 @@ namespace GPBoost {
 		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
 		double acc_rate_coef_ = 0.5;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done for gradient-based optimization of covariance parameters and regression coefficients */
-		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
+		int max_number_lr_shrinkage_steps_ = 30;
+		/*! \brief Maximal number of steps for which learning rate shrinkage is done for gradient-based optimization of covariance parameters and regression coefficients */
+		const int MAX_NUMBER_LR_SHRINKAGE_STEPS_DEFAULT_ = 30;
 		/*! \brief Learning rate shrinkage factor for gradient-based optimization of covariance parameters and regression coefficients */
 		double LR_SHRINKAGE_FACTOR_ = 0.5;
 		/*! \brief Threshold value for a learning rate below which a learning rate might be increased again (only in case there are also regression coefficients and for gradient descent optimization of covariance parameters and regression coefficients) */
@@ -3660,7 +3675,7 @@ namespace GPBoost {
 		/*! \brief true if 'optimizer_coef_' has been set */
 		bool coef_optimizer_has_been_set_ = false;
 		/*! \brief List of optimizers which are externally handled by OptimLib */
-		const std::set<string_t> OPTIM_EXTERNAL_{ "nelder_mead", "bfgs", "adam", "bfgs_v2", "lbfgs_linesearch_nocedal_wright" };
+		const std::set<string_t> OPTIM_EXTERNAL_{ "nelder_mead", "bfgs_optim_lib", "adam", "lbfgs", "lbfgs_linesearch_nocedal_wright" };
 		/*! \brief If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood) */
 		bool estimate_aux_pars_ = false;
 		/*! \brief True if the function 'SetOptimConfig' has been called */
@@ -3687,6 +3702,10 @@ namespace GPBoost {
 		double C_sigma2_;
 		/*! \brief Constant used for checking whether step sizes for linear regression coefficients are clearly too large */
 		double C_MAX_CHANGE_COEF_ = 10.;
+		/*! \brief True if 'lr_cov_' and other learning rates have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
+		bool cov_pars_have_been_estimated_once_ = false;
+		/*! \brief True if 'lr_cov_' and other learning rates have been doubled in the first optimization iteration (num_iter_ == 0) (applies only to the GPBoost algorithm) */
+		bool learning_rates_have_been_doubled_in_first_iteration_ = false;
 
 		/*! \brief If true, Armijo's condition is used to check whether there is sufficient decrease in the negative log-likelighood (otherwise it is only checked for a decrease) */
 		bool armijo_condition_ = true;
@@ -3694,6 +3713,10 @@ namespace GPBoost {
 		double c_armijo_ = 1e-4;
 		/*! \brief Constant c for Armijo's condition for the Nesterov momentum part. Needs to be in (0,1) */
 		double c_armijo_mom_ = 1e-4;
+		/*! \brief Constant c for Armijo's condition. Needs to be in (0,1) */
+		const double C_ARMIJO_DEFAULT_ = 1e-4;
+		/*! \brief Constant c for Armijo's condition for the Nesterov momentum part. Needs to be in (0,1) */
+		const double C_ARMIJO_MOM_DEFAULT_ = 1e-4;
 		/*! \brief Directional derivative wrt covariance parameters for Armijo / Wolfe condition */
 		double dir_deriv_armijo_cov_pars_;
 		/*! \brief Directional derivativet wrt auxiliary coefficients for Armijo / Wolfe condition */
@@ -4952,6 +4975,9 @@ namespace GPBoost {
 		*/
 		void SetCovParsComps(const vec_t& cov_pars) {
 			CHECK(cov_pars.size() == num_cov_par_);
+			if (gauss_likelihood_) {
+				sigma2_ = cov_pars[0];
+			}
 			for (const auto& cluster_i : unique_clusters_) {
 				for (int j = 0; j < num_comps_total_; ++j) {
 					const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
@@ -5169,14 +5195,41 @@ namespace GPBoost {
 
 		/*!
 		* \brief Initialitze learning rates and convergence tolerance
+		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
+		* \param reuse_learning_rates_from_previous_call If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from a previous call and not re-initialized (can only be set to true if called_in_GPBoost_algorithm is true)
 		*/
-		void InitializeLearningRatesConvTol() {
-			lr_coef_ = lr_coef_init_;
-			lr_aux_pars_ = lr_aux_pars_init_;
-			lr_cov_ = lr_cov_init_;
-			delta_rel_conv_ = delta_rel_conv_init_;
-			lr_have_been_initialized_ = true;
-		}//end InitializeLearningRatesConvTol
+		void InitializeOptimSettings(bool called_in_GPBoost_algorithm,
+			bool reuse_learning_rates_from_previous_call) {
+			if (!optimizer_cov_pars_has_been_set_) {
+				if (called_in_GPBoost_algorithm) {
+					optimizer_cov_pars_ = "gradient_descent";
+				}
+				else {
+					optimizer_cov_pars_ = "lbfgs";
+				}
+			}
+			if (cov_pars_have_been_estimated_once_ && reuse_learning_rates_from_previous_call &&
+				optimizer_cov_pars_ == "gradient_descent") {//different initial learning rates and optimizer settings for GPBoost algorithm in latter boosting iterations
+				CHECK(lr_have_been_initialized_);
+				lr_cov_ = lr_cov_after_first_optim_boosting_iteration_;
+				if (estimate_aux_pars_) {
+					lr_aux_pars_ = lr_aux_pars_after_first_optim_boosting_iteration_;
+				}
+				c_armijo_ = 0.;
+				c_armijo_mom_ = 0.;
+				max_number_lr_shrinkage_steps_ = (int) MAX_NUMBER_LR_SHRINKAGE_STEPS_DEFAULT_ / 2;
+			}
+			else {
+				lr_coef_ = lr_coef_init_;
+				lr_aux_pars_ = lr_aux_pars_init_;
+				lr_cov_ = lr_cov_init_;
+				delta_rel_conv_ = delta_rel_conv_init_;
+				lr_have_been_initialized_ = true;
+				c_armijo_ = C_ARMIJO_DEFAULT_;
+				c_armijo_mom_ = C_ARMIJO_MOM_DEFAULT_;
+				max_number_lr_shrinkage_steps_ = MAX_NUMBER_LR_SHRINKAGE_STEPS_DEFAULT_;
+			}
+		}//end InitializeOptimSettings
 
 		/*! * \brief Set initial values 'lr_cov_init_' for lr_cov_ */
 		void SetInitialValueLRCov() {
@@ -5356,16 +5409,22 @@ namespace GPBoost {
 					}
 				}
 			}//end num_iter_ == 0
-			else if (num_iter_ == 1) {//always increase the learning rate in the second iteration if more than one iteration is needed 
+			else if (num_iter_ == 1 && !learning_rates_have_been_doubled_in_first_iteration_) {//always increase the learning rate in the second iteration if more than one iteration is needed 
 				double_learning_rate = true;
 			}
 			if (double_learning_rate) {
 				if (2 * lr_cov_ <= lr_cov_init_) {
 					lr_cov_ *= 2;
+					if (num_iter_ == 0) {
+						learning_rates_have_been_doubled_in_first_iteration_ = true;
+					}
 				}
 				if (estimate_aux_pars_) {
 					if (2 * lr_aux_pars_ <= lr_aux_pars_init_) {
 						lr_aux_pars_ *= 2;
+						if (num_iter_ == 0) {
+							learning_rates_have_been_doubled_in_first_iteration_ = true;
+						}
 					}
 				}
 			}//end double_learning_rate
@@ -5529,7 +5588,7 @@ namespace GPBoost {
 			else {
 				first_update_ = false;
 			}
-			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
+			for (int ih = 0; ih < max_number_lr_shrinkage_steps_; ++ih) {
 				vec_t update(neg_step_dir.size());
 				update.segment(0, num_grad_cov_par) = lr_cov * neg_step_dir.segment(0, num_grad_cov_par);
 				if (estimate_aux_pars_) {
@@ -5642,7 +5701,7 @@ namespace GPBoost {
 			}
 			if (!decrease_found) {
 				Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d "
-					"after the maximal number of halving steps (%d) ", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+					"after the maximal number of halving steps (%d) ", it + 1, max_number_lr_shrinkage_steps_);
 			}
 			if (use_nesterov_acc) {
 				cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
@@ -5675,7 +5734,7 @@ namespace GPBoost {
 		//	if (estimate_aux_pars_) {
 		//		num_grad_cov_par -= NumAuxPars();
 		//	}
-		//	for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
+		//	for (int ih = 0; ih < max_number_lr_shrinkage_steps_; ++ih) {
 		//		if (ih > 0) {
 		//			halving_done = true;
 		//			//learning_rate_decreased_first_time_ = true;
@@ -5759,7 +5818,7 @@ namespace GPBoost {
 		//	}
 		//	if (!decrease_found) {
 		//		Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d "
-		//			"after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+		//			"after the maximal number of halving steps (%d).", it + 1, max_number_lr_shrinkage_steps_);
 		//	}
 		//	if (use_nesterov_acc) {
 		//		cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
@@ -5847,7 +5906,7 @@ namespace GPBoost {
 		//	if (estimate_aux_pars_) {
 		//		num_grad_cov_par -= NumAuxPars();
 		//	}
-		//	for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
+		//	for (int ih = 0; ih < max_number_lr_shrinkage_steps_; ++ih) {
 		//		if (ih > 0) {
 		//			learning_rate_decreased_first_time_ = true;
 		//			if (learning_rate_increased_after_descrease_) {
@@ -5958,7 +6017,7 @@ namespace GPBoost {
 		//	}
 		//	if (!decrease_found) {
 		//		Log::REDebug("GPModel covariance parameter estimation: No decrease in the objective function in iteration number %d "
-		//			"after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+		//			"after the maximal number of halving steps (%d).", it + 1, max_number_lr_shrinkage_steps_);
 		//	}
 		//	if (use_nesterov_acc) {
 		//		cov_pars_after_grad_aux_lag1 = cov_pars_after_grad_aux;
@@ -6003,7 +6062,7 @@ namespace GPBoost {
 			else {
 				first_update_ = false;
 			}
-			for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
+			for (int ih = 0; ih < max_number_lr_shrinkage_steps_; ++ih) {
 				beta_new = beta - lr_coef * grad;
 				// Apply Nesterov acceleration
 				if (use_nesterov_acc) {
@@ -6065,7 +6124,7 @@ namespace GPBoost {
 			}
 			if (!decrease_found) {
 				Log::REDebug("GPModel linear regression coefficient estimation: No decrease in the objective function "
-					"in iteration number %d after the maximal number of halving steps (%d).", it + 1, MAX_NUMBER_LR_SHRINKAGE_STEPS_);
+					"in iteration number %d after the maximal number of halving steps (%d).", it + 1, max_number_lr_shrinkage_steps_);
 			}
 			if (use_nesterov_acc) {
 				beta_after_grad_aux_lag1 = beta_after_grad_aux;

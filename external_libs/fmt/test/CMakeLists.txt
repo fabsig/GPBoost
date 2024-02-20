@@ -60,10 +60,10 @@ if (FMT_MODULE)
 endif ()
 
 add_fmt_test(args-test)
+add_fmt_test(base-test)
 add_fmt_test(assert-test)
 add_fmt_test(chrono-test)
 add_fmt_test(color-test)
-add_fmt_test(core-test)
 add_fmt_test(gtest-extra-test)
 add_fmt_test(format-test mock-allocator.h)
 if (MSVC)
@@ -82,7 +82,7 @@ endif()
 add_fmt_test(printf-test)
 add_fmt_test(ranges-test ranges-odr-test.cc)
 
-add_fmt_test(scan-test)
+add_fmt_test(scan-test HEADER_ONLY)
 check_symbol_exists(strptime "time.h" HAVE_STRPTIME)
 if (HAVE_STRPTIME)
   target_compile_definitions(scan-test PRIVATE FMT_HAVE_STRPTIME)
@@ -175,7 +175,12 @@ if (FMT_PEDANTIC)
 endif ()
 
 # These tests are disabled on Windows because they take too long.
-if (FMT_PEDANTIC AND NOT WIN32)
+# They are disabled on GCC < 4.9 because it can not parse UDLs without
+# a space after `operator""` but that is an incorrect syntax for any more
+# modern compiler.
+if (FMT_PEDANTIC AND NOT WIN32 AND NOT (
+    CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND
+    CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9))
   # Test if incorrect API usages produce compilation error.
   add_test(compile-error-test ${CMAKE_CTEST_COMMAND}
     --build-and-test

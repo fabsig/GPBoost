@@ -141,6 +141,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_fisher <- c(0.03294841, 0.07722844, 1.07591929, 0.25179816, 0.11355958, 0.03772550)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_fisher)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 8)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_LOOSE)
     # Nelder-mead
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            y = y, params = list(optimizer_cov = "nelder_mead",
@@ -149,6 +150,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_est <- as.vector(gp_model$get_cov_pars())
     expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3,5)])),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 40)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_LOOSE)
     # Test default values for delta_rel_conv for nelder_mead
     capture.output( gp_model_default <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                                    y = y, params = list(optimizer_cov = "nelder_mead"))
@@ -173,11 +175,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     , file='NUL')
     expect_true(isTRUE(all.equal(gp_model_default$get_cov_pars(), gp_model_6$get_cov_pars())))
     expect_false(isTRUE(all.equal(gp_model_default$get_cov_pars(), gp_model_8$get_cov_pars())))
-    # BFGS
+    # lbfgs
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                           y = y, params = list(optimizer_cov = "bfgs")), file='NUL')
-    cov_pars_est <- as.vector(gp_model$get_cov_pars())
-    expect_lt(sum(abs(cov_pars_est-cov_pars[c(1,3,5)])),TOLERANCE_LOOSE)
+                                           y = y, params = list(optimizer_cov = "lbfgs")), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(1,3,5)])),TOLERANCE_LOOSE)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_LOOSE)
+    # bfgs_optim_lib
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           y = y, params = list(optimizer_cov = "bfgs_optim_lib")), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(1,3,5)])),TOLERANCE_LOOSE)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_LOOSE)
     # Adam
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            y = y, params = list(optimizer_cov = "adam")), file='NUL')
@@ -322,13 +329,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coef <- c(2.307798, 1.899516)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)), TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 429)
-    # BFGS
+    # lbfgs
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                           y = y, X=X, params = list(optimizer_cov = "bfgs",
-                                                     maxit=1000))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-2)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),1E-2)
+                           y = y, X=X, params = list(optimizer_cov = "lbfgs", maxit=1000))
+    cov_pars <- c(0.008993586, 1.000518636, 0.094683724)
+    coef <- c(2.309738, 1.899886)
+    nll <- 121.4824924
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)), TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 15)
     # Adam
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y, X=X, params = list(optimizer_cov = "adam",
@@ -1636,15 +1648,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5)+1]-cov_pars_nn[c(1,3,5)+1])),0.1)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
-    # Fit model with bfgs
+    # Fit model with lbfgs
     params_loc <- DEFAULT_OPTIM_PARAMS_STD
-    params_loc$optimizer_cov <- "bfgs"
+    params_loc$optimizer_cov <- "lbfgs"
     capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
                                            gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                            y = y, X=X, params = params_loc), 
                     file='NUL')
-    cov_pars_nn <- c(1.577497e-10, 2.727516e-01, 1.017944e+00, 3.215859e-01, 1.351020e+00, 7.551727e-01, 1.155151e-01, 5.316989e-02)
-    coef_nn <- c(1.9580346, 0.1478958, 2.1694053, 0.1392659)
+    cov_pars_nn <- c(5.038767e-05, 2.697180e-01, 1.017599e+00, 3.195863e-01, 1.346963e+00, 7.319247e-01, 1.154464e-01, 5.170470e-02)
+    coef_nn <- c(1.9579241, 0.1477343, 2.1694743, 0.1392689)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5)]-cov_pars_nn[c(1,3,5)])),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_MEDIUM)
     # Different ordering

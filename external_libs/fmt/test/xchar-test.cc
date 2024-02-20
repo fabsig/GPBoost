@@ -32,27 +32,29 @@ using testing::Contains;
 
 struct non_string {};
 
-template <typename T> class is_string_test : public testing::Test {};
+template <typename T> class has_to_string_view_test : public testing::Test {};
 
 using string_char_types = testing::Types<char, wchar_t, char16_t, char32_t>;
-TYPED_TEST_SUITE(is_string_test, string_char_types);
+TYPED_TEST_SUITE(has_to_string_view_test, string_char_types);
 
 template <typename Char>
 struct derived_from_string_view : fmt::basic_string_view<Char> {};
 
-TYPED_TEST(is_string_test, is_string) {
-  EXPECT_TRUE(fmt::detail::is_string<TypeParam*>::value);
-  EXPECT_TRUE(fmt::detail::is_string<const TypeParam*>::value);
-  EXPECT_TRUE(fmt::detail::is_string<TypeParam[2]>::value);
-  EXPECT_TRUE(fmt::detail::is_string<const TypeParam[2]>::value);
-  EXPECT_TRUE(fmt::detail::is_string<std::basic_string<TypeParam>>::value);
-  EXPECT_TRUE(fmt::detail::is_string<fmt::basic_string_view<TypeParam>>::value);
+TYPED_TEST(has_to_string_view_test, has_to_string_view) {
+  EXPECT_TRUE(fmt::detail::has_to_string_view<TypeParam*>::value);
+  EXPECT_TRUE(fmt::detail::has_to_string_view<const TypeParam*>::value);
+  EXPECT_TRUE(fmt::detail::has_to_string_view<TypeParam[2]>::value);
+  EXPECT_TRUE(fmt::detail::has_to_string_view<const TypeParam[2]>::value);
   EXPECT_TRUE(
-      fmt::detail::is_string<derived_from_string_view<TypeParam>>::value);
+      fmt::detail::has_to_string_view<std::basic_string<TypeParam>>::value);
+  EXPECT_TRUE(fmt::detail::has_to_string_view<
+              fmt::basic_string_view<TypeParam>>::value);
+  EXPECT_TRUE(fmt::detail::has_to_string_view<
+              derived_from_string_view<TypeParam>>::value);
   using fmt_string_view = fmt::detail::std_string_view<TypeParam>;
   EXPECT_TRUE(std::is_empty<fmt_string_view>::value !=
-              fmt::detail::is_string<fmt_string_view>::value);
-  EXPECT_FALSE(fmt::detail::is_string<non_string>::value);
+              fmt::detail::has_to_string_view<fmt_string_view>::value);
+  EXPECT_FALSE(fmt::detail::has_to_string_view<non_string>::value);
 }
 
 // std::is_constructible is broken in MSVC until version 2015.
@@ -102,10 +104,70 @@ struct custom_char {
   template <typename T>
   constexpr custom_char(T val) : value(static_cast<int>(val)) {}
 
-  operator char() const {
+  constexpr operator char() const {
     return value <= 0xff ? static_cast<char>(value) : '\0';
   }
+  constexpr bool operator<(custom_char c) const { return value < c.value; }
 };
+
+namespace std {
+
+template <> struct char_traits<custom_char> {
+  using char_type = custom_char;
+  using int_type = int;
+  using off_type = streamoff;
+  using pos_type = streampos;
+  using state_type = mbstate_t;
+
+  static constexpr void assign(char_type& r, const char_type& a) { r = a; }
+  static constexpr bool eq(char_type a, char_type b) { return a == b; }
+  static constexpr bool lt(char_type a, char_type b) { return a < b; }
+  static FMT_CONSTEXPR int compare(const char_type* s1, const char_type* s2,
+                                   size_t count) {
+    for (; count; count--, s1++, s2++) {
+      if (lt(*s1, *s2)) return -1;
+      if (lt(*s2, *s1)) return 1;
+    }
+    return 0;
+  }
+  static FMT_CONSTEXPR size_t length(const char_type* s) {
+    size_t count = 0;
+    while (!eq(*s++, custom_char(0))) count++;
+    return count;
+  }
+  static const char_type* find(const char_type*, size_t, const char_type&);
+  static FMT_CONSTEXPR char_type* move(char_type* dest, const char_type* src,
+                                       size_t count) {
+    if (count == 0) return dest;
+    char_type* ret = dest;
+    if (src < dest) {
+      dest += count;
+      src += count;
+      for (; count; count--) assign(*--dest, *--src);
+    } else if (src > dest)
+      copy(dest, src, count);
+    return ret;
+  }
+  static FMT_CONSTEXPR char_type* copy(char_type* dest, const char_type* src,
+                                       size_t count) {
+    char_type* ret = dest;
+    for (; count; count--) assign(*dest++, *src++);
+    return ret;
+  }
+  static FMT_CONSTEXPR char_type* assign(char_type* dest, std::size_t count,
+                                         char_type a) {
+    char_type* ret = dest;
+    for (; count; count--) assign(*dest++, a);
+    return ret;
+  }
+  static int_type not_eof(int_type);
+  static char_type to_char_type(int_type);
+  static int_type to_int_type(char_type);
+  static bool eq_int_type(int_type, int_type);
+  static int_type eof();
+};
+
+}  // namespace std
 
 auto to_ascii(custom_char c) -> char { return c; }
 
@@ -127,18 +189,6 @@ template <typename S> std::string from_u8str(const S& str) {
   return std::string(str.begin(), str.end());
 }
 
-TEST(xchar_test, format_utf8_precision) {
-  using str_type = std::basic_string<fmt::detail::char8_type>;
-  auto format =
-      str_type(reinterpret_cast<const fmt::detail::char8_type*>(u8"{:.4}"));
-  auto str = str_type(reinterpret_cast<const fmt::detail::char8_type*>(
-      u8"caf\u00e9s"));  // cafés
-  auto result = fmt::format(format, str);
-  EXPECT_EQ(fmt::detail::compute_width(result), 4);
-  EXPECT_EQ(result.size(), 5);
-  EXPECT_EQ(from_u8str(result), from_u8str(str.substr(0, 5)));
-}
-
 TEST(xchar_test, format_to) {
   auto buf = std::vector<wchar_t>();
   fmt::format_to(std::back_inserter(buf), L"{}{}", 42, L'\0');
@@ -146,7 +196,8 @@ TEST(xchar_test, format_to) {
 }
 
 TEST(xchar_test, vformat_to) {
-  auto args = fmt::make_wformat_args(42);
+  int n = 42;
+  auto args = fmt::make_wformat_args(n);
   auto w = std::wstring();
   fmt::vformat_to(std::back_inserter(w), L"{}", args);
   EXPECT_EQ(L"42", w);
@@ -466,7 +517,7 @@ TEST(locale_test, format) {
             fmt::format(small_grouping_loc, "{:L}", max_value<uint32_t>()));
 }
 
-TEST(locale_test, format_detault_align) {
+TEST(locale_test, format_default_align) {
   auto loc = std::locale({}, new special_grouping<char>());
   EXPECT_EQ("  12,345", fmt::format(loc, "{:8L}", 12345));
 }
@@ -521,27 +572,28 @@ template <class charT> struct formatter<std::complex<double>, charT> {
       basic_format_parse_context<charT>& ctx) {
     auto end = parse_format_specs(ctx.begin(), ctx.end(), specs_, ctx,
                                   detail::type::float_type);
-    detail::parse_float_type_spec(specs_, detail::error_handler());
+    detail::parse_float_type_spec(specs_);
     return end;
   }
 
   template <class FormatContext>
   typename FormatContext::iterator format(const std::complex<double>& c,
-                                          FormatContext& ctx) {
+                                          FormatContext& ctx) const {
+    auto specs = specs_;
     detail::handle_dynamic_spec<detail::precision_checker>(
-        specs_.precision, specs_.precision_ref, ctx);
-    auto specs = std::string();
-    if (specs_.precision > 0) specs = fmt::format(".{}", specs_.precision);
-    if (specs_.type == presentation_type::fixed_lower) specs += 'f';
+        specs.precision, specs.precision_ref, ctx);
+    auto fspecs = std::string();
+    if (specs.precision > 0) fspecs = fmt::format(".{}", specs.precision);
+    if (specs.type == presentation_type::fixed) fspecs += 'f';
     auto real = fmt::format(ctx.locale().template get<std::locale>(),
-                            fmt::runtime("{:" + specs + "}"), c.real());
+                            fmt::runtime("{:" + fspecs + "}"), c.real());
     auto imag = fmt::format(ctx.locale().template get<std::locale>(),
-                            fmt::runtime("{:" + specs + "}"), c.imag());
+                            fmt::runtime("{:" + fspecs + "}"), c.imag());
     auto fill_align_width = std::string();
-    if (specs_.width > 0) fill_align_width = fmt::format(">{}", specs_.width);
-    return format_to(ctx.out(), runtime("{:" + fill_align_width + "}"),
-                     c.real() != 0 ? fmt::format("({}+{}i)", real, imag)
-                                   : fmt::format("{}i", imag));
+    if (specs.width > 0) fill_align_width = fmt::format(">{}", specs.width);
+    return fmt::format_to(ctx.out(), runtime("{:" + fill_align_width + "}"),
+                          c.real() != 0 ? fmt::format("({}+{}i)", real, imag)
+                                        : fmt::format("{}i", imag));
   }
 };
 FMT_END_NAMESPACE
@@ -554,17 +606,17 @@ TEST(locale_test, complex) {
 }
 
 TEST(locale_test, chrono_weekday) {
-  auto loc = get_locale("ru_RU.UTF-8", "Russian_Russia.1251");
+  auto loc = get_locale("es_ES.UTF-8", "Spanish_Spain.1252");
   auto loc_old = std::locale::global(loc);
-  auto mon = fmt::weekday(1);
-  EXPECT_EQ(fmt::format(L"{}", mon), L"Mon");
+  auto sat = fmt::weekday(6);
+  EXPECT_EQ(fmt::format(L"{}", sat), L"Sat");
   if (loc != std::locale::classic()) {
-    // {L"\x43F\x43D", L"\x41F\x43D", L"\x43F\x43D\x434", L"\x41F\x43D\x434"}
-    // {L"пн", L"Пн", L"пнд", L"Пнд"}
-    EXPECT_THAT(
-        (std::vector<std::wstring>{L"\x43F\x43D", L"\x41F\x43D",
-                                   L"\x43F\x43D\x434", L"\x41F\x43D\x434"}),
-        Contains(fmt::format(loc, L"{:L}", mon)));
+    // L'\xE1' is 'á'.
+    auto saturdays = std::vector<std::wstring>{
+        L"s\xE1"
+        "b",
+        L"s\xE1."};
+    EXPECT_THAT(saturdays, Contains(fmt::format(loc, L"{:L}", sat)));
   }
   std::locale::global(loc_old);
 }

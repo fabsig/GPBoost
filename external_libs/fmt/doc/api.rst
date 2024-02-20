@@ -6,7 +6,7 @@ API Reference
 
 The {fmt} library API consists of the following parts:
 
-* :ref:`fmt/core.h <core-api>`: the core API providing main formatting functions
+* :ref:`fmt/base.h <base-api>`: the base API providing main formatting functions
   for ``char``/UTF-8 with C++20 compile-time checks and minimal dependencies
 * :ref:`fmt/format.h <format-api>`: the full format API providing additional
   formatting functions and locale support
@@ -24,12 +24,12 @@ The {fmt} library API consists of the following parts:
 All functions and types provided by the library reside in namespace ``fmt`` and
 macros have prefix ``FMT_``.
 
-.. _core-api:
+.. _base-api:
 
-Core API
+Base API
 ========
 
-``fmt/core.h`` defines the core API which provides main formatting functions
+``fmt/base.h`` defines the base API which provides main formatting functions
 for ``char``/UTF-8 with C++20 compile-time checks. It has minimal include
 dependencies for better compile times. This header is only beneficial when
 using {fmt} as a library (the default) and not in the header-only mode.
@@ -49,10 +49,22 @@ checked at compile time in C++20. To pass a runtime format string wrap it in
 
 *args* is an argument list representing objects to be formatted.
 
-.. _format:
+I/O errors are reported as `std::system_error
+<https://en.cppreference.com/w/cpp/error/system_error>`_ exceptions unless
+specified otherwise.
 
-.. doxygenfunction:: format(format_string<T...> fmt, T&&... args) -> std::string
-.. doxygenfunction:: vformat(string_view fmt, format_args args) -> std::string
+.. _print:
+
+.. doxygenfunction:: fmt::print(format_string<T...> fmt, T&&... args)
+.. doxygenfunction:: fmt::vprint(string_view fmt, format_args args)
+
+.. doxygenfunction:: print(FILE *f, format_string<T...> fmt, T&&... args)
+.. doxygenfunction:: vprint(FILE *f, string_view fmt, format_args args)
+
+.. doxygenfunction:: println(format_string<T...> fmt, T&&... args)
+.. doxygenfunction:: println(FILE *f, format_string<T...> fmt, T&&... args)
+
+.. _format:
 
 .. doxygenfunction:: format_to(OutputIt out, format_string<T...> fmt, T&&... args) -> OutputIt
 .. doxygenfunction:: format_to_n(OutputIt out, size_t n, format_string<T...> fmt, T&&... args) -> format_to_n_result<OutputIt>
@@ -60,14 +72,6 @@ checked at compile time in C++20. To pass a runtime format string wrap it in
 
 .. doxygenstruct:: fmt::format_to_n_result
    :members:
-
-.. _print:
-
-.. doxygenfunction:: fmt::print(format_string<T...> fmt, T&&... args)
-.. doxygenfunction:: fmt::vprint(string_view fmt, format_args args)
-
-.. doxygenfunction:: print(std::FILE *f, format_string<T...> fmt, T&&... args)
-.. doxygenfunction:: vprint(std::FILE *f, string_view fmt, format_args args)
 
 Compile-Time Format String Checks
 ---------------------------------
@@ -104,7 +108,7 @@ with the same format specifiers. The ``format_as`` function should take an
 object of your type and return an object of a formattable type. It should be
 defined in the same namespace as your type.
 
-Example (https://godbolt.org/z/r7vvGE1v7)::
+Example (https://godbolt.org/z/nvME4arz8)::
 
   #include <fmt/format.h>
 
@@ -119,84 +123,32 @@ Example (https://godbolt.org/z/r7vvGE1v7)::
     fmt::print("{}\n", kevin_namespacy::film::se7en); // prints "7"
   }
 
-Using the specialization API is more complex but gives you full control over
-parsing and formatting. To use this method specialize the ``formatter`` struct
-template for your type and implement ``parse`` and ``format`` methods.
-For example::
+Using specialization is more complex but gives you full control over parsing and
+formatting. To use this method specialize the ``formatter`` struct template for
+your type and implement ``parse`` and ``format`` methods.
 
-  #include <fmt/core.h>
-
-  struct point {
-    double x, y;
-  };
-
-  template <> struct fmt::formatter<point> {
-    // Presentation format: 'f' - fixed, 'e' - exponential.
-    char presentation = 'f';
-
-    // Parses format specifications of the form ['f' | 'e'].
-    constexpr auto parse(format_parse_context& ctx) -> format_parse_context::iterator {
-      // [ctx.begin(), ctx.end()) is a character range that contains a part of
-      // the format string starting from the format specifications to be parsed,
-      // e.g. in
-      //
-      //   fmt::format("{:f} - point of interest", point{1, 2});
-      //
-      // the range will contain "f} - point of interest". The formatter should
-      // parse specifiers until '}' or the end of the range. In this example
-      // the formatter should parse the 'f' specifier and return an iterator
-      // pointing to '}'.
-      
-      // Please also note that this character range may be empty, in case of
-      // the "{}" format string, so therefore you should check ctx.begin()
-      // for equality with ctx.end().
-
-      // Parse the presentation format and store it in the formatter:
-      auto it = ctx.begin(), end = ctx.end();
-      if (it != end && (*it == 'f' || *it == 'e')) presentation = *it++;
-
-      // Check if reached the end of the range:
-      if (it != end && *it != '}') throw_format_error("invalid format");
-
-      // Return an iterator past the end of the parsed range:
-      return it;
-    }
-
-    // Formats the point p using the parsed format specification (presentation)
-    // stored in this formatter.
-    auto format(const point& p, format_context& ctx) const -> format_context::iterator {
-      // ctx.out() is an output iterator to write to.
-      return presentation == 'f'
-                ? fmt::format_to(ctx.out(), "({:.1f}, {:.1f})", p.x, p.y)
-                : fmt::format_to(ctx.out(), "({:.1e}, {:.1e})", p.x, p.y);
-    }
-  };
-
-Then you can pass objects of type ``point`` to any formatting function::
-
-  point p = {1, 2};
-  std::string s = fmt::format("{:f}", p);
-  // s == "(1.0, 2.0)"
-
-You can also reuse existing formatters via inheritance or composition, for
-example::
+The recommended way of defining a formatter is by reusing an existing one via
+inheritance or composition. This way you can support standard format specifiers
+without implementing them yourself. For example::
 
   // color.h:
-  #include <fmt/core.h>
+  #include <fmt/base.h>
 
   enum class color {red, green, blue};
 
   template <> struct fmt::formatter<color>: formatter<string_view> {
     // parse is inherited from formatter<string_view>.
 
-    auto format(color c, format_context& ctx) const;
+    auto format(color c, format_context& ctx) const
+      -> format_parse_context::iterator;
   };
 
   // color.cc:
   #include "color.h"
   #include <fmt/format.h>
 
-  auto fmt::formatter<color>::format(color c, format_context& ctx) const {
+  auto fmt::formatter<color>::format(color c, format_context& ctx) const
+      -> format_parse_context::iterator {
     string_view name = "unknown";
     switch (c) {
     case color::red:   name = "red"; break;
@@ -207,15 +159,74 @@ example::
   }
 
 Note that ``formatter<string_view>::format`` is defined in ``fmt/format.h`` so
-it has to be included in the source file.
-Since ``parse`` is inherited from ``formatter<string_view>`` it will recognize
-all string format specifications, for example
+it has to be included in the source file. Since ``parse`` is inherited from
+``formatter<string_view>`` it will recognize all string format specifications,
+for example
 
 .. code-block:: c++
 
    fmt::format("{:>10}", color::blue)
 
 will return ``"      blue"``.
+
+The experimental ``nested_formatter`` provides an easy way of applying a
+formatter to one or more subobjects.
+
+For example::
+
+  #include <fmt/format.h>
+
+  struct point {
+    double x, y;
+  };
+
+  template <>
+  struct fmt::formatter<point> : nested_formatter<double> {
+    auto format(point p, format_context& ctx) const {
+      return write_padded(ctx, [=](auto out) {
+        return format_to(out, "({}, {})", this->nested(p.x),
+                         this->nested(p.y));
+      });
+    }
+  };
+
+  int main() {
+    fmt::print("[{:>20.2f}]", point{1, 2});
+  }
+
+prints::
+
+  [          (1.00, 2.00)]
+
+Notice that fill, align and width are applied to the whole object which is the
+recommended behavior while the remaining specifiers apply to elements.
+
+In general the formatter has the following form::
+
+  template <> struct fmt::formatter<T> {
+    // Parses format specifiers and stores them in the formatter.
+    //
+    // [ctx.begin(), ctx.end()) is a, possibly empty, character range that
+    // contains a part of the format string starting from the format
+    // specifications to be parsed, e.g. in
+    //
+    //   fmt::format("{:f} continued", ...);
+    //
+    // the range will contain "f} continued". The formatter should parse
+    // specifiers until '}' or the end of the range. In this example the
+    // formatter should parse the 'f' specifier and return an iterator
+    // pointing to '}'.
+    constexpr auto parse(format_parse_context& ctx)
+      -> format_parse_context::iterator;
+
+    // Formats value using the parsed format specification stored in this
+    // formatter and writes the output to ctx.out().
+    auto format(const T& value, format_context& ctx) const
+      -> format_context::iterator;
+  };
+
+It is recommended to at least support fill, align and width that apply to the
+whole object and have the same semantics as in standard formatters.
 
 You can also write a formatter for a hierarchy of classes::
 
@@ -268,7 +279,7 @@ binary footprint, for example (https://godbolt.org/z/vajfWEG4b):
 
 .. code:: c++
 
-    #include <fmt/core.h>
+    #include <fmt/base.h>
 
     void vlog(const char* file, int line, fmt::string_view format,
               fmt::format_args args) {
@@ -288,10 +299,7 @@ binary footprint, for example (https://godbolt.org/z/vajfWEG4b):
 Note that ``vlog`` is not parameterized on argument types which improves compile
 times and reduces binary code size compared to a fully parameterized version.
 
-.. doxygenfunction:: fmt::make_format_args(const Args&...)
-
-.. doxygenclass:: fmt::format_arg_store
-   :members:
+.. doxygenfunction:: make_format_args(T&... args)
 
 .. doxygenclass:: fmt::basic_format_args
    :members:
@@ -304,7 +312,7 @@ times and reduces binary code size compared to a fully parameterized version.
 .. doxygenclass:: fmt::basic_format_parse_context
    :members:
 
-.. doxygenclass:: fmt::basic_format_context
+.. doxygenclass:: fmt::context
    :members:
 
 .. doxygentypedef:: fmt::format_context
@@ -336,6 +344,9 @@ Format API
 ``fmt/format.h`` defines the full format API providing additional formatting
 functions and locale support.
 
+.. doxygenfunction:: format(format_string<T...> fmt, T&&... args) -> std::string
+.. doxygenfunction:: vformat(string_view fmt, format_args args) -> std::string
+
 Literal-Based API
 -----------------
 
@@ -353,10 +364,6 @@ Utilities
 .. doxygenfunction:: fmt::underlying(Enum e) -> typename std::underlying_type<Enum>::type
 
 .. doxygenfunction:: fmt::to_string(const T &value) -> std::string
-
-.. doxygenfunction:: fmt::join(Range &&range, string_view sep) -> join_view<detail::iterator_t<Range>, detail::sentinel_t<Range>>
-
-.. doxygenfunction:: fmt::join(It begin, Sentinel end, string_view sep) -> join_view<It, Sentinel>
 
 .. doxygenfunction:: fmt::group_digits(T value) -> group_digits_view<T>
 
@@ -461,10 +468,6 @@ The library also supports convenient formatting of ranges and tuples::
   // Prints "('a', 1, 2.0)"
   fmt::print("{}", t);
 
-
-NOTE: currently, the overload of ``fmt::join`` for iterables exists in the main
-``format.h`` header, but expect this to change in the future.
-
 Using ``fmt::join``, you can separate tuple elements with a custom separator::
 
   #include <fmt/ranges.h>
@@ -472,6 +475,9 @@ Using ``fmt::join``, you can separate tuple elements with a custom separator::
   std::tuple<int, char> t = {1, 'a'};
   // Prints "1, a"
   fmt::print("{}", fmt::join(t, ", "));
+
+.. doxygenfunction:: fmt::join(Range &&range, string_view sep) -> join_view<decltype(std::begin(range)), decltype(std::end(range))>
+.. doxygenfunction:: fmt::join(It begin, Sentinel end, string_view sep) -> join_view<It, Sentinel>
 
 .. _chrono-api:
 
@@ -508,7 +514,7 @@ The format syntax is described in :ref:`chrono-specs`.
 
 .. doxygenfunction:: localtime(std::time_t time)
 
-.. doxygenfunction:: gmtime(std::time_t time)
+.. doxygenfunction:: gmtime(std::time_t time) -> std::tm
 
 .. _std-api:
 
@@ -517,11 +523,16 @@ Standard Library Types Formatting
 
 ``fmt/std.h`` provides formatters for:
 
+* `std::atomic <https://en.cppreference.com/w/cpp/atomic/atomic>`_
+* `std::atomic_flag <https://en.cppreference.com/w/cpp/atomic/atomic_flag>`_
+* `std::bitset <https://en.cppreference.com/w/cpp/utility/bitset>`_
+* `std::error_code <https://en.cppreference.com/w/cpp/error/error_code>`_
 * `std::filesystem::path <https://en.cppreference.com/w/cpp/filesystem/path>`_
-* `std::thread::id <https://en.cppreference.com/w/cpp/thread/thread/id>`_
 * `std::monostate <https://en.cppreference.com/w/cpp/utility/variant/monostate>`_
-* `std::variant <https://en.cppreference.com/w/cpp/utility/variant/variant>`_
 * `std::optional <https://en.cppreference.com/w/cpp/utility/optional>`_
+* `std::source_location <https://en.cppreference.com/w/cpp/utility/source_location>`_
+* `std::thread::id <https://en.cppreference.com/w/cpp/thread/thread/id>`_
+* `std::variant <https://en.cppreference.com/w/cpp/utility/variant/variant>`_
 
 Formatting Variants
 -------------------
@@ -575,7 +586,7 @@ Terminal Color and Text Style
 
 ``fmt/color.h`` provides support for terminal color and text style output.
 
-.. doxygenfunction:: print(const text_style &ts, const S &format_str, const Args&... args)
+.. doxygenfunction:: print(const text_style &ts, format_string<T...> fmt, T&&... args)
 
 .. doxygenfunction:: fg(detail::color_type)
 
@@ -592,7 +603,6 @@ System APIs
    :members:
 
 .. doxygenfunction:: fmt::windows_error
-   :members:
 
 .. _ostream-api:
 
