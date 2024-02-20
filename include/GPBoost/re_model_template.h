@@ -446,38 +446,40 @@ namespace GPBoost {
 			use_nesterov_acc_ = use_nesterov_acc;
 			nesterov_schedule_version_ = nesterov_schedule_version;
 			if (optimizer != nullptr) {
-				optimizer_cov_pars_ = std::string(optimizer);
-				optimizer_cov_pars_has_been_set_ = true;
-				if (optimizer_cov_pars_ == "gradient_descent_constant_change" ||
-					optimizer_cov_pars_ == "newton_constant_change" ||
-					optimizer_cov_pars_ == "fisher_scoring_constant_change") {
-					learning_rate_constant_first_order_change_ = true;
-				}
-				else {
-					learning_rate_constant_first_order_change_ = false;
-				}
-				if (optimizer_cov_pars_ == "gradient_descent_constant_change" ||
-					optimizer_cov_pars_ == "gradient_descent_increase_lr" ||
-					optimizer_cov_pars_ == "gradient_descent_reset_lr") {
-					optimizer_cov_pars_ = "gradient_descent";
-				}
-				if (optimizer_cov_pars_ == "newt_constant_change") {
-					optimizer_cov_pars_ = "newton";
-				}
-				if (optimizer_cov_pars_ == "fisher_scoring_constant_change") {
-					optimizer_cov_pars_ = "fisher_scoring";
-				}
-				if (optimizer_cov_pars_ == "gradient_descent_increase_lr") {
-					increase_learning_rate_again_ = true;
-				}
-				else {
-					increase_learning_rate_again_ = false;
-				}
-				if (optimizer_cov_pars_ == "gradient_descent_reset_lr") {
-					reset_learning_rate_every_iteration_ = true;
-				}
-				else {
-					reset_learning_rate_every_iteration_ = false;
+				if (std::string(optimizer) != "") {
+					optimizer_cov_pars_ = std::string(optimizer);
+					optimizer_cov_pars_has_been_set_ = true;
+					if (optimizer_cov_pars_ == "gradient_descent_constant_change" ||
+						optimizer_cov_pars_ == "newton_constant_change" ||
+						optimizer_cov_pars_ == "fisher_scoring_constant_change") {
+						learning_rate_constant_first_order_change_ = true;
+					}
+					else {
+						learning_rate_constant_first_order_change_ = false;
+					}
+					if (optimizer_cov_pars_ == "gradient_descent_constant_change" ||
+						optimizer_cov_pars_ == "gradient_descent_increase_lr" ||
+						optimizer_cov_pars_ == "gradient_descent_reset_lr") {
+						optimizer_cov_pars_ = "gradient_descent";
+					}
+					if (optimizer_cov_pars_ == "newt_constant_change") {
+						optimizer_cov_pars_ = "newton";
+					}
+					if (optimizer_cov_pars_ == "fisher_scoring_constant_change") {
+						optimizer_cov_pars_ = "fisher_scoring";
+					}
+					if (optimizer_cov_pars_ == "gradient_descent_increase_lr") {
+						increase_learning_rate_again_ = true;
+					}
+					else {
+						increase_learning_rate_again_ = false;
+					}
+					if (optimizer_cov_pars_ == "gradient_descent_reset_lr") {
+						reset_learning_rate_every_iteration_ = true;
+					}
+					else {
+						reset_learning_rate_every_iteration_ = false;
+					}
 				}
 			}
 			momentum_offset_ = momentum_offset;
