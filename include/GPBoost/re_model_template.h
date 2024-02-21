@@ -4359,7 +4359,7 @@ namespace GPBoost {
 						}
 						else {
 							//Use last solution as initial guess
-							if (num_iter_ > 0) {
+							if (num_iter_ > 0 && optimizer_coef_ == "wls") {
 								psi_inv_X = last_psi_inv_X_;
 							}
 							else {
@@ -6405,7 +6405,7 @@ namespace GPBoost {
 						}
 						else {
 							//Use last solution as initial guess
-							if (num_iter_ > 0) {
+							if (num_iter_ > 0 && last_y_aux_[cluster_i].size() > 0) {
 								y_aux_[cluster_i] = last_y_aux_[cluster_i];
 							}
 							else {
@@ -6716,7 +6716,7 @@ namespace GPBoost {
 				}//end gp_approx_ == "vecchia"
 				else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 					// Hutchinson's Trace estimator
-						// Sample vectors
+					// Sample vectors
 					if (!saved_rand_vec_fisher_info_[cluster_i]) {
 						if (!cg_generator_seeded_) {
 							cg_generator_ = RNG_t(seed_rand_vec_trace_);
