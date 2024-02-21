@@ -512,10 +512,10 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       })
     })
     
-    test_that("Combine tree-boosting and grouped random effects model: large data", {
+    test_that("GPBoost algorithm: large data and 'reuse_learning_rates_gp_model' option", {
       
       n <- 1e5
-      X_train <- matrix(rnorm(sim_rand_unif(n=2*n, init_c=0.135)), ncol=2)
+      X_train <- matrix(sim_rand_unif(n=2*n, init_c=0.135), ncol=2)
       # Simulate grouped random effects
       sigma2_1 <- 0.6 # variance of first random effect 
       sigma2 <- 0.1^2 # error variance
@@ -523,6 +523,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       group <- rep(1,n) # grouping variable
       for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
       b1 <- sqrt(sigma2_1) * qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.462))
+      eps <- b1[group]
       xi <- sqrt(sigma2) * qnorm(sim_rand_unif(n=n, init_c=0.17556))
       xi[xi<(-100)] = 0
       y <- eps + xi
@@ -530,7 +531,63 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                      max_depth = 6,
                      min_data_in_leaf = 5,
                      objective = "regression_l2",
-                     feature_pre_filter = FALSE)
+                     feature_pre_filter = FALSE,
+                     seed = 1)
+      set.seed(1)
+      # For CV
+      ycv <- y + X_train %*% c(1,1)
+      params_cv <- params
+      params_cv$learning_rate = 0.2
+      dtrain <- gpb.Dataset(data = X_train, label = ycv)
+      folds <- list()
+      for(i in 1:4) folds[[i]] <- as.integer(1:(n/4) + (n/4) * (i-1))
+      
+      # Check whether the option "reuse_learning_rates_gp_model" is used or not
+      gp_model <- GPModel(group_data = group)
+      params_loc <- OPTIM_PARAMS_GRAD_DESC
+      params_loc$trace = TRUE
+      set_optim_params(gp_model, params=params_loc)
+      output <- capture.output( bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
+                                               nrounds = 2, params = params, verbose = 0, 
+                                               reuse_learning_rates_gp_model = FALSE) )
+      str <- output[length(output)-3]
+      nb_ll_eval <- as.numeric(substr(str, nchar(str)-2, nchar(str)-2))
+      expect_equal(nb_ll_eval, 6)
+      # expect_gt(nb_ll_eval, 5)
+      # expect_lt(nb_ll_eval, 8)
+      # same thing with reuse_learning_rates_gp_model = TRUE
+      gp_model <- GPModel(group_data = group)
+      set_optim_params(gp_model, params=params_loc)
+      output <- capture.output( bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
+                                               nrounds = 2, params = params, verbose = 0, 
+                                               reuse_learning_rates_gp_model = TRUE) )
+      str <- output[length(output)-3]
+      nb_ll_eval <- as.numeric(substr(str, nchar(str)-2, nchar(str)-2))
+      expect_equal(nb_ll_eval, 2)
+      # CV: Check whether the option "reuse_learning_rates_gp_model" is used or not 
+      gp_model <- GPModel(group_data = group)
+      set_optim_params(gp_model, params=params_loc)
+      output <- capture.output( cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
+                                                nrounds = 2, nfold = 4, eval = "l2", early_stopping_rounds = 5,
+                                                use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
+                                                reuse_learning_rates_gp_model = FALSE) )
+      str <- output[length(output)-3]
+      nb_ll_eval <- as.numeric(substr(str, nchar(str)-3, nchar(str)-2))
+      nb_opt <- as.numeric(substr(str, 64, 64))
+      expect_equal(nb_ll_eval, 10)
+      expect_equal(nb_opt, 5)
+      # same thing with reuse_learning_rates_gp_model = TRUE
+      gp_model <- GPModel(group_data = group)
+      set_optim_params(gp_model, params=params_loc)
+      output <- capture.output( cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
+                                                nrounds = 2, nfold = 4, eval = "l2", early_stopping_rounds = 5,
+                                                use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
+                                                reuse_learning_rates_gp_model = TRUE) )
+      str <- output[length(output)-3]
+      nb_ll_eval <- as.numeric(substr(str, nchar(str)-2, nchar(str)-2))
+      nb_opt <- as.numeric(substr(str, 64, 64))
+      expect_equal(nb_ll_eval, 7)
+      expect_equal(nb_opt, 4)
       
       # Create random effects model and train GPBoost model
       gp_model <- GPModel(group_data = group)
@@ -538,8 +595,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
                      nrounds = 62, params = params, verbose = 0, 
                      reuse_learning_rates_gp_model = FALSE)
-      cov_pars <- c(0.74546864, 0.04524116)
-      nll <- 128169.9559085
+      cov_pars <- c(0.009426053798, 0.602785377299)
+      nll <- -86930.9172156506
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
       expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/nll,TOLERANCE)
       # With the option reuse_learning_rates_gp_model
@@ -552,15 +609,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/nll,TOLERANCE)
       
       # CV
-      ycv <- y + X_train %*% c(1,1)
-      params_cv <- params
-      params_cv$learning_rate = 0.2
-      dtrain <- gpb.Dataset(data = X_train, label = ycv)
-      folds <- list()
-      for(i in 1:4) folds[[i]] <- as.integer(1:(n/4) + (n/4) * (i-1))
-      best_iter_max <- 25
-      best_iter_min <- 23
-      score <- 0.799142076749994
+      gp_model <- GPModel(group_data = group)
+      set_optim_params(gp_model, params=OPTIM_PARAMS_GRAD_DESC)
+      best_iter_max <- 5
+      best_iter_min <- 3
+      score <- 0.624597895929742
       cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
                       nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
                       use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
