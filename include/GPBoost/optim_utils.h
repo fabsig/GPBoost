@@ -127,7 +127,7 @@ namespace GPBoost {
 		}
 		if (should_print_trace) {//print trace information
 			Log::REDebug("GPModel: parameters after optimization iteration number %d: ", (int)objfn_data->settings_->opt_iter + 1);
-			re_model_templ_->PrintTraceParameters(cov_pars, beta, aux_pars_ptr);
+			re_model_templ_->PrintTraceParameters(cov_pars, beta, aux_pars_ptr, objfn_data->learn_cov_aux_pars_);
 			if ((*gradient).size() == 3) {
 				if (re_model_templ_->GetLikelihood() == "gaussian") {
 					Log::REDebug("Negative log-likelihood: %g", (*gradient)[2]);
@@ -407,7 +407,7 @@ namespace GPBoost {
 				beta = pars.segment(num_cov_pars_optim, num_covariates);
 			}
 			Log::REDebug("GPModel: parameters after optimization iteration number %d: ", iter);
-			re_model_templ_->PrintTraceParameters(cov_pars, beta, aux_pars_ptr);
+			re_model_templ_->PrintTraceParameters(cov_pars, beta, aux_pars_ptr, learn_cov_aux_pars_);
 			if (re_model_templ_->GetLikelihood() == "gaussian") {
 				Log::REDebug("Negative log-likelihood: %g", fx);
 			}
