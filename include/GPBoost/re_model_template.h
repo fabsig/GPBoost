@@ -540,7 +540,8 @@ namespace GPBoost {
 		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset) (can be nullptr)
 		* \param learn_covariance_parameters If true, covariance parameters are estimated
 		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
-		* \param reuse_learning_rates_from_previous_call If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from a previous call and not re-initialized (can only be set to true if called_in_GPBoost_algorithm is true)
+		* \param reuse_learning_rates_from_previous_call If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from a previous call and 
+		*			not re-initialized (can only be set to true if called_in_GPBoost_algorithm is true). This option is only used for "gradient_descent"
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data,
 			const double* covariate_data,
@@ -597,11 +598,6 @@ namespace GPBoost {
 				}
 			}
 			// Initialization of variables
-			bool first_boosting_iteration = false;
-			if (!cov_pars_have_been_estimated_once_ && reuse_learning_rates_from_previous_call &&
-				optimizer_cov_pars_ == "gradient_descent") {//do not reset learning rates to their initial values in every boosting iteration
-				first_boosting_iteration = true;
-			}
 			if (covariate_data == nullptr) {
 				has_covariates_ = false;
 			}
@@ -634,14 +630,15 @@ namespace GPBoost {
 			}
 			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
 				if (coef_optimizer_has_been_set_ && optimizer_coef_ != optimizer_cov_pars_) {
-					Log::REWarning("'%s' is also used for estimating regression coefficients (optimizer_coef = '%s' is ignored)",
+					Log::REWarning("'%s' is also used for estimating regression coefficients (optimizer_coef = '%s' is ignored) ",
 						optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
 				}
 				optimizer_coef_ = optimizer_cov_pars_;
 			}
 			bool gradient_contains_error_var = gauss_likelihood_ && !profile_out_marginal_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
 			has_intercept_ = false; //If true, the covariates contain an intercept column (only relevant if there are covariates)
-			bool only_intercept_for_GPBoost_algo = false;//If true, the covariates contain only an intercept (only relevant if there are covariates)
+			bool only_intercept_for_GPBoost_algo = false;//True if the covariates contain only an intercept and this function is called from the GPBoost algorithm for finding an initial score 
+			bool find_learning_rate_for_GPBoost_algo = false;//True if this function is called from the GPBoost algorithm for finding an optimal learning rate
 			intercept_col_ = -1;
 			// Check whether one of the columns contains only 1's and if not, make warning
 			if (has_covariates_) {
@@ -654,14 +651,12 @@ namespace GPBoost {
 						break;
 					}
 				}
-				if (!has_intercept_) {
-					Log::REWarning("The covariate data contains no column of ones, i.e., no intercept is included.");
+				only_intercept_for_GPBoost_algo = called_in_GPBoost_algorithm && has_intercept_ && num_coef_ == 1 && !learn_covariance_parameters;
+				find_learning_rate_for_GPBoost_algo = called_in_GPBoost_algorithm && !has_intercept_ && num_coef_ == 1 && !learn_covariance_parameters;
+				if (!has_intercept_ && !find_learning_rate_for_GPBoost_algo) {
+					Log::REWarning("The covariate data contains no column of ones, i.e., no intercept is included ");
 				}
-				only_intercept_for_GPBoost_algo = has_intercept_ && num_coef_ == 1 && !learn_covariance_parameters;
-				if (only_intercept_for_GPBoost_algo) {
-					CHECK(called_in_GPBoost_algorithm);
-				}
-				if (!only_intercept_for_GPBoost_algo) {
+				if (num_coef_ > 1) {
 					Eigen::ColPivHouseholderQR<den_mat_t> qr_decomp(X_);
 					int rank = (int)qr_decomp.rank();
 					// If X_ was a sparse matrix, use the following code:
@@ -670,9 +665,22 @@ namespace GPBoost {
 					if (rank < num_coef_) {
 						Log::REWarning("The linear regression covariate data matrix (fixed effect) is rank deficient. "
 							"This is not necessarily a problem when using gradient descent. "
-							"If this is not desired, consider dropping some columns / covariates.");
+							"If this is not desired, consider dropping some columns / covariates ");
 					}
 				}
+			}//end if has_covariates_
+			if (only_intercept_for_GPBoost_algo) {
+				CHECK(!find_learning_rate_for_GPBoost_algo);
+				CHECK(has_intercept_);
+			}
+			if (find_learning_rate_for_GPBoost_algo) {
+				CHECK(!only_intercept_for_GPBoost_algo);
+				CHECK(!has_intercept_);
+			}
+			if(only_intercept_for_GPBoost_algo || find_learning_rate_for_GPBoost_algo) {
+				CHECK(has_covariates_);
+				CHECK(num_coef_ == 1);
+				CHECK(!learn_covariance_parameters);
 			}
 			// Assume that this function is only called for initialization of the GPBoost algorithm
 			//	when (i) there is only an intercept (and not other covariates) and (ii) the covariance parameters are not learned
@@ -716,7 +724,8 @@ namespace GPBoost {
 			if (!has_covariates_ || !gauss_likelihood_) {
 				CHECK(y_has_been_set_);//response variable data needs to have been set at this point for non-Gaussian likelihoods and for Gaussian data without covariates
 			}
-			if (gauss_likelihood_) {
+			if (gauss_likelihood_ && !find_learning_rate_for_GPBoost_algo) {
+				// If find_learning_rate_for_GPBoost_algo, 'y_data' does not need to be provided but y_vec_ from the last call (when optimizing the covariance parameters) can be reused 
 				CHECK(y_data != nullptr);
 				// Copy of response data (used only for Gaussian data and if there are also linear covariates since then y_ is modified during the optimization algorithm and this contains the original data)
 				y_vec_ = Eigen::Map<const vec_t>(y_data, num_data_);
@@ -726,7 +735,8 @@ namespace GPBoost {
 			scale_covariates_ = false;
 			if (has_covariates_) {
 				scale_covariates_ = (optimizer_coef_ == "gradient_descent" || (optimizer_cov_pars_ == "bfgs_optim_lib" && !gauss_likelihood_) ||
-					optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") && !only_intercept_for_GPBoost_algo;
+					optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") && 
+					!(has_intercept_ && num_coef_ == 1);//if there is only an intercept, we don't need to scale the covariates
 				// Scale covariates (in order that the gradient is less sample-size dependent)
 				if (scale_covariates_) {
 					loc_transf_ = vec_t(num_coef_);
@@ -803,8 +813,11 @@ namespace GPBoost {
 				}
 				SetY(resid.data());
 			}
+			if (called_in_GPBoost_algorithm) {
+				Log::REDebug(" ");
+			}
 			Log::REDebug("GPModel: initial parameters: ");
-			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, cov_aux_pars.data() + num_cov_par_);
+			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, cov_aux_pars.data() + num_cov_par_, true);
 			// Initialize optimizer:
 			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian likelihoods)
 			// - calculate initial value of objective function
@@ -886,12 +899,20 @@ namespace GPBoost {
 							CalcGradLinCoef(cov_aux_pars[0], grad_beta, fixed_effects_ptr);
 							AvoidTooLargeLearningRateCoef(beta, grad_beta);
 							CalcDirDerivArmijoAndLearningRateConstChangeCoef(grad_beta, beta, beta_after_grad_aux, use_nesterov_acc_coef);
+							if (reuse_learning_rates_from_previous_call && coef_have_been_estimated_once_ &&
+								optimizer_coef_ == "gradient_descent") {//potentially increase learning rates again in GPBoost algorithm
+								PotentiallyIncreaseLearningRateCoefForGPBoostAlgorithm();
+							}//end called_in_GPBoost_algorithm / potentially increase learning rates again
 							// Update linear regression coefficients, do learning rate backtracking, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
 							UpdateLinCoef(beta, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, num_iter_, beta_after_grad_aux, beta_after_grad_aux_lag1,
 								acc_rate_coef_, nesterov_schedule_version_, momentum_offset_, fixed_effects, fixed_effects_vec);
 							if (num_iter_ == 0) {
 								lr_coef_after_first_iteration_ = lr_coef_;
 								lr_is_small_threshold_coef_ = lr_coef_ / 1e4;
+								if (reuse_learning_rates_from_previous_call && !coef_have_been_estimated_once_ &&
+									optimizer_coef_ == "gradient_descent") {
+									lr_coef_after_first_optim_boosting_iteration_ = lr_coef_;
+								}
 							}
 							fixed_effects_ptr = fixed_effects_vec.data();
 							// In case lr_coef_ is very small, we monitor whether cov_aux_pars continues to change. If it does, we will reset lr_coef_ to its initial value
@@ -966,7 +987,7 @@ namespace GPBoost {
 						}
 						CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(grad, neg_step_dir, cov_aux_pars, cov_pars_after_grad_aux, use_nesterov_acc);
 						if (reuse_learning_rates_from_previous_call && cov_pars_have_been_estimated_once_ &&
-							optimizer_cov_pars_ == "gradient_descent") {//potentially increase learning rates again
+							optimizer_cov_pars_ == "gradient_descent") {//potentially increase learning rates again in GPBoost algorithm
 							PotentiallyIncreaseLearningRatesForGPBoostAlgorithm();
 						}//end called_in_GPBoost_algorithm / potentially increase learning rates again
 						// Update covariance and additional likelihood parameters, do learning rate backtracking, factorize covariance matrix, and calculate new value of objective function
@@ -979,7 +1000,8 @@ namespace GPBoost {
 								lr_aux_pars_after_first_iteration_ = lr_aux_pars_;
 								lr_is_small_threshold_aux_ = lr_aux_pars_ / 1e4;
 							}
-							if (first_boosting_iteration && reuse_learning_rates_from_previous_call && optimizer_cov_pars_ == "gradient_descent") {
+							if (reuse_learning_rates_from_previous_call && !cov_pars_have_been_estimated_once_ &&
+								optimizer_cov_pars_ == "gradient_descent") {
 								lr_cov_after_first_optim_boosting_iteration_ = lr_cov_;
 								if (estimate_aux_pars_) {
 									lr_aux_pars_after_first_optim_boosting_iteration_ = lr_aux_pars_;
@@ -1089,7 +1111,7 @@ namespace GPBoost {
 						if ((num_iter_ < 10 || ((num_iter_ + 1) % 10 == 0 && (num_iter_ + 1) < 100) || ((num_iter_ + 1) % 100 == 0 && (num_iter_ + 1) < 1000) ||
 							((num_iter_ + 1) % 1000 == 0 && (num_iter_ + 1) < 10000) || ((num_iter_ + 1) % 10000 == 0)) && (num_iter_ != (max_iter_ - 1)) && !terminate_optim) {
 							Log::REDebug("GPModel: parameters after optimization iteration number %d: ", num_iter_ + 1);
-							PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, cov_aux_pars.data() + num_cov_par_);
+							PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
 							if (gauss_likelihood_) {
 								Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
 							}
@@ -1157,7 +1179,7 @@ namespace GPBoost {
 				Log::REDebug("GPModel: parameter estimation finished after %d iteration "
 					"(nb. likelihood evaluations = %d) ", num_it, num_ll_evaluations_);
 			}
-			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, cov_aux_pars.data() + num_cov_par_);
+			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
 			if (gauss_likelihood_) {
 				Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
 			}
@@ -1217,18 +1239,21 @@ namespace GPBoost {
 					}
 				}
 			}
+			model_has_been_estimated_ = true;
+			if (learn_covariance_parameters) {
+				cov_pars_have_been_estimated_once_ = true;
+			}
+			if (has_covariates_ && !only_intercept_for_GPBoost_algo) {
+				coef_have_been_estimated_once_ = true;
+			}
 			if (has_covariates_) {
-				if (only_intercept_for_GPBoost_algo) {
+				if (called_in_GPBoost_algorithm) {
 					has_covariates_ = false;
-					// When this function is only called for initialization of the GPBoost algorithm, 
+					// When this function is called in the GPBoost algorithm for finding an intial intercept or a learning rate,
 					//	we set has_covariates_ to false in order to avoid potential problems when making predictions with the GPBoostOOS algorithm,
 					//	since in the second phase of the GPBoostOOS algorithm covariance parameters are not estimated (and thus has_covariates_ is not set to false)
 					//	but this function is called for initialization of the GPBoost algorithm.
 				}
-			}
-			model_has_been_estimated_ = true;
-			if (learn_covariance_parameters) {
-				cov_pars_have_been_estimated_once_ = true;
 			}
 		}//end OptimLinRegrCoefCovPar
 
@@ -2036,15 +2061,19 @@ namespace GPBoost {
 		* \param cov_pars Covariance parameters on transformed scale
 		* \param beta Regression coefficients on transformed scale
 		* \param aux_pars Additional parameters for the likelihood
+		* \param print_cov_aux_pars If true, cov_pars and aux_pars are printed
 		*/
 		void PrintTraceParameters(const vec_t& cov_pars,
 			const vec_t& beta,
-			const double* aux_pars) {
+			const double* aux_pars,
+			bool print_cov_aux_pars) {
 			vec_t cov_pars_orig, beta_orig;
 			if (Log::GetLevelRE() == LogLevelRE::Debug) { // do transformation only if log level Debug is active
-				TransformBackCovPars(cov_pars, cov_pars_orig);
-				for (int i = 0; i < (int)cov_pars.size(); ++i) {
-					Log::REDebug("cov_pars[%d]: %g", i, cov_pars_orig[i]);
+				if (print_cov_aux_pars) {
+					TransformBackCovPars(cov_pars, cov_pars_orig);
+					for (int i = 0; i < (int)cov_pars.size(); ++i) {
+						Log::REDebug("cov_pars[%d]: %g", i, cov_pars_orig[i]);
+					}
 				}
 				if (has_covariates_) {
 					if (scale_covariates_) {
@@ -2062,7 +2091,7 @@ namespace GPBoost {
 						Log::REDebug("Note: only the first %d linear regression coefficients are shown ", NUM_COEF_PRINT_TRACE_);
 					}
 				}
-				if (estimate_aux_pars_) {
+				if (estimate_aux_pars_ && print_cov_aux_pars) {
 					for (int i = 0; i < NumAuxPars(); ++i) {
 						Log::REDebug("%s: %g", likelihood_[unique_clusters_[0]]->GetNameAuxPars(i), aux_pars[i]);
 					}
@@ -3646,6 +3675,8 @@ namespace GPBoost {
 		double lr_coef_init_ = 0.1;
 		/*! \brief Learning rate for fixed-effect linear coefficients after first iteration (to remember as lr_coef_ can be decreased) */
 		double lr_coef_after_first_iteration_ = 0.1;
+		/*! \brief Learning rate for linear regression coefficients (actually the learning rate interpreted as a coefficient) after first optimization iteration in the first boosting iteration (only for the GPBoost algorithm) */
+		double lr_coef_after_first_optim_boosting_iteration_ = -1.;
 		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
 		double acc_rate_coef_ = 0.5;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done for gradient-based optimization of covariance parameters and regression coefficients */
@@ -3694,11 +3725,14 @@ namespace GPBoost {
 		double C_sigma2_;
 		/*! \brief Constant used for checking whether step sizes for linear regression coefficients are clearly too large */
 		double C_MAX_CHANGE_COEF_ = 10.;
-		/*! \brief True if 'lr_cov_' and other learning rates have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
+		/*! \brief True if covariance parameters and potential auxiliary parameters have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
 		bool cov_pars_have_been_estimated_once_ = false;
-		/*! \brief True if 'lr_cov_' and other learning rates have been doubled in the first optimization iteration (num_iter_ == 0) (applies only to the GPBoost algorithm) */
+		/*! \brief True if regression coefficients (actually the learning rate interpreted as a coefficient) have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
+		bool coef_have_been_estimated_once_ = false;
+		/*! \brief True if 'lr_cov_' and 'lr_aux_pars_ have been doubled in the first optimization iteration (num_iter_ == 0) (applies only to the GPBoost algorithm) */
 		bool learning_rates_have_been_doubled_in_first_iteration_ = false;
-
+		/*! \brief True if 'lr_coef_' hase been doubled in the first optimization iteration (num_iter_ == 0) (applies only to the GPBoost algorithm) */
+		bool learning_rate_coef_have_been_doubled_in_first_iteration_ = false;
 		/*! \brief If true, Armijo's condition is used to check whether there is sufficient decrease in the negative log-likelighood (otherwise it is only checked for a decrease) */
 		bool armijo_condition_ = true;
 		/*! \brief Constant c for Armijo's condition. Needs to be in (0,1) */
@@ -5188,12 +5222,18 @@ namespace GPBoost {
 					optimizer_cov_pars_ = "lbfgs";
 				}
 			}
-			if (cov_pars_have_been_estimated_once_ && reuse_learning_rates_from_previous_call &&
-				optimizer_cov_pars_ == "gradient_descent") {//different initial learning rates and optimizer settings for GPBoost algorithm in latter boosting iterations
+			if (reuse_learning_rates_from_previous_call && 
+				((cov_pars_have_been_estimated_once_ && optimizer_cov_pars_ == "gradient_descent") ||
+					(coef_have_been_estimated_once_ && optimizer_coef_ == "gradient_descent" && has_covariates_))) {//different initial learning rates and optimizer settings for GPBoost algorithm in later boosting iterations
 				CHECK(lr_have_been_initialized_);
-				lr_cov_ = lr_cov_after_first_optim_boosting_iteration_;
-				if (estimate_aux_pars_) {
-					lr_aux_pars_ = lr_aux_pars_after_first_optim_boosting_iteration_;
+				if (cov_pars_have_been_estimated_once_ && optimizer_cov_pars_ == "gradient_descent") {
+					lr_cov_ = lr_cov_after_first_optim_boosting_iteration_;
+					if (estimate_aux_pars_) {
+						lr_aux_pars_ = lr_aux_pars_after_first_optim_boosting_iteration_;
+					}
+				}
+				if (coef_have_been_estimated_once_ && optimizer_coef_ == "gradient_descent" && has_covariates_) {
+					lr_coef_ = lr_coef_after_first_optim_boosting_iteration_;
 				}
 				c_armijo_ = 0.;
 				c_armijo_mom_ = 0.;
@@ -5363,7 +5403,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief For the GPBoost algorithm, learning rates (lr_cov_ and lr_aux_pars_) are no reset to initial values in every boosting iteration 
-		* but rather kept at their previous valzues. This can, however, imply that learning rates might become too small in later boosting iterations.
+		*			but rather kept at their previous values. This can, however, sometimes imply that learning rates might become too small in later boosting iterations.
 		* This function checks whether we should increase (double) the learing rates again and does the increase if necessary
 		*/
 		void PotentiallyIncreaseLearningRatesForGPBoostAlgorithm() {
@@ -5371,10 +5411,10 @@ namespace GPBoost {
 			if (num_iter_ == 0) {
 				if (!estimate_aux_pars_) {
 					if ((-dir_deriv_armijo_cov_pars_ * lr_cov_) <= (delta_rel_conv_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.))) {
-						if ((-dir_deriv_armijo_cov_pars_ * lr_cov_init_) >= std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
+						if ((-dir_deriv_armijo_cov_pars_ * lr_cov_init_) > std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
 							// Increase the learning again if 
 							//		(i) likely no change will be detected in the log-likelihood, i.e., convergence is achieved, (=first "if" condition) 
-							//		(ii) but this is due a very small learning rate and for larger learning rates the log-likelihood would still change (=second "if" condition).
+							//		(ii) but this is due a very small learning rate and for larger learning rates (i.e. lr_cov_init_) the log-likelihood would still change (=second "if" condition).
 							//		In other words, if lr_cov_ is small but the directional derivative of the log-likelihood in the search direction (=first order change of log-likelihood) is large relative to the log-likelihood
 							//		Note that (-dir_deriv_armijo_cov_pars_) is approximately equal to (neg_log_likelihood_lag1_ - neg_log_likelihood_) for small lr_cov_
 							double_learning_rate = true;
@@ -5409,6 +5449,38 @@ namespace GPBoost {
 				}
 			}//end double_learning_rate
 		}//end PotentiallyIncreaseLearningRatesForGPBoostAlgorithm
+
+		/*!
+		* \brief For the GPBoost algorithm, lr_coef_ is not reset to initial values in every boosting iteration (when finding an optimal learnin rate)
+		*			but rather kept at their previous values. This can, however, sometimes imply that learning rates might become too small in later boosting iterations.
+		* This function checks whether we should increase (double) the learing rate again and does the increase if necessary
+		*/
+		void PotentiallyIncreaseLearningRateCoefForGPBoostAlgorithm() {
+			bool double_learning_rate = false;
+			if (num_iter_ == 0) {
+				if ((-dir_deriv_armijo_coef_ * lr_coef_) <= (delta_rel_conv_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.))) {
+					if ((-dir_deriv_armijo_coef_ * lr_coef_init_) > std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
+						// Increase the learning again if 
+						//		(i) likely no change will be detected in the log-likelihood, i.e., convergence is achieved, (=first "if" condition) 
+						//		(ii) but this is due a very small learning rate and for larger learning rates (i.e. lr_coef_init_) the log-likelihood would still change (=second "if" condition).
+						//		In other words, if lr_coef_ is small but the directional derivative of the log-likelihood in the search direction (=first order change of log-likelihood) is large relative to the log-likelihood
+						//		Note that (-dir_deriv_armijo_coef_) is approximately equal to (neg_log_likelihood_lag1_ - neg_log_likelihood_) for small lr_coef_
+						double_learning_rate = true;
+					}
+				}
+			}//end num_iter_ == 0
+			else if (num_iter_ == 1 && !learning_rate_coef_have_been_doubled_in_first_iteration_) {//always increase the learning rate in the second iteration if more than one iteration is needed 
+				double_learning_rate = true;
+			}
+			if (double_learning_rate) {
+				if (2 * lr_coef_ <= lr_coef_init_) {
+					lr_coef_ *= 2;
+					if (num_iter_ == 0) {
+						learning_rate_coef_have_been_doubled_in_first_iteration_ = true;
+					}
+				}
+			}//end double_learning_rate
+		}//end PotentiallyIncreaseLearningRateCoefForGPBoostAlgorithm
 
 		/*!
 		* \brief Recaculate mode for Laplace approximation after reseting them to zero
