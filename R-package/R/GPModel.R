@@ -189,7 +189,7 @@
 #'                \item{lr_coef: \code{numeric} (default = 0.1). 
 #'                Learning rate for fixed effect regression coefficients if gradient descent is used }
 #'                \item{lr_cov: \code{numeric} (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"). 
-#'                Initial learning rate for covariance parameters. 
+#'                Initial learning rate for covariance parameters if "gradient_descent" or "fisher_scoring" is used. 
 #'                If lr_cov < 0, internal default values are used.
 #'                If there are additional auxiliary parameters for non-Gaussian likelihoods, 
 #'                'lr_cov' is also used for those}
