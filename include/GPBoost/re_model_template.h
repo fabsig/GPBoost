@@ -492,7 +492,8 @@ namespace GPBoost {
 				}
 			}
 			lr_coef_init_ = lr_coef;
-			lr_coef_after_first_iteration_ = lr_coef_init_;
+			lr_coef_after_first_iteration_ = lr_coef;
+			lr_coef_after_first_optim_boosting_iteration_ = lr_coef;
 			acc_rate_coef_ = acc_rate_coef;
 			if (optimizer_coef != nullptr) {
 				optimizer_coef_ = std::string(optimizer_coef);
@@ -566,6 +567,12 @@ namespace GPBoost {
 			if (NumAuxPars() == 0) {
 				estimate_aux_pars_ = false;
 			}
+			if (covariate_data == nullptr) {
+				has_covariates_ = false;
+			}
+			else {
+				has_covariates_ = true;
+			}
 			OptimParamsSetInitialValues();
 			InitializeOptimSettings(called_in_GPBoost_algorithm, reuse_learning_rates_from_previous_call);
 			// Some checks
@@ -599,12 +606,6 @@ namespace GPBoost {
 				}
 			}
 			// Initialization of variables
-			if (covariate_data == nullptr) {
-				has_covariates_ = false;
-			}
-			else {
-				has_covariates_ = true;
-			}
 			bool use_nesterov_acc = use_nesterov_acc_;
 			bool use_nesterov_acc_coef = use_nesterov_acc_;
 			//Nesterov acceleration is only used for gradient descent and not for other methods
@@ -820,6 +821,12 @@ namespace GPBoost {
 			}
 			if (called_in_GPBoost_algorithm) {
 				Log::REDebug(" ");
+			}
+			if (called_in_GPBoost_algorithm && only_intercept_for_GPBoost_algo) {
+				Log::REDebug("GPModel: start finding initial intercept ... ");
+			}
+			if (called_in_GPBoost_algorithm && find_learning_rate_for_GPBoost_algo) {
+				Log::REDebug("GPModel: start finding optimal learning rate ... ");
 			}
 			Log::REDebug("GPModel: initial parameters: ");
 			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, cov_aux_pars.data() + num_cov_par_, true);
