@@ -441,6 +441,7 @@ namespace GPBoost {
 			bool estimate_aux_pars) {
 			lr_cov_init_ = lr;
 			lr_cov_after_first_iteration_ = lr;
+			lr_cov_after_first_optim_boosting_iteration_ = lr;
 			acc_rate_cov_ = acc_rate_cov;
 			max_iter_ = max_iter;
 			delta_rel_conv_init_ = delta_rel_conv;
@@ -521,6 +522,7 @@ namespace GPBoost {
 			if (lr > 0) {
 				lr_aux_pars_init_ = lr;
 				lr_aux_pars_after_first_iteration_ = lr;
+				lr_aux_pars_after_first_optim_boosting_iteration_ = lr;
 			}
 			set_optim_config_has_been_called_ = true;
 		}//end SetOptimConfig
@@ -3649,7 +3651,7 @@ namespace GPBoost {
 		/*! \brief Learning rate for covariance parameters after first iteration (to remember as lr_cov_ can be decreased) */
 		double lr_cov_after_first_iteration_;
 		/*! \brief Learning rate for covariance parameters after first optimization iteration in the first boosting iteration (only for the GPBoost algorithm) */
-		double lr_cov_after_first_optim_boosting_iteration_ = -1.;
+		double lr_cov_after_first_optim_boosting_iteration_;
 		/*! \brief Learning rate for auxiliary parameters for non-Gaussian likelihoods (e.g., shape of a gamma likelihood) */
 		double lr_aux_pars_;
 		/*! \brief Initial learning rate for auxiliary parameters for non-Gaussian likelihoods (e.g., shape of a gamma likelihood) */
@@ -3657,7 +3659,7 @@ namespace GPBoost {
 		/*! \brief Learning rate for auxiliary parameters after first iteration (to remember as lr_cov_ can be decreased) */
 		double lr_aux_pars_after_first_iteration_ = 0.1;
 		/*! \brief Learning rate for auxiliary parameters after first optimization iteration in the first boosting iteration (only for the GPBoost algorithm) */
-		double lr_aux_pars_after_first_optim_boosting_iteration_ = -1.;
+		double lr_aux_pars_after_first_optim_boosting_iteration_ = 0.1;
 		/*! \brief Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent") */
 		bool use_nesterov_acc_ = true;
 		/*! \brief Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
@@ -3679,7 +3681,7 @@ namespace GPBoost {
 		/*! \brief Learning rate for fixed-effect linear coefficients after first iteration (to remember as lr_coef_ can be decreased) */
 		double lr_coef_after_first_iteration_ = 0.1;
 		/*! \brief Learning rate for linear regression coefficients (actually the learning rate interpreted as a coefficient) after first optimization iteration in the first boosting iteration (only for the GPBoost algorithm) */
-		double lr_coef_after_first_optim_boosting_iteration_ = -1.;
+		double lr_coef_after_first_optim_boosting_iteration_ = 0.1;
 		/*! \brief Acceleration rate for coefficients for Nesterov acceleration (only relevant if use_nesterov_acc and nesterov_schedule_version == 0) */
 		double acc_rate_coef_ = 0.5;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done for gradient-based optimization of covariance parameters and regression coefficients */
@@ -5264,9 +5266,11 @@ namespace GPBoost {
 					lr_cov_init_ = 1.;
 				}
 				lr_cov_after_first_iteration_ = lr_cov_init_;
+				lr_cov_after_first_optim_boosting_iteration_ = lr_cov_init_;
 				if (estimate_aux_pars_) {
 					lr_aux_pars_init_ = lr_cov_init_;
 					lr_aux_pars_after_first_iteration_ = lr_cov_init_;
+					lr_aux_pars_after_first_optim_boosting_iteration_ = lr_cov_init_;
 				}
 			}
 		}//end SetInitialValueLRCov
