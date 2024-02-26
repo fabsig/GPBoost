@@ -18,6 +18,7 @@ Documentation of GPBoost
    Python package <Python_package>
    R package <R_package>
    Main parameters <Main_parameters>
+   All tree-boosting related parameters <Parameters>
    Python and R Examples <Examples>
    C API <C-API>
    Computational efficiency <Computational_efficiency>
