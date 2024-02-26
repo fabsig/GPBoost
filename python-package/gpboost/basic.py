@@ -4747,8 +4747,8 @@ class GPModel(object):
                 - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring")
+                    Initial learning rate for covariance parameters if "gradient_descent" or "fisher_scoring" is used.
                     If lr_cov < 0, internal default values are used.
-                    Default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
                     If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those
                 - lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
@@ -4985,8 +4985,8 @@ class GPModel(object):
                 - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring")
+                    Initial learning rate for covariance parameters if "gradient_descent" or "fisher_scoring" is used.
                     If lr_cov < 0, internal default values are used.
-                    Default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"
                     If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those
                 - lr_coef : double, optional (default = 0.1)
                     Learning rate for fixed effect regression coefficients
