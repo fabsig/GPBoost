@@ -223,7 +223,8 @@ namespace LightGBM {
 					output[0] = 1. / (1. + std::exp(-input[0]));
 				}
 				else if (likelihood_type_ == std::string("poisson") ||
-					likelihood_type_ == std::string("gamma")) {
+					likelihood_type_ == std::string("gamma") ||
+					likelihood_type_ == std::string("negative_binomial")) {
 					output[0] = std::exp(input[0]);
 				}
 				else {
