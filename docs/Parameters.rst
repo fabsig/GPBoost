@@ -123,7 +123,7 @@ Core Parameters
 
    -  applies only to the GPBoost algorithm
 
--  ``reuse_learning_rates_gp_model`` :raw-html:`<a id="reuse_learning_rates_gp_model" title="Permalink to this parameter" href="#reuse_learning_rates_gp_model">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
+-  ``reuse_learning_rates_gp_model`` :raw-html:`<a id="reuse_learning_rates_gp_model" title="Permalink to this parameter" href="#reuse_learning_rates_gp_model">&#x1F517;&#xFE0E;</a>`, default = ``true``, type = bool
 
    -  if ``true``, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them
 

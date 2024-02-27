@@ -76,9 +76,6 @@
 #'                \item{\code{max_bin}: Maximal number of bins that feature values will be bucketed in (default = 255)}
 #'                \item{\code{line_search_step_length} (default = FALSE): If TRUE, a line search is done to find the optimal 
 #'                step length for every boosting update (see, e.g., Friedman 2001). This is then multiplied by the learning rate }
-#'                \item{\code{reuse_learning_rates_gp_model} (default = FALSE): If TRUE, the learning rates for the covariance and potential 
-#'                auxiliary parameters are kept at the values from the previous boosting iteration and 
-#'                not re-initialized when optimizing them }
 #'                \item{\code{train_gp_model_cov_pars} (default = TRUE): If TRUE, the covariance parameters of the Gaussian process 
 #'                are estimated in every boosting iterations,  otherwise the gp_model parameters are not estimated. 
 #'                In the latter case, you need to either estimate them beforehand or provide values via 
@@ -97,9 +94,6 @@
 #' @param line_search_step_length Boolean. If TRUE, a line search is done to find the optimal step length for every boosting update 
 #' (see, e.g., Friedman 2001). This is then multiplied by the \code{learning_rate}. 
 #' Applies only to the GPBoost algorithm
-#' @param reuse_learning_rates_gp_model Boolean. If TRUE, the learning rates for the covariance and potential 
-#'                auxiliary parameters are kept at the values from the previous boosting iteration and 
-#'                not re-initialized when optimizing them 
 #' @param use_gp_model_for_validation Boolean. If TRUE, the \code{gp_model} 
 #' (Gaussian process and/or random effects) is also used (in addition to the tree model) for calculating 
 #' predictions on the validation data. If FALSE, the \code{gp_model} (random effects part) is ignored 
@@ -218,7 +212,6 @@ gpboost <- function(data,
                     nrounds = 100L,
                     gp_model = NULL,
                     line_search_step_length = FALSE,
-                    reuse_learning_rates_gp_model = FALSE,
                     use_gp_model_for_validation = TRUE,
                     train_gp_model_cov_pars = TRUE,
                     valids = list(),
@@ -254,7 +247,6 @@ gpboost <- function(data,
     , "gp_model" = gp_model
     , "use_gp_model_for_validation" = use_gp_model_for_validation
     , "train_gp_model_cov_pars" = train_gp_model_cov_pars
-    , "reuse_learning_rates_gp_model" = reuse_learning_rates_gp_model
     , "line_search_step_length" = line_search_step_length
     , "valids" = valids
     , "obj" = obj

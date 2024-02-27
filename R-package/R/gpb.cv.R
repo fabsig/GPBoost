@@ -85,7 +85,6 @@ gpb.cv <- function(params = list()
                    , nrounds = 100L
                    , gp_model = NULL
                    , line_search_step_length = FALSE
-                   , reuse_learning_rates_gp_model = FALSE
                    , use_gp_model_for_validation = TRUE
                    , fit_GP_cov_pars_OOS = FALSE
                    , train_gp_model_cov_pars = TRUE
@@ -137,7 +136,6 @@ gpb.cv <- function(params = list()
   
   params$use_gp_model_for_validation <- use_gp_model_for_validation
   params$train_gp_model_cov_pars <- train_gp_model_cov_pars
-  params$reuse_learning_rates_gp_model <- reuse_learning_rates_gp_model
   params$line_search_step_length <- line_search_step_length
   
   # set some parameters, resolving the way they were passed in with other parameters
@@ -984,7 +982,6 @@ gpb.grid.search.tune.parameters <- function(param_grid
                                             , nrounds = 100L
                                             , gp_model = NULL
                                             , line_search_step_length = FALSE
-                                            , reuse_learning_rates_gp_model = FALSE
                                             , use_gp_model_for_validation = TRUE
                                             , train_gp_model_cov_pars = TRUE
                                             , folds = NULL
@@ -1079,7 +1076,6 @@ gpb.grid.search.tune.parameters <- function(param_grid
                     , nrounds = nrounds
                     , gp_model = gp_model
                     , line_search_step_length = line_search_step_length
-                    , reuse_learning_rates_gp_model = reuse_learning_rates_gp_model
                     , use_gp_model_for_validation = use_gp_model_for_validation
                     , train_gp_model_cov_pars = train_gp_model_cov_pars
                     , folds = folds

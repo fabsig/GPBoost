@@ -18,7 +18,7 @@ from .compat import SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFo
 
 
 def train(params, train_set, num_boost_round=100,
-          gp_model=None, line_search_step_length=False, reuse_learning_rates_gp_model=False,
+          gp_model=None, line_search_step_length=False,
           use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
           valid_sets=None, valid_names=None,
           fobj=None, feval=None, init_model=None,
@@ -43,9 +43,6 @@ def train(params, train_set, num_boost_round=100,
         If True, a line search is done to find the optimal step length for every boosting update
         (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
         Applies only to the GPBoost algorithm
-    reuse_learning_rates_gp_model : bool, optional (default=False)
-        If True, the learning rates for the covariance and potential auxiliary parameters are kept at the values
-        from the previous boosting iteration and not re-initialized when optimizing them
     use_gp_model_for_validation : bool, optional (default=True)
         If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
         for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
@@ -256,7 +253,6 @@ def train(params, train_set, num_boost_round=100,
         # update gp_model related parameters
         params['use_gp_model_for_validation'] = use_gp_model_for_validation
         params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
-        params['reuse_learning_rates_gp_model'] = reuse_learning_rates_gp_model
         params['line_search_step_length'] = line_search_step_length
         # Set the default metric to the (approximate marginal) negative log-likelihood if only the training loss should be calculated
         if is_valid_contain_train and len(reduced_valid_sets) == 0 and params.get('metric') is None:
@@ -529,7 +525,7 @@ def _agg_cv_result(raw_results, eval_train_metric=False):
 
 
 def cv(params, train_set, num_boost_round=100,
-       gp_model=None, line_search_step_length=False, reuse_learning_rates_gp_model=False,
+       gp_model=None, line_search_step_length=False,
        use_gp_model_for_validation=True, fit_GP_cov_pars_OOS=False, train_gp_model_cov_pars=True,
        folds=None, nfold=5, stratified=False, shuffle=True,
        metric=None, fobj=None, feval=None, init_model=None,
@@ -555,9 +551,6 @@ def cv(params, train_set, num_boost_round=100,
         If True, a line search is done to find the optimal step length for every boosting update
         (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
         Applies only to the GPBoost algorithm
-    reuse_learning_rates_gp_model : bool, optional (default=False)
-        If True, the learning rates for the covariance and potential auxiliary parameters are kept at the values
-        from the previous boosting iteration and not re-initialized when optimizing them
     use_gp_model_for_validation : bool, optional (default=True)
         If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
         for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
@@ -738,7 +731,6 @@ def cv(params, train_set, num_boost_round=100,
         # update gp_model related parameters
         params['use_gp_model_for_validation'] = use_gp_model_for_validation
         params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
-        params['reuse_learning_rates_gp_model'] = reuse_learning_rates_gp_model
         params['line_search_step_length'] = line_search_step_length
 
     if num_boost_round <= 0:
@@ -874,7 +866,7 @@ def _get_param_combination(param_comb_number, param_grid):
 
 def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_random=None,
                                 num_boost_round=100, gp_model=None,
-                                line_search_step_length=False, reuse_learning_rates_gp_model=False,
+                                line_search_step_length=False,
                                 use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
                                 folds=None, nfold=5, stratified=False, shuffle=True,
                                 metric=None, fobj=None, feval=None, init_model=None,
@@ -902,9 +894,6 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         If True, a line search is done to find the optimal step length for every boosting update
         (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
         Applies only to the GPBoost algorithm
-    reuse_learning_rates_gp_model : bool, optional (default=False)
-        If True, the learning rates for the covariance and potential auxiliary parameters are kept at the values
-        from the previous boosting iteration and not re-initialized when optimizing them
     use_gp_model_for_validation : bool, optional (default=True)
         If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
         for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
@@ -1136,7 +1125,6 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         try:
             cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round, gp_model=gp_model,
                        line_search_step_length=line_search_step_length,
-                       reuse_learning_rates_gp_model=reuse_learning_rates_gp_model,
                        use_gp_model_for_validation=use_gp_model_for_validation,
                        train_gp_model_cov_pars=train_gp_model_cov_pars,
                        folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,

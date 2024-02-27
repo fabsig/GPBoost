@@ -5,14 +5,14 @@
 \title{CV function for number of boosting iterations}
 \usage{
 gpb.cv(params = list(), data, nrounds = 100L, gp_model = NULL,
-  line_search_step_length = FALSE, reuse_learning_rates_gp_model = FALSE,
-  use_gp_model_for_validation = TRUE, fit_GP_cov_pars_OOS = FALSE,
-  train_gp_model_cov_pars = TRUE, folds = NULL, nfold = 4L,
-  label = NULL, weight = NULL, obj = NULL, eval = NULL, verbose = 1L,
-  record = TRUE, eval_freq = 1L, showsd = FALSE, stratified = TRUE,
-  init_model = NULL, colnames = NULL, categorical_feature = NULL,
-  early_stopping_rounds = NULL, callbacks = list(), reset_data = FALSE,
-  delete_boosters_folds = FALSE, ...)
+  line_search_step_length = FALSE, use_gp_model_for_validation = TRUE,
+  fit_GP_cov_pars_OOS = FALSE, train_gp_model_cov_pars = TRUE,
+  folds = NULL, nfold = 4L, label = NULL, weight = NULL, obj = NULL,
+  eval = NULL, verbose = 1L, record = TRUE, eval_freq = 1L,
+  showsd = FALSE, stratified = TRUE, init_model = NULL, colnames = NULL,
+  categorical_feature = NULL, early_stopping_rounds = NULL,
+  callbacks = list(), reset_data = FALSE, delete_boosters_folds = FALSE,
+  ...)
 }
 \arguments{
 \item{params}{list of "tuning" parameters. 
@@ -32,9 +32,6 @@ A few key parameters:
                \item{\code{max_bin}: Maximal number of bins that feature values will be bucketed in (default = 255)}
                \item{\code{line_search_step_length} (default = FALSE): If TRUE, a line search is done to find the optimal 
                step length for every boosting update (see, e.g., Friedman 2001). This is then multiplied by the learning rate }
-               \item{\code{reuse_learning_rates_gp_model} (default = FALSE): If TRUE, the learning rates for the covariance and potential 
-               auxiliary parameters are kept at the values from the previous boosting iteration and 
-               not re-initialized when optimizing them }
                \item{\code{train_gp_model_cov_pars} (default = TRUE): If TRUE, the covariance parameters of the Gaussian process 
                are estimated in every boosting iterations,  otherwise the gp_model parameters are not estimated. 
                In the latter case, you need to either estimate them beforehand or provide values via 
@@ -60,10 +57,6 @@ may allow you to pass other types of data like \code{matrix} and then separately
 \item{line_search_step_length}{Boolean. If TRUE, a line search is done to find the optimal step length for every boosting update 
 (see, e.g., Friedman 2001). This is then multiplied by the \code{learning_rate}. 
 Applies only to the GPBoost algorithm}
-
-\item{reuse_learning_rates_gp_model}{Boolean. If TRUE, the learning rates for the covariance and potential 
-auxiliary parameters are kept at the values from the previous boosting iteration and 
-not re-initialized when optimizing them}
 
 \item{use_gp_model_for_validation}{Boolean. If TRUE, the \code{gp_model} 
 (Gaussian process and/or random effects) is also used (in addition to the tree model) for calculating 

@@ -6,10 +6,10 @@
 \usage{
 gpb.grid.search.tune.parameters(param_grid, data, params = list(),
   num_try_random = NULL, nrounds = 100L, gp_model = NULL,
-  line_search_step_length = FALSE, reuse_learning_rates_gp_model = FALSE,
-  use_gp_model_for_validation = TRUE, train_gp_model_cov_pars = TRUE,
-  folds = NULL, nfold = 4L, label = NULL, weight = NULL, obj = NULL,
-  eval = NULL, verbose_eval = 1L, stratified = TRUE, init_model = NULL,
+  line_search_step_length = FALSE, use_gp_model_for_validation = TRUE,
+  train_gp_model_cov_pars = TRUE, folds = NULL, nfold = 4L,
+  label = NULL, weight = NULL, obj = NULL, eval = NULL,
+  verbose_eval = 1L, stratified = TRUE, init_model = NULL,
   colnames = NULL, categorical_feature = NULL,
   early_stopping_rounds = NULL, callbacks = list(), ...)
 }
@@ -31,10 +31,6 @@ may allow you to pass other types of data like \code{matrix} and then separately
 \item{line_search_step_length}{Boolean. If TRUE, a line search is done to find the optimal step length for every boosting update 
 (see, e.g., Friedman 2001). This is then multiplied by the \code{learning_rate}. 
 Applies only to the GPBoost algorithm}
-
-\item{reuse_learning_rates_gp_model}{Boolean. If TRUE, the learning rates for the covariance and potential 
-auxiliary parameters are kept at the values from the previous boosting iteration and 
-not re-initialized when optimizing them}
 
 \item{use_gp_model_for_validation}{Boolean. If TRUE, the \code{gp_model} 
 (Gaussian process and/or random effects) is also used (in addition to the tree model) for calculating 

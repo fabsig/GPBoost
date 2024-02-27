@@ -177,7 +177,7 @@ namespace LightGBM {
 
 		// desc = if ``true``, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them
 		// desc = this option can only be used if ``optimizer_cov`` = ``gradient_descent``
-		bool reuse_learning_rates_gp_model = false;
+		bool reuse_learning_rates_gp_model = true;
 
 		// desc = if ``true``, the covariance parameters of the Gaussian process / random effects model are trained (estimated) in every boosting iteration of the GPBoost algorithm, otherwise not
 		bool train_gp_model_cov_pars = true;

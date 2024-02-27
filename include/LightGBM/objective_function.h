@@ -154,7 +154,7 @@ namespace LightGBM {
 		// In this case, a regression objective function is always used (irrespective of the actual likelihood),
 		// but this string than keeps track of the likelihood. This is a copy of re_model_->GetLikelihood(). It is saved here for speed-up
 		/*! \brief If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them */
-		bool reuse_learning_rates_gp_model_ = false;//currently only properly initialized for "regression" loss
+		bool reuse_learning_rates_gp_model_ = true;//currently only properly initialized for "regression" loss
 
 	};
 
