@@ -1,6 +1,6 @@
 /*!
 * Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
-* Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+* Modified work Copyright (c) 2020-2024 Fabio Sigrist. All rights reserved.
 * Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 */
 #ifndef LIGHTGBM_OBJECTIVE_REGRESSION_OBJECTIVE_HPP_
@@ -144,7 +144,7 @@ namespace LightGBM {
 			score_t* hessians) const override {
 			if (weights_ == nullptr) {
 				if (has_gp_model_) {//GPBoost algorithm
-					if (re_model_->GaussLikelihood()) {//Gaussian data
+					if (re_model_->GaussLikelihood()) {//Gaussian likelihood
 #pragma omp parallel for schedule(static)
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							gradients[i] = static_cast<score_t>(score[i] - label_[i]);
@@ -186,6 +186,21 @@ namespace LightGBM {
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					gradients[i] = static_cast<score_t>((score[i] - label_[i]) * weights_[i]);
 					hessians[i] = static_cast<score_t>(weights_[i]);
+				}
+			}
+		}//end GetGradients
+
+		void LineSearchLearningRate(const double* score,
+			const double* new_score,
+			double& lr) const override {
+			if (has_gp_model_) {
+				if (re_model_->GaussLikelihood()) {//Gaussian likelihood
+					lr *= -1;//re_model_template_.h contains (score - label_) from previous 'GetGradients' call and not (label_ - score) -> need to invert sign of lr
+					re_model_->LineSearchLearningRate(nullptr, new_score, reuse_learning_rates_gp_model_, lr);//current score / fixed_effects is omitted since this has already been set in y_vec_ in re_model_template.h when calling 'GetGradients' above
+					lr *= -1;//re_model_template_.h contains (score - label_) from previous 'GetGradients' call and not (label_ - score) -> need to invert sign of lr
+				}
+				else {
+					re_model_->LineSearchLearningRate(score, new_score, reuse_learning_rates_gp_model_, lr);
 				}
 			}
 		}
@@ -295,8 +310,6 @@ namespace LightGBM {
 		const bool deterministic_;
 		/*! \brief Indicates whether the covariance matrix should also be factorized when calling re_model_->CalcGradient(). Only relevant if has_gp_model_ = true and train_gp_model_cov_pars_ = true */
 		mutable bool calc_cov_factor_ = true;
-		/*! \brief If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them */
-		bool reuse_learning_rates_gp_model_ = false;
 		std::function<bool(label_t)> is_pos_ = [](label_t label) { return label > 0; };
 	};
 

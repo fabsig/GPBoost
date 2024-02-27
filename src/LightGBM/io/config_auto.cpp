@@ -181,6 +181,7 @@ const std::unordered_set<std::string>& Config::parameter_set() {
   "device_type",
   "seed",
   "deterministic",
+  "line_search_step_length",
   "reuse_learning_rates_gp_model",
   "train_gp_model_cov_pars",
   "use_gp_model_for_validation",
@@ -332,6 +333,8 @@ void Config::GetMembersFromString(const std::unordered_map<std::string, std::str
   GetInt(params, "num_threads", &num_threads);
 
   GetBool(params, "deterministic", &deterministic);
+
+  GetBool(params, "line_search_step_length", &line_search_step_length);
 
   GetBool(params, "reuse_learning_rates_gp_model", &reuse_learning_rates_gp_model);
 
@@ -670,6 +673,7 @@ std::string Config::SaveMembersToString() const {
   str_buf << "[num_leaves: " << num_leaves << "]\n";
   str_buf << "[num_threads: " << num_threads << "]\n";
   str_buf << "[deterministic: " << deterministic << "]\n";
+  str_buf << "[line_search_step_length: " << line_search_step_length << "]\n";
   str_buf << "[reuse_learning_rates_gp_model: " << reuse_learning_rates_gp_model << "]\n";
   str_buf << "[train_gp_model_cov_pars: " << train_gp_model_cov_pars << "]\n";
   str_buf << "[use_gp_model_for_validation: " << use_gp_model_for_validation << "]\n";

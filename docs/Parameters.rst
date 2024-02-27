@@ -117,11 +117,17 @@ Core Parameters
 
    -  **Note**: setting this to ``true`` may slow down the training
 
+-  ``line_search_step_length`` :raw-html:`<a id="line_search_step_length" title="Permalink to this parameter" href="#line_search_step_length">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
+
+   -  if ``true``, a line search is done to find the optimal step length for every boosting update (see, e.g., Friedman 2001). This is then multiplied by the ``learning_rate``
+
+   -  applies only to the GPBoost algorithm
+
 -  ``reuse_learning_rates_gp_model`` :raw-html:`<a id="reuse_learning_rates_gp_model" title="Permalink to this parameter" href="#reuse_learning_rates_gp_model">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
 
    -  if ``true``, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them
 
-   -  applies only to the GPBoost algorithm
+   -  this option can only be used if ``optimizer_cov`` = ``gradient_descent``
 
 -  ``train_gp_model_cov_pars`` :raw-html:`<a id="train_gp_model_cov_pars" title="Permalink to this parameter" href="#train_gp_model_cov_pars">&#x1F517;&#xFE0E;</a>`, default = ``true``, type = bool
 

@@ -1,5 +1,5 @@
 # Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
-# Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+# Modified work Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
 # Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 
 #' @name gpb_shared_params
@@ -15,16 +15,16 @@
 #'                              fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
 #'                              If training stops early, the returned model will have attribute \code{best_iter}
 #'                              set to the iteration number of the best iteration.
-#' @param eval evaluation function(s). This can be a character vector, function, or list with a mixture of
-#'             strings and functions.
+#' @param eval Evaluation metric to be monitored when doing CV and parameter tuning. 
+#' This can be a string, function, or list with a mixture of strings and functions.
 #'
 #'             \itemize{
 #'                 \item{\bold{a. character vector}:
-#'                     If you provide a character vector to this argument, it should contain strings with valid
-#'                     evaluation metrics.
-#'                     See \href{https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters}{
+#'                     Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", 
+#'                     "auc", "average_precision", "binary_logloss", "binary_error"
+#'                     See \href{https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters}{
 #'                     the "metric" section of the parameter documentation}
-#'                     for a list of valid metrics.
+#'                     for a complete list of valid metrics.
 #'                 }
 #'                 \item{\bold{b. function}:
 #'                      You can provide a custom evaluation function. This
@@ -74,19 +74,19 @@
 #'                \item{\code{lambda_l2}: L2 regularization (default = 0)}
 #'                \item{\code{lambda_l1}: L1 regularization (default = 0)}
 #'                \item{\code{max_bin}: Maximal number of bins that feature values will be bucketed in (default = 255)}
-#'                \item{\code{reuse_learning_rates_gp_model}: If TRUE, the learning rates for the covariance and potential 
+#'                \item{\code{line_search_step_length} (default = FALSE): If TRUE, a line search is done to find the optimal 
+#'                step length for every boosting update (see, e.g., Friedman 2001). This is then multiplied by the learning rate }
+#'                \item{\code{reuse_learning_rates_gp_model} (default = FALSE): If TRUE, the learning rates for the covariance and potential 
 #'                auxiliary parameters are kept at the values from the previous boosting iteration and 
-#'                not re-initialized when optimizing them. Applies only to Gaussian process boosting (GPBoost algorithm) (default = FALSE)}
-#'                \item{\code{train_gp_model_cov_pars}: If TRUE, the covariance parameters of the Gaussian process 
-#'                are stimated in every boosting iterations, 
-#'                otherwise the gp_model parameters are not estimated. In the latter case, you need to 
-#'                either esimate them beforehand or provide the values via 
-#'                the 'init_cov_pars' parameter when creating the gp_model (default = TRUE).}
-#'                \item{\code{use_gp_model_for_validation}: If TRUE, the Gaussian process is also used 
-#'                (in addition to the tree model) for calculating predictions on the validation data 
-#'                (default = TRUE)}
-#'                \item{\code{leaves_newton_update}: Set this to TRUE to do a Newton update step for the tree leaves 
-#'                after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm) (default = FALSE)}
+#'                not re-initialized when optimizing them }
+#'                \item{\code{train_gp_model_cov_pars} (default = TRUE): If TRUE, the covariance parameters of the Gaussian process 
+#'                are estimated in every boosting iterations,  otherwise the gp_model parameters are not estimated. 
+#'                In the latter case, you need to either estimate them beforehand or provide values via 
+#'                the 'init_cov_pars' parameter when creating the gp_model }
+#'                \item{\code{use_gp_model_for_validation} (default = TRUE): If TRUE, the Gaussian process is also used 
+#'                (in addition to the tree model) for calculating predictions on the validation data }
+#'                \item{\code{leaves_newton_update} (default = FALSE): Set this to TRUE to do a Newton update step for the tree leaves 
+#'                after the gradient step. Applies only to Gaussian process boosting (GPBoost algorithm) }
 #'                \item{num_threads: Number of threads. For the best speed, set this to
 #'                             the number of real CPU cores(\code{parallel::detectCores(logical = FALSE)}),
 #'                             not the number of threads (most CPU using hyper-threading to generate 2 threads
@@ -94,6 +94,12 @@
 #'            }
 #' @param verbose verbosity for output, if <= 0, also will disable the print of evaluation during training
 #' @param gp_model A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model
+#' @param line_search_step_length Boolean. If TRUE, a line search is done to find the optimal step length for every boosting update 
+#' (see, e.g., Friedman 2001). This is then multiplied by the \code{learning_rate}. 
+#' Applies only to the GPBoost algorithm
+#' @param reuse_learning_rates_gp_model Boolean. If TRUE, the learning rates for the covariance and potential 
+#'                auxiliary parameters are kept at the values from the previous boosting iteration and 
+#'                not re-initialized when optimizing them 
 #' @param use_gp_model_for_validation Boolean. If TRUE, the \code{gp_model} 
 #' (Gaussian process and/or random effects) is also used (in addition to the tree model) for calculating 
 #' predictions on the validation data. If FALSE, the \code{gp_model} (random effects part) is ignored 
@@ -103,9 +109,6 @@
 #' boosting iterations, otherwise the \code{gp_model} parameters are not estimated. 
 #' In the latter case, you need to either estimate them beforehand or provide the values via 
 #' the \code{init_cov_pars} parameter when creating the \code{gp_model}
-#' @param reuse_learning_rates_gp_model Boolean. If TRUE, the learning rates for the covariance and potential 
-#'                auxiliary parameters are kept at the values from the previous boosting iteration and 
-#'                not re-initialized when optimizing them. Applies only to Gaussian process boosting (GPBoost algorithm)
 #' @section Early Stopping:
 #'
 #'          "early stopping" refers to stopping the training process if the model's performance on a given
@@ -214,6 +217,7 @@ gpboost <- function(data,
                     params = list(),
                     nrounds = 100L,
                     gp_model = NULL,
+                    line_search_step_length = FALSE,
                     reuse_learning_rates_gp_model = FALSE,
                     use_gp_model_for_validation = TRUE,
                     train_gp_model_cov_pars = TRUE,
@@ -251,6 +255,7 @@ gpboost <- function(data,
     , "use_gp_model_for_validation" = use_gp_model_for_validation
     , "train_gp_model_cov_pars" = train_gp_model_cov_pars
     , "reuse_learning_rates_gp_model" = reuse_learning_rates_gp_model
+    , "line_search_step_length" = line_search_step_length
     , "valids" = valids
     , "obj" = obj
     , "eval" = eval

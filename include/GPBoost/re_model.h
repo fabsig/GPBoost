@@ -216,6 +216,18 @@ namespace GPBoost {
 		void FindInitialValueBoosting(double* init_score);
 
 		/*!
+		* \brief Does a line search as, e.g., in Friedman (2001) to find the optimal step length for every boosting update (only used when has_gp_model_ == true)
+		* \param score Current score
+		* \param new_score Number of leaves
+		* \param reuse_learning_rates_from_previous_call If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous call and not re-initialized (can only be set to true if called_in_GPBoost_algorithm is true)
+		* \param[out] lr Optimal learning rate
+		*/
+		void LineSearchLearningRate(const double* score,
+			const double* new_score,
+			bool reuse_learning_rates_from_previous_call,
+			double& lr);
+
+		/*!
 		* \brief Calculate the value of the negative log-likelihood
 		* \param y_data Response variable data
 		* \param cov_pars Values for covariance parameters of RE components

@@ -3,7 +3,7 @@
 Library with training routines of GPBoost.
 
 Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
-Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+Modified work Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
 Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 """
 import collections
@@ -18,7 +18,7 @@ from .compat import SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFo
 
 
 def train(params, train_set, num_boost_round=100,
-          gp_model=None, reuse_learning_rates_gp_model=False,
+          gp_model=None, line_search_step_length=False, reuse_learning_rates_gp_model=False,
           use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
           valid_sets=None, valid_names=None,
           fobj=None, feval=None, init_model=None,
@@ -39,10 +39,13 @@ def train(params, train_set, num_boost_round=100,
         Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
+    line_search_step_length : bool, optional (default=False)
+        If True, a line search is done to find the optimal step length for every boosting update
+        (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
+        Applies only to the GPBoost algorithm
     reuse_learning_rates_gp_model : bool, optional (default=False)
         If True, the learning rates for the covariance and potential auxiliary parameters are kept at the values
-        from the previous boosting iteration and not re-initialized when optimizing them.
-        Applies only to Gaussian process boosting (GPBoost algorithm)
+        from the previous boosting iteration and not re-initialized when optimizing them
     use_gp_model_for_validation : bool, optional (default=True)
         If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
         for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
@@ -50,7 +53,7 @@ def train(params, train_set, num_boost_round=100,
     train_gp_model_cov_pars : bool, optional (default=True)
         If True, the covariance parameters of the 'gp_model' (Gaussian process and/or random effects) are estimated
         in every boosting iterations, otherwise the 'gp_model' parameters are not estimated. In the latter case, you
-        need to either estimate them beforehand or provide the values via the 'init_cov_pars' parameter when creating
+        need to either estimate them beforehand or provide values via the 'init_cov_pars' parameter when creating
         the 'gp_model'
     valid_sets : list of Datasets or None, optional (default=None)
         List of data to be evaluated on during training.
@@ -254,6 +257,7 @@ def train(params, train_set, num_boost_round=100,
         params['use_gp_model_for_validation'] = use_gp_model_for_validation
         params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
         params['reuse_learning_rates_gp_model'] = reuse_learning_rates_gp_model
+        params['line_search_step_length'] = line_search_step_length
         # Set the default metric to the (approximate marginal) negative log-likelihood if only the training loss should be calculated
         if is_valid_contain_train and len(reduced_valid_sets) == 0 and params.get('metric') is None:
             if gp_model._get_likelihood_name() == "gaussian":
@@ -525,8 +529,8 @@ def _agg_cv_result(raw_results, eval_train_metric=False):
 
 
 def cv(params, train_set, num_boost_round=100,
-       gp_model=None, reuse_learning_rates_gp_model = False, use_gp_model_for_validation=True,
-       fit_GP_cov_pars_OOS=False, train_gp_model_cov_pars=True,
+       gp_model=None, line_search_step_length=False, reuse_learning_rates_gp_model=False,
+       use_gp_model_for_validation=True, fit_GP_cov_pars_OOS=False, train_gp_model_cov_pars=True,
        folds=None, nfold=5, stratified=False, shuffle=True,
        metric=None, fobj=None, feval=None, init_model=None,
        feature_name='auto', categorical_feature='auto',
@@ -547,10 +551,13 @@ def cv(params, train_set, num_boost_round=100,
         Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
+    line_search_step_length : bool, optional (default=False)
+        If True, a line search is done to find the optimal step length for every boosting update
+        (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
+        Applies only to the GPBoost algorithm
     reuse_learning_rates_gp_model : bool, optional (default=False)
         If True, the learning rates for the covariance and potential auxiliary parameters are kept at the values
-        from the previous boosting iteration and not re-initialized when optimizing them.
-        Applies only to Gaussian process boosting (GPBoost algorithm)
+        from the previous boosting iteration and not re-initialized when optimizing them
     use_gp_model_for_validation : bool, optional (default=True)
         If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
         for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
@@ -562,7 +569,7 @@ def cv(params, train_set, num_boost_round=100,
     train_gp_model_cov_pars : bool, optional (default=True)
         If True, the covariance parameters of the 'gp_model' (Gaussian process and/or random effects) are estimated
         in every boosting iterations, otherwise the 'gp_model' parameters are not estimated. In the latter case, you
-        need to either estimate them beforehand or provide the values via the 'init_cov_pars' parameter when creating
+        need to either estimate them beforehand or provide values via the 'init_cov_pars' parameter when creating
         the 'gp_model'
     folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
         If generator or iterator, it should yield the train and test indices for each fold.
@@ -577,8 +584,12 @@ def cv(params, train_set, num_boost_round=100,
     shuffle : bool, optional (default=True)
         Whether to shuffle before splitting data.
     metric : string, list of strings or None, optional (default=None)
-        Evaluation metric to be monitored when doing CV.
+        Evaluation metric to be monitored when doing CV and parameter tuning.
         If not None, the metric in ``params`` will be overridden.
+        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
+        "auc", "average_precision", "binary_logloss", "binary_error"
+        See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
+        for a complete list of valid metrics.
     fobj : callable or None, optional (default=None)
         Customized objective function. Only for independent boosting.
         The GPBoost algorithm currently does not support this.
@@ -728,6 +739,7 @@ def cv(params, train_set, num_boost_round=100,
         params['use_gp_model_for_validation'] = use_gp_model_for_validation
         params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
         params['reuse_learning_rates_gp_model'] = reuse_learning_rates_gp_model
+        params['line_search_step_length'] = line_search_step_length
 
     if num_boost_round <= 0:
         raise ValueError("num_boost_round should be greater than zero.")
@@ -861,7 +873,8 @@ def _get_param_combination(param_comb_number, param_grid):
 
 
 def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_random=None,
-                                num_boost_round=100, gp_model=None, reuse_learning_rates_gp_model=False,
+                                num_boost_round=100, gp_model=None,
+                                line_search_step_length=False, reuse_learning_rates_gp_model=False,
                                 use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
                                 folds=None, nfold=5, stratified=False, shuffle=True,
                                 metric=None, fobj=None, feval=None, init_model=None,
@@ -885,10 +898,13 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
+    line_search_step_length : bool, optional (default=False)
+        If True, a line search is done to find the optimal step length for every boosting update
+        (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
+        Applies only to the GPBoost algorithm
     reuse_learning_rates_gp_model : bool, optional (default=False)
         If True, the learning rates for the covariance and potential auxiliary parameters are kept at the values
-        from the previous boosting iteration and not re-initialized when optimizing them.
-        Applies only to Gaussian process boosting (GPBoost algorithm)
+        from the previous boosting iteration and not re-initialized when optimizing them
     use_gp_model_for_validation : bool, optional (default=True)
         If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
         for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
@@ -896,7 +912,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     train_gp_model_cov_pars : bool, optional (default=True)
         If True, the covariance parameters of the 'gp_model' (Gaussian process and/or random effects) are estimated
         in every boosting iterations, otherwise the 'gp_model' parameters are not estimated. In the latter case, you
-        need to either estimate them beforehand or provide the values via the 'init_cov_pars' parameter when creating
+        need to either estimate them beforehand or provide values via the 'init_cov_pars' parameter when creating
         the 'gp_model'
     folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
         If generator or iterator, it should yield the train and test indices for each fold.
@@ -911,9 +927,12 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     shuffle : bool, optional (default=True)
         Whether to shuffle before splitting data.
     metric : string, list of strings or None, optional (default=None)
-        Evaluation metric for monitoring prediction accuracy on validation data.
-        If more than one metric is provided, only the first metric will be used to choose tuning parameters.
+        Evaluation metric to be monitored when doing CV and parameter tuning.
         If not None, the metric in ``params`` will be overridden.
+        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
+        "auc", "average_precision", "binary_logloss", "binary_error"
+        See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
+        for a complete list of valid metrics.
     fobj : callable or None, optional (default=None)
         Customized objective function. Only for independent boosting.
         The GPBoost algorithm currently does not support this.
@@ -1115,8 +1134,9 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
             train_set = copy.deepcopy(train_set_not_constructed)
         current_score_is_better = False
         try:
-            cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round,
-                       gp_model=gp_model, reuse_learning_rates_gp_model=reuse_learning_rates_gp_model,
+            cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round, gp_model=gp_model,
+                       line_search_step_length=line_search_step_length,
+                       reuse_learning_rates_gp_model=reuse_learning_rates_gp_model,
                        use_gp_model_for_validation=use_gp_model_for_validation,
                        train_gp_model_cov_pars=train_gp_model_cov_pars,
                        folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,

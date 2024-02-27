@@ -507,6 +507,8 @@ class GBDT : public GBDTBase {
   bool calculate_residual_variance_ = false;
   /*! \brief Variance of residuals, used for 'gausssian_log_likelihood' metric */
   double residual_variance_;
+  /*! \brief Optimal learning rate / step length for boosting updates (used only if config_->line_search_step_length == true) */
+  double optimal_lr_ = 1.;
 
 #ifdef USE_CUDA
   /*! \brief First order derivative of training data */

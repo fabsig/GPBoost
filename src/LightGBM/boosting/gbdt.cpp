@@ -1,6 +1,6 @@
 /*!
 * Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
-* Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+* Modified work Copyright (c) 2020-2024 Fabio Sigrist. All rights reserved.
 * Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 */
 #include "gbdt.h"
@@ -70,6 +70,7 @@ namespace LightGBM {
 		nesterov_acc_rate_ = config_->nesterov_acc_rate;
 		momentum_offset_ = config_->momentum_offset;
 		leaves_newton_update_ = config_->leaves_newton_update;
+		optimal_lr_ = 1.;
 
 		if (config_->device_type == std::string("cuda")) {
 			LGBM_config_::current_learner = use_cuda_learner;
@@ -454,6 +455,17 @@ namespace LightGBM {
 						new_tree->SetLeafOutput(i, new_leaf_values[i]);
 					}
 				}
+				//Find optimal step length using a line search
+				if (objective_function_->HasGPModel() && config_->line_search_step_length) {
+					CHECK(!is_use_subset_);//if not true, this is not yet implemented, see 'UpdateScore' how to extend to this
+					CHECK(num_data_ == bag_data_cnt_);//if not true, this is not yet implemented, see 'UpdateScore' how to extend to this
+					std::vector<double> new_score(num_data_, 0.0);
+					tree_learner_->AddPredictionToScore(new_tree.get(), new_score.data());
+					int64_t num_score = 0;
+					const double* train_score = GetTrainingScore(&num_score);
+					objective_function_->LineSearchLearningRate(train_score, new_score.data(), optimal_lr_);
+					new_tree->Shrinkage(optimal_lr_);
+				}
 				// shrinkage by learning rate
 				new_tree->Shrinkage(shrinkage_rate_);
 				// update score
@@ -502,7 +514,7 @@ namespace LightGBM {
 				residual_variance_ = residual_variance / (num_data_ - 1);
 			}
 			if (objective_function_->HasGPModel() && !(objective_function_->UseGPModelForValidation() && use_nesterov_acc_)) {
-				// Calculate gradients & find optimal covariance parameters if if there is a GP model
+				// Calculate gradients & first find optimal covariance parameters if there is a GP model
 				// When there is Nesterov acceleration and the re_model is not used for validation, it is not necessary to calculate this here
 				//	since the gradients are calculated after the momentum step and this is not needed here.
 				// TODO: if use_nesterov_acc_ && objective->UseGPModelForValidation(), the calculation of the gradient could be avoided and 

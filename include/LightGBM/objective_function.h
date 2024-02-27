@@ -104,9 +104,9 @@ namespace LightGBM {
 		  * \param label Label data
 		  */
 		void InitGPModel(REModel* re_model,
-			bool train_gp_model_cov_pars = true,
-			bool use_gp_model_for_validation = false,
-			const label_t* label = nullptr);
+			bool train_gp_model_cov_pars,
+			bool use_gp_model_for_validation,
+			const label_t* label);
 
 		/*!
 		* \brief Returns true if the objective function has a GP model
@@ -130,7 +130,18 @@ namespace LightGBM {
 		* \param[out] leaf_values Leaf values when performing a Newton update step (array of size num_leaves)
 		*/
 		void NewtonUpdateLeafValues(const int* data_leaf_index,
-			const int num_leaves, double* leaf_values) const;
+			const int num_leaves,
+			double* leaf_values) const;//used only for "regression" loss
+
+		/*!
+		* \brief Does a line search as, e.g., in Friedman (2001) to find the optimal step length for every boosting update (only used when has_gp_model_ == true)
+		* \param score Current score
+		* \param new_score Number of leaves
+		* \param[out] lr Optimal learning rate
+		*/
+		virtual void LineSearchLearningRate(const double* score,
+			const double* new_score,
+			double& lr) const = 0;//used only for "regression" loss
 
 	protected:
 		///*! \brief Gaussian process model */
@@ -140,8 +151,10 @@ namespace LightGBM {
 		bool use_gp_model_for_validation_ = false;
 		std::string likelihood_type_ = "gaussian";//used only for re_model_
 		// Note: likelihood_type_ is only used for re_model_ (i.e. if has_gp_model_==true).
-		// In this case, a regression objective function is always used (no matter the data distribution),
+		// In this case, a regression objective function is always used (irrespective of the actual likelihood),
 		// but this string than keeps track of the likelihood. This is a copy of re_model_->GetLikelihood(). It is saved here for speed-up
+		/*! \brief If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them */
+		bool reuse_learning_rates_gp_model_ = false;//currently only properly initialized for "regression" loss
 
 	};
 

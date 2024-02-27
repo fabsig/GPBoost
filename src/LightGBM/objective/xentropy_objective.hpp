@@ -1,7 +1,8 @@
 /*!
- * Copyright (c) 2017 Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See LICENSE file in the project root for license information.
- */
+* Original work Copyright (c) 2017 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2020-2024 Fabio Sigrist. All rights reserved.
+* Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+*/
 #ifndef LIGHTGBM_OBJECTIVE_XENTROPY_OBJECTIVE_HPP_
 #define LIGHTGBM_OBJECTIVE_XENTROPY_OBJECTIVE_HPP_
 
@@ -92,6 +93,12 @@ class CrossEntropy: public ObjectiveFunction {
         hessians[i] = static_cast<score_t>(z * (1.0f - z) * weights_[i]);
       }
     }
+  }
+
+  void LineSearchLearningRate(const double*,
+      const double*,
+      double&) const override {//used only for "regression" loss
+      Log::Fatal("LineSearchLearningRate has not been implemented for 'cross_entropy' loss");
   }
 
   const char* GetName() const override {
@@ -215,6 +222,12 @@ class CrossEntropyLambda: public ObjectiveFunction {
         hessians[i] = static_cast<score_t>(a * (1.0f + y * b));
       }
     }
+  }
+
+  void LineSearchLearningRate(const double*,
+      const double*,
+      double&) const override {//used only for "regression" loss
+      Log::Fatal("LineSearchLearningRate has not been implemented for 'cross_entropy_lambda' loss");
   }
 
   const char* GetName() const override {

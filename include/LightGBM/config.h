@@ -171,8 +171,12 @@ namespace LightGBM {
 		// desc = **Note**: setting this to ``true`` may slow down the training
 		bool deterministic = false;
 
-		// desc = if ``true``, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them
+		// desc = if ``true``, a line search is done to find the optimal step length for every boosting update (see, e.g., Friedman 2001). This is then multiplied by the ``learning_rate``
 		// desc = applies only to the GPBoost algorithm
+		bool line_search_step_length = false;
+
+		// desc = if ``true``, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them
+		// desc = this option can only be used if ``optimizer_cov`` = ``gradient_descent``
 		bool reuse_learning_rates_gp_model = false;
 
 		// desc = if ``true``, the covariance parameters of the Gaussian process / random effects model are trained (estimated) in every boosting iteration of the GPBoost algorithm, otherwise not

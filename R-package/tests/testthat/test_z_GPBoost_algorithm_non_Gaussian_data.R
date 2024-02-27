@@ -538,6 +538,90 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
     })
     
+    test_that("GPBoost algorithm: large data and 'reuse_learning_rates_gp_model' and 'line_search_step_length' options", {
+      
+      n <- 1e4
+      X_train <- matrix(sim_rand_unif(n=2*n, init_c=0.9135), ncol=2)
+      # Simulate grouped random effects
+      sigma2_1 <- 0.6 # variance of first random effect 
+      sigma2 <- 0.1^2 # error variance
+      m <- n / 100 # number of categories / levels for grouping variable
+      group <- rep(1,n) # grouping variable
+      for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
+      b1 <- sqrt(sigma2_1) * qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.3462))
+      eps <- b1[group]
+      lp <- X_train %*% c(1,1)
+      lp <- lp - mean(lp)
+      probs <- pnorm(lp + eps)
+      y <- as.numeric(sim_rand_unif(n=n, init_c=0.5574) < probs)
+      params <- list(learning_rate = 0.1, max_depth = 6,
+                     min_data_in_leaf = 5, seed = 1)
+      set.seed(1)
+      dtrain <- gpb.Dataset(data = X_train, label = y)
+      folds <- list()
+      for(i in 1:4) folds[[i]] <- as.integer(1:(n/4) + (n/4) * (i-1))
+      
+      # Create random effects model and train GPBoost model
+      gp_model <- GPModel(group_data = group, likelihood = "binary_logit")
+      set_optim_params(gp_model, params=DEFAULT_OPTIM_PARAMS)
+      bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
+                     nrounds = 10, params = params, verbose = 0, 
+                     reuse_learning_rates_gp_model = TRUE,
+                     line_search_step_length = FALSE)
+      nll <- 5644.699232
+      expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/abs(nll),TOLERANCE)
+      # With the option line_search_step_length
+      gp_model <- GPModel(group_data = group, likelihood = "binary_logit")
+      set_optim_params(gp_model, params=DEFAULT_OPTIM_PARAMS)
+      bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
+                     nrounds = 10, params = params, verbose = 0,
+                     reuse_learning_rates_gp_model = TRUE,
+                     line_search_step_length = TRUE)
+      nll <- 5317.368493
+      expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/abs(nll),TOLERANCE)
+      
+      # CV
+      gp_model <- GPModel(group_data = group, likelihood = "binary_logit")
+      set_optim_params(gp_model, params=DEFAULT_OPTIM_PARAMS)
+      score <- 0.683929491027179
+      cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
+                      nrounds = 20, nfold = 4, eval = "binary_logloss", early_stopping_rounds = 5,
+                      use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
+                      reuse_learning_rates_gp_model = TRUE, line_search_step_length = FALSE)
+      expect_lt(abs(cvbst$best_score-score), TOLERANCE)
+      cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
+                      nrounds = 20, nfold = 4, eval = "binary_logloss", early_stopping_rounds = 5,
+                      use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
+                      reuse_learning_rates_gp_model = TRUE,
+                      line_search_step_length = TRUE)
+      score <- 0.672572152021631
+      expect_lt(abs(cvbst$best_score-score), TOLERANCE)
+      
+      # Check whether the option "reuse_learning_rates_gp_model" is used or not
+      gp_model <- GPModel(group_data = group, likelihood = "binary_logit")
+      params_loc <- DEFAULT_OPTIM_PARAMS
+      params_loc$trace = TRUE
+      set_optim_params(gp_model, params=params_loc)
+      output <- capture.output( bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
+                                               nrounds = 2, params = params, verbose = 0, 
+                                               reuse_learning_rates_gp_model = FALSE,
+                                               line_search_step_length = TRUE) )
+      str <- output[length(output)-10]
+      nb_ll_eval <- as.numeric(substr(str, nchar(str)-3, nchar(str)-2))
+      expect_equal(nb_ll_eval, 10)
+      # same thing with reuse_learning_rates_gp_model = TRUE
+      gp_model <- GPModel(group_data = group, likelihood = "binary_logit")
+      set_optim_params(gp_model, params=params_loc)
+      output <- capture.output( bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
+                                               nrounds = 2, params = params, verbose = 0, 
+                                               reuse_learning_rates_gp_model = TRUE,
+                                               line_search_step_length = TRUE) )
+      str <- output[length(output)-9]
+      nb_ll_eval <- as.numeric(substr(str, nchar(str)-2, nchar(str)-2))
+      expect_equal(nb_ll_eval, 4)
+      
+    })
+    
     test_that("GPBoost algorithm for binary classification when having only one grouping variable", {
       
       ntrain <- ntest <- 1000

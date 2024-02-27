@@ -1,8 +1,8 @@
 /*!
- * Copyright (c) 2020 Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See LICENSE file in the project root for
- * license information.
- */
+* Original work Copyright (c) 2020 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2020-2024 Fabio Sigrist. All rights reserved.
+* Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+*/
 #ifndef LIGHTGBM_OBJECTIVE_RANK_OBJECTIVE_HPP_
 #define LIGHTGBM_OBJECTIVE_RANK_OBJECTIVE_HPP_
 
@@ -62,6 +62,12 @@ class RankingObjective : public ObjectiveFunction {
         }
       }
     }
+  }
+
+  void LineSearchLearningRate(const double*,
+      const double*,
+      double&) const override {//used only for "regression" loss
+      Log::Fatal("LineSearchLearningRate has not been implemented for 'rank' loss");
   }
 
   virtual void GetGradientsForOneQuery(data_size_t query_id, data_size_t cnt,

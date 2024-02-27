@@ -688,6 +688,24 @@ namespace GPBoost {
 				CHECK(called_in_GPBoost_algorithm);
 				CHECK(learn_covariance_parameters || find_learning_rate_for_GPBoost_algo);
 			}
+			if (called_in_GPBoost_algorithm && find_learning_rate_for_GPBoost_algo && gauss_likelihood_) {
+				// Use explicit formula for optimal learning rate for Gaussian likelihood
+				SetY(covariate_data);
+				CalcYAux(1.);//y_aux = Psi^-1 * f^t, where f^t (= covariate_data) is the new base learner
+				double numer = 0., denom = 0.;
+				for (const auto& cluster_i : unique_clusters_) {
+					vec_t y_vec_cluster_i(num_data_per_cluster_[cluster_i]);
+					for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+						y_vec_cluster_i[j] = y_vec_[data_indices_per_cluster_[cluster_i][j]];
+					}
+					numer = y_vec_cluster_i.dot(y_aux_[cluster_i]);
+					denom = y_[cluster_i].dot(y_aux_[cluster_i]);
+				}
+				optim_coef[0] = numer / denom;
+				Log::REDebug(" ");
+				Log::REDebug("GPModel: optimal learning rate = %g ", -optim_coef[0]);
+				return;
+			}			
 			// Assume that this function is only called for initialization of the GPBoost algorithm
 			//	when (i) there is only an intercept (and not other covariates) and (ii) the covariance parameters are not learned
 			const double* fixed_effects_ptr = fixed_effects;

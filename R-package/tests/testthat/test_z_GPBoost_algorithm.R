@@ -512,7 +512,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       })
     })
     
-    test_that("GPBoost algorithm: large data and 'reuse_learning_rates_gp_model' option", {
+    test_that("GPBoost algorithm: large data and 'reuse_learning_rates_gp_model' and 'line_search_step_length' options", {
       
       n <- 1e5
       X_train <- matrix(sim_rand_unif(n=2*n, init_c=0.135), ncol=2)
@@ -542,6 +542,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       folds <- list()
       for(i in 1:4) folds[[i]] <- as.integer(1:(n/4) + (n/4) * (i-1))
       
+      #################
+      ### Tests for 'reuse_learning_rates_gp_model'
+      #################
       # Check whether the option "reuse_learning_rates_gp_model" is used or not
       gp_model <- GPModel(group_data = group)
       params_loc <- OPTIM_PARAMS_GRAD_DESC
@@ -598,7 +601,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       cov_pars <- c(0.009426053798, 0.602785377299)
       nll <- -86930.9172156506
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-      expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/nll,TOLERANCE)
+      expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/abs(nll),TOLERANCE)
       # With the option reuse_learning_rates_gp_model
       gp_model <- GPModel(group_data = group)
       set_optim_params(gp_model, params=OPTIM_PARAMS_GRAD_DESC)
@@ -606,14 +609,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                      nrounds = 62, params = params, verbose = 0,
                      reuse_learning_rates_gp_model = TRUE)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
-      expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/nll,TOLERANCE)
+      expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/abs(nll),TOLERANCE)
       
       # CV
       gp_model <- GPModel(group_data = group)
       set_optim_params(gp_model, params=OPTIM_PARAMS_GRAD_DESC)
       best_iter_max <- 5
       best_iter_min <- 3
-      score <- 0.624597895929742
+      score <- 0.624597895927245
       cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
                       nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
                       use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
@@ -625,6 +628,56 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                       nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
                       use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
                       reuse_learning_rates_gp_model = TRUE)
+      expect_lt(cvbst$best_iter, best_iter_max + 1)
+      expect_gt(cvbst$best_iter, best_iter_min - 1)
+      expect_lt(abs(cvbst$best_score-score), TOLERANCE)
+      
+      #################
+      ### Tests for 'line_search_step_length'
+      #################
+      params_ls <- params
+      params_ls$learning_rate <- 0.5
+      # Create random effects model and train GPBoost model
+      gp_model <- GPModel(group_data = group)
+      set_optim_params(gp_model, params=OPTIM_PARAMS_GRAD_DESC)
+      bst <- gpboost(data = X_train, label = ycv, gp_model = gp_model,
+                     nrounds = 10, params = params_ls, verbose = 0, 
+                     reuse_learning_rates_gp_model = TRUE,
+                     line_search_step_length = FALSE)
+      nll <- 162232.5638
+      expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/abs(nll),TOLERANCE)
+      # With the option line_search_step_length
+      gp_model <- GPModel(group_data = group)
+      set_optim_params(gp_model, params=OPTIM_PARAMS_GRAD_DESC)
+      bst <- gpboost(data = X_train, label = ycv, gp_model = gp_model,
+                     nrounds = 10, params = params_ls, verbose = 0,
+                     reuse_learning_rates_gp_model = TRUE,
+                     line_search_step_length = TRUE)
+      nll <- -82056.84807
+      expect_lt(abs((gp_model$get_current_neg_log_likelihood()-nll))/abs(nll),TOLERANCE)
+      
+      # CV
+      gp_model <- GPModel(group_data = group)
+      set_optim_params(gp_model, params=OPTIM_PARAMS_GRAD_DESC)
+      best_iter_max <- 3
+      best_iter_min <- 1
+      score <- 0.631380111900653
+      cvbst <- gpb.cv(params = params_ls, data = dtrain, gp_model = gp_model,
+                      nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
+                      use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
+                      reuse_learning_rates_gp_model = TRUE,
+                      line_search_step_length = FALSE)
+      expect_lt(cvbst$best_iter, best_iter_max + 1)
+      expect_gt(cvbst$best_iter, best_iter_min - 1)
+      expect_lt(abs(cvbst$best_score-score), TOLERANCE)
+      cvbst <- gpb.cv(params = params_ls, data = dtrain, gp_model = gp_model,
+                      nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
+                      use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
+                      reuse_learning_rates_gp_model = TRUE,
+                      line_search_step_length = TRUE)
+      best_iter_max <- 31
+      best_iter_min <- 30
+      score <- 0.620687335204216
       expect_lt(cvbst$best_iter, best_iter_max + 1)
       expect_gt(cvbst$best_iter, best_iter_min - 1)
       expect_lt(abs(cvbst$best_score-score), TOLERANCE)

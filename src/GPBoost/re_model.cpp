@@ -554,6 +554,64 @@ namespace GPBoost {
 		}
 	}//end FindInitialValueBoosting
 
+	void REModel::LineSearchLearningRate(const double* score,
+		const double* new_score,
+		bool reuse_learning_rates_from_previous_call,
+		double& lr) {
+		CHECK(cov_pars_initialized_);
+		if (matrix_format_ == "sp_mat_t") {
+			re_model_sp_->OptimLinRegrCoefCovPar(nullptr,
+				new_score,
+				1,
+				cov_pars_.data(),
+				&lr,
+				num_it_,
+				cov_pars_.data(),
+				&lr,
+				nullptr,
+				nullptr,
+				false,
+				score,
+				false,//learn_covariance_parameters=false
+				true,
+				reuse_learning_rates_from_previous_call);
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			re_model_sp_rm_->OptimLinRegrCoefCovPar(nullptr,
+				new_score,
+				1,
+				cov_pars_.data(),
+				&lr,
+				num_it_,
+				cov_pars_.data(),
+				&lr,
+				nullptr,
+				nullptr,
+				false,
+				score,
+				false,//learn_covariance_parameters=false
+				true,
+				reuse_learning_rates_from_previous_call);
+		}
+		else {
+			re_model_den_->OptimLinRegrCoefCovPar(nullptr,
+				new_score,
+				1,
+				cov_pars_.data(),
+				&lr,
+				num_it_,
+				cov_pars_.data(),
+				&lr,
+				nullptr,
+				nullptr,
+				false,
+				score,
+				false,//learn_covariance_parameters=false
+				true,
+				reuse_learning_rates_from_previous_call);
+		}
+	}//end LineSearchLearningRate
+
 	void REModel::EvalNegLogLikelihood(const double* y_data,
 		double* cov_pars,
 		double& negll,

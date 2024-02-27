@@ -131,7 +131,8 @@ REModel* ObjectiveFunction::GetGPModel() const {
 }
 
 void ObjectiveFunction::NewtonUpdateLeafValues(const int* data_leaf_index,
-    const int num_leaves, double* leaf_values) const {//used only for "regression" loss
+    const int num_leaves, 
+    double* leaf_values) const {//used only for "regression" loss
     if (has_gp_model_) {
         re_model_->NewtonUpdateLeafValues(data_leaf_index, num_leaves, leaf_values);
     }

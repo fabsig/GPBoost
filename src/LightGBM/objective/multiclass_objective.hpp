@@ -1,7 +1,8 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See LICENSE file in the project root for license information.
- */
+* Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2020-2024 Fabio Sigrist. All rights reserved.
+* Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+*/
 #ifndef LIGHTGBM_OBJECTIVE_MULTICLASS_OBJECTIVE_HPP_
 #define LIGHTGBM_OBJECTIVE_MULTICLASS_OBJECTIVE_HPP_
 
@@ -129,6 +130,12 @@ class MulticlassSoftmax: public ObjectiveFunction {
     }
   }
 
+  void LineSearchLearningRate(const double*,
+      const double*,
+      double&) const override {//used only for "regression" loss
+      Log::Fatal("LineSearchLearningRate has not been implemented for 'multiclass' loss");
+  }
+
   void ConvertOutput(const double* input, double* output) const override {
     Common::Softmax(input, output, num_class_);
   }
@@ -230,6 +237,12 @@ class MulticlassOVA: public ObjectiveFunction {
       int64_t offset = static_cast<int64_t>(num_data_) * i;
       binary_loss_[i]->GetGradients(score + offset, gradients + offset, hessians + offset);
     }
+  }
+
+  void LineSearchLearningRate(const double*,
+      const double*,
+      double&) const override {//used only for "regression" loss
+      Log::Fatal("LineSearchLearningRate has not been implemented for 'multiclassova' loss");
   }
 
   const char* GetName() const override {

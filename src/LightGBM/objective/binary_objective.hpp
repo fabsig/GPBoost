@@ -1,7 +1,8 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See LICENSE file in the project root for license information.
- */
+* Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2020-2024 Fabio Sigrist. All rights reserved.
+* Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
+*/
 #ifndef LIGHTGBM_OBJECTIVE_BINARY_OBJECTIVE_HPP_
 #define LIGHTGBM_OBJECTIVE_BINARY_OBJECTIVE_HPP_
 
@@ -133,6 +134,12 @@ class BinaryLogloss: public ObjectiveFunction {
         hessians[i] = static_cast<score_t>(abs_response * (sigmoid_ - abs_response) * label_weight * weights_[i]);
       }
     }
+  }
+
+  void LineSearchLearningRate(const double*,
+      const double*,
+      double&) const override {//used only for "regression" loss
+      Log::Fatal("LineSearchLearningRate has not been implemented for 'binary' loss");
   }
 
   // implement custom average to boost from (if enabled among options)
