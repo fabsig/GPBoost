@@ -480,7 +480,14 @@ namespace GPBoost {
 		void SetAuxPars(const double* aux_pars) {
 			if (likelihood_type_ == "gaussian" || likelihood_type_ == "gamma" || 
 				likelihood_type_ == "negative_binomial") {
-				CHECK(aux_pars[0] > 0);
+				//CHECK(aux_pars[0] > 0);//DELETE
+				if (!(aux_pars[0] > 0)) {
+					Log::REFatal("The '%s' parameter is not > 0. This might be due to a problem when estimating the '%s' parameter (e.g., a numerical overflow). "
+						"You can try either (i) manually setting a different initial value using the 'init_aux_pars' parameter "
+						" or (ii) not estimating the '%s' parameter at all by setting 'estimate_aux_pars' to 'false'. "
+						"Both these parameters can be specified in the 'params' argument by calling, e.g., the 'set_optim_params' function of a 'GPModel' ",
+						names_aux_pars_[0].c_str(), names_aux_pars_[0].c_str(), names_aux_pars_[0].c_str());
+				}
 				aux_pars_[0] = aux_pars[0];
 			}
 			normalizing_constant_has_been_calculated_ = false;
