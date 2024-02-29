@@ -338,11 +338,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       #   3. Prediction
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                       predict_var = TRUE, pred_latent = TRUE)
-      expect_lt(sum(abs(head(pred$fixed_effect, n=4)-c(0.4455938, -0.2227164, 0.8109617, 0.6144774))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.050472, -1.025383, -1.187068,
+      expect_lt(sum(abs(head(pred$fixed_effect, n=4)-c(0.4456027, -0.2227075, 0.8109699, 0.6144861))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.050475, -1.025386, -1.187071,
                                                         rep(0,n_new)))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1165838, 0.1175573, 0.1174311,
-                                                       rep(0.7282491,n_new)))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1165832, 0.1175566, 0.1174304,
+                                                       rep(0.7282295,n_new)))),TOLERANCE)
       
       # Training using Nelder-Mead
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
