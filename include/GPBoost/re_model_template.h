@@ -5201,12 +5201,26 @@ namespace GPBoost {
 						re_comps_cross_cov_[cluster_i][j]->CalcSigma();
 						den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][j]->GetZSigmaZt());
 						sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE;
-
 						chol_fact_sigma_ip_[cluster_i].compute(sigma_ip_stable);
-						if (gp_approx_ == "full_scale_tapering") {
-
+						if (gp_approx_ == "fitc") {
+							std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
+							den_mat_t sigma_ip_Ihalf_sigma_cross_covT;
+							TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i],
+								(*cross_cov).transpose(), sigma_ip_Ihalf_sigma_cross_covT, false);
+							if (gauss_likelihood_) {
+								FITC_Diag_[cluster_i] = vec_t::Ones(num_data_per_cluster_[cluster_i]);//add nugget effect variance
+							}
+							else {
+								FITC_Diag_[cluster_i] = vec_t::Zero(num_data_per_cluster_[cluster_i]);
+							}
+							FITC_Diag_[cluster_i] = FITC_Diag_[cluster_i].array() + sigma_ip_stable.coeffRef(0, 0);
+#pragma omp parallel for schedule(static)
+							for (int ii = 0; ii < num_data_per_cluster_[cluster_i]; ++ii) {
+								FITC_Diag_[cluster_i][ii] -= sigma_ip_Ihalf_sigma_cross_covT.col(ii).array().square().sum();
+							}
+						}
+						else if (gp_approx_ == "full_scale_tapering") {
 							re_comps_resid_[cluster_i][j]->CalcSigma();
-
 							// Subtract predictive process covariance
 							TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i],
 								(*(re_comps_cross_cov_[cluster_i][j]->GetZSigmaZt())).transpose(), chol_ip_cross_cov_[cluster_i], false);
@@ -6376,7 +6390,6 @@ namespace GPBoost {
 							diagonal_approx_inv_preconditioner_[cluster_i] = diagonal_approx_preconditioner_[cluster_i].cwiseInverse();
 							sigma_woodbury = (*cross_cov).transpose() * (diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * (*cross_cov));
 							sigma_woodbury += *(re_comps_ip_[cluster_i][0]->GetZSigmaZt());
-
 							chol_fact_woodbury_preconditioner_[cluster_i].compute(sigma_woodbury);
 						}
 						else if (cg_preconditioner_type_ != "none") {
@@ -6387,20 +6400,6 @@ namespace GPBoost {
 				}
 				else if (matrix_inversion_method_ == "cholesky") {
 					if (gp_approx_ == "fitc") {
-						den_mat_t sigma_ip_Ihalf_sigma_cross_covT;
-						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i],
-							(*cross_cov).transpose(), sigma_ip_Ihalf_sigma_cross_covT, false);
-						if (gauss_likelihood_) {
-							FITC_Diag_[cluster_i] = vec_t::Ones(num_data_per_cluster_[cluster_i]);//add nugget effect variance
-						}
-						else {
-							FITC_Diag_[cluster_i] = vec_t::Zero(num_data_per_cluster_[cluster_i]);
-						}
-						FITC_Diag_[cluster_i] = FITC_Diag_[cluster_i].array() + sigma_ip_stable.coeffRef(0, 0);
-#pragma omp parallel for schedule(static)
-						for (int ii = 0; ii < num_data_per_cluster_[cluster_i]; ++ii) {
-							FITC_Diag_[cluster_i][ii] -= sigma_ip_Ihalf_sigma_cross_covT.col(ii).array().square().sum();
-						}
 						sigma_woodbury = ((*cross_cov).transpose() * FITC_Diag_[cluster_i].cwiseInverse().asDiagonal()) * (*cross_cov);
 					}
 					else if (gp_approx_ == "full_scale_tapering") {
