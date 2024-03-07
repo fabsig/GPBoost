@@ -47,6 +47,18 @@ namespace GPBoost {
 		const double THRESHOLD_ZERO_RHS_CG,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm);
 
+	void CGVecchiaLaplaceVecIncompChol(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& B_t_D_inv_rm,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const int find_mode_it,
+		const double delta_conv,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const sp_mat_rm_t& L_SigmaI_plus_W);
+
 	/*!
 	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate 
 	*		 gradient descent algorithm is used to approximately solve for (W^(-1) + Sigma)^(-1) Sigma rhs. 
@@ -112,6 +124,20 @@ namespace GPBoost {
 		int p,
 		const double delta_conv,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm);
+
+	void CGTridiagVecchiaLaplaceIncompChol(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& B_t_D_inv_rm,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const sp_mat_rm_t& L_SigmaI_plus_W);
 
 	/*!
 	* \brief Version of CGTridiagVecchiaLaplace() where A = (W^(-1) + Sigma).
@@ -207,6 +233,10 @@ namespace GPBoost {
 		const vec_t& tr_AI_A_deriv,
 		const vec_t& tr_BI_B_deriv,
 		vec_t& c_opt);
+
+	void ReverseIncompleteCholeskyFactorization(sp_mat_t& SigmaI_plus_W,
+		const sp_mat_t& B, 
+		sp_mat_rm_t& L_SigmaI_plus_W);
 
 	/*!
 	* \brief Pivoted Cholesky factorization according to Habrecht et al. (2012) for the original (nonapproximated) covariance matrix (Sigma)

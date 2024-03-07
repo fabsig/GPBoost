@@ -78,7 +78,7 @@ namespace GPBoost {
 				return;
 			}
 			if (r_norm < delta_conv) {
-				//Log::REInfo("Number CG iterations: %i", j + 1);
+				Log::REInfo("Number CG iterations: %i", j + 1);
 				return;
 			}
 
@@ -96,6 +96,85 @@ namespace GPBoost {
 		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 	} // end CGVecchiaLaplaceVec
+
+	void CGVecchiaLaplaceVecIncompChol(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& B_t_D_inv_rm,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const int find_mode_it,
+		const double delta_conv,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const sp_mat_rm_t& L_SigmaI_plus_W) {
+
+		p = std::min(p, (int)B_rm.cols());
+
+		vec_t r, r_old;
+		vec_t z, z_old;
+		vec_t h, v, L_invt_r;
+		double a, b, r_norm;
+
+		//Avoid numerical instabilites when rhs is de facto 0
+		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+			u.setZero();
+			return;
+		}
+
+		//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
+		if (find_mode_it == 0) {
+			u.setZero();
+			//r = rhs - A * u
+			r = rhs; //since u is 0
+		}
+		else {
+			//r = rhs - A * u
+			r = rhs - ((B_t_D_inv_rm * (B_rm * u)) + diag_W.cwiseProduct(u));
+		}
+
+		//z = P^(-1) r, where P^(-1) = L^-1 L^-T
+		L_invt_r = L_SigmaI_plus_W.transpose().triangularView<Eigen::UpLoType::Upper>().solve(r);
+		z = L_SigmaI_plus_W.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_r);
+
+		h = z;
+
+		for (int j = 0; j < p; ++j) {
+			//Parentheses are necessery for performance, otherwise EIGEN does the operation wrongly from left to right
+			v = (B_t_D_inv_rm * (B_rm * h)) + diag_W.cwiseProduct(h);
+
+			a = r.transpose() * z;
+			a /= h.transpose() * v;
+
+			u += a * h;
+			r_old = r;
+			r -= a * v;
+
+			r_norm = r.norm();
+			//Log::REInfo("r.norm(): %g | Iteration: %i", r_norm, j);
+			if (std::isnan(r_norm) || std::isinf(r_norm)) {
+				NA_or_Inf_found = true;
+				return;
+			}
+			if (r_norm < delta_conv) {
+				Log::REInfo("Number CG iterations: %i", j + 1);
+				return;
+			}
+
+			z_old = z;
+
+			//z = P^(-1) r 
+			L_invt_r = L_SigmaI_plus_W.transpose().triangularView<Eigen::UpLoType::Upper>().solve(r);
+			z = L_SigmaI_plus_W.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_r);
+
+			b = r.transpose() * z;
+			b /= r_old.transpose() * z_old;
+
+			h = z + b * h;
+		}
+		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
+	} // end CGVecchiaLaplaceVecIncompChol
 
 	void CGVecchiaLaplaceVecWinvplusSigma(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -177,7 +256,7 @@ namespace GPBoost {
 					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 				}
-				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
+				Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				return;
 			}
 
@@ -300,6 +379,112 @@ namespace GPBoost {
 		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
 	} // end CGTridiagVecchiaLaplace
+
+	void CGTridiagVecchiaLaplaceIncompChol(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& B_t_D_inv_rm,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const sp_mat_rm_t& L_SigmaI_plus_W) {
+
+		p = std::min(p, (int)num_data);
+
+		den_mat_t R(num_data, t), R_old, L_invt_R(num_data, t), Z(num_data, t), Z_old, H, V(num_data, t), L_kt_W_inv_R, B_k_W_inv_R, W_inv_R; //NEW V(num_data, t)
+		vec_t v1(num_data), diag_SigmaI_plus_W_inv, diag_W_inv;
+		vec_t a(t), a_old(t);
+		vec_t b(t), b_old(t);
+		bool early_stop_alg = false;
+		double mean_R_norm;
+
+		U.setZero();
+		v1.setOnes();
+		a.setOnes();
+		b.setZero();
+
+		//R = rhs - (W^(-1) + Sigma) * U
+		R = rhs; //Since U is 0
+
+		//Z = P^(-1) R 		
+		//P^(-1) = L^(-1) L^(-T)
+#pragma omp parallel for schedule(static)   
+		for (int i = 0; i < t; ++i) {
+			L_invt_R.col(i) = L_SigmaI_plus_W.transpose().triangularView<Eigen::UpLoType::Upper>().solve(R.col(i));
+		}
+#pragma omp parallel for schedule(static)   
+		for (int i = 0; i < t; ++i) {
+			Z.col(i) = L_SigmaI_plus_W.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_R.col(i));
+		}
+
+		H = Z;
+
+		for (int j = 0; j < p; ++j) {
+			//V = (Sigma^(-1) + W) H
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				V.col(i) = (B_t_D_inv_rm * (B_rm * H.col(i))) + diag_W.cwiseProduct(H.col(i));
+			}
+
+			a_old = a;
+			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+
+			U += H * a.asDiagonal();
+			R_old = R;
+			R -= V * a.asDiagonal();
+
+			mean_R_norm = R.colwise().norm().mean();
+
+			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
+				NA_or_Inf_found = true;
+				return;
+			}
+			if (mean_R_norm < delta_conv) {
+				early_stop_alg = true;
+				//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
+			}
+
+			Z_old = Z;
+
+			//Z = P^(-1) R
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				L_invt_R.col(i) = L_SigmaI_plus_W.transpose().triangularView<Eigen::UpLoType::Upper>().solve(R.col(i));
+			}
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				Z.col(i) = L_SigmaI_plus_W.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_R.col(i));
+			}
+
+			b_old = b;
+			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+
+			H = Z + H * b.asDiagonal();
+
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < t; ++i) {
+				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
+				if (j > 0) {
+					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
+				}
+			}
+
+			if (early_stop_alg) {
+				for (int i = 0; i < t; ++i) {
+					Tdiags[i].conservativeResize(j + 1, 1);
+					Tsubdiags[i].conservativeResize(j, 1);
+				}
+				return;
+			}
+		}
+		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+	} // end CGTridiagVecchiaLaplaceIncompChol
 
 	void CGTridiagVecchiaLaplaceWinvplusSigma(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -523,4 +708,79 @@ namespace GPBoost {
 			}
 		}
 	} // end CalcOptimalCVectorized
+
+	void ReverseIncompleteCholeskyFactorization(sp_mat_t& SigmaI_plus_W,
+		const sp_mat_t& B,
+		sp_mat_rm_t& L_SigmaI_plus_W) {
+		
+		//sp_mat_t L = B;  // initialize for defining sparsity pattern 
+		sp_mat_t L = SigmaI_plus_W; // alternative version
+		
+		L *= 0.0;
+
+		////Debugging
+		//Log::REInfo("L.nonZeros() = %d", L.nonZeros());
+		//Log::REInfo("L.cwiseAbs().sum() = %g", L.cwiseAbs().sum());
+		//den_mat_t SigmaI_plus_W_dense = den_mat_t(SigmaI_plus_W);
+		//for (int c = 0; c < SigmaI_plus_W_dense.cols(); ++c) {
+		//	for (int r = 0; r < SigmaI_plus_W_dense.rows(); ++r) {
+		//		Log::REInfo("SigmaI_plus_W_dense(%d,%d): %g", r, c, SigmaI_plus_W_dense(r,c));
+		//	}
+		//}
+
+		for (int i = ((int)L.outerSize() - 1); i > -1; --i) {
+			for (Eigen::SparseMatrix<double>::ReverseInnerIterator it(L, i); it; --it) {
+				int j = (int)it.row();
+				int ii = (int)it.col();
+				//Log::REInfo("column i = %d (%d), row j = %d, value = %g", i, ii, j, it.value());
+				double s = (L.col(ii)).dot(L.col(j));
+				//Log::REInfo("s = %g", s);
+				if (ii == j) {
+					it.valueRef() = std::sqrt(SigmaI_plus_W.coeffRef(ii, ii) - s);
+					//double diff = SigmaI_plus_W.coeffRef(ii, ii) - s;
+					//if (diff > 0.0) {
+					//	it.valueRef() = std::sqrt(diff);
+					//}
+					//else {
+					//	it.valueRef() = 0.0;
+					//}
+				}
+				else if (ii <= j){
+					//Log::REInfo("L.coeffRef(%d, %d): %g", j, j, L.coeffRef(j, j));
+					//Log::REInfo("SigmaI_plus_W.coeffRef(%d, %d): %g", ii, j, SigmaI_plus_W.coeffRef(ii, j));
+					it.valueRef() = (SigmaI_plus_W.coeffRef(ii, j) - s) / L.coeffRef(j, j);
+				}
+				if (std::isnan(it.value()) || std::isinf(it.value())) {
+					Log::REInfo("column i = %d (%d), row j = %d, value = %g", i, ii, j, it.value());
+					Log::REInfo("s = %g", s);
+					Log::REInfo("L.coeffRef(%d, %d): %g", j, j, L.coeffRef(j, j));
+					Log::REInfo("SigmaI_plus_W.coeffRef(%d, %d): %g", ii, j, SigmaI_plus_W.coeffRef(ii, j));
+					std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+					Log::REFatal("nan or inf occured in ReverseIncompleteCholeskyFactorization()");
+				}
+			}
+		}
+
+		////Debugging
+		//den_mat_t L_dense = den_mat_t(L);
+		//for (int c = 0; c < L_dense.cols(); ++c) {
+		//	for (int r = 0; r < L_dense.rows(); ++r) {
+		//		Log::REInfo("L_dense(%d,%d): %g", r, c, L_dense(r, c));
+		//	}
+		//}
+
+		//sp_mat_t Lt_L = L.transpose() * L;
+		//sp_mat_t diff = SigmaI_plus_W - Lt_L;
+		//Log::REInfo("diff.cwiseAbs().sum() = %g", diff.cwiseAbs().sum());
+
+		//den_mat_t Lt_L_dense = den_mat_t(Lt_L);
+		//for (int c = 0; c < Lt_L_dense.cols(); ++c) {
+		//	for (int r = 0; r < Lt_L_dense.rows(); ++r) {
+		//		Log::REInfo("Lt_L_dense(%d,%d): %g", r, c, Lt_L_dense(r, c));
+		//	}
+		//}
+
+		L_SigmaI_plus_W = sp_mat_rm_t(L); //Convert to row-major
+
+	} // end ReverseIncompleteCholeskyFactorization
 }

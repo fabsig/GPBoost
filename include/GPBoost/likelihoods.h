@@ -1781,6 +1781,9 @@ namespace GPBoost {
 			vec_t rhs, B_mode, mode_new(dim_mode_);
 			// Variables when using Cholesky factorization
 			sp_mat_t SigmaI, SigmaI_plus_W;
+			if (cg_preconditioner_type_ == "piv_chol_on_Sigma") { //TEMP: incomp_chol_on_SigmaI_plus_W
+				cg_preconditioner_type_ = "incomp_chol_on_SigmaI_plus_W"; //TEMP: incomp_chol_on_SigmaI_plus_W
+			} //TEMP: incomp_chol_on_SigmaI_plus_W
 			vec_t mode_after_grad_aux, mode_after_grad_aux_lag1;//auxiliary variable used only if quasi_newton_for_mode_finding_
 			if (quasi_newton_for_mode_finding_) {
 				mode_after_grad_aux_lag1 = mode_;
@@ -1808,6 +1811,9 @@ namespace GPBoost {
 					//Store as class variable
 					Sigma_L_k_ = Sigma_L_k;
 					I_k_plus_Sigma_L_kt_W_Sigma_L_k.resize(Sigma_L_k_.cols(), Sigma_L_k_.cols());
+				}
+				else if (cg_preconditioner_type_ == "incomp_chol_on_SigmaI_plus_W") {
+					SigmaI = B.transpose() * D_inv * B;
 				}
 			}
 			else {
@@ -1883,6 +1889,24 @@ namespace GPBoost {
 							D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).asDiagonal() * B_rm_;
 							CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rhs, mode_new, has_NA_or_Inf,
 								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
+						}
+						else if (cg_preconditioner_type_ == "incomp_chol_on_SigmaI_plus_W") {
+							std::chrono::steady_clock::time_point begin, end;
+							double el_time;
+							begin = std::chrono::steady_clock::now();
+								//Log::REInfo("SigmaI.nonZeros() = %d", SigmaI.nonZeros());
+								SigmaI_plus_W = SigmaI;
+								SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
+								ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
+							end = std::chrono::steady_clock::now();
+							el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;
+							Log::REInfo("Time ReverseIncompleteCholeskyFactorization: %g", el_time);
+							begin = std::chrono::steady_clock::now();
+								CGVecchiaLaplaceVecIncompChol(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rhs, mode_new, has_NA_or_Inf,
+									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, L_SigmaI_plus_W_rm_);
+							end = std::chrono::steady_clock::now();
+							el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;
+							Log::REInfo("Time CGVecchiaLaplaceVecIncompChol: %g", el_time);
 						}
 						else {
 							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
@@ -1982,7 +2006,7 @@ namespace GPBoost {
 								GenRandVecTrace(cg_generator_, rand_vec_trace_I2_);
 								WI_plus_Sigma_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
-							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "incomp_chol_on_SigmaI_plus_W") {
 								rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
 								SigmaI_plus_W_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
@@ -1996,7 +2020,7 @@ namespace GPBoost {
 							rand_vec_trace_P_.resize(dim_mode_, num_rand_vec_trace_);
 						}
 						double log_det_Sigma_W_plus_I;
-						CalcLogDetStoch(dim_mode_, cg_max_num_it_tridiag, I_k_plus_Sigma_L_kt_W_Sigma_L_k, has_NA_or_Inf, log_det_Sigma_W_plus_I);
+						CalcLogDetStoch(dim_mode_, cg_max_num_it_tridiag, I_k_plus_Sigma_L_kt_W_Sigma_L_k, has_NA_or_Inf, log_det_Sigma_W_plus_I, SigmaI, B);
 						if (has_NA_or_Inf) {
 							approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
 							Log::REDebug(NA_OR_INF_WARNING_);
@@ -3442,7 +3466,9 @@ namespace GPBoost {
 			const int& cg_max_num_it_tridiag,
 			den_mat_t& I_k_plus_Sigma_L_kt_W_Sigma_L_k,
 			bool& has_NA_or_Inf,
-			double& log_det_Sigma_W_plus_I) {
+			double& log_det_Sigma_W_plus_I,
+			sp_mat_t& SigmaI,
+			const sp_mat_t& B) {
 			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
 			CHECK(rand_vec_trace_P_.cols() == num_rand_vec_trace_);
 			if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
@@ -3493,9 +3519,37 @@ namespace GPBoost {
 					log_det_Sigma_W_plus_I = ldet_PI_SigmaI_plus_W + D_inv_plus_W_diag.array().log().sum() - D_inv_rm_.diagonal().array().log().sum();
 				}
 			}
+			else if (cg_preconditioner_type_ == "incomp_chol_on_SigmaI_plus_W") {
+				//Update P with latest W
+				sp_mat_t SigmaI_plus_W = SigmaI;
+				SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
+				ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
+				//////////////////////////////////////////////////////////////////////////////
+				std::vector<vec_t> Tdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
+				std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
+				//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
+				//For P = L^T L: z_i = L^T r_i, where r_i ~ N(0,I)
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < num_rand_vec_trace_; ++i) {
+					rand_vec_trace_P_.col(i) = L_SigmaI_plus_W_rm_.transpose() * rand_vec_trace_I_.col(i);
+				}
+				CGTridiagVecchiaLaplaceIncompChol(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W,
+					SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, L_SigmaI_plus_W_rm_);
+				if (!has_NA_or_Inf) {
+					double ldet_PI_SigmaI_plus_W;
+					LogDetStochTridiag(Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W, ldet_PI_SigmaI_plus_W, num_data, num_rand_vec_trace_);
+					//log|Sigma W + I| = log|P^(-1) (Sigma^(-1) + W)| + log|P| + log|Sigma|
+					//where log|P| = log|L^T L| = log|(D^(-1) + W)|
+					log_det_Sigma_W_plus_I = ldet_PI_SigmaI_plus_W + 2*(L_SigmaI_plus_W_rm_.diagonal().array().log().sum()) - D_inv_rm_.diagonal().array().log().sum();
+					//Log::REInfo("ldet_PI_SigmaI_plus_W = %g", ldet_PI_SigmaI_plus_W);
+					//Log::REInfo("2*(L_SigmaI_plus_W_rm_.diagonal().array().log().sum()) = %g", (2 * (L_SigmaI_plus_W_rm_.diagonal().array().log().sum())));
+					//Log::REInfo("- D_inv_rm_.diagonal().array().log().sum() = %g", (-D_inv_rm_.diagonal().array().log().sum()));
+				}
+			}
 			else {
 				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
 			}
+			//Log::REInfo("log_det_Sigma_W_plus_I = %g", log_det_Sigma_W_plus_I);
 		}//end CalcLogDetStoch
 
 		/*! 
@@ -3908,6 +3962,7 @@ namespace GPBoost {
 		chol_den_mat_t chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_;
 		/*! \brief Sigma_inv_plus_BtWB (P = B^T (D^(-1) + W) B): matrix that contains the product (D^(-1) + W) B */
 		sp_mat_rm_t D_inv_plus_W_B_rm_;
+		sp_mat_rm_t L_SigmaI_plus_W_rm_;
 
 		/*! \brief Order of the Gauss-Hermite quadrature */
 		int order_GH_ = 30;
