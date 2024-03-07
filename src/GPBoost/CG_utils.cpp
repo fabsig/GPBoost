@@ -713,8 +713,8 @@ namespace GPBoost {
 		const sp_mat_t& B,
 		sp_mat_rm_t& L_SigmaI_plus_W) {
 		
-		//sp_mat_t L = B;  // initialize for defining sparsity pattern 
-		sp_mat_t L = SigmaI_plus_W; // alternative version
+		sp_mat_t L = B;  // initialize for defining sparsity pattern 
+		//sp_mat_t L = SigmaI_plus_W; // alternative version
 		
 		L *= 0.0;
 
