@@ -22,7 +22,8 @@ namespace GPBoost {
 	/*!
 	* \brief Preconditioned conjugate gradient descent to solve A u = rhs when rhs is a vector
 	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn, a Vecchia approximation for Sigma^-1,
-	*		 Sigma^-1 = B^T D^-1 B, is given, and W is a diagonal matrix. P = B^T (D^-1 + W) B is used as preconditioner.
+	*		 Sigma^-1 = B^T D^-1 B, is given, and W is a diagonal matrix.
+	*		 "Sigma_inv_plus_BtWB" (P = B^T (D^-1 + W) B)  or "zero_infill_incomplete_cholesky" (P = L^T L) is used as preconditioner.
 	* \param diag_W Diagonal of matrix W
 	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^(-1) B ("=" Cholesky factor)
 	* \param B_t_D_inv_rm Row-major matrix that contains the product B^T D^-1. Outsourced in order to reduce the overhead of the function.
@@ -33,7 +34,9 @@ namespace GPBoost {
 	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
 	* \param delta_conv Tolerance for checking convergence of the algorithm
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
+	* \param cg_preconditioner_type Type of preconditioner used.
 	* \param D_inv_plus_W_B_rm Row-major matrix that contains the product (D^(-1) + W) B used for the preconditioner "Sigma_inv_plus_BtWB".
+	* \param L_SigmaI_plus_W_rm Row-major matrix that contains sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W used for the preconditioner "zero_infill_incomplete_cholesky". 
 	*/
 	void CGVecchiaLaplaceVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -45,19 +48,9 @@ namespace GPBoost {
 		const int find_mode_it,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
-		const sp_mat_rm_t& D_inv_plus_W_B_rm);
-
-	void CGVecchiaLaplaceVecIncompChol(const vec_t& diag_W,
-		const sp_mat_rm_t& B_rm,
-		const sp_mat_rm_t& B_t_D_inv_rm,
-		const vec_t& rhs,
-		vec_t& u,
-		bool& NA_or_Inf_found,
-		int p,
-		const int find_mode_it,
-		const double delta_conv,
-		const double THRESHOLD_ZERO_RHS_CG,
-		const sp_mat_rm_t& L_SigmaI_plus_W);
+		const string_t cg_preconditioner_type,
+		const sp_mat_rm_t& D_inv_plus_W_B_rm,
+		const sp_mat_rm_t& L_SigmaI_plus_W_rm);
 
 	/*!
 	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate 
@@ -93,7 +86,8 @@ namespace GPBoost {
 	/*!
 	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
 	*		 A linear system A U = rhs is solved, where the rhs is a matrix of dimension nxt of t random column-vectors and 
-	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn. P = B^T (D^-1 + W) B is used as preconditioner.
+	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn. 
+	*		 "Sigma_inv_plus_BtWB" (P = B^T (D^-1 + W) B)  or "zero_infill_incomplete_cholesky" (P = L^T L) is used as preconditioner.
 	*		 Further, a Vecchia approximation for Sigma^-1 = B^T D^-1 B is given, and W is a diagonal matrix.
 	*		 The function returns t approximative tridiagonalizations T of the symmetric matrix P^(-0.5) A P^(-0.5) = Q T Q^T in vector form (diagonal + subdiagonal of T)
 	*		 and an approximative solution of the linear system.
@@ -109,7 +103,9 @@ namespace GPBoost {
 	* \param t t-Dimension of the linear system
 	* \param p Maximal number of conjugate gradient steps
 	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param cg_preconditioner_type Type of preconditioner used.
 	* \param D_inv_plus_W_B_rm Row-major matrix that contains the product (D^(-1) + W) B used for the preconditioner "Sigma_inv_plus_BtWB".
+	* \param L_SigmaI_plus_W_rm Row-major matrix that contains sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W used for the preconditioner "zero_infill_incomplete_cholesky".
 	*/
 	void CGTridiagVecchiaLaplace(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -123,21 +119,9 @@ namespace GPBoost {
 		const int t,
 		int p,
 		const double delta_conv,
-		const sp_mat_rm_t& D_inv_plus_W_B_rm);
-
-	void CGTridiagVecchiaLaplaceIncompChol(const vec_t& diag_W,
-		const sp_mat_rm_t& B_rm,
-		const sp_mat_rm_t& B_t_D_inv_rm,
-		const den_mat_t& rhs,
-		std::vector<vec_t>& Tdiags,
-		std::vector<vec_t>& Tsubdiags,
-		den_mat_t& U,
-		bool& NA_or_Inf_found,
-		const data_size_t num_data,
-		const int t,
-		int p,
-		const double delta_conv,
-		const sp_mat_rm_t& L_SigmaI_plus_W);
+		const string_t cg_preconditioner_type,
+		const sp_mat_rm_t& D_inv_plus_W_B_rm,
+		const sp_mat_rm_t& L_SigmaI_plus_W_rm);
 
 	/*!
 	* \brief Version of CGTridiagVecchiaLaplace() where A = (W^(-1) + Sigma).
@@ -234,9 +218,15 @@ namespace GPBoost {
 		const vec_t& tr_BI_B_deriv,
 		vec_t& c_opt);
 
-	void ReverseIncompleteCholeskyFactorization(sp_mat_t& SigmaI_plus_W,
+	/*!
+	* \brief Reverse incomplete Cholesky factorization L^T L = A under the constrain that L has the same sparcity pattern as A or B.
+	* \param A Column-major matrix to factorize.
+	* \param B Column-major matrix providing the sparcity pattern.
+	* \param L_rm[out] Row-major matrix containing the sparse lower triangular factor L. 
+	*/
+	void ReverseIncompleteCholeskyFactorization(sp_mat_t& A,
 		const sp_mat_t& B, 
-		sp_mat_rm_t& L_SigmaI_plus_W);
+		sp_mat_rm_t& L_rm);
 
 	/*!
 	* \brief Pivoted Cholesky factorization according to Habrecht et al. (2012) for the original (nonapproximated) covariance matrix (Sigma)
