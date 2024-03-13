@@ -774,10 +774,6 @@ namespace GPBoost {
 			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			if (use_Z_for_duplicates) {
-				if (has_compact_cov_fct_) {
-					Log::REWarning("'DetermineUniqueDuplicateCoords' is called and a compactly supported covariance function is used. "
-						"Note that 'DetermineUniqueDuplicateCoords' is slow for large data ");
-				}
 				std::vector<int> uniques;//unique points
 				std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
 				DetermineUniqueDuplicateCoordsFast(coords, this->num_data_, uniques, unique_idx);
@@ -927,6 +923,7 @@ namespace GPBoost {
 		* \param taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param apply_tapering If true, tapering is applied to the covariance function (element-wise multiplication with a compactly supported Wendland correlation function)
 		* \param apply_tapering_manually If true, tapering is applied to the covariance function manually and not directly in 'CalcSigma'
+		* \param use_Z_for_duplicates If true, an incidendce matrix Z_ is used for duplicate locations
 		*/
 		RECompGP(const den_mat_t& coords,
 			const den_mat_t& coords_ind_point,
@@ -935,7 +932,8 @@ namespace GPBoost {
 			double taper_range,
 			double taper_shape,
 			bool apply_tapering,
-			bool apply_tapering_manually) {
+			bool apply_tapering_manually,
+			bool use_Z_for_duplicates) {
 			this->num_data_ = (data_size_t)coords.rows();
 			this->is_rand_coef_ = false;
 			this->has_Z_ = false;
@@ -949,8 +947,29 @@ namespace GPBoost {
 			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering));
 			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
-			coords_ = coords;
 			coords_ind_point_ = coords_ind_point;
+
+			if (use_Z_for_duplicates) {
+				std::vector<int> uniques;//unique points
+				std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
+				DetermineUniqueDuplicateCoordsFast(coords, this->num_data_, uniques, unique_idx);
+				if ((data_size_t)uniques.size() == this->num_data_) {//no multiple observations at the same locations -> no incidence matrix needed
+					coords_ = coords;
+				}
+				else {//there are multiple observations at the same locations
+					coords_ = coords(uniques, Eigen::all);
+				}
+				this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
+#pragma omp for schedule(static)
+				for (int i = 0; i < this->num_data_; ++i) {
+					this->random_effects_indices_of_data_[i] = unique_idx[i];
+				}
+				this->has_Z_ = false;
+			}//end use_Z_for_duplicates
+			else {//not use_Z_for_duplicates (ignore duplicates)
+				coords_ = coords;
+			}
+			num_random_effects_ = (data_size_t)coords_.rows();
 			//Calculate distances
 			T_mat dist;
 			if (has_compact_cov_fct_) {//compactly suported covariance
@@ -1289,6 +1308,8 @@ namespace GPBoost {
 		* \param calc_uncond_pred_cov If true, the unconditional covariance for prediction points is calculated
 		* \param dont_add_but_overwrite If true, the matrix 'cross_cov' is overwritten. Otherwise, the cross-covariance is just added to 'cross_cov'
 		* \param rand_coef_data_pred Covariate data for varying coefficients (can be nullptr if this is not a random coefficient)
+		* \param return_cross_dist If true, the cross distances are written on cross_dist otherwise not
+		* \param[out] cross_dist Distances between prediction and training data
 		*/
 		void AddPredCovMatrices(const den_mat_t& coords,
 			const den_mat_t& coords_pred,

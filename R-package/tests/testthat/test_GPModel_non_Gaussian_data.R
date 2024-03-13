@@ -447,7 +447,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   test_that("Binary classification with one grouped random effects and offset", {
-  
+    
     n <- 250000 # number of samples
     m <- n / 500 # number of categories / levels for grouping variable
     group <- rep(1,n) # grouping variable
@@ -459,7 +459,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     probs_o <- pnorm(b_gr[group] + offset)
     y_o <- as.numeric(sim_rand_unif(n=n, init_c=0.23431) < probs_o)
     group_test <- c(1,3,9999)
-
+    
     nrounds <- 5
     cov_pars <- c(0.4872743)
     expected_mu <- c(0.03985967, -0.42595831, 0.00000000)
@@ -1521,6 +1521,204 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
   })
   
+  test_that("FITC for binary classification", {
+    
+    probs <- pnorm(L %*% b_1 + X%*%beta)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.199) < probs)
+    coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+    coord_test_v1 <- rbind(c(0.11,0.45),coords[1:2,])
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
+    cov_pars_ll <- c(1, 0.2)
+    cov_pars_pred = c(1, 0.2)
+    y_multiple <- as.numeric(sim_rand_unif(n=n, init_c=0.6779) < pnorm(L_multiple %*% b_multiple + X%*%beta))
+    
+    ## Evaluate log-likelihood
+    gp_model_no_approx <- GPModel(gp_coords = coords, cov_function = "exponential", 
+                                  likelihood = "bernoulli_probit")
+    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", 
+                        likelihood = "bernoulli_probit", gp_approx = "fitc", 
+                        num_ind_points = n, ind_points_selection = "random")
+    expect_lt(abs(gp_model$neg_log_likelihood(y = y, cov_pars = cov_pars_ll) - 
+                    gp_model_no_approx$neg_log_likelihood(y = y, cov_pars = cov_pars_ll)),TOLERANCE_STRICT)
+    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", 
+                        likelihood = "bernoulli_probit", gp_approx = "fitc", 
+                        num_ind_points  = 50, ind_points_selection = "kmeans++")
+    nll2 <- 63.19375632
+    expect_lt(abs(gp_model$neg_log_likelihood(y = y, cov_pars = cov_pars_ll) - nll2),TOLERANCE_STRICT)
+    
+    # Estimation without approximation
+    gp_model_no_approx <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                                     y = y, X=X, params = DEFAULT_OPTIM_PARAMS)
+    nll_exp <- gp_model_no_approx$get_current_neg_log_likelihood() + 0.
+    # Nelder-Mead
+    params_NM <- DEFAULT_OPTIM_PARAMS
+    params_NM$optimizer_coef <- params_NM$optimizer_cov <- "nelder_mead"
+    gp_model_NM_no_approx <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                                        y = y, X=X, params = params_NM)
+    nll_NM_exp <- gp_model_NM_no_approx$get_current_neg_log_likelihood() + 0.
+    # Prediction
+    pred_var_no_approx <- predict(gp_model_no_approx, y=y, gp_coords_pred = coord_test_v1, X_pred = X_test,
+                                  predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    pred_cov_no_approx <- predict(gp_model_no_approx, y=y, gp_coords_pred = coord_test_v1, X_pred = X_test,
+                                  predict_cov = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    X0 <- matrix(0, nrow=nrow(X), ncol=ncol(X))
+    pred_train_no_approx <- predict(gp_model_no_approx, y=y, gp_coords_pred = coords, X_pred = X0,
+                                    predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    gp_model_mult_no_approx <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", likelihood = "bernoulli_probit",
+                                          y = y_multiple, X=X, params = DEFAULT_OPTIM_PARAMS)
+    nll_mult_exp <- gp_model_mult_no_approx$get_current_neg_log_likelihood() + 0.
+    
+    # Fitc and large num_ind_points
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                           y = y, X=X, params = DEFAULT_OPTIM_PARAMS, gp_approx = "fitc", 
+                           num_ind_points = n, ind_points_selection = "random")
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_no_approx$get_cov_pars()))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_no_approx$get_coef()))),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_exp),TOLERANCE_STRICT)
+    # Prediction
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1, X_pred = X_test,
+                    predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu - pred_var_no_approx$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_approx$var))),TOLERANCE_STRICT)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1, X_pred = X_test,
+                    predict_cov = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu - pred_cov_no_approx$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_approx$cov))),TOLERANCE_STRICT)
+    # Predict training data
+    pred_train_fitc <- predict(gp_model, y=y, gp_coords_pred = coords, X_pred = X0,
+                               predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred_train_no_approx$mu - pred_train_fitc$mu)), TOLERANCE_LOOSE)
+    expect_lt(sum(abs(pred_train_no_approx$var - pred_train_fitc$var)), TOLERANCE_LOOSE)
+    # With duplicate locations
+    gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", likelihood = "bernoulli_probit",
+                           y = y_multiple, X=X, params = DEFAULT_OPTIM_PARAMS, gp_approx = "fitc", 
+                           num_ind_points = dim(unique(coords_multiple))[1], ind_points_selection = "random")
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_mult_no_approx$get_cov_pars()))),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_mult_no_approx$get_coef()))),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), gp_model_mult_no_approx$get_num_optim_iter())
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_mult_exp),TOLERANCE_STRICT)
+    
+    # Fitc and smaller num_ind_points
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                           y = y, X=X, params = DEFAULT_OPTIM_PARAMS, gp_approx = "fitc", 
+                           num_ind_points = 50, ind_points_selection = "kmeans++")
+    cov_pars_2 <- c(1.7332628068, 0.2358113701)
+    coefs_2 <- c( 0.2635396786, 1.6502442540)
+    nll_2 <- 48.11950735
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_2)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_2)),TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_2), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_no_approx$get_cov_pars()))),1)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_no_approx$get_coef()))),0.5)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_exp),0.5)
+    # Prediction
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1, X_pred = X_test,
+                    predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    mu_exp <- c(0.1360544551, 1.4878728198, 1.3961898078)
+    var_exp <- c(0.8094038613, 0.6588795907, 0.3926409745)
+    cov_exp <- c(0.8094038612840, 0.2803744324428, -0.0002734006983, 0.2803744324428, 0.6588795907032, -0.0001558394693, -0.0002734006983, -0.0001558394693, 0.3926409744889)
+    expect_lt(sum(abs(pred$mu - mu_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var) - var_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$mu - pred_var_no_approx$mu)),0.5)
+    expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_approx$var))),0.5)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1, X_pred = X_test,
+                    predict_cov = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_approx$cov))),0.5)
+    expect_lt(sum(abs(as.vector(pred$cov) - cov_exp)),TOLERANCE_STRICT)
+    # Predict training data
+    pred_train_fitc <- predict(gp_model, y=y, gp_coords_pred = coords, X_pred = X0,
+                               predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred_train_no_approx$mu - pred_train_fitc$mu)), 7)
+    expect_lt(sum(abs(pred_train_no_approx$var - pred_train_fitc$var)), 5)
+    # With duplicate locations
+    gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", likelihood = "bernoulli_probit",
+                           y = y_multiple, X=X, params = DEFAULT_OPTIM_PARAMS, gp_approx = "fitc", 
+                           num_ind_points = 12, ind_points_selection = "random")
+    cov_pars_2 <- c(3.26456865, 0.07873828)
+    coefs_2 <- c( 1.160301, 3.660582)
+    nll_2 <- 31.56940178
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_2)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_2)),TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_2), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_mult_no_approx$get_cov_pars()))),2)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_mult_no_approx$get_coef()))),1)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_mult_exp),0.5)
+    
+    # Nelder-Mead for fitc and large num_ind_points
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                           y = y, X=X, params = params_NM, gp_approx = "fitc", 
+                           num_ind_points = n, ind_points_selection = "random")
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_NM_no_approx$get_cov_pars()))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_NM_no_approx$get_coef()))),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_NM_exp),TOLERANCE_STRICT)
+    # Nelder-Mead for fitc and smaller num_ind_points
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                           y = y, X=X, params = params_NM, gp_approx = "fitc", 
+                           num_ind_points = 50, ind_points_selection = "kmeans++")
+    cov_pars_NM2 <- c(1.6418133203, 0.2443197005)
+    coefs_NM2 <- c(0.2501092974, 1.6084893896)
+    nll_NM2 <- 48.11741676
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_NM2)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_NM2)), TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_NM2), TOLERANCE_STRICT)
+    
+    # Multiple observations at the same location
+    eps_multiple <- as.vector(L_multiple %*% b_multiple)
+    probs <- pnorm(eps_multiple + X%*%beta)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.41) < probs)
+    #No tapering
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", 
+                                           likelihood = "bernoulli_probit", gp_approx = "none", 
+                                           cov_fct_taper_shape = 0, cov_fct_taper_range = 1e6,
+                                           y = y, X=X, params = DEFAULT_OPTIM_PARAMS), file='NUL')
+    cov_pars <- c(1.10055295321, 0.08209256243)
+    coefs <- c(0.5542788118, 1.7748960002)
+    num_it <- 15
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_MEDIUM)
+    # Prediction
+    coord_test <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                    predict_var = TRUE, predict_response = FALSE, cov_pars = c(1,0.1))
+    expected_mu <- c(-0.4445033238,  0.7816965272,  2.2016133274)
+    expected_var <- c(0.8182045780, 0.8492130107, 0.8492130107)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_MEDIUM)
+    
+    # With tapering and very large tapering range 
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", 
+                                           likelihood = "bernoulli_probit", gp_approx = "tapering", 
+                                           cov_fct_taper_shape = 0, cov_fct_taper_range = 1e6,
+                                           y = y, X=X, params = DEFAULT_OPTIM_PARAMS), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1e-2)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),1e-2)
+    expect_equal(gp_model$get_num_optim_iter(), num_it)
+    # Prediction
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                    predict_var = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-expected_mu)),0.1)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),1)
+    
+    # With tapering and small tapering range 
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", 
+                                           likelihood = "bernoulli_probit", gp_approx = "tapering", 
+                                           cov_fct_taper_shape = 0, cov_fct_taper_range = 0.5,
+                                           y = y, X=X, params = DEFAULT_OPTIM_PARAMS), file='NUL')
+    cov_pars <- c(1.1062329, 0.1479239)
+    coefs <- c(0.5562694, 1.7715742)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),1e-2)
+    expect_equal(gp_model$get_num_optim_iter(), 48)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                    predict_var = TRUE, predict_response = FALSE)
+    expected_mu <- c(-0.4272906, 0.8014820, 2.2187414)
+    expected_var <- c(0.9295132, 0.9637862, 0.9637862)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_MEDIUM)
+    
+  })
+  
   test_that("Binary classification with Gaussian process model and logit link function", {
     
     probs <- 1/(1+exp(- L %*% b_1))
@@ -1841,7 +2039,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Also estimate shape parameter
     params_shape$optimizer_cov <- "nelder_mead"
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
-                           y = y_lin, X=X, params = params_shape), file='NUL')
+                                           y = y_lin, X=X, params = params_shape), file='NUL')
     cov_pars <- c(0.5097316)
     coef <- c(-0.08623548, 1.90033132)
     aux_pars <- c(1.350364)

@@ -1725,7 +1725,7 @@ gpb.GPModel <- R6::R6Class(
         , private$handle
         , negll
       )
-      return(negll)
+      return(negll + 0.) # add 0. to avoid undesired copy override issues
     },
     
     get_likelihood_name = function() {

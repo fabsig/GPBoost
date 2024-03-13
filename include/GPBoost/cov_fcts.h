@@ -1299,7 +1299,12 @@ namespace GPBoost {
 		* \return Wendland correlation
 		*/
 		inline double WendlandCorrelationShape0(const double dist) const {
-			return(std::pow((1. - dist / taper_range_), taper_mu_));
+			if (dist < EPSILON_NUMBERS) {
+				return(1.);
+			}
+			else {
+				return(std::pow((1. - dist / taper_range_), taper_mu_));
+			}
 		}
 
 		/*!
@@ -1308,7 +1313,12 @@ namespace GPBoost {
 		* \return Wendland correlation
 		*/
 		inline double WendlandCorrelationShape1(const double dist) const {
-			return(std::pow((1. - dist / taper_range_), taper_mu_ + 1.) * (1. + dist / taper_range_ * (taper_mu_ + 1.)));
+			if (dist < EPSILON_NUMBERS) {
+				return(1.);
+			}
+			else {
+				return(std::pow((1. - dist / taper_range_), taper_mu_ + 1.) * (1. + dist / taper_range_ * (taper_mu_ + 1.)));
+			}
 		}
 
 		/*!
@@ -1317,8 +1327,13 @@ namespace GPBoost {
 		* \return Wendland correlation
 		*/
 		inline double WendlandCorrelationShape2(const double dist) const {
-			return(std::pow((1. - dist / taper_range_), taper_mu_ + 2.) *
-				(1. + dist / taper_range_ * (taper_mu_ + 2.) + std::pow(dist / taper_range_, 2) * (taper_mu_ * taper_mu_ + 4 * taper_mu_ + 3.) / 3.));
+			if (dist < EPSILON_NUMBERS) {
+				return(1.);
+			}
+			else {
+				return(std::pow((1. - dist / taper_range_), taper_mu_ + 2.) *
+					(1. + dist / taper_range_ * (taper_mu_ + 2.) + std::pow(dist / taper_range_, 2) * (taper_mu_ * taper_mu_ + 4 * taper_mu_ + 3.) / 3.));
+			}
 		}
 
 		/*!
