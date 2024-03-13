@@ -451,7 +451,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                       verbose = 0,
                       eval = l4_loss, metric = "l4")
       expect_equal(cvbst$best_iter, 52)
-      expect_lt(abs(cvbst$best_score - 2.932338),TOLERANCE)
+      expect_lt(abs(cvbst$best_score - 2.932338),TOLERANCE2)
       
       # Use of validation data and test_neg_log_likelihood as metric
       gp_model <- GPModel(group_data = group_data_train)

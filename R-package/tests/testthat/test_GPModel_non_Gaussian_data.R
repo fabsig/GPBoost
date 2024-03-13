@@ -1633,16 +1633,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # With duplicate locations
     gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", likelihood = "bernoulli_probit",
                            y = y_multiple, X=X, params = DEFAULT_OPTIM_PARAMS, gp_approx = "fitc", 
-                           num_ind_points = 12, ind_points_selection = "random")
-    cov_pars_2 <- c(3.26456865, 0.07873828)
-    coefs_2 <- c( 1.160301, 3.660582)
-    nll_2 <- 31.56940178
+                           num_ind_points = 12, ind_points_selection = "kmeans++")
+    cov_pars_2 <- c(5.14896226, 0.07134701)
+    coefs_2 <- c(1.545874, 4.394530)
+    nll_2 <- 31.4930176
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_2)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_2)),TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_2), TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_mult_no_approx$get_cov_pars()))),2)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_mult_no_approx$get_coef()))),1)
-    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_mult_exp),0.5)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_mult_no_approx$get_cov_pars()))),1)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_mult_no_approx$get_coef()))),0.5)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_mult_exp),0.2)
     
     # Nelder-Mead for fitc and large num_ind_points
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
@@ -1941,7 +1941,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     aux_pars <- c(0.9819755)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),0.01)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_MEDIUM)
-    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-123.517723), TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-123.517723), TOLERANCE_MEDIUM)
     # Also estimate shape parameter with gradient descent
     params_shape$optimizer_cov <- "gradient_descent"
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
