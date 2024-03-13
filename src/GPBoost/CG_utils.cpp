@@ -28,13 +28,15 @@ namespace GPBoost {
 		const int find_mode_it,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
-		const sp_mat_rm_t& D_inv_plus_W_B_rm) {
+		const string_t cg_preconditioner_type,
+		const sp_mat_rm_t& D_inv_plus_W_B_rm,
+		const sp_mat_rm_t& L_SigmaI_plus_W_rm) {
 
 		p = std::min(p, (int)B_rm.cols());
 
 		vec_t r, r_old;
 		vec_t z, z_old;
-		vec_t h, v, B_invt_r;
+		vec_t h, v, B_invt_r, L_invt_r;
 		double a, b, r_norm;
 		
 		//Avoid numerical instabilites when rhs is de facto 0
@@ -54,9 +56,19 @@ namespace GPBoost {
 			r = rhs - ((B_t_D_inv_rm * (B_rm * u)) + diag_W.cwiseProduct(u));
 		}
 
-		//z = P^(-1) r, where P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
-		B_invt_r = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(r);
-		z = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_r);
+		if (cg_preconditioner_type == "Sigma_inv_plus_BtWB") {
+			//z = P^(-1) r, where P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
+			B_invt_r = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(r);
+			z = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_r);
+		}
+		else if (cg_preconditioner_type == "zero_infill_incomplete_cholesky") {
+			//z = P^(-1) r, where P^(-1) = L^(-1) L^(-T)
+			L_invt_r = L_SigmaI_plus_W_rm.transpose().triangularView<Eigen::UpLoType::Upper>().solve(r);
+			z = L_SigmaI_plus_W_rm.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_r);
+		}
+		else {
+			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+		}
 
 		h = z;
 
@@ -84,9 +96,19 @@ namespace GPBoost {
 
 			z_old = z;
 
-			//z = P^(-1) r 
-			B_invt_r = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(r);
-			z = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_r);
+			if (cg_preconditioner_type == "Sigma_inv_plus_BtWB") {
+				//z = P^(-1) r 
+				B_invt_r = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(r);
+				z = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_r);
+			}
+			else if (cg_preconditioner_type == "zero_infill_incomplete_cholesky") {
+				//z = P^(-1) r, where P^(-1) = L^(-1) L^(-T)
+				L_invt_r = L_SigmaI_plus_W_rm.transpose().triangularView<Eigen::UpLoType::Upper>().solve(r);
+				z = L_SigmaI_plus_W_rm.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_r);
+			}
+			else {
+				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			}
 
 			b = r.transpose() * z;
 			b /= r_old.transpose() * z_old;
@@ -177,7 +199,7 @@ namespace GPBoost {
 					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 				}
-				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
+				Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				return;
 			}
 
@@ -207,11 +229,13 @@ namespace GPBoost {
 		const int t,
 		int p,
 		const double delta_conv,
-		const sp_mat_rm_t& D_inv_plus_W_B_rm) {
+		const string_t cg_preconditioner_type,
+		const sp_mat_rm_t& D_inv_plus_W_B_rm,
+		const sp_mat_rm_t& L_SigmaI_plus_W_rm) {
 
 		p = std::min(p, (int)num_data);
 
-		den_mat_t R(num_data, t), R_old, B_invt_R(num_data, t), Z(num_data, t), Z_old, H, V(num_data, t), L_kt_W_inv_R, B_k_W_inv_R, W_inv_R; //NEW V(num_data, t)
+		den_mat_t R(num_data, t), R_old, P_sqrt_invt_R(num_data, t), Z(num_data, t), Z_old, H, V(num_data, t), L_kt_W_inv_R, B_k_W_inv_R, W_inv_R;
 		vec_t v1(num_data), diag_SigmaI_plus_W_inv, diag_W_inv;
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
@@ -226,15 +250,32 @@ namespace GPBoost {
 		//R = rhs - (W^(-1) + Sigma) * U
 		R = rhs; //Since U is 0
 
-		//Z = P^(-1) R 		
-		//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
+		if (cg_preconditioner_type == "Sigma_inv_plus_BtWB") {
+			//Z = P^(-1) R 		
+			//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
 #pragma omp parallel for schedule(static)   
-		for (int i = 0; i < t; ++i) {
-			B_invt_R.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(R.col(i));
+			for (int i = 0; i < t; ++i) {
+				P_sqrt_invt_R.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(R.col(i));
+			}
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				Z.col(i) = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(P_sqrt_invt_R.col(i));
+			}
 		}
+		else if (cg_preconditioner_type == "zero_infill_incomplete_cholesky") {
+			//Z = P^(-1) R 		
+			//P^(-1) = L^(-1) L^(-T)
 #pragma omp parallel for schedule(static)   
-		for (int i = 0; i < t; ++i) {
-			Z.col(i) = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_R.col(i));
+			for (int i = 0; i < t; ++i) {
+				P_sqrt_invt_R.col(i) = L_SigmaI_plus_W_rm.transpose().triangularView<Eigen::UpLoType::Upper>().solve(R.col(i));
+			}
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				Z.col(i) = L_SigmaI_plus_W_rm.triangularView<Eigen::UpLoType::Lower>().solve(P_sqrt_invt_R.col(i));
+			}
+		}
+		else {
+			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 		}
 
 		H = Z;
@@ -267,13 +308,28 @@ namespace GPBoost {
 			Z_old = Z;
 
 			//Z = P^(-1) R
+			if (cg_preconditioner_type == "Sigma_inv_plus_BtWB") {
 #pragma omp parallel for schedule(static)   
-			for (int i = 0; i < t; ++i) {
-				B_invt_R.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(R.col(i));
+				for (int i = 0; i < t; ++i) {
+					P_sqrt_invt_R.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(R.col(i));
+				}
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					Z.col(i) = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(P_sqrt_invt_R.col(i));
+				}
 			}
+			else if (cg_preconditioner_type == "zero_infill_incomplete_cholesky") {
 #pragma omp parallel for schedule(static)   
-			for (int i = 0; i < t; ++i) {
-				Z.col(i) = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_R.col(i));
+				for (int i = 0; i < t; ++i) {
+					P_sqrt_invt_R.col(i) = L_SigmaI_plus_W_rm.transpose().triangularView<Eigen::UpLoType::Upper>().solve(R.col(i));
+				}
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					Z.col(i) = L_SigmaI_plus_W_rm.triangularView<Eigen::UpLoType::Lower>().solve(P_sqrt_invt_R.col(i));
+				}
+			}
+			else {
+				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 			}
 
 			b_old = b;
@@ -523,4 +579,64 @@ namespace GPBoost {
 			}
 		}
 	} // end CalcOptimalCVectorized
+
+	void ReverseIncompleteCholeskyFactorization(sp_mat_t& A,
+		const sp_mat_t& B,
+		sp_mat_rm_t& L_rm) {
+		
+		//Defining sparsity pattern 
+		sp_mat_t L = A;
+		//sp_mat_t L = B; //alternative version (less stable)
+		
+		L *= 0.0;
+
+		////Debugging
+		//Log::REInfo("L.nonZeros() = %d", L.nonZeros());
+		//Log::REInfo("L.cwiseAbs().sum() = %g", L.cwiseAbs().sum());
+		//den_mat_t A_dense = den_mat_t(A);
+		//for (int c = 0; c < A_dense.cols(); ++c) {
+		//	for (int r = 0; r < A_dense.rows(); ++r) {
+		//		Log::REInfo("A_dense(%d,%d): %g", r, c, A_dense(r,c));
+		//	}
+		//}
+
+		for (int i = ((int)L.outerSize() - 1); i > -1; --i) {
+			for (Eigen::SparseMatrix<double>::ReverseInnerIterator it(L, i); it; --it) {
+				int j = (int)it.row();
+				int ii = (int)it.col();
+				double s = (L.col(j)).dot(L.col(ii));
+				if (ii == j) {
+					it.valueRef() = std::sqrt(A.coeffRef(ii, ii) + 1e-10 - s);
+				}
+				else if (ii < j) {
+					it.valueRef() = (A.coeffRef(ii, j) - s) / L.coeffRef(j, j);
+				}
+				if (std::isnan(it.value()) || std::isinf(it.value())) {
+					//Log::REInfo("column i = %d (%d), row j = %d, value = %g", i, ii, j, it.value());
+					//Log::REInfo("s = %g", s);
+					//Log::REInfo("A(%d, %d): %g", ii, j, A.coeffRef(ii, j));
+					Log::REFatal("nan or inf occured in ReverseIncompleteCholeskyFactorization()");
+				}
+			}
+		}
+
+		////Debugging
+		//den_mat_t L_dense = den_mat_t(L);
+		//for (int c = 0; c < L_dense.cols(); ++c) {
+		//	for (int r = 0; r < L_dense.rows(); ++r) {
+		//		Log::REInfo("L_dense(%d,%d): %g", r, c, L_dense(r, c));
+		//	}
+		//}
+		//sp_mat_t Lt_L = L.transpose() * L;
+		//sp_mat_t diff = A - Lt_L;
+		//Log::REInfo("diff.cwiseAbs().sum() = %g", diff.cwiseAbs().sum());
+		//den_mat_t Lt_L_dense = den_mat_t(Lt_L);
+		//for (int c = 0; c < Lt_L_dense.cols(); ++c) {
+		//	for (int r = 0; r < Lt_L_dense.rows(); ++r) {
+		//		Log::REInfo("Lt_L_dense(%d,%d): %g", r, c, Lt_L_dense(r, c));
+		//	}
+		//}
+
+		L_rm = sp_mat_rm_t(L); //Convert to row-major
+	} // end ReverseIncompleteCholeskyFactorization
 }
