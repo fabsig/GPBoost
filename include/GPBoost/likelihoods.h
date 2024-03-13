@@ -1810,7 +1810,8 @@ namespace GPBoost {
 					I_k_plus_Sigma_L_kt_W_Sigma_L_k.resize(Sigma_L_k_.cols(), Sigma_L_k_.cols());
 				}
 			}
-			else {
+			if(matrix_inversion_method_ != "iterative" || 
+				(matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "zero_infill_incomplete_cholesky")) {
 				SigmaI = B.transpose() * D_inv * B;
 			}
 			// Start finding mode 
@@ -1879,10 +1880,24 @@ namespace GPBoost {
 									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 							}
 						}
-						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-							D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).asDiagonal() * B_rm_;
+						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+							if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+								D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).asDiagonal() * B_rm_;
+							}
+							else {
+								//std::chrono::steady_clock::time_point begin, end;
+								//double el_time;
+								//begin = std::chrono::steady_clock::now();
+								//Log::REInfo("SigmaI.nonZeros() = %d", SigmaI.nonZeros());
+								SigmaI_plus_W = SigmaI;
+								SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
+								ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
+								//end = std::chrono::steady_clock::now();
+								//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;
+								//Log::REInfo("Time ReverseIncompleteCholeskyFactorization: %g", el_time);
+							}
 							CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rhs, mode_new, has_NA_or_Inf,
-								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
+								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
 						}
 						else {
 							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
@@ -1982,7 +1997,7 @@ namespace GPBoost {
 								GenRandVecTrace(cg_generator_, rand_vec_trace_I2_);
 								WI_plus_Sigma_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
-							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
 								rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
 								SigmaI_plus_W_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
@@ -1996,7 +2011,7 @@ namespace GPBoost {
 							rand_vec_trace_P_.resize(dim_mode_, num_rand_vec_trace_);
 						}
 						double log_det_Sigma_W_plus_I;
-						CalcLogDetStoch(dim_mode_, cg_max_num_it_tridiag, I_k_plus_Sigma_L_kt_W_Sigma_L_k, has_NA_or_Inf, log_det_Sigma_W_plus_I);
+						CalcLogDetStoch(dim_mode_, cg_max_num_it_tridiag, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B, has_NA_or_Inf, log_det_Sigma_W_plus_I);
 						if (has_NA_or_Inf) {
 							approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
 							Log::REDebug(NA_OR_INF_WARNING_);
@@ -2487,7 +2502,7 @@ namespace GPBoost {
 				den_mat_t WI_PI_Z, WI_WI_plus_Sigma_inv_Z;
 				//Declarations for preconditioner "Sigma_inv_plus_BtWB"
 				vec_t D_inv_plus_W_inv_diag;
-				den_mat_t PI_Z;
+				den_mat_t PI_Z; //also used for preconditioner "zero_infill_incomplete_cholesky"
 				//Stochastic Trace: Calculate gradient of approx. marginal likelihood wrt. the mode (and thus also F here if !use_Z_for_duplicates_)
 				CalcLogDetStochDerivMode(third_deriv, dim_mode_, d_log_det_Sigma_W_plus_I_d_mode, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z);
 				d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
@@ -2497,9 +2512,9 @@ namespace GPBoost {
 					CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
 						cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 				}
-				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+				else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
 					CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
-						cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
+						cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
 				}
 				else {
 					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
@@ -2534,7 +2549,7 @@ namespace GPBoost {
 				//Calculate gradient wrt fixed effects
 				vec_t SigmaI_plus_W_inv_diag;
 				if (use_Z_for_duplicates_ && (calc_F_grad || calc_aux_par_grad)) {
-//					//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
+					//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 					SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
 					SigmaI_plus_W_inv_diag.array() *= -1. / third_deriv.array();
 				}
@@ -2996,9 +3011,9 @@ namespace GPBoost {
 								CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
 									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 							}
-							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
 								CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
+									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
 							}
 							else {
 								Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
@@ -3218,9 +3233,9 @@ namespace GPBoost {
 							CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
 								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 						}
-						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
 							CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, D_inv_plus_W_B_rm_);
+								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
 						}
 						else {
 							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
@@ -3435,12 +3450,18 @@ namespace GPBoost {
 		* \param num_data Number of data points
 		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
 		* \param I_k_plus_Sigma_L_kt_W_Sigma_L_k Preconditioner "piv_chol_on_Sigma": I_k + Sigma_L_k^T W Sigma_L_k
+		* \param SigmaI Preconditioner "zero_infill_incomplete_cholesky": Column-major matrix containing B^T D^(-1) B
+		* \param SigmaI_plus_W Preconditioner "zero_infill_incomplete_cholesky": Column-major matrix containing B^T D^(-1) B + W (W not yet updated)
+		* \param B Preconditioner "zero_infill_incomplete_cholesky": Column-major matrix B in Vecchia approximation
 		* \param[out] has_NA_or_Inf Is set to TRUE if NA or Inf occured in the conjugate gradient algorithm
 		* \param[out] log_det_Sigma_W_plus_I Solution for log|Sigma W + I|
 		*/
 		void CalcLogDetStoch(const data_size_t& num_data, 
 			const int& cg_max_num_it_tridiag,
 			den_mat_t& I_k_plus_Sigma_L_kt_W_Sigma_L_k,
+			const sp_mat_t& SigmaI,
+			sp_mat_t& SigmaI_plus_W,
+			const sp_mat_t& B,
 			bool& has_NA_or_Inf,
 			double& log_det_Sigma_W_plus_I) {
 			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
@@ -3470,27 +3491,49 @@ namespace GPBoost {
 						2 * ((den_mat_t)chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.matrixL()).diagonal().array().log().sum() - second_deriv_neg_ll_.array().log().sum();
 				}
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+				vec_t D_inv_plus_W_diag;
 				std::vector<vec_t> Tdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
 				std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 				//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
-				//For P = B^T (D^(-1) + W) B: z_i = B^T (D^(-1) + W)^0.5 r_i, where r_i ~ N(0,I)
-				vec_t D_inv_plus_W_diag = D_inv_rm_.diagonal() + second_deriv_neg_ll_;
-				sp_mat_rm_t B_t_D_inv_plus_W_sqrt_rm = B_rm_.transpose() * (D_inv_plus_W_diag).cwiseSqrt().asDiagonal();
+				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+					//For P = B^T (D^(-1) + W) B: z_i = B^T (D^(-1) + W)^0.5 r_i, where r_i ~ N(0,I)
+					D_inv_plus_W_diag = D_inv_rm_.diagonal() + second_deriv_neg_ll_;
+					sp_mat_rm_t B_t_D_inv_plus_W_sqrt_rm = B_rm_.transpose() * (D_inv_plus_W_diag).cwiseSqrt().asDiagonal();
 #pragma omp parallel for schedule(static)   
-				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					rand_vec_trace_P_.col(i) = B_t_D_inv_plus_W_sqrt_rm * rand_vec_trace_I_.col(i);
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						rand_vec_trace_P_.col(i) = B_t_D_inv_plus_W_sqrt_rm * rand_vec_trace_I_.col(i);
+					}
+					//rand_vec_trace_P_ = B_rm_.transpose() * ((D_inv_rm_.diagonal() + second_deriv_neg_ll_).cwiseSqrt().asDiagonal() * rand_vec_trace_I_);
+					D_inv_plus_W_B_rm_ = (D_inv_plus_W_diag).asDiagonal() * B_rm_;
 				}
-				//rand_vec_trace_P_ = B_rm_.transpose() * ((D_inv_rm_.diagonal() + second_deriv_neg_ll_).cwiseSqrt().asDiagonal() * rand_vec_trace_I_);
-				D_inv_plus_W_B_rm_ = (D_inv_plus_W_diag).asDiagonal() * B_rm_;
+				else {
+					//Update P with latest W
+					SigmaI_plus_W = SigmaI;
+					SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
+					ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
+					//For P = L^T L: z_i = L^T r_i, where r_i ~ N(0,I)
+#pragma omp parallel for schedule(static)   
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						rand_vec_trace_P_.col(i) = L_SigmaI_plus_W_rm_.transpose() * rand_vec_trace_I_.col(i);
+					}
+				}
+
 				CGTridiagVecchiaLaplace(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W,
-					SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, D_inv_plus_W_B_rm_);
+					SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
 				if (!has_NA_or_Inf) {
 					double ldet_PI_SigmaI_plus_W;
 					LogDetStochTridiag(Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W, ldet_PI_SigmaI_plus_W, num_data, num_rand_vec_trace_);
 					//log|Sigma W + I| = log|P^(-1) (Sigma^(-1) + W)| + log|P| + log|Sigma|
-					//where log|P| = log|B^T (D^(-1) + W) B| = log|(D^(-1) + W)|
-					log_det_Sigma_W_plus_I = ldet_PI_SigmaI_plus_W + D_inv_plus_W_diag.array().log().sum() - D_inv_rm_.diagonal().array().log().sum();
+					log_det_Sigma_W_plus_I = ldet_PI_SigmaI_plus_W - D_inv_rm_.diagonal().array().log().sum();
+					if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+						//log|P| = log|B^T (D^(-1) + W) B| = log|(D^(-1) + W)|
+						log_det_Sigma_W_plus_I += D_inv_plus_W_diag.array().log().sum();
+					}
+					else {
+						//log|P| = log|L^T L|
+						log_det_Sigma_W_plus_I += 2 * (L_SigmaI_plus_W_rm_.diagonal().array().log().sum());
+					}
 				}
 			}
 			else {
@@ -3555,34 +3598,51 @@ namespace GPBoost {
 				CalcOptimalCVectorized(Z_WI_plus_Sigma_inv_WI_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv_vec, c_opt);
 				d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_W_deriv - tr_WI_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-				//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
+			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
 				//P^(-1) Z
-				den_mat_t B_invt_Z(num_data, num_rand_vec_trace_);
-				PI_Z.resize(num_data, num_rand_vec_trace_);
+				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+					//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
+					den_mat_t B_invt_Z(num_data, num_rand_vec_trace_);
+					PI_Z.resize(num_data, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
-				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					B_invt_Z.col(i) = B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>().solve(rand_vec_trace_P_.col(i));
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						B_invt_Z.col(i) = B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>().solve(rand_vec_trace_P_.col(i));
+					}
+#pragma omp parallel for schedule(static)   
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						PI_Z.col(i) = D_inv_plus_W_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_Z.col(i));
+					}
 				}
+				else {
+					//P^(-1) = L^(-1) L^(-T)
+					den_mat_t L_invt_Z(num_data, num_rand_vec_trace_);
+					PI_Z.resize(num_data, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
-				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					PI_Z.col(i) = D_inv_plus_W_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_Z.col(i));
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						L_invt_Z.col(i) = L_SigmaI_plus_W_rm_.transpose().triangularView<Eigen::UpLoType::Upper>().solve(rand_vec_trace_P_.col(i));
+					}
+#pragma omp parallel for schedule(static)   
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						PI_Z.col(i) = L_SigmaI_plus_W_rm_.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_Z.col(i));
+					}
 				}
 				//stochastic tr((Sigma^(-1) + W)^(-1) dW/db_i)
 				den_mat_t Z_SigmaI_plus_W_inv_W_deriv_PI_Z = (SigmaI_plus_W_inv_Z_.array() * W_deriv_rep.array() * PI_Z.array()).matrix();
 				vec_t tr_SigmaI_plus_W_inv_W_deriv = Z_SigmaI_plus_W_inv_W_deriv_PI_Z.rowwise().mean();
 				d_log_det_Sigma_W_plus_I_d_mode = tr_SigmaI_plus_W_inv_W_deriv;
-				//variance reduction
-				//deterministic tr((D^(-1) + W)^(-1) dW/db_i)
-				D_inv_plus_W_inv_diag = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).cwiseInverse();
-				vec_t tr_D_inv_plus_W_inv_W_deriv = -1 * (D_inv_plus_W_inv_diag.array() * third_deriv.array()); //times (-1), since third_deriv = -dW/db_i
-				//stochastic tr(P^(-1) dP/db_i), where dP/db_i = B^T dW/db_i B
-				den_mat_t B_PI_Z = B_rm_ * PI_Z;
-				Z_PI_P_deriv_PI_Z = (B_PI_Z.array() * W_deriv_rep.array() * B_PI_Z.array()).matrix();
-				tr_PI_P_deriv_vec = Z_PI_P_deriv_PI_Z.rowwise().mean();
-				//optimal c
-				CalcOptimalCVectorized(Z_SigmaI_plus_W_inv_W_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv_vec, c_opt);
-				d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_D_inv_plus_W_inv_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
+				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+					//variance reduction
+					//deterministic tr((D^(-1) + W)^(-1) dW/db_i)
+					D_inv_plus_W_inv_diag = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).cwiseInverse();
+					vec_t tr_D_inv_plus_W_inv_W_deriv = -1 * (D_inv_plus_W_inv_diag.array() * third_deriv.array()); //times (-1), since third_deriv = -dW/db_i
+					//stochastic tr(P^(-1) dP/db_i), where dP/db_i = B^T dW/db_i B
+					den_mat_t B_PI_Z = B_rm_ * PI_Z;
+					Z_PI_P_deriv_PI_Z = (B_PI_Z.array() * W_deriv_rep.array() * B_PI_Z.array()).matrix();
+					tr_PI_P_deriv_vec = Z_PI_P_deriv_PI_Z.rowwise().mean();
+					//optimal c
+					CalcOptimalCVectorized(Z_SigmaI_plus_W_inv_W_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv_vec, c_opt);
+					d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_D_inv_plus_W_inv_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
+				}
 			}
 			else {
 				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
@@ -3637,7 +3697,7 @@ namespace GPBoost {
 				d_log_det_Sigma_W_plus_I_d_cov_pars = -1 * ((Sigma_WI_plus_Sigma_inv_Z.cwiseProduct(SigmaI_deriv_rm * Sigma_PI_Z)).colwise().sum()).mean();
 				//no variance reduction since dSigma_L_k/d_theta_j can't be solved analytically
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
 				//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dSigma^(-1)/dtheta_j)
 				vec_t zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(SigmaI_deriv_rm * PI_Z)).colwise().sum()).transpose();
 				double tr_SigmaI_plus_W_inv_SigmaI_deriv = zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z.mean();
@@ -3649,30 +3709,32 @@ namespace GPBoost {
 				else {
 					d_log_det_Sigma_W_plus_I_d_cov_pars += (D_inv_rm_.diagonal().array() * D_grad_j.diagonal().array()).sum();
 				}
-				//variance reduction
-				double tr_D_inv_plus_W_inv_D_inv_deriv, tr_PI_P_deriv;
-				vec_t zt_PI_P_deriv_PI_z;
-				if (num_comps_total == 1 && j == 0) {
-					//dD/dsigma2 = D and dB/dsigma2 = 0
-					//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dsigma2), where dD^(-1)/dsigma2 = -D^(-1)
-					tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array()).sum();
-					//stochastic tr(P^(-1) dP/dsigma2), where dP/dsigma2 = -Sigma^(-1)
-					zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(SigmaI_deriv_rm * PI_Z)).colwise().sum()).transpose();
-					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
+				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+					//variance reduction
+					double tr_D_inv_plus_W_inv_D_inv_deriv, tr_PI_P_deriv;
+					vec_t zt_PI_P_deriv_PI_z;
+					if (num_comps_total == 1 && j == 0) {
+						//dD/dsigma2 = D and dB/dsigma2 = 0
+						//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dsigma2), where dD^(-1)/dsigma2 = -D^(-1)
+						tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array()).sum();
+						//stochastic tr(P^(-1) dP/dsigma2), where dP/dsigma2 = -Sigma^(-1)
+						zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(SigmaI_deriv_rm * PI_Z)).colwise().sum()).transpose();
+						tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
+					}
+					else {
+						//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dtheta_j)
+						tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array() * D_grad_j.diagonal().array() * D_inv_rm_.diagonal().array()).sum();
+						//stochastic tr(P^(-1) dP/dtheta_j)
+						sp_mat_rm_t Bt_W_Bgrad_rm = B_rm_.transpose() * second_deriv_neg_ll_.asDiagonal() * B_grad_j;
+						sp_mat_rm_t P_deriv_rm = SigmaI_deriv_rm + sp_mat_rm_t(Bt_W_Bgrad_rm.transpose()) + Bt_W_Bgrad_rm;
+						zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(P_deriv_rm * PI_Z)).colwise().sum()).transpose();
+						tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
+					}
+					//optimal c
+					double c_opt;
+					CalcOptimalC(zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_SigmaI_plus_W_inv_SigmaI_deriv, tr_PI_P_deriv, c_opt);
+					d_log_det_Sigma_W_plus_I_d_cov_pars += c_opt * tr_D_inv_plus_W_inv_D_inv_deriv - c_opt * tr_PI_P_deriv;
 				}
-				else {
-					//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dtheta_j)
-					tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array() * D_grad_j.diagonal().array() * D_inv_rm_.diagonal().array()).sum();
-					//stochastic tr(P^(-1) dP/dtheta_j)
-					sp_mat_rm_t Bt_W_Bgrad_rm = B_rm_.transpose() * second_deriv_neg_ll_.asDiagonal() * B_grad_j;
-					sp_mat_rm_t P_deriv_rm = SigmaI_deriv_rm + sp_mat_rm_t(Bt_W_Bgrad_rm.transpose()) + Bt_W_Bgrad_rm;
-					zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(P_deriv_rm * PI_Z)).colwise().sum()).transpose();
-					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
-				}
-				//optimal c
-				double c_opt;
-				CalcOptimalC(zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_SigmaI_plus_W_inv_SigmaI_deriv, tr_PI_P_deriv, c_opt);
-				d_log_det_Sigma_W_plus_I_d_cov_pars += c_opt * tr_D_inv_plus_W_inv_D_inv_deriv - c_opt * tr_PI_P_deriv;
 			}
 			else {
 				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
@@ -3717,21 +3779,23 @@ namespace GPBoost {
 				CalcOptimalC(zt_WI_plus_Sigma_inv_WI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv, c_opt);
 				d_detmll_d_aux_par += c_opt * (tr_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_L_kt_W_deriv_Sigma_L_k - tr_WI_W_deriv) - c_opt * tr_PI_P_deriv;
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
 				//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dW/daux)
 				vec_t zt_SigmaI_plus_W_inv_W_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(neg_third_deriv.asDiagonal() * PI_Z)).colwise().sum()).transpose();
 				double tr_SigmaI_plus_W_inv_W_deriv = zt_SigmaI_plus_W_inv_W_deriv_PI_z.mean();
 				d_detmll_d_aux_par = tr_SigmaI_plus_W_inv_W_deriv;
-				//variance reduction
-				//deterministic tr((D^(-1) + W)^(-1) dW/daux)
-				double tr_D_inv_plus_W_inv_W_deriv = (D_inv_plus_W_inv_diag.array() * neg_third_deriv.array()).sum();
-				//stochastic tr(P^(-1) dP/daux), where dP/daux = B^T dW/daux B
-				sp_mat_rm_t P_deriv_rm = B_rm_.transpose() * neg_third_deriv.asDiagonal() * B_rm_;
-				zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(P_deriv_rm * PI_Z)).colwise().sum()).transpose();
-				tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
-				//optimal c
-				CalcOptimalC(zt_SigmaI_plus_W_inv_W_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv, c_opt);
-				d_detmll_d_aux_par += c_opt * tr_D_inv_plus_W_inv_W_deriv - c_opt * tr_PI_P_deriv;
+				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+					//variance reduction
+					//deterministic tr((D^(-1) + W)^(-1) dW/daux)
+					double tr_D_inv_plus_W_inv_W_deriv = (D_inv_plus_W_inv_diag.array() * neg_third_deriv.array()).sum();
+					//stochastic tr(P^(-1) dP/daux), where dP/daux = B^T dW/daux B
+					sp_mat_rm_t P_deriv_rm = B_rm_.transpose() * neg_third_deriv.asDiagonal() * B_rm_;
+					zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(P_deriv_rm * PI_Z)).colwise().sum()).transpose();
+					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
+					//optimal c
+					CalcOptimalC(zt_SigmaI_plus_W_inv_W_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv, c_opt);
+					d_detmll_d_aux_par += c_opt * tr_D_inv_plus_W_inv_W_deriv - c_opt * tr_PI_P_deriv;
+				}
 			}
 			else {
 				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
@@ -3908,6 +3972,8 @@ namespace GPBoost {
 		chol_den_mat_t chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_;
 		/*! \brief Sigma_inv_plus_BtWB (P = B^T (D^(-1) + W) B): matrix that contains the product (D^(-1) + W) B */
 		sp_mat_rm_t D_inv_plus_W_B_rm_;
+		/*! \brief zero_infill_incomplete_cholesky (P = L^T L): sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W*/
+		sp_mat_rm_t L_SigmaI_plus_W_rm_;
 
 		/*! \brief Order of the Gauss-Hermite quadrature */
 		int order_GH_ = 30;
