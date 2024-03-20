@@ -446,19 +446,25 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(opt$value-(65.2599674)),TOLERANCE_MEDIUM)
   })
   
-  test_that("Binary classification with one grouped random effects and offset", {
+  test_that("GLMM with an offset", {
     
+    #####################
+    ## Binary classification
+    #####################
     n <- 250000 # number of samples
     m <- n / 500 # number of categories / levels for grouping variable
     group <- rep(1,n) # grouping variable
     for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
     b_gr <- sqrt(0.5) * qnorm(sim_rand_unif(n=m, init_c=0.5455))
+    offset <- (2*(sim_rand_unif(n=m, init_c=0.54) - 0.5))[group]
+    group_test <- c(1,3,9999)
+    X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # design matrix / covariate data for fixed effect
+    X_test <- cbind(rep(1,3),c(-0.5,0.4,1))
+    beta <- c(0.1,2) # regression coefficients
     probs <- pnorm(b_gr[group])
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.23431) < probs)
-    offset <- (2*(sim_rand_unif(n=m, init_c=0.54) - 0.5))[group]
     probs_o <- pnorm(b_gr[group] + offset)
     y_o <- as.numeric(sim_rand_unif(n=n, init_c=0.23431) < probs_o)
-    group_test <- c(1,3,9999)
     
     nrounds <- 5
     cov_pars <- c(0.4872743)
@@ -483,9 +489,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
     
     # With linear predictor and offset
-    X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # design matrix / covariate data for fixed effect
-    X_test <- cbind(rep(1,3),c(-0.5,0.4,1))
-    beta <- c(0.1,2) # regression coefficients
     probs <- pnorm(b_gr[group] + X%*%beta)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.23431) < probs)
     probs_o <- pnorm(b_gr[group] + offset + X%*%beta)
@@ -514,6 +517,92 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 5)
     expect_lt(sum(abs(pred$mu-expected_mu)),0.15)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),0.05)
+    
+    #####################
+    ## Poisson regression
+    #####################
+    n <- 100000 # number of samples
+    m <- 1000
+    group <- rep(1,n) # grouping variable
+    for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
+    b_gr <- sqrt(0.5) * qnorm(sim_rand_unif(n=m, init_c=0.5455))
+    offset <- (2*(sim_rand_unif(n=m, init_c=0.54) - 0.5))[group]
+    group_test <- c(1,3,9999)
+    X <- cbind(rep(1,n),sin((1:n-n/2)^2*2*pi/n)) # design matrix / covariate data for fixed effect
+    X_test <- cbind(rep(1,3),c(-0.5,0.4,1))
+    beta <- c(0.1,2) # regression coefficients
+    mu <- exp(b_gr[group])
+    y <- qpois(sim_rand_unif(n=n, init_c=0.468), lambda = mu)
+    mu_o <- exp(b_gr[group] + offset)
+    y_o <- qpois(sim_rand_unif(n=n, init_c=0.468), lambda = mu_o)
+    
+    cov_pars <- 0.4949265643
+    nll_opt <- 132766.8144
+    nrounds <- 5
+    expected_mu <- c(-0.0197946765, -0.4943165282, 0.00000000)
+    expected_cov <- c(0.009993953963 , 0.000000000000, 0.000000000000, 0.000000000000, 0.01586816243 , 0.000000000000, 0.000000000000, 0.000000000000, 0.4949265643)
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "poisson",
+                           y = y, params = DEFAULT_OPTIM_PARAMS), file='NUL')
+    pred <- predict(gp_model, group_data_pred = group_test, 
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt),TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "poisson",
+                           y = y_o, params = DEFAULT_OPTIM_PARAMS, fixed_effects = offset), file='NUL')
+    pred <- predict(gp_model, group_data_pred = group_test, fixed_effects = offset, 
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    nll_opt_o <- 133702.5947
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_o),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$mu-expected_mu)),0.05)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_LOOSE)
+    # # Compare to lme4
+    # mod <- glmer(y ~ -1 + (1|group), data=data.frame(y=y_o,group),family=poisson(), offset = offset)
+    # summary(mod)
+    
+    # With linear predictor and offset
+    mu <- exp(b_gr[group] + X%*%beta)
+    y <- qpois(sim_rand_unif(n=n, init_c=0.468), lambda = mu)
+    mu_o <- exp(b_gr[group] + offset + X%*%beta)
+    y_o <- qpois(sim_rand_unif(n=n, init_c=0.468), lambda = mu_o)
+    cov_pars <- 0.5014601251
+    coefs <- c(0.122983736, 2.006020280)
+    nll_opt <- 143780.2422
+    nrounds <- 83
+    expected_mu <- c(-0.8712505423, 0.3962539667, 2.1290040162)
+    expected_cov <- c(0.00534826066 , 0.000000000000, 0.000000000000, 0.000000000000, 0.02125426934 , 0.000000000000, 0.000000000000, 0.000000000000, 0.50146012507)
+    gp_model <- fitGPModel(group_data = group, likelihood = "poisson",
+                           y = y, X = X, params = DEFAULT_OPTIM_PARAMS)
+    pred <- predict(gp_model, group_data_pred = group_test, X_pred = X_test, 
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt),TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    params = DEFAULT_OPTIM_PARAMS
+    params$optimizer_cov <- "lbfgs"
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "poisson",
+                           y = y_o, X = X, params = params, fixed_effects = offset), file='NUL')
+    pred <- predict(gp_model, group_data_pred = group_test, X_pred = X_test, fixed_effects = offset, 
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),0.6)
+    nll_opt_o <- 144626.2799
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_o),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$mu-expected_mu)),0.1)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_LOOSE)
+    
+    # # Compare to lme4
+    # mod <- glmer(y ~ X2 + (1|group), data=data.frame(y=y_o,X,group),family=poisson(), offset = offset)
+    # summary(mod)
+    # summary(gp_model)
+    
   })
   
   test_that("Binary classification with multiple grouped random effects ", {
