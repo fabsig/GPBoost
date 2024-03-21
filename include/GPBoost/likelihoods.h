@@ -4022,7 +4022,7 @@ namespace GPBoost {
 					PI_Z.resize(num_data, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						L_invt_Z.col(i) = L_SigmaI_plus_W_rm_.transpose().triangularView<Eigen::UpLoType::Upper>().solve(rand_vec_trace_P_.col(i));
+						L_invt_Z.col(i) = L_SigmaI_plus_W_rm_.transpose().template triangularView<Eigen::UpLoType::Upper>().solve(rand_vec_trace_P_.col(i));
 					}
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
