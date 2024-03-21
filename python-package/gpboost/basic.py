@@ -3609,7 +3609,7 @@ class Booster:
                                                                predict_var=predict_var,
                                                                cov_pars=cov_pars,
                                                                predict_response=False,
-                                                               fixed_effects=fixed_effect_train,
+                                                               offset=fixed_effect_train,
                                                                y=y)
                     if len(fixed_effect) != len(random_effect_pred['mu']):
                         warnings.warn("Number of data points in fixed effect (tree ensemble) and random effect "
@@ -3629,8 +3629,8 @@ class Booster:
                                                       predict_var=predict_var,
                                                       cov_pars=cov_pars,
                                                       predict_response=True,
-                                                      fixed_effects=fixed_effect_train,
-                                                      fixed_effects_pred=fixed_effect,
+                                                      offset=fixed_effect_train,
+                                                      offset_pred=fixed_effect,
                                                       y=y)
                     response_mean = pred_resp['mu']
                     response_var = pred_resp['var']
@@ -4131,6 +4131,17 @@ class GPModel(object):
                     Spatio-temporal Matern covariance function with different range parameters for space and time.
                     Note that the first column in 'gp_coords' must correspond to the time dimension
 
+                - "matern_ard":
+
+                    Anisotropic Matern covariance function with Automatic Relevance Determination (ARD), i.e., with a
+                    different range parameter for every coordinate dimension / column of 'gp_coords'
+
+                - "gaussian_ard":
+
+                    Anisotropic Gaussian, aka squared expnential, covariance function with Automatic Relevance
+                    Determination (ARD), i.e., with a different range parameter for every coordinate dimension /
+                    column of 'gp_coords'
+
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance).
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
@@ -4523,6 +4534,8 @@ class GPModel(object):
             self.cover_tree_radius = cover_tree_radius
             if self.cov_function == "matern_space_time":
                 self.cov_par_names.extend(["GP_var", "GP_range_time", "GP_range_space"])
+            elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard":
+                self.cov_par_names.extend(["GP_var", ["GP_range_" + str(i) for i in range(1,self.dim_coords ,1)]])
             elif self.cov_function == "wendland":
                 self.cov_par_names.extend(["GP_var"])
             else:
@@ -4548,6 +4561,10 @@ class GPModel(object):
                                 ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
                                  "GP_rand_coef_nb_" + str(ii + 1) + "_range_time",
                                  "GP_rand_coef_nb_" + str(ii + 1) + "_range_space"])
+                        elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard":
+                            self.cov_par_names.extend(
+                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
+                                 ["GP_rand_coef_nb_" + str(ii + 1) + str(i) for i in range(1, self.dim_coords, 1)]])
                         elif self.cov_function == "wendland":
                             self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + "_var"])
                         else:
@@ -4561,6 +4578,10 @@ class GPModel(object):
                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
                                  "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range_time",
                                  "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range_space"])
+                        elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard":
+                            self.cov_par_names.extend(
+                                ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + "_var",
+                                 ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + str(i) for i in range(1, self.dim_coords, 1)]])
                         elif self.cov_function == "wendland":
                             self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"])
                         else:
@@ -4638,6 +4659,8 @@ class GPModel(object):
     def __determine_num_cov_pars(self, likelihood):
         if self.cov_function == "matern_space_time":
             num_par_per_GP = 3
+        elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard":
+            num_par_per_GP = 1 + self.dim_coords
         elif self.cov_function == "wendland":
             num_par_per_GP = 1
         else:
@@ -4699,7 +4722,7 @@ class GPModel(object):
         except AttributeError:
             pass
 
-    def fit(self, y, X=None, params=None, fixed_effects=None):
+    def fit(self, y, X=None, params=None, offset=None, fixed_effects=None):
         """Fit / estimate a GPModel using maximum likelihood estimation.
 
         Parameters
@@ -4806,9 +4829,11 @@ class GPModel(object):
 
                             - "none": no preconditioner
 
-        fixed_effects : numpy 1-D array or None, optional (default=None)
-            Additional fixed effects that are added to the linear predictor (= offset).
+        offset : numpy 1-D array or None, optional (default=None)
+            Additional fixed effects contributions that are added to the linear predictor (= offset).
             The length of this vector needs to equal the number of training data points.
+        fixed_effects : numpy 1-D array or None, optional (default=None)
+            This is discontinued. Use the renamed equivalent argument 'offset' instead
 
         Example
         -------
@@ -4820,6 +4845,9 @@ class GPModel(object):
         >>> gp_model.fit(y=y)
         """
 
+        if fixed_effects is not None:
+            raise GPBoostError("The argument 'fixed_effects' is discontinued. "
+                               "Use the renamed equivalent argument 'offset' instead")
         if ((self.num_cov_pars == 1 and self._get_likelihood_name() == "gaussian") or
                 (self.num_cov_pars == 0 and self._get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
@@ -4829,17 +4857,17 @@ class GPModel(object):
             raise ValueError("Incorrect number of data points in y")
         y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         X_c = ctypes.c_void_p()
-        fixed_effects_c = ctypes.c_void_p()
+        offset_c = ctypes.c_void_p()
 
-        if fixed_effects is not None:  ##TODO: maybe add support for pandas for fixed_effects (low prio)
-            if not isinstance(fixed_effects, np.ndarray):
-                raise ValueError("fixed_effects needs to be a numpy.ndarray")
-            if len(fixed_effects.shape) != 1:
-                raise ValueError("fixed_effects needs to be a vector / one-dimensional numpy.ndarray ")
-            if fixed_effects.shape[0] != self.num_data:
-                raise ValueError("Incorrect number of data points in fixed_effects")
-            fixed_effects_c = fixed_effects.astype(np.float64)
-            fixed_effects_c = fixed_effects_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        if offset is not None:  ##TODO: maybe add support for pandas for offset (low prio)
+            if not isinstance(offset, np.ndarray):
+                raise ValueError("'offset' needs to be a numpy.ndarray")
+            if len(offset.shape) != 1:
+                raise ValueError("'offset' needs to be a vector / one-dimensional numpy.ndarray ")
+            if offset.shape[0] != self.num_data:
+                raise ValueError("Incorrect number of data points in 'offset'")
+            offset_c = offset.astype(np.float64)
+            offset_c = offset_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
         if X is not None:
             X, X_names = _format_check_data(data=X, get_variable_names=True, data_name="X", check_data_type=True,
@@ -4864,14 +4892,14 @@ class GPModel(object):
             _safe_call(_LIB.GPB_OptimCovPar(
                 self.handle,
                 y_c,
-                fixed_effects_c))
+                offset_c))
         else:
             _safe_call(_LIB.GPB_OptimLinRegrCoefCovPar(
                 self.handle,
                 y_c,
                 X_c,
                 ctypes.c_int(self.num_coef),
-                fixed_effects_c))
+                offset_c))
         if self.params["trace"]:
             num_it = self._get_num_optim_iter()
             print("Number of iterations until convergence: " + str(num_it))
@@ -4890,7 +4918,8 @@ class GPModel(object):
         y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
             Response variable data
         fixed_effects : numpy 1-D array or None, optional (default=None)
-            Additional fixed effects component of location parameter for observed data. (length = number of data points)
+            A vector with fixed effects, e.g., containing a linear predictor.
+            The length of this vector needs to equal the number of training data points.
         aux_pars : numpy array or pandas DataFrame, optional (default = None)
             Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None)
 
@@ -5324,6 +5353,8 @@ class GPModel(object):
                 X_pred=None,
                 use_saved_data=False,
                 predict_response=True,
+                offset=None,
+                offset_pred=None,
                 fixed_effects=None,
                 fixed_effects_pred=None,
                 vecchia_pred_type=None,
@@ -5362,13 +5393,16 @@ class GPModel(object):
                 (this option is not used by users directly)
             predict_response : bool (default=False)
                 If True, the response variable (label) is predicted, otherwise the latent random effects
-            fixed_effects : numpy 1-D array or None, optional (default=None)
-                Additional fixed effects that are added to the linear predictor (= offset).
+            offset : numpy 1-D array or None, optional (default=None)
+                Additional fixed effects contributions that are added to the linear predictor (= offset).
                 The length of this vector needs to equal the number of training data points.
-            fixed_effects_pred : numpy 1-D array or None, optional (default=None)
-                Additional external prediction fixed effects.
+            offset_pred : numpy 1-D array or None, optional (default=None)
+                Additional fixed effects contributions that are added to the linear predictor for the prediction points (= offset).
                 The length of this vector needs to equal the number of prediction points.
-                Used only for non-Gaussian data.
+            fixed_effects : numpy 1-D array or None, optional (default=None)
+                This is discontinued. Use the renamed equivalent argument 'offset' instead
+            fixed_effects_pred : numpy 1-D array or None, optional (default=None)
+                This is discontinued. Use the renamed equivalent argument 'offset_pred' instead
             vecchia_pred_type : string, optional (default=None)
                 The type of Vecchia approximation used for making predictions.
                 This is discontinued here. Use the function 'set_prediction_data' to specify this
@@ -5410,6 +5444,12 @@ class GPModel(object):
         >>>                         predict_var=True, predict_response=False)
         """
 
+        if fixed_effects is not None:
+            raise GPBoostError("The argument 'fixed_effects' is discontinued. "
+                               "Use the renamed equivalent argument 'offset' instead")
+        if fixed_effects_pred is not None:
+            raise GPBoostError("The argument 'fixed_effects_pred' is discontinued. "
+                               "Use the renamed equivalent argument 'offset_pred' instead")
         if vecchia_pred_type is not None:
             raise GPBoostError("The argument 'vecchia_pred_type' is discontinued. "
                                "Use the function 'set_prediction_data' to specify this")
@@ -5559,14 +5599,14 @@ class GPModel(object):
                         coefs = self.coefs_loaded_from_file[0]
                     else:
                         coefs = self.coefs_loaded_from_file
-                    if fixed_effects is None:
-                        fixed_effects = self.X_loaded_from_file.dot(coefs)
+                    if offset is None:
+                        offset = self.X_loaded_from_file.dot(coefs)
                     else:
-                        fixed_effects = fixed_effects + self.X_loaded_from_file.dot(coefs)
-                    if fixed_effects_pred is None:
-                        fixed_effects_pred = X_pred.dot(coefs)
+                        offset = offset + self.X_loaded_from_file.dot(coefs)
+                    if offset_pred is None:
+                        offset_pred = X_pred.dot(coefs)
                     else:
-                        fixed_effects_pred = fixed_effects_pred + X_pred.dot(coefs)
+                        offset_pred = offset_pred + X_pred.dot(coefs)
                 else:
                     X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
         else:
@@ -5574,26 +5614,26 @@ class GPModel(object):
                 raise ValueError("No data has been set for making predictions. Call set_prediction_data first")
             num_data_pred = self.num_data_pred
 
-        fixed_effects_c = ctypes.c_void_p()
-        fixed_effects_pred_c = ctypes.c_void_p()
-        if fixed_effects is not None:
-            if not isinstance(fixed_effects, np.ndarray):
-                raise ValueError("fixed_effects needs to be a numpy.ndarray")
-            if len(fixed_effects.shape) != 1:
-                raise ValueError("fixed_effects needs to be a vector / one-dimensional numpy.ndarray ")
-            if fixed_effects.shape[0] != self.num_data:
-                raise ValueError("Incorrect number of data points in fixed_effects")
-            fixed_effects = fixed_effects.astype(np.float64)
-            fixed_effects_c = fixed_effects.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-        if fixed_effects_pred is not None:
-            if not isinstance(fixed_effects_pred, np.ndarray):
-                raise ValueError("fixed_effects_pred needs to be a numpy.ndarray")
-            if len(fixed_effects_pred.shape) != 1:
-                raise ValueError("fixed_effects_pred needs to be a vector / one-dimensional numpy.ndarray ")
-            if fixed_effects_pred.shape[0] != num_data_pred:
-                raise ValueError("Incorrect number of data points in fixed_effects_pred")
-            fixed_effects_pred = fixed_effects_pred.astype(np.float64)
-            fixed_effects_pred_c = fixed_effects_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        offset_c = ctypes.c_void_p()
+        offset_pred_c = ctypes.c_void_p()
+        if offset is not None:
+            if not isinstance(offset, np.ndarray):
+                raise ValueError("'offset' needs to be a numpy.ndarray")
+            if len(offset.shape) != 1:
+                raise ValueError("'offset' needs to be a vector / one-dimensional numpy.ndarray ")
+            if offset.shape[0] != self.num_data:
+                raise ValueError("Incorrect number of data points in 'offset'")
+            offset = offset.astype(np.float64)
+            offset_c = offset.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        if offset_pred is not None:
+            if not isinstance(offset_pred, np.ndarray):
+                raise ValueError("'offset_pred' needs to be a numpy.ndarray")
+            if len(offset_pred.shape) != 1:
+                raise ValueError("'offset_pred' needs to be a vector / one-dimensional numpy.ndarray ")
+            if offset_pred.shape[0] != num_data_pred:
+                raise ValueError("Incorrect number of data points in 'offset_pred'")
+            offset_pred = offset_pred.astype(np.float64)
+            offset_pred_c = offset_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
         if predict_var:
             preds = np.zeros(2 * num_data_pred, dtype=np.float64)
@@ -5618,8 +5658,8 @@ class GPModel(object):
             cov_pars_c,
             X_pred_c,
             ctypes.c_bool(use_saved_data),
-            fixed_effects_c,
-            fixed_effects_pred_c))
+            offset_c,
+            offset_pred_c))
 
         pred_mean = preds[0:num_data_pred]
         pred_cov_mat = None

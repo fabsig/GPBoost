@@ -15,7 +15,7 @@ fitGPModel(likelihood = "gaussian", group_data = NULL,
   matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
   free_raw_data = FALSE, y, X = NULL, params = list(),
   vecchia_approx = NULL, vecchia_pred_type = NULL,
-  num_neighbors_pred = NULL, fixed_effects = NULL)
+  num_neighbors_pred = NULL, offset = NULL, fixed_effects = NULL)
 }
 \arguments{
 \item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable. 
@@ -69,6 +69,10 @@ the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribe
 \item{ "wendland": Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS) }
 \item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time. 
 Note that the first column in \code{gp_coords} must correspond to the time dimension }
+\item{ "matern_ard": anisotropic Matern covariance function with Automatic Relevance Determination (ARD), 
+i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
+\item{ "gaussian_ard": anisotropic Gaussian, aka squared expnential, covariance function with Automatic Relevance Determination (ARD), 
+i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
 }}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
@@ -273,9 +277,11 @@ This is discontinued here. Use the function 'set_prediction_data' to specify thi
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for making predictions.
 This is discontinued here. Use the function 'set_prediction_data' to specify this}
 
-\item{fixed_effects}{A \code{numeric} \code{vector} with 
-additional fixed effects that are added to the linear predictor (= offset). 
+\item{offset}{A \code{numeric} \code{vector} with 
+additional fixed effects contributions that are added to the linear predictor (= offset). 
 The length of this vector needs to equal the number of training data points.}
+
+\item{fixed_effects}{This is discontinued. Use the renamed equivalent argument \code{offset} instead}
 }
 \value{
 A fitted \code{GPModel}

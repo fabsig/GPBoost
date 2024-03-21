@@ -877,7 +877,7 @@ Booster <- R6::R6Class(
                                                           , cov_pars = cov_pars
                                                           , X_pred = NULL
                                                           , predict_response = FALSE
-                                                          , fixed_effects = fixed_effect_train
+                                                          , offset = fixed_effect_train
                                                           , y = y )
             
             if (length(fixed_effect) != length(random_effect_pred$mu)){
@@ -904,8 +904,8 @@ Booster <- R6::R6Class(
                                                   , cov_pars = cov_pars
                                                   , X_pred = NULL
                                                   , predict_response = TRUE
-                                                  , fixed_effects = fixed_effect_train
-                                                  , fixed_effects_pred = fixed_effect
+                                                  , offset = fixed_effect_train
+                                                  , offset_pred = fixed_effect
                                                   , y = y )
             
             response_mean <-  pred_resp$mu

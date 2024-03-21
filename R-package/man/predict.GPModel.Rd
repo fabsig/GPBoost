@@ -9,8 +9,9 @@
   gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL,
   predict_cov_mat = FALSE, predict_var = FALSE, cov_pars = NULL,
   X_pred = NULL, use_saved_data = FALSE, predict_response = TRUE,
-  fixed_effects = NULL, fixed_effects_pred = NULL,
-  vecchia_pred_type = NULL, num_neighbors_pred = NULL, ...)
+  offset = NULL, offset_pred = NULL, fixed_effects = NULL,
+  fixed_effects_pred = NULL, vecchia_pred_type = NULL,
+  num_neighbors_pred = NULL, ...)
 }
 \arguments{
 \item{object}{a \code{GPModel}}
@@ -53,13 +54,17 @@ a priory set data via the function '$set_prediction_data' (this option is not us
 \item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) 
 is predicted, otherwise the latent random effects}
 
-\item{fixed_effects}{A \code{numeric} \code{vector} with 
-additional fixed effects that are added to the linear predictor (= offset). 
+\item{offset}{A \code{numeric} \code{vector} with 
+additional fixed effects contributions that are added to the linear predictor (= offset). 
 The length of this vector needs to equal the number of training data points.}
 
-\item{fixed_effects_pred}{(usually not used) A \code{numeric} \code{vector} 
-with additional prediction fixed effects.
+\item{offset_pred}{A \code{numeric} \code{vector} with 
+additional fixed effects contributions that are added to the linear predictor for the prediction points (= offset). 
 The length of this vector needs to equal the number of prediction points.}
+
+\item{fixed_effects}{This is discontinued. Use the renamed equivalent argument \code{offset} instead}
+
+\item{fixed_effects_pred}{This is discontinued. Use the renamed equivalent argument \code{offset_pred} instead}
 
 \item{vecchia_pred_type}{A \code{string} specifying the type of Vecchia approximation used for making predictions.
 This is discontinued here. Use the function 'set_prediction_data' to specify this}

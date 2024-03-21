@@ -643,7 +643,7 @@ gpb.cv <- function(params = list()
       gp_model$fit(y = data$.__enclos_env__$private$info$label - pred_fixed_effect_OOS)
     }
     else{
-      gp_model$fit(y = data$.__enclos_env__$private$info$label, fixed_effects = pred_fixed_effect_OOS)
+      gp_model$fit(y = data$.__enclos_env__$private$info$label, offset = pred_fixed_effect_OOS)
     }
     
   }

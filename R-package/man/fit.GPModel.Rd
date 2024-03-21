@@ -5,7 +5,7 @@
 \title{Fits a \code{GPModel}}
 \usage{
 \method{fit}{GPModel}(gp_model, y, X = NULL, params = list(),
-  fixed_effects = NULL)
+  offset = NULL, fixed_effects = NULL)
 }
 \arguments{
 \item{gp_model}{a \code{GPModel}}
@@ -123,9 +123,11 @@ fixed effects linear regression term (if there is one)}
    }
 }}
 
-\item{fixed_effects}{A \code{numeric} \code{vector} with 
-additional fixed effects that are added to the linear predictor (= offset). 
+\item{offset}{A \code{numeric} \code{vector} with 
+additional fixed effects contributions that are added to the linear predictor (= offset). 
 The length of this vector needs to equal the number of training data points.}
+
+\item{fixed_effects}{This is discontinued. Use the renamed equivalent argument \code{offset} instead}
 }
 \value{
 A fitted \code{GPModel}

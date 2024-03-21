@@ -55,6 +55,10 @@ the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribe
 \item{ "wendland": Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS) }
 \item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time. 
 Note that the first column in \code{gp_coords} must correspond to the time dimension }
+\item{ "matern_ard": anisotropic Matern covariance function with Automatic Relevance Determination (ARD), 
+i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
+\item{ "gaussian_ard": anisotropic Gaussian, aka squared expnential, covariance function with Automatic Relevance Determination (ARD), 
+i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
 }}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
@@ -282,9 +286,11 @@ fixed effects linear regression term (if there is one)}
    }
 }}
 
-\item{fixed_effects}{A \code{numeric} \code{vector} with 
-additional fixed effects that are added to the linear predictor (= offset). 
+\item{offset}{A \code{numeric} \code{vector} with 
+additional fixed effects contributions that are added to the linear predictor (= offset). 
 The length of this vector needs to equal the number of training data points.}
+
+\item{fixed_effects}{This is discontinued. Use the renamed equivalent argument \code{offset} instead}
 
 \item{group_data_pred}{A \code{vector} or \code{matrix} with elements being group levels 
 for which predictions are made (if there are grouped random effects in the \code{GPModel})}

@@ -68,6 +68,10 @@ the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribe
 \item{ "wendland": Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS) }
 \item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time. 
 Note that the first column in \code{gp_coords} must correspond to the time dimension }
+\item{ "matern_ard": anisotropic Matern covariance function with Automatic Relevance Determination (ARD), 
+i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
+\item{ "gaussian_ard": anisotropic Gaussian, aka squared expnential, covariance function with Automatic Relevance Determination (ARD), 
+i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
 }}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 

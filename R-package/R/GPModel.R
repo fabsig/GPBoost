@@ -49,6 +49,10 @@
 #' \item{ "wendland": Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS) }
 #' \item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time. 
 #' Note that the first column in \code{gp_coords} must correspond to the time dimension }
+#' \item{ "matern_ard": anisotropic Matern covariance function with Automatic Relevance Determination (ARD), 
+#' i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
+#' \item{ "gaussian_ard": anisotropic Gaussian, aka squared expnential, covariance function with Automatic Relevance Determination (ARD), 
+#' i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
 #' }
 #' @param cov_fct_shape A \code{numeric} specifying the shape parameter of the covariance function 
 #' (=smoothness parameter for Matern covariance)  
@@ -254,9 +258,10 @@
 #'                }
 #'               }
 #'            }
-#' @param fixed_effects A \code{numeric} \code{vector} with 
-#' additional fixed effects that are added to the linear predictor (= offset). 
+#' @param offset A \code{numeric} \code{vector} with 
+#' additional fixed effects contributions that are added to the linear predictor (= offset). 
 #' The length of this vector needs to equal the number of training data points.
+#' @param fixed_effects This is discontinued. Use the renamed equivalent argument \code{offset} instead
 #' @param group_data_pred A \code{vector} or \code{matrix} with elements being group levels 
 #' for which predictions are made (if there are grouped random effects in the \code{GPModel})
 #' @param group_rand_coef_data_pred A \code{vector} or \code{matrix} with covariate data 
@@ -327,16 +332,13 @@ gpb.GPModel <- R6::R6Class(
                           num_neighbors_pred = NULL) {
       
       if (!is.null(vecchia_approx)) {
-        stop("GPModel: The argument 'vecchia_approx' is discontinued. 
-             Use the argument 'gp_approx' instead")
+        stop("GPModel: The argument 'vecchia_approx' is discontinued. Use the argument 'gp_approx' instead")
       }
       if (!is.null(vecchia_pred_type)) {
-        stop("GPModel: The argument 'vecchia_pred_type' is discontinued. 
-             Use the function 'set_prediction_data' to specify this")
+        stop("GPModel: The argument 'vecchia_pred_type' is discontinued. Use the function 'set_prediction_data' to specify this")
       }
       if (!is.null(num_neighbors_pred)) {
-        stop("GPModel: The argument 'num_neighbors_pred' is discontinued. 
-             Use the function 'set_prediction_data' to specify this")
+        stop("GPModel: The argument 'num_neighbors_pred' is discontinued. Use the function 'set_prediction_data' to specify this")
       }
       
       if (!is.null(modelfile) | !is.null(model_list)){
@@ -569,6 +571,12 @@ gpb.GPModel <- R6::R6Class(
         private$ind_points_selection <- as.character(ind_points_selection)
         if (private$cov_function == "matern_space_time") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range_time", "GP_range_space")
+        } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard") {
+          if (is.null(colnames(gp_coords))) {
+            private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",1:private$dim_coords))
+          } else {
+            private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",colnames(gp_coords)))
+          }
         } else if (private$cov_function == "wendland") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var")
         } else {
@@ -601,6 +609,14 @@ gpb.GPModel <- R6::R6Class(
                                            paste0("GP_rand_coef_nb_", ii,"_var"),
                                            paste0("GP_rand_coef_nb_", ii,"_range_time"),
                                            paste0("GP_rand_coef_nb_", ii,"_range_space"))
+              } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard") {
+                if (is.null(colnames(gp_coords))) {
+                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
+                                             paste0(paste0("GP_rand_coef_nb_", ii,"_var"),1:private$dim_coords))
+                } else {
+                  private$cov_par_names <- c(private$cov_par_names,"GP_var", 
+                                             paste0(paste0("GP_rand_coef_nb_", ii,"_range"),colnames(gp_coords)))
+                }
               } else if (private$cov_function == "wendland") {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_nb_", ii,"_var"))
@@ -615,6 +631,14 @@ gpb.GPModel <- R6::R6Class(
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"),
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range_time"),
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range_space"))
+              } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard") {
+                if (is.null(colnames(gp_coords))) {
+                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
+                                             paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_var"),1:private$dim_coords))
+                } else {
+                  private$cov_par_names <- c(private$cov_par_names,"GP_var", 
+                                             paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_range"),colnames(gp_coords)))
+                }
               } else if (private$cov_function == "wendland") {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"))
@@ -713,7 +737,12 @@ gpb.GPModel <- R6::R6Class(
     fit = function(y,
                    X = NULL,
                    params = list(),
+                   offset = NULL,
                    fixed_effects = NULL) {
+      
+      if (!is.null(fixed_effects)) {
+        stop("The argument 'fixed_effects' is discontinued. Use the renamed equivalent argument 'offset' instead")
+      }
       if (gpb.is.null.handle(private$handle)) {
         stop("fit.GPModel: Gaussian process model has not been initialized")
       }
@@ -737,24 +766,24 @@ gpb.GPModel <- R6::R6Class(
       if (length(y) != private$num_data) {
         stop("fit.GPModel: Number of data points in ", sQuote("y"), " does not match number of data points of initialized model")
       }# end handling of y
-      if (!is.null(fixed_effects)) {
-        if (!is.vector(fixed_effects)) {
-          if (is.matrix(fixed_effects)) {
-            if (dim(fixed_effects)[2] != 1) {
-              stop("fit.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("fixed_effects"))
+      if (!is.null(offset)) {
+        if (!is.vector(offset)) {
+          if (is.matrix(offset)) {
+            if (dim(offset)[2] != 1) {
+              stop("fit.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset"))
             }
           } else{
-            stop("fit.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("fixed_effects"))
+            stop("fit.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset"))
           }
         }
-        if (storage.mode(fixed_effects) != "double") {
-          storage.mode(fixed_effects) <- "double"
+        if (storage.mode(offset) != "double") {
+          storage.mode(offset) <- "double"
         }
-        fixed_effects <- as.vector(fixed_effects)
-        if (length(fixed_effects) != private$num_data) {
-          stop("fit.GPModel: Number of data points in ", sQuote("fixed_effects"), " does not match number of data points of initialized model")
+        offset <- as.vector(offset)
+        if (length(offset) != private$num_data) {
+          stop("fit.GPModel: Number of data points in ", sQuote("offset"), " does not match number of data points of initialized model")
         }
-      } # end handling of fixed_effects
+      } # end handling of offset
       # Set data linear fixed-effects
       if (!is.null(X)) {
         if (is.numeric(X)) {
@@ -788,7 +817,7 @@ gpb.GPModel <- R6::R6Class(
           GPB_OptimCovPar_R
           , private$handle
           , y
-          , fixed_effects
+          , offset
         )
       } else {
         .Call(
@@ -797,7 +826,7 @@ gpb.GPModel <- R6::R6Class(
           , y
           , X
           , private$num_coef
-          , fixed_effects
+          , offset
         )
       }
       if (private$params$trace) {
@@ -810,7 +839,7 @@ gpb.GPModel <- R6::R6Class(
     
     # Evaluate the negative log-likelihood
     neg_log_likelihood = function(cov_pars, 
-                                  y, 
+                                  y,
                                   fixed_effects = NULL,
                                   aux_pars = NULL) {
       if (gpb.is.null.handle(private$handle)) {
@@ -1257,17 +1286,27 @@ gpb.GPModel <- R6::R6Class(
                        X_pred = NULL,
                        use_saved_data = FALSE,
                        predict_response = TRUE,
+                       offset = NULL,
+                       offset_pred = NULL,
                        fixed_effects = NULL,
                        fixed_effects_pred = NULL,
                        vecchia_pred_type = NULL,
                        num_neighbors_pred = NULL) {
+      
+      if (!is.null(fixed_effects)) {
+        stop("The argument 'fixed_effects' is discontinued. Use the renamed equivalent argument 'offset' instead ")
+      }
+      if (!is.null(fixed_effects_pred)) {
+        stop("The argument 'fixed_effects_pred' is discontinued. Use the renamed equivalent argument 'offset_pred' instead ")
+      }
       if (!is.null(vecchia_pred_type)) {
-        stop("predict.GPModel: The argument 'vecchia_pred_type' is discontinued. 
-             Use the function 'set_prediction_data' to specify this")
+        stop("predict.GPModel: The argument 'vecchia_pred_type' is discontinued. Use the function 'set_prediction_data' to specify this")
+      }
+      if (!is.null(vecchia_pred_type)) {
+        stop("predict.GPModel: The argument 'vecchia_pred_type' is discontinued. Use the function 'set_prediction_data' to specify this")
       }
       if (!is.null(num_neighbors_pred)) {
-        stop("predict.GPModel: The argument 'num_neighbors_pred' is discontinued. 
-             Use the function 'set_prediction_data' to specify this")
+        stop("predict.GPModel: The argument 'num_neighbors_pred' is discontinued. Use the function 'set_prediction_data' to specify this")
       }
       if (private$model_has_been_loaded_from_saved_file) {
         if (is.null(y)) {
@@ -1452,15 +1491,15 @@ gpb.GPModel <- R6::R6Class(
             } else {
               coefs <- private$coefs_loaded_from_file
             }
-            if (is.null(fixed_effects)) {
-              fixed_effects <- as.vector(private$X_loaded_from_file %*% coefs)
+            if (is.null(offset)) {
+              offset <- as.vector(private$X_loaded_from_file %*% coefs)
             } else {
-              fixed_effects <- fixed_effects + as.vector(private$X_loaded_from_file %*% coefs)
+              offset <- offset + as.vector(private$X_loaded_from_file %*% coefs)
             }
-            if (is.null(fixed_effects_pred)) {
-              fixed_effects_pred <- as.vector(X_pred %*% coefs)
+            if (is.null(offset_pred)) {
+              offset_pred <- as.vector(X_pred %*% coefs)
             } else {
-              fixed_effects_pred <- fixed_effects_pred + as.vector(X_pred %*% coefs)
+              offset_pred <- offset_pred + as.vector(X_pred %*% coefs)
             }
             X_pred <- NULL
           } else {
@@ -1524,32 +1563,32 @@ gpb.GPModel <- R6::R6Class(
       if (storage.mode(predict_response) != "logical") {
         stop("predict.GPModel: Can only use ", sQuote("logical"), " as ", sQuote("predict_response"))
       }
-      if (!is.null(fixed_effects)) {
-        if (is.vector(fixed_effects)) {
-          if (storage.mode(fixed_effects) != "double") {
-            storage.mode(fixed_effects) <- "double"
+      if (!is.null(offset)) {
+        if (is.vector(offset)) {
+          if (storage.mode(offset) != "double") {
+            storage.mode(offset) <- "double"
           }
-          fixed_effects <- as.vector(fixed_effects)
+          offset <- as.vector(offset)
         } else {
-          stop("predict.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("fixed_effects"))
+          stop("predict.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset"))
         }
-        if (length(fixed_effects) != private$num_data) {
-          stop("predict.GPModel: Length of ", sQuote("fixed_effects"), " does not match number of observed data points")
+        if (length(offset) != private$num_data) {
+          stop("predict.GPModel: Length of ", sQuote("offset"), " does not match number of observed data points")
         }
-      }# end fixed_effects
-      if (!is.null(fixed_effects_pred)) {
-        if (is.vector(fixed_effects_pred)) {
-          if (storage.mode(fixed_effects_pred) != "double") {
-            storage.mode(fixed_effects_pred) <- "double"
+      }# end offset
+      if (!is.null(offset_pred)) {
+        if (is.vector(offset_pred)) {
+          if (storage.mode(offset_pred) != "double") {
+            storage.mode(offset_pred) <- "double"
           }
-          fixed_effects_pred <- as.vector(fixed_effects_pred)
+          offset_pred <- as.vector(offset_pred)
         } else {
-          stop("predict.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("fixed_effects_pred"))
+          stop("predict.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset_pred"))
         }
-        if (length(fixed_effects_pred) != num_data_pred) {
-          stop("predict.GPModel: Length of ", sQuote("fixed_effects"), " does not match number of predicted data points")
+        if (length(offset_pred) != num_data_pred) {
+          stop("predict.GPModel: Length of ", sQuote("offset"), " does not match number of predicted data points")
         }
-      }# end fixed_effects_pred
+      }# end offset_pred
       # Pre-allocate empty vector
       if (predict_var) {
         preds <- numeric(num_data_pred * 2)
@@ -1574,8 +1613,8 @@ gpb.GPModel <- R6::R6Class(
         , cov_pars
         , X_pred
         , use_saved_data
-        , fixed_effects
-        , fixed_effects_pred
+        , offset
+        , offset_pred
         , preds
       )
       # Process C++ output
@@ -1969,6 +2008,8 @@ gpb.GPModel <- R6::R6Class(
     determine_num_cov_pars = function(likelihood) {
       if (private$cov_function == "matern_space_time") {
         num_par_per_GP <- 3L
+      } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard") {
+        num_par_per_GP <- 1L + private$dim_coords
       } else if (private$cov_function == "wendland") {
         num_par_per_GP <- 1L
       } else {
@@ -2190,7 +2231,7 @@ GPModel <- function(likelihood = "gaussian",
 #' 
 #' @author Fabio Sigrist
 #' @export 
-fit <- function(gp_model, y, X, params, fixed_effects = NULL) UseMethod("fit")
+fit <- function(gp_model, y, X, params, offset = NULL, fixed_effects = NULL) UseMethod("fit")
 
 #' Fits a \code{GPModel}
 #'
@@ -2245,12 +2286,14 @@ fit.GPModel <- function(gp_model,
                         y,
                         X = NULL,
                         params = list(),
+                        offset = NULL,
                         fixed_effects = NULL) {
   
   # Fit model
   invisible(gp_model$fit(y = y,
                          X = X,
                          params = params,
+                         offset = offset,
                          fixed_effects = fixed_effects))
   
 }
@@ -2357,6 +2400,7 @@ fitGPModel <- function(likelihood = "gaussian",
                        vecchia_approx = NULL,
                        vecchia_pred_type = NULL,
                        num_neighbors_pred = NULL,
+                       offset = NULL,
                        fixed_effects = NULL) {
   #Create model
   gpmodel <- gpb.GPModel$new(likelihood = likelihood
@@ -2387,6 +2431,7 @@ fitGPModel <- function(likelihood = "gaussian",
   gpmodel$fit(y = y,
               X = X,
               params = params,
+              offset = offset,
               fixed_effects = fixed_effects)
   return(gpmodel)
   
@@ -2445,9 +2490,10 @@ summary.GPModel <- function(object, ...){
 #' a priory set data via the function '$set_prediction_data' (this option is not used by users directly)
 #' @param predict_response A \code{boolean}. If TRUE, the response variable (label) 
 #' is predicted, otherwise the latent random effects
-#' @param fixed_effects_pred (usually not used) A \code{numeric} \code{vector} 
-#' with additional prediction fixed effects.
+#' @param offset_pred A \code{numeric} \code{vector} with 
+#' additional fixed effects contributions that are added to the linear predictor for the prediction points (= offset). 
 #' The length of this vector needs to equal the number of prediction points.
+#' @param fixed_effects_pred This is discontinued. Use the renamed equivalent argument \code{offset_pred} instead
 #' @param ... (not used, ignore this, simply here that there is no CRAN warning)
 #' @inheritParams GPModel_shared_params 
 #' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for making predictions.
@@ -2518,6 +2564,8 @@ predict.GPModel <- function(object,
                             X_pred = NULL,
                             use_saved_data = FALSE,
                             predict_response = TRUE,
+                            offset = NULL,
+                            offset_pred = NULL, 
                             fixed_effects = NULL,
                             fixed_effects_pred = NULL, 
                             vecchia_pred_type = NULL,
@@ -2534,6 +2582,8 @@ predict.GPModel <- function(object,
                          , X_pred = X_pred
                          , use_saved_data = use_saved_data
                          , predict_response = predict_response
+                         , offset = offset
+                         , offset_pred = offset_pred
                          , fixed_effects = fixed_effects
                          , fixed_effects_pred = fixed_effects_pred
                          , vecchia_pred_type = vecchia_pred_type
@@ -2782,6 +2832,8 @@ set_prediction_data.GPModel <- function(gp_model
 #' @param aux_pars A \code{vector} with \code{numeric} elements. 
 #' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)
 #' @inheritParams GPModel_shared_params
+#' @param fixed_effects A \code{numeric} \code{vector} with fixed effects, e.g., containing a linear predictor. 
+#' The length of this vector needs to equal the number of training data points.
 #'
 #' @examples
 #' \donttest{
@@ -2814,6 +2866,8 @@ neg_log_likelihood <- function(gp_model
 #' @param aux_pars A \code{vector} with \code{numeric} elements. 
 #' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)
 #' @inheritParams GPModel_shared_params
+#' @param fixed_effects A \code{numeric} \code{vector} with fixed effects, e.g., containing a linear predictor. 
+#' The length of this vector needs to equal the number of training data points.
 #'
 #' @return A \code{GPModel}
 #'

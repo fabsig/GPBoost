@@ -181,7 +181,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y_Inf[1] = -Inf
     expect_error(gp_model <- fitGPModel(group_data = group, y = y_Inf))
     
-    # With offset / fixed_effects
+    # With offset
     offset <- 20 * sim_rand_unif(n=n, init_c=0.354)
     y_o <- y + offset
     cov_pars_pred = c(0.5,1.5)
@@ -198,9 +198,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
-    gp_model <- fitGPModel(group_data = group, y = y_o, fixed_effects = offset,
+    gp_model <- fitGPModel(group_data = group, y = y_o, offset = offset,
                            params = DEFAULT_OPTIM_PARAMS_STD)
-    pred <- predict(gp_model,group_data_pred = group_test, fixed_effects = offset,
+    pred <- predict(gp_model,group_data_pred = group_test, offset = offset,
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
@@ -305,8 +305,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     gp_model <- fitGPModel(group_data = group, y = y_o, X = X, 
-                           fixed_effects = offset, params = DEFAULT_OPTIM_PARAMS_STD)
-    pred <- predict(gp_model, group_data_pred = group_test, fixed_effects = offset,
+                           offset = offset, params = DEFAULT_OPTIM_PARAMS_STD)
+    pred <- predict(gp_model, group_data_pred = group_test, offset = offset,
                     X_pred = X_test, predict_cov_mat = TRUE)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)

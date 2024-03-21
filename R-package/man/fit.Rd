@@ -4,7 +4,7 @@
 \alias{fit}
 \title{Generic 'fit' method for a \code{GPModel}}
 \usage{
-fit(gp_model, y, X, params, fixed_effects = NULL)
+fit(gp_model, y, X, params, offset = NULL, fixed_effects = NULL)
 }
 \arguments{
 \item{gp_model}{a \code{GPModel}}
@@ -122,9 +122,11 @@ fixed effects linear regression term (if there is one)}
    }
 }}
 
-\item{fixed_effects}{A \code{numeric} \code{vector} with 
-additional fixed effects that are added to the linear predictor (= offset). 
+\item{offset}{A \code{numeric} \code{vector} with 
+additional fixed effects contributions that are added to the linear predictor (= offset). 
 The length of this vector needs to equal the number of training data points.}
+
+\item{fixed_effects}{This is discontinued. Use the renamed equivalent argument \code{offset} instead}
 }
 \description{
 Generic 'fit' method for a \code{GPModel}
