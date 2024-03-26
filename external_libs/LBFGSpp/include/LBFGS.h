@@ -152,7 +152,8 @@ public:
             if (fpast > 0)
             {
                 const Scalar fxd = m_fx[k % fpast];
-                if (k >= fpast && abs(fxd - fx) <= m_param.delta * std::max(std::max(abs(fx), abs(fxd)), Scalar(1)))
+                // ChangedForGPBoost
+                if (k >= fpast && (fxd - fx) <= m_param.delta * std::max(abs(fxd), Scalar(1)))
                     return k;
 
                 m_fx[k % fpast] = fx;

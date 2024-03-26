@@ -1118,18 +1118,18 @@ namespace GPBoost {
 						// Check convergence
 						if (convergence_criterion_ == "relative_change_in_parameters") {
 							if (has_covariates_) {
-								if (((beta - beta_lag1).norm() < delta_rel_conv_ * beta_lag1.norm()) && ((cov_aux_pars - cov_aux_pars_lag1).norm() < delta_rel_conv_ * cov_aux_pars_lag1.norm())) {
+								if (((beta - beta_lag1).norm() <= delta_rel_conv_ * beta_lag1.norm()) && ((cov_aux_pars - cov_aux_pars_lag1).norm() < delta_rel_conv_ * cov_aux_pars_lag1.norm())) {
 									terminate_optim = true;
 								}
 							}
 							else {
-								if ((cov_aux_pars - cov_aux_pars_lag1).norm() < delta_rel_conv_ * cov_aux_pars_lag1.norm()) {
+								if ((cov_aux_pars - cov_aux_pars_lag1).norm() <= delta_rel_conv_ * cov_aux_pars_lag1.norm()) {
 									terminate_optim = true;
 								}
 							}
 						}
 						else if (convergence_criterion_ == "relative_change_in_log_likelihood") {
-							if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < delta_rel_conv_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
+							if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) <= delta_rel_conv_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
 								terminate_optim = true;
 							}
 						} // end check convergence
