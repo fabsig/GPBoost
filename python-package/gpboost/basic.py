@@ -4110,7 +4110,7 @@ class GPModel(object):
 
                 - "gaussian":
 
-                    Gaussian, aka squared expnential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
+                    Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
 
                 - "matern":
 
@@ -4138,7 +4138,7 @@ class GPModel(object):
 
                 - "gaussian_ard":
 
-                    Anisotropic Gaussian, aka squared expnential, covariance function with Automatic Relevance
+                    Anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance
                     Determination (ARD), i.e., with a different range parameter for every coordinate dimension /
                     column of 'gp_coords'
 
@@ -4535,7 +4535,7 @@ class GPModel(object):
             if self.cov_function == "matern_space_time":
                 self.cov_par_names.extend(["GP_var", "GP_range_time", "GP_range_space"])
             elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard":
-                self.cov_par_names.extend(["GP_var", ["GP_range_" + str(i) for i in range(1,self.dim_coords ,1)]])
+                self.cov_par_names.extend(["GP_var"] + ["GP_range_" + str(i+1) for i in range(0,self.dim_coords)])
             elif self.cov_function == "wendland":
                 self.cov_par_names.extend(["GP_var"])
             else:
@@ -4563,8 +4563,8 @@ class GPModel(object):
                                  "GP_rand_coef_nb_" + str(ii + 1) + "_range_space"])
                         elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard":
                             self.cov_par_names.extend(
-                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
-                                 ["GP_rand_coef_nb_" + str(ii + 1) + str(i) for i in range(1, self.dim_coords, 1)]])
+                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var"] +
+                                 ["GP_rand_coef_nb_" + str(ii + 1) + str(i+1) for i in range(0,self.dim_coords)])
                         elif self.cov_function == "wendland":
                             self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + "_var"])
                         else:
@@ -4580,8 +4580,8 @@ class GPModel(object):
                                  "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range_space"])
                         elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard":
                             self.cov_par_names.extend(
-                                ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + "_var",
-                                 ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + str(i) for i in range(1, self.dim_coords, 1)]])
+                                ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + "_var"] +
+                                 ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(0,self.dim_coords)])
                         elif self.cov_function == "wendland":
                             self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"])
                         else:
@@ -4819,9 +4819,9 @@ class GPModel(object):
 
                         - Options for non-Gaussian likelihoods and gp_approx = "vecchia":
 
-                            - "piv_chol_on_Sigma" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
+                            - "Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
 
-                            - "Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
+                            - "piv_chol_on_Sigma" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
 
                         - Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering":
 
@@ -4854,7 +4854,7 @@ class GPModel(object):
         y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
                                   convert_to_type=np.float64)
         if y.shape[0] != self.num_data:
-            raise ValueError("Incorrect number of data points in y")
+            raise ValueError("Incorrect number of data points in 'y'")
         y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         X_c = ctypes.c_void_p()
         offset_c = ctypes.c_void_p()
@@ -4940,12 +4940,12 @@ class GPModel(object):
         y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
                                   convert_to_type=np.float64)
         if y.shape[0] != self.num_data:
-            raise ValueError("Incorrect number of data points in y")
+            raise ValueError("Incorrect number of data points in 'y'")
         y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         cov_pars = _format_check_1D_data(cov_pars, data_name="cov_pars", check_data_type=True, check_must_be_int=False,
                                          convert_to_type=np.float64)
         if cov_pars.shape[0] != self.num_cov_pars:
-            raise ValueError("params['init_cov_pars'] does not contain the correct number of parameters")
+            raise ValueError("'cov_pars' does not contain the correct number of parameters")
         cov_pars_c = cov_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         fixed_effects_c = ctypes.c_void_p()
         if fixed_effects is not None:
@@ -5063,9 +5063,9 @@ class GPModel(object):
 
                         - Options for non-Gaussian likelihoods and gp_approx = "vecchia":
 
-                            - "piv_chol_on_Sigma" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
+                            - "Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
 
-                            - "Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
+                            - "piv_chol_on_Sigma" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
 
                         - Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering":
 
@@ -5472,7 +5472,7 @@ class GPModel(object):
             y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
                                       convert_to_type=np.float64)
             if y.shape[0] != self.num_data:
-                raise ValueError("Incorrect number of data points in y")
+                raise ValueError("Incorrect number of data points in 'y'")
             y_c = y.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         cov_pars_c = ctypes.c_void_p()
         if cov_pars is not None:

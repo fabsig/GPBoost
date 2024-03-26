@@ -106,6 +106,7 @@ namespace GPBoost {
 		}
 		dist = T_mat(coords2.rows(), coords1.rows());
 		dist.setFromTriplets(triplets.begin(), triplets.end());
+		dist.makeCompressed();
 	}//end CalculateDistances (sparse)
 
 	/*!

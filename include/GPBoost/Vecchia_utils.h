@@ -218,7 +218,8 @@ namespace GPBoost {
 					cov_fct_taper_shape,
 					re_comp->GetTaperMu(),
 					apply_tapering,
-					false)));
+					false,
+					dim_gp_coords)));
 				//save random coefficient data in the form ot outer product matrices
 #pragma omp for schedule(static)
 				for (int i = 0; i < num_data_per_cluster[cluster_i]; ++i) {
@@ -263,12 +264,9 @@ namespace GPBoost {
 		CHECK(re_comp->ShouldSaveDistances() == false);
 		int num_re = re_comp->GetNumUniqueREs();
 		CHECK((int)nearest_neighbors_cluster_i.size() == num_re);
-		// calculate scale coordinates
-		int dim_space = re_comp->GetDimSpace();
-		const vec_t pars = re_comp->CovPars();
-		den_mat_t coords_scaled(num_re, re_comp->GetDimCoords());
-		coords_scaled.col(0) = (re_comp->GetCoords()).col(0) * pars[1];
-		coords_scaled.rightCols(dim_space) = (re_comp->GetCoords()).rightCols(dim_space) * pars[2];
+		// Calculate scaled coordinates
+		den_mat_t coords_scaled;
+		re_comp->GetScaledCoordinates(coords_scaled);
 		// find correlation-based nearest neighbors
 		std::vector<den_mat_t> dist_dummy;
 		bool check_has_duplicates = false;
@@ -584,11 +582,8 @@ namespace GPBoost {
 		bool distances_saved = re_comp->ShouldSaveDistances();
 		den_mat_t coords_scaled;
 		if (!distances_saved) {
-			int dim_space = re_comp->GetDimSpace();
 			const vec_t pars = re_comp->CovPars();
-			coords_scaled = den_mat_t(coords_all.rows(), coords_all.cols());
-			coords_scaled.col(0) = coords_all.col(0) * pars[1];
-			coords_scaled.rightCols(dim_space) = coords_all.rightCols(dim_space) * pars[2];
+			re_comp->ScaleCoordinates(pars, coords_all, coords_scaled);
 		}
 		if (CondObsOnly) {
 			if (distances_saved) {
@@ -832,11 +827,8 @@ namespace GPBoost {
 				vecchia_neighbor_selection, rng, distances_saved);
 		}
 		else {
-			int dim_space = re_comp->GetDimSpace();
 			const vec_t pars = re_comp->CovPars();
-			coords_scaled = den_mat_t(coords_all.rows(), coords_all.cols());
-			coords_scaled.col(0) = coords_all.col(0) * pars[1];
-			coords_scaled.rightCols(dim_space) = coords_all.rightCols(dim_space) * pars[2];
+			re_comp->ScaleCoordinates(pars, coords_all, coords_scaled);
 			find_nearest_neighbors_Vecchia_fast(coords_scaled, num_data_tot, num_neighbors_pred,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
 				vecchia_neighbor_selection, rng, distances_saved);
@@ -1084,11 +1076,8 @@ namespace GPBoost {
 		bool distances_saved = re_comp->ShouldSaveDistances();
 		den_mat_t coords_scaled;
 		if (!distances_saved) {
-			int dim_space = re_comp->GetDimSpace();
 			const vec_t pars = re_comp->CovPars();
-			coords_scaled = den_mat_t(coords_all_unique.rows(), coords_all_unique.cols());
-			coords_scaled.col(0) = coords_all_unique.col(0) * pars[1];
-			coords_scaled.rightCols(dim_space) = coords_all_unique.rightCols(dim_space) * pars[2];
+			re_comp->ScaleCoordinates(pars, coords_all_unique, coords_scaled);
 		}
 		if (CondObsOnly) {//find neighbors among both the observed locations only
 			if (distances_saved) {

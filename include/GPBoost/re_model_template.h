@@ -623,7 +623,7 @@ namespace GPBoost {
 			num_iter_ = 0;
 			num_it = max_iter_;
 			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data 
-//	(the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
+			//	(the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
 			profile_out_marginal_variance_ = gauss_likelihood_ &&
 				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam" || 
 					optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright");
@@ -2317,7 +2317,7 @@ namespace GPBoost {
 				CHECK(rank_pred_approx_matrix_lanczos_ > 0);
 			}
 			if ((int)re_group_levels_pred.size() == 0 && num_group_variables_ > 0) {
-				Log::REFatal("Missing grouping data ('group_data_pred') for grouped random effects for making predictions");
+				Log::REFatal("Missing grouping data ('group_data_pred') for grouped random effects foDEr making predictions");
 			}
 			if (re_group_rand_coef_data_pred == nullptr && num_re_group_rand_coef_ > 0) {
 				Log::REFatal("Missing covariate data ('re_group_rand_coef_data_pred') for random coefficients "
@@ -4953,7 +4953,8 @@ namespace GPBoost {
 							cov_fct_taper_shape_,
 							re_comp->GetTaperMu(),
 							gp_approx_ == "tapering",
-							false)));
+							false,
+							dim_gp_coords_)));
 					}
 				}
 			}
@@ -5005,8 +5006,8 @@ namespace GPBoost {
 			}
 			else {//there are multiple observations at the same locations
 				if (gp_approx_ == "fitc" && gauss_likelihood_) {
-					Log::REWarning("There are duplicate coordinates. Currently, this is not well handled when 'gp_approx = fitc' and 'likelihood = gausian'. "
-						"For this reason, 'gp_approx' is internally changed to 'full_scale_tapering' with a very small 'cov_fct_taper_range'. "
+					Log::REWarning("There are duplicate coordinates. Currently, this is not well handled when 'gp_approx = fitc' and 'likelihood = gaussian'. "
+						"For this reason, 'gp_approx' is internally changed to 'full_scale_tapering' with a very small taper range. "
 						"Note that this is just a technical trick that results in an euquivalent model and you don't need to do something ");
 					gp_approx_ = "full_scale_tapering";
 					cov_fct_taper_range_ = 1e-8;
@@ -7899,6 +7900,7 @@ namespace GPBoost {
 					ConvertTo_T_mat_FromDense<T_mat>(chol_ip_cross_cov_ip_pred.transpose() * chol_ip_cross_cov_ip_pred, PP_Part);
 					pred_cov += PP_Part;
 					if (gp_approx_ == "full_scale_tapering") {
+						Log::REFatal("Predictive covariance matrices are currently not implemented for the '%s' approximation ", gp_approx_.c_str());
 						std::shared_ptr<RECompGP<T_mat>> re_comps_resid_pp_cluster_i = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_resid_[cluster_i][0]);
 						re_comps_resid_pp_cluster_i->AddPredCovMatrices(gp_coords_mat_pred, gp_coords_mat_pred, sigma_resid_pred,
 							cov_mat_pred, true, false, true, nullptr, true, cross_dist_resid_pred);

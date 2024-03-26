@@ -47,7 +47,7 @@ Gaussian process random coefficients}
 Available options:
 \itemize{
 \item{"exponential": Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
-\item{"gaussian": Gaussian, aka squared expnential, covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
+\item{"gaussian": Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
 \item{ "matern": Matern covariance function with the smoothness specified by 
 the \code{cov_fct_shape} parameter (using the parametrization of Rasmussen and Williams, 2006) }
 \item{"powered_exponential": powered exponential covariance function with the exponent specified by 
@@ -57,7 +57,7 @@ the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribe
 Note that the first column in \code{gp_coords} must correspond to the time dimension }
 \item{ "matern_ard": anisotropic Matern covariance function with Automatic Relevance Determination (ARD), 
 i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
-\item{ "gaussian_ard": anisotropic Gaussian, aka squared expnential, covariance function with Automatic Relevance Determination (ARD), 
+\item{ "gaussian_ard": anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance Determination (ARD), 
 i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
 }}
 
@@ -272,11 +272,11 @@ fixed effects linear regression term (if there is one)}
     \itemize{
       \item Options for non-Gaussian likelihoods and gp_approx = "vecchia": 
         \itemize{
-          \item{"piv_chol_on_Sigma" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
-      where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
-          \item{"Sigma_inv_plus_BtWB": (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
+          \item{"Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
       where B^T * D^-1 * B approx= Sigma^-1 }
       }
+          \item{"piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
+      where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
       \item Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering": 
         \itemize{
           \item{"predictive_process_plus_diagonal" (= default): predictive process preconditiioner }

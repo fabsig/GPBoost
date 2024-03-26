@@ -60,7 +60,7 @@ Gaussian process random coefficients}
 Available options:
 \itemize{
 \item{"exponential": Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
-\item{"gaussian": Gaussian, aka squared expnential, covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
+\item{"gaussian": Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
 \item{ "matern": Matern covariance function with the smoothness specified by 
 the \code{cov_fct_shape} parameter (using the parametrization of Rasmussen and Williams, 2006) }
 \item{"powered_exponential": powered exponential covariance function with the exponent specified by 
@@ -70,7 +70,7 @@ the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribe
 Note that the first column in \code{gp_coords} must correspond to the time dimension }
 \item{ "matern_ard": anisotropic Matern covariance function with Automatic Relevance Determination (ARD), 
 i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
-\item{ "gaussian_ard": anisotropic Gaussian, aka squared expnential, covariance function with Automatic Relevance Determination (ARD), 
+\item{ "gaussian_ard": anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance Determination (ARD), 
 i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
 }}
 

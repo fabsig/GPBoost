@@ -177,7 +177,7 @@ Model specification parameters
 
       - ``exponential`` : Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007)
 
-      - ``gaussian`` : Gaussian, aka squared expnential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
+      - ``gaussian`` : Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
 
       - ``matern`` : Matern covariance function with the smoothness specified by the ``cov_fct_shape`` parameter (using the parametrization of Rasmussen and Williams, 2006)
 
@@ -188,6 +188,10 @@ Model specification parameters
       - ``matern_space_time`` : Spatio-temporal Matern covariance function with different range parameters for space and time
 
          - Note that the first column in ``gp_coords`` must correspond to the time dimension
+
+      - ``matern_ard``: Anisotropic Matern covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate dimension / column of ``gp_coords``
+
+      - ``gaussian_ard``: Anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate dimension / column of ``gp_coords``
 
 -  ``cov_fct_shape`` : double, (default = 0.5)
 

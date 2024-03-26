@@ -767,10 +767,10 @@ namespace GPBoost {
 			if (cov_fct == "wendland" || apply_tapering) {
 				taper_mu = GetTaperMu((int)coords.cols(), taper_shape);
 			}
-			sigma_symmetric_ = true;
+			is_cross_covariance_IP_ = false;
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
-			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering));
+			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering, (int)coords.cols()));
 			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			if (use_Z_for_duplicates) {
@@ -805,7 +805,7 @@ namespace GPBoost {
 				coords_ = coords;
 				num_random_effects_ = (data_size_t)coords_.rows();
 			}
-			if (save_dist && cov_function_->ShouldSaveDistances()) {
+			if (save_dist && cov_function_->ShouldSaveDistances() || apply_tapering_ || apply_tapering_manually_) {
 				//Calculate distances
 				T_mat dist;
 				if (has_compact_cov_fct_) {//compactly suported covariance
@@ -836,6 +836,7 @@ namespace GPBoost {
 		* \param taper_mu Parameter \mu of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param apply_tapering If true, tapering is applied to the covariance function (element-wise multiplication with a compactly supported Wendland correlation function)
 		* \param apply_tapering_manually If true, tapering is applied to the covariance function manually and not directly in 'CalcSigma'
+		* \param dim_coordinates Dimension of input coordinates / features
 		*/
 		RECompGP(std::shared_ptr<T_mat> dist,
 			bool base_effect_has_Z,
@@ -847,17 +848,18 @@ namespace GPBoost {
 			double taper_shape,
 			double taper_mu,
 			bool apply_tapering,
-			bool apply_tapering_manually) {
+			bool apply_tapering_manually,
+			int dim_coordinates) {
 			this->num_data_ = (data_size_t)rand_coef_data.size();
 			dist_ = dist;
 			dist_saved_ = true;
 			this->rand_coef_data_ = rand_coef_data;
 			this->is_rand_coef_ = true;
 			this->has_Z_ = true;
-			sigma_symmetric_ = true;
+			is_cross_covariance_IP_ = false;
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
-			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering));
+			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering, dim_coordinates));
 			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			sp_mat_t coef_W(this->num_data_, this->num_data_);
@@ -885,6 +887,7 @@ namespace GPBoost {
 		* \param taper_mu Parameter \mu of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param apply_tapering If true, tapering is applied to the covariance function (element-wise multiplication with a compactly supported Wendland correlation function)
 		* \param apply_tapering_manually If true, tapering is applied to the covariance function manually and not directly in 'CalcSigma'
+		* \param dim_coordinates Dimension of input coordinates / features
 		*/
 		RECompGP(const std::vector<double>& rand_coef_data,
 			string_t cov_fct,
@@ -893,15 +896,16 @@ namespace GPBoost {
 			double taper_shape,
 			double taper_mu,
 			bool apply_tapering,
-			bool apply_tapering_manually) {
+			bool apply_tapering_manually,
+			int dim_coordinates) {
 			this->rand_coef_data_ = rand_coef_data;
 			this->is_rand_coef_ = true;
 			this->num_data_ = (data_size_t)rand_coef_data.size();
 			this->has_Z_ = true;
-			sigma_symmetric_ = true;
+			is_cross_covariance_IP_ = false;
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
-			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering));
+			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering, dim_coordinates));
 			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			dist_saved_ = false;
@@ -941,14 +945,13 @@ namespace GPBoost {
 			if (cov_fct == "wendland" || apply_tapering) {
 				taper_mu = GetTaperMu((int)coords.cols(), taper_shape);
 			}
-			sigma_symmetric_ = false;
+			is_cross_covariance_IP_ = true;
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
-			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering));
+			cov_function_ = std::unique_ptr<CovFunction>(new CovFunction(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering, (int)coords.cols()));
 			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			coords_ind_point_ = coords_ind_point;
-
 			if (use_Z_for_duplicates) {
 				std::vector<int> uniques;//unique points
 				std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
@@ -970,21 +973,30 @@ namespace GPBoost {
 				coords_ = coords;
 			}
 			num_random_effects_ = (data_size_t)coords_.rows();
-			//Calculate distances
-			T_mat dist;
-			if (has_compact_cov_fct_) {//compactly suported covariance
-				CalculateDistancesTapering<T_mat>(coords_ind_point_, coords_, false, cov_function_->taper_range_, false, dist);
+			if (cov_function_->ShouldSaveDistances() || apply_tapering_ || apply_tapering_manually_) {
+				//Calculate distances
+				T_mat dist;
+				if (has_compact_cov_fct_) {//compactly suported covariance
+					CalculateDistancesTapering<T_mat>(coords_ind_point_, coords_, false, cov_function_->taper_range_, false, dist);
+				}
+				else {
+					CalculateDistances<T_mat>(coords_ind_point_, coords_, false, dist);
+				}
+				dist_ = std::make_shared<T_mat>(dist);
+				dist_saved_ = true;
 			}
 			else {
-				CalculateDistances<T_mat>(coords_ind_point_, coords_, false, dist);
+				dist_saved_ = false;
 			}
-			dist_ = std::make_shared<T_mat>(dist);
-			dist_saved_ = true;
 			coord_saved_ = true;
 		}
 
 		/*! \brief Destructor */
 		~RECompGP() {
+		}
+
+		string_t CovFunctionName() const {
+			return(cov_function_->CovFunctionName());
 		}
 
 		/*! \brief Dimension of coordinates */
@@ -1000,6 +1012,27 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Scale / transform coordinates for anisotropic covariance functions
+		* \param pars Vector with covariance parameters
+		* \param coords Original coordinates
+		* \param[out] coords_scaled Scaled coordinates
+		*/
+		void ScaleCoordinates(const vec_t& pars,
+			const den_mat_t& coords,
+			den_mat_t& coords_scaled) const {
+			cov_function_->ScaleCoordinates(pars, coords, coords_scaled);
+		}
+
+		/*!
+		* \brief Scale / transform saved coordinates for anisotropic covariance functions
+		* \param[out] coords_scaled Scaled coordinates
+		*/
+		void GetScaledCoordinates(den_mat_t& coords_scaled) const {
+			CHECK(coord_saved_);
+			cov_function_->ScaleCoordinates(cov_pars_, coords_, coords_scaled);
+		}
+
+		/*!
 		* \brief True if distances should be saved (in re_model_template or here) depending on the covariance function. If false, neighbors are selected dynamically based on scaled distances for the Vecchia approximation
 		*/
 		bool ShouldSaveDistances() const {
@@ -1008,6 +1041,10 @@ namespace GPBoost {
 
 		bool IsSpaceTimeModel() const {
 			return(cov_function_->IsSpaceTimeModel());
+		}
+
+		bool IsARDModel() const {
+			return(cov_function_->IsARDModel());
 		}
 
 		/*!
@@ -1099,7 +1136,12 @@ namespace GPBoost {
 		*/
 		void CalcSigma() override {
 			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
-			cov_function_->GetCovMat<T_mat>(*dist_, coords_, coords_, this->cov_pars_, sigma_, sigma_symmetric_);
+			if (is_cross_covariance_IP_) {
+				cov_function_->GetCovMat<T_mat>(*dist_, coords_ind_point_, coords_, this->cov_pars_, sigma_, false);
+			}
+			else {
+				cov_function_->GetCovMat<T_mat>(*dist_, coords_, coords_, this->cov_pars_, sigma_, true);
+			}
 			sigma_defined_ = true;
 			if (apply_tapering_) {
 				tapering_has_been_applied_ = false;
@@ -1145,7 +1187,8 @@ namespace GPBoost {
 			CHECK(sigma_defined_);
 			CHECK(apply_tapering_);
 			CHECK(!tapering_has_been_applied_);
-			cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(*dist_, sigma_, sigma_symmetric_);
+			CHECK(dist_saved_);
+			cov_function_->MultiplyWendlandCorrelationTaper<T_mat>(*dist_, sigma_, !is_cross_covariance_IP_);
 			tapering_has_been_applied_ = true;
 		}
 
@@ -1232,11 +1275,21 @@ namespace GPBoost {
 				T_mat Z_sigma_grad_Zt;
 				if (this->has_Z_) {
 					T_mat sigma_grad;
-					cov_function_->GetCovMatGradRange<T_mat>(*dist_, coords_, coords_, sigma_, this->cov_pars_, sigma_grad, transf_scale, nugget_var, ind_par - 1, true);
+					if (is_cross_covariance_IP_) {
+						cov_function_->GetCovMatGradRange<T_mat>(*dist_, coords_ind_point_, coords_, sigma_, this->cov_pars_, sigma_grad, transf_scale, nugget_var, ind_par - 1, false);
+					}
+					else {
+						cov_function_->GetCovMatGradRange<T_mat>(*dist_, coords_, coords_, sigma_, this->cov_pars_, sigma_grad, transf_scale, nugget_var, ind_par - 1, true);
+					}
 					Z_sigma_grad_Zt = this->Z_ * sigma_grad * this->Z_.transpose();
 				}
 				else {
-					cov_function_->GetCovMatGradRange<T_mat>(*dist_, coords_, coords_, sigma_, this->cov_pars_, Z_sigma_grad_Zt, transf_scale, nugget_var, ind_par - 1, true);
+					if (is_cross_covariance_IP_) {
+						cov_function_->GetCovMatGradRange<T_mat>(*dist_, coords_ind_point_, coords_, sigma_, this->cov_pars_, Z_sigma_grad_Zt, transf_scale, nugget_var, ind_par - 1, false);
+					}
+					else {
+						cov_function_->GetCovMatGradRange<T_mat>(*dist_, coords_, coords_, sigma_, this->cov_pars_, Z_sigma_grad_Zt, transf_scale, nugget_var, ind_par - 1, true);
+					}
 				}
 				return(std::make_shared<T_mat>(Z_sigma_grad_Zt));
 			}
@@ -1454,23 +1507,38 @@ namespace GPBoost {
 			if (this->has_Z_) {
 				has_duplicates = (this->Z_).cols() != (this->Z_).rows();
 			}
-			else {
-				if (dist_saved_) {
+			else if (dist_saved_) {
 #pragma omp for schedule(static)
-					for (int i = 0; i < (int)dist_->rows(); ++i) {
-						for (int j = i + 1; j < (int)dist_->cols(); ++j) {
-							if ((*dist_).coeffRef(i, j) < EPSILON_NUMBERS) {
+				for (int i = 0; i < (int)dist_->rows(); ++i) {
+					if (has_duplicates) continue;
+					for (int j = i + 1; j < (int)dist_->cols(); ++j) {
+						if (has_duplicates) continue;
+						if ((*dist_).coeffRef(i, j) < EPSILON_NUMBERS) {
 #pragma omp critical
-								{
-									has_duplicates = true;
-								}
+							{
+								has_duplicates = true;
 							}
 						}
 					}
-				}//end dist_saved_
-				else {
-					Log::REFatal("HasDuplicatedCoords: not implemented if !has_Z_ &&  !dist_saved_");
 				}
+			}//end dist_saved_
+			else if (coord_saved_) {
+#pragma omp for schedule(static)
+				for (int i = 0; i < (int)coords_.rows(); ++i) {
+					if (has_duplicates) continue;
+					for (int j = i + 1; j < (int)coords_.rows(); ++j) {
+						if (has_duplicates) continue;
+						if ((coords_.row(i) - coords_.row(j)).squaredNorm() < EPSILON_NUMBERS) {
+#pragma omp critical
+							{
+								has_duplicates = true;
+							}
+						}
+					}
+				}
+			}//end coord_saved_
+			else {
+				Log::REFatal("HasDuplicatedCoords: not implemented if !has_Z_ && !dist_saved_ && !coord_saved_");
 			}
 			return(has_duplicates);
 		}
@@ -1506,8 +1574,8 @@ namespace GPBoost {
 		T_mat sigma_;
 		/*! \brief Indicates whether sigma_ has been defined or not */
 		bool sigma_defined_ = false;
-		/*! \brief Indicates whether sigma_ is symmetric or not */
-		bool sigma_symmetric_ = true;
+		/*! \brief If true, this is a cross-covariance component for inducint points and sigma_ is not symmetric, otherwise sigma_ is symmetric */
+		bool is_cross_covariance_IP_ = false;
 		/*! \brief Number of random effects (usually, number of unique random effects except for the Vecchia approximation where unique locations are not separately modelled) */
 		data_size_t num_random_effects_;
 		/*! \brief If true, tapering is applied to the covariance function (element-wise multiplication with a compactly supported Wendland correlation function) */
