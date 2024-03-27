@@ -20,10 +20,10 @@ simulate_response_variable <- function (lp, rand_eff, likelihood) {
   if (likelihood == "gaussian") {
     xi <- sqrt(0.1) * rnorm(n) # error term, variance = 0.1
     y <- lp + rand_eff + xi
-  } else if (likelihood == "bernoulli_probit") {
+  } else if (likelihood == "binary_probit") {
     probs <- pnorm(lp + rand_eff)
     y <- as.numeric(runif(n) < probs)
-  } else if (likelihood == "bernoulli_logit") {
+  } else if (likelihood == "binary_logit") {
     probs <- 1/(1+exp(-(lp + rand_eff)))
     y <- as.numeric(runif(n) < probs)
   } else if (likelihood == "poisson") {
@@ -40,7 +40,7 @@ simulate_response_variable <- function (lp, rand_eff, likelihood) {
 }
 
 # Choose likelihood: either "gaussian" (=regression), 
-#                     "bernoulli_probit", "bernoulli_logit", (=classification)
+#                     "binary_probit", "binary_logit", (=classification)
 #                     "poisson", "gamma", or "negative_binomial"
 likelihood <- "gaussian"
 
@@ -322,7 +322,7 @@ pred <- predict(gp_model, gp_coords_pred = coords_test,
 # Predict response variable (label)
 pred_resp <- predict(gp_model, gp_coords_pred = coords_test,
                      predict_var = TRUE, predict_response = TRUE)
-if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
+if (likelihood %in% c("binary_probit","binary_logit")) {
   print("Test error:")
   mean(as.numeric(pred_resp$mu>0.5) != y_test)
 } else {

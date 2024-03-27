@@ -27,11 +27,11 @@ def simulate_response_variable(lp, rand_eff, likelihood):
     if likelihood == "gaussian":
         xi = 0.1**0.5 * np.random.normal(size=n) # error term, variance = 0.1
         y = lp + rand_eff + xi
-    elif likelihood == "bernoulli_probit":
+    elif likelihood == "binary_probit":
         probs = stats.norm.cdf(lp + rand_eff)
         y = np.random.uniform(size=n) < probs
         y = y.astype(np.float64)
-    elif likelihood == "bernoulli_logit":
+    elif likelihood == "binary_logit":
         probs = 1 / (1 + np.exp(-(lp + rand_eff)))
         y = np.random.uniform(size=n) < probs
         y = y.astype(np.float64)
@@ -49,7 +49,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
     return y
 
 # Choose likelihood: either "gaussian" (=regression), 
-#                     "bernoulli_probit", "bernoulli_logit", (=classification)
+#                     "binary_probit", "binary_logit", (=classification)
 #                     "poisson", "gamma", or "negative_binomial"
 likelihood = "gaussian"
 
@@ -316,7 +316,7 @@ pred = gp_model.predict(gp_coords_pred=coords_test,
 # Predict response variable (label)
 pred_resp = gp_model.predict(gp_coords_pred=coords_test,
                              predict_var=True, predict_response=True)
-if likelihood in ("bernoulli_probit", "bernoulli_logit"):
+if likelihood in ("binary_probit", "binary_logit"):
     print("Test error:")
     pred_binary = pred_resp['mu'] > 0.5
     pred_binary = pred_binary.astype(np.float64)
