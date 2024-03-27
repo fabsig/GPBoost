@@ -57,6 +57,7 @@ namespace GPBoost {
 			if (cov_fct_type == "exponential_tapered") {
 				Log::REFatal("Covariance of type 'exponential_tapered' is discontinued. Use the option 'gp_approx = \"tapering\"' instead ");
 			}
+			ParseCovFunctionAlias(cov_fct_type, shape);
 			if (SUPPORTED_COV_TYPES_.find(cov_fct_type) == SUPPORTED_COV_TYPES_.end()) {
 				Log::REFatal("Covariance of type '%s' is not supported ", cov_fct_type.c_str());
 			}
@@ -2170,6 +2171,18 @@ namespace GPBoost {
 			const double& var,
 			const double& range) const {
 			return(var * std::exp(-range * std::pow(dist, shape_)));
+		}
+
+		inline void ParseCovFunctionAlias(string_t& likelihood, 
+			double& shape) const {
+			if (likelihood == string_t("exponential_space_time")) {
+				likelihood = "matern_space_time";
+				shape = 0.5;
+			}
+			else if (likelihood == string_t("exponential_ard")) {
+				likelihood = "matern_ard";
+				shape = 0.5;
+			}
 		}
 
 		template<typename>

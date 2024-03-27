@@ -569,9 +569,10 @@ gpb.GPModel <- R6::R6Class(
         private$num_ind_points <- as.integer(num_ind_points)
         private$cover_tree_radius <- as.numeric(cover_tree_radius)
         private$ind_points_selection <- as.character(ind_points_selection)
-        if (private$cov_function == "matern_space_time") {
+        if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range_time", "GP_range_space")
-        } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard") {
+        } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | 
+                   private$cov_function == "exponential_ard") {
           if (is.null(colnames(gp_coords))) {
             private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",1:private$dim_coords))
           } else {
@@ -604,12 +605,13 @@ gpb.GPModel <- R6::R6Class(
           gp_rand_coef_data <- as.vector(matrix(private$gp_rand_coef_data)) #convert to correct format for sending to C
           for (ii in 1:private$num_gp_rand_coef) {
             if (is.null(colnames(private$gp_rand_coef_data))) {
-              if (private$cov_function == "matern_space_time") {
+              if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_nb_", ii,"_var"),
                                            paste0("GP_rand_coef_nb_", ii,"_range_time"),
                                            paste0("GP_rand_coef_nb_", ii,"_range_space"))
-              } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard") {
+              } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | 
+                         private$cov_function == "exponential_ard") {
                 if (is.null(colnames(gp_coords))) {
                   private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
                                              paste0(paste0("GP_rand_coef_nb_", ii,"_var"),1:private$dim_coords))
@@ -626,12 +628,13 @@ gpb.GPModel <- R6::R6Class(
                                            paste0("GP_rand_coef_nb_", ii,"_range"))
               }
             } else {
-              if (private$cov_function == "matern_space_time") {
+              if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"),
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range_time"),
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range_space"))
-              } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard") {
+              } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | 
+                         private$cov_function == "exponential_ard") {
                 if (is.null(colnames(gp_coords))) {
                   private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
                                              paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_var"),1:private$dim_coords))
@@ -2006,9 +2009,9 @@ gpb.GPModel <- R6::R6Class(
                   estimate_aux_pars = TRUE),
     
     determine_num_cov_pars = function(likelihood) {
-      if (private$cov_function == "matern_space_time") {
+      if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
         num_par_per_GP <- 3L
-      } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard") {
+      } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | private$cov_function == "exponential_ard") {
         num_par_per_GP <- 1L + private$dim_coords
       } else if (private$cov_function == "wendland") {
         num_par_per_GP <- 1L
