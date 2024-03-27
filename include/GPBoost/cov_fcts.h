@@ -1976,57 +1976,57 @@ namespace GPBoost {
 						mean_dist_per_coord[ic] = mean_dist_coord_i;
 					}
 				}//end cov_fct_type_ == "matern_ard" && cov_fct_type_ == "gaussian_ard"
-				// Set the range parameters such that the correlation is down to 0.05 at the mean distance
+				// Set the range parameters such that the correlation is down to 0.05 at half the mean distance
 				if (cov_fct_type_ == "exponential" ||
 					(cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 0.5))) {
-					pars[1] = 3. / mean_dist;
+					pars[1] = 2. * 3. / mean_dist;
 				}
 				else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 1.5)) {
-					pars[1] = 4.7 / mean_dist;
+					pars[1] = 2. * 4.7 / mean_dist;
 				}
 				else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 2.5)) {
-					pars[1] = 5.9 / mean_dist;
+					pars[1] = 2. * 5.9 / mean_dist;
 				}
 				else if (cov_fct_type_ == "gaussian") {
-					pars[1] = 3. / std::pow(mean_dist, 2.);
+					pars[1] = 3. / std::pow(mean_dist / 2., 2.);
 				}
 				else if (cov_fct_type_ == "powered_exponential") {
-					pars[1] = 3. / std::pow(mean_dist, shape_);
+					pars[1] = 3. / std::pow(mean_dist / 2., shape_);
 				}
 				else if (cov_fct_type_ == "matern_space_time") {
 					if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
-						pars[1] = 3. / mean_dist_time;
-						pars[2] = 3. / mean_dist_space;
+						pars[1] = 2. * 3. / mean_dist_time;
+						pars[2] = 2. * 3. / mean_dist_space;
 					}
 					else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
-						pars[1] = 4.7 / mean_dist_time;
-						pars[2] = 4.7 / mean_dist_space;
+						pars[1] = 2. * 4.7 / mean_dist_time;
+						pars[2] = 2. * 4.7 / mean_dist_space;
 					}
 					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
-						pars[1] = 5.9 / mean_dist_time;
-						pars[2] = 5.9 / mean_dist_space;
+						pars[1] = 2. * 5.9 / mean_dist_time;
+						pars[2] = 2. * 5.9 / mean_dist_space;
 					}
 				}//end matern_space_time
 				else if (cov_fct_type_ == "matern_ard") {
 					if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
 						for (int ic = 0; ic < (int)coords.cols(); ++ic) {
-							pars[1 + ic] = 3. / mean_dist_per_coord[ic];
+							pars[1 + ic] = 2. * 3. / mean_dist_per_coord[ic];
 						}
 					}
 					else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
 						for (int ic = 0; ic < (int)coords.cols(); ++ic) {
-							pars[1 + ic] = 4.7 / mean_dist_per_coord[ic];
+							pars[1 + ic] = 2. * 4.7 / mean_dist_per_coord[ic];
 						}
 					}
 					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
 						for (int ic = 0; ic < (int)coords.cols(); ++ic) {
-							pars[1 + ic] = 5.9 / mean_dist_per_coord[ic];
+							pars[1 + ic] = 2. * 5.9 / mean_dist_per_coord[ic];
 						}
 					}
 				}//end matern_ard
 				else if (cov_fct_type_ == "gaussian_ard") {
 					for (int ic = 0; ic < (int)coords.cols(); ++ic) {
-						pars[1 + ic] = 3. / std::pow(mean_dist_per_coord[ic], 2.);
+						pars[1 + ic] = 3. / std::pow(mean_dist_per_coord[ic] / 2., 2.);
 					}
 				}
 				else {

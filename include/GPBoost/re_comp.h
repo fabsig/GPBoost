@@ -1128,7 +1128,12 @@ namespace GPBoost {
 			if (!dist_saved_ && !coord_saved_) {
 				Log::REFatal("Cannot determine initial covariance parameters if neither distances nor coordinates are given");
 			}
-			cov_function_->FindInitCovPar<T_mat>(*dist_, coords_, dist_saved_, rng, pars, marginal_variance);
+			if (apply_tapering_ || apply_tapering_manually_) {
+				cov_function_->FindInitCovPar<T_mat>(*dist_, coords_, false, rng, pars, marginal_variance);
+			}
+			else {
+				cov_function_->FindInitCovPar<T_mat>(*dist_, coords_, dist_saved_, rng, pars, marginal_variance);
+			}
 		}//end FindInitCovPar
 
 		/*!

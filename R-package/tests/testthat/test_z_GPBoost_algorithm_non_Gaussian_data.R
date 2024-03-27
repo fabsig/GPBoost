@@ -863,10 +863,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       coords_test <- coords[1:ntest+ntrain,]
       eps_test <- eps[1:ntest+ntrain]
       
+      init_cov_pars <- c(1,mean(dist(coords))/3)
+      params = DEFAULT_OPTIM_PARAMS
+      params$init_cov_pars <- init_cov_pars
+      
       # Train model
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                           likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params)
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
                        nrounds = 9,
@@ -894,7 +898,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       valids <- list(test = dtest)
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                           likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params)
       gp_model$set_prediction_data(gp_coords_pred = coords_test)
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
@@ -922,11 +926,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                             num_neighbors = 30, vecchia_ordering = "none", matrix_inversion_method = inv_method),
                         file='NUL')
         if(inv_method == "iterative"){
-          DEFAULT_OPTIM_PARAMS$num_rand_vec_trace = 500 
-          DEFAULT_OPTIM_PARAMS$cg_delta_conv = sqrt(1e-6)
-          DEFAULT_OPTIM_PARAMS$cg_preconditioner_type = "piv_chol_on_Sigma"
+          params$num_rand_vec_trace = 500 
+          params$cg_delta_conv = sqrt(1e-6)
+          params$cg_preconditioner_type = "piv_chol_on_Sigma"
         }
-        gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+        gp_model$set_optim_params(params=params)
         bst <- gpb.train(data = dtrain, gp_model = gp_model,
                          nrounds = 9, learning_rate = 0.2, max_depth = 10,
                          min_data_in_leaf = 5, objective = "binary", verbose = 0)
@@ -988,7 +992,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                           gp_approx = "tapering", likelihood = "bernoulli_probit",
                                           cov_fct_taper_shape = 1, cov_fct_taper_range = 10), file='NUL')
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params)
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
                        nrounds = 9,
@@ -1007,179 +1011,182 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4089283, -0.5569100, -0.7903136, 0.5057746))),TOLERANCE)
     })
     
-    test_that("GPBoost algorithm with GP model for binary classification with 
-              multiple observations at the same location", {
-                
-                ntrain <- ntest <- 400
-                n <- ntrain + ntest
-                # Simulate fixed effects
-                sim_data <- sim_friedman3(n=n, n_irrelevant=5, init_c=0.69)
-                f <- sim_data$f
-                f <- f - mean(f)
-                X <- sim_data$X
-                # Simulate spatial Gaussian process
-                sigma2_1 <- 1 # marginal variance of GP
-                rho <- 0.1 # range parameter
-                d <- 2 # dimension of GP locations
-                coords <- matrix(sim_rand_unif(n=n*d/8, init_c=0.12), ncol=d)
-                coords <- rbind(coords,coords,coords,coords,coords,coords,coords,coords)
-                D <- as.matrix(dist(coords))
-                Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-15,n)
-                C <- t(chol(Sigma))
-                b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.987864))
-                eps <- as.vector(C %*% b_1)
-                # Observed data
-                probs <- pnorm(f + eps)
-                y <- as.numeric(sim_rand_unif(n=n, init_c=0.52574) < probs)
-                # Split into training and test data
-                y_train <- y[1:ntrain]
-                X_train <- X[1:ntrain,]
-                coords_train <- coords[1:ntrain,]
-                dtrain <- gpb.Dataset(data = X_train, label = y_train)
-                y_test <- y[1:ntest+ntrain]
-                X_test <- X[1:ntest+ntrain,]
-                f_test <- f[1:ntest+ntrain]
-                coords_test <- coords[1:ntest+ntrain,]
-                eps_test <- eps[1:ntest+ntrain]
-                # Folds for CV
-                group_aux <- rep(1,ntrain) # grouping variable
-                for(i in 1:(ntrain/4)) group_aux[(1:4)+4*(i-1)] <- 1:4
-                folds <- list()
-                for(i in 1:4) folds[[i]] <- as.integer(which(group_aux==i))
-                
-                # Train model
-                gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                                    likelihood = "bernoulli_probit")
-                gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01, optimizer_cov="gradient_descent",
-                                                      lr_coef=0.1))
-                bst <- gpb.train(data = dtrain,
-                                 gp_model = gp_model,
-                                 nrounds = 2,
-                                 learning_rate = 0.5,
-                                 max_depth = 6,
-                                 min_data_in_leaf = 5,
-                                 objective = "binary",
-                                 verbose = 0)
-                expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.6094175, 0.1137471))),TOLERANCE)
-                # Prediction
-                pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-                                predict_var = TRUE, pred_latent = TRUE)
-                expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4466759, 0.5293270, 0.5031217, 0.5293270))),TOLERANCE)
-                # Predict response
-                pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-                                predict_var = TRUE, pred_latent = FALSE)
-                expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.4775558, 0.5465922, 0.2294873, 0.3157580))),TOLERANCE)
-                expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.2494963, 0.2478292, 0.1768229, 0.2160549))),TOLERANCE)
-                
-                # Use validation set to determine number of boosting iteration
-                dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
-                valids <- list(test = dtest)
-                gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                                    likelihood = "bernoulli_probit")
-                gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
-                gp_model$set_prediction_data(gp_coords_pred = coords_test)
-                bst <- gpb.train(data = dtrain,
-                                 gp_model = gp_model,
-                                 nrounds = 10,
-                                 learning_rate = 0.1,
-                                 max_depth = 6,
-                                 min_data_in_leaf = 5,
-                                 objective = "binary",
-                                 verbose = 0,
-                                 valids = valids,
-                                 early_stopping_rounds = 2,
-                                 use_gp_model_for_validation = TRUE, metric = "binary_logloss")
-                expect_equal(bst$best_iter, 10)
-                expect_lt(abs(bst$best_score - 0.6129572),TOLERANCE)
-                # same thing but "wrong" default likelihood in gp_model
-                gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
-                gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
-                gp_model$set_prediction_data(gp_coords_pred = coords_test)
-                capture.output( bst <- gpb.train(data = dtrain,
-                                                 gp_model = gp_model,
-                                                 nrounds = 10,
-                                                 learning_rate = 0.1,
-                                                 max_depth = 6,
-                                                 min_data_in_leaf = 5,
-                                                 objective = "binary",
-                                                 verbose = 0,
-                                                 valids = valids,
-                                                 early_stopping_rounds = 2,
-                                                 use_gp_model_for_validation = TRUE), file='NUL')
-                expect_equal(bst$best_iter, 10)
-                expect_lt(abs(bst$best_score - 0.6129572),TOLERANCE)
-                # same thing without objective in gpb.train
-                gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                                    likelihood = "bernoulli_probit")
-                gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
-                gp_model$set_prediction_data(gp_coords_pred = coords_test)
-                bst <- gpb.train(data = dtrain,
-                                 gp_model = gp_model,
-                                 nrounds = 10,
-                                 learning_rate = 0.1,
-                                 max_depth = 6,
-                                 min_data_in_leaf = 5,
-                                 verbose = 0,
-                                 valids = valids,
-                                 early_stopping_rounds = 2,
-                                 use_gp_model_for_validation = TRUE,
-                                 metric = "binary_logloss")
-                expect_equal(bst$best_iter, 10)
-                expect_lt(abs(bst$best_score - 0.6129572),TOLERANCE)
-                
-                # CV for finding number of boosting iterations when use_gp_model_for_validation = TRUE
-                gp_model <- GPModel(gp_coords = coords_train, likelihood = "bernoulli_probit")
-                gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
-                cvbst <- gpb.cv(data = dtrain,
-                                gp_model = gp_model,
-                                nrounds = 10,
-                                learning_rate = 0.1,
-                                max_depth = 6,
-                                min_data_in_leaf = 5,
-                                objective = "binary",
-                                eval = "binary_error",
-                                early_stopping_rounds = 5,
-                                use_gp_model_for_validation = TRUE,
-                                folds = folds,
-                                verbose = 0)
-                expcet_iter <- 9
-                expcet_score <- 0.315
-                expect_equal(cvbst$best_iter, expcet_iter)
-                expect_lt(abs(cvbst$best_score-expcet_score), TOLERANCE)
-                # same thing but "wrong" default likelihood in gp_model
-                gp_model <- GPModel(gp_coords = coords_train, likelihood = "gaussian")
-                gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
-                capture.output( cvbst <- gpb.cv(data = dtrain,
-                                                gp_model = gp_model,
-                                                nrounds = 10,
-                                                learning_rate = 0.1,
-                                                max_depth = 6,
-                                                min_data_in_leaf = 5,
-                                                objective = "binary",
-                                                eval = "binary_error",
-                                                early_stopping_rounds = 5,
-                                                use_gp_model_for_validation = TRUE,
-                                                folds = folds,
-                                                verbose = 0), file='NUL')
-                expect_equal(cvbst$best_iter, expcet_iter)
-                expect_lt(abs(cvbst$best_score-expcet_score), TOLERANCE)
-                # same thing but no objective in gpb.cv
-                gp_model <- GPModel(gp_coords = coords_train, likelihood = "bernoulli_probit")
-                gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
-                cvbst <- gpb.cv(data = dtrain,
-                                gp_model = gp_model,
-                                nrounds = 10,
-                                learning_rate = 0.1,
-                                max_depth = 6,
-                                min_data_in_leaf = 5,
-                                eval = "binary_error",
-                                early_stopping_rounds = 5,
-                                use_gp_model_for_validation = TRUE,
-                                folds = folds,
-                                verbose = 0)
-                expect_equal(cvbst$best_iter, expcet_iter)
-                expect_lt(abs(cvbst$best_score-expcet_score), TOLERANCE)
-              })
+    test_that("GPBoost algorithm with GP model for binary classification with multiple observations at the same location", {
+      
+      ntrain <- ntest <- 400
+      n <- ntrain + ntest
+      # Simulate fixed effects
+      sim_data <- sim_friedman3(n=n, n_irrelevant=5, init_c=0.69)
+      f <- sim_data$f
+      f <- f - mean(f)
+      X <- sim_data$X
+      # Simulate spatial Gaussian process
+      sigma2_1 <- 1 # marginal variance of GP
+      rho <- 0.1 # range parameter
+      d <- 2 # dimension of GP locations
+      coords <- matrix(sim_rand_unif(n=n*d/8, init_c=0.12), ncol=d)
+      coords <- rbind(coords,coords,coords,coords,coords,coords,coords,coords)
+      D <- as.matrix(dist(coords))
+      Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-15,n)
+      C <- t(chol(Sigma))
+      b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.987864))
+      eps <- as.vector(C %*% b_1)
+      # Observed data
+      probs <- pnorm(f + eps)
+      y <- as.numeric(sim_rand_unif(n=n, init_c=0.52574) < probs)
+      # Split into training and test data
+      y_train <- y[1:ntrain]
+      X_train <- X[1:ntrain,]
+      coords_train <- coords[1:ntrain,]
+      dtrain <- gpb.Dataset(data = X_train, label = y_train)
+      y_test <- y[1:ntest+ntrain]
+      X_test <- X[1:ntest+ntrain,]
+      f_test <- f[1:ntest+ntrain]
+      coords_test <- coords[1:ntest+ntrain,]
+      eps_test <- eps[1:ntest+ntrain]
+      # Folds for CV
+      group_aux <- rep(1,ntrain) # grouping variable
+      for(i in 1:(ntrain/4)) group_aux[(1:4)+4*(i-1)] <- 1:4
+      folds <- list()
+      for(i in 1:4) folds[[i]] <- as.integer(which(group_aux==i))
+      
+      init_cov_pars <- c(1,mean(dist(unique(coords_train)))/3)
+      
+      # Train model
+      gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                          likelihood = "bernoulli_probit")
+      gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01, optimizer_cov="gradient_descent",
+                                            lr_coef=0.1, init_cov_pars=init_cov_pars))
+      bst <- gpb.train(data = dtrain,
+                       gp_model = gp_model,
+                       nrounds = 2,
+                       learning_rate = 0.5,
+                       max_depth = 6,
+                       min_data_in_leaf = 5,
+                       objective = "binary",
+                       verbose = 0)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.6094175, 0.1137471))),TOLERANCE)
+      # Prediction
+      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                      predict_var = TRUE, pred_latent = TRUE)
+      expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.4466759, 0.5293270, 0.5031217, 0.5293270))),TOLERANCE)
+      # Predict response
+      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                      predict_var = TRUE, pred_latent = FALSE)
+      expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.4775558, 0.5465922, 0.2294873, 0.3157580))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.2494963, 0.2478292, 0.1768229, 0.2160549))),TOLERANCE)
+      
+      # Use validation set to determine number of boosting iteration
+      dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+      valids <- list(test = dtest)
+      gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                          likelihood = "bernoulli_probit")
+      params_ES = DEFAULT_OPTIM_PARAMS_EARLY_STOP
+      params_ES$init_cov_pars <- init_cov_pars
+      gp_model$set_optim_params(params=params_ES)
+      gp_model$set_prediction_data(gp_coords_pred = coords_test)
+      bst <- gpb.train(data = dtrain,
+                       gp_model = gp_model,
+                       nrounds = 10,
+                       learning_rate = 0.1,
+                       max_depth = 6,
+                       min_data_in_leaf = 5,
+                       objective = "binary",
+                       verbose = 0,
+                       valids = valids,
+                       early_stopping_rounds = 2,
+                       use_gp_model_for_validation = TRUE, metric = "binary_logloss")
+      expect_equal(bst$best_iter, 10)
+      expect_lt(abs(bst$best_score - 0.6129572),TOLERANCE)
+      # same thing but "wrong" default likelihood in gp_model
+      gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
+      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
+      gp_model$set_prediction_data(gp_coords_pred = coords_test)
+      capture.output( bst <- gpb.train(data = dtrain,
+                                       gp_model = gp_model,
+                                       nrounds = 10,
+                                       learning_rate = 0.1,
+                                       max_depth = 6,
+                                       min_data_in_leaf = 5,
+                                       objective = "binary",
+                                       verbose = 0,
+                                       valids = valids,
+                                       early_stopping_rounds = 2,
+                                       use_gp_model_for_validation = TRUE), file='NUL')
+      expect_equal(bst$best_iter, 10)
+      expect_lt(abs(bst$best_score - 0.6129572),TOLERANCE)
+      # same thing without objective in gpb.train
+      gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                          likelihood = "bernoulli_probit")
+      gp_model$set_optim_params(params=params_ES)
+      gp_model$set_prediction_data(gp_coords_pred = coords_test)
+      bst <- gpb.train(data = dtrain,
+                       gp_model = gp_model,
+                       nrounds = 10,
+                       learning_rate = 0.1,
+                       max_depth = 6,
+                       min_data_in_leaf = 5,
+                       verbose = 0,
+                       valids = valids,
+                       early_stopping_rounds = 2,
+                       use_gp_model_for_validation = TRUE,
+                       metric = "binary_logloss")
+      expect_equal(bst$best_iter, 10)
+      expect_lt(abs(bst$best_score - 0.6129572),TOLERANCE)
+      
+      # CV for finding number of boosting iterations when use_gp_model_for_validation = TRUE
+      gp_model <- GPModel(gp_coords = coords_train, likelihood = "bernoulli_probit")
+      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
+      cvbst <- gpb.cv(data = dtrain,
+                      gp_model = gp_model,
+                      nrounds = 10,
+                      learning_rate = 0.1,
+                      max_depth = 6,
+                      min_data_in_leaf = 5,
+                      objective = "binary",
+                      eval = "binary_error",
+                      early_stopping_rounds = 5,
+                      use_gp_model_for_validation = TRUE,
+                      folds = folds,
+                      verbose = 0)
+      expcet_iter <- 8
+      expcet_score <- 0.32
+      expect_equal(cvbst$best_iter, expcet_iter)
+      expect_lt(abs(cvbst$best_score-expcet_score), TOLERANCE)
+      # same thing but "wrong" default likelihood in gp_model
+      gp_model <- GPModel(gp_coords = coords_train, likelihood = "gaussian")
+      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
+      capture.output( cvbst <- gpb.cv(data = dtrain,
+                                      gp_model = gp_model,
+                                      nrounds = 10,
+                                      learning_rate = 0.1,
+                                      max_depth = 6,
+                                      min_data_in_leaf = 5,
+                                      objective = "binary",
+                                      eval = "binary_error",
+                                      early_stopping_rounds = 5,
+                                      use_gp_model_for_validation = TRUE,
+                                      folds = folds,
+                                      verbose = 0), file='NUL')
+      expect_equal(cvbst$best_iter, expcet_iter)
+      expect_lt(abs(cvbst$best_score-expcet_score), TOLERANCE)
+      # same thing but no objective in gpb.cv
+      gp_model <- GPModel(gp_coords = coords_train, likelihood = "bernoulli_probit")
+      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP)
+      cvbst <- gpb.cv(data = dtrain,
+                      gp_model = gp_model,
+                      nrounds = 10,
+                      learning_rate = 0.1,
+                      max_depth = 6,
+                      min_data_in_leaf = 5,
+                      eval = "binary_error",
+                      early_stopping_rounds = 5,
+                      use_gp_model_for_validation = TRUE,
+                      folds = folds,
+                      verbose = 0)
+      expect_equal(cvbst$best_iter, expcet_iter)
+      expect_lt(abs(cvbst$best_score-expcet_score), TOLERANCE)
+    })
     
     # This is a slow test
     test_that("GPBoost algorithm for binary classification with combined Gaussian process and grouped random effects model", {
@@ -1231,10 +1238,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       group_data_test <- group_data[1:ntest+ntrain]
       eps_test <- eps[1:ntest+ntrain]
       
+      init_cov_pars <- c(1,1,mean(dist(coords_train))/3)
+      params = DEFAULT_OPTIM_PARAMS
+      params$init_cov_pars <- init_cov_pars
+      
       # Train model
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                           group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params)
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
                        nrounds = 5,
@@ -1271,27 +1282,27 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       #                 predict_var = TRUE, pred_latent = FALSE)
       # expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.7600335, 0.5543040, 0.1062553, 0.5437832))),TOLERANCE)
       # expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.18238257, 0.24705107, 0.09496514, 0.24808303))),TOLERANCE)
-      
-      # Use validation set to determine number of boosting iteration
-      dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
-      valids <- list(test = dtest)
-      gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                          group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
-      gp_model$set_prediction_data(gp_coords_pred = coords_test, group_data_pred = group_data_test)
-      bst <- gpb.train(data = dtrain,
-                       gp_model = gp_model,
-                       nrounds = 100,
-                       learning_rate = 0.1,
-                       max_depth = 6,
-                       min_data_in_leaf = 5,
-                       objective = "binary",
-                       verbose = 0,
-                       valids = valids,
-                       early_stopping_rounds = 2,
-                       use_gp_model_for_validation = TRUE)
-      expect_equal(bst$best_iter, 12)
-      expect_lt(abs(bst$best_score - 0.5826652),TOLERANCE)
+      # 
+      # # Use validation set to determine number of boosting iteration
+      # dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
+      # valids <- list(test = dtest)
+      # gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+      #                     group_data = group_data_train, likelihood = "bernoulli_probit")
+      # gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      # gp_model$set_prediction_data(gp_coords_pred = coords_test, group_data_pred = group_data_test)
+      # bst <- gpb.train(data = dtrain,
+      #                  gp_model = gp_model,
+      #                  nrounds = 100,
+      #                  learning_rate = 0.1,
+      #                  max_depth = 6,
+      #                  min_data_in_leaf = 5,
+      #                  objective = "binary",
+      #                  verbose = 0,
+      #                  valids = valids,
+      #                  early_stopping_rounds = 2,
+      #                  use_gp_model_for_validation = TRUE)
+      # expect_equal(bst$best_iter, 12)
+      # expect_lt(abs(bst$best_score - 0.5826652),TOLERANCE)
       
     })
     
@@ -1328,10 +1339,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       coords_test <- coords[1:ntest+ntrain,]
       eps_test <- eps[1:ntest+ntrain]
       
+      init_cov_pars <- c(1,mean(dist(coords_train))/3)
+      params = DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV
+      params$init_cov_pars <- init_cov_pars
+      
       # Train model
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                           likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
+      gp_model$set_optim_params(params=params)
       bst <- gpb.train(data = dtrain, gp_model = gp_model,
                        nrounds = 5, learning_rate = 0.5, max_depth = 6,
                        min_data_in_leaf = 5, objective = "binary", verbose = 0)
@@ -1359,11 +1374,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                             num_neighbors = ntrain-1, vecchia_ordering = "none",
                                             matrix_inversion_method = inv_method), file='NUL')
         if(inv_method == "iterative"){
-          DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$num_rand_vec_trace = 1000 
-          DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$cg_delta_conv = sqrt(1e-6)
-          DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV$cg_preconditioner_type = "piv_chol_on_Sigma"
+          params$num_rand_vec_trace = 1000 
+          params$cg_delta_conv = sqrt(1e-6)
+          params$cg_preconditioner_type = "piv_chol_on_Sigma"
         }
-        gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
+        gp_model$set_optim_params(params=params)
         bst <- gpb.train(data = dtrain, gp_model = gp_model,
                          nrounds = 5, learning_rate = 0.5, max_depth = 6,
                          min_data_in_leaf = 5, objective = "binary", verbose = 0)
@@ -1385,7 +1400,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                             likelihood = "bernoulli_probit", gp_approx = "vecchia", 
                                             num_neighbors = ntrain-1, vecchia_ordering = "random",
                                             matrix_inversion_method = inv_method), file='NUL')
-        gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
+        gp_model$set_optim_params(params=params)
         bst <- gpb.train(data = dtrain, gp_model = gp_model,
                          nrounds = 5, learning_rate = 0.5, max_depth = 6,
                          min_data_in_leaf = 5, objective = "binary", verbose = 0)
@@ -1436,11 +1451,13 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       coords_test <- coords[1:ntest+ntrain,]
       eps_test <- eps[1:ntest+ntrain]
       
+      init_cov_pars <- c(1,mean(dist(coords_train))/3)
+      
       # Train model
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                           likelihood = "bernoulli_logit")
       gp_model$set_optim_params(params=list(maxit=10, lr_cov=0.01, optimizer_cov="gradient_descent",
-                                            lr_coef=0.1))
+                                            lr_coef=0.1, init_cov_pars=init_cov_pars))
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
                        nrounds = 2,

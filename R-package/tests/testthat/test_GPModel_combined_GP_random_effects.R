@@ -68,11 +68,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   test_that("Combined Gaussian process and grouped random effects model ", {
     
     y <- eps + xi
+    init_cov_pars <- c(var(y)/2,var(y)/2,var(y)/2,mean(dist(coords))/3)
     # Estimation using gradient descent and Nesterov acceleration
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group)
     capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
                                                        lr_cov = 0.15, use_nesterov_acc = TRUE,
-                                                       acc_rate_cov = 0.8, delta_rel_conv=1E-6)), file='NUL')
+                                                       acc_rate_cov = 0.8, delta_rel_conv=1E-6, 
+                                                       init_cov_pars = init_cov_pars)), file='NUL')
     cov_pars <- c(0.02924971, 0.09509924, 0.61463579, 0.30619763, 1.02189002, 0.25932007, 0.11327419, 0.04276286)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),1E-6)
     expect_equal(dim(gp_model$get_cov_pars())[2], 4)
@@ -81,7 +83,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Fisher scoring
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
-                                           params = list(optimizer_cov = "fisher_scoring", std_dev = FALSE)), file='NUL')
+                                           params = list(optimizer_cov = "fisher_scoring", std_dev = FALSE, 
+                                                         init_cov_pars=init_cov_pars)), file='NUL')
     cov_pars <- c(0.02262645, 0.61471473, 1.02446559, 0.11177327)
     cov_pars_est <- as.vector(gp_model$get_cov_pars())
     expect_lt(sum(abs(cov_pars_est-cov_pars)),TOLERANCE_MEDIUM)
@@ -172,12 +175,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   test_that("Combined GP and grouped random effects model with random coefficients ", {
     
     y <- eps_svc + xi
+    init_cov_pars <- c(var(y)/2,var(y)/2,var(y)/2,var(y)/2,var(y)/2,mean(dist(coords))/3,var(y)/2,mean(dist(coords))/3,var(y)/2,mean(dist(coords))/3)
     # Fit model
     gp_model <- fitGPModel(y = y, gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC,
                            group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                            params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
                                          lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                         acc_rate_cov = 0.5, maxit=10))
+                                         acc_rate_cov = 0.5, maxit=10, init_cov_pars=init_cov_pars))
     expected_values <- c(0.4005820, 0.3111155, 0.4564903, 0.2693683, 1.3819153, 0.7034572,
                          1.0378165, 0.5916405, 1.3684672, 0.6861339, 0.1854759, 0.1430030,
                          0.5790945, 0.9748316, 0.2103132, 0.4453663, 0.2639379, 0.8772996, 0.2210313, 0.9282390)
@@ -205,7 +209,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- fitGPModel(y = y, gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC,
                            group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                            params = list(optimizer_cov = "fisher_scoring", std_dev = FALSE,
-                                         use_nesterov_acc= FALSE, maxit=2))
+                                         use_nesterov_acc= FALSE, maxit=2, init_cov_pars=init_cov_pars))
     expected_values <- c(0.3522488799, 0.5692314997, 1.4557330868, 1.0711929149, 1.5665274019, 0.1601443490, 0.9923054860, 0.1095828593, 0.2211923864, 0.3846536135)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 2)
