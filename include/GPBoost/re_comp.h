@@ -1029,7 +1029,7 @@ namespace GPBoost {
 		*/
 		void GetScaledCoordinates(den_mat_t& coords_scaled) const {
 			CHECK(coord_saved_);
-			cov_function_->ScaleCoordinates(cov_pars_, coords_, coords_scaled);
+			cov_function_->ScaleCoordinates(this->cov_pars_, coords_, coords_scaled);
 		}
 
 		/*!
