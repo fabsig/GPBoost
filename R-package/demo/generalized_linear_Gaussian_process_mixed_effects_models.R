@@ -234,6 +234,7 @@ opt <- optim(par = pars, fn = eval_nll, gp_model = gp_model, y = y, X = X,
              likelihood = likelihood, method = "Nelder-Mead")
 opt
 
+
 #################################
 # Gaussian processes
 #################################
@@ -360,7 +361,17 @@ plot(b_1_train, GP_smooth[,1], xlab="truth", ylab="predicted",
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
-                       y = y_lin, X=X, likelihood = likelihood, params = list(std_dev = TRUE))
+                       y = y_lin, X = X, likelihood = likelihood, params = list(std_dev = TRUE))
+summary(gp_model)
+
+#--------------------Gaussian process model anisotropic ARD covariance function----------------
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern_ard", cov_fct_shape = 1.5,
+                       y = y_train, likelihood = likelihood)
+summary(gp_model)
+
+#--------------------Gaussian process model spatio-temporal covariance function----------------
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern_space_time", cov_fct_shape = 1.5,
+                       y = y_train, likelihood = likelihood)
 summary(gp_model)
 
 #--------------------Gaussian process model with Vecchia approximation----------------
@@ -368,9 +379,7 @@ gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
                        gp_approx = "vecchia", num_neighbors = 20, y = y_train,
                        likelihood = likelihood)
 summary(gp_model)
-# Prediction: setting 'num_neighbors_pred' to a larger value than 'num_neighbors' for training
-#   can lead to better predictions
-gp_model$set_prediction_data(num_neighbors_pred = 40)
+# gp_model$set_prediction_data(num_neighbors_pred = 40) # can set number of neigbors for prediction manually
 pred_vecchia <- predict(gp_model, gp_coords_pred = coords_test,
                         predict_var = TRUE, predict_response = FALSE)
 ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], 
@@ -378,7 +387,19 @@ ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2],
   geom_point(size=8, shape=15) + scale_color_viridis(option = "B") + 
   ggtitle("Predicted latent GP mean with Vecchia approxmation")
 
-#--------------------Gaussian process model with tapering applied----------------
+# --------------------Gaussian process model with FITC / modified predictive process approximation----------------
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential", 
+                       gp_approx = "fitc", num_ind_points = 500, y = y_train,
+                       likelihood = likelihood)
+summary(gp_model)
+pred_fitc <- predict(gp_model, gp_coords_pred = coords_test,
+                        predict_var = TRUE, predict_response = FALSE)
+ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], 
+                         b=pred_fitc$mu), aes(x=s_1,y=s_2,color=b)) +
+  geom_point(size=8, shape=15) + scale_color_viridis(option = "B") + 
+  ggtitle("Predicted latent GP mean with FITC approxmation")
+
+#--------------------Gaussian process model with tapering----------------
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential", 
                        gp_approx = "tapering", cov_fct_taper_shape = 0., cov_fct_taper_range = 0.5, 
                        y = y_train, likelihood = likelihood)
