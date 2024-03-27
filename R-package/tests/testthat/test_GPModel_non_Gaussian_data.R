@@ -1678,6 +1678,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                   predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
     pred_cov_no_approx <- predict(gp_model_no_approx, y=y, gp_coords_pred = coord_test_v1, X_pred = X_test,
                                   predict_cov = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    pred_resp_no_approx <- predict(gp_model_no_approx, y=y, gp_coords_pred = coord_test_v1, X_pred = X_test,
+                                   predict_var = FALSE, predict_response = TRUE, cov_pars = cov_pars_pred)
     X0 <- matrix(0, nrow=nrow(X), ncol=ncol(X))
     pred_train_no_approx <- predict(gp_model_no_approx, y=y, gp_coords_pred = coords, X_pred = X0,
                                     predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
@@ -1701,6 +1703,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_cov = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
     expect_lt(sum(abs(pred$mu - pred_cov_no_approx$mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_approx$cov))),TOLERANCE_STRICT)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1, X_pred = X_test,
+                    predict_var = FALSE, predict_response = TRUE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu - pred_resp_no_approx$mu)),TOLERANCE_STRICT)
     # Predict training data
     pred_train_fitc <- predict(gp_model, y=y, gp_coords_pred = coords, X_pred = X0,
                                predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)

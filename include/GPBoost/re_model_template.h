@@ -2780,7 +2780,7 @@ namespace GPBoost {
 					else {// not gp_approx_ == "vecchia"
 						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 							CalcPredPPFSA(cluster_i, num_data_per_cluster_pred, num_data_per_cluster_, gp_coords_mat_pred, predict_cov_mat,
-								predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id, nsim_var_pred_, cg_delta_conv_pred_);
+								predict_var_or_response, mean_pred_id, cov_mat_pred_id, var_pred_id, nsim_var_pred_, cg_delta_conv_pred_);
 						}
 						else {
 							CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
