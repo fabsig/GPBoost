@@ -2821,7 +2821,7 @@ namespace GPBoost {
 					else {// not gp_approx_ == "vecchia"
 						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 							CalcPredPPFSA(cluster_i, num_data_per_cluster_pred, num_data_per_cluster_, gp_coords_mat_pred, predict_cov_mat,
-								predict_var_or_response, mean_pred_id, cov_mat_pred_id, var_pred_id, nsim_var_pred_, cg_delta_conv_pred_);
+								predict_var_or_response, predict_response, mean_pred_id, cov_mat_pred_id, var_pred_id, nsim_var_pred_, cg_delta_conv_pred_);
 						}
 						else {
 							CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
@@ -7813,6 +7813,7 @@ namespace GPBoost {
 		* \param gp_coords_mat_pred Coordinates for prediction locations
 		* \param calc_pred_cov If true, the covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
+		* \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects
 		* \param[out] pred_mean Predictive mean (only for Gaussian likelihoods)
 		* \param[out] pred_cov Predictive covariance matrix (only for Gaussian likelihoods)
 		* \param[out] pred_var Predictive variances (only for Gaussian likelihoods)
@@ -7825,6 +7826,7 @@ namespace GPBoost {
 			const den_mat_t& gp_coords_mat_pred,
 			bool calc_pred_cov,
 			bool calc_pred_var,
+			bool predict_response,
 			vec_t& pred_mean,
 			T_mat& pred_cov,
 			vec_t& pred_var,
@@ -7923,7 +7925,7 @@ namespace GPBoost {
 			if (calc_pred_cov || calc_pred_var) {
 				// Add unconditional variances and covarainces
 				if (calc_pred_var) {
-					if (gauss_likelihood_) {
+					if (gauss_likelihood_ && predict_response) {
 						pred_var = vec_t::Ones(num_data_pred_cli);
 					}
 					else {
@@ -7939,7 +7941,7 @@ namespace GPBoost {
 							"Therefore, if this number is large we recommend only computing the predictive variances ");
 					}
 					pred_cov = T_mat(num_data_pred_cli, num_data_pred_cli);
-					if (gauss_likelihood_) {
+					if (gauss_likelihood_ && predict_response) {
 						pred_cov.setIdentity();
 					}
 					else {
