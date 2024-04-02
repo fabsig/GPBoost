@@ -175,7 +175,7 @@ namespace GPBoost {
 			if (gradient && !should_redetermine_neighbors_vecchia) {
 				vec_t grad_cov, grad_beta;
 				re_model_templ_->CalcGradPars(cov_pars, cov_pars[0], objfn_data->learn_cov_aux_pars_, has_covariates, 
-					grad_cov, grad_beta, gradient_contains_error_var, false, fixed_effects_ptr);
+					grad_cov, grad_beta, gradient_contains_error_var, false, fixed_effects_ptr, false);
 				if (objfn_data->learn_cov_aux_pars_) {
 					(*gradient).segment(0, num_cov_pars_optim) = grad_cov.segment(0, num_cov_pars_optim);
 					if (re_model_templ_->EstimateAuxPars()) {
@@ -298,7 +298,7 @@ namespace GPBoost {
 
 				bool calc_cov_aux_par_grad = learn_cov_aux_pars_ || re_model_templ_->EstimateAuxPars();
 				re_model_templ_->CalcGradPars(cov_pars, cov_pars[0], calc_cov_aux_par_grad, has_covariates, 
-					grad_cov, grad_beta, gradient_contains_error_var, false, fixed_effects_ptr);
+					grad_cov, grad_beta, gradient_contains_error_var, false, fixed_effects_ptr, false);
 				if (learn_cov_aux_pars_) {
 					gradient.segment(0, num_cov_pars_optim) = grad_cov.segment(0, num_cov_pars_optim);
 				}

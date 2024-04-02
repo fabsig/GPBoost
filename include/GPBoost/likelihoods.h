@@ -2175,6 +2175,7 @@ namespace GPBoost {
 		* \param[out] fixed_effect_grad Gradient of approximate marginal log-likelihood wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxStable(const double* y_data,
 			const int* y_data_int,
@@ -2187,13 +2188,19 @@ namespace GPBoost {
 			double* cov_grad,
 			vec_t& fixed_effect_grad,
 			double* aux_par_grad,
-			bool calc_mode) {
+			bool calc_mode,
+			bool call_for_std_dev_coef) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * Sigma * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLStable(y_data, y_data_int, fixed_effects, Sigma, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				if (call_for_std_dev_coef) {
+					Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
+				}
+				else {
+					Log::REFatal(NA_OR_INF_ERROR_);
+				}
 			}
 			CHECK(mode_has_been_calculated_);
 			// Initialize variables
@@ -2326,6 +2333,7 @@ namespace GPBoost {
 		* \param[out] fixed_effect_grad Gradient wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(const double* y_data,
 			const int* y_data_int,
@@ -2340,7 +2348,8 @@ namespace GPBoost {
 			double* cov_grad,
 			vec_t& fixed_effect_grad,
 			double* aux_par_grad,
-			bool calc_mode) {
+			bool calc_mode,
+			bool call_for_std_dev_coef) {
 			int num_REs = (int)SigmaI.cols();//number of random effect realizations
 			int num_comps = (int)cum_num_rand_eff_cluster_i.size() - 1;//number of different random effect components
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
@@ -2348,7 +2357,12 @@ namespace GPBoost {
 				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, num_data, SigmaI, Zt, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				if (call_for_std_dev_coef) {
+					Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
+				}
+				else {
+					Log::REFatal(NA_OR_INF_ERROR_);
+				}
 			}
 			CHECK(mode_has_been_calculated_);
 			// Initialize variables
@@ -2468,6 +2482,7 @@ namespace GPBoost {
 		* \param[out] fixed_effect_grad Gradient wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
@@ -2481,14 +2496,20 @@ namespace GPBoost {
 			double* cov_grad,
 			vec_t& fixed_effect_grad,
 			double* aux_par_grad,
-			bool calc_mode) {
+			bool calc_mode,
+			bool call_for_std_dev_coef) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, num_data,
 					sigma2, random_effects_indices_of_data, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				if (call_for_std_dev_coef) {
+					Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
+				}
+				else {
+					Log::REFatal(NA_OR_INF_ERROR_);
+				}
 			}
 			CHECK(mode_has_been_calculated_);
 			// Initialize variables
@@ -2580,6 +2601,7 @@ namespace GPBoost {
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
 		* \param num_comps_total Total number of random effect components ( = number of GPs)
+		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxVecchia(const double* y_data,
 			const int* y_data_int,
@@ -2595,13 +2617,19 @@ namespace GPBoost {
 			vec_t& fixed_effect_grad,
 			double* aux_par_grad,
 			bool calc_mode,
-			int num_comps_total) {
+			int num_comps_total,
+			bool call_for_std_dev_coef) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, B, D_inv, false, Sigma_L_k_, true, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				if (call_for_std_dev_coef) {
+					Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
+				}
+				else {
+					Log::REFatal(NA_OR_INF_ERROR_);
+				}
 			}
 			CHECK(mode_has_been_calculated_);
 			// Initialize variables
@@ -2841,6 +2869,7 @@ namespace GPBoost {
 		* \param[out] fixed_effect_grad Gradient of approximate marginal log-likelihood wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxFITC(const double* y_data,
 			const int* y_data_int,
@@ -2857,7 +2886,8 @@ namespace GPBoost {
 			double* cov_grad,
 			vec_t& fixed_effect_grad,
 			double* aux_par_grad,
-			bool calc_mode) {
+			bool calc_mode,
+			bool call_for_std_dev_coef) {
 			int num_ip = (int)((*sigma_ip).rows());
 			CHECK((int)((*cross_cov).rows()) == dim_mode_);
 			CHECK((int)((*cross_cov).cols()) == num_ip);
@@ -2868,7 +2898,12 @@ namespace GPBoost {
 					cross_cov, fitc_diag, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				if (call_for_std_dev_coef) {
+					Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
+				}
+				else {
+					Log::REFatal(NA_OR_INF_ERROR_);
+				}
 			}
 			CHECK(mode_has_been_calculated_);
 			// Initialize variables
@@ -4478,12 +4513,16 @@ namespace GPBoost {
 		const char* NA_OR_INF_WARNING_ = "Mode finding algorithm for Laplace approximation: NA or Inf occurred. "
 			"This is not necessary a problem as it might have been the cause of a too large learning rate which, "
 			"consequently, might have been decreased by the optimization algorithm ";
+		const char* CANNOT_CALC_STDEV_ERROR_ = "Cannot calculate standard deviations for the regression coefficients since "
+			"the marginal likelihood is numerically unstable (NA or Inf) in a neighborhood of the optimal values. "
+			"The likely reason for this is that the marginal likelihood is very flat. " 
+			"If you include an intercept in your model, you can try estimating your model without an intercept (and excluding variables that are almost constant) ";
 		const char* NA_OR_INF_ERROR_ = "NA or Inf occurred in the mode finding algorithm for the Laplace approximation ";
 		const char* NO_INCREASE_IN_MLL_WARNING_ = "Mode finding algorithm for Laplace approximation: "
 			"The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated ";
 		const char* NO_CONVERGENCE_WARNING_ = "Algorithm for finding mode for Laplace approximation has not "
 			"converged after the maximal number of iterations ";
-		const char* CG_NA_OR_INF_WARNING_ = "NA or Inf occured in the Conjugate Gradient Algorithm when calculating the gradients.";
+		const char* CG_NA_OR_INF_WARNING_ = "NA or Inf occured in the Conjugate Gradient Algorithm when calculating the gradients ";
 
 	};//end class Likelihood
 

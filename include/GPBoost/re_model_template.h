@@ -927,7 +927,7 @@ namespace GPBoost {
 							vec_t grad_beta;
 							// Calculate gradient for linear regression coefficients
 							vec_t unused_dummy;
-							CalcGradPars(cov_aux_pars, cov_aux_pars[0], false, true, unused_dummy, grad_beta, false, false, fixed_effects_ptr);
+							CalcGradPars(cov_aux_pars, cov_aux_pars[0], false, true, unused_dummy, grad_beta, false, false, fixed_effects_ptr, false);
 							AvoidTooLargeLearningRateCoef(beta, grad_beta);
 							CalcDirDerivArmijoAndLearningRateConstChangeCoef(grad_beta, beta, beta_after_grad_aux, use_nesterov_acc_coef);
 							if (called_in_GPBoost_algorithm && reuse_learning_rates_from_previous_call && 
@@ -998,7 +998,7 @@ namespace GPBoost {
 						}
 						vec_t unused_dummy;
 						if (optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "newton") {
-							CalcGradPars(cov_aux_pars.segment(0, num_cov_par_), 1., true, false, grad, unused_dummy, gradient_contains_error_var, false, fixed_effects_ptr);
+							CalcGradPars(cov_aux_pars.segment(0, num_cov_par_), 1., true, false, grad, unused_dummy, gradient_contains_error_var, false, fixed_effects_ptr, false);
 							if (optimizer_cov_pars_ == "gradient_descent") {
 								neg_step_dir = grad;
 							}
@@ -1010,7 +1010,7 @@ namespace GPBoost {
 						else if (optimizer_cov_pars_ == "fisher_scoring") {
 							CHECK(gauss_likelihood_);
 							// We don't profile out sigma2 since this seems better for Fisher scoring (less iterations)	
-							CalcGradPars(cov_aux_pars.segment(0, num_cov_par_), 1., true, false, grad, unused_dummy, gradient_contains_error_var, true, fixed_effects_ptr);
+							CalcGradPars(cov_aux_pars.segment(0, num_cov_par_), 1., true, false, grad, unused_dummy, gradient_contains_error_var, true, fixed_effects_ptr, false);
 							CalcFisherInformation(cov_aux_pars.segment(0, num_cov_par_), approx_Hessian, true, gradient_contains_error_var, true);
 							neg_step_dir = approx_Hessian.llt().solve(grad);
 						}
@@ -1263,7 +1263,7 @@ namespace GPBoost {
 						CalcStdDevCoef(cov_aux_pars.segment(0, num_cov_par_), X_, std_dev_beta);
 					}
 					else {
-						Log::REDebug("Standard deviations of linear regression coefficients for non-Gaussian likelihoods can be \"very approximative\". ");
+						//Log::REDebug("Standard deviations of linear regression coefficients for non-Gaussian likelihoods can be \"very approximative\". ");
 						CalcStdDevCoefNonGaussian(num_covariates, beta, cov_aux_pars.segment(0, num_cov_par_), fixed_effects, std_dev_beta);
 					}
 					for (int i = 0; i < num_covariates; ++i) {
@@ -1303,6 +1303,7 @@ namespace GPBoost {
 		* \param include_error_var If true, the gradient with respect to the error variance parameter (=nugget effect) is also calculated, otherwise not (set this to true if the nugget effect is not calculated by using the closed-form solution)
 		* \param save_psi_inv_for_FI If true, the inverse covariance matrix Psi^-1 is saved for reuse later (e.g. when calculating the Fisher information in Fisher scoring). This option is ignored if the Vecchia approximation is used.
 		* \param fixed_effects Fixed effects component of location parameter (used only for non-Gaussian likelihoods)
+		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradPars(const vec_t& cov_pars,
 			double marg_var,
@@ -1312,7 +1313,8 @@ namespace GPBoost {
 			vec_t& grad_beta,
 			bool include_error_var,
 			bool save_psi_inv_for_FI,
-			const double* fixed_effects) {
+			const double* fixed_effects,
+			bool call_for_std_dev_coef) {
 			if (gauss_likelihood_) {//Gaussian data
 				if(calc_cov_aux_par_grad) {
 					if (include_error_var) {
@@ -1620,7 +1622,8 @@ namespace GPBoost {
 							grad_F_cluster_i,
 							grad_cov_aux_cluster_i.data() + num_cov_par_,
 							false,
-							num_comps_total_);
+							num_comps_total_,
+							call_for_std_dev_coef);
 					}
 					else if (gp_approx_ == "fitc") {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxFITC(y_[cluster_i].data(),
@@ -1638,7 +1641,8 @@ namespace GPBoost {
 							grad_cov_aux_cluster_i.data(),
 							grad_F_cluster_i,
 							grad_cov_aux_cluster_i.data() + num_cov_par_,
-							false);
+							false,
+							call_for_std_dev_coef);
 					}
 					else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(y_[cluster_i].data(),
@@ -1654,7 +1658,8 @@ namespace GPBoost {
 							grad_cov_aux_cluster_i.data(),
 							grad_F_cluster_i,
 							grad_cov_aux_cluster_i.data() + num_cov_par_,
-							false);
+							false,
+							call_for_std_dev_coef);
 					}
 					else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(),
@@ -1669,7 +1674,8 @@ namespace GPBoost {
 							grad_cov_aux_cluster_i.data(),
 							grad_F_cluster_i,
 							grad_cov_aux_cluster_i.data() + num_cov_par_,
-							false);
+							false,
+							call_for_std_dev_coef);
 					}
 					else {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxStable(y_[cluster_i].data(),
@@ -1683,7 +1689,8 @@ namespace GPBoost {
 							grad_cov_aux_cluster_i.data(),
 							grad_F_cluster_i,
 							grad_cov_aux_cluster_i.data() + num_cov_par_,
-							false);
+							false,
+							call_for_std_dev_coef);
 					}
 					if(calc_cov_aux_par_grad) {
 						grad_cov_aux_par += grad_cov_aux_cluster_i;
@@ -5655,7 +5662,8 @@ namespace GPBoost {
 						grad_F_cluster_i,
 						nullptr,
 						false,
-						num_comps_total_);
+						num_comps_total_,
+						false);
 				}
 				else if (gp_approx_ == "fitc") {
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxFITC(y_[cluster_i].data(),
@@ -5673,6 +5681,7 @@ namespace GPBoost {
 						nullptr,
 						grad_F_cluster_i,
 						nullptr,
+						false,
 						false);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
@@ -5689,6 +5698,7 @@ namespace GPBoost {
 						nullptr,
 						grad_F_cluster_i,
 						nullptr,
+						false,
 						false);
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
@@ -5704,6 +5714,7 @@ namespace GPBoost {
 						nullptr,
 						grad_F_cluster_i,
 						nullptr,
+						false,
 						false);
 				}
 				else {
@@ -5718,6 +5729,7 @@ namespace GPBoost {
 						nullptr,
 						grad_F_cluster_i,
 						nullptr,
+						false,
 						false);
 				}
 				//write on output
@@ -7264,10 +7276,10 @@ namespace GPBoost {
 				// Gradient vector at beta plus / minus delta
 				UpdateFixedEffects(beta_change1, fixed_effects, fixed_effects_vec);
 				CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_vec.data());
-				CalcGradPars(cov_pars, 1., false, true, unused_dummy, grad_beta_change1, false, false, fixed_effects_vec.data());
+				CalcGradPars(cov_pars, 1., false, true, unused_dummy, grad_beta_change1, false, false, fixed_effects_vec.data(), true);
 				UpdateFixedEffects(beta_change2, fixed_effects, fixed_effects_vec);
 				CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_vec.data());
-				CalcGradPars(cov_pars, 1., false, true, unused_dummy, grad_beta_change2, false, false, fixed_effects_vec.data());
+				CalcGradPars(cov_pars, 1., false, true, unused_dummy, grad_beta_change2, false, false, fixed_effects_vec.data(), true);
 				// Approximate gradient of gradient
 				H.row(i) = (grad_beta_change1 - grad_beta_change2) / (2. * delta_step[i]);
 			}
@@ -7323,12 +7335,12 @@ namespace GPBoost {
 					SetAuxPars(pars_change1.data() + num_cov_par_);
 				}
 				CalcCovFactorOrModeAndNegLL(pars_change1.segment(0, num_cov_par_), fixed_effects);
-				CalcGradPars(pars_change1.segment(0, num_cov_par_), 1., true, false, grad_change1, unused_dummy, include_error_var, false, fixed_effects);
+				CalcGradPars(pars_change1.segment(0, num_cov_par_), 1., true, false, grad_change1, unused_dummy, include_error_var, false, fixed_effects, false);
 				if (estimate_aux_pars_) {
 					SetAuxPars(pars_change2.data() + num_cov_par_);
 				}
 				CalcCovFactorOrModeAndNegLL(pars_change2.segment(0, num_cov_par_), fixed_effects);
-				CalcGradPars(pars_change2.segment(0, num_cov_par_), 1., true, false, grad_change2, unused_dummy, include_error_var, false, fixed_effects);
+				CalcGradPars(pars_change2.segment(0, num_cov_par_), 1., true, false, grad_change2, unused_dummy, include_error_var, false, fixed_effects, false);
 				// Approximate gradient of gradient
 				H.row(i) = (grad_change1 - grad_change2) / (2. * delta_step[i + offset]);
 			}
