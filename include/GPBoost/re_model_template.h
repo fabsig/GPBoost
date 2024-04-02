@@ -647,7 +647,19 @@ namespace GPBoost {
 				num_coef_ = num_covariates;
 				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_coef_);
 				for (int icol = 0; icol < num_coef_; ++icol) {
-					if ((X_.col(icol).array() - 1.).abs().sum() < EPSILON_VECTORS) {
+					bool var_is_constant = true;
+#pragma omp parallel for schedule(static)
+					for (int i = 1; i < num_data_; ++i) {
+						if (var_is_constant) {
+							if (!(TwoNumbersAreEqual<double>(X_.coeff(i, icol), X_.coeff(0, icol)))) {
+#pragma omp critical
+								{
+									var_is_constant = false;
+								}
+							}
+						}
+					}
+					if (var_is_constant) {
 						has_intercept_ = true;
 						intercept_col_ = icol;
 						break;
@@ -656,7 +668,7 @@ namespace GPBoost {
 				only_intercept_for_GPBoost_algo = called_in_GPBoost_algorithm && has_intercept_ && num_coef_ == 1 && !learn_covariance_parameters;
 				find_learning_rate_for_GPBoost_algo = called_in_GPBoost_algorithm && !has_intercept_ && num_coef_ == 1 && !learn_covariance_parameters;
 				if (!has_intercept_ && !find_learning_rate_for_GPBoost_algo) {
-					Log::REWarning("The covariate data contains no column of ones, i.e., no intercept is included ");
+					Log::REDebug("The covariate data contains no column of ones, i.e., no intercept is included ");
 				}
 				if (num_coef_ > 1) {
 					Eigen::ColPivHouseholderQR<den_mat_t> qr_decomp(X_);
