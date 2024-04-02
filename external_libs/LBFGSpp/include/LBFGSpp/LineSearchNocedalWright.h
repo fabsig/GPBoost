@@ -141,7 +141,7 @@ public:
         {
             // Evaluate the current step size
             x.noalias() = xp + step * drt;
-            fx = f(x, grad);
+            fx = f(x, grad, false);
             dg = grad.dot(drt);
 
             // Test the sufficient decrease condition
@@ -157,7 +157,11 @@ public:
 
             // Test the curvature condition
             if (std::abs(dg) <= test_curv)
+            {
+                f(x, grad, true);//calculate gradient
                 return;  // Case (4)
+            }
+                
 
             step_hi = step_lo;
             fx_hi = fx_lo;
@@ -187,6 +191,7 @@ public:
                 // But we need to move {x, grad}_lo back before returning
                 x.swap(x_lo);
                 grad.swap(grad_lo);
+                f(x, grad, true);//calculate gradient
                 return;
             }
 
@@ -214,7 +219,7 @@ public:
 
             // Evaluate the current step size
             x.noalias() = xp + step * drt;
-            fx = f(x, grad);
+            fx = f(x, grad, false);
             dg = grad.dot(drt);
 
             // Test the sufficient decrease condition
@@ -231,6 +236,7 @@ public:
             {
                 // Test the curvature condition
                 if (std::abs(dg) <= test_curv)
+                    f(x, grad, true);//calculate gradient
                     return;
 
                 if (dg * (step_hi - step_lo) >= Scalar(0))
@@ -261,15 +267,23 @@ public:
             {
                 // throw std::runtime_error("the line search routine reached the maximum number of iterations");
                 if (step_lo <= Scalar(0))
-                    Log::REFatal("GPModel lbfgs: the line search routine failed, unable to sufficiently decrease the function value");
-
-                // Return everything with _lo
-                step = step_lo;
-                fx = fx_lo;
-                dg = dg_lo;
-                // Move {x, grad}_lo back
-                x.swap(x_lo);
-                grad.swap(grad_lo);
+                {
+                    x.noalias() = xp;
+                    fx = fx_init;
+                    step = 0.;
+                    Log::REDebug("GPModel lbfgs: the line search routine reached the maximum number of iterations");
+                }
+                else
+                {
+                    // Return everything with _lo
+                    step = step_lo;
+                    fx = fx_lo;
+                    dg = dg_lo;
+                    // Move {x, grad}_lo back
+                    x.swap(x_lo);
+                    grad.swap(grad_lo);
+                }
+                f(x, grad, true);//calculate gradient
                 return;
             }
         }

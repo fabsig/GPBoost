@@ -89,7 +89,7 @@ public:
         const int fpast = m_param.past;
 
         // Evaluate function and compute gradient
-        fx = f(x, m_grad);
+        fx = f(x, m_grad, true);
         m_gnorm = m_grad.norm();
         if (fpast > 0)
             m_fx[0] = fx;
@@ -152,6 +152,7 @@ public:
             if (fpast > 0)
             {
                 const Scalar fxd = m_fx[k % fpast];
+
                 // ChangedForGPBoost
                 if (k >= fpast && (fxd - fx) <= m_param.delta * std::max(abs(fxd), Scalar(1)))
                     return k;

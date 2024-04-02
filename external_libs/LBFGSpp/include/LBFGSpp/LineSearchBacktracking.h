@@ -67,10 +67,11 @@ public:
         int iter;
         for (iter = 0; iter < param.max_linesearch; iter++)
         {
+
             // x_{k+1} = x_k + step * d_k
             x.noalias() = xp + step * drt;
             // Evaluate this candidate
-            fx = f(x, grad);
+            fx = f(x, grad, false);// ChangedForGPBoost
 
             if (fx > fx_init + step * test_decr || (fx != fx))
             {
@@ -115,8 +116,15 @@ public:
             step *= width;
         }
 
+        // ChangedForGPBoost
         if (iter >= param.max_linesearch)
+        {
+            x.noalias() = xp;
+            fx = fx_init;
+            step = 0.;
             Log::REDebug("GPModel lbfgs: the line search routine reached the maximum number of iterations");
+        }
+        f(x, grad, true);//calculate gradient
     }
 };
 

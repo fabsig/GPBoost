@@ -283,7 +283,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_LOOSE)
-    expect_equal(gp_model$get_num_optim_iter(), 8)
+    expect_equal(gp_model$get_num_optim_iter(), 9)
     
     # With offset / fixed_effects
     offset <- 20 * sim_rand_unif(n=n, init_c=0.1354)

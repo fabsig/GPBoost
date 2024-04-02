@@ -173,17 +173,16 @@ namespace GPBoost {
 			}//end calc_likelihood
 			// Calculate gradient
 			if (gradient && !should_redetermine_neighbors_vecchia) {
-				vec_t grad_cov;
+				vec_t grad_cov, grad_beta;
+				re_model_templ_->CalcGradPars(cov_pars, cov_pars[0], objfn_data->learn_cov_aux_pars_, has_covariates, 
+					grad_cov, grad_beta, gradient_contains_error_var, false, fixed_effects_ptr);
 				if (objfn_data->learn_cov_aux_pars_) {
-					re_model_templ_->CalcGradCovParAuxPars(cov_pars, grad_cov, gradient_contains_error_var, false, fixed_effects_ptr);
 					(*gradient).segment(0, num_cov_pars_optim) = grad_cov.segment(0, num_cov_pars_optim);
 					if (re_model_templ_->EstimateAuxPars()) {
 						(*gradient).segment(num_cov_pars_optim + num_covariates, num_aux_pars) = grad_cov.segment(num_cov_pars_optim, num_aux_pars);
 					}
 				}
 				if (has_covariates) {
-					vec_t grad_beta;
-					re_model_templ_->CalcGradLinCoef(cov_pars[0], grad_beta, fixed_effects_ptr);
 					(*gradient).segment(num_cov_pars_optim, num_covariates) = grad_beta;
 				}
 			}
@@ -229,8 +228,8 @@ namespace GPBoost {
 		}
 		double operator()(const vec_t& pars,
 			vec_t& gradient,
-			bool calc_gradient = true) {
-			double neg_log_likelihood;
+			bool calc_gradient) {
+			double neg_log_likelihood = 1e99;
 			vec_t cov_pars, beta, fixed_effects_vec, aux_pars;
 			const double* fixed_effects_ptr;
 			bool gradient_contains_error_var = re_model_templ_->GetLikelihood() == "gaussian" && !profile_out_marginal_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
@@ -277,52 +276,53 @@ namespace GPBoost {
 				fixed_effects_ptr = fixed_effects_;
 			}
 			// Calculate objective function
-			if (profile_out_marginal_variance_) {
-				if (learn_cov_aux_pars_) {
-					re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
-					cov_pars[0] = re_model_templ_->ProfileOutSigma2();
-					re_model_templ_->EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_pars[0], neg_log_likelihood);
+			if (!calc_gradient) {
+				if (profile_out_marginal_variance_) {
+					if (learn_cov_aux_pars_) {
+						re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
+						cov_pars[0] = re_model_templ_->ProfileOutSigma2();
+						re_model_templ_->EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_pars[0], neg_log_likelihood);
+					}
+					else {
+						re_model_templ_->EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_pars[0], neg_log_likelihood);
+					}
 				}
 				else {
-					re_model_templ_->EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_pars[0], neg_log_likelihood);
+					re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
+					neg_log_likelihood = re_model_templ_->GetNegLogLikelihood();
 				}
 			}
 			else {
-				re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
-				neg_log_likelihood = re_model_templ_->GetNegLogLikelihood();
-			}
-			if (calc_gradient) {
 				// Calculate gradient
-				vec_t grad_cov;
-				if (learn_cov_aux_pars_ || re_model_templ_->EstimateAuxPars()) {
-					re_model_templ_->CalcGradCovParAuxPars(cov_pars, grad_cov, gradient_contains_error_var, false, fixed_effects_ptr);
-				}
+				vec_t grad_cov, grad_beta;
+
+				bool calc_cov_aux_par_grad = learn_cov_aux_pars_ || re_model_templ_->EstimateAuxPars();
+				re_model_templ_->CalcGradPars(cov_pars, cov_pars[0], calc_cov_aux_par_grad, has_covariates, 
+					grad_cov, grad_beta, gradient_contains_error_var, false, fixed_effects_ptr);
 				if (learn_cov_aux_pars_) {
 					gradient.segment(0, num_cov_pars_optim) = grad_cov.segment(0, num_cov_pars_optim);
 				}
 				if (has_covariates) {
-					vec_t grad_beta;
-					re_model_templ_->CalcGradLinCoef(cov_pars[0], grad_beta, fixed_effects_ptr);
 					gradient.segment(num_cov_pars_optim, num_covariates) = grad_beta;
 				}
 				if (re_model_templ_->EstimateAuxPars()) {
 					gradient.segment(num_cov_pars_optim + num_covariates, num_aux_pars) = grad_cov.segment(num_cov_pars_optim, num_aux_pars);
 				}
-				// Check for NA or Inf
-				if (re_model_templ_->GetLikelihood() != "gaussian") {
-					if (std::isnan(neg_log_likelihood) || std::isinf(neg_log_likelihood)) {
-						re_model_templ_->ResetLaplaceApproxModeToPreviousValue();
-					}
-					else if (calc_gradient) {
-						for (int i = 0; i < (int)(gradient.size()); ++i) {
-							if (std::isnan(gradient[i]) || std::isinf(gradient[i])) {
-								re_model_templ_->ResetLaplaceApproxModeToPreviousValue();
-								break;
-							}
+			}//end calc_gradient
+			// Check for NA or Inf
+			if (re_model_templ_->GetLikelihood() != "gaussian") {
+				if (std::isnan(neg_log_likelihood) || std::isinf(neg_log_likelihood)) {
+					re_model_templ_->ResetLaplaceApproxModeToPreviousValue();
+				}
+				else if (calc_gradient) {
+					for (int i = 0; i < (int)(gradient.size()); ++i) {
+						if (std::isnan(gradient[i]) || std::isinf(gradient[i])) {
+							re_model_templ_->ResetLaplaceApproxModeToPreviousValue();
+							break;
 						}
 					}
 				}
-			}//end calc_gradient
+			}
 			return neg_log_likelihood;
 		}
 
