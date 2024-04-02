@@ -1931,6 +1931,9 @@ namespace GPBoost {
 						}
 					}
 					mean_dist /= (num_data_find_init * (num_data_find_init - 1) / 2.);
+					if (mean_dist < EPSILON_NUMBERS) {
+						Log::REFatal("Cannot find an initial value for the range parameter since the average distance among coordinates is zero ");
+					}
 				}//end cov_fct_type_ != "matern_space_time" && cov_fct_type_ != "matern_ard" && cov_fct_type_ != "gaussian_ard"
 				else if (cov_fct_type_ == "matern_space_time") {
 					den_mat_t dist_from_coord;
@@ -1954,6 +1957,12 @@ namespace GPBoost {
 					}
 					mean_dist_space /= (num_data_find_init * (num_data_find_init - 1) / 2.);
 					mean_dist_time /= (num_data_find_init * (num_data_find_init - 1) / 2.);
+					if (mean_dist_space < EPSILON_NUMBERS) {
+						Log::REFatal("Cannot find an initial value for the spatial range parameter since the average distance among spatial coordinates is zero ");
+					}
+					if (mean_dist_time < EPSILON_NUMBERS) {
+						Log::REFatal("Cannot find an initial value for the temporal range parameter since the average distance among time points is zero ");
+					}
 				}//end cov_fct_type_ == "matern_space_time"
 				else if (cov_fct_type_ == "matern_ard" || cov_fct_type_ == "gaussian_ard") {
 					mean_dist_per_coord = std::vector<double>((int)coords.cols());					
@@ -1975,6 +1984,9 @@ namespace GPBoost {
 						}
 						mean_dist_coord_i /= (num_data_find_init * (num_data_find_init - 1) / 2.);
 						mean_dist_per_coord[ic] = mean_dist_coord_i;
+						if (mean_dist_coord_i < EPSILON_NUMBERS) {
+							Log::REFatal("Cannot find an initial value for the range parameter for the input feature number %d (counting starts at 1) since this feature is constant ", ic + 1);
+						}
 					}
 				}//end cov_fct_type_ == "matern_ard" && cov_fct_type_ == "gaussian_ard"
 				// Set the range parameters such that the correlation is down to 0.05 at half the mean distance
