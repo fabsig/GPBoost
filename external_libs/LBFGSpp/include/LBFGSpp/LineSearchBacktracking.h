@@ -68,18 +68,19 @@ public:
         int iter;
         for (iter = 0; iter < param.max_linesearch; iter++)
         {
-
             // x_{k+1} = x_k + step * d_k
             x.noalias() = xp + step * drt;
             // Evaluate this candidate
-            fx = f(x, grad, true, false);// ChangedForGPBoost
+            fx = f(x, grad, true, false);  // ChangedForGPBoost
+
+            //Log::REInfo("LineSearch: iter = %d, fx = %g, step = %g, fx_init = %g", iter, fx, step, fx_init);  // for debugging
 
             if (fx > fx_init + step * test_decr || (fx != fx))
             {
                 // ChangedForGPBoost
-                if ((fx - fx_init) > 2. * abs(fx_init))
+                if ((fx - fx_init) > 2. * std::max(abs(fx_init), Scalar(1)))
                 {
-                    width = dec / 100.;//make step size much smaller for very large increases to avoid too many backtracking steps
+                    width = dec / 16.;  // make step size much smaller for very large increases to avoid too many backtracking steps
                 }
                 else
                 {
@@ -132,6 +133,10 @@ public:
             fx = fx_init;
             step = 0.;
             Log::REDebug("GPModel lbfgs: the line search routine reached the maximum number of iterations");
+        }
+        else if (iter > 0)
+        {
+            Log::REDebug("LineSearch for 'lbfgs' finished after %d iterations, step length = %g", iter, step);
         }
         f(x, grad, false, true);//calculate gradient
          
