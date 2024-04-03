@@ -327,6 +327,10 @@ namespace GPBoost {
 			return neg_log_likelihood;
 		}
 
+		bool HasCovariates() {
+			return(re_model_templ_->HasCovariates());
+		}
+
 		/*!
 		* \brief Set the iteration number in re_model_templ_ (e.g. for correlation-based neighbor selection in Vecchia approximations)
 		* \param iter iteration number

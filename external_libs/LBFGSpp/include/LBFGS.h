@@ -91,6 +91,28 @@ public:
         // Evaluate function and compute gradient
         fx = f(x, m_grad, true, true);// ChangedForGPBoost
 
+        std::string init_coef_str = "";
+        if (f.HasCovariates())
+        {
+            init_coef_str = " and 'init_coef'";
+        }
+        std::string problem_str = "none";
+        if (std::isnan(fx))
+        {
+            problem_str = "NaN";
+        }
+        else if (std::isinf(fx))
+        {
+            problem_str = "Inf";
+        }
+        if (problem_str != "none")
+        {
+            Log::REFatal((problem_str + " occurred in initial approximate negative marginal log-likelihood. "
+                "Possible solutions: try other initial values ('init_cov_pars'" + init_coef_str + ") "
+                "or other tuning parameters in case you apply the GPBoost algorithm (e.g., learning_rate)").c_str());
+        }
+        Log::REDebug("Initial approximate negative marginal log-likelihood: %g", fx);
+
         m_gnorm = m_grad.norm();
         if (fpast > 0)
             m_fx[0] = fx;

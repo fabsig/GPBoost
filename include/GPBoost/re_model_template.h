@@ -868,36 +868,38 @@ namespace GPBoost {
 				SetCovParsComps(cov_aux_pars.segment(0, num_cov_par_));
 				RedetermineNearestNeighborsVecchia();//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
 			}
-			CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);
-			// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
-			string_t ll_str;
-			if (gauss_likelihood_) {
-				ll_str = "negative log-likelihood";
-			}
-			else {
-				ll_str = "approximate negative marginal log-likelihood";
-			}
-			string_t init_coef_str = "";
-			if (has_covariates_) {
-				init_coef_str = " and 'init_coef'";
-			}
-			string_t problem_str = "none";
-			if (std::isnan(neg_log_likelihood_)) {
-				problem_str = "NaN";
-			}
-			else if (std::isinf(neg_log_likelihood_)) {
-				problem_str = "Inf";
-			}
-			if (problem_str != "none") {
-				Log::REFatal((problem_str + " occurred in initial " + ll_str + ". "
-					"Possible solutions: try other initial values ('init_cov_pars'" + init_coef_str + ") "
-					"or other tuning parameters in case you apply the GPBoost algorithm (e.g., learning_rate)").c_str());
-			}
-			if (gauss_likelihood_) {
-				Log::REDebug("Initial negative log-likelihood: %g", neg_log_likelihood_);
-			}
-			else {
-				Log::REDebug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
+			if (optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright") {
+				CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);
+				// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
+				string_t ll_str;
+				if (gauss_likelihood_) {
+					ll_str = "negative log-likelihood";
+				}
+				else {
+					ll_str = "approximate negative marginal log-likelihood";
+				}
+				string_t init_coef_str = "";
+				if (has_covariates_) {
+					init_coef_str = " and 'init_coef'";
+				}
+				string_t problem_str = "none";
+				if (std::isnan(neg_log_likelihood_)) {
+					problem_str = "NaN";
+				}
+				else if (std::isinf(neg_log_likelihood_)) {
+					problem_str = "Inf";
+				}
+				if (problem_str != "none") {
+					Log::REFatal((problem_str + " occurred in initial " + ll_str + ". "
+						"Possible solutions: try other initial values ('init_cov_pars'" + init_coef_str + ") "
+						"or other tuning parameters in case you apply the GPBoost algorithm (e.g., learning_rate)").c_str());
+				}
+				if (gauss_likelihood_) {
+					Log::REDebug("Initial negative log-likelihood: %g", neg_log_likelihood_);
+				}
+				else {
+					Log::REDebug("Initial approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
+				}
 			}
 			bool na_or_inf_occurred = false;
 			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
