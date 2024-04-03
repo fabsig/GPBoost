@@ -228,6 +228,7 @@ namespace GPBoost {
 		}
 		double operator()(const vec_t& pars,
 			vec_t& gradient,
+			bool eval_likelihood,
 			bool calc_gradient) {
 			double neg_log_likelihood = 1e99;
 			vec_t cov_pars, beta, fixed_effects_vec, aux_pars;
@@ -276,7 +277,7 @@ namespace GPBoost {
 				fixed_effects_ptr = fixed_effects_;
 			}
 			// Calculate objective function
-			if (!calc_gradient) {
+			if (eval_likelihood) {
 				if (profile_out_marginal_variance_) {
 					if (learn_cov_aux_pars_) {
 						re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
@@ -292,7 +293,7 @@ namespace GPBoost {
 					neg_log_likelihood = re_model_templ_->GetNegLogLikelihood();
 				}
 			}
-			else {
+			if (calc_gradient) {
 				// Calculate gradient
 				vec_t grad_cov, grad_beta;
 
@@ -571,6 +572,7 @@ namespace GPBoost {
 			param_LBFGSpp.delta = delta_rel_conv;
 			param_LBFGSpp.epsilon = 1e-10;
 			param_LBFGSpp.epsilon_rel = 1e-10;
+			param_LBFGSpp.max_linesearch = 20;
 			EvalLLforLBFGSpp<T_mat, T_chol> ll_fun(re_model_templ, fixed_effects, learn_cov_aux_pars,
 				cov_pars.segment(0, num_cov_par), profile_out_marginal_variance);
 			if (optimizer == "lbfgs") {

@@ -114,6 +114,7 @@ namespace GPBoost {
 			else {
 				dim_mode_ = num_data_;
 			}
+			mode_is_zero_ = false;
 			DetermineWhetherToCapChangeModeNewton();
 		}
 
@@ -134,22 +135,25 @@ namespace GPBoost {
 		* \brief Initialize mode vector_ (used in Laplace approximation for non-Gaussian data)
 		*/
 		void InitializeModeAvec() {
-			mode_ = vec_t::Zero(num_re_);
-			mode_previous_value_ = vec_t::Zero(num_re_);
-			if (has_a_vec_) {
-				a_vec_ = vec_t::Zero(num_re_);
-				a_vec_previous_value_ = vec_t::Zero(num_re_);
+			if (!mode_is_zero_) {
+				mode_ = vec_t::Zero(num_re_);
+				mode_previous_value_ = vec_t::Zero(num_re_);
+				if (has_a_vec_) {
+					a_vec_ = vec_t::Zero(num_re_);
+					a_vec_previous_value_ = vec_t::Zero(num_re_);
+				}
+				mode_initialized_ = true;
+				first_deriv_ll_ = vec_t(dim_mode_);
+				second_deriv_neg_ll_ = vec_t(dim_mode_);
+				if (use_Z_for_duplicates_) {
+					first_deriv_ll_data_scale_ = vec_t(num_data_);
+					second_deriv_neg_ll_data_scale_ = vec_t(num_data_);
+				}
+				mode_has_been_calculated_ = false;
+				na_or_inf_during_last_call_to_find_mode_ = false;
+				na_or_inf_during_second_last_call_to_find_mode_ = false;
+				mode_is_zero_ = true;
 			}
-			mode_initialized_ = true;
-			first_deriv_ll_ = vec_t(dim_mode_);
-			second_deriv_neg_ll_ = vec_t(dim_mode_);
-			if (use_Z_for_duplicates_) {
-				first_deriv_ll_data_scale_ = vec_t(num_data_);
-				second_deriv_neg_ll_data_scale_ = vec_t(num_data_);
-			}
-			mode_has_been_calculated_ = false;
-			na_or_inf_during_last_call_to_find_mode_ = false;
-			na_or_inf_during_second_last_call_to_find_mode_ = false;
 		}
 
 		/*!
@@ -1434,14 +1438,15 @@ namespace GPBoost {
 			const std::shared_ptr<T_mat> Sigma,
 			double& approx_marginal_ll) {
 			// Initialize variables
-			if (!mode_initialized_) {
-				InitializeModeAvec();
-			}
-			else {
-				mode_previous_value_ = mode_;
-				a_vec_previous_value_ = a_vec_;
-				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-			}
+			InitializeModeAvec();
+			//if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
+			//	InitializeModeAvec();
+			//}
+			//else {
+			//	mode_previous_value_ = mode_;
+			//	a_vec_previous_value_ = a_vec_;
+			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
+			//}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
@@ -1517,8 +1522,9 @@ namespace GPBoost {
 				Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 				Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt);
-				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
+				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();			
 				mode_has_been_calculated_ = true;
+				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 		}//end FindModePostRandEffCalcMLLStable
@@ -1544,13 +1550,14 @@ namespace GPBoost {
 			const sp_mat_t& Zt,
 			double& approx_marginal_ll) {
 			// Initialize variables
-			if (!mode_initialized_) {
-				InitializeModeAvec();
-			}
-			else {
-				mode_previous_value_ = mode_;
-				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-			}
+			InitializeModeAvec();
+			//if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
+			//	InitializeModeAvec();
+			//}
+			//else {
+			//	mode_previous_value_ = mode_;
+			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
+			//}			
 			sp_mat_t Z = Zt.transpose();
 			vec_t location_par = Z * mode_;//location parameter = mode of random effects + fixed effects
 			if (fixed_effects != nullptr) {
@@ -1634,6 +1641,7 @@ namespace GPBoost {
 				chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
 				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
+				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 		}//end FindModePostRandEffCalcMLLGroupedRE
@@ -1658,13 +1666,14 @@ namespace GPBoost {
 			const data_size_t* const random_effects_indices_of_data,
 			double& approx_marginal_ll) {
 			// Initialize variables
-			if (!mode_initialized_) {
-				InitializeModeAvec();
-			}
-			else {
-				mode_previous_value_ = mode_;
-				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-			}
+			InitializeModeAvec();
+			//if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
+			//	InitializeModeAvec();
+			//}
+			//else {
+			//	mode_previous_value_ = mode_;
+			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
+			//}
 			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
 			if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static)
@@ -1754,6 +1763,7 @@ namespace GPBoost {
 				diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
 				approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * num_re_ * std::log(sigma2);
 				mode_has_been_calculated_ = true;
+				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 		}//end FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale
@@ -1784,13 +1794,14 @@ namespace GPBoost {
 			bool calc_mll,
 			double& approx_marginal_ll) {
 			// Initialize variables
-			if (!mode_initialized_) {
-				InitializeModeAvec();
-			}
-			else {
-				mode_previous_value_ = mode_;
-				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-			}
+			InitializeModeAvec();
+			//if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
+			//	InitializeModeAvec();
+			//}
+			//else {
+			//	mode_previous_value_ = mode_;
+			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
+			//}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr;
 			vec_t rhs, B_mode, mode_new(dim_mode_);
@@ -1972,6 +1983,7 @@ namespace GPBoost {
 			}
 			else {
 				mode_has_been_calculated_ = true;
+				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par_ptr);
@@ -2056,14 +2068,15 @@ namespace GPBoost {
 			CHECK((int)((*cross_cov).cols()) == num_ip);
 			CHECK((int)fitc_diag.size() == dim_mode_);
 			// Initialize variables
-			if (!mode_initialized_) {
-				InitializeModeAvec();
-			}
-			else {
-				mode_previous_value_ = mode_;
-				a_vec_previous_value_ = a_vec_;
-				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-			}
+			InitializeModeAvec();
+			//if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
+			//	InitializeModeAvec();
+			//}
+			//else {
+			//	mode_previous_value_ = mode_;
+			//	a_vec_previous_value_ = a_vec_;
+			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
+			//}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
@@ -2140,6 +2153,7 @@ namespace GPBoost {
 			}
 			else {
 				mode_has_been_calculated_ = true;
+				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par_ptr);
@@ -4308,6 +4322,8 @@ namespace GPBoost {
 		bool mode_initialized_ = false;
 		/*! \brief If true, the mode has been determined */
 		bool mode_has_been_calculated_ = false;
+		/*! \brief If true, the mode is currently zero (after initialization) */
+		bool mode_is_zero_ = false;
 		/*! \brief If true, NA or Inf has occurred during the last call to find mode */
 		bool na_or_inf_during_last_call_to_find_mode_ = false;
 		/*! \brief If true, NA or Inf has occurred during the second last call to find mode when mode_previous_value_ was calculated */

@@ -1,4 +1,5 @@
 // Copyright (C) 2016-2023 Yixuan Qiu <yixuan.qiu@cos.name>
+// Modified work Copyright (c) 2024 Fabio Sigrist. All rights reserved.
 // Under MIT license
 
 #ifndef LBFGSPP_LINE_SEARCH_BACKTRACKING_H
@@ -71,7 +72,7 @@ public:
             // x_{k+1} = x_k + step * d_k
             x.noalias() = xp + step * drt;
             // Evaluate this candidate
-            fx = f(x, grad, false);// ChangedForGPBoost
+            fx = f(x, grad, true, false);// ChangedForGPBoost
 
             if (fx > fx_init + step * test_decr || (fx != fx))
             {
@@ -124,7 +125,8 @@ public:
             step = 0.;
             Log::REDebug("GPModel lbfgs: the line search routine reached the maximum number of iterations");
         }
-        f(x, grad, true);//calculate gradient
+        f(x, grad, false, true);//calculate gradient
+         
     }
 };
 

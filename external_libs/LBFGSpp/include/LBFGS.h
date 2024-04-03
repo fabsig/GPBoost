@@ -1,5 +1,5 @@
 // Copyright (C) 2016-2023 Yixuan Qiu <yixuan.qiu@cos.name>
-//  Modified work Copyright (c) 2024 Fabio Sigrist. All rights reserved.
+// Modified work Copyright (c) 2024 Fabio Sigrist. All rights reserved.
 // Under MIT license
 
 #ifndef LBFGSPP_LBFGS_H
@@ -89,7 +89,8 @@ public:
         const int fpast = m_param.past;
 
         // Evaluate function and compute gradient
-        fx = f(x, m_grad, true);
+        fx = f(x, m_grad, true, true);// ChangedForGPBoost
+
         m_gnorm = m_grad.norm();
         if (fpast > 0)
             m_fx[0] = fx;
@@ -184,7 +185,7 @@ public:
             if (f.LearnCovarianceParameters() && f.ShouldRedetermineNearestNeighborsVecchia())
             {
                 f.RedetermineNearestNeighborsVecchia();  // called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
-                fx = f(x, m_grad, false);
+                fx = f(x, m_grad, true, false);
                 m_bfgs.apply_Hv(m_grad, -Scalar(1), m_drt);
                 if (fpast > 0)
                 {

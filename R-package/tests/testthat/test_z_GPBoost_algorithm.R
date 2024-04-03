@@ -1045,7 +1045,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.009778865, 1.142124739, 0.072746954))),TOLERANCE)
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-1.09009608, -1.02661256, -1.06180549, -0.04424235))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.3742586, 0.6970324, 0.5897960, 1.1453712))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.3644896470, 0.6872674831, 0.5800297063, 1.1356006965))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(4.255524, 4.807404, 4.659824, 4.499290))),TOLERANCE)
     })
     
@@ -1107,7 +1107,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         }
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
         expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.4672591, -0.8086326, -0.6178553, -0.1621476))),TOLERANCE2)
-        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.7547910, 0.8706967, 0.8887207, 1.1682794))),TOLERANCE2)
+        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2624237699, 0.3784147773, 0.3964287460, 0.6761869249))),TOLERANCE2)
         expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(4.683135, 4.608892, 4.571550, 4.406394))),TOLERANCE2)
       }
     })
