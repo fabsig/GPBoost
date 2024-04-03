@@ -76,7 +76,15 @@ public:
 
             if (fx > fx_init + step * test_decr || (fx != fx))
             {
-                width = dec;
+                // ChangedForGPBoost
+                if ((fx - fx_init) > 2. * abs(fx_init))
+                {
+                    width = dec / 100.;//make step size much smaller for very large increases to avoid too many backtracking steps
+                }
+                else
+                {
+                    width = dec;
+                }
             }
             else
             {
