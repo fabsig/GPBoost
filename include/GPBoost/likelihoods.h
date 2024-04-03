@@ -313,6 +313,12 @@ namespace GPBoost {
 				else {
 					init_intercept = normalQF(pavg);
 				}
+				if (init_intercept < -3.) {//avoid too small / large initial intercepts for better numerical stability
+					init_intercept = -3.;
+				}
+				if (init_intercept > 3.) {
+					init_intercept = 3.;
+				}
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || 
 				likelihood_type_ == "negative_binomial") {
@@ -4535,7 +4541,7 @@ namespace GPBoost {
 			"If you include an intercept in your model, you can try estimating your model without an intercept (and excluding variables that are almost constant) ";
 		const char* NA_OR_INF_ERROR_ = "NA or Inf occurred in the mode finding algorithm for the Laplace approximation ";
 		const char* NO_INCREASE_IN_MLL_WARNING_ = "Mode finding algorithm for Laplace approximation: "
-			"The approximate marginal log-likelihood (=convergence criterion) has decreased and the algorithm has thus been terminated ";
+			"The convergence criterion (log-likelihood + log-prior) has decreased and the algorithm has been terminated ";
 		const char* NO_CONVERGENCE_WARNING_ = "Algorithm for finding mode for Laplace approximation has not "
 			"converged after the maximal number of iterations ";
 		const char* CG_NA_OR_INF_WARNING_ = "NA or Inf occured in the Conjugate Gradient Algorithm when calculating the gradients ";
