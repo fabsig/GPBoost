@@ -1380,29 +1380,31 @@ namespace GPBoost {
 
 		/*!
 		* \brief Auxiliary function for updating the location parameter = mode of random effects + fixed effects
+		* \param mode Mode
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param[out] location_par Location parameter
 		*/
-		void UpdateLocationPar(const double* fixed_effects,
+		void UpdateLocationPar(const vec_t& mode,
+			const double* fixed_effects,
 			vec_t& location_par) {
 			if (use_Z_for_duplicates_) {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static)
 					for (data_size_t i = 0; i < num_data_; ++i) {
-						location_par[i] = mode_[random_effects_indices_of_data_[i]];
+						location_par[i] = mode[random_effects_indices_of_data_[i]];
 					}
 				}
 				else {
 #pragma omp parallel for schedule(static)
 					for (data_size_t i = 0; i < num_data_; ++i) {
-						location_par[i] = mode_[random_effects_indices_of_data_[i]] + fixed_effects[i];
+						location_par[i] = mode[random_effects_indices_of_data_[i]] + fixed_effects[i];
 					}
 				}
 			}//end use_Z_for_duplicates_
 			else if (fixed_effects != nullptr) {
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data_; ++i) {
-					location_par[i] = mode_[i] + fixed_effects[i];
+					location_par[i] = mode[i] + fixed_effects[i];
 				}
 			}
 		}//end UpdateLocationPar
@@ -1484,7 +1486,7 @@ namespace GPBoost {
 				a_vec_.array() *= diag_Wsqrt.array();
 				a_vec_.array() += rhs.array();
 				mode_ = (*Sigma) * a_vec_;
-				UpdateLocationPar(fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+				UpdateLocationPar(mode_, fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -1810,12 +1812,12 @@ namespace GPBoost {
 			//}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr;
-			vec_t rhs, B_mode, mode_new(dim_mode_);
+			vec_t rhs, B_mode, mode_new, mode_update(dim_mode_);
 			// Variables when using Cholesky factorization
 			sp_mat_t SigmaI, SigmaI_plus_W;
-			vec_t mode_after_grad_aux, mode_after_grad_aux_lag1;//auxiliary variable used only if quasi_newton_for_mode_finding_
+			vec_t mode_update_lag1;//auxiliary variable used only if quasi_newton_for_mode_finding_
 			if (quasi_newton_for_mode_finding_) {
-				mode_after_grad_aux_lag1 = mode_;
+				mode_update_lag1 = mode_;
 			}
 			// Variables when using iterative methods
 			int cg_max_num_it = cg_max_num_it_;
@@ -1868,13 +1870,13 @@ namespace GPBoost {
 					//grad = B.triangularView<Eigen::UpLoType::UnitLower>().solve(grad_aux);
 					lr_GD = 1.;
 					double nesterov_acc_rate = (1. - (3. / (6. + it)));//Nesterov acceleration factor
-					for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_; ++ih) {
-						mode_after_grad_aux = mode_ + lr_GD * grad;
-						REModelTemplate<T_mat, T_chol>::ApplyMomentumStep(it, mode_after_grad_aux, mode_after_grad_aux_lag1,
+					for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_QUASI_NEWTON_; ++ih) {
+						mode_update = mode_ + lr_GD * grad;
+						REModelTemplate<T_mat, T_chol>::ApplyMomentumStep(it, mode_update, mode_update_lag1,
 							mode_new, nesterov_acc_rate, 0, false, 2, false);
 						CapChangeModeUpdateNewton(mode_new);
 						B_mode = B * mode_new;
-						UpdateLocationPar(fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+						UpdateLocationPar(mode_, fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 						approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
 						if (approx_marginal_ll_new < approx_marginal_ll ||
 							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -1882,11 +1884,11 @@ namespace GPBoost {
 							nesterov_acc_rate *= 0.5;
 						}
 						else {//approx_marginal_ll_new >= approx_marginal_ll
-							mode_ = mode_new;
 							break;
 						}
 					}// end loop over learnig rate halving procedure
-					mode_after_grad_aux_lag1 = mode_after_grad_aux;
+					mode_ = mode_new;
+					mode_update_lag1 = mode_update;
 				}//end quasi_newton_for_mode_finding_
 				else {//Newton's method
 					// Calculate Cholesky factor and update mode
@@ -1900,7 +1902,7 @@ namespace GPBoost {
 								I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
 								I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * second_deriv_neg_ll_.asDiagonal() * Sigma_L_k_;
 								chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
-								CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, mode_new, has_NA_or_Inf,
+								CGVecchiaLaplaceVecWinvplusSigma(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, mode_update, has_NA_or_Inf,
 									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 							}
 						}
@@ -1920,7 +1922,7 @@ namespace GPBoost {
 								//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;
 								//Log::REInfo("Time ReverseIncompleteCholeskyFactorization: %g", el_time);
 							}
-							CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rhs, mode_new, has_NA_or_Inf,
+							CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rhs, mode_update, has_NA_or_Inf,
 								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
 						}
 						else {
@@ -1944,14 +1946,38 @@ namespace GPBoost {
 						chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
 						//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
 						//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
-						mode_new = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
+						mode_update = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
 					} // end Cholesky
-					CapChangeModeUpdateNewton(mode_new);
+					//line search
+					double lr_mode = 1.;
+					for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_; ++ih) {
+						if (ih == 0) {
+							mode_new = mode_update;
+						}
+						else {
+							mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
+						}
+						CapChangeModeUpdateNewton(mode_new);
+						UpdateLocationPar(mode_new, fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+						B_mode = B * mode_new;
+						approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);// Calculate new objective function
+						if (approx_marginal_ll_new < approx_marginal_ll ||
+							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+							lr_mode *= 0.5;
+						}
+						else {//approx_marginal_ll_new >= approx_marginal_ll
+							break;
+						}
+					}// end loop over learnig rate halving procedure
 					mode_ = mode_new;
-					// Calculate new objective function
-					UpdateLocationPar(fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-					B_mode = B * mode_;
-					approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+
+					// old code
+					//mode_ = mode_new;
+					//// Calculate new objective function
+					//UpdateLocationPar(mode_, fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					//B_mode = B * mode_;
+					//approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+
 				}//end Newton's method
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
@@ -2120,7 +2146,7 @@ namespace GPBoost {
 				mode_new = ((*cross_cov) * vaux3) + (fitc_diag.asDiagonal() * a_vec_);//mode_ = Sigma * a_vec_
 				CapChangeModeUpdateNewton(mode_new);
 				mode_ = mode_new;
-				UpdateLocationPar(fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+				UpdateLocationPar(mode_, fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 				// Calculate new objective function
 				approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -4355,10 +4381,12 @@ namespace GPBoost {
 		int MAXIT_MODE_NEWTON_ = 100000;//1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
 		double DELTA_REL_CONV_ = 1e-6;
+		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
+		int MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_ = 20;
 		/*! \brief If true, a quasi-Newton method instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
 		bool quasi_newton_for_mode_finding_ = false;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the quasi-Newton method for mode finding in Laplace approximation */
-		int MAX_NUMBER_LR_SHRINKAGE_STEPS_ = 30;
+		int MAX_NUMBER_LR_SHRINKAGE_STEPS_QUASI_NEWTON_ = 20;
 		/*! \brief If true, the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method */
 		bool cap_change_mode_newton_ = false;
 		/*! \brief Maximally allowed change for mode in Newton's method for those likelihoods where a cap is enforced */
