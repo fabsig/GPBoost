@@ -1644,6 +1644,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params$init_cov_pars <- c(1,mean(dist(coords))/3)
     params_mult = DEFAULT_OPTIM_PARAMS
     params_mult$init_cov_pars <- c(1,mean(dist(unique(coords_multiple)))/3)
+    cluster_ids_ip <- c(rep(1,n/2),rep(2,n/2))
     
     ## Evaluate log-likelihood
     gp_model_no_approx <- GPModel(gp_coords = coords, cov_function = "exponential", 
@@ -1679,9 +1680,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     X0 <- matrix(0, nrow=nrow(X), ncol=ncol(X))
     pred_train_no_approx <- predict(gp_model_no_approx, y=y, gp_coords_pred = coords, X_pred = X0,
                                     predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    # duplicate coordinates
     gp_model_mult_no_approx <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", likelihood = "bernoulli_probit",
                                           y = y_multiple, X=X, params = params_mult)
     nll_mult_exp <- gp_model_mult_no_approx$get_current_neg_log_likelihood() + 0.
+    # cluster_ids
+    gp_model_clus_no_approx <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                                     cluster_ids = cluster_ids_ip, y = y, X=X, params = params)
+    nll_clus_exp <- gp_model_clus_no_approx$get_current_neg_log_likelihood() + 0.
     
     # Fitc and large num_ind_points
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
@@ -1715,6 +1721,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_mult_no_approx$get_coef()))),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), gp_model_mult_no_approx$get_num_optim_iter())
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_mult_exp),TOLERANCE_STRICT)
+    # cluster_ids
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                           y = y, X=X, params = params, gp_approx = "fitc", cluster_ids = cluster_ids_ip,
+                           num_ind_points = n/2, ind_points_selection = "random")
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_clus_no_approx$get_cov_pars()))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_clus_no_approx$get_coef()))),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_clus_exp),TOLERANCE_STRICT)
     
     # Fitc and smaller num_ind_points
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",

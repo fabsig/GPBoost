@@ -293,10 +293,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 11)
     # Not supported shape parameter
     expect_error( gp_model <- GPModel(gp_coords = coords, cov_function = "matern",
-                                         cov_fct_shape = 4))
+                                      cov_fct_shape = 4))
     expect_error( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
-                                           cov_fct_shape = 4,
-                                           y = y, params = DEFAULT_OPTIM_PARAMS_STD))
+                                         cov_fct_shape = 4,
+                                         y = y, params = DEFAULT_OPTIM_PARAMS_STD))
     
     ## Test default initial values
     params <- list(optimizer_cov = "gradient_descent", maxit = 0)
@@ -371,8 +371,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Nelder-Mead
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y, X = X, params = list(optimizer_cov = "nelder_mead",
-                                                     optimizer_coef = "nelder_mead",
-                                                     maxit=1000, delta_rel_conv = 1e-12, init_cov_pars=init_cov_pars))
+                                                       optimizer_coef = "nelder_mead",
+                                                       maxit=1000, delta_rel_conv = 1e-12, init_cov_pars=init_cov_pars))
     cov_pars <- c(0.008459373, 1.001564796, 0.094655964)
     coef <- c(2.307798, 1.899516)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)), TOLERANCE_STRICT)
@@ -1147,23 +1147,29 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     init_cov_pars_mult <- c(var(y)/2,var(y)/2,mean(dist(unique(coords_multiple)))/3)
     params_mult <- DEFAULT_OPTIM_PARAMS_STD
     params_mult$init_cov_pars <- init_cov_pars_mult
+    cluster_ids_ip <- c(rep(1,n/2),rep(2,n/2))
     
     # No Approximation
     capture.output( gp_model_no_approx <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                                      y = y, X = X, params = params), file='NUL')
+    nll_exp <- gp_model_no_approx$get_current_neg_log_likelihood() + 0.
     pred_var_no_approx <- predict(gp_model_no_approx, gp_coords_pred = coord_test_v1, cov_pars = cov_pars_pred,
                                   X_pred = X_test_v1, predict_var = TRUE)
     pred_var_lat_no_approx <- predict(gp_model_no_approx, gp_coords_pred = coord_test_v1, cov_pars = cov_pars_pred,
-                                  X_pred = X_test_v1, predict_var = TRUE, predict_response = FALSE)
+                                      X_pred = X_test_v1, predict_var = TRUE, predict_response = FALSE)
     pred_cov_no_approx <- predict(gp_model_no_approx, gp_coords_pred = coord_test_v1, cov_pars = cov_pars_pred,
                                   X_pred = X_test_v1, predict_cov = TRUE)
     X0 <- matrix(0, nrow=nrow(X), ncol=ncol(X))
     pred_train_no_approx <- predict(gp_model_no_approx, gp_coords_pred = coords, cov_pars = cov_pars_pred, 
                                     X_pred = X0, predict_var = TRUE)
+    # duplicate locations
     capture.output( gp_model_mult_no_approx <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential",
                                                           y = y_multiple, X = X, params = params_mult), file='NUL')
-    nll_exp <- gp_model_no_approx$get_current_neg_log_likelihood() + 0.
     nll_mult_exp <- gp_model_mult_no_approx$get_current_neg_log_likelihood() + 0.
+    # cluster_ids
+    capture.output( gp_model_clus_no_approx <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                          y = y, X = X, cluster_ids = cluster_ids_ip, params = params), file='NUL')
+    nll_cluster_exp <- gp_model_clus_no_approx$get_current_neg_log_likelihood() + 0.
     
     # With fitc and n inducing points
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -1199,6 +1205,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_mult_no_approx$get_coef()))),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), gp_model_mult_no_approx$get_num_optim_iter())
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_mult_exp),TOLERANCE_STRICT)
+    # cluster_ids
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           gp_approx = "fitc", num_ind_points = n/2, ind_points_selection = "random",
+                                           y = y, X = X, cluster_ids = cluster_ids_ip, params = params), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()[1,]) - as.vector(gp_model_clus_no_approx$get_cov_pars()[1,]))),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef()[1,]) - as.vector(gp_model_clus_no_approx$get_coef()[1,]))),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), gp_model_clus_no_approx$get_num_optim_iter())
+    expect_lt(abs(gp_model_clus_no_approx$get_current_neg_log_likelihood() - nll_cluster_exp),TOLERANCE_STRICT)
     
     # Fisher scoring
     params_FS = DEFAULT_OPTIM_PARAMS_FISHER_STD
@@ -1336,6 +1350,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_var <- c(0.5887857, 0.3618276, 0.3794413)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_LOOSE)
+    
   })
   
   test_that("FSA", {
