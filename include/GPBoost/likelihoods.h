@@ -1383,10 +1383,12 @@ namespace GPBoost {
 		* \param mode Mode
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param[out] location_par Location parameter
+		* \param[out] location_par_ptr Pointer to location parameter
 		*/
-		void UpdateLocationPar(const vec_t& mode,
+		void UpdateLocationPar(vec_t& mode,
 			const double* fixed_effects,
-			vec_t& location_par) {
+			vec_t& location_par,
+			double** location_par_ptr) {
 			if (use_Z_for_duplicates_) {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static)
@@ -1401,13 +1403,43 @@ namespace GPBoost {
 					}
 				}
 			}//end use_Z_for_duplicates_
-			else if (fixed_effects != nullptr) {
+			else {
+				if (fixed_effects == nullptr) {
+					*location_par_ptr = mode.data();
+				}
+				else {
 #pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					location_par[i] = mode[i] + fixed_effects[i];
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						location_par[i] = mode[i] + fixed_effects[i];
+					}
 				}
 			}
 		}//end UpdateLocationPar
+
+		/*!
+		* \brief Auxiliary function for updating the location parameter = mode of random effects + fixed effects
+		* \param mode Mode
+		* \param fixed_effects Fixed effects component of location parameter
+		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
+		* \param[out] location_par Location parameter
+		*/
+		void UpdateLocationParOnlyOneGroupedRE(const vec_t& mode,
+			const double* fixed_effects,
+			const data_size_t* const random_effects_indices_of_data,
+			vec_t& location_par) {
+			if (fixed_effects == nullptr) {
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					location_par[i] = mode[random_effects_indices_of_data[i]];
+				}
+			}
+			else {
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					location_par[i] = mode[random_effects_indices_of_data[i]] + fixed_effects[i];
+				}
+			}
+		}//end UpdateLocationParOnlyOneGroupedRE
 
 		/*!
 		* \brief Make sure that the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method (cap_change_mode_newton_)
@@ -1461,7 +1493,7 @@ namespace GPBoost {
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
 			double approx_marginal_ll_new = approx_marginal_ll;
-			vec_t rhs(dim_mode_), rhs2(dim_mode_);//auxiliary variables for updating mode
+			vec_t rhs(dim_mode_), rhs2(dim_mode_), mode_new, a_vec_new, mode_update, a_vec_update;//auxiliary variables for updating mode
 			vec_t diag_Wsqrt(dim_mode_);//diagonal of matrix sqrt(ZtWZ) if use_Z_for_duplicates_ or sqrt(W) if !use_Z_for_duplicates_ with square root of negative second derivatives of log-likelihood
 			T_mat Id_plus_Wsqrt_Sigma_Wsqrt(dim_mode_, dim_mode_);// = Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt if use_Z_for_duplicates_ or Id_plus_Wsqrt_ZSigmaZt_Wsqrt if !use_Z_for_duplicates_
 			// Start finding mode 
@@ -1482,13 +1514,43 @@ namespace GPBoost {
 				// Update mode and a_vec_
 				rhs2 = (*Sigma) * rhs;//rhs2 = sqrt(W) * Sigma * rhs
 				rhs2.array() *= diag_Wsqrt.array();
-				a_vec_ = -chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(rhs2);//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
-				a_vec_.array() *= diag_Wsqrt.array();
-				a_vec_.array() += rhs.array();
-				mode_ = (*Sigma) * a_vec_;
-				UpdateLocationPar(mode_, fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-				// Calculate new objective function
-				approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+				// Backtracking line search
+				a_vec_update = -chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(rhs2);//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
+				a_vec_update.array() *= diag_Wsqrt.array();
+				a_vec_update.array() += rhs.array();
+				mode_update = (*Sigma) * a_vec_update;
+				double lr_mode = 1.;
+				for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_; ++ih) {
+					if (ih == 0) {
+						a_vec_new = a_vec_update;
+						mode_new = mode_update;
+					}
+					else {
+						a_vec_new = (1 - lr_mode) * a_vec_ + lr_mode * a_vec_update;
+						mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
+					}
+					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					approx_marginal_ll_new = -0.5 * (a_vec_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);// Calculate new objective function
+					if (approx_marginal_ll_new < approx_marginal_ll ||
+						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+						lr_mode *= 0.5;
+					}
+					else {//approx_marginal_ll_new >= approx_marginal_ll
+						break;
+					}
+				}// end loop over learnig rate halving procedure
+				mode_ = mode_new;
+				a_vec_ = a_vec_new;
+
+				// OLD_CODE DELETE
+				//a_vec_ = -chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(rhs2);//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
+				//a_vec_.array() *= diag_Wsqrt.array();
+				//a_vec_.array() += rhs.array();
+				//mode_ = (*Sigma) * a_vec_;
+				//UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+				//// Calculate new objective function
+				//approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
@@ -1578,7 +1640,7 @@ namespace GPBoost {
 			approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			double approx_marginal_ll_new = approx_marginal_ll;
 			sp_mat_t SigmaI_plus_ZtWZ;
-			vec_t rhs;
+			vec_t rhs, mode_update, mode_new;
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
@@ -1596,17 +1658,43 @@ namespace GPBoost {
 					chol_fact_pattern_analyzed_ = true;
 				}
 				chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
-				mode_ += chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(rhs);
-				// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-				location_par = Z * mode_;
-				if (fixed_effects != nullptr) {
+				// Backtracking line search
+				mode_update = chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(rhs);
+				double lr_mode = 1.;
+				for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_; ++ih) {
+					mode_new = mode_ + lr_mode * mode_update;
+					// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					location_par = Z * mode_new;
+					if (fixed_effects != nullptr) {
 #pragma omp parallel for schedule(static)
-					for (data_size_t i = 0; i < num_data; ++i) {
-						location_par[i] += fixed_effects[i];
+						for (data_size_t i = 0; i < num_data; ++i) {
+							location_par[i] += fixed_effects[i];
+						}
 					}
-				}
-				// Calculate new objective function
-				approx_marginal_ll_new = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+					approx_marginal_ll_new = -0.5 * (mode_new.dot(SigmaI * mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);// Calculate new objective function
+					if (approx_marginal_ll_new < approx_marginal_ll ||
+						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+						lr_mode *= 0.5;
+					}
+					else {//approx_marginal_ll_new >= approx_marginal_ll
+						break;
+					}
+				}// end loop over learnig rate halving procedure
+				mode_ = mode_new;
+
+//				// OLD_CODE DELETE
+//				mode_ += chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(rhs);
+//				// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+//				location_par = Z * mode_;
+//				if (fixed_effects != nullptr) {
+//#pragma omp parallel for schedule(static)
+//					for (data_size_t i = 0; i < num_data; ++i) {
+//						location_par[i] += fixed_effects[i];
+//					}
+//				}
+//				// Calculate new objective function
+//				approx_marginal_ll_new = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
@@ -1683,22 +1771,11 @@ namespace GPBoost {
 			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			//}
 			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
-			if (fixed_effects == nullptr) {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					location_par[i] = mode_[random_effects_indices_of_data[i]];
-				}
-			}
-			else {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					location_par[i] = mode_[random_effects_indices_of_data[i]] + fixed_effects[i];
-				}
-			}
+			UpdateLocationParOnlyOneGroupedRE(mode_, fixed_effects, random_effects_indices_of_data, location_par);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
 			double approx_marginal_ll_new = approx_marginal_ll;
-			vec_t rhs;
+			vec_t rhs, mode_update, mode_new;
 			diag_SigmaI_plus_ZtWZ_ = vec_t(num_re_);
 			// Start finding mode 
 			int it;
@@ -1714,22 +1791,30 @@ namespace GPBoost {
 				// Update mode
 				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_SigmaI_plus_ZtWZ_, true);
 				diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
-				mode_ += (rhs.array() / diag_SigmaI_plus_ZtWZ_.array()).matrix();
-				// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-				if (fixed_effects == nullptr) {
-#pragma omp parallel for schedule(static)
-					for (data_size_t i = 0; i < num_data; ++i) {
-						location_par[i] = mode_[random_effects_indices_of_data[i]];
+				// Backtracking line search
+				mode_update = (rhs.array() / diag_SigmaI_plus_ZtWZ_.array()).matrix();
+				double lr_mode = 1.;
+				for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_; ++ih) {
+					mode_new = mode_ + lr_mode * mode_update;
+					UpdateLocationParOnlyOneGroupedRE(mode_new, fixed_effects, random_effects_indices_of_data, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					approx_marginal_ll_new = -0.5 / sigma2 * (mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);// Calculate new objective function
+					if (approx_marginal_ll_new < approx_marginal_ll ||
+						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+						lr_mode *= 0.5;
 					}
-				}
-				else {
-#pragma omp parallel for schedule(static)
-					for (data_size_t i = 0; i < num_data; ++i) {
-						location_par[i] = mode_[random_effects_indices_of_data[i]] + fixed_effects[i];
+					else {//approx_marginal_ll_new >= approx_marginal_ll
+						break;
 					}
-				}
-				// Calculate new objective function
-				approx_marginal_ll_new = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+				}// end loop over learnig rate halving procedure
+				mode_ = mode_new;
+
+				// OLD_CODE DELETE
+				//mode_ += (rhs.array() / diag_SigmaI_plus_ZtWZ_.array()).matrix();
+				//// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+				//UpdateLocationParOnlyOneGroupedRE(mode_, fixed_effects, random_effects_indices_of_data, location_par);
+				//// Calculate new objective function
+				//approx_marginal_ll_new = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
@@ -1868,6 +1953,7 @@ namespace GPBoost {
 					//vec_t grad_aux = B.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(grad);
 					//grad_aux.array() /= (D_inv.diagonal().array() + second_deriv_neg_ll_.array());
 					//grad = B.triangularView<Eigen::UpLoType::UnitLower>().solve(grad_aux);
+					// Backtracking line search
 					lr_GD = 1.;
 					double nesterov_acc_rate = (1. - (3. / (6. + it)));//Nesterov acceleration factor
 					for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_QUASI_NEWTON_; ++ih) {
@@ -1876,7 +1962,7 @@ namespace GPBoost {
 							mode_new, nesterov_acc_rate, 0, false, 2, false);
 						CapChangeModeUpdateNewton(mode_new);
 						B_mode = B * mode_new;
-						UpdateLocationPar(mode_, fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+						UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 						approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
 						if (approx_marginal_ll_new < approx_marginal_ll ||
 							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -1911,16 +1997,9 @@ namespace GPBoost {
 								D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + second_deriv_neg_ll_).asDiagonal() * B_rm_;
 							}
 							else {
-								//std::chrono::steady_clock::time_point begin, end;
-								//double el_time;
-								//begin = std::chrono::steady_clock::now();
-								//Log::REInfo("SigmaI.nonZeros() = %d", SigmaI.nonZeros());
 								SigmaI_plus_W = SigmaI;
 								SigmaI_plus_W.diagonal().array() += second_deriv_neg_ll_.array();
 								ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
-								//end = std::chrono::steady_clock::now();
-								//el_time = (double)(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000000.;
-								//Log::REInfo("Time ReverseIncompleteCholeskyFactorization: %g", el_time);
 							}
 							CGVecchiaLaplaceVec(second_deriv_neg_ll_, B_rm_, B_t_D_inv_rm_, rhs, mode_update, has_NA_or_Inf,
 								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
@@ -1948,7 +2027,7 @@ namespace GPBoost {
 						//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
 						mode_update = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
 					} // end Cholesky
-					//line search
+					// Backtracking line search
 					double lr_mode = 1.;
 					for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_; ++ih) {
 						if (ih == 0) {
@@ -1958,7 +2037,7 @@ namespace GPBoost {
 							mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
 						}
 						CapChangeModeUpdateNewton(mode_new);
-						UpdateLocationPar(mode_new, fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+						UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 						B_mode = B * mode_new;
 						approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);// Calculate new objective function
 						if (approx_marginal_ll_new < approx_marginal_ll ||
@@ -1971,10 +2050,10 @@ namespace GPBoost {
 					}// end loop over learnig rate halving procedure
 					mode_ = mode_new;
 
-					// old code
+					// OLD_CODE DELETE
 					//mode_ = mode_new;
 					//// Calculate new objective function
-					//UpdateLocationPar(mode_, fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					//UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 					//B_mode = B * mode_;
 					//approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
 
@@ -2115,7 +2194,7 @@ namespace GPBoost {
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
 			double approx_marginal_ll_new = approx_marginal_ll;
-			vec_t Wsqrt_diag(dim_mode_), sigma_ip_inv_cross_cov_T_rhs(num_ip), rhs(dim_mode_), Wsqrt_Sigma_rhs(dim_mode_), vaux(num_ip), vaux2(num_ip), vaux3(dim_mode_), mode_new(dim_mode_), DW_plus_I_inv_diag(dim_mode_);//auxiliary variables for updating mode
+			vec_t Wsqrt_diag(dim_mode_), sigma_ip_inv_cross_cov_T_rhs(num_ip), rhs(dim_mode_), Wsqrt_Sigma_rhs(dim_mode_), vaux(num_ip), vaux2(num_ip), vaux3(dim_mode_), mode_new(dim_mode_), a_vec_new, DW_plus_I_inv_diag(dim_mode_), a_vec_update, mode_update;//auxiliary variables for updating mode
 			den_mat_t M_aux_Woodbury(num_ip, num_ip); // = sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
 			// Start finding mode 
 			int it;
@@ -2138,17 +2217,50 @@ namespace GPBoost {
 				Wsqrt_Sigma_rhs.array() *= Wsqrt_diag.array();//Wsqrt_Sigma_rhs = sqrt(W) * Sigma * rhs
 				vaux = Wsqrt_cross_cov.transpose() * (DW_plus_I_inv_diag.asDiagonal() * Wsqrt_Sigma_rhs);
 				vaux2 = chol_fact_dense_Newton_.solve(vaux);
-				a_vec_ = DW_plus_I_inv_diag.asDiagonal() * (Wsqrt_Sigma_rhs - Wsqrt_cross_cov * vaux2);
-				a_vec_.array() *= Wsqrt_diag.array();
-				a_vec_.array() *= -1.;
-				a_vec_.array() += rhs.array();//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
-				vaux3 = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_);
-				mode_new = ((*cross_cov) * vaux3) + (fitc_diag.asDiagonal() * a_vec_);//mode_ = Sigma * a_vec_
-				CapChangeModeUpdateNewton(mode_new);
+				// Backtracking line search
+				a_vec_update = DW_plus_I_inv_diag.asDiagonal() * (Wsqrt_Sigma_rhs - Wsqrt_cross_cov * vaux2);
+				a_vec_update.array() *= Wsqrt_diag.array();
+				a_vec_update.array() *= -1.;
+				a_vec_update.array() += rhs.array();//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
+				vaux3 = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_update);
+				mode_update = ((*cross_cov) * vaux3) + (fitc_diag.asDiagonal() * a_vec_update);//mode_ = Sigma * a_vec_
+				double lr_mode = 1.;
+				for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_; ++ih) {
+					if (ih == 0) {
+						a_vec_new = a_vec_update;
+						mode_new = mode_update;
+					}
+					else {
+						a_vec_new = (1 - lr_mode) * a_vec_ + lr_mode * a_vec_update;
+						mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
+					}
+					//CapChangeModeUpdateNewton(mode_new);//not done since a_vec would also have to be modified accordingly. TODO: implement this?
+					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					approx_marginal_ll_new = -0.5 * (a_vec_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);// Calculate new objective function
+					if (approx_marginal_ll_new < approx_marginal_ll ||
+						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+						lr_mode *= 0.5;
+					}
+					else {//approx_marginal_ll_new >= approx_marginal_ll
+						break;
+					}
+				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
-				UpdateLocationPar(mode_, fixed_effects, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-				// Calculate new objective function
-				approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+				a_vec_ = a_vec_new;
+
+				// OLD_CODE DELETE
+				//a_vec_ = DW_plus_I_inv_diag.asDiagonal() * (Wsqrt_Sigma_rhs - Wsqrt_cross_cov * vaux2);
+				//a_vec_.array() *= Wsqrt_diag.array();
+				//a_vec_.array() *= -1.;
+				//a_vec_.array() += rhs.array();//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
+				//vaux3 = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_);
+				//mode_new = ((*cross_cov) * vaux3) + (fitc_diag.asDiagonal() * a_vec_);//mode_ = Sigma * a_vec_
+				//CapChangeModeUpdateNewton(mode_new);
+				//mode_ = mode_new;
+				//UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+				//// Calculate new objective function
+				//approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
@@ -2560,18 +2672,7 @@ namespace GPBoost {
 			CHECK(mode_has_been_calculated_);
 			// Initialize variables
 			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
-			if (fixed_effects == nullptr) {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					location_par[i] = mode_[random_effects_indices_of_data[i]];
-				}
-			}
-			else {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					location_par[i] = mode_[random_effects_indices_of_data[i]] + fixed_effects[i];
-				}
-			}
+			UpdateLocationParOnlyOneGroupedRE(mode_, fixed_effects, random_effects_indices_of_data, location_par);
 			vec_t third_deriv(num_data);//vector of third derivatives of log-likelihood
 			CalcThirdDerivLogLik(y_data, y_data_int, location_par.data(), third_deriv);
 			// calculate gradient of approx. marginal likelihood wrt the mode
