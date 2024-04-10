@@ -1478,15 +1478,14 @@ namespace GPBoost {
 			const std::shared_ptr<T_mat> Sigma,
 			double& approx_marginal_ll) {
 			// Initialize variables
-			InitializeModeAvec();
-			//if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			//	InitializeModeAvec();
-			//}
-			//else {
-			//	mode_previous_value_ = mode_;
-			//	a_vec_previous_value_ = a_vec_;
-			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-			//}
+			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
+				InitializeModeAvec();
+			}
+			else {
+				mode_previous_value_ = mode_;
+				a_vec_previous_value_ = a_vec_;
+				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
+			}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
@@ -1541,16 +1540,6 @@ namespace GPBoost {
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
 				a_vec_ = a_vec_new;
-
-				// OLD_CODE DELETE
-				//a_vec_ = -chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(rhs2);//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
-				//a_vec_.array() *= diag_Wsqrt.array();
-				//a_vec_.array() += rhs.array();
-				//mode_ = (*Sigma) * a_vec_;
-				//UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-				//// Calculate new objective function
-				//approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
-
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
@@ -1620,14 +1609,13 @@ namespace GPBoost {
 			const sp_mat_t& Zt,
 			double& approx_marginal_ll) {
 			// Initialize variables
-			InitializeModeAvec();
-			//if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			//	InitializeModeAvec();
-			//}
-			//else {
-			//	mode_previous_value_ = mode_;
-			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-			//}			
+			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
+				InitializeModeAvec();
+			}
+			else {
+				mode_previous_value_ = mode_;
+				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
+			}			
 			sp_mat_t Z = Zt.transpose();
 			vec_t location_par = Z * mode_;//location parameter = mode of random effects + fixed effects
 			if (fixed_effects != nullptr) {
@@ -1681,20 +1669,6 @@ namespace GPBoost {
 					}
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
-
-//				// OLD_CODE DELETE
-//				mode_ += chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(rhs);
-//				// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-//				location_par = Z * mode_;
-//				if (fixed_effects != nullptr) {
-//#pragma omp parallel for schedule(static)
-//					for (data_size_t i = 0; i < num_data; ++i) {
-//						location_par[i] += fixed_effects[i];
-//					}
-//				}
-//				// Calculate new objective function
-//				approx_marginal_ll_new = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
@@ -1762,14 +1736,13 @@ namespace GPBoost {
 			const data_size_t* const random_effects_indices_of_data,
 			double& approx_marginal_ll) {
 			// Initialize variables
-			InitializeModeAvec();
-			//if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			//	InitializeModeAvec();
-			//}
-			//else {
-			//	mode_previous_value_ = mode_;
-			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-			//}
+			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
+				InitializeModeAvec();
+			}
+			else {
+				mode_previous_value_ = mode_;
+				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
+			}
 			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
 			UpdateLocationParOnlyOneGroupedRE(mode_, fixed_effects, random_effects_indices_of_data, location_par);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
@@ -1807,14 +1780,6 @@ namespace GPBoost {
 					}
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
-
-				// OLD_CODE DELETE
-				//mode_ += (rhs.array() / diag_SigmaI_plus_ZtWZ_.array()).matrix();
-				//// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-				//UpdateLocationParOnlyOneGroupedRE(mode_, fixed_effects, random_effects_indices_of_data, location_par);
-				//// Calculate new objective function
-				//approx_marginal_ll_new = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
-
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
@@ -1887,14 +1852,13 @@ namespace GPBoost {
 			bool calc_mll,
 			double& approx_marginal_ll) {
 			// Initialize variables
-			InitializeModeAvec();
-			//if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			//	InitializeModeAvec();
-			//}
-			//else {
-			//	mode_previous_value_ = mode_;
-			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-			//}
+			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
+				InitializeModeAvec();
+			}
+			else {
+				mode_previous_value_ = mode_;
+				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
+			}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr;
 			vec_t rhs, B_mode, mode_new, mode_update(dim_mode_);
@@ -2049,14 +2013,6 @@ namespace GPBoost {
 						}
 					}// end loop over learnig rate halving procedure
 					mode_ = mode_new;
-
-					// OLD_CODE DELETE
-					//mode_ = mode_new;
-					//// Calculate new objective function
-					//UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-					//B_mode = B * mode_;
-					//approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
-
 				}//end Newton's method
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
@@ -2179,15 +2135,14 @@ namespace GPBoost {
 			CHECK((int)((*cross_cov).cols()) == num_ip);
 			CHECK((int)fitc_diag.size() == dim_mode_);
 			// Initialize variables
-			InitializeModeAvec();
-			//if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			//	InitializeModeAvec();
-			//}
-			//else {
-			//	mode_previous_value_ = mode_;
-			//	a_vec_previous_value_ = a_vec_;
-			//	na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-			//}
+			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
+				InitializeModeAvec();
+			}
+			else {
+				mode_previous_value_ = mode_;
+				a_vec_previous_value_ = a_vec_;
+				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
+			}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
@@ -2247,20 +2202,6 @@ namespace GPBoost {
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
 				a_vec_ = a_vec_new;
-
-				// OLD_CODE DELETE
-				//a_vec_ = DW_plus_I_inv_diag.asDiagonal() * (Wsqrt_Sigma_rhs - Wsqrt_cross_cov * vaux2);
-				//a_vec_.array() *= Wsqrt_diag.array();
-				//a_vec_.array() *= -1.;
-				//a_vec_.array() += rhs.array();//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
-				//vaux3 = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_);
-				//mode_new = ((*cross_cov) * vaux3) + (fitc_diag.asDiagonal() * a_vec_);//mode_ = Sigma * a_vec_
-				//CapChangeModeUpdateNewton(mode_new);
-				//mode_ = mode_new;
-				//UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-				//// Calculate new objective function
-				//approx_marginal_ll_new = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
-
 				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 					has_NA_or_Inf = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
