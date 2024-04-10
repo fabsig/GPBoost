@@ -237,8 +237,10 @@ public:
             {
                 // Test the curvature condition
                 if (std::abs(dg) <= test_curv)
-                    f(x, grad, false, true);//calculate gradient
+                {
+                    f(x, grad, false, true);  // calculate gradient
                     return;
+                }
 
                 if (dg * (step_hi - step_lo) >= Scalar(0))
                 {

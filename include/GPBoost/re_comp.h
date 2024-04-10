@@ -805,7 +805,7 @@ namespace GPBoost {
 				coords_ = coords;
 				num_random_effects_ = (data_size_t)coords_.rows();
 			}
-			if (save_dist && cov_function_->ShouldSaveDistances() || apply_tapering_ || apply_tapering_manually_) {
+			if ((save_dist && cov_function_->ShouldSaveDistances()) || apply_tapering_ || apply_tapering_manually_) {
 				//Calculate distances
 				T_mat dist;
 				if (has_compact_cov_fct_) {//compactly suported covariance
