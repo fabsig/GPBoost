@@ -906,7 +906,7 @@ namespace GPBoost {
 				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
 					optimizer_cov_pars_, profile_out_marginal_variance_,
-					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_);
+					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_);
 				// Check for NA or Inf
 				if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
 					if (learn_covariance_parameters) {
@@ -1215,7 +1215,7 @@ namespace GPBoost {
 				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it,
 					learn_covariance_parameters, "nelder_mead", profile_out_marginal_variance_,
-					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_);
+					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_);
 			}
 			if (num_it == max_iter_) {
 				Log::REDebug("GPModel: no convergence after the maximal number of iterations "

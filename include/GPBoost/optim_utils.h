@@ -485,7 +485,7 @@ namespace GPBoost {
 	* \param nb_aux_pars Number of auxiliary parameters
 	* \param aux_pars Pointer to aux_pars_ in likelihoods.h
 	* \param has_covariates If true, the model linearly incluses covariates
-	* \param sigma2 Variance of idiosyncratic error term (nugget effect)
+	* \param initial_step_factor Only for 'lbfgs': The initial step length in the first iteration is this factor divided by the search direction (i.e. gradient)
 	*/
 	template<typename T_mat, typename T_chol>
 	void OptimExternal(REModelTemplate<T_mat, T_chol>* re_model_templ,
@@ -503,7 +503,8 @@ namespace GPBoost {
 		int num_cov_par,
 		int nb_aux_pars,
 		const double* aux_pars,
-		bool has_covariates) {
+		bool has_covariates,
+		double initial_step_factor) {
 		// Some checks
 		if (re_model_templ->EstimateAuxPars()) {
 			CHECK(num_cov_par + nb_aux_pars == (int)cov_pars.size());
@@ -577,6 +578,8 @@ namespace GPBoost {
 			param_LBFGSpp.epsilon = 1e-10;
 			param_LBFGSpp.epsilon_rel = 1e-10;
 			param_LBFGSpp.max_linesearch = 20;
+			param_LBFGSpp.m = 6;
+			param_LBFGSpp.initial_step_factor = initial_step_factor;
 			EvalLLforLBFGSpp<T_mat, T_chol> ll_fun(re_model_templ, fixed_effects, learn_cov_aux_pars,
 				cov_pars.segment(0, num_cov_par), profile_out_marginal_variance);
 			if (optimizer == "lbfgs") {

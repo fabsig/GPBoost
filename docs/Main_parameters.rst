@@ -327,13 +327,15 @@ The following list shows options for the optimization of the variance and covari
 
    -  Initial values for the regression coefficients (if there are any, can be Null)
 
--  ``lr_cov`` : double, optional (default = 0.1 for ``gradient_descent`` and 1. for ``fisher_scoring``)
+-  ``lr_cov`` : double, optional (default = 0.1 for ``gradient_descent`` and 1. otherwise)
 
-   -  Initial Learning rate for covariance parameters if ``gradient_descent`` or ``fisher_scoring`` is used
+   -  Initial Learning rate for covariance parameters if a gradient-based optimization method is used
    
-   -  If < 0, internal default values are used (0.1 for ``gradient_descent`` and 1. for ``fisher_scoring``)
+   -  If < 0, internal default values are used (0.1 for ``gradient_descent`` and 1. otherwise)
 
    - If there are additional auxiliary parameters for non-Gaussian likelihoods, ``lr_cov`` is also used for those
+
+   - For ``lbfgs``, this is divided by the norm of the gradient in the first iteration
 
 -  ``lr_coef`` : double, optional (default = 0.1)
 

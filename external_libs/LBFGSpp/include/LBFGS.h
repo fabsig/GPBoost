@@ -129,7 +129,7 @@ public:
         // Initial direction
         m_drt.noalias() = -m_grad;
         // Initial step size
-        Scalar step = Scalar(1) / m_drt.norm();
+        Scalar step = Scalar(m_param.initial_step_factor) / m_drt.norm();  // ChangedForGPBoost
 
         // Tolerance for s'y >= eps * (y'y)
         constexpr Scalar eps = std::numeric_limits<Scalar>::epsilon();

@@ -159,6 +159,12 @@ public:
     /// the \ref ftol parameter and smaller than \c 1.0.
     ///
     Scalar wolfe;
+    // ChangedForGPBoost
+    ///
+    /// The initial step length in the first iteration is this 
+    /// factor divided by the search direction (i.e. gradient) = initial_step_factor / m_drt.norm()
+    ///
+    Scalar initial_step_factor;
 
 public:
     ///
@@ -181,6 +187,7 @@ public:
         max_step       = Scalar(1e+20);
         ftol           = Scalar(1e-4);
         wolfe          = Scalar(0.9);
+        initial_step_factor = Scalar(1);
         // clang-format on
     }
 

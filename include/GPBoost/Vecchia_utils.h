@@ -507,7 +507,7 @@ namespace GPBoost {
 		double min_D_inv = D_inv_cluster_i.diagonal().minCoeff(&minRow, &minCol);
 		if (min_D_inv <= 0.) {
 			const char* min_D_inv_below_zero_msg = "The matrix D in the Vecchia approximation contains negative or zero values. "
-				"This is a serious problem that likely results from numerical instabilities ";
+				"This likely results from numerical instabilities ";
 			if (gauss_likelihood) {
 				Log::REWarning(min_D_inv_below_zero_msg);
 			}

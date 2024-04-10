@@ -50,11 +50,13 @@
     you will see the first initial covariance parameters in iteration 0. }
     \item{lr_coef: \code{numeric} (default = 0.1). 
     Learning rate for fixed effect regression coefficients if gradient descent is used }
-    \item{lr_cov: \code{numeric} (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring"). 
-    Initial learning rate for covariance parameters if "gradient_descent" or "fisher_scoring" is used. 
-    If lr_cov < 0, internal default values are used.
-    If there are additional auxiliary parameters for non-Gaussian likelihoods, 
-    'lr_cov' is also used for those}
+    \item{lr_cov: \code{numeric} (default = 0.1 for "gradient_descent" and 1. otherwise). 
+    Initial learning rate for covariance parameters if a gradient-based optimization method is used 
+    \itemize{
+    \item{If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise) }
+    \item{If there are additional auxiliary parameters for non-Gaussian likelihoods, 
+    'lr_cov' is also used for those }
+    \item{For "lbfgs", this is divided by the norm of the gradient in the first iteration }}}
     \item{use_nesterov_acc: \code{boolean} (default = TRUE). 
     If TRUE Nesterov acceleration is used.
     This is used only for gradient descent }
