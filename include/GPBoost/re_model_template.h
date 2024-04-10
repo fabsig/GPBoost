@@ -4447,25 +4447,26 @@ namespace GPBoost {
 			else {//more than one cluster and order of samples matters
 				XT_psi_inv_X = den_mat_t(X.cols(), X.cols());
 				XT_psi_inv_X.setZero();
-				den_mat_t BX, psi_inv_X;;
+				den_mat_t BX, psi_inv_X;
 				for (const auto& cluster_i : unique_clusters_) {
+					den_mat_t X_cluster_i = X(data_indices_per_cluster_[cluster_i], Eigen::all);
 					if (gp_approx_ == "vecchia") {
-						BX = B_[cluster_i] * X(data_indices_per_cluster_[cluster_i], Eigen::all);
+						BX = B_[cluster_i] * X_cluster_i;
 						XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
 					}
 					else if (gp_approx_ == "full_scale_tapering" || gp_approx_ == "fitc") {
 						std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
 						if (matrix_inversion_method_ == "cholesky") {
 							if (gp_approx_ == "fitc") {
-								den_mat_t cross_covT_X = (*cross_cov).transpose() * (FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * X);
+								den_mat_t cross_covT_X = (*cross_cov).transpose() * (FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * X_cluster_i);
 								den_mat_t sigma_woodbury_I_cross_covT_X = chol_fact_sigma_woodbury_[cluster_i].solve(cross_covT_X);
 								cross_covT_X.resize(0, 0);
 								den_mat_t cross_cov_sigma_woodbury_I_cross_covT_X = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * ((*cross_cov) * sigma_woodbury_I_cross_covT_X);
 								sigma_woodbury_I_cross_covT_X.resize(0, 0);
-								psi_inv_X = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * X - cross_cov_sigma_woodbury_I_cross_covT_X;
+								psi_inv_X = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * X_cluster_i - cross_cov_sigma_woodbury_I_cross_covT_X;
 							}
 							else if (gp_approx_ == "full_scale_tapering") {
-								den_mat_t sigma_resid_I_X = chol_fact_resid_[cluster_i].solve(X);
+								den_mat_t sigma_resid_I_X = chol_fact_resid_[cluster_i].solve(X_cluster_i);
 								den_mat_t cross_covT_sigma_resid_I_X = (*cross_cov).transpose() * sigma_resid_I_X;
 								den_mat_t sigma_woodbury_I_cross_covT_sigma_resid_I_X = chol_fact_sigma_woodbury_[cluster_i].solve(cross_covT_sigma_resid_I_X);
 								cross_covT_sigma_resid_I_X.resize(0, 0);
@@ -4481,7 +4482,7 @@ namespace GPBoost {
 								psi_inv_X = last_psi_inv_X_;
 							}
 							else {
-								psi_inv_X.resize(num_data_per_cluster_[cluster_i], X.cols());
+								psi_inv_X.resize(num_data_per_cluster_[cluster_i], X_cluster_i.cols());
 								psi_inv_X.setZero();
 							}
 							//Reduce max. number of iterations for the CG in first update
@@ -4490,19 +4491,19 @@ namespace GPBoost {
 								cg_max_num_it = (int)round(cg_max_num_it_ / 3);
 							}
 							std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
-							CGFSA_MULTI_RHS<T_mat>(*sigma_resid, (*cross_cov), chol_fact_sigma_ip_[cluster_i], X, psi_inv_X,
-								NaN_found, num_data_per_cluster_[cluster_i], (int)X.cols(), cg_max_num_it, cg_delta_conv_,
+							CGFSA_MULTI_RHS<T_mat>(*sigma_resid, (*cross_cov), chol_fact_sigma_ip_[cluster_i], X_cluster_i, psi_inv_X,
+								NaN_found, num_data_per_cluster_[cluster_i], (int)X_cluster_i.cols(), cg_max_num_it, cg_delta_conv_,
 								cg_preconditioner_type_, chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 							last_psi_inv_X_ = psi_inv_X;
 							if (NaN_found) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 							}
 						}
-						XT_psi_inv_X = X.transpose() * psi_inv_X;
+						XT_psi_inv_X += X_cluster_i.transpose() * psi_inv_X;
 					}
 					else {
 						if (only_grouped_REs_use_woodbury_identity_) {
-							den_mat_t ZtX = Zt_[cluster_i] * (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all);
+							den_mat_t ZtX = Zt_[cluster_i] * X_cluster_i;
 							den_mat_t MInvSqrtZtX;
 							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 								MInvSqrtZtX = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * ZtX;
@@ -4510,12 +4511,11 @@ namespace GPBoost {
 							else {
 								TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_facts_[cluster_i], ZtX, MInvSqrtZtX, false);
 							}
-							XT_psi_inv_X += ((den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all)).transpose() * (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all) -
-								MInvSqrtZtX.transpose() * MInvSqrtZtX;
+							XT_psi_inv_X += (X_cluster_i).transpose() * X_cluster_i - MInvSqrtZtX.transpose() * MInvSqrtZtX;
 						}
 						else {
 							den_mat_t MInvSqrtX;
-							TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_facts_[cluster_i], (den_mat_t)X(data_indices_per_cluster_[cluster_i], Eigen::all), MInvSqrtX, false);
+							TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_facts_[cluster_i], X_cluster_i, MInvSqrtX, false);
 							XT_psi_inv_X += MInvSqrtX.transpose() * MInvSqrtX;
 						}
 					}
