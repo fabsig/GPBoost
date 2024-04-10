@@ -4422,7 +4422,7 @@ namespace GPBoost {
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
 		int MAXIT_MODE_NEWTON_ = 100000;//1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
-		double DELTA_REL_CONV_ = 1e-6;
+		double DELTA_REL_CONV_ = 1e-8;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
 		int MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_ = 20;
 		/*! \brief If true, a quasi-Newton method instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
