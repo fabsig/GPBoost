@@ -630,12 +630,20 @@ namespace GPBoost {
 			if (optimizer_cov_pars_ == "lbfgs_not_profile_out_nugget") {
 				optimizer_cov_pars_ = "lbfgs";
 			}
-			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
-				if (coef_optimizer_has_been_set_ && optimizer_coef_ != optimizer_cov_pars_) {
-					Log::REWarning("'%s' is also used for estimating regression coefficients (optimizer_coef = '%s' is ignored) ",
+			if (OPTIM_EXTERNAL_.find(optimizer_coef_) != OPTIM_EXTERNAL_.end()) {
+				if (optimizer_coef_ != optimizer_cov_pars_) {
+					Log::REFatal("Cannot use optimizer_cov = '%s' when optimizer_coef = '%s' ",
 						optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
 				}
-				optimizer_coef_ = optimizer_cov_pars_;
+			}
+			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
+				if (OPTIM_EXTERNAL_SUPPORT_WLS_.find(optimizer_cov_pars_) == OPTIM_EXTERNAL_SUPPORT_WLS_.end()) {
+					if (coef_optimizer_has_been_set_ && optimizer_coef_ != optimizer_cov_pars_) {
+						Log::REWarning("'%s' is also used for estimating regression coefficients (optimizer_coef = '%s' is ignored) ",
+							optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
+					}
+					optimizer_coef_ = optimizer_cov_pars_;
+				}
 			}
 			bool gradient_contains_error_var = gauss_likelihood_ && !profile_out_marginal_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
 			has_intercept_ = false; //If true, the covariates contain an intercept column (only relevant if there are covariates)
@@ -767,11 +775,11 @@ namespace GPBoost {
 				y_vec_ = Eigen::Map<const vec_t>(y_data, num_data_);
 			}
 			// Initialization of linear regression coefficients related variables
-			vec_t beta, beta_lag1, beta_init, beta_after_grad_aux, beta_after_grad_aux_lag1, beta_before_lr_cov_small, beta_before_lr_aux_pars_small, fixed_effects_vec;
+			vec_t beta_lag1, beta_init, beta_after_grad_aux, beta_after_grad_aux_lag1, beta_before_lr_cov_small, beta_before_lr_aux_pars_small, fixed_effects_vec;
 			scale_covariates_ = false;
 			if (has_covariates_) {
 				scale_covariates_ = (optimizer_coef_ == "gradient_descent" || (optimizer_cov_pars_ == "bfgs_optim_lib" && !gauss_likelihood_) ||
-					optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") && 
+					((optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") && optimizer_coef_ != "wls")) &&
 					!(has_intercept_ && num_coef_ == 1);//if there is only an intercept, we don't need to scale the covariates
 				// Scale covariates (in order that the gradient is less sample-size dependent)
 				if (scale_covariates_) {
@@ -792,12 +800,12 @@ namespace GPBoost {
 						scale_transf_[intercept_col_] = 1.;
 					}
 				}
-				beta = vec_t(num_coef_);
+				beta_ = vec_t(num_coef_);
 				if (init_coef == nullptr) {
-					beta.setZero();
+					beta_.setZero();
 				}
 				else {
-					beta = Eigen::Map<const vec_t>(init_coef, num_covariates);
+					beta_ = Eigen::Map<const vec_t>(init_coef, num_covariates);
 				}
 				if (init_coef == nullptr || only_intercept_for_GPBoost_algo) {
 					if (has_intercept_) {
@@ -805,21 +813,21 @@ namespace GPBoost {
 						if (y_data == nullptr) {
 							vec_t y_temp(num_data_);
 							GetY(y_temp.data());
-							beta[intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_temp.data(), num_data_, tot_var, fixed_effects);
+							beta_[intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_temp.data(), num_data_, tot_var, fixed_effects);
 						}
 						else {
-							beta[intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_, tot_var, fixed_effects);
+							beta_[intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_, tot_var, fixed_effects);
 						}
 					}
 				}
 				else if (scale_covariates_) {
 					// transform initial coefficients
-					TransformCoef(beta, beta);
+					TransformCoef(beta_, beta_);
 				}
-				beta_after_grad_aux = beta;
-				beta_after_grad_aux_lag1 = beta;
-				beta_init = beta;
-				UpdateFixedEffects(beta, fixed_effects, fixed_effects_vec);
+				beta_after_grad_aux = beta_;
+				beta_after_grad_aux_lag1 = beta_;
+				beta_init = beta_;
+				UpdateFixedEffectsInternal(fixed_effects, fixed_effects_vec);
 				if (!gauss_likelihood_) {
 					fixed_effects_ptr = fixed_effects_vec.data();
 				}
@@ -859,7 +867,7 @@ namespace GPBoost {
 				Log::REDebug("GPModel: start finding optimal learning rate ... ");
 			}
 			Log::REDebug("GPModel: initial parameters: ");
-			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, cov_aux_pars.data() + num_cov_par_, true);
+			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, true);
 			// Initialize optimizer:
 			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian likelihoods)
 			// - calculate initial value of objective function
@@ -902,10 +910,11 @@ namespace GPBoost {
 				}
 			}
 			bool na_or_inf_occurred = false;
+			bool profile_out_coef_optim_external = optimizer_coef_ == "wls" && gauss_likelihood_;
 			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
-				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta, fixed_effects, max_iter_,
+				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
-					optimizer_cov_pars_, profile_out_marginal_variance_,
+					optimizer_cov_pars_, profile_out_marginal_variance_, profile_out_coef_optim_external,
 					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_);
 				// Check for NA or Inf
 				if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
@@ -917,8 +926,8 @@ namespace GPBoost {
 						}
 					}
 					if (has_covariates_ && !na_or_inf_occurred) {
-						for (int i = 0; i < (int)beta.size(); ++i) {
-							if (std::isnan(beta[i]) || std::isinf(beta[i])) {
+						for (int i = 0; i < (int)beta_.size(); ++i) {
+							if (std::isnan(beta_[i]) || std::isinf(beta_[i])) {
 								na_or_inf_occurred = true;
 							}
 						}
@@ -936,20 +945,20 @@ namespace GPBoost {
 					cov_aux_pars_lag1 = cov_aux_pars;
 					// Update linear regression coefficients using gradient descent or generalized least squares (the latter option only for Gaussian data)
 					if (has_covariates_) {
-						beta_lag1 = beta;
+						beta_lag1 = beta_;
 						if (optimizer_coef_ == "gradient_descent") {// one step of gradient descent
 							vec_t grad_beta;
 							// Calculate gradient for linear regression coefficients
 							vec_t unused_dummy;
 							CalcGradPars(cov_aux_pars, cov_aux_pars[0], false, true, unused_dummy, grad_beta, false, false, fixed_effects_ptr, false);
-							AvoidTooLargeLearningRateCoef(beta, grad_beta);
-							CalcDirDerivArmijoAndLearningRateConstChangeCoef(grad_beta, beta, beta_after_grad_aux, use_nesterov_acc_coef);
+							AvoidTooLargeLearningRateCoef(beta_, grad_beta);
+							CalcDirDerivArmijoAndLearningRateConstChangeCoef(grad_beta, beta_, beta_after_grad_aux, use_nesterov_acc_coef);
 							if (called_in_GPBoost_algorithm && reuse_learning_rates_from_previous_call && 
 								coef_have_been_estimated_once_ && optimizer_coef_ == "gradient_descent") {//potentially increase learning rates again in GPBoost algorithm
 								PotentiallyIncreaseLearningRateCoefForGPBoostAlgorithm();
 							}//end called_in_GPBoost_algorithm / potentially increase learning rates again
 							// Update linear regression coefficients, do learning rate backtracking, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
-							UpdateLinCoef(beta, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, num_iter_, beta_after_grad_aux, beta_after_grad_aux_lag1,
+							UpdateLinCoef(beta_, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, num_iter_, beta_after_grad_aux, beta_after_grad_aux_lag1,
 								acc_rate_coef_, nesterov_schedule_version_, momentum_offset_, fixed_effects, fixed_effects_vec);
 							if (num_iter_ == 0) {
 								lr_coef_after_first_iteration_ = lr_coef_;
@@ -962,25 +971,20 @@ namespace GPBoost {
 							fixed_effects_ptr = fixed_effects_vec.data();
 							// In case lr_coef_ is very small, we monitor whether cov_aux_pars continues to change. If it does, we will reset lr_coef_ to its initial value
 							if (lr_coef_ < lr_is_small_threshold_coef_ && learn_covariance_parameters && !lr_coef_is_small) {
-								if ((beta - beta_lag1).norm() < LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * beta_lag1.norm()) {//also require that relative change in parameters is small
+								if ((beta_ - beta_lag1).norm() < LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * beta_lag1.norm()) {//also require that relative change in parameters is small
 									lr_coef_is_small = true;
 									cov_aux_pars_before_lr_coef_small = cov_aux_pars;
 								}
 							}
 						}
 						else if (optimizer_coef_ == "wls") {// coordinate descent using generalized least squares (only for Gaussian data)
-							CHECK(gauss_likelihood_);
-							SetY(y_vec_.data());
-							CalcYAux(1.);
-							UpdateCoefGLS(X_, beta);
-							// Set resid for updating covariance parameters
-							UpdateFixedEffects(beta, fixed_effects, fixed_effects_vec);
+							ProfileOutCoef(fixed_effects, fixed_effects_vec);
 							EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_aux_pars[0], neg_log_likelihood_after_lin_coef_update_);
 						}
 						// Reset lr_cov_ to its initial values in case beta changes substantially after lr_cov_ is very small
 						bool mode_hast_just_been_recalculated = false;
 						if (lr_cov_is_small && learn_covariance_parameters) {
-							if ((beta - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
+							if ((beta_ - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
 								lr_cov_ = lr_cov_after_first_iteration_;
 								lr_cov_is_small = false;
 								RecalculateModeLaplaceApprox(fixed_effects_ptr);
@@ -989,7 +993,7 @@ namespace GPBoost {
 						}
 						// Reset lr_aux_pars_ to its initial values in case beta changes substantially after lr_aux_pars_ is very small
 						if (lr_aux_pars_is_small && estimate_aux_pars_ && learn_covariance_parameters) {
-							if ((beta - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
+							if ((beta_ - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
 								lr_aux_pars_ = lr_aux_pars_after_first_iteration_;
 								lr_aux_pars_is_small = false;
 								if (!mode_hast_just_been_recalculated) {
@@ -1060,7 +1064,7 @@ namespace GPBoost {
 								LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * cov_aux_pars_lag1.segment(0, num_cov_par_).norm()) {//also require that relative change in parameters is small
 								lr_cov_is_small = true;
 								if (has_covariates_) {
-									beta_before_lr_cov_small = beta;
+									beta_before_lr_cov_small = beta_;
 								}
 								if (estimate_aux_pars_) {
 									aux_pars_before_lr_cov_small = cov_aux_pars.segment(num_cov_par_, NumAuxPars());
@@ -1074,7 +1078,7 @@ namespace GPBoost {
 									LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * cov_aux_pars_lag1.segment(num_cov_par_, NumAuxPars()).norm()) {//also require that relative change in parameters is small
 									lr_aux_pars_is_small = true;
 									if (has_covariates_) {
-										beta_before_lr_aux_pars_small = beta;
+										beta_before_lr_aux_pars_small = beta_;
 									}
 									cov_pars_before_lr_aux_pars_small = cov_aux_pars.segment(0, num_cov_par_);
 								}
@@ -1134,7 +1138,7 @@ namespace GPBoost {
 						// Check convergence
 						if (convergence_criterion_ == "relative_change_in_parameters") {
 							if (has_covariates_) {
-								if (((beta - beta_lag1).norm() <= delta_rel_conv_ * beta_lag1.norm()) && ((cov_aux_pars - cov_aux_pars_lag1).norm() < delta_rel_conv_ * cov_aux_pars_lag1.norm())) {
+								if (((beta_ - beta_lag1).norm() <= delta_rel_conv_ * beta_lag1.norm()) && ((cov_aux_pars - cov_aux_pars_lag1).norm() < delta_rel_conv_ * cov_aux_pars_lag1.norm())) {
 									terminate_optim = true;
 								}
 							}
@@ -1157,7 +1161,7 @@ namespace GPBoost {
 						if ((num_iter_ < 10 || ((num_iter_ + 1) % 10 == 0 && (num_iter_ + 1) < 100) || ((num_iter_ + 1) % 100 == 0 && (num_iter_ + 1) < 1000) ||
 							((num_iter_ + 1) % 1000 == 0 && (num_iter_ + 1) < 10000) || ((num_iter_ + 1) % 10000 == 0)) && (num_iter_ != (max_iter_ - 1)) && !terminate_optim) {
 							Log::REDebug("GPModel: parameters after optimization iteration number %d: ", num_iter_ + 1);
-							PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
+							PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
 							if (gauss_likelihood_) {
 								Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
 							}
@@ -1204,7 +1208,7 @@ namespace GPBoost {
 					"If you have used 'gradient_descent', you can also consider using a smaller learning rate ", optimizer_cov_pars_.c_str());
 				cov_aux_pars = cov_aux_pars_init;
 				if (has_covariates_) {
-					beta = beta_init;
+					beta_ = beta_init;
 				}
 				if (!gauss_likelihood_) { // reset the initial modes to 0
 					for (const auto& cluster_i : unique_clusters_) {
@@ -1212,9 +1216,9 @@ namespace GPBoost {
 					}
 				}
 				delta_rel_conv_ = delta_rel_conv_init_;
-				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta, fixed_effects, max_iter_,
+				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it,
-					learn_covariance_parameters, "nelder_mead", profile_out_marginal_variance_,
+					learn_covariance_parameters, "nelder_mead", profile_out_marginal_variance_, false,
 					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_);
 			}
 			if (num_it == max_iter_) {
@@ -1225,7 +1229,7 @@ namespace GPBoost {
 				Log::REDebug("GPModel: parameter estimation finished after %d iteration "
 					"(nb. likelihood evaluations = %d) ", num_it, num_ll_evaluations_);
 			}
-			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
+			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
 			if (gauss_likelihood_) {
 				Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
 			}
@@ -1241,7 +1245,7 @@ namespace GPBoost {
 			if (has_covariates_) {
 				if (scale_covariates_) {
 					//// transform coefficients back to original scale
-					TransformBackCoef(beta, beta);
+					TransformBackCoef(beta_, beta_);
 					//transform covariates back
 					for (int icol = 0; icol < num_coef_; ++icol) {
 						if (!has_intercept_ || icol != intercept_col_) {
@@ -1254,7 +1258,7 @@ namespace GPBoost {
 					}
 				}
 				for (int i = 0; i < num_covariates; ++i) {
-					optim_coef[i] = beta[i];
+					optim_coef[i] = beta_[i];
 				}
 			}
 			if (calc_std_dev) {
@@ -1278,7 +1282,7 @@ namespace GPBoost {
 					}
 					else {
 						//Log::REDebug("Standard deviations of linear regression coefficients for non-Gaussian likelihoods can be \"very approximative\". ");
-						CalcStdDevCoefNonGaussian(num_covariates, beta, cov_aux_pars.segment(0, num_cov_par_), fixed_effects, std_dev_beta);
+						CalcStdDevCoefNonGaussian(num_covariates, beta_, cov_aux_pars.segment(0, num_cov_par_), fixed_effects, std_dev_beta);
 					}
 					for (int i = 0; i < num_covariates; ++i) {
 						std_dev_coef[i] = std_dev_beta[i];
@@ -1760,6 +1764,39 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Profile out the linear regression coefficients (=use closed-form WLS expression)
+		* \param fixed_effects Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
+		* \param[out] fixed_effects_vec Vector of fixed effects (used only for non-Gaussian likelihoods)
+		*/
+		void ProfileOutCoef(const double* fixed_effects,
+			vec_t& fixed_effects_vec) {
+			CHECK(gauss_likelihood_);
+			CHECK(has_covariates_);
+			if (fixed_effects != nullptr) {
+				vec_t resid = y_vec_;
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_data_; ++i) {
+					resid[i] -= fixed_effects[i];
+				}
+				SetY(resid.data());
+			}
+			else {
+				SetY(y_vec_.data());
+			}
+			CalcYAux(1.);
+			UpdateCoefGLS();
+			UpdateFixedEffectsInternal(fixed_effects, fixed_effects_vec);// Set y_ to resid = y - X*beta for updating covariance parameters
+		}
+
+		/*!
+		* \brief Get beta_
+		* \param[out] beta
+		*/
+		void GetBeta(vec_t& beta) {
+			beta = beta_;
+		}
+
+		/*!
 		* \brief Return value of neg_log_likelihood_
 		* \return neg_log_likelihood_
 		*/
@@ -1839,7 +1876,7 @@ namespace GPBoost {
 		*	calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian likelihoods)
 		*	And calculate the negative log-likelihood (Gaussian data) or the negative approx. marginal log-likelihood (non-Gaussian likelihoods)
 		* \param cov_pars Covariance parameters
-		* \param fixed_effects Fixed effects component of location parameter
+		* \param fixed_effects Fixed effects component of location parameter (only used for non-Gaussian likelihoods, othetwise, this is already set before in y_)
 		*/
 		void CalcCovFactorOrModeAndNegLL(const vec_t& cov_pars,
 			const double* fixed_effects) {
@@ -1870,7 +1907,7 @@ namespace GPBoost {
 		* \brief Update fixed effects with new linear regression coefficients
 		* \param beta Linear regression coefficients
 		* \param fixed_effects Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
-		* \param fixed_effects_vec[out] Vector of fixed effects (used only for non-Gaussian likelihoods)
+		* \param[out] fixed_effects_vec Vector of fixed effects (used only for non-Gaussian likelihoods)
 		*/
 		void UpdateFixedEffects(const vec_t& beta,
 			const double* fixed_effects,
@@ -1887,6 +1924,34 @@ namespace GPBoost {
 			}
 			else {
 				fixed_effects_vec = X_ * beta;
+				if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_; ++i) {
+						fixed_effects_vec[i] += fixed_effects[i];
+					}
+				}
+			}
+		}
+
+		/*!
+		* \brief Update fixed effects with member variable linear regression coefficients beta_
+		* \param fixed_effects Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
+		* \param fixed_effects_vec[out] Vector of fixed effects (used only for non-Gaussian likelihoods)
+		*/
+		void UpdateFixedEffectsInternal(const double* fixed_effects,
+			vec_t& fixed_effects_vec) {
+			if (gauss_likelihood_) {
+				vec_t resid = y_vec_ - (X_ * beta_);
+				if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_; ++i) {
+						resid[i] -= fixed_effects[i];
+					}
+				}
+				SetY(resid.data());
+			}
+			else {
+				fixed_effects_vec = X_ * beta_;
 				if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_; ++i) {
@@ -3706,6 +3771,15 @@ namespace GPBoost {
 		vec_t loc_transf_;
 		/*! \brief Scale transformation if covariate data is scaled */
 		vec_t scale_transf_;
+		/*! \brief Linear regression coefficients */
+		vec_t beta_;
+
+		/*! \brief Variance of idiosyncratic error term (nugget effect) */
+		double sigma2_;
+		/*! \brief Quadratic form y^T Psi^-1 y (saved for avoiding double computations when profiling out sigma2 for Gaussian data) */
+		double yTPsiInvy_;
+		/*! \brief Determinant of Psi (to avoid double computations) */
+		double log_det_Psi_;
 
 		// OPTIMIZER PROPERTIES
 		/*! \brief Optimizer for covariance parameters. Internal default values are set in 'InitializeOptimSettings' */
@@ -3789,8 +3863,10 @@ namespace GPBoost {
 		double MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ = 1e-2;
 		/*! \brief true if 'optimizer_coef_' has been set */
 		bool coef_optimizer_has_been_set_ = false;
-		/*! \brief List of optimizers which are externally handled by OptimLib */
+		/*! \brief List of optimizers which use upstream extern optimizer libraries */
 		const std::set<string_t> OPTIM_EXTERNAL_{ "nelder_mead", "bfgs_optim_lib", "adam", "lbfgs", "lbfgs_linesearch_nocedal_wright" };
+		/*! \brief List of xternal optimizers which support the "wls" option for optimizer_coef_ */
+		const std::set<string_t> OPTIM_EXTERNAL_SUPPORT_WLS_{ "lbfgs", "lbfgs_linesearch_nocedal_wright" };
 		/*! \brief If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood) */
 		bool estimate_aux_pars_ = false;
 		/*! \brief True if the function 'SetOptimConfig' has been called */
@@ -4031,7 +4107,6 @@ namespace GPBoost {
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix sigma_ip + cross_cov^T * D^-1 * cross_cov used in Woodbury identity where D is given by the Preconditioner */
 		std::map<data_size_t, chol_den_mat_t> chol_fact_woodbury_preconditioner_;
 
-
 		// CLUSTERs of INDEPENDENT REALIZATIONS
 		/*! \brief Keys: Labels of independent realizations of REs/GPs, values: vectors with indices for data points */
 		std::map<data_size_t, std::vector<int>> data_indices_per_cluster_;
@@ -4041,13 +4116,6 @@ namespace GPBoost {
 		data_size_t num_clusters_;
 		/*! \brief Unique labels of independent realizations */
 		std::vector<data_size_t> unique_clusters_;
-
-		/*! \brief Variance of idiosyncratic error term (nugget effect) */
-		double sigma2_;
-		/*! \brief Quadratic form y^T Psi^-1 y (saved for avoiding double computations when profiling out sigma2 for Gaussian data) */
-		double yTPsiInvy_;
-		/*! \brief Determinant of Psi (to avoid double computations) */
-		double log_det_Psi_;
 
 		// PREDICTION
 		/*! \brief Cluster IDs for prediction */
@@ -6770,16 +6838,13 @@ namespace GPBoost {
 
 		/*!
 		* \brief Update linear fixed-effect coefficients using generalized least squares (GLS)
-		* \param X Covariate data for linear fixed-effect
-		* \param[out] beta Linear regression coefficients
 		*/
-		void UpdateCoefGLS(den_mat_t& X,
-			vec_t& beta) {
+		void UpdateCoefGLS() {
 			vec_t y_aux(num_data_);
 			GetYAux(y_aux);
 			den_mat_t XT_psi_inv_X;
-			CalcXTPsiInvX(X, XT_psi_inv_X);
-			beta = XT_psi_inv_X.llt().solve(X.transpose() * y_aux);
+			CalcXTPsiInvX(X_, XT_psi_inv_X);
+			beta_ = XT_psi_inv_X.llt().solve(X_.transpose() * y_aux);
 		}
 
 		/*!
