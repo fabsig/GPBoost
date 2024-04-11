@@ -289,7 +289,7 @@ The length of this vector needs to equal the number of training data points.}
 A fitted \code{GPModel}
 }
 \description{
-Estimates the parameters of a \code{GPModel} using maximum likelihood estimation
+Estimates the parameters of a \code{GPModel} by maximizing the marginal likelihood
 }
 \examples{
 # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples

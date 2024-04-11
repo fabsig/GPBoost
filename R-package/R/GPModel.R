@@ -2240,7 +2240,7 @@ fit <- function(gp_model, y, X, params, offset = NULL, fixed_effects = NULL) Use
 
 #' Fits a \code{GPModel}
 #'
-#' Estimates the parameters of a \code{GPModel} using maximum likelihood estimation
+#' Estimates the parameters of a \code{GPModel} by maximizing the marginal likelihood
 #'
 #' @param gp_model a \code{GPModel}
 #' @inheritParams GPModel_shared_params
@@ -2305,7 +2305,7 @@ fit.GPModel <- function(gp_model,
 
 #' Fits a \code{GPModel}
 #'
-#' Estimates the parameters of a \code{GPModel} using maximum likelihood estimation
+#' Estimates the parameters of a \code{GPModel} by maximizing the marginal likelihood
 #'
 #' @inheritParams GPModel_shared_params 
 #' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for making predictions.

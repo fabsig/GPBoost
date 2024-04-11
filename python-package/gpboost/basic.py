@@ -4727,7 +4727,7 @@ class GPModel(object):
             pass
 
     def fit(self, y, X=None, params=None, offset=None, fixed_effects=None):
-        """Fit / estimate a GPModel using maximum likelihood estimation.
+        """Fit / estimate a GPModel by maximizing the marginal likelihood
 
         Parameters
         ----------
