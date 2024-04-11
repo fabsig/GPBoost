@@ -260,7 +260,7 @@ namespace GPBoost {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
 					CreateREComponentsPPFSA(num_data_, data_indices_per_cluster_, cluster_i, gp_coords_data,
-						re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i);
+						re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false);
 					re_comps_ip_.insert({ cluster_i, re_comps_ip_cluster_i });
 					re_comps_cross_cov_.insert({ cluster_i, re_comps_cross_cov_cluster_i });
 					re_comps_resid_.insert({ cluster_i, re_comps_resid_cluster_i });
@@ -2505,7 +2505,7 @@ namespace GPBoost {
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 							std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
 							CreateREComponentsPPFSA(num_data_pred, data_indices_per_cluster_pred, cluster_i, gp_coords_data_pred,
-								re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i);
+								re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, true);
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_ip_cluster_i[j]->SetCovPars(pars);
@@ -2647,7 +2647,6 @@ namespace GPBoost {
 
 				}//end cluster_i with no observed data
 				else {
-
 					//Case 2: there exists observed data for this cluster_i
 					den_mat_t gp_coords_mat_pred;
 					std::vector<data_size_t> random_effects_indices_of_data_pred;
@@ -2822,7 +2821,7 @@ namespace GPBoost {
 					}//end gp_approx_ == "vecchia"
 					else {// not gp_approx_ == "vecchia"
 						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-							CalcPredPPFSA(cluster_i, num_data_per_cluster_pred, num_data_per_cluster_, gp_coords_mat_pred, predict_cov_mat,
+							CalcPredPPFSA(cluster_i, gp_coords_mat_pred, predict_cov_mat,
 								predict_var_or_response, predict_response, mean_pred_id, cov_mat_pred_id, var_pred_id, nsim_var_pred_, cg_delta_conv_pred_);
 						}
 						else {
@@ -5020,14 +5019,19 @@ namespace GPBoost {
 			const double* gp_coords_data,
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
-			std::vector<std::shared_ptr<RECompGP<T_mat>>>& re_comps_resid_cluster_i) {
+			std::vector<std::shared_ptr<RECompGP<T_mat>>>& re_comps_resid_cluster_i,
+			bool for_prediction_new_cluster) {
+			int num_ind_points = num_ind_points_;
+			if (for_prediction_new_cluster) {
+				num_ind_points = std::min(num_ind_points_, num_data_per_cluster_[cluster_i]);
+			}
 			if (gp_approx_ == "fitc") {
-				if (num_data_per_cluster_[cluster_i] < num_ind_points_) {
+				if (num_data_per_cluster_[cluster_i] < num_ind_points) {
 					Log::REFatal("Cannot have more inducing points than data points for '%s' approximation ", gp_approx_.c_str());
 				}
 			}
 			else if (gp_approx_ == "full_scale_tapering") {
-				if (num_data_per_cluster_[cluster_i] <= num_ind_points_) {
+				if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
 					Log::REFatal("Need to have less inducing points than data points for '%s' approximation ", gp_approx_.c_str());
 				}
 			}
@@ -5056,7 +5060,7 @@ namespace GPBoost {
 					cov_fct_taper_range_ = 1e-8;
 				}
 				gp_coords_all_unique = gp_coords_all_mat(uniques, Eigen::all);
-				if ((int)gp_coords_all_unique.rows() < num_ind_points_) {
+				if ((int)gp_coords_all_unique.rows() < num_ind_points) {
 					Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
 				}
 			}
@@ -5064,20 +5068,20 @@ namespace GPBoost {
 			den_mat_t gp_coords_ip_mat;
 			if (ind_points_selection_ == "cover_tree") {
 				CoverTree(gp_coords_all_unique, cover_tree_radius_, rng_, gp_coords_ip_mat);
-				num_ind_points_ = (int)gp_coords_ip_mat.rows();
+				num_ind_points = (int)gp_coords_ip_mat.rows();
 			}
 			else if (ind_points_selection_ == "random") {
-				SampleIntNoReplaceSort((int)gp_coords_all_unique.rows(), num_ind_points_, rng_, indices);
-				gp_coords_ip_mat.resize(num_ind_points_, gp_coords_all_mat.cols());
-				for (int j = 0; j < num_ind_points_; ++j) {
+				SampleIntNoReplaceSort((int)gp_coords_all_unique.rows(), num_ind_points, rng_, indices);
+				gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
+				for (int j = 0; j < num_ind_points; ++j) {
 					gp_coords_ip_mat.row(j) = gp_coords_all_unique.row(indices[j]);
 					//Log::REInfo("ip = %d, coords = %g, %g", indices[j], gp_coords_ip_mat.coeffRef(j,0), gp_coords_ip_mat.coeffRef(j, 1));//for debugging
 				}
 			}
 			else if (ind_points_selection_ == "kmeans++") {
-				gp_coords_ip_mat.resize(num_ind_points_, gp_coords_all_mat.cols());
+				gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
 				int max_it_kmeans = 1000;
-				kmeans_plusplus(gp_coords_all_unique, num_ind_points_, rng_, gp_coords_ip_mat, max_it_kmeans);
+				kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans);
 			}
 			else {
 				Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
@@ -7823,8 +7827,6 @@ namespace GPBoost {
 		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 		*/
 		void CalcPredPPFSA(data_size_t cluster_i,
-			std::map<data_size_t, int>& num_data_per_cluster_pred,
-			std::map<data_size_t, int>& num_data_per_cluster,
 			const den_mat_t& gp_coords_mat_pred,
 			bool calc_pred_cov,
 			bool calc_pred_var,
@@ -7834,8 +7836,8 @@ namespace GPBoost {
 			vec_t& pred_var,
 			int nsim_var_pred,
 			const double cg_delta_conv_pred) {
-			int num_data_cli = num_data_per_cluster[cluster_i];
-			int num_data_pred_cli = num_data_per_cluster_pred[cluster_i];
+			int num_REs_obs = re_comps_cross_cov_[cluster_i][0]->GetNumUniqueREs();
+			int num_REs_pred = (int)gp_coords_mat_pred.rows();
 			// Initialization of Components C_pm & C_pn & C_pp
 			den_mat_t cross_cov_pred_ip, chol_ip_cross_cov_ip_pred;
 			T_mat sigma_resid_pred_obs, cross_dist_resid, sigma_resid_pred, cross_dist_resid_pred;
@@ -7872,20 +7874,20 @@ namespace GPBoost {
 			else if (gp_approx_ == "fitc") {//check whether and "FITC diagonal" correction needs to be added
 				std::vector<Triplet_t> triplets;
 				double sigma2 = sigma_ip_stable.coeffRef(0, 0);
-				std::vector<double> coords_sum(num_data_cli), coords_pred_sum(num_data_pred_cli);
+				std::vector<double> coords_sum(num_REs_obs), coords_pred_sum(num_REs_pred);
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data_cli; ++i) {
+				for (int i = 0; i < num_REs_obs; ++i) {
 					coords_sum[i] = (re_comp_cross_cov_cluster_i_pred_ip->coords_)(i, Eigen::all).sum();
 				}
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data_pred_cli; ++i) {
+				for (int i = 0; i < num_REs_pred; ++i) {
 					coords_pred_sum[i] = gp_coords_mat_pred(i, Eigen::all).sum();
 				}
 				den_mat_t sigma_ip_inv_cross_cov_T;
 				re_comp_cross_cov_cluster_i_pred_ip->coords_;
 #pragma omp parallel for schedule(static)
-				for (int ii = 0; ii < num_data_pred_cli; ++ii) {
-					for (int jj = 0; jj < num_data_cli; ++jj) {
+				for (int ii = 0; ii < num_REs_pred; ++ii) {
+					for (int jj = 0; jj < num_REs_obs; ++jj) {
 						if (TwoNumbersAreEqual<double>(coords_pred_sum[ii], coords_sum[jj])) {
 							bool are_the_same = true;
 							for (int ic = 0; ic < (int)gp_coords_mat_pred.cols(); ++ic) {//loop over coordinates
@@ -7907,7 +7909,7 @@ namespace GPBoost {
 					}
 				}
 				if (has_fitc_correction) {
-					FITC_correction = sp_mat_t(num_data_pred_cli, num_data_cli);
+					FITC_correction = sp_mat_t(num_REs_pred, num_REs_obs);
 					FITC_correction.setFromTriplets(triplets.begin(), triplets.end());
 				}
 			}//end gp_approx_ == "fitc"
@@ -7928,21 +7930,21 @@ namespace GPBoost {
 				// Add unconditional variances and covarainces
 				if (calc_pred_var) {
 					if (gauss_likelihood_ && predict_response) {
-						pred_var = vec_t::Ones(num_data_pred_cli);
+						pred_var = vec_t::Ones(num_REs_pred);
 					}
 					else {
-						pred_var = vec_t::Zero(num_data_pred_cli);
+						pred_var = vec_t::Zero(num_REs_pred);
 					}
-					re_comp_cross_cov_cluster_i_pred_ip->AddPredUncondVar(pred_var.data(), num_data_pred_cli, nullptr);
+					re_comp_cross_cov_cluster_i_pred_ip->AddPredUncondVar(pred_var.data(), num_REs_pred, nullptr);
 				}
 				T_mat PP_Part;
 				if (calc_pred_cov) {
 					//unconditional covariances
-					if (num_data_pred_cli > 10000) {
+					if (num_REs_pred > 10000) {
 						Log::REInfo("The computational complexity and the storage of the predictive covariance martix heavily depend on the number of prediction location. "
 							"Therefore, if this number is large we recommend only computing the predictive variances ");
 					}
-					pred_cov = T_mat(num_data_pred_cli, num_data_pred_cli);
+					pred_cov = T_mat(num_REs_pred, num_REs_pred);
 					if (gauss_likelihood_ && predict_response) {
 						pred_cov.setIdentity();
 					}
@@ -7964,11 +7966,11 @@ namespace GPBoost {
 						pred_cov += sigma_resid_pred;
 					}
 					else if (gp_approx_ == "fitc") {
-						vec_t diagonal_resid(num_data_pred_cli);
+						vec_t diagonal_resid(num_REs_pred);
 						diagonal_resid.setZero();
 						diagonal_resid = diagonal_resid.array() + sigma_ip_stable.coeffRef(0, 0);
 #pragma omp parallel for schedule(static)
-						for (int ii = 0; ii < num_data_pred_cli; ++ii) {
+						for (int ii = 0; ii < num_REs_pred; ++ii) {
 							diagonal_resid[ii] -= chol_ip_cross_cov_ip_pred.col(ii).array().square().sum();
 						}
 						pred_cov += diagonal_resid.asDiagonal();
@@ -7987,7 +7989,7 @@ namespace GPBoost {
 							if (gp_approx_ == "iterative") {
 								den_mat_t sigma_inv_sigma_obs_pred;
 								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], sigma_obs_pred_dense, sigma_inv_sigma_obs_pred, NaN_found,
-									num_data_cli, num_data_pred_cli, cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
+									num_REs_obs, num_REs_pred, cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 									chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								ConvertTo_T_mat_FromDense<T_mat>(sigma_obs_pred_dense.transpose() * sigma_inv_sigma_obs_pred, cross_cov_part);
 								pred_cov -= cross_cov_part;
@@ -8007,9 +8009,9 @@ namespace GPBoost {
 								// Stochastic Diagonal
 								// Sample vectors
 								cg_generator_ = RNG_t(seed_rand_vec_trace_);
-								den_mat_t rand_vec_probe_init(num_data_pred_cli, nsim_var_pred);
+								den_mat_t rand_vec_probe_init(num_REs_pred, nsim_var_pred);
 								GenRandVecDiag(cg_generator_, rand_vec_probe_init);
-								den_mat_t rand_vec_probe_pred(num_data_cli, nsim_var_pred);
+								den_mat_t rand_vec_probe_pred(num_REs_obs, nsim_var_pred);
 								rand_vec_probe_pred.setZero();
 								// sigma_resid_pred^T * rand_vec_probe_init
 #pragma omp parallel for schedule(static)   
@@ -8017,12 +8019,12 @@ namespace GPBoost {
 									rand_vec_probe_pred.col(i) += sigma_resid_pred_obs.transpose() * rand_vec_probe_init.col(i);
 								}
 								// sigma_resid^-1 * rand_vec_probe_pred
-								den_mat_t sigma_resid_inv_pv(num_data_cli, rand_vec_probe_pred.cols());
-								CGFSA_RESID<T_mat>(*sigma_resid, rand_vec_probe_pred, sigma_resid_inv_pv, NaN_found, num_data_cli, (int)rand_vec_probe_pred.cols(),
+								den_mat_t sigma_resid_inv_pv(num_REs_obs, rand_vec_probe_pred.cols());
+								CGFSA_RESID<T_mat>(*sigma_resid, rand_vec_probe_pred, sigma_resid_inv_pv, NaN_found, num_REs_obs, (int)rand_vec_probe_pred.cols(),
 									cg_max_num_it_tridiag_, cg_delta_conv_pred,
 									cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i]);
 								// sigma_resid_pred * sigma_resid_inv_pv
-								den_mat_t rand_vec_probe_final(num_data_pred_cli, sigma_resid_inv_pv.cols());
+								den_mat_t rand_vec_probe_final(num_REs_pred, sigma_resid_inv_pv.cols());
 								rand_vec_probe_final.setZero();
 #pragma omp parallel for schedule(static)   
 								for (int i = 0; i < rand_vec_probe_final.cols(); ++i) {
@@ -8031,15 +8033,15 @@ namespace GPBoost {
 								den_mat_t sample_sigma = rand_vec_probe_final.cwiseProduct(rand_vec_probe_init);
 								vec_t stoch_diag = sample_sigma.rowwise().mean();
 								// Exact Diagonal (Preconditioner)
-								vec_t diag_P(num_data_pred_cli);
+								vec_t diag_P(num_REs_pred);
 								T_mat sigma_resid_pred_obs_pred_var = sigma_resid_pred_obs * (diagonal_approx_inv_preconditioner_[cluster_i].cwiseSqrt()).asDiagonal();
 								T_mat* R_ptr_2 = &sigma_resid_pred_obs_pred_var;
 #pragma omp parallel for schedule(static)   
-								for (int i = 0; i < num_data_pred_cli; ++i) {
+								for (int i = 0; i < num_REs_pred; ++i) {
 									diag_P[i] = ((vec_t)(R_ptr_2->row(i))).array().square().sum();
 								}
 								// Stochastic Diagonal (Preconditioner)
-								den_mat_t rand_vec_probe_cv(num_data_pred_cli, rand_vec_probe_init.cols());
+								den_mat_t rand_vec_probe_cv(num_REs_pred, rand_vec_probe_init.cols());
 								rand_vec_probe_cv.setZero();
 								den_mat_t preconditioner_rand_vec_probe = diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * rand_vec_probe_pred;
 #pragma omp parallel for schedule(static)   
@@ -8055,14 +8057,14 @@ namespace GPBoost {
 								stoch_diag += c_opt.cwiseProduct(diag_P - diag_P_stoch);
 								pred_var -= stoch_diag;
 								// CG: sigma_resid^-1 * cross_cov
-								den_mat_t sigma_resid_inv_cross_cov(num_data_cli, (*cross_cov).cols());
-								CGFSA_RESID<T_mat>(*sigma_resid, *cross_cov, sigma_resid_inv_cross_cov, NaN_found, num_data_cli, (int)(*cross_cov).cols(),
+								den_mat_t sigma_resid_inv_cross_cov(num_REs_obs, (*cross_cov).cols());
+								CGFSA_RESID<T_mat>(*sigma_resid, *cross_cov, sigma_resid_inv_cross_cov, NaN_found, num_REs_obs, (int)(*cross_cov).cols(),
 									cg_max_num_it_tridiag_, cg_delta_conv_pred,
 									cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i]);
 								// CG: sigma^-1 * cross_cov
-								den_mat_t sigma_inv_cross_cov(num_data_cli, (*cross_cov).cols());
+								den_mat_t sigma_inv_cross_cov(num_REs_obs, (*cross_cov).cols());
 								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], *cross_cov, sigma_inv_cross_cov, NaN_found,
-									num_data_cli, (int)(*cross_cov).cols(), cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
+									num_REs_obs, (int)(*cross_cov).cols(), cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 									chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								// sigma_ip^-1 * cross_cov_pred
 								den_mat_t sigma_ip_inv_cross_cov_pred_T = chol_fact_sigma_ip_[cluster_i].solve(cross_cov_pred_ip.transpose());
@@ -8071,7 +8073,7 @@ namespace GPBoost {
 								// cross_cov^T * sigma^-1 * cross_cov * sigma_ip^-1 * cross_cov_pred
 								den_mat_t auto_cross_cov_sigma_ip_inv_cross_cov_pred = auto_cross_cov * sigma_ip_inv_cross_cov_pred_T;
 								// sigma_resid_pred * sigma^-1 * cross_cov
-								den_mat_t sigma_resid_pred_obs_sigma_inv_cross_cov(num_data_pred_cli, (*cross_cov).cols());
+								den_mat_t sigma_resid_pred_obs_sigma_inv_cross_cov(num_REs_pred, (*cross_cov).cols());
 #pragma omp parallel for schedule(static)   
 								for (int i = 0; i < sigma_resid_pred_obs_sigma_inv_cross_cov.cols(); ++i) {
 									sigma_resid_pred_obs_sigma_inv_cross_cov.col(i) = sigma_resid_pred_obs * sigma_inv_cross_cov.col(i);
@@ -8085,13 +8087,13 @@ namespace GPBoost {
 								Woodburry_fact_chol.compute(sigma_ip_stable + cross_cov_sigma_resid_inv_cross_cov);
 								den_mat_t Woodburry_fact;
 								TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(Woodburry_fact_chol, sigma_resid_inv_cross_cov.transpose(), Woodburry_fact, false);
-								den_mat_t sigma_resid_pred_obs_WF(num_data_pred_cli, (*cross_cov).cols());
+								den_mat_t sigma_resid_pred_obs_WF(num_REs_pred, (*cross_cov).cols());
 #pragma omp parallel for schedule(static)   
 								for (int i = 0; i < sigma_resid_pred_obs_WF.cols(); ++i) {
 									sigma_resid_pred_obs_WF.col(i) = sigma_resid_pred_obs * Woodburry_fact.transpose().col(i);
 								}
 #pragma omp parallel for schedule(static)
-								for (int i = 0; i < num_data_pred_cli; ++i) {
+								for (int i = 0; i < num_REs_pred; ++i) {
 									pred_var[i] -= sigma_ip_inv_cross_cov_pred_T.col(i).dot(auto_cross_cov_sigma_ip_inv_cross_cov_pred.col(i))
 										+ 2 * sigma_ip_inv_cross_cov_pred_T.col(i).dot(sigma_resid_pred_obs_sigma_inv_cross_cov.transpose().col(i))
 										- sigma_resid_pred_obs_WF.transpose().col(i).array().square().sum();
@@ -8108,19 +8110,19 @@ namespace GPBoost {
 								// cross_cov^T * sigma_resid^-1 * cross_cov * sigma_ip^-1 * cross_cov_pred
 								den_mat_t auto_cross_cov = ((*cross_cov).transpose() * sigma_resid_inv_cross_cov) * sigma_ip_inv_cross_cov_pred_T;
 								// Sigma_resid_pred * sigma_resid^-1 * cross_cov
-								den_mat_t sigma_resid_pred_obs_sigma_resid_inv_cross_cov(num_data_pred_cli, (*cross_cov).cols());
+								den_mat_t sigma_resid_pred_obs_sigma_resid_inv_cross_cov(num_REs_pred, (*cross_cov).cols());
 #pragma omp parallel for schedule(static)   
 								for (int i = 0; i < sigma_resid_pred_obs_sigma_resid_inv_cross_cov.cols(); ++i) {
 									sigma_resid_pred_obs_sigma_resid_inv_cross_cov.col(i) = sigma_resid_pred_obs * sigma_resid_inv_cross_cov.col(i);
 								}
 #pragma omp parallel for schedule(static)
-								for (int i = 0; i < num_data_pred_cli; ++i) {
+								for (int i = 0; i < num_REs_pred; ++i) {
 									pred_var[i] -= 2 * sigma_ip_inv_cross_cov_pred_T.col(i).dot(sigma_resid_pred_obs_sigma_resid_inv_cross_cov.transpose().col(i))
 										+ auto_cross_cov.col(i).dot(sigma_ip_inv_cross_cov_pred_T.col(i));
 								}
 								vec_t sigma_resid_inv_sigma_resid_pred_col;
 								T_mat* R_ptr = &sigma_resid_pred_obs;
-								for (int i = 0; i < num_data_pred_cli; ++i) {
+								for (int i = 0; i < num_REs_pred; ++i) {
 									TriangularSolveGivenCholesky<T_chol, T_mat, vec_t, vec_t>(chol_fact_resid_[cluster_i], ((vec_t)(R_ptr->row(i))).transpose(), sigma_resid_inv_sigma_resid_pred_col, false);
 									pred_var[i] -= sigma_resid_inv_sigma_resid_pred_col.array().square().sum();
 								}
@@ -8128,13 +8130,13 @@ namespace GPBoost {
 								den_mat_t Woodburry_fact_sigma_resid_inv_cross_cov;
 								TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_[cluster_i], sigma_resid_inv_cross_cov.transpose(), Woodburry_fact_sigma_resid_inv_cross_cov, false);
 								den_mat_t auto_cross_cov_pred = (Woodburry_fact_sigma_resid_inv_cross_cov * (*cross_cov)) * sigma_ip_inv_cross_cov_pred_T;
-								den_mat_t sigma_resid_pred_obs_Woodburry_fact(num_data_pred_cli, (*cross_cov).cols());
+								den_mat_t sigma_resid_pred_obs_Woodburry_fact(num_REs_pred, (*cross_cov).cols());
 #pragma omp parallel for schedule(static)   
 								for (int i = 0; i < sigma_resid_pred_obs_Woodburry_fact.cols(); ++i) {
 									sigma_resid_pred_obs_Woodburry_fact.col(i) = sigma_resid_pred_obs * Woodburry_fact_sigma_resid_inv_cross_cov.transpose().col(i);
 								}
 #pragma omp parallel for schedule(static)
-								for (int i = 0; i < num_data_pred_cli; ++i) {
+								for (int i = 0; i < num_REs_pred; ++i) {
 									pred_var[i] += 2 * auto_cross_cov_pred.col(i).dot(sigma_resid_pred_obs_Woodburry_fact.transpose().col(i))
 										+ auto_cross_cov_pred.col(i).array().square().sum()
 										+ sigma_resid_pred_obs_Woodburry_fact.transpose().col(i).array().square().sum();
@@ -8167,12 +8169,12 @@ namespace GPBoost {
 						}//end calc_pred_cov
 						if (calc_pred_var) {
 #pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_data_pred_cli; ++i) {
+							for (int i = 0; i < num_REs_pred; ++i) {
 								pred_var[i] -= M_aux_1.col(i).dot(sigma_ip_inv_cross_cov_pred_T.col(i)) - woodburry_part_sqrt.col(i).array().square().sum();
 							}
 							if (has_fitc_correction) {
 #pragma omp parallel for schedule(static)
-								for (int i = 0; i < num_data_pred_cli; ++i) {
+								for (int i = 0; i < num_REs_pred; ++i) {
 									pred_var[i] -= FITC_correction_diag_inv_cross_cov.row(i).dot(sigma_ip_inv_cross_cov_pred_T.col(i)) +
 										FITC_correction_diag_inv.row(i).dot(FITC_correction.row(i));
 								}
