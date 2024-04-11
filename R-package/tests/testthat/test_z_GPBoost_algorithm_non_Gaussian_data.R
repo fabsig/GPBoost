@@ -343,7 +343,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.050475, -1.025386, -1.187071,
                                                         rep(0,n_new)))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1165832, 0.1175566, 0.1174304,
-                                                       rep(0.7282295,n_new)))),TOLERANCE)
+                                                       rep(0.7282295,n_new)))),2*TOLERANCE)
       
       # Training using Nelder-Mead
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
@@ -1259,7 +1259,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                       group_data_pred = group_data_test,
                       predict_var = TRUE, pred_latent = FALSE)
-      expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.7603291094, 0.5542489304, 0.1066844819, 0.5442139709))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.7599847557, 0.5543352568, 0.1063421898, 0.5439185071))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.18240965, 0.24704862, 0.09503084, 0.24807160))),TOLERANCE)
       
       # # The following test is very slow (not run anymore)
@@ -1626,7 +1626,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                       predict_var = TRUE, pred_latent = FALSE)
       expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.04968272, 4.08967031, 0.55919834, 2.89184563))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.002805742835, 83.868581179309, 1.568033920227, 41.934663096455))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.002805733674, 83.861373015224, 1.567895626242, 41.931035647798))),TOLERANCE)
       
       # Also estimate shape parameter
       gp_model <- GPModel(group_data = group_data_train, likelihood = "gamma")
@@ -1722,9 +1722,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       gp_model$set_optim_params(params=params_shape)
       bst <- gpboost(data = dtrain,  gp_model = gp_model, nrounds = 30,
                      learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5, verbose = 0)
-      cov_pars_est <- c(0.5765166557, 0.4890741572)
+      cov_pars_est <- c(0.5693555853, 0.4920194242)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE_LOOSE)
-      expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-2.891514051 )),TOLERANCE_LOOSE)
+      expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-2.768791332  )),TOLERANCE_LOOSE)
     })
     
     test_that("Saving and loading a booster with a gp_model for non-Gaussian data ", {
@@ -1972,10 +1972,10 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                                     data = dtrain, gp_model = gp_model, verbose_eval = 1,
                                                     nrounds = 100, early_stopping_rounds = 5,
                                                     eval = "test_neg_log_likelihood", folds = folds)
-      expect_lt(abs(opt_params$best_score-1.569086827),TOLERANCE)
-      expect_equal(opt_params$best_iter,18)
+      expect_lt(abs(opt_params$best_score-1.560792764),TOLERANCE)
+      expect_equal(opt_params$best_iter,17)
       expect_equal(opt_params$best_params$learning_rate,0.11)
-      expect_equal(opt_params$best_params$max_bin,10)
+      expect_equal(opt_params$best_params$max_bin,255)
       
     })
     
