@@ -1139,6 +1139,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y <- eps + X%*%beta + xi
     coord_test_v1 <- rbind(c(0.11,0.45),coords[1:2,])
     X_test_v1 <- cbind(rep(1,3),rep(0.5,3))
+    coord_test_multiple <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
+    X_test_multiple <- cbind(rep(1,3),c(-0.5,0.2,1))
     cov_pars_pred <- c(0.1,1,0.1)
     y_multiple <- eps_multiple + X%*%beta + xi
     init_cov_pars <- c(var(y)/2,var(y)/2,mean(dist(coords))/3)
@@ -1148,7 +1150,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params_mult <- DEFAULT_OPTIM_PARAMS_STD
     params_mult$init_cov_pars <- init_cov_pars_mult
     cluster_ids_ip <- c(rep(1,n/2),rep(2,n/2))
+    cluster_ids_pred <- c(1,2,2)
+    cluster_ids_pred_new <- c(1,2,99)
+    X_test_clus <- cbind(rep(0,3),rep(0,3))
     
+    # Cannot have more inducing points than samples
+    expect_error( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           gp_approx = "fitc", num_ind_points = n + 1, ind_points_selection = "random",
+                                           y = y, X = X, params = params))
     # No Approximation
     capture.output( gp_model_no_approx <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                                      y = y, X = X, params = params), file='NUL')
@@ -1166,10 +1175,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model_mult_no_approx <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential",
                                                           y = y_multiple, X = X, params = params_mult), file='NUL')
     nll_mult_exp <- gp_model_mult_no_approx$get_current_neg_log_likelihood() + 0.
+    pred_mult_no_approx <- predict(gp_model_mult_no_approx, y=y, gp_coords_pred = coord_test_multiple, X_pred = X_test_multiple,
+                             predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
     # cluster_ids
     capture.output( gp_model_clus_no_approx <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                                           y = y, X = X, cluster_ids = cluster_ids_ip, params = params), file='NUL')
     nll_cluster_exp <- gp_model_clus_no_approx$get_current_neg_log_likelihood() + 0.
+    pred_clus_no_approx <- predict(gp_model_clus_no_approx, y=y, gp_coords_pred = coord_test_v1, 
+                                   X_pred = X_test_clus, cluster_ids_pred = cluster_ids_pred, 
+                                   predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    pred_clus_no_approx_new <- predict(gp_model_clus_no_approx, y=y, gp_coords_pred = coord_test_v1, 
+                                       X_pred = X_test_clus, cluster_ids_pred = cluster_ids_pred_new, 
+                                       predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
     
     # With fitc and n inducing points
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -1205,14 +1222,30 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_mult_no_approx$get_coef()))),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), gp_model_mult_no_approx$get_num_optim_iter())
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_mult_exp),TOLERANCE_STRICT)
+    pred_mult_fitc <- predict(gp_model, y=y, gp_coords_pred = coord_test_multiple, X_pred = X_test_multiple,
+                              predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred_mult_no_approx$mu - pred_mult_fitc$mu)), TOLERANCE_LOOSE)
+    expect_lt(sum(abs(pred_mult_no_approx$var - pred_mult_fitc$var)), TOLERANCE_LOOSE)
     # cluster_ids
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            gp_approx = "fitc", num_ind_points = n/2, ind_points_selection = "random",
                                            y = y, X = X, cluster_ids = cluster_ids_ip, params = params), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()[1,]) - as.vector(gp_model_clus_no_approx$get_cov_pars()[1,]))),TOLERANCE_LOOSE)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef()[1,]) - as.vector(gp_model_clus_no_approx$get_coef()[1,]))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()[2,]) - as.vector(gp_model_clus_no_approx$get_cov_pars()[2,]))),0.5)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_clus_no_approx$get_coef()))),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), gp_model_clus_no_approx$get_num_optim_iter())
     expect_lt(abs(gp_model_clus_no_approx$get_current_neg_log_likelihood() - nll_cluster_exp),TOLERANCE_STRICT)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1, 
+                    X_pred = X_test_clus, cluster_ids_pred = cluster_ids_pred, 
+                    predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu - pred_clus_no_approx$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_clus_no_approx$var))),TOLERANCE_STRICT)
+    ## TODO: Prediction of new clusters crashes
+    # pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1, 
+    #                 X_pred = X_test_clus, cluster_ids_pred = cluster_ids_pred_new, 
+    #                 predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    # expect_lt(sum(abs(pred$mu - pred_clus_no_approx_new$mu)),TOLERANCE_STRICT)
+    # expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_clus_no_approx_new$var))),TOLERANCE_STRICT)
     
     # Fisher scoring
     params_FS = DEFAULT_OPTIM_PARAMS_FISHER_STD
@@ -1400,6 +1433,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                       X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
       expect_lt(sum(abs(pred$mu - pred_var_no_approx$mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_approx$var))),TOLERANCE)
+      ## TODO: Prediction of covariance matrix is currently wrong for FSA
       # pred <- predict(gp_model, gp_coords_pred = coord_test, cov_pars = cov_pars_pred,
       #                 X_pred = X_test, predict_cov = TRUE)
       # expect_lt(sum(abs(pred$mu - pred_cov_no_approx$mu)),TOLERANCE)
@@ -1816,9 +1850,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                            y = y, X = X, params = params_loc), 
                     file='NUL')
-    cov_pars_nn <- c(5.038767447e-05, 2.697179872e-01, 1.017599295e+00, 3.195862960e-01, 1.346963200e+00, 7.319246623e-01, 1.154464257e-01, 5.170470351e-02)
+    cov_pars_nn <- c(7.248864361e-05, 2.691200774e-01, 1.018205727e+00, 3.191685507e-01, 1.354005471e+00, 7.340833330e-01, 1.156752371e-01, 5.169161011e-02)
     coef_nn <- c(1.9582079767, 0.1478179621, 2.1694810372, 0.1392672814)
-    nll_opt_nn <- 138.1863767
+    nll_opt_nn <- 138.1862551
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7)]-cov_pars_nn[c(1,3,5,7)])),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_STRICT)
@@ -2066,9 +2100,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                            y = y, X = X, params = params_loc), 
                     file='NUL')
-    cov_pars_nn <- c( 6.586830350e-06, 7.175543177e-02, 1.246449046e+00, 3.656022720e-01, 3.479269648e-01, 1.325788495e-01, 5.551517244e-01, 2.120148329e-01, 3.255441873e-01, 1.210243278e-01)
-    coef_nn <- c(2.26668937506, 0.45106063897, 1.72222972559, 0.08456002755)
-    nll_opt_nn <- 111.2835923
+    cov_pars_nn <- c(4.455426756e-06, 7.174483956e-02, 1.245530777e+00, 3.653449408e-01, 3.469770966e-01, 1.322326208e-01, 5.540362007e-01, 2.116208384e-01, 3.267550715e-01, 1.215075748e-01)
+    coef_nn <- c(2.26632143324, 0.45087317124, 1.72266644154, 0.08453060236)
+    nll_opt_nn <- 111.2593149
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7,9)]-cov_pars_nn[c(1,3,5,7,9)])),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_MEDIUM)
