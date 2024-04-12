@@ -308,6 +308,13 @@ namespace GPBoost {
 		REModelTemplate(const REModelTemplate&) = delete;
 
 		/*!
+		* \brief Returns true if the likelihood is Gaussian
+		*/
+		bool IsGaussLikelihood() const {
+			return(gauss_likelihood_);
+		}
+
+		/*!
 		* \brief Returns the type of likelihood
 		*/
 		string_t GetLikelihood() {
@@ -3775,7 +3782,7 @@ namespace GPBoost {
 		vec_t beta_;
 
 		/*! \brief Variance of idiosyncratic error term (nugget effect) */
-		double sigma2_;
+		double sigma2_ = 1.;//initialize with 1. to avoid valgrind false positives in EvalLLforLBFGSpp() in optim_utils.h
 		/*! \brief Quadratic form y^T Psi^-1 y (saved for avoiding double computations when profiling out sigma2 for Gaussian data) */
 		double yTPsiInvy_;
 		/*! \brief Determinant of Psi (to avoid double computations) */

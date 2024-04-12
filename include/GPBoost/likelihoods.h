@@ -1597,7 +1597,7 @@ namespace GPBoost {
 					break;
 				}
 			}
-			if (!has_NA_or_Inf) {
+			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par_ptr);
 				diag_Wsqrt.array() = second_deriv_neg_ll_.array().sqrt();
@@ -1698,7 +1698,7 @@ namespace GPBoost {
 					break;
 				}
 			}//end mode finding algorithm
-			if (!has_NA_or_Inf) {
+			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data());
 				SigmaI_plus_ZtWZ = SigmaI + Zt * second_deriv_neg_ll_.asDiagonal() * Z;
@@ -1780,7 +1780,7 @@ namespace GPBoost {
 					break;
 				}
 			}//end mode finding algorithm
-			if (!has_NA_or_Inf) {
+			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data());
 				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_SigmaI_plus_ZtWZ_, true);
@@ -1985,7 +1985,7 @@ namespace GPBoost {
 					break;
 				}
 			} // end loop for mode finding
-			if (!has_NA_or_Inf) {
+			if (!has_NA_or_Inf) {//calculate determinant
 				mode_has_been_calculated_ = true;
 				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
@@ -2149,7 +2149,7 @@ namespace GPBoost {
 					break;
 				}
 			}//end for loop Newton's method
-			if (!has_NA_or_Inf) {
+			if (!has_NA_or_Inf) {//calculate determinant
 				mode_has_been_calculated_ = true;
 				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;

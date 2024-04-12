@@ -64,7 +64,7 @@ namespace GPBoost {
 		OptDataOptimLib<T_mat, T_chol>* objfn_data = reinterpret_cast<OptDataOptimLib<T_mat, T_chol>*>(opt_data);
 		REModelTemplate<T_mat, T_chol>* re_model_templ_ = objfn_data->re_model_templ_;
 		double neg_log_likelihood = 9999999999;
-		bool gradient_contains_error_var = re_model_templ_->GetLikelihood() == "gaussian" && !(objfn_data->profile_out_marginal_variance_);//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
+		bool gradient_contains_error_var = re_model_templ_->IsGaussLikelihood() && !(objfn_data->profile_out_marginal_variance_);//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
 		bool has_covariates = re_model_templ_->HasCovariates();
 		bool should_print_trace = false;
 		bool should_redetermine_neighbors_vecchia = false;
@@ -129,7 +129,7 @@ namespace GPBoost {
 			Log::REDebug("GPModel: parameters after optimization iteration number %d: ", (int)objfn_data->settings_->opt_iter + 1);
 			re_model_templ_->PrintTraceParameters(cov_pars, beta, aux_pars_ptr, objfn_data->learn_cov_aux_pars_);
 			if ((*gradient).size() == 3) {
-				if (re_model_templ_->GetLikelihood() == "gaussian") {
+				if (re_model_templ_->IsGaussLikelihood()) {
 					Log::REDebug("Negative log-likelihood: %g", (*gradient)[2]);
 				}
 				else {
@@ -188,7 +188,7 @@ namespace GPBoost {
 			}
 			if (calc_likelihood || gradient) {
 				// Check for NA or Inf
-				if (re_model_templ_->GetLikelihood() != "gaussian") {
+				if (!(re_model_templ_->IsGaussLikelihood())) {
 					if (std::isnan(neg_log_likelihood) || std::isinf(neg_log_likelihood)) {
 						re_model_templ_->ResetLaplaceApproxModeToPreviousValue();
 					}
@@ -229,10 +229,10 @@ namespace GPBoost {
 			profile_out_marginal_variance_ = profile_out_marginal_variance;
 			profile_out_regression_coef_ = profile_out_regression_coef;
 			if (profile_out_marginal_variance_) {
-				CHECK(re_model_templ_->GetLikelihood() == "gaussian");
+				CHECK(re_model_templ_->IsGaussLikelihood());
 			}
 			if (profile_out_regression_coef_) {
-				CHECK(re_model_templ_->GetLikelihood() == "gaussian");
+				CHECK(re_model_templ_->IsGaussLikelihood());
 			}
 		}
 		double operator()(const vec_t& pars,
@@ -242,7 +242,7 @@ namespace GPBoost {
 			double neg_log_likelihood = 1e99;
 			vec_t cov_pars, beta, fixed_effects_vec, aux_pars;
 			const double* fixed_effects_ptr = nullptr;
-			bool gradient_contains_error_var = re_model_templ_->GetLikelihood() == "gaussian" && !profile_out_marginal_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
+			bool gradient_contains_error_var = re_model_templ_->IsGaussLikelihood() && !profile_out_marginal_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
 			bool estimate_coef_using_bfgs = re_model_templ_->HasCovariates() && !profile_out_regression_coef_;
 			bool estimate_coef_using_wls = re_model_templ_->HasCovariates() && profile_out_regression_coef_;
 			// Determine number of covariance and linear regression coefficient parameters
@@ -288,7 +288,7 @@ namespace GPBoost {
 			}
 			// Calculate objective function
 			if (eval_likelihood) {
-				if (re_model_templ_->GetLikelihood() == "gaussian") {
+				if (re_model_templ_->IsGaussLikelihood()) {
 					if (estimate_coef_using_wls) {
 						re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
 						re_model_templ_->ProfileOutCoef(fixed_effects_, fixed_effects_vec);//this sets y_ to resid = y - X*beta - fixed_effcts
@@ -296,6 +296,7 @@ namespace GPBoost {
 					}
 					if(learn_cov_aux_pars_) {
 						if (profile_out_marginal_variance_) {
+							//calculate yTPsiInvy for profiling out the nugget variance below. Note that the nugget variance used here is irrelvant. The 'neg_log_likelihood' is recalculated below with the correct sigma2
 							if (estimate_coef_using_wls) {
 								re_model_templ_->EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_pars[0], neg_log_likelihood);
 							}
@@ -318,7 +319,7 @@ namespace GPBoost {
 					else {// ! learn_cov_aux_pars_
 						re_model_templ_->EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_pars[0], neg_log_likelihood);
 					}
-				}//end re_model_templ_->GetLikelihood() == "gaussian"
+				}//end re_model_templ_->IsGaussLikelihood()
 				else {// non-Gaussian likelihood
 					re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
 					neg_log_likelihood = re_model_templ_->GetNegLogLikelihood();
@@ -341,7 +342,7 @@ namespace GPBoost {
 				}
 			}//end calc_gradient
 			// Check for NA or Inf
-			if (re_model_templ_->GetLikelihood() != "gaussian") {
+			if (!(re_model_templ_->IsGaussLikelihood())) {
 				if (std::isnan(neg_log_likelihood) || std::isinf(neg_log_likelihood)) {
 					re_model_templ_->ResetLaplaceApproxModeToPreviousValue();
 				}
@@ -447,7 +448,7 @@ namespace GPBoost {
 			}
 			Log::REDebug("GPModel: parameters after optimization iteration number %d: ", iter);
 			re_model_templ_->PrintTraceParameters(cov_pars, beta, aux_pars_ptr, learn_cov_aux_pars_);
-			if (re_model_templ_->GetLikelihood() == "gaussian") {
+			if (re_model_templ_->IsGaussLikelihood()) {
 				Log::REDebug("Negative log-likelihood: %g", fx);
 			}
 			else {
