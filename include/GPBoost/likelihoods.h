@@ -1458,6 +1458,51 @@ namespace GPBoost {
 		}//end CapChangeModeUpdateNewton
 
 		/*!
+		* \brief Checks whether the mode finding algorithm has converged
+		* \param it Iteration number
+		* \param approx_marginal_ll_new New value of covergence criterion
+		* \param[out] approx_marginal_ll Current value of covergence criterion
+		* \param[out] terminate_optim If true, the mode finding algorithm is stopped
+		* \param[out] has_NA_or_Inf True if approx_marginal_ll_new is NA or Inf
+		*/
+		void CheckConvergenceModeFinding(int it,
+			double approx_marginal_ll_new,
+			double& approx_marginal_ll,
+			bool& terminate_optim,
+			bool& has_NA_or_Inf) {
+			if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+				has_NA_or_Inf = true;
+				Log::REDebug(NA_OR_INF_WARNING_);
+				approx_marginal_ll = approx_marginal_ll_new;
+				na_or_inf_during_last_call_to_find_mode_ = true;
+				return;
+			}
+			if (it == 0) {
+				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
+					terminate_optim = true;
+				}
+			}
+			else {
+				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+					terminate_optim = true;
+				}
+			}
+			if (terminate_optim) {
+				if (approx_marginal_ll_new < approx_marginal_ll) {
+					Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
+				}
+				approx_marginal_ll = approx_marginal_ll_new;
+				return;
+			}
+			else {
+				if ((it + 1) == MAXIT_MODE_NEWTON_) {
+					Log::REDebug(NO_CONVERGENCE_WARNING_);
+				}
+				approx_marginal_ll = approx_marginal_ll_new;
+			}
+		}//end CheckConvergenceModeFinding
+
+		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood..
 		*		Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
 		*		In the notation of the paper: "Sigma = Z*Sigma*Z^T" and "Z = Id".
@@ -1547,41 +1592,12 @@ namespace GPBoost {
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
 				a_vec_ = a_vec_new;
-				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					has_NA_or_Inf = true;
-					Log::REDebug(NA_OR_INF_WARNING_);
+				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
+				if (terminate_optim || has_NA_or_Inf) {
 					break;
 				}
-				// Check convergence
-				if (it == 0) {
-					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
-						terminate_optim = true;
-					}
-				}
-				else {
-					if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
-						terminate_optim = true;
-					}
-				}
-				if (terminate_optim) {
-					if (approx_marginal_ll_new < approx_marginal_ll) {
-						Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
-					}
-					approx_marginal_ll = approx_marginal_ll_new;
-					break;
-				}
-				else {
-					approx_marginal_ll = approx_marginal_ll_new;
-				}
 			}
-			if (it == MAXIT_MODE_NEWTON_) {
-				Log::REDebug(NO_CONVERGENCE_WARNING_);
-			}
-			if (has_NA_or_Inf) {
-				approx_marginal_ll = approx_marginal_ll_new;
-				na_or_inf_during_last_call_to_find_mode_ = true;
-			}
-			else {
+			if (!has_NA_or_Inf) {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par_ptr);
 				diag_Wsqrt.array() = second_deriv_neg_ll_.array().sqrt();
@@ -1677,41 +1693,12 @@ namespace GPBoost {
 					}
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
-				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					has_NA_or_Inf = true;
-					Log::REDebug(NA_OR_INF_WARNING_);
+				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
+				if (terminate_optim || has_NA_or_Inf) {
 					break;
-				}
-				// Check convergence
-				if (it == 0) {
-					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
-						terminate_optim = true;
-					}
-				}
-				else {
-					if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
-						terminate_optim = true;
-					}
-				}
-				if (terminate_optim) {
-					if (approx_marginal_ll_new < approx_marginal_ll) {
-						Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
-					}
-					approx_marginal_ll = approx_marginal_ll_new;
-					break;
-				}
-				else {
-					approx_marginal_ll = approx_marginal_ll_new;
 				}
 			}//end mode finding algorithm
-			if (it == MAXIT_MODE_NEWTON_) {
-				Log::REDebug(NO_CONVERGENCE_WARNING_);
-			}
-			if (has_NA_or_Inf) {
-				approx_marginal_ll = approx_marginal_ll_new;
-				na_or_inf_during_last_call_to_find_mode_ = true;
-			}
-			else {
+			if (!has_NA_or_Inf) {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data());
 				SigmaI_plus_ZtWZ = SigmaI + Zt * second_deriv_neg_ll_.asDiagonal() * Z;
@@ -1788,41 +1775,12 @@ namespace GPBoost {
 					}
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
-				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					has_NA_or_Inf = true;
-					Log::REDebug(NA_OR_INF_WARNING_);
+				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
+				if (terminate_optim || has_NA_or_Inf) {
 					break;
-				}
-				// Check convergence
-				if (it == 0) {
-					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
-						terminate_optim = true;
-					}
-				}
-				else {
-					if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
-						terminate_optim = true;
-					}
-				}
-				if (terminate_optim) {
-					if (approx_marginal_ll_new < approx_marginal_ll) {
-						Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
-					}
-					approx_marginal_ll = approx_marginal_ll_new;
-					break;
-				}
-				else {
-					approx_marginal_ll = approx_marginal_ll_new;
 				}
 			}//end mode finding algorithm
-			if (it == MAXIT_MODE_NEWTON_) {
-				Log::REDebug(NO_CONVERGENCE_WARNING_);
-			}
-			if (has_NA_or_Inf) {
-				approx_marginal_ll = approx_marginal_ll_new;
-				na_or_inf_during_last_call_to_find_mode_ = true;
-			}
-			else {
+			if (!has_NA_or_Inf) {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				CalcSecondDerivNegLogLik(y_data, y_data_int, location_par.data());
 				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_neg_ll_, diag_SigmaI_plus_ZtWZ_, true);
@@ -2022,41 +1980,12 @@ namespace GPBoost {
 					}// end loop over learnig rate halving procedure
 					mode_ = mode_new;
 				}//end Newton's method
-				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					has_NA_or_Inf = true;
-					Log::REDebug(NA_OR_INF_WARNING_);
+				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
+				if (terminate_optim || has_NA_or_Inf) {
 					break;
-				}
-				// Check convergence
-				if (it == 0) {
-					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
-						terminate_optim = true;
-					}
-				}
-				else {
-					if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
-						terminate_optim = true;
-					}
-				}
-				if (terminate_optim) {
-					if (approx_marginal_ll_new < approx_marginal_ll) {
-						Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
-					}
-					approx_marginal_ll = approx_marginal_ll_new;
-					break;
-				}
-				else {
-					approx_marginal_ll = approx_marginal_ll_new;
 				}
 			} // end loop for mode finding
-			if (it == MAXIT_MODE_NEWTON_) {
-				Log::REDebug(NO_CONVERGENCE_WARNING_);
-			}
-			if (has_NA_or_Inf) {
-				approx_marginal_ll = approx_marginal_ll_new;
-				na_or_inf_during_last_call_to_find_mode_ = true;
-			}
-			else {
+			if (!has_NA_or_Inf) {
 				mode_has_been_calculated_ = true;
 				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
@@ -2161,7 +2090,8 @@ namespace GPBoost {
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
 			double approx_marginal_ll_new = approx_marginal_ll;
-			vec_t Wsqrt_diag(dim_mode_), sigma_ip_inv_cross_cov_T_rhs(num_ip), rhs(dim_mode_), Wsqrt_Sigma_rhs(dim_mode_), vaux(num_ip), vaux2(num_ip), vaux3(dim_mode_), mode_new(dim_mode_), a_vec_new, DW_plus_I_inv_diag(dim_mode_), a_vec_update, mode_update;//auxiliary variables for updating mode
+			vec_t Wsqrt_diag(dim_mode_), sigma_ip_inv_cross_cov_T_rhs(num_ip), rhs(dim_mode_), Wsqrt_Sigma_rhs(dim_mode_), vaux(num_ip), vaux2(num_ip), vaux3(dim_mode_), 
+				mode_new(dim_mode_), a_vec_new, DW_plus_I_inv_diag(dim_mode_), a_vec_update, mode_update;//auxiliary variables for updating mode
 			den_mat_t M_aux_Woodbury(num_ip, num_ip); // = sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
 			// Start finding mode 
 			int it;
@@ -2214,41 +2144,12 @@ namespace GPBoost {
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
 				a_vec_ = a_vec_new;
-				if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					has_NA_or_Inf = true;
-					Log::REDebug(NA_OR_INF_WARNING_);
+				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
+				if (terminate_optim || has_NA_or_Inf) {
 					break;
-				}
-				// Check convergence
-				if (it == 0) {
-					if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
-						terminate_optim = true;
-					}
-				}
-				else {
-					if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
-						terminate_optim = true;
-					}
-				}
-				if (terminate_optim) {
-					if (approx_marginal_ll_new < approx_marginal_ll) {
-						Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
-					}
-					approx_marginal_ll = approx_marginal_ll_new;
-					break;
-				}
-				else {
-					approx_marginal_ll = approx_marginal_ll_new;
 				}
 			}//end for loop Newton's method
-			if (it == MAXIT_MODE_NEWTON_) {
-				Log::REDebug(NO_CONVERGENCE_WARNING_);
-			}
-			if (has_NA_or_Inf) {
-				approx_marginal_ll = approx_marginal_ll_new;
-				na_or_inf_during_last_call_to_find_mode_ = true;
-			}
-			else {
+			if (!has_NA_or_Inf) {
 				mode_has_been_calculated_ = true;
 				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
@@ -4432,7 +4333,7 @@ namespace GPBoost {
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "poisson", "gamma", "negative_binomial"};
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
-		int MAXIT_MODE_NEWTON_ = 100000;//1000;
+		int MAXIT_MODE_NEWTON_ = 1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
 		double DELTA_REL_CONV_ = 1e-8;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
