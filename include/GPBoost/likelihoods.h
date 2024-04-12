@@ -2152,6 +2152,8 @@ namespace GPBoost {
 				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 				vec_t v_aux_mode = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_);
 				mode_ = ((*cross_cov) * v_aux_mode) + (fitc_diag.asDiagonal() * a_vec_);//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since a_vec != Sigma^(-1)mode
+				// Note: avoid the inversion of Sigma = (cross_cov * sigma_ip^-1 * cross_cov^T + fitc_diag) with the Woodbury formula since fitc_diag can be zero.
+				//		 This is also the reason why we initilize with mode_ = Sigma * a_vec_ and not a_vec_ = Sigma^-1 mode_
 			}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr;
