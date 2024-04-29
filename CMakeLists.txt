@@ -54,6 +54,13 @@ elseif(MSVC)
   if(MSVC_VERSION LESS 1900)
     message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} doesn't support required C++11 features. Please use a newer MSVC.")
   endif()
+  if (MSVC_VERSION GREATER_EQUAL "1900")
+    include(CheckCXXCompilerFlag)
+    CHECK_CXX_COMPILER_FLAG("/std:c++17" _cpp_17_flag_supported)
+    if (NOT _cpp_17_flag_supported)
+        message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} doesn't support required C++17 features. Please use a newer MSVC.")
+    endif()
+endif()
   cmake_minimum_required(VERSION 3.8)
 endif()
 
@@ -283,7 +290,7 @@ if(${MM_MALLOC})
 endif()
 
 if(UNIX OR MINGW OR CYGWIN)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -Wextra -Wall -Wno-ignored-attributes -Wno-unknown-pragmas -Wno-return-type")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -pthread -Wextra -Wall -Wno-ignored-attributes -Wno-unknown-pragmas -Wno-return-type")
     if(MINGW)
      # ignore this warning: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95353
         SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-stringop-overflow")
@@ -309,6 +316,7 @@ if(WIN32 AND MINGW)
 endif()
 
 if(MSVC)
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
     SET(variables
         CMAKE_C_FLAGS_DEBUG
         CMAKE_C_FLAGS_MINSIZEREL
@@ -337,6 +345,7 @@ else()
     if(NOT USE_DEBUG)
       SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -funroll-loops")
     endif()
+
 endif(MSVC)
 
 SET(LightGBM_HEADER_DIR ${PROJECT_SOURCE_DIR}/include)
@@ -373,6 +382,7 @@ endif(USE_CUDA)
 )
 
 add_executable(gpboost src/LightGBM/main.cpp src/LightGBM/application/application.cpp ${SOURCES})
+
 list(APPEND SOURCES "src/LightGBM/c_api.cpp")
 
 # Only build the R part of the library if building for use with the R package

@@ -367,7 +367,7 @@ description_contents <- gsub(
 )
 description_contents <- gsub(
   pattern = "~~CXXSTD~~"
-  , replacement = "C++11"
+  , replacement = "C++17"
   , x = description_contents
   , fixed = TRUE
 )
