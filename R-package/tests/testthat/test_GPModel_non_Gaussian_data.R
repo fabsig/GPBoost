@@ -1261,15 +1261,61 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }# end loop cg_preconditioner_type in loop_cg_PC
     }# end loop inv_method in c("cholesky", "iterative")
     
+    #######################
+    ## Other covariance functions
+    #######################
+    cov_pars_matern <- c(0.98944996176, 0.04986090038)
+    coefs_matern <- c(0.4250887028, -0.2722344688)
+    num_it_matern <- 18
+    nll_opt_matern <- 64.59961544
+    nll_matern <- 68.10706059
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                           likelihood = "bernoulli_probit", gp_approx = "none",
+                                           y = y, X = X, params = params), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_matern)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_matern)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_matern)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_matern), TOLERANCE_STRICT)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
+    expect_lt(abs(nll-nll_matern),TOLERANCE_STRICT)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-4,
+                                           likelihood = "bernoulli_probit", gp_approx = "none",
+                                           y = y, X = X, params = params), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_matern)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_matern)),TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_matern)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_matern), TOLERANCE_MEDIUM)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
+    expect_lt(abs(nll-nll_matern),TOLERANCE_MEDIUM)
+    # With Vecchia approximation
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                           likelihood = "bernoulli_probit", gp_approx = "vecchia", num_neighbors = n-1,
+                                           y = y, X = X, params = params), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_matern)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_matern)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_matern)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_matern), TOLERANCE_STRICT)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
+    expect_lt(abs(nll-nll_matern),TOLERANCE_STRICT)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-4,
+                                           likelihood = "bernoulli_probit", gp_approx = "vecchia", num_neighbors = n-1,
+                                           y = y, X = X, params = params), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_matern)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_matern)),TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_matern)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_matern), TOLERANCE_MEDIUM)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
+    expect_lt(abs(nll-nll_matern),TOLERANCE_MEDIUM)
+    
     ###################
     ## Random coefficient GPs
     ###################
     probs <- pnorm(as.vector(L %*% b_1 + Z_SVC[,1] * L %*% b_2 + Z_SVC[,2] * L %*% b_3))
-    y <- as.numeric(sim_rand_unif(n=n, init_c=0.543) < probs)
+    y_rand_coef <- as.numeric(sim_rand_unif(n=n, init_c=0.543) < probs)
     init_cov_pars_RC <- rep(init_cov_pars, 3)
     # Estimation
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC,
-                                           y = y, likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                           y = y_rand_coef, likelihood = "bernoulli_probit", gp_approx = "vecchia", 
                                            num_neighbors = n-1, vecchia_ordering = "none",
                                            params = list(optimizer_cov = "gradient_descent",
                                                          lr_cov = 1, use_nesterov_acc = TRUE, 
@@ -1279,7 +1325,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 39)
     # Same estimation without Vecchia approximation
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC,
-                                           y = y, likelihood = "bernoulli_probit", gp_approx = "none",
+                                           y = y_rand_coef, likelihood = "bernoulli_probit", gp_approx = "none",
                                            params = list(optimizer_cov = "gradient_descent",
                                                          lr_cov = 1, use_nesterov_acc = TRUE, 
                                                          acc_rate_cov=0.5, maxit=1000, init_cov_pars=init_cov_pars_RC)), file='NUL')
@@ -1292,7 +1338,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
     Z_SVC_test <- cbind(c(0.1,0.3,0.7),c(0.5,0.2,0.4))
     gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred=n+2)
-    pred <- gp_model$predict(y = y, gp_coords_pred = coord_test, gp_rand_coef_data_pred=Z_SVC_test,
+    pred <- gp_model$predict(y = y_rand_coef, gp_coords_pred = coord_test, gp_rand_coef_data_pred=Z_SVC_test,
                              cov_pars = c(1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(0.18346009, 0.03479259, -0.17247579)
     expected_cov <- c(1.039879e+00, 7.521981e-01, -3.256500e-04, 7.521981e-01, 
@@ -1303,23 +1349,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC,
                                         cov_function = "exponential", likelihood = "bernoulli_probit",
                                         gp_approx = "none"), file='NUL')
-    pred <- gp_model$predict(y = y, gp_coords_pred = coord_test, gp_rand_coef_data_pred=Z_SVC_test,
+    pred <- gp_model$predict(y = y_rand_coef, gp_coords_pred = coord_test, gp_rand_coef_data_pred=Z_SVC_test,
                              cov_pars = c(1,0.1,0.8,0.15,1.1,0.08), predict_cov_mat = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     
     # Evaluate negative log-likelihood
-    nll <- gp_model$neg_log_likelihood(cov_pars=c(1,0.1,0.8,0.15,1.1,0.08),y=y)
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(1,0.1,0.8,0.15,1.1,0.08),y=y_rand_coef)
     expect_lt(abs(nll-65.1768199),TOLERANCE_MEDIUM)
     
     ###################
     ##  Multiple cluster IDs
     ###################
     probs <- pnorm(L %*% b_1)
-    y <- as.numeric(sim_rand_unif(n=n, init_c=0.2978341) < probs)
+    y_clus <- as.numeric(sim_rand_unif(n=n, init_c=0.2978341) < probs)
     init_cov_pars <- c(1,mean(dist(coords[cluster_ids==1,]))/3)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                           y = y, cluster_ids = cluster_ids, likelihood = "bernoulli_probit",
+                                           y = y_clus, cluster_ids = cluster_ids, likelihood = "bernoulli_probit",
                                            gp_approx = "vecchia", num_neighbors = n-1,
                                            vecchia_ordering = "none",
                                            params = list(optimizer_cov = "gradient_descent", lr_cov=0.2, 
@@ -1332,7 +1378,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cluster_ids_pred = c(1,3,1)
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         cluster_ids = cluster_ids,likelihood = "bernoulli_probit"), file='NUL')
-    pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
+    pred <- gp_model$predict(y = y_clus, gp_coords_pred = coord_test,
                              cluster_ids_pred = cluster_ids_pred,
                              cov_pars = c(1.5,0.15), predict_cov_mat = TRUE, predict_response = FALSE)
     expected_mu <- c(0.1509569, 0.0000000, 0.9574946)
@@ -1340,6 +1386,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                       1.5000000000, 0.0000000000, 0.0003074858, 0.0000000000, 1.0761874845)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    
   })
   
   test_that("Binary classification Gaussian process model with Wendland covariance function", {
