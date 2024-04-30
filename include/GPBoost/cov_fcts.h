@@ -512,7 +512,7 @@ namespace GPBoost {
 							}
 						}
 					}//end TwoNumbersAreEqual<double>(shape_, 2.5)
-					else {
+					else {//general shape
 						if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < (int)coords.rows(); ++i) {
@@ -842,7 +842,7 @@ namespace GPBoost {
 							}
 						}
 					}//end TwoNumbersAreEqual<double>(shape_, 2.5)
-					else {
+					else {//general shape
 						if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 							for (int k = 0; k < sigma.outerSize(); ++k) {
@@ -1191,7 +1191,7 @@ namespace GPBoost {
 				double cm = transf_scale ? (-1. * pars[0] * pars[1] * pars[1]) : (nugget_var * pars[0] * std::pow(pars[1], 3) / sqrt(5.));
 				sigma_grad = cm * 1. / 3. * (dist.array().square() * (1. + pars[1] * dist.array()) * ((-pars[1] * dist.array()).exp())).matrix();
 			}
-			else if (cov_fct_type_ == "matern") {
+			else if (cov_fct_type_ == "matern") {//general shape
 				double cm = transf_scale ? 1. : (- nugget_var * pars[1] / std::sqrt(2. * shape_));
 				cm *= pars[0] * const_;
 				sigma_grad = T_mat(sigma.rows(), sigma.cols());
@@ -1415,6 +1415,62 @@ namespace GPBoost {
 							}
 						}//end ind_range == 1
 					}//end shape_ == 2.5
+					else {//general shape
+						if (ind_range == 0) {
+							double cm = transf_scale ? 1. : (-nugget_var * pars[1] / sqrt(2. * shape_));
+							cm *= pars[0] * const_;
+							if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+								for (int i = 0; i < (int)coords.rows(); ++i) {
+									sigma_grad(i, i) = 0.;
+									for (int j = i + 1; j < (int)coords.rows(); ++j) {
+										double dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+										double dist_sq_ij_time = (coords_scaled.coeff(i, 0) - coords_scaled.coeff(j, 0));
+										dist_sq_ij_time = dist_sq_ij_time * dist_sq_ij_time;
+										sigma_grad(i, j) = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_time;
+										sigma_grad(j, i) = sigma_grad(i, j);
+									}
+								}
+							}
+							else {
+#pragma omp parallel for schedule(static)
+								for (int i = 0; i < (int)coords_pred.rows(); ++i) {
+									for (int j = 0; j < (int)coords.rows(); ++j) {
+										double dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+										double dist_sq_ij_time = (coords_pred_scaled.coeff(i, 0) - coords_scaled.coeff(j, 0));
+										dist_sq_ij_time = dist_sq_ij_time * dist_sq_ij_time;
+										sigma_grad(i, j) = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_time;
+									}
+								}
+							}
+						}//end ind_range == 0
+						else if (ind_range == 1) {
+							double cm = transf_scale ? 1. : (-nugget_var * pars[2] / sqrt(2. * shape_));
+							cm *= pars[0] * const_;
+							if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+								for (int i = 0; i < (int)coords.rows(); ++i) {
+									sigma_grad(i, i) = 0.;
+									for (int j = i + 1; j < (int)coords.rows(); ++j) {
+										double dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+										double dist_sq_ij_space = (coords_scaled.row(i).tail(dim_space) - coords_scaled.row(j).tail(dim_space)).squaredNorm();
+										sigma_grad(i, j) = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_space;
+										sigma_grad(j, i) = sigma_grad(i, j);
+									}
+								}
+							}
+							else {
+#pragma omp parallel for schedule(static)
+								for (int i = 0; i < (int)coords_pred.rows(); ++i) {
+									for (int j = 0; j < (int)coords.rows(); ++j) {
+										double dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+										double dist_sq_ij_space = (coords_pred_scaled.row(i).tail(dim_space) - coords_scaled.row(j).tail(dim_space)).squaredNorm();
+										sigma_grad(i, j) = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_space;
+									}
+								}
+							}
+						}//end ind_range == 1
+					}//end general shape
 				}//end matern_space_time
 				else if (cov_fct_type_ == "matern_ard") {
 					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
@@ -1509,6 +1565,34 @@ namespace GPBoost {
 							}
 						}
 					}//end shape_ == 2.5
+					else {//general shape
+						double cm = transf_scale ? 1. : (-nugget_var * pars[ind_range + 1] / sqrt(2. * shape_));
+						cm *= pars[0] * const_;
+						if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < (int)coords.rows(); ++i) {
+								sigma_grad(i, i) = 0.;
+								for (int j = i + 1; j < (int)coords.rows(); ++j) {
+									double dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+									double dist_sq_ij_coord = (coords_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
+									dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
+									sigma_grad(i, j) = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_coord;
+									sigma_grad(j, i) = sigma_grad(i, j);
+								}
+							}
+						}
+						else {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < (int)coords_pred.rows(); ++i) {
+								for (int j = 0; j < (int)coords.rows(); ++j) {
+									double dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+									double dist_sq_ij_coord = (coords_pred_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
+									dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
+									sigma_grad(i, j) = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_coord;
+								}
+							}
+						}
+					}//end general shape
 				}//end matern_ard
 				else if (cov_fct_type_ == "gaussian_ard") {
 					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
@@ -1861,6 +1945,78 @@ namespace GPBoost {
 							}
 						}//end ind_range == 1
 					}//end shape_ == 2.5
+					else {//general shape
+						if (ind_range == 0) {
+							double cm = transf_scale ? 1. : (-nugget_var * pars[1] / sqrt(2. * shape_));
+							cm *= pars[0] * const_;
+							if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+								for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+									for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+										int i = (int)it.row();
+										int j = (int)it.col();
+										if (i == j) {
+											it.valueRef() = 0.;
+										}
+										else if (i < j) {
+											double dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+											double dist_sq_ij_time = (coords_scaled.coeff(i, 0) - coords_scaled.coeff(j, 0));
+											dist_sq_ij_time = dist_sq_ij_time * dist_sq_ij_time;
+											it.valueRef() = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_time;
+											sigma_grad.coeffRef(j, i) = it.value();
+										}
+									}
+								}
+							}
+							else {
+#pragma omp parallel for schedule(static)
+								for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+									for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+										int i = (int)it.row();
+										int j = (int)it.col();
+										double dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+										double dist_sq_ij_time = (coords_pred_scaled.coeff(i, 0) - coords_scaled.coeff(j, 0));
+										dist_sq_ij_time = dist_sq_ij_time * dist_sq_ij_time;
+										it.valueRef() = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_time;
+									}
+								}
+							}
+						}//end ind_range == 0
+						else if (ind_range == 1) {
+							double cm = transf_scale ? 1. : (-nugget_var * pars[2] / sqrt(2. * shape_));
+							cm *= pars[0] * const_;
+							if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+								for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+									for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+										int i = (int)it.row();
+										int j = (int)it.col();
+										if (i == j) {
+											it.valueRef() = 0.;
+										}
+										else if (i < j) {
+											double dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+											double dist_sq_ij_space = (coords_scaled.row(i).tail(dim_space) - coords_scaled.row(j).tail(dim_space)).squaredNorm();
+											it.valueRef() = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_space;
+											sigma_grad.coeffRef(j, i) = it.value();
+										}
+									}
+								}
+							}
+							else {
+#pragma omp parallel for schedule(static)
+								for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+									for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+										int i = (int)it.row();
+										int j = (int)it.col();
+										double dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+										double dist_sq_ij_space = (coords_pred_scaled.row(i).tail(dim_space) - coords_scaled.row(j).tail(dim_space)).squaredNorm();
+										it.valueRef() = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_space;
+									}
+								}
+							}
+						}//end ind_range == 1
+					}//end general shape
 				}//end matern_space_time
 				else if (cov_fct_type_ == "matern_ard") {
 					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
@@ -1979,6 +2135,42 @@ namespace GPBoost {
 							}
 						}
 					}//end shape_ == 2.5
+					else {//general shape
+						double cm = transf_scale ? 1. : (-nugget_var * pars[ind_range + 1] / sqrt(2. * shape_));
+						cm *= pars[0] * const_;
+						if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+							for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+								for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+									int i = (int)it.row();
+									int j = (int)it.col();
+									if (i == j) {
+										it.valueRef() = 0.;
+									}
+									else if (i < j) {
+										double dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+										double dist_sq_ij_coord = (coords_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
+										dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
+										it.valueRef() = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_coord;;
+										sigma_grad.coeffRef(j, i) = it.value();
+									}
+								}
+							}
+						}
+						else {
+#pragma omp parallel for schedule(static)
+							for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+								for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+									int i = (int)it.row();
+									int j = (int)it.col();
+									double dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
+									double dist_sq_ij_coord = (coords_pred_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
+									dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
+									it.valueRef() = cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_coord;;
+								}
+							}
+						}
+					}//end general shape
 				}//end matern_ard
 				else if (cov_fct_type_ == "gaussian_ard") {
 					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
@@ -2204,6 +2396,20 @@ namespace GPBoost {
 						pars[1] = 2. * 5.9 / mean_dist_time;
 						pars[2] = 2. * 5.9 / mean_dist_space;
 					}
+					else {//general shape
+						if (shape_ <= 1.) {
+							pars[1] = 2. * 3. / mean_dist_time;
+							pars[2] = 2. * 3. / mean_dist_space;//same as shape_ = 0.5
+						}
+						else if (shape_ <= 2.) {
+							pars[1] = 2. * 4.7 / mean_dist_time;
+							pars[2] = 2. * 4.7 / mean_dist_space;//same as shape_ = 1.5
+						}
+						else {
+							pars[1] = 2. * 5.9 / mean_dist_time;
+							pars[2] = 2. * 5.9 / mean_dist_space;//same as shape_ = 2.5
+						}
+					}
 				}//end matern_space_time
 				else if (cov_fct_type_ == "matern_ard") {
 					if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
@@ -2219,6 +2425,23 @@ namespace GPBoost {
 					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
 						for (int ic = 0; ic < (int)coords.cols(); ++ic) {
 							pars[1 + ic] = 2. * 5.9 / mean_dist_per_coord[ic];
+						}
+					}
+					else {//general shape
+						if (shape_ <= 1.) {
+							for (int ic = 0; ic < (int)coords.cols(); ++ic) {
+								pars[1 + ic] = 2. * 3. / mean_dist_per_coord[ic];//same as shape_ = 0.5
+							}
+						}
+						else if (shape_ <= 2.) {
+							for (int ic = 0; ic < (int)coords.cols(); ++ic) {
+								pars[1 + ic] = 2. * 4.7 / mean_dist_per_coord[ic];//same as shape_ = 1.5
+							}
+						}
+						else {
+							for (int ic = 0; ic < (int)coords.cols(); ++ic) {
+								pars[1 + ic] = 2. * 5.9 / mean_dist_per_coord[ic];//same as shape_ = 2.5
+							}
 						}
 					}
 				}//end matern_ard
