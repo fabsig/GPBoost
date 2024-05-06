@@ -340,7 +340,7 @@ namespace GPBoost {
 						for (int j = 0; j < (int)dist.cols(); ++j) {
 							sigma(i, j) = MaternCovarianceShape1_5(dist(i, j), pars[0], pars[1]);
 						}
-					}
+					}					
 				}
 			}
 			else if (cov_fct_type_ == "matern" && TwoNumbersAreEqual<double>(shape_, 2.5)) {
@@ -2580,7 +2580,12 @@ namespace GPBoost {
 			const double& var,
 			const double& range) const {
 			double range_dist = range * dist;
-			return(var * const_ * std::pow(range_dist, shape_) * std::cyl_bessel_k(shape_, range_dist));
+			if (range_dist <= 0.) {
+				return(var);
+			}
+			else {
+				return(var * const_ * std::pow(range_dist, shape_) * std::cyl_bessel_k(shape_, range_dist));
+			}
 		}
 
 		/*!
