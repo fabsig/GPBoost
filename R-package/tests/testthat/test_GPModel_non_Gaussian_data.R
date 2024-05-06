@@ -1269,6 +1269,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     num_it_matern <- 18
     nll_opt_matern <- 64.59961544
     nll_matern <- 68.10706059
+    mu_matern <- c(0.3603830, 0.1577247, -0.1189037)
+    var_matern <- c(0.4497997, 0.4460163, 0.2566184)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                                            likelihood = "bernoulli_probit", gp_approx = "none",
                                            y = y, X = X, params = params), file='NUL')
@@ -1278,6 +1280,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_matern), TOLERANCE_STRICT)
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
     expect_lt(abs(nll-nll_matern),TOLERANCE_STRICT)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, 
+                    predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test)
+    expect_lt(sum(abs(pred$mu-mu_matern)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-var_matern)),TOLERANCE_STRICT)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-4,
                                            likelihood = "bernoulli_probit", gp_approx = "none",
                                            y = y, X = X, params = params), file='NUL')
@@ -1287,6 +1293,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_matern), TOLERANCE_MEDIUM)
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
     expect_lt(abs(nll-nll_matern),TOLERANCE_MEDIUM)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, 
+                    predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test)
+    expect_lt(sum(abs(pred$mu-mu_matern)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$var)-var_matern)),TOLERANCE_MEDIUM)
     # With Vecchia approximation
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                                            likelihood = "bernoulli_probit", gp_approx = "vecchia", num_neighbors = n-1,
@@ -1297,6 +1307,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_matern), TOLERANCE_STRICT)
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
     expect_lt(abs(nll-nll_matern),TOLERANCE_STRICT)
+    capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE,
+                    predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test) , file='NUL')
+    expect_lt(sum(abs(pred$mu-mu_matern)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-var_matern)),TOLERANCE_STRICT)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-4,
                                            likelihood = "bernoulli_probit", gp_approx = "vecchia", num_neighbors = n-1,
                                            y = y, X = X, params = params), file='NUL')
@@ -1306,6 +1320,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_matern), TOLERANCE_MEDIUM)
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
     expect_lt(abs(nll-nll_matern),TOLERANCE_MEDIUM)
+    capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE,
+                                    predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test) , file='NUL')
+    expect_lt(sum(abs(pred$mu-mu_matern)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$var)-var_matern)),TOLERANCE_MEDIUM)
     
     ###################
     ## Random coefficient GPs

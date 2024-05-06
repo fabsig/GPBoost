@@ -2592,7 +2592,7 @@ predict.GPModel <- function(object,
                          , fixed_effects = fixed_effects
                          , fixed_effects_pred = fixed_effects_pred
                          , vecchia_pred_type = vecchia_pred_type
-                         , num_neighbors_pred = vecchia_pred_type
+                         , num_neighbors_pred = num_neighbors_pred
                          , ... ))
 }
 
