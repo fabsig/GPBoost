@@ -407,12 +407,6 @@ gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
 gp_model.fit(y=y_train)
 gp_model.summary()
 
-#--------------------Gaussian process model with Wendland covariance function----------------
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="wendland",
-                       cov_fct_taper_shape=1, cov_fct_taper_range=0.1, likelihood=likelihood)
-gp_model.fit(y=y_train)
-gp_model.summary()
-
 # --------------------Gaussian process model with random coefficents----------------
 # Define and train model
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential", 
@@ -424,7 +418,7 @@ gp_model.summary()
 #   -> covariance parameters estimates can have high variance
 
 # Predict latent GP at training data locations (=smoothing)
-GP_smooth = gp_model.predict_training_data_random_effects()
+GP_smooth = gp_model.predict_training_data_random_effects(predict_var = True) # predict_var = True gives uncertainty for random effect predictions
 # Compare true and predicted random effects
 plt.scatter(b_train, GP_smooth['GP'], label="Intercept GP", alpha=0.5)
 plt.scatter(b2, GP_smooth['GP_rand_coef_nb_1'], label="1. random coef. GP", alpha=0.5)

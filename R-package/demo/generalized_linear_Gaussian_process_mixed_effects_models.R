@@ -405,12 +405,6 @@ gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
                        y = y_train, likelihood = likelihood)
 summary(gp_model)
 
-#--------------------Gaussian process model with Wendland covariance function----------------
-gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "wendland", 
-                       cov_fct_taper_shape = 1, cov_fct_taper_range = 0.1, y = y_train,
-                       likelihood = likelihood)
-summary(gp_model)
-
 #--------------------Gaussian process model with random coefficients----------------
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
                        gp_rand_coef_data = Z_SVC,
@@ -418,7 +412,7 @@ gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
 summary(gp_model)
 # Note: this is a small sample size for this type of model
 #   -> covariance parameters estimates can have high variance
-GP_smooth <- predict_training_data_random_effects(gp_model)
+GP_smooth <- predict_training_data_random_effects(gp_model, predict_var = TRUE) # predict_var = TRUE gives uncertainty for random effect predictions
 # Compare true and predicted random effects
 plot(b_1_train, GP_smooth[,1], xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects", lwd=1.5)
