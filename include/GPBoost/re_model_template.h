@@ -6577,7 +6577,7 @@ namespace GPBoost {
 							diagonal_approx_preconditioner_[cluster_i] = (*sigma_resid).diagonal();
 							diagonal_approx_inv_preconditioner_[cluster_i] = diagonal_approx_preconditioner_[cluster_i].cwiseInverse();
 							sigma_woodbury = (*cross_cov).transpose() * (diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * (*cross_cov));
-							sigma_woodbury += *(re_comps_ip_[cluster_i][0]->GetZSigmaZt());
+							sigma_woodbury += sigma_ip_stable;
 							chol_fact_woodbury_preconditioner_[cluster_i].compute(sigma_woodbury);
 						}
 						else if (cg_preconditioner_type_ != "none") {
