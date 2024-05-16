@@ -23,6 +23,12 @@
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
 
+#if (defined(__GNUC__) && !defined(__clang__)) || defined(_MSC_VER)
+#define MSVC_OR_GCC_COMPILER 1
+#else 
+#define MSVC_OR_GCC_COMPILER 0
+#endif
+
 
 namespace GPBoost {
 
@@ -84,7 +90,12 @@ namespace GPBoost {
 			if (cov_fct_type == "matern" || cov_fct_type == "matern_space_time" || cov_fct_type == "matern_ard") {
 				CHECK(shape > 0.);
 				if (!(TwoNumbersAreEqual<double>(shape, 0.5) || TwoNumbersAreEqual<double>(shape, 1.5) || TwoNumbersAreEqual<double>(shape, 2.5))) {
+#if MSVC_OR_GCC_COMPILER
 					const_ = std::pow(2., 1 - shape_) / std::tgamma(shape_);
+#else
+					// Mathematical special functions are not supported in C++17 by Clang and some other compilers (see https://en.cppreference.com/w/cpp/compiler_support/17#C.2B.2B17_library_features) 
+					Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", shape, cov_fct_type.c_str());
+#endif
 				}				
 			}
 			else if (cov_fct_type == "powered_exponential") {
@@ -1191,6 +1202,7 @@ namespace GPBoost {
 				double cm = transf_scale ? (-1. * pars[0] * pars[1] * pars[1]) : (nugget_var * pars[0] * std::pow(pars[1], 3) / sqrt(5.));
 				sigma_grad = cm * 1. / 3. * (dist.array().square() * (1. + pars[1] * dist.array()) * ((-pars[1] * dist.array()).exp())).matrix();
 			}
+#if MSVC_OR_GCC_COMPILER
 			else if (cov_fct_type_ == "matern") {//general shape
 				double cm = transf_scale ? 1. : (- nugget_var * pars[1] / std::sqrt(2. * shape_));
 				cm *= pars[0] * const_;
@@ -1216,6 +1228,7 @@ namespace GPBoost {
 					}
 				}
 			}//end matern
+#endif
 			else if (cov_fct_type_ == "gaussian") {
 				double cm = transf_scale ? (-1. * pars[1]) : (2. * nugget_var * std::pow(pars[1], 3. / 2.));
 				sigma_grad = cm * sigma.cwiseProduct(dist.array().square().matrix());
@@ -1415,6 +1428,7 @@ namespace GPBoost {
 							}
 						}//end ind_range == 1
 					}//end shape_ == 2.5
+#if MSVC_OR_GCC_COMPILER
 					else {//general shape
 						if (ind_range == 0) {
 							double cm = transf_scale ? 1. : (-nugget_var * pars[1] / sqrt(2. * shape_));
@@ -1471,6 +1485,7 @@ namespace GPBoost {
 							}
 						}//end ind_range == 1
 					}//end general shape
+#endif
 				}//end matern_space_time
 				else if (cov_fct_type_ == "matern_ard") {
 					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
@@ -1565,6 +1580,7 @@ namespace GPBoost {
 							}
 						}
 					}//end shape_ == 2.5
+#if MSVC_OR_GCC_COMPILER
 					else {//general shape
 						double cm = transf_scale ? 1. : (-nugget_var * pars[ind_range + 1] / sqrt(2. * shape_));
 						cm *= pars[0] * const_;
@@ -1593,6 +1609,7 @@ namespace GPBoost {
 							}
 						}
 					}//end general shape
+#endif
 				}//end matern_ard
 				else if (cov_fct_type_ == "gaussian_ard") {
 					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
@@ -1668,6 +1685,7 @@ namespace GPBoost {
 				sigma_grad = dist;
 				sigma_grad.coeffs() = cm * 1. / 3. * (dist.coeffs().square() * (1. + pars[1] * dist.coeffs()) * ((-pars[1] * dist.coeffs()).exp())).matrix();
 			}
+#if MSVC_OR_GCC_COMPILER
 			else if (cov_fct_type_ == "matern") {
 				double cm = transf_scale ? 1. : (-nugget_var * pars[1] / std::sqrt(2. * shape_));
 				cm *= pars[0] * const_;
@@ -1701,6 +1719,7 @@ namespace GPBoost {
 					}
 				}
 			}//end matern
+#endif
 			else if (cov_fct_type_ == "gaussian") {
 				double cm = transf_scale ? (-1. * pars[1]) : (2. * nugget_var * std::pow(pars[1], 3. / 2.));
 				sigma_grad = dist;
@@ -1945,6 +1964,7 @@ namespace GPBoost {
 							}
 						}//end ind_range == 1
 					}//end shape_ == 2.5
+#if MSVC_OR_GCC_COMPILER
 					else {//general shape
 						if (ind_range == 0) {
 							double cm = transf_scale ? 1. : (-nugget_var * pars[1] / sqrt(2. * shape_));
@@ -2017,6 +2037,7 @@ namespace GPBoost {
 							}
 						}//end ind_range == 1
 					}//end general shape
+#endif
 				}//end matern_space_time
 				else if (cov_fct_type_ == "matern_ard") {
 					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
@@ -2135,6 +2156,7 @@ namespace GPBoost {
 							}
 						}
 					}//end shape_ == 2.5
+#if MSVC_OR_GCC_COMPILER
 					else {//general shape
 						double cm = transf_scale ? 1. : (-nugget_var * pars[ind_range + 1] / sqrt(2. * shape_));
 						cm *= pars[0] * const_;
@@ -2171,6 +2193,7 @@ namespace GPBoost {
 							}
 						}
 					}//end general shape
+#endif
 				}//end matern_ard
 				else if (cov_fct_type_ == "gaussian_ard") {
 					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
@@ -2584,7 +2607,11 @@ namespace GPBoost {
 				return(var);
 			}
 			else {
+#if MSVC_OR_GCC_COMPILER
 				return(var * const_ * std::pow(range_dist, shape_) * std::cyl_bessel_k(shape_, range_dist));
+#else
+				return(1.);
+#endif
 			}
 		}
 
