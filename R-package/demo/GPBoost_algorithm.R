@@ -258,6 +258,16 @@ shap.plot.summary.wrap1(bst, X = X)
 shap_long <- shap.prep(bst, X_train = X)
 shap.plot.dependence(data_long = shap_long, x = "Covariate_1",
                      color_feature = "Covariate_2", smooth = FALSE)
+# SHAP interaction values
+source("https://raw.githubusercontent.com/fabsig/GPBoost/master/helpers/unify_gpboost_treeshap.R")# Load required function
+library(treeshap)
+library(shapviz)
+unified_bst <- gpboost_unify_treeshap(bst, X)
+interactions_bst <- treeshap::treeshap(unified_bst, X, interactions = T, verbose = 0)
+shap_bst <- shapviz(interactions_bst)
+top4 <- names(head(sv_importance(shap_bst, kind = "no"), 4))
+sv_interaction(shap_bst[1:1000, top4])
+sv_dependence(shap_bst, v = "Covariate_1", color_var = top4, interactions = TRUE)
 
 #--------------------Saving a booster with a gp_model and loading it from a file----------------
 # Train model and make predictions
