@@ -2585,7 +2585,7 @@ namespace GPBoost {
 								re_comps_ip_cluster_i[j]->CalcSigma();
 								re_comps_cross_cov_cluster_i[j]->CalcSigma();
 								den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[j]->GetZSigmaZt());
-								sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE;
+								sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE_IP_FITC;
 								chol_den_mat_t chol_fact_sigma_ip;
 								chol_fact_sigma_ip.compute(sigma_ip_stable);
 								den_mat_t cross_cov = *(re_comps_cross_cov_cluster_i[j]->GetZSigmaZt());
@@ -5350,7 +5350,7 @@ namespace GPBoost {
 						re_comps_ip_[cluster_i][j]->CalcSigma();
 						re_comps_cross_cov_[cluster_i][j]->CalcSigma();
 						den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][j]->GetZSigmaZt());
-						sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE;
+						sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE_IP_FITC;
 						chol_fact_sigma_ip_[cluster_i].compute(sigma_ip_stable);
 						if (gp_approx_ == "fitc") {
 							std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
@@ -6565,7 +6565,7 @@ namespace GPBoost {
 				// factorize matrix used in Woodbury identity
 				std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
 				den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][0]->GetZSigmaZt());
-				sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE;
+				sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE_IP_FITC;
 				den_mat_t sigma_woodbury;// sigma_woodbury = sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov or for Preconditioner sigma_ip + cross_cov^T * D^-1 * cross_cov
 				if (matrix_inversion_method_ == "iterative") {
 					if (gp_approx_ == "fitc") {

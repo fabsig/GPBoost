@@ -25,6 +25,9 @@ namespace GPBoost {
 	/*! \brief Small number that is added in some cases to covariance matrices to make inversion numerically stable */
 	const double EPSILON_ADD_COVARIANCE_STABLE = 1e-10;
 
+	/*! \brief Small number that is added in some cases to the inducing points matrix in the FITC approximation to make inversion numerically stable */
+	const double EPSILON_ADD_COVARIANCE_STABLE_IP_FITC = 1e-8;
+
 	/*! \brief Termination criterion for low-rank pivoted Cholesky decomposition */
 	const double PIV_CHOL_STOP_TOL = 1e-6;
 
