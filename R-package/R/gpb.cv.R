@@ -918,12 +918,15 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #'                            names or an integer vector with the indices of the features (e.g.
 #'                            \code{c(1L, 10L)} to say "the first and tenth columns").
 #' @param callbacks List of callback functions that are applied at each iteration.
+#' @param return_all_combinations a \code{boolean} indicating whether all tried 
+#' parameter combinations are returned
 #' @inheritParams gpb_shared_params
 #' @param ... other parameters, see Parameters.rst for more information.
 #' @inheritSection gpb_shared_params Early Stopping
 #' @return         A \code{list} with the best parameter combination and score
 #' The list has the following format:
 #'  list("best_params" = best_params, "best_iter" = best_iter, "best_score" = best_score)
+#'  If return_all_combinations is TRUE, then the list contains an additional entry 'all_combinations'
 #'
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
@@ -997,6 +1000,7 @@ gpb.grid.search.tune.parameters <- function(param_grid
                                             , categorical_feature = NULL
                                             , early_stopping_rounds = NULL
                                             , callbacks = list()
+                                            , return_all_combinations = FALSE
                                             , ...
 ) {
   
@@ -1052,6 +1056,9 @@ gpb.grid.search.tune.parameters <- function(param_grid
     verbose_cv <- 0L
   } else {
     verbose_cv <- 1L
+  }
+  if (return_all_combinations) {
+    all_combinations <- list()
   }
   best_score <- 1E99
   if (higher_better) best_score <- -1E99
@@ -1120,10 +1127,16 @@ gpb.grid.search.tune.parameters <- function(param_grid
                        paste0(unlist(str), collapse=", ")))
       }
     }
+    if (return_all_combinations) {
+      all_combinations[[counter_num_comb]] <- list(params=param_comb, nrounds=cvbst$best_iter, score=cvbst$best_score)
+    }
     counter_num_comb <- counter_num_comb + 1L
   }
-  
-  return(list(best_params=best_params, best_iter=best_iter, best_score=best_score))
+  if (return_all_combinations) {
+    return(list(best_params=best_params, best_iter=best_iter, best_score=best_score, all_combinations=all_combinations))
+  } else {
+    return(list(best_params=best_params, best_iter=best_iter, best_score=best_score)) 
+  }
   
 }
 

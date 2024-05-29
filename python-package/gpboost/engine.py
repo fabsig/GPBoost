@@ -872,7 +872,8 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                                 metric=None, fobj=None, feval=None, init_model=None,
                                 feature_name='auto', categorical_feature='auto',
                                 early_stopping_rounds=None, fpreproc=None,
-                                verbose_eval=1, seed=0, callbacks=None, metrics=None):
+                                verbose_eval=1, seed=0, callbacks=None, metrics=None,
+                                return_all_combinations=False):
     """Function that allows for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
 
     Parameters
@@ -1000,6 +1001,8 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         See Callbacks in Python API for more information.
     metrics : string, list of strings or None, discontinued (default=None)
         This is discontinued. Use the renamed equivalent argument 'metric' instead
+    return_all_combinations : bool, optional (default=False)
+        If True, all tried parameter combinations are returned
 
     Returns
     -------
@@ -1007,6 +1010,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         Dictionary with the best parameter combination and score
         The dictionary has the following format:
         {'best_params': best_params, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+        If return_all_combinations is True, then the dictionary contains an additional entry 'all_combinations'
 
     Example
     -------
@@ -1099,6 +1103,8 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         verbose_eval_cv = False
     else:
         verbose_eval_cv = True
+    if return_all_combinations:
+        all_combinations = {}
     best_score = 1e99
     current_score = 1e99
     if higher_better:
@@ -1112,6 +1118,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
             raise ValueError("'train_set' cannot be constructed already when 'max_bin' is in 'param_grid' ")
         else:
             train_set_not_constructed = copy.deepcopy(train_set)
+
     for param_comb_number in try_param_combs:
         param_comb = _get_param_combination(param_comb_number=param_comb_number, param_grid=param_grid)
         for param in param_comb:
@@ -1161,4 +1168,15 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                 best_params_print['num_boost_round'] = best_num_boost_round
                 print(best_params_print)
         counter_num_comb = counter_num_comb + 1
-    return {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}
+        if return_all_combinations:
+            if higher_better:
+                best_num_boost_round = np.argmax(cvbst[next(iter(cvbst))]) + 1
+            else:
+                best_num_boost_round = np.argmin(cvbst[next(iter(cvbst))]) + 1
+            all_combinations[param_comb_number] = {'params': param_comb, 'num_boost_round': best_num_boost_round,
+                                                   'score': current_score}
+    if return_all_combinations:
+        return {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score,
+                    'all_combinations': all_combinations}
+    else:
+        return {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}

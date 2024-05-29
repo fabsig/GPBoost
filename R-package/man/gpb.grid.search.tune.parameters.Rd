@@ -11,7 +11,8 @@ gpb.grid.search.tune.parameters(param_grid, data, params = list(),
   label = NULL, weight = NULL, obj = NULL, eval = NULL,
   verbose_eval = 1L, stratified = TRUE, init_model = NULL,
   colnames = NULL, categorical_feature = NULL,
-  early_stopping_rounds = NULL, callbacks = list(), ...)
+  early_stopping_rounds = NULL, callbacks = list(),
+  return_all_combinations = FALSE, ...)
 }
 \arguments{
 \item{param_grid}{\code{list} with candidate parameters defining the grid over which a search is done}
@@ -115,12 +116,16 @@ set to the iteration number of the best iteration.}
 
 \item{callbacks}{List of callback functions that are applied at each iteration.}
 
+\item{return_all_combinations}{a \code{boolean} indicating whether all tried 
+parameter combinations are returned}
+
 \item{...}{other parameters, see Parameters.rst for more information.}
 }
 \value{
 A \code{list} with the best parameter combination and score
 The list has the following format:
  list("best_params" = best_params, "best_iter" = best_iter, "best_score" = best_score)
+ If return_all_combinations is TRUE, then the list contains an additional entry 'all_combinations'
 }
 \description{
 Function that allows for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
