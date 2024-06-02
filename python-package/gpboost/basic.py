@@ -5186,7 +5186,7 @@ class GPModel(object):
         return params
 
     def get_cov_pars(self, format_pandas=True):
-        """Get (estimated) covariance parameters.
+        """Get (estimated) covariance parameters
 
         Parameters
         ----------
@@ -5229,7 +5229,7 @@ class GPModel(object):
         return cov_pars
 
     def get_coef(self, format_pandas=True):
-        """Get (estimated) linear regression coefficients.
+        """Get (estimated) linear regression coefficients
 
         Parameters
         ----------
@@ -5273,6 +5273,25 @@ class GPModel(object):
         return coef
 
     def get_aux_pars(self, format_pandas=True):
+        """Get (estimated) auxiliary (additional) parameters of the likelihood such as the shape parameter of a gamma or
+        a negative binomial distribution. Some likelihoods (e.g., bernoulli_logit or poisson) have no auxiliary parameters
+
+        Parameters
+        ----------
+        format_pandas : bool (default=True)
+            If True, a pandas DataFrame is returned, otherwise a numpy array is returned
+
+        Returns
+        -------
+        result : numpy array or pandas DataFrame
+            auxiliary (additional) parameters of the likelihood
+
+        Example
+        -------
+        >>> gp_model = gpb.GPModel(group_data=group, likelihood="gamma")
+        >>> gp_model.fit(y=y, X=X)
+        >>> gp_model.get_aux_pars()
+        """
         num_aux_pars = self._get_num_aux_pars()
         if num_aux_pars > 0:
             aux_pars = np.zeros(num_aux_pars, dtype=np.float64)
