@@ -2972,6 +2972,160 @@ predict_training_data_random_effects.GPModel <- function(gp_model,
   return(gp_model$predict_training_data_random_effects(predict_var = predict_var))
 }
 
+#' Get (estimated) covariance parameters
+#' 
+#' Get (estimated) covariance parameters and standard deviations (if std_dev=TRUE was set in \code{fit})
+#' 
+#' @param gp_model A \code{GPModel}
+#' @inheritParams GPModel_shared_params
+#'
+#' @examples
+#' \donttest{
+#' data(GPBoost_data, package = "gpboost")
+#' X1 <- cbind(rep(1,dim(X)[1]),X) # Add intercept column
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
+#' get_cov_pars(gp_model)
+#' }
+#' 
+#' @author Fabio Sigrist
+#' @export 
+#' 
+get_cov_pars <- function(gp_model) UseMethod("get_cov_pars")
+
+#' Get (estimated) covariance parameters
+#' 
+#' Get (estimated) covariance parameters and standard deviations (if std_dev=TRUE was set in \code{fit})
+#' 
+#' @param gp_model A \code{GPModel}
+#' @inheritParams GPModel_shared_params
+#'
+#' @return A \code{GPModel}
+#'
+#' @examples
+#' \donttest{
+#' data(GPBoost_data, package = "gpboost")
+#' X1 <- cbind(rep(1,dim(X)[1]),X) # Add intercept column
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
+#' get_cov_pars(gp_model)
+#' }
+#' @method get_cov_pars GPModel 
+#' @rdname get_cov_pars.GPModel
+#' @author Fabio Sigrist
+#' @export 
+#' 
+get_cov_pars.GPModel <- function(gp_model) {
+  
+  if (!gpb.check.r6.class(gp_model, "GPModel")) {
+    stop("get_cov_pars.GPModel: gp_model needs to be a ", sQuote("GPModel"))
+  }
+  
+  gp_model$get_cov_pars()
+}
+
+#' Get (estimated) linear regression coefficients
+#' 
+#' Get (estimated) linear regression coefficients and standard deviations (if std_dev=TRUE was set in \code{fit})
+#' 
+#' @param gp_model A \code{GPModel}
+#' @inheritParams GPModel_shared_params
+#'
+#' @examples
+#' \donttest{
+#' data(GPBoost_data, package = "gpboost")
+#' X1 <- cbind(rep(1,dim(X)[1]),X) # Add intercept column
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
+#' get_coef(gp_model)
+#' }
+#' 
+#' @author Fabio Sigrist
+#' @export 
+#' 
+get_coef <- function(gp_model) UseMethod("get_coef")
+
+#' Get (estimated) linear regression coefficients
+#' 
+#' Get (estimated) linear regression coefficients and standard deviations (if std_dev=TRUE was set in \code{fit})
+#' 
+#' @param gp_model A \code{GPModel}
+#' @inheritParams GPModel_shared_params
+#'
+#' @return A \code{GPModel}
+#'
+#' @examples
+#' \donttest{
+#' data(GPBoost_data, package = "gpboost")
+#' X1 <- cbind(rep(1,dim(X)[1]),X) # Add intercept column
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
+#' get_coef(gp_model)
+#' }
+#' @method get_coef GPModel 
+#' @rdname get_coef.GPModel
+#' @author Fabio Sigrist
+#' @export 
+#' 
+get_coef.GPModel <- function(gp_model) {
+  
+  if (!gpb.check.r6.class(gp_model, "GPModel")) {
+    stop("get_coef.GPModel: gp_model needs to be a ", sQuote("GPModel"))
+  }
+  
+  gp_model$get_coef()
+}
+
+#' Get (estimated) auxiliary (additional) parameters of the likelihood
+#' 
+#' Get (estimated) auxiliary (additional) parameters of the likelihood such as the shape parameter of a gamma or
+#' a negative binomial distribution. Some likelihoods (e.g., bernoulli_logit or poisson) have no auxiliary parameters
+#' 
+#' @param gp_model A \code{GPModel}
+#' @inheritParams GPModel_shared_params
+#'
+#' @examples
+#' \donttest{
+#' data(GPBoost_data, package = "gpboost")
+#' X1 <- cbind(rep(1,dim(X)[1]),X) # Add intercept column
+#' y_pos <- exp(y)
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y_pos, X = X1, likelihood="gamma")
+#' get_aux_pars(gp_model)
+#' }
+#' 
+#' @author Fabio Sigrist
+#' @export 
+#' 
+get_aux_pars <- function(gp_model) UseMethod("get_aux_pars")
+
+#' Get (estimated) auxiliary (additional) parameters of the likelihood
+#' 
+#' Get (estimated) auxiliary (additional) parameters of the likelihood such as the shape parameter of a gamma or
+#' a negative binomial distribution. Some likelihoods (e.g., bernoulli_logit or poisson) have no auxiliary parameters
+#' 
+#' @param gp_model A \code{GPModel}
+#' @inheritParams GPModel_shared_params
+#'
+#' @return A \code{GPModel}
+#'
+#' @examples
+#' \donttest{
+#' data(GPBoost_data, package = "gpboost")
+#' X1 <- cbind(rep(1,dim(X)[1]),X) # Add intercept column
+#' y_pos <- exp(y)
+#' gp_model <- fitGPModel(group_data = group_data[,1], y = y_pos, X = X1, likelihood="gamma")
+#' get_aux_pars(gp_model)
+#' }
+#' @method get_aux_pars GPModel 
+#' @rdname get_aux_pars.GPModel
+#' @author Fabio Sigrist
+#' @export 
+#' 
+get_aux_pars.GPModel <- function(gp_model) {
+  
+  if (!gpb.check.r6.class(gp_model, "GPModel")) {
+    stop("get_aux_pars.GPModel: gp_model needs to be a ", sQuote("GPModel"))
+  }
+  
+  gp_model$get_aux_pars()
+}
+
 #' Auxiliary function to create categorical variables for nested grouped random effects
 #' 
 #' Auxiliary function to create categorical variables for nested grouped random effects 
