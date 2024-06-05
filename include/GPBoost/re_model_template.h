@@ -740,7 +740,7 @@ namespace GPBoost {
 			// Assume that this function is only called for initialization of the GPBoost algorithm
 			//	when (i) there is only an intercept (and not other covariates) and (ii) the covariance parameters are not learned
 			const double* fixed_effects_ptr = fixed_effects;
-			if (fixed_effects != nullptr) {//save offset / fixed_effects for prediction
+			if (fixed_effects != nullptr && !called_in_GPBoost_algorithm) {//save offset / fixed_effects for prediction
 				has_fixed_effects_ = true;
 				fixed_effects_ = Eigen::Map<const vec_t>(fixed_effects, num_data_);
 			}
