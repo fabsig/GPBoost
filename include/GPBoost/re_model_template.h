@@ -127,6 +127,10 @@ namespace GPBoost {
 			}
 			else {
 				gp_approx_ = std::string(gp_approx);
+				if (gp_approx_ == "fitc_stable") {
+					gp_approx_ = "fitc";
+					fitc_stable_ = true;
+				}
 			}
 			if (SUPPORTED_GP_APPROX_.find(gp_approx_) == SUPPORTED_GP_APPROX_.end()) {
 				Log::REFatal("GP approximation '%s' is currently not supported ", gp_approx_.c_str());
@@ -2039,8 +2043,13 @@ namespace GPBoost {
 				else {
 					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 						if (matrix_inversion_method_ == "cholesky") {//Cholesky
-							log_det_Psi_ -= 2. * (((den_mat_t)chol_fact_sigma_ip_[cluster_i].matrixL()).diagonal().array().log().sum());
-							log_det_Psi_ += 2. * (((den_mat_t)chol_fact_sigma_woodbury_[cluster_i].matrixL()).diagonal().array().log().sum());
+							if (fitc_stable_) {
+								log_det_Psi_ += 2. * (((den_mat_t)chol_fact_sigma_woodbury_stable_[cluster_i].matrixL()).diagonal().array().log().sum());
+							}
+							else {
+								log_det_Psi_ -= 2. * (((den_mat_t)chol_fact_sigma_ip_[cluster_i].matrixL()).diagonal().array().log().sum());
+								log_det_Psi_ += 2. * (((den_mat_t)chol_fact_sigma_woodbury_[cluster_i].matrixL()).diagonal().array().log().sum());
+							}
 							if (gp_approx_ == "full_scale_tapering") {
 								log_det_Psi_ += 2. * (((T_mat)chol_fact_resid_[cluster_i].matrixL()).diagonal().array().log().sum());
 							}
@@ -3736,6 +3745,8 @@ namespace GPBoost {
 		string_t gp_approx_ = "none";
 		/*! \brief List of supported optimizers for covariance parameters */
 		const std::set<string_t> SUPPORTED_GP_APPROX_{ "none", "vecchia", "tapering", "fitc", "full_scale_tapering" };
+		/*! \brief Experimental feature for more stable FITC approximation */
+		bool fitc_stable_ = false;
 
 		// RANDOM EFFECT / GP COMPONENTS
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components */
@@ -4129,6 +4140,8 @@ namespace GPBoost {
 		std::map<data_size_t, T_chol> chol_fact_resid_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov used in Woodbury identity */
 		std::map<data_size_t, chol_den_mat_t> chol_fact_sigma_woodbury_;
+		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix I + sigma_ip^(-1/2) * cross_cov^T * sigma_resid^-1 * cross_cov * sigma_ip^(-T/2) used in stable version for determinant in Woodbury identity */
+		std::map<data_size_t, chol_den_mat_t> chol_fact_sigma_woodbury_stable_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Diagonal of residual covariance matrix (Preconditioner) */
 		std::map<data_size_t, vec_t> diagonal_approx_preconditioner_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of diagonal of residual covariance matrix (Preconditioner) */
@@ -6621,6 +6634,15 @@ namespace GPBoost {
 						//chol_fact_resid_[cluster_i].matrixL().solveInPlace(sigma_resid_Ihalf_cross_cov);
 						TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_fact_resid_[cluster_i], *cross_cov, sigma_resid_Ihalf_cross_cov, false);
 						sigma_woodbury = sigma_resid_Ihalf_cross_cov.transpose() * sigma_resid_Ihalf_cross_cov;
+					}
+					if (fitc_stable_) {
+						den_mat_t sigma_woodbury_stable = sigma_woodbury;
+						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i], sigma_woodbury_stable, sigma_woodbury_stable, false);
+						den_mat_t sigma_woodbury_stable_aux = sigma_woodbury_stable.transpose();
+						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i], sigma_woodbury_stable_aux, sigma_woodbury_stable_aux, false);
+						sigma_woodbury_stable = sigma_woodbury_stable_aux.transpose();
+						sigma_woodbury_stable.diagonal().array() += 1.;
+						chol_fact_sigma_woodbury_stable_[cluster_i].compute(sigma_woodbury_stable);
 					}
 					sigma_woodbury += sigma_ip_stable;
 					chol_fact_sigma_woodbury_[cluster_i].compute(sigma_woodbury);
