@@ -772,6 +772,7 @@ gpb.GPModel <- R6::R6Class(
         stop("fit.GPModel: Number of data points in ", sQuote("y"), " does not match number of data points of initialized model")
       }# end handling of y
       if (!is.null(offset)) {
+        private$has_offset <- TRUE
         if (!is.vector(offset)) {
           if (is.matrix(offset)) {
             if (dim(offset)[2] != 1) {
@@ -1797,6 +1798,11 @@ gpb.GPModel <- R6::R6Class(
       if (isTRUE(private$free_raw_data)) {
         stop("model_to_list: cannot convert to json when free_raw_data=TRUE has been set")
       }
+      if (private$has_offset) {
+        warning("An 'offset' was provided for estimation / fitting. Saving this 'offset' is currently not 
+                implemented. Please pass the 'offset' again when you call the 'predict()' function 
+                (in addition to a potential 'offset_pred' parameter for prediction points")
+      }
       model_list <- list()
       # Parameters
       model_list[["params"]] <- self$get_optim_params()
@@ -1950,6 +1956,7 @@ gpb.GPModel <- R6::R6Class(
     dim_coords = 2L,
     num_gp_rand_coef = 0L,
     has_covariates = FALSE,
+    has_offset = FALSE,
     num_coef = 0,
     group_data = NULL,
     nb_groups = NULL,

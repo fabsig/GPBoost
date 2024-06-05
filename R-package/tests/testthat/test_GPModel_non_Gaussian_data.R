@@ -491,6 +491,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
     expect_lt(sum(abs(pred$mu-expected_mu)),0.03)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
+    pred_offset_not_provided <- predict(gp_model, group_data_pred = group_test,
+                                        predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-pred_offset_not_provided$mu)),TOLERANCE_STRICT)
     
     # With linear predictor and offset
     probs <- pnorm(b_gr[group] + X%*%beta)
@@ -1309,7 +1312,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
     expect_lt(abs(nll-nll_matern),TOLERANCE_STRICT)
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE,
-                    predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test) , file='NUL')
+                                    predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test) , file='NUL')
     expect_lt(sum(abs(pred$mu-mu_matern)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-var_matern)),TOLERANCE_STRICT)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-4,

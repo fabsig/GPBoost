@@ -736,6 +736,10 @@ namespace GPBoost {
 			// Assume that this function is only called for initialization of the GPBoost algorithm
 			//	when (i) there is only an intercept (and not other covariates) and (ii) the covariance parameters are not learned
 			const double* fixed_effects_ptr = fixed_effects;
+			if (fixed_effects != nullptr) {//save offset / fixed_effects for prediction
+				has_fixed_effects_ = true;
+				fixed_effects_ = Eigen::Map<const vec_t>(fixed_effects, num_data_);
+			}
 			// Initialization of covariance parameters related variables as well as additional parameters for likelihood (aux_pars)
 			int num_cov_par_estimate = num_cov_par_;
 			if (estimate_aux_pars_) {
@@ -2510,7 +2514,14 @@ namespace GPBoost {
 			}
 			//Factorize covariance matrix and calculate Psi^{-1}y_obs or calculate Laplace approximation (if required)
 			if (pred_for_observed_data) {
-				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects, false);
+				const double* fixed_effects_ptr = nullptr;
+				if (fixed_effects != nullptr) {
+					fixed_effects_ptr = fixed_effects;
+				}
+				else if (has_fixed_effects_) {
+					fixed_effects_ptr = fixed_effects_.data();
+				}
+				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false);
 			}
 			// Loop over different clusters to calculate predictions
 			for (const auto& cluster_i : unique_clusters_pred) {
@@ -3030,7 +3041,14 @@ namespace GPBoost {
 			if (gauss_likelihood_ && gp_approx_ == "vecchia") {
 				calc_cov_factor = true;//recalculate Vecchia approximation since it might have been done (saved in B_) with a different nugget effect if calc_std_dev == true in CalcStdDevCovPar
 			}
-			SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects, true);
+			const double* fixed_effects_ptr = nullptr;
+			if (fixed_effects != nullptr) {
+				fixed_effects_ptr = fixed_effects;
+			}
+			else if (has_fixed_effects_) {
+				fixed_effects_ptr = fixed_effects_.data();
+			}
+			SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, true);
 			// Loop over different clusters to calculate predictions
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gauss_likelihood_) {
@@ -3780,6 +3798,10 @@ namespace GPBoost {
 		vec_t scale_transf_;
 		/*! \brief Linear regression coefficients */
 		vec_t beta_;
+		/*! \brief If true, there are additional external offsets */
+		bool has_fixed_effects_ = false;
+		/*! \brief Linear regression coefficients */
+		vec_t fixed_effects_;
 
 		/*! \brief Variance of idiosyncratic error term (nugget effect) */
 		double sigma2_ = 1.;//initialize with 1. to avoid valgrind false positives in EvalLLforLBFGSpp() in optim_utils.h

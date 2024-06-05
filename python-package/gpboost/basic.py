@@ -4281,6 +4281,7 @@ class GPModel(object):
         self.dim_coords = 2
         self.num_gp_rand_coef = 0
         self.has_covariates = False
+        self.has_offset = False
         self.num_coef = 0
         self.group_data = None
         self.nb_groups = None
@@ -4869,6 +4870,7 @@ class GPModel(object):
         offset_c = ctypes.c_void_p()
 
         if offset is not None:  ##TODO: maybe add support for pandas for offset (low prio)
+            self.has_offset = True
             if not isinstance(offset, np.ndarray):
                 raise ValueError("'offset' needs to be a numpy.ndarray")
             if len(offset.shape) != 1:
@@ -6010,6 +6012,10 @@ class GPModel(object):
 
         if (self.free_raw_data):
             raise ValueError("cannot convert to json when free_raw_data has been set to True")
+        if self.has_offset:
+            warnings.warn("An 'offset' was provided for estimation / fitting. Saving this 'offset' is currently not "
+                          "implemented. Please pass the 'offset' again when you call the 'predict()' function "
+                              "(in addition to a potential 'offset_pred' parameter for prediction points")
 
         model_dict = {}
         # Parameters
