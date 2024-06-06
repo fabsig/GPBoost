@@ -127,7 +127,7 @@ namespace GPBoost {
 			}
 			else {
 				gp_approx_ = std::string(gp_approx);
-				if (gp_approx_ == "fitc_stable") {
+				if (gp_approx_ == "fitc_stable") {//experimental option
 					gp_approx_ = "fitc";
 					fitc_stable_ = true;
 				}
@@ -2043,13 +2043,12 @@ namespace GPBoost {
 				else {
 					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 						if (matrix_inversion_method_ == "cholesky") {//Cholesky
-							if (fitc_stable_) {
-								log_det_Psi_ += 2. * (((den_mat_t)chol_fact_sigma_woodbury_stable_[cluster_i].matrixL()).diagonal().array().log().sum());
-							}
-							else {
-								log_det_Psi_ -= 2. * (((den_mat_t)chol_fact_sigma_ip_[cluster_i].matrixL()).diagonal().array().log().sum());
-								log_det_Psi_ += 2. * (((den_mat_t)chol_fact_sigma_woodbury_[cluster_i].matrixL()).diagonal().array().log().sum());
-							}
+							log_det_Psi_ -= 2. * (((den_mat_t)chol_fact_sigma_ip_[cluster_i].matrixL()).diagonal().array().log().sum());
+							log_det_Psi_ += 2. * (((den_mat_t)chol_fact_sigma_woodbury_[cluster_i].matrixL()).diagonal().array().log().sum());
+
+							////alternative way for calculating determinants with Woodbury (does not solve numerical stability issue, 05.06.2024)
+							//log_det_Psi_ += 2. * (((den_mat_t)chol_fact_sigma_woodbury_stable_[cluster_i].matrixL()).diagonal().array().log().sum());
+
 							if (gp_approx_ == "full_scale_tapering") {
 								log_det_Psi_ += 2. * (((T_mat)chol_fact_resid_[cluster_i].matrixL()).diagonal().array().log().sum());
 							}
@@ -2605,7 +2604,12 @@ namespace GPBoost {
 								re_comps_ip_cluster_i[j]->CalcSigma();
 								re_comps_cross_cov_cluster_i[j]->CalcSigma();
 								den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[j]->GetZSigmaZt());
-								sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE_IP_FITC;
+								if (fitc_stable_) {
+									sigma_ip_stable.diagonal().array() *= EPSILON_MULT_DIAG_COVARIANCE_IP_FITC_MORE_STABLE;
+								}
+								else {
+									sigma_ip_stable.diagonal().array() *= EPSILON_MULT_DIAG_COVARIANCE_IP_FITC_STABLE;
+								}
 								chol_den_mat_t chol_fact_sigma_ip;
 								chol_fact_sigma_ip.compute(sigma_ip_stable);
 								den_mat_t cross_cov = *(re_comps_cross_cov_cluster_i[j]->GetZSigmaZt());
@@ -3746,7 +3750,7 @@ namespace GPBoost {
 		/*! \brief List of supported optimizers for covariance parameters */
 		const std::set<string_t> SUPPORTED_GP_APPROX_{ "none", "vecchia", "tapering", "fitc", "full_scale_tapering" };
 		/*! \brief Experimental feature for more stable FITC approximation */
-		bool fitc_stable_ = false;
+		bool fitc_stable_ = false;//experimental option
 
 		// RANDOM EFFECT / GP COMPONENTS
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components */
@@ -4140,8 +4144,8 @@ namespace GPBoost {
 		std::map<data_size_t, T_chol> chol_fact_resid_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov used in Woodbury identity */
 		std::map<data_size_t, chol_den_mat_t> chol_fact_sigma_woodbury_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix I + sigma_ip^(-1/2) * cross_cov^T * sigma_resid^-1 * cross_cov * sigma_ip^(-T/2) used in stable version for determinant in Woodbury identity */
-		std::map<data_size_t, chol_den_mat_t> chol_fact_sigma_woodbury_stable_;
+		///*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix I + sigma_ip^(-1/2) * cross_cov^T * sigma_resid^-1 * cross_cov * sigma_ip^(-T/2) used in stable version for determinant in Woodbury identity */
+		//std::map<data_size_t, chol_den_mat_t> chol_fact_sigma_woodbury_stable_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Diagonal of residual covariance matrix (Preconditioner) */
 		std::map<data_size_t, vec_t> diagonal_approx_preconditioner_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of diagonal of residual covariance matrix (Preconditioner) */
@@ -5385,7 +5389,12 @@ namespace GPBoost {
 						re_comps_ip_[cluster_i][j]->CalcSigma();
 						re_comps_cross_cov_[cluster_i][j]->CalcSigma();
 						den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][j]->GetZSigmaZt());
-						sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE_IP_FITC;
+						if (fitc_stable_) {
+							sigma_ip_stable.diagonal().array() *= EPSILON_MULT_DIAG_COVARIANCE_IP_FITC_MORE_STABLE;
+						}
+						else {
+							sigma_ip_stable.diagonal().array() *= EPSILON_MULT_DIAG_COVARIANCE_IP_FITC_STABLE;
+						}
 						chol_fact_sigma_ip_[cluster_i].compute(sigma_ip_stable);
 						if (gp_approx_ == "fitc") {
 							std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
@@ -6600,7 +6609,12 @@ namespace GPBoost {
 				// factorize matrix used in Woodbury identity
 				std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
 				den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][0]->GetZSigmaZt());
-				sigma_ip_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE_IP_FITC;
+				if (fitc_stable_) {
+					sigma_ip_stable.diagonal().array() *= EPSILON_MULT_DIAG_COVARIANCE_IP_FITC_MORE_STABLE;
+				}
+				else {
+					sigma_ip_stable.diagonal().array() *= EPSILON_MULT_DIAG_COVARIANCE_IP_FITC_STABLE;
+				}
 				den_mat_t sigma_woodbury;// sigma_woodbury = sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov or for Preconditioner sigma_ip + cross_cov^T * D^-1 * cross_cov
 				if (matrix_inversion_method_ == "iterative") {
 					if (gp_approx_ == "fitc") {
@@ -6635,15 +6649,16 @@ namespace GPBoost {
 						TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_fact_resid_[cluster_i], *cross_cov, sigma_resid_Ihalf_cross_cov, false);
 						sigma_woodbury = sigma_resid_Ihalf_cross_cov.transpose() * sigma_resid_Ihalf_cross_cov;
 					}
-					if (fitc_stable_) {
-						den_mat_t sigma_woodbury_stable = sigma_woodbury;
-						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i], sigma_woodbury_stable, sigma_woodbury_stable, false);
-						den_mat_t sigma_woodbury_stable_aux = sigma_woodbury_stable.transpose();
-						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i], sigma_woodbury_stable_aux, sigma_woodbury_stable_aux, false);
-						sigma_woodbury_stable = sigma_woodbury_stable_aux.transpose();
-						sigma_woodbury_stable.diagonal().array() += 1.;
-						chol_fact_sigma_woodbury_stable_[cluster_i].compute(sigma_woodbury_stable);
-					}
+
+					////alternative way for calculating determinants with Woodbury (does not solve numerical stability issue, 05.06.2024)
+					//den_mat_t sigma_woodbury_stable = sigma_woodbury;
+					//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i], sigma_woodbury_stable, sigma_woodbury_stable, false);
+					//den_mat_t sigma_woodbury_stable_aux = sigma_woodbury_stable.transpose();
+					//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i], sigma_woodbury_stable_aux, sigma_woodbury_stable_aux, false);
+					//sigma_woodbury_stable = sigma_woodbury_stable_aux.transpose();
+					//sigma_woodbury_stable.diagonal().array() += 1.;
+					//chol_fact_sigma_woodbury_stable_[cluster_i].compute(sigma_woodbury_stable);
+
 					sigma_woodbury += sigma_ip_stable;
 					chol_fact_sigma_woodbury_[cluster_i].compute(sigma_woodbury);
 				}
