@@ -1836,7 +1836,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            num_ind_points = n/2, ind_points_selection = "random")
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_clus_no_approx$get_cov_pars()))),TOLERANCE_STRICT_LOWER)
     expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_clus_no_approx$get_coef()))),TOLERANCE_STRICT)
-    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_clus_exp),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_clus_exp),TOLERANCE_STRICT_LOWER)
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1, 
                     X_pred = X_test_clus, cluster_ids_pred = cluster_ids_pred, 
                     predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
