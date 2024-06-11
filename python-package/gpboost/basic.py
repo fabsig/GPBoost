@@ -4741,24 +4741,24 @@ class GPModel(object):
 
                 - optimizer_cov : string, optional (default = "lbfgs" for linear mixed effects models and "gradient_descent" for the GPBoost algorithm)
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "nelder_mead", "adam"
+                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "nelder_mead", "adam".
                     If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
                 - optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
                     Options: "gradient_descent", "lbfgs", "wls", "nelder_mead", "adam". Gradient descent steps are done simultaneously with
                     gradient descent steps for the covariance parameters. "wls" refers to doing coordinate descent
-                    for the regression coefficients using weighted least squares
+                    for the regression coefficients using weighted least squares.
                     If 'optimizer_cov' is set to "nelder_mead", "lbfgs", or "adam", 'optimizer_coef' is automatically also set to
                     the same value.
                 - maxit : integer, optional (default = 1000)
-                    Maximal number of iterations for optimization algorithm
+                    Maximal number of iterations for optimization algorithm.
                 - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. For "adam", the L2 norm of the
-                    gradient is used instead of the relative change in the log-likelihood
+                    gradient is used instead of the relative change in the log-likelihood.
                     If < 0, internal default values are used.
-                    Default = 1e-6 except for "nelder_mead" for which the default is 1e-8
+                    Default = 1e-6 except for "nelder_mead" for which the default is 1e-8.
                 - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
@@ -4775,55 +4775,55 @@ class GPModel(object):
                 - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. otherwise)
-                    Initial learning rate for covariance parameters if a gradient-based optimization method is used
+                    Initial learning rate for covariance parameters if a gradient-based optimization method is used.
 
-                        - If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise)
+                        - If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise).
 
-                        - If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those
+                        - If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those.
 
-                        - For "lbfgs", this is divided by the norm of the gradient in the first iteration
+                        - For "lbfgs", this is divided by the norm of the gradient in the first iteration.
 
                 - lr_coef : double, optional (default = 0.1)
-                    Learning rate for fixed effect regression coefficients
+                    Learning rate for fixed effect regression coefficients.
                 - use_nesterov_acc : bool, optional (default = True)
-                    If True, Nesterov acceleration is used for gradient descent
+                    If True, Nesterov acceleration is used for gradient descent.
                 - acc_rate_cov : double, optional (default = 0.5)
-                    Acceleration rate for covariance parameters for Nesterov acceleration
+                    Acceleration rate for covariance parameters for Nesterov acceleration.
                 - acc_rate_coef : double, optional (default = 0.5)
-                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
+                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration.
                 - momentum_offset : integer, optional (default = 2)
-                    Number of iterations for which no momentum is applied in the beginning
+                    Number of iterations for which no momentum is applied in the beginning.
                 - trace : bool, optional (default = False)
                     If True, information on the progress of the parameter optimization is printed.
                 - std_dev : bool (default=False)
                     If True, approximate standard deviations are calculated for the covariance parameters
                     (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
-                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
+                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods).
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for additional parameters for non-Gaussian likelihoods
-                    (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None)
+                    (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated
-                    (e.g., shape parameter of a gamma or negative binomial likelihood)
+                    (e.g., shape parameter of a gamma or negative binomial likelihood).
                 - cg_max_num_it: integer, optional (default = 1000)
-                    Maximal number of iterations for conjugate gradient algorithms
+                    Maximal number of iterations for conjugate gradient algorithms.
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm
-                    for tridiagonalization
+                    for tridiagonalization.
                 - cg_delta_conv: double, optional (default = 1e-2)
                     Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
-                    when being used for parameter estimation
+                    when being used for parameter estimation.
                 - num_rand_vec_trace: integer, optional (default = 50)
-                    Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix
+                    Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
                 - reuse_rand_vec_trace: boolean, optional (default = True)
                     If true, random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix
                     are sampled only once at the beginning of Newton's method for finding the mode in the Laplace
                     approximation and are then reused in later trace approximations. Otherwise they are sampled
-                    every time a trace is calculated
+                    every time a trace is calculated.
                 - seed_rand_vec_trace: integer, optional (default = 1)
-                    Seed number to generate random vectors (e.g., Rademacher)
+                    Seed number to generate random vectors (e.g., Rademacher).
                 - piv_chol_rank: integer, optional (default = 50)
-                    Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms
+                    Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms.
                 - cg_preconditioner_type: string, optional
                     Type of preconditioner used for conjugate gradient algorithms.
 
@@ -4843,7 +4843,7 @@ class GPModel(object):
             Additional fixed effects contributions that are added to the linear predictor (= offset).
             The length of this vector needs to equal the number of training data points.
         fixed_effects : numpy 1-D array or None, optional (default=None)
-            This is discontinued. Use the renamed equivalent argument 'offset' instead
+            This is discontinued. Use the renamed equivalent argument 'offset' instead.
 
         Example
         -------
@@ -4991,24 +4991,24 @@ class GPModel(object):
 
                 - optimizer_cov : string, optional (default = "lbfgs" for linear mixed effects models and "gradient_descent" for the GPBoost algorithm)
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "nelder_mead", "adam"
+                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "nelder_mead", "adam".
                     If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
                 - optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
                     Options: "gradient_descent", "lbfgs", "wls", "nelder_mead", "adam". Gradient descent steps are done simultaneously with
                     gradient descent steps for the covariance parameters. "wls" refers to doing coordinate descent
-                    for the regression coefficients using weighted least squares
+                    for the regression coefficients using weighted least squares.
                     If 'optimizer_cov' is set to "nelder_mead", "lbfgs", or "adam", 'optimizer_coef' is automatically also set to
                     the same value.
                 - maxit : integer, optional (default = 1000)
-                    Maximal number of iterations for optimization algorithm
+                    Maximal number of iterations for optimization algorithm.
                 - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. For "adam", the L2 norm of the
-                    gradient is used instead of the relative change in the log-likelihood
+                    gradient is used instead of the relative change in the log-likelihood.
                     If < 0, internal default values are used.
-                    Default = 1e-6 except for "nelder_mead" for which the default is 1e-8
+                    Default = 1e-6 except for "nelder_mead" for which the default is 1e-8.
                 - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
@@ -5024,51 +5024,56 @@ class GPModel(object):
                     in iteration 0.
                 - init_coef : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for the regression coefficients (if there are any, can be None)
-                - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. for "fisher_scoring")
-                    Initial learning rate for covariance parameters if "gradient_descent" or "fisher_scoring" is used.
-                    If lr_cov < 0, internal default values are used.
-                    If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those
+                - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. otherwise)
+                    Initial learning rate for covariance parameters if a gradient-based optimization method is used.
+
+                        - If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise).
+
+                        - If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those.
+
+                        - For "lbfgs", this is divided by the norm of the gradient in the first iteration.
+
                 - lr_coef : double, optional (default = 0.1)
-                    Learning rate for fixed effect regression coefficients
+                    Learning rate for fixed effect regression coefficients.
                 - use_nesterov_acc : bool, optional (default = True)
-                    If True, Nesterov acceleration is used for gradient descent
+                    If True, Nesterov acceleration is used for gradient descent.
                 - acc_rate_cov : double, optional (default = 0.5)
-                    Acceleration rate for covariance parameters for Nesterov acceleration
+                    Acceleration rate for covariance parameters for Nesterov acceleration.
                 - acc_rate_coef : double, optional (default = 0.5)
-                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration
+                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration.
                 - momentum_offset : integer, optional (default = 2)
-                    Number of iterations for which no momentum is applied in the beginning
+                    Number of iterations for which no momentum is applied in the beginning.
                 - trace : bool, optional (default = False)
                     If True, information on the progress of the parameter optimization is printed.
                 - std_dev : bool (default=False)
                     If True, approximate standard deviations are calculated for the covariance parameters
                     (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
-                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
+                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods).
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for additional parameters for non-Gaussian likelihoods
-                    (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None)
+                    (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated
-                    (e.g., shape parameter of a gamma or negative binomial likelihood)
+                    (e.g., shape parameter of a gamma or negative binomial likelihood).
                 - cg_max_num_it: integer, optional (default = 1000)
-                    Maximal number of iterations for conjugate gradient algorithms
+                    Maximal number of iterations for conjugate gradient algorithms.
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm
-                    for tridiagonalization
+                    for tridiagonalization.
                 - cg_delta_conv: double, optional (default = 1e-2)
                     Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
-                    when being used for parameter estimation
+                    when being used for parameter estimation.
                 - num_rand_vec_trace: integer, optional (default = 50)
-                    Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix
+                    Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
                 - reuse_rand_vec_trace: boolean, optional (default = True)
                     If true, random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix
                     are sampled only once at the beginning of Newton's method for finding the mode in the Laplace
                     approximation and are then reused in later trace approximations. Otherwise they are sampled
-                    every time a trace is calculated
+                    every time a trace is calculated.
                 - seed_rand_vec_trace: integer, optional (default = 1)
-                    Seed number to generate random vectors (e.g., Rademacher)
+                    Seed number to generate random vectors (e.g., Rademacher).
                 - piv_chol_rank: integer, optional (default = 50)
-                    Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms
+                    Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms.
                 - cg_preconditioner_type: string, optional
                     Type of preconditioner used for conjugate gradient algorithms.
 
