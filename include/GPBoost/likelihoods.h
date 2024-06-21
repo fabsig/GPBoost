@@ -396,7 +396,7 @@ namespace GPBoost {
 				double avg_sq = avg * avg;
 				double sample_var = (sum_sq - num_data * avg_sq) / (num_data - 1);
 				if (sample_var <= avg) {
-					aux_pars_[0] = 100 * avg_sq;//marginally no over-disperson in data -> set shape parameter to a large value
+					aux_pars_[0] = 100 * avg_sq;//marginally no over-dispersion in data -> set shape parameter to a large value
 					Log::REDebug("FindInitialAuxPars: the internally found initial estimate (MoM) for the shape parameter (%g) might be not very good as there is there is marginally no over-disperion in the data ", aux_pars_[0]);
 				}
 				else {

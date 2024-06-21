@@ -5558,7 +5558,7 @@ namespace GPBoost {
 			}
 			if (estimate_aux_pars_) {
 				double max_lr_caux_pars = MaximalLearningRateCovAuxPars(neg_step_dir.segment(num_grad_cov_par, NumAuxPars()));
-				if (lr_cov_ > max_lr_caux_pars) {
+				if (lr_aux_pars_ > max_lr_caux_pars) {
 					lr_aux_pars_ = max_lr_caux_pars;
 					Log::REDebug("GPModel: The learning rate for the auxiliary parameters has been decreased in iteration number %d since "
 						"the gradient update on the log-scale would have been too large (change by more than a factor %d). New learning rate = %g",
