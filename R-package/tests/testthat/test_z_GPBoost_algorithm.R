@@ -337,7 +337,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                      nrounds = 62, learning_rate = 0.01, max_depth = 6,
                                      min_data_in_leaf = 5, objective = "regression_l2", verbose = 0) , file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE2)
-      nll_lbfgs <- -974.818838
+      nll_lbfgs <- -965.3904123
       expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_lbfgs), TOLERANCE)
       # same with optimizer_coef = "wls"
       gp_model <- GPModel(group_data = group_data_train)

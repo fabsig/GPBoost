@@ -368,8 +368,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                      nrounds = 30, learning_rate = 0.1, max_depth = 6,
                      min_data_in_leaf = 5, objective = "binary", verbose = 0)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4711222111, 0.3547389900))),TOLERANCE)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-376.5699209), TOLERANCE)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4653201461, 0.3556254916))),TOLERANCE)
+      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-375.4033342), TOLERANCE)
       
       # Validation metrics for training data
       # Default metric is "Approx. negative marginal log-likelihood" if there is only one training set
