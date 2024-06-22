@@ -85,11 +85,11 @@ Below is a list of important parameters for the tree-boosting part. `A comprehen
 
    -  applies only to the GPBoost algorithm
 
--  ``reuse_learning_rates_gp_model`` :raw-html:`<a id="reuse_learning_rates_gp_model" title="Permalink to this parameter" href="#reuse_learning_rates_gp_model">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
+-  ``reuse_learning_rates_gp_model`` :raw-html:`<a id="reuse_learning_rates_gp_model" title="Permalink to this parameter" href="#reuse_learning_rates_gp_model">&#x1F517;&#xFE0E;</a>`, default = ``true``, type = bool
 
    -  if ``true``, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them
 
-   -  this option can only be used if ``optimizer_cov`` = ``gradient_descent``
+   -  this option can only be used if ``optimizer_cov`` = ``gradient_descent``  or ``optimizer_cov`` = ``lbfgs`` (for the latter, the approximate Hessian is reused)
 
 -  ``train_gp_model_cov_pars`` :raw-html:`<a id="train_gp_model_cov_pars" title="Permalink to this parameter" href="#train_gp_model_cov_pars">&#x1F517;&#xFE0E;</a>`, default = ``true``, type = bool
 

@@ -176,7 +176,7 @@ namespace LightGBM {
 		bool line_search_step_length = false;
 
 		// desc = if ``true``, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them
-		// desc = this option can only be used if ``optimizer_cov`` = ``gradient_descent``
+		// desc = this option can only be used if ``optimizer_cov`` = ``gradient_descent`` or ``optimizer_cov`` = ``lbfgs`` (for the latter, the approximate Hessian is reused)
 		bool reuse_learning_rates_gp_model = true;
 
 		// desc = if ``true``, the covariance parameters of the Gaussian process / random effects model are trained (estimated) in every boosting iteration of the GPBoost algorithm, otherwise not
@@ -855,7 +855,7 @@ namespace LightGBM {
 		bool reg_sqrt = false;
 
 		// check = >0.0
-		// desc = used only in ``huber`` and ``quantile`` ``regression`` applications
+		// desc = used only in ``huber`` and ``quantile`` ``regression`` applications (this is not supported for the GPBoost algorithm)
 		// desc = parameter for `Huber loss <https://en.wikipedia.org/wiki/Huber_loss>`__ and `Quantile regression <https://en.wikipedia.org/wiki/Quantile_regression>`__
 		double alpha = 0.9;
 

@@ -127,7 +127,7 @@ Core Parameters
 
    -  if ``true``, the learning rates for the covariance and potential auxiliary parameters are kept at the values from the previous boosting iteration and not re-initialized when optimizing them
 
-   -  this option can only be used if ``optimizer_cov`` = ``gradient_descent``
+   -  this option can only be used if ``optimizer_cov`` = ``gradient_descent`` or ``optimizer_cov`` = ``lbfgs`` (for the latter, the approximate Hessian is reused)
 
 -  ``train_gp_model_cov_pars`` :raw-html:`<a id="train_gp_model_cov_pars" title="Permalink to this parameter" href="#train_gp_model_cov_pars">&#x1F517;&#xFE0E;</a>`, default = ``true``, type = bool
 
@@ -967,7 +967,7 @@ Objective Parameters
 
 -  ``alpha`` :raw-html:`<a id="alpha" title="Permalink to this parameter" href="#alpha">&#x1F517;&#xFE0E;</a>`, default = ``0.9``, type = double, constraints: ``alpha > 0.0``
 
-   -  used only in ``huber`` and ``quantile`` ``regression`` applications
+   -  used only in ``huber`` and ``quantile`` ``regression`` applications (this is not supported for the GPBoost algorithm)
 
    -  parameter for `Huber loss <https://en.wikipedia.org/wiki/Huber_loss>`__ and `Quantile regression <https://en.wikipedia.org/wiki/Quantile_regression>`__
 
