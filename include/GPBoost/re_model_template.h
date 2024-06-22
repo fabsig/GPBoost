@@ -19,6 +19,7 @@
 #include <GPBoost/likelihoods.h>
 #include <GPBoost/utils.h>
 #include <GPBoost/optim_utils.h>
+#include <LBFGSpp/BFGSMat.h>
 //#include <Eigen/src/misc/lapack.h>
 
 #include <memory>
@@ -405,6 +406,10 @@ namespace GPBoost {
 			return(likelihood_[unique_clusters_[0]]->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data));
 		}
 
+		LBFGSpp::BFGSMat<double>& GetMBFGS() {
+			return(m_bfgs_);
+		}
+
 		/*!
 		* \brief Set configuration parameters for the optimizer
 		* \param lr Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")
@@ -584,6 +589,8 @@ namespace GPBoost {
 			else {
 				has_covariates_ = true;
 			}
+			bool reuse_m_bfgs_from_previous_call = reuse_learning_rates_from_previous_call && called_in_GPBoost_algorithm && learn_covariance_parameters && 
+				cov_pars_have_been_estimated_once_ && cov_pars_have_been_estimated_during_last_call_;
 			OptimParamsSetInitialValues();
 			InitializeOptimSettings(called_in_GPBoost_algorithm, reuse_learning_rates_from_previous_call);
 			// Some checks
@@ -930,7 +937,7 @@ namespace GPBoost {
 				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
 					optimizer_cov_pars_, profile_out_marginal_variance_, profile_out_coef_optim_external,
-					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_);
+					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call);
 				// Check for NA or Inf
 				if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
 					if (learn_covariance_parameters) {
@@ -1234,7 +1241,7 @@ namespace GPBoost {
 				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it,
 					learn_covariance_parameters, "nelder_mead", profile_out_marginal_variance_, false,
-					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_);
+					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call);
 			}
 			if (num_it == max_iter_) {
 				Log::REDebug("GPModel: no convergence after the maximal number of iterations "
@@ -1307,6 +1314,10 @@ namespace GPBoost {
 			model_has_been_estimated_ = true;
 			if (learn_covariance_parameters) {
 				cov_pars_have_been_estimated_once_ = true;
+				cov_pars_have_been_estimated_during_last_call_ = true;
+			}
+			else {
+				cov_pars_have_been_estimated_during_last_call_ = false;
 			}
 			if (has_covariates_ && !only_intercept_for_GPBoost_algo) {
 				coef_have_been_estimated_once_ = true;
@@ -3939,6 +3950,8 @@ namespace GPBoost {
 		double C_MAX_CHANGE_COEF_ = 10.;
 		/*! \brief True if covariance parameters and potential auxiliary parameters have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
 		bool cov_pars_have_been_estimated_once_ = false;
+		/*! \brief True if covariance parameters and potential auxiliary parameters have been etimated in the most recent call (applies only to the GPBoost algorithm) */
+		bool cov_pars_have_been_estimated_during_last_call_ = false;
 		/*! \brief True if regression coefficients (actually the learning rate interpreted as a coefficient) have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
 		bool coef_have_been_estimated_once_ = false;
 		/*! \brief True if 'lr_cov_' and 'lr_aux_pars_ have been doubled in the first optimization iteration (num_iter_ == 0) (applies only to the GPBoost algorithm) */
@@ -3983,6 +3996,8 @@ namespace GPBoost {
 		double INCREASE_LR_CHANGE_LL_THRESHOLD_ = 1e-3;
 		/*! \brief If true, the nugget effect is profiled out for Gaussian likelihoods (=use closed-form expression for error / nugget variance) */
 		bool profile_out_marginal_variance_ = false;
+		/*! \brief Approximation to the Hessian matrix for LBFGS saved here for reuse */
+		LBFGSpp::BFGSMat<double> m_bfgs_;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */

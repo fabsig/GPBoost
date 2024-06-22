@@ -522,6 +522,7 @@ namespace GPBoost {
 	* \param aux_pars Pointer to aux_pars_ in likelihoods.h
 	* \param has_covariates If true, the model linearly incluses covariates
 	* \param initial_step_factor Only for 'lbfgs': The initial step length in the first iteration is this factor divided by the search direction (i.e. gradient)
+	* \param reuse_m_bfgs_from_previous_call If true, the approximate Hessian for the LBFGS are kept at the values from a previous call and not re-initialized (applies only to LBFGSSolver)
 	*/
 	template<typename T_mat, typename T_chol>
 	void OptimExternal(REModelTemplate<T_mat, T_chol>* re_model_templ,
@@ -541,7 +542,8 @@ namespace GPBoost {
 		int nb_aux_pars,
 		const double* aux_pars,
 		bool has_covariates,
-		double initial_step_factor) {
+		double initial_step_factor,
+		bool reuse_m_bfgs_from_previous_call) {
 		// Some checks
 		if (re_model_templ->EstimateAuxPars()) {
 			CHECK(num_cov_par + nb_aux_pars == (int)cov_pars.size());
@@ -625,12 +627,12 @@ namespace GPBoost {
 			if (optimizer == "lbfgs") {
 				param_LBFGSpp.linesearch = 1;//LBFGS_LINESEARCH_BACKTRACKING_ARMIJO
 				LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(param_LBFGSpp);
-				num_it = solver.minimize(ll_fun, pars_init, neg_log_likelihood);
+				num_it = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs_from_previous_call, re_model_templ->GetMBFGS());
 			}
 			else if (optimizer == "lbfgs_linesearch_nocedal_wright") {
 				param_LBFGSpp.linesearch = 3;//LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE
 				LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchNocedalWright> solver(param_LBFGSpp);
-				num_it = solver.minimize(ll_fun, pars_init, neg_log_likelihood);
+				num_it = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs_from_previous_call, re_model_templ->GetMBFGS());
 			}
 		}
 		//else if (optimizer == "adadelta") {// adadelta currently not supported as default settings do not always work

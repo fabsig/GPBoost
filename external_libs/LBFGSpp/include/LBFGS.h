@@ -38,10 +38,14 @@ private:
 
     // Reset internal variables
     // n: dimension of the vector to be optimized
-    inline void reset(int n)
+    // reuse_m_bfgs_from_previous_call: If true, m_bfgs is not initialized
+    inline void reset(int n, bool reuse_m_bfgs_from_previous_call)
     {
         const int m = m_param.m;
-        m_bfgs.reset(n, m);
+        if (!reuse_m_bfgs_from_previous_call)
+        {
+            m_bfgs.reset(n, m);
+        }
         m_xp.resize(n);
         m_grad.resize(n);
         m_gradp.resize(n);
@@ -73,17 +77,19 @@ public:
     /// \param x  In: An initial guess of the optimal point. Out: The best point
     ///           found.
     /// \param fx Out: The objective function value at `x`.
+    /// \param reuse_m_bfgs_from_previous_call If true, a given m_bfgs matrix is used (provided in m_bfgs_out)
+    /// \param m_bfgs_given 
     ///
     /// \return Number of iterations used.
     ///
     template <typename Foo>
-    inline int minimize(Foo& f, Vector& x, Scalar& fx)
+    inline int minimize(Foo& f, Vector& x, Scalar& fx, bool reuse_m_bfgs_from_previous_call, BFGSMat<Scalar>& m_bfgs_given)
     {
         using std::abs;
 
         // Dimension of the vector
         const int n = (int)x.size();
-        reset(n);
+        reset(n, reuse_m_bfgs_from_previous_call);
 
         // The length of lag for objective function value to test convergence
         const int fpast = m_param.past;
@@ -126,10 +132,27 @@ public:
             return 1;
         }
 
-        // Initial direction
-        m_drt.noalias() = -m_grad;
         // Initial step size
-        Scalar step = Scalar(m_param.initial_step_factor) / m_drt.norm();  // ChangedForGPBoost
+        Scalar step;
+        bool really_reuse_m_bfgs_from_previous_call = reuse_m_bfgs_from_previous_call;
+        if (reuse_m_bfgs_from_previous_call)
+        {
+            really_reuse_m_bfgs_from_previous_call = reuse_m_bfgs_from_previous_call && (m_bfgs_given.get_m_ncorr() > 0) && ((int) x.size() == m_bfgs_given.get_dim_param());
+        }
+        if (really_reuse_m_bfgs_from_previous_call)
+        {
+            CHECK(m_bfgs_given.get_m_ncorr() > 0);
+            m_bfgs = m_bfgs_given;
+            step = 1.;
+            m_bfgs.apply_Hv(m_grad, -Scalar(1), m_drt);
+        }
+        else
+        {
+            // Initial direction
+            m_drt.noalias() = -m_grad;
+            step = Scalar(m_param.initial_step_factor) / m_drt.norm();  // ChangedForGPBoost
+        }
+        
 
         // Tolerance for s'y >= eps * (y'y)
         constexpr Scalar eps = std::numeric_limits<Scalar>::epsilon();
@@ -169,6 +192,7 @@ public:
             // Convergence test -- gradient
             if (m_gnorm <= m_param.epsilon || m_gnorm <= m_param.epsilon_rel * x.norm())
             {
+                m_bfgs_given = m_bfgs;
                 return k;
             }
             // Convergence test -- objective function value
@@ -178,13 +202,17 @@ public:
 
                 // ChangedForGPBoost
                 if (k >= fpast && (fxd - fx) <= m_param.delta * std::max(abs(fxd), Scalar(1)))
+                {
+                    m_bfgs_given = m_bfgs;
                     return k;
+                }                   
 
                 m_fx[k % fpast] = fx;
             }
             // Maximum number of iterations
             if (m_param.max_iterations != 0 && k >= m_param.max_iterations)
             {
+                m_bfgs_given = m_bfgs;
                 return k;
             }
 
@@ -224,6 +252,7 @@ public:
             k++;
         }
 
+        m_bfgs_given = m_bfgs;
         return k;
     }
 
