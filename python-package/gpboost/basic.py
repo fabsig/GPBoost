@@ -4739,11 +4739,11 @@ class GPModel(object):
         params : dict or None, optional (default=None)
             Parameters for the estimation / optimization
 
-                - optimizer_cov : string, optional (default = "lbfgs" for linear mixed effects models and "gradient_descent" for the GPBoost algorithm)
+                - optimizer_cov : string, optional (default = "lbfgs")
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "nelder_mead", "adam".
+                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "newton" ,"nelder_mead", "adam".
                     If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
-                - optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
+                - optimizer_coef : string, optional (default = "wls" for Gaussian data and "lbfgs" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
                     Options: "gradient_descent", "lbfgs", "wls", "nelder_mead", "adam". Gradient descent steps are done simultaneously with
@@ -4989,11 +4989,11 @@ class GPModel(object):
         params : dict
             Parameters for the estimation / optimization
 
-                - optimizer_cov : string, optional (default = "lbfgs" for linear mixed effects models and "gradient_descent" for the GPBoost algorithm)
+                - optimizer_cov : string, optional (default = "lbfgs")
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "nelder_mead", "adam".
+                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "newton", "nelder_mead", "adam".
                     If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
-                - optimizer_coef : string, optional (default = "wls" for Gaussian data and "gradient_descent" for other likelihoods)
+                - optimizer_coef : string, optional (default = "wls" for Gaussian data and "lbfgs" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
                     (for the GPBoost algorithm there are usually none).
                     Options: "gradient_descent", "lbfgs", "wls", "nelder_mead", "adam". Gradient descent steps are done simultaneously with

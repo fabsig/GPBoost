@@ -16,12 +16,12 @@ fixed effects linear regression term (if there is one)}
 
 \item{params}{A \code{list} with parameters for the estimation / optimization
  \itemize{
-    \item{optimizer_cov: \code{string} (default = "lbfgs" for linear mixed effects models and "gradient_descent" for the GPBoost algorithm). 
+    \item{optimizer_cov: \code{string} (default = "lbfgs"). 
     Optimizer used for estimating covariance parameters. 
-    Options: "gradient_descent", "lbfgs", "fisher_scoring", "nelder_mead", "adam".
+    Options: "gradient_descent", "lbfgs", "fisher_scoring", "newton", "nelder_mead", "adam".
     If there are additional auxiliary parameters for non-Gaussian likelihoods, 
     'optimizer_cov' is also used for those }
-    \item{optimizer_coef: \code{string} (default = "wls" for Gaussian likelihoods and "gradient_descent" for other likelihoods). 
+    \item{optimizer_coef: \code{string} (default = "wls" for Gaussian likelihoods and "lbfgs" for other likelihoods). 
     Optimizer used for estimating linear regression coefficients, if there are any 
     (for the GPBoost algorithm there are usually none). 
     Options: "gradient_descent", "lbfgs", "wls", "nelder_mead", "adam". Gradient descent steps are done simultaneously 

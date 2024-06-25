@@ -360,7 +360,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 11)
     
     ## Test default initial values
-    params <- list(optimizer_cov = "gradient_descent", maxit = 0)
+    params <- list(optimizer_cov = "gradient_descent", maxit = 0, optimizer_coef = "gradient_descent")
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
                                            cov_fct_shape = 0.5, y = y, params = params) , file='NUL')
     expect_lt(abs(gp_model$get_cov_pars()[1] - var(y)/2),TOLERANCE_STRICT)
@@ -2348,6 +2348,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Fit model with lbfgs
     params_loc <- params_ARD
     params_loc$optimizer_cov <- "lbfgs"
+    params_loc$optimizer_coef <- "lbfgs"
     capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard",
                                            gp_approx = "fitc", num_ind_points = num_ind_points, ind_points_selection = "kmeans++",
                                            y = y, X = X, params = params_loc), 

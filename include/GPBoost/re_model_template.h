@@ -512,8 +512,10 @@ namespace GPBoost {
 			lr_coef_after_first_optim_boosting_iteration_ = lr_coef;
 			acc_rate_coef_ = acc_rate_coef;
 			if (optimizer_coef != nullptr) {
-				optimizer_coef_ = std::string(optimizer_coef);
-				coef_optimizer_has_been_set_ = true;
+				if (std::string(optimizer_coef) != "") {
+					optimizer_coef_ = std::string(optimizer_coef);
+					coef_optimizer_has_been_set_ = true;
+				}
 			}
 			num_rand_vec_trace_ = num_rand_vec_trace;
 			seed_rand_vec_trace_ = seed_rand_vec_trace;
@@ -592,20 +594,18 @@ namespace GPBoost {
 			bool reuse_m_bfgs_from_previous_call = reuse_learning_rates_from_previous_call && called_in_GPBoost_algorithm && learn_covariance_parameters && 
 				cov_pars_have_been_estimated_once_ && cov_pars_have_been_estimated_during_last_call_;
 			OptimParamsSetInitialValues();
-			InitializeOptimSettings(called_in_GPBoost_algorithm, reuse_learning_rates_from_previous_call);
+			InitializeOptimSettings(reuse_learning_rates_from_previous_call);
 			// Some checks
 			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov_pars_) == SUPPORTED_OPTIM_COV_PAR_.end()) {
 				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters ", optimizer_cov_pars_.c_str());
 			}
-			if (!gauss_likelihood_) {
-				if (optimizer_cov_pars_ == "fisher_scoring") {
-					Log::REFatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian likelihoods ", optimizer_cov_pars_.c_str());
-				}
+			if (optimizer_cov_pars_ == "fisher_scoring" && !gauss_likelihood_) {
+				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters for non-Gaussian likelihoods ", optimizer_cov_pars_.c_str());
 			}
 			if (optimizer_cov_pars_ == "fisher_scoring" && estimate_aux_pars_) {
 				Log::REFatal("Optimizer option '%s' is not supported when estimating additional auxiliary parameters for non-Gaussian likelihoods ", optimizer_cov_pars_.c_str());
 			}
-			if (covariate_data != nullptr) {
+			if (has_covariates_) {
 				if (gauss_likelihood_) {
 					if (SUPPORTED_OPTIM_COEF_GAUSS_.find(optimizer_coef_) == SUPPORTED_OPTIM_COEF_GAUSS_.end()) {
 						Log::REFatal("Optimizer option '%s' is not supported for linear regression coefficients.", optimizer_coef_.c_str());
@@ -616,6 +616,47 @@ namespace GPBoost {
 						Log::REFatal("Optimizer option '%s' is not supported for linear regression coefficients for non-Gaussian likelihoods ", optimizer_coef_.c_str());
 					}
 				}
+				// check whether optimizer_cov_pars_ and optimizer_coef_ are compatible
+				if (optimizer_coef_ != optimizer_cov_pars_ &&
+					((OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end() &&
+						!(optimizer_coef_ == "wls" && OPTIM_EXTERNAL_SUPPORT_WLS_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_SUPPORT_WLS_.end())) ||
+						OPTIM_EXTERNAL_.find(optimizer_coef_) != OPTIM_EXTERNAL_.end())) { // optimizers are not equal and one of them is an external optimizer (except when optimizer_coef_ == "wls" and optimizer_cov_pars_ supports this)
+					if (optimizer_cov_pars_has_been_set_ && coef_optimizer_has_been_set_) {
+						Log::REFatal("Cannot use optimizer_cov = '%s' when optimizer_coef = '%s' ",
+							optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
+					}
+					else if (optimizer_cov_pars_has_been_set_ && !coef_optimizer_has_been_set_) {
+						if ((gauss_likelihood_ && SUPPORTED_OPTIM_COEF_GAUSS_.find(optimizer_cov_pars_) == SUPPORTED_OPTIM_COEF_GAUSS_.end()) ||
+							(!gauss_likelihood_ && SUPPORTED_OPTIM_COEF_NONGAUSS_.find(optimizer_coef_) == SUPPORTED_OPTIM_COEF_NONGAUSS_.end())) {
+							Log::REFatal("Cannot use optimizer_cov = '%s' when optimizer_coef = '%s' ",
+								optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
+						}
+						else {
+							Log::REDebug("'%s' is also used for estimating regression coefficients (optimizer_coef = '%s' is ignored) ",
+								optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
+							optimizer_coef_ = optimizer_cov_pars_;
+						}
+					}
+					else if (!optimizer_cov_pars_has_been_set_ && coef_optimizer_has_been_set_) {
+						if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov_pars_) == SUPPORTED_OPTIM_COV_PAR_.end()) {
+							Log::REFatal("Cannot use optimizer_cov = '%s' when optimizer_coef = '%s' ",
+								optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
+						}
+						else {
+							Log::REWarning("'%s' is also used for estimating covariance parameters (optimizer_cov = '%s' is ignored) ",
+								optimizer_coef_.c_str(), optimizer_cov_pars_.c_str());
+							optimizer_cov_pars_ = optimizer_coef_;
+						}
+					}
+				}
+			}//end has_covariates_
+			// Profiling out sigma (=use closed-form expression for error / nugget variance) is often better (the paremeters usually live on different scales and the nugget needs a smaller learning rate than the others...)
+			profile_out_marginal_variance_ = gauss_likelihood_ &&
+				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam" ||
+					optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright");
+			bool gradient_contains_error_var = gauss_likelihood_ && !profile_out_marginal_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
+			if (optimizer_cov_pars_ == "lbfgs_not_profile_out_nugget") {
+				optimizer_cov_pars_ = "lbfgs";
 			}
 			// Check response variable data
 			if (y_data != nullptr) {
@@ -640,35 +681,11 @@ namespace GPBoost {
 			num_ll_evaluations_ = 0;
 			num_iter_ = 0;
 			num_it = max_iter_;
-			// Profiling out sigma (=use closed-form expression for error / nugget variance) is better for gradient descent for Gaussian data 
-			//	(the paremeters usually live on different scales and the nugget needs a small learning rate but the others not...)
-			profile_out_marginal_variance_ = gauss_likelihood_ &&
-				(optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "nelder_mead" || optimizer_cov_pars_ == "adam" || 
-					optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright");
-			if (optimizer_cov_pars_ == "lbfgs_not_profile_out_nugget") {
-				optimizer_cov_pars_ = "lbfgs";
-			}
-			if (OPTIM_EXTERNAL_.find(optimizer_coef_) != OPTIM_EXTERNAL_.end()) {
-				if (optimizer_coef_ != optimizer_cov_pars_) {
-					Log::REFatal("Cannot use optimizer_cov = '%s' when optimizer_coef = '%s' ",
-						optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
-				}
-			}
-			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
-				if (OPTIM_EXTERNAL_SUPPORT_WLS_.find(optimizer_cov_pars_) == OPTIM_EXTERNAL_SUPPORT_WLS_.end()) {
-					if (coef_optimizer_has_been_set_ && optimizer_coef_ != optimizer_cov_pars_) {
-						Log::REWarning("'%s' is also used for estimating regression coefficients (optimizer_coef = '%s' is ignored) ",
-							optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
-					}
-					optimizer_coef_ = optimizer_cov_pars_;
-				}
-			}
-			bool gradient_contains_error_var = gauss_likelihood_ && !profile_out_marginal_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
 			has_intercept_ = false; //If true, the covariates contain an intercept column (only relevant if there are covariates)
 			bool only_intercept_for_GPBoost_algo = false;//True if the covariates contain only an intercept and this function is called from the GPBoost algorithm for finding an initial score 
 			bool find_learning_rate_for_GPBoost_algo = false;//True if this function is called from the GPBoost algorithm for finding an optimal learning rate
 			intercept_col_ = -1;
-			// Check whether one of the columns contains only 1's and if not, make warning
+			// Check whether one of the columns contains only 1's (-> has_intercept_)
 			if (has_covariates_) {
 				num_coef_ = num_covariates;
 				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_coef_);
@@ -932,7 +949,7 @@ namespace GPBoost {
 				}
 			}
 			bool na_or_inf_occurred = false;
-			bool profile_out_coef_optim_external = optimizer_coef_ == "wls" && gauss_likelihood_;
+			bool profile_out_coef_optim_external = optimizer_coef_ == "wls" && gauss_likelihood_ && has_covariates_;
 			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
 				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
@@ -961,7 +978,7 @@ namespace GPBoost {
 				bool lr_cov_is_small = false, lr_aux_pars_is_small = false, lr_coef_is_small = false;
 				for (num_iter_ = 0; num_iter_ < max_iter_; ++num_iter_) {
 					if (reset_learning_rate_every_iteration_) {
-						InitializeOptimSettings(called_in_GPBoost_algorithm, reuse_learning_rates_from_previous_call);//reset learning rates to their initial values
+						InitializeOptimSettings(reuse_learning_rates_from_previous_call);//reset learning rates to their initial values
 					}
 					neg_log_likelihood_lag1_ = neg_log_likelihood_;
 					cov_aux_pars_lag1 = cov_aux_pars;
@@ -4834,14 +4851,6 @@ namespace GPBoost {
 		* \brief Function that set default values for several parameters if they were not initialized
 		*/
 		void InitializeDefaultSettings() {
-			if (!coef_optimizer_has_been_set_) {
-				if (gauss_likelihood_) {
-					optimizer_coef_ = "wls";
-				}
-				else {
-					optimizer_coef_ = "gradient_descent";
-				}
-			}
 			if (!vecchia_pred_type_has_been_set_) {
 				if (gauss_likelihood_) {
 					vecchia_pred_type_ = "order_obs_first_cond_obs_only";
@@ -5482,17 +5491,18 @@ namespace GPBoost {
 
 		/*!
 		* \brief Initialitze learning rates and convergence tolerance
-		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
 		* \param reuse_learning_rates_from_previous_call If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from a previous call and not re-initialized (can only be set to true if called_in_GPBoost_algorithm is true)
 		*/
-		void InitializeOptimSettings(bool called_in_GPBoost_algorithm,
-			bool reuse_learning_rates_from_previous_call) {
+		void InitializeOptimSettings(bool reuse_learning_rates_from_previous_call) {
 			if (!optimizer_cov_pars_has_been_set_) {
-				if (called_in_GPBoost_algorithm) {
-					optimizer_cov_pars_ = "gradient_descent";
+				optimizer_cov_pars_ = "lbfgs";
+			}
+			if (!coef_optimizer_has_been_set_) {
+				if (gauss_likelihood_) {
+					optimizer_coef_ = "wls";
 				}
 				else {
-					optimizer_cov_pars_ = "lbfgs";
+					optimizer_coef_ = "lbfgs";
 				}
 			}
 			if (reuse_learning_rates_from_previous_call && 
