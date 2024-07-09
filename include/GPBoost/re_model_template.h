@@ -4740,6 +4740,12 @@ namespace GPBoost {
 		* \param likelihood Likelihood name
 		*/
 		void InitializeLikelihoods(const string_t& likelihood) {
+			string_t approximation_type = "laplace";
+			if (TwoNumbersAreEqual<double>(cov_fct_taper_range_, 17.17)) {
+				approximation_type = "fisher_laplace";
+			} else if (TwoNumbersAreEqual<double>(cov_fct_taper_range_, 17.18)) {
+				approximation_type = "empirical_fisher_laplace";
+			}
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gp_approx_ == "vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4747,7 +4753,8 @@ namespace GPBoost {
 						re_comps_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs(),
 						false,
 						only_one_GP_calculations_on_RE_scale_,
-						re_comps_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_.data()));
+						re_comps_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
+						approximation_type));
 				}
 				else if (gp_approx_ == "fitc") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4755,7 +4762,8 @@ namespace GPBoost {
 						re_comps_cross_cov_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs(),
 						true,
 						only_one_GP_calculations_on_RE_scale_,
-						re_comps_cross_cov_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_.data()));
+						re_comps_cross_cov_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
+						approximation_type));
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4763,7 +4771,8 @@ namespace GPBoost {
 						cum_num_rand_eff_[cluster_i][num_re_group_total_],
 						false,
 						false,
-						nullptr));
+						nullptr,
+						approximation_type));
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4771,7 +4780,8 @@ namespace GPBoost {
 						re_comps_[cluster_i][0]->GetNumUniqueREs(),
 						false,
 						false,
-						nullptr));
+						nullptr,
+						approximation_type));
 				}
 				else if (only_one_GP_calculations_on_RE_scale_ && gp_approx_ != "vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4779,7 +4789,8 @@ namespace GPBoost {
 						re_comps_[cluster_i][0]->GetNumUniqueREs(),
 						true,
 						true,
-						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data()));
+						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
+						approximation_type));
 				}
 				else {//!only_one_GP_calculations_on_RE_scale_ && gp_approx_ == "none"
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4787,7 +4798,8 @@ namespace GPBoost {
 						num_data_per_cluster_[cluster_i],
 						true,
 						false,
-						nullptr));
+						nullptr,
+						approximation_type));
 				}
 				if (!gauss_likelihood_) {
 					likelihood_[cluster_i]->InitializeModeAvec();
