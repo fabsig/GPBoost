@@ -600,8 +600,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred <- predict(gp_model, group_data_pred = group_test, X_pred = X_test, offset = offset, 
                     predict_cov_mat = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),0.6)
-    nll_opt_o <- 144626.2921
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),0.1)
+    nll_opt_o <- 144626.2556
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_o),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(pred$mu-expected_mu)),0.1)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_LOOSE)

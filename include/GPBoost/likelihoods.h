@@ -329,9 +329,17 @@ namespace GPBoost {
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || 
 				likelihood_type_ == "negative_binomial") {
 				double avg = 0.;
+				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					avg += y_data[i];
+					for (data_size_t i = 0; i < num_data; ++i) {
+						avg += y_data[i];
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static) reduction(+:avg)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						avg += y_data[i] / std::exp(fixed_effects[i]);
+					}
 				}
 				avg /= num_data;
 				init_intercept = SafeLog(avg) - 0.5 * rand_eff_var; // log-normal distribution: mean of exp(beta_0 + Zb) = exp(beta_0 + 0.5 * sigma^2) => use beta_0 = mean(y) - 0.5 * sigma^2
