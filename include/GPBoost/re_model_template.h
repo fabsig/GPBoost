@@ -2593,6 +2593,13 @@ namespace GPBoost {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_cluster_i[j]->SetCovPars(pars);
 							}
+							std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp_]);
+							if (!(re_comp->ShouldSaveDistances())) {//determine nearest neighbors when using correlation-based approach
+								UpdateNearestNeighbors(re_comps_cluster_i, nearest_neighbors_cluster_i,
+									entries_init_B_cluster_i, entries_init_B_grad_cluster_i,
+									num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
+									has_duplicates_coords_, false, gauss_likelihood_);
+							}
 							// Calculate a Cholesky factor
 							sp_mat_t B_cluster_i;
 							sp_mat_t D_inv_cluster_i;
@@ -3646,7 +3653,8 @@ namespace GPBoost {
 				// redetermine nearest neighbors for models for which neighbors are selected based on correlations / scaled distances
 				UpdateNearestNeighbors(re_comps_[cluster_i], nearest_neighbors_[cluster_i],
 					entries_init_B_[cluster_i], entries_init_B_grad_[cluster_i],
-					num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_);
+					num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
+					has_duplicates_coords_, true, gauss_likelihood_);
 				if (!gauss_likelihood_) {
 					likelihood_[cluster_i]->SetCholFactPatternAnalyzedFalse();
 				}
@@ -4741,11 +4749,6 @@ namespace GPBoost {
 		*/
 		void InitializeLikelihoods(const string_t& likelihood) {
 			string_t approximation_type = "laplace";
-			if (TwoNumbersAreEqual<double>(cov_fct_taper_range_, 17.17)) {
-				approximation_type = "fisher_laplace";
-			} else if (TwoNumbersAreEqual<double>(cov_fct_taper_range_, 17.18)) {
-				approximation_type = "empirical_fisher_laplace";
-			}
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gp_approx_ == "vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,

@@ -88,6 +88,7 @@ namespace GPBoost {
 	* \param vecchia_ordering Ordering used in the Vecchia approximation. "none" = no ordering, "random" = random ordering
 	* \param num_neighbors The number of neighbors used in the Vecchia approximation
 	* \param vecchia_neighbor_selection The way how neighbors are selected
+	* \param check_has_duplicates If true, it is checked whether there are duplicate locations
 	* \param rng Random number generator
 	* \param num_gp_rand_coef Number of random coefficient GPs
 	* \param num_gp_total Total number of GPs (random intercepts plus random coefficients)
@@ -171,6 +172,9 @@ namespace GPBoost {
 			only_one_GP_calculations_on_RE_scale,
 			only_one_GP_calculations_on_RE_scale)));
 		std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp]);
+		if ((vecchia_ordering == "time" || vecchia_ordering == "time_random_space") && !(re_comp->IsSpaceTimeModel())) {
+			Log::REFatal("'vecchia_ordering' is '%s' but the 'cov_function' is not a space-time covariance function ", vecchia_ordering.c_str());
+		}
 		if (re_comp->GetNumUniqueREs() == num_data_per_cluster[cluster_i]) {
 			only_one_GP_calculations_on_RE_scale = false;
 		}
@@ -178,31 +182,30 @@ namespace GPBoost {
 		nearest_neighbors_cluster_i = std::vector<std::vector<int>>(re_comp->GetNumUniqueREs());
 		dist_obs_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
 		dist_between_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
-		find_nearest_neighbors_Vecchia_fast(re_comp->GetCoords(), re_comp->GetNumUniqueREs(), num_neighbors,
-			nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates,
-			vecchia_neighbor_selection, rng, re_comp->ShouldSaveDistances());
-		if ((vecchia_ordering == "time" || vecchia_ordering == "time_random_space") && !(re_comp->IsSpaceTimeModel())) {
-			Log::REFatal("'vecchia_ordering' is '%s' but the 'cov_function' is not a space-time covariance function ", vecchia_ordering.c_str());
-		}
-		if (check_has_duplicates) {
-			has_duplicates_coords = has_duplicates_coords || has_duplicates;
-			if (!gauss_likelihood && has_duplicates_coords) {
-				Log::REFatal("Duplicates found in the coordinates for the Gaussian process. "
-					"This is currently not supported for the Vecchia approximation for non-Gaussian likelihoods ");
+		if (re_comp->ShouldSaveDistances()) {
+			find_nearest_neighbors_Vecchia_fast(re_comp->GetCoords(), re_comp->GetNumUniqueREs(), num_neighbors,
+				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates,
+				vecchia_neighbor_selection, rng, re_comp->ShouldSaveDistances());
+			if (check_has_duplicates) {
+				has_duplicates_coords = has_duplicates_coords || has_duplicates;
+				if (!gauss_likelihood && has_duplicates_coords) {
+					Log::REFatal("Duplicates found in the coordinates for the Gaussian process. "
+						"This is currently not supported for the Vecchia approximation for non-Gaussian likelihoods ");
+				}
 			}
-		}
-		for (int i = 0; i < re_comp->GetNumUniqueREs(); ++i) {
-			for (int j = 0; j < (int)nearest_neighbors_cluster_i[i].size(); ++j) {
-				entries_init_B_cluster_i.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.));
-				entries_init_B_grad_cluster_i.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.));
+			for (int i = 0; i < re_comp->GetNumUniqueREs(); ++i) {
+				for (int j = 0; j < (int)nearest_neighbors_cluster_i[i].size(); ++j) {
+					entries_init_B_cluster_i.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.));
+					entries_init_B_grad_cluster_i.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.));
+				}
+				entries_init_B_cluster_i.push_back(Triplet_t(i, i, 1.));//Put 1's on the diagonal since B = I - A
 			}
-			entries_init_B_cluster_i.push_back(Triplet_t(i, i, 1.));//Put 1's on the diagonal since B = I - A
 		}
 		//Random coefficients
 		if (num_gp_rand_coef > 0) {
 			if (!(re_comp->ShouldSaveDistances())) {
 				Log::REFatal("Random coefficient processes are not supported for covariance functions "
-					"for which the neighbors are dynamically determined based on correlations");
+					"for which the neighbors are dynamically determined based on correlations ");
 			}
 			z_outer_z_obs_neighbors_cluster_i = std::vector<std::vector<den_mat_t>>(re_comp->GetNumUniqueREs());
 			for (int j = 0; j < num_gp_rand_coef; ++j) {
@@ -250,6 +253,9 @@ namespace GPBoost {
 	* \param vecchia_neighbor_selection The way how neighbors are selected
 	* \param rng Random number generator
 	* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps') of the intercept GP associated with the random coefficient GPs
+	* \param[out] has_duplicates_coords If true, there are duplicates in coords among the neighbors (currently only used for the Vecchia approximation for non-Gaussian likelihoods)
+	* \param check_has_duplicates If true, it is checked whether there are duplicate locations
+	* \param gauss_likelihood If true, the response variables have a Gaussian likelihood, otherwise not
 	*/
 	template<typename T_mat>
 	void UpdateNearestNeighbors(std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i,
@@ -259,7 +265,10 @@ namespace GPBoost {
 		int num_neighbors,
 		const string_t& vecchia_neighbor_selection,
 		RNG_t& rng,
-		int ind_intercept_gp) {
+		int ind_intercept_gp,
+		bool& has_duplicates_coords,
+		bool check_has_duplicates,
+		bool gauss_likelihood) {
 		std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp]);
 		CHECK(re_comp->ShouldSaveDistances() == false);
 		int num_re = re_comp->GetNumUniqueREs();
@@ -269,30 +278,48 @@ namespace GPBoost {
 		re_comp->GetScaledCoordinates(coords_scaled);
 		// find correlation-based nearest neighbors
 		std::vector<den_mat_t> dist_dummy;
-		bool check_has_duplicates = false;
+		bool has_duplicates = check_has_duplicates;
 		find_nearest_neighbors_Vecchia_fast(coords_scaled, num_re, num_neighbors,
-			nearest_neighbors_cluster_i, dist_dummy, dist_dummy, 0, -1, check_has_duplicates,
+			nearest_neighbors_cluster_i, dist_dummy, dist_dummy, 0, -1, has_duplicates,
 			vecchia_neighbor_selection, rng, false);
-		int ctr = 0, ctr_grad = 0;
-		for (int i = 0; i < std::min(num_re, num_neighbors); ++i) {
-			for (int j = 0; j < (int)nearest_neighbors_cluster_i[i].size(); ++j) {
-				entries_init_B_cluster_i[ctr] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
-				entries_init_B_grad_cluster_i[ctr_grad] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
-				ctr++;
-				ctr_grad++;
+		if (check_has_duplicates) {
+			has_duplicates_coords = has_duplicates_coords || has_duplicates;
+			if (!gauss_likelihood && has_duplicates_coords) {
+				Log::REFatal("Duplicates found in the coordinates for the Gaussian process. "
+					"This is currently not supported for the Vecchia approximation for non-Gaussian likelihoods ");
 			}
-			entries_init_B_cluster_i[ctr] = Triplet_t(i, i, 1.);//Put 1's on the diagonal since B = I - A
-			ctr++;
 		}
-		if (num_neighbors < num_re) {
-#pragma omp parallel for schedule(static)
-			for (int i = num_neighbors; i < num_re; ++i) {
-				CHECK((int)nearest_neighbors_cluster_i[i].size() == num_neighbors);
-				for (int j = 0; j < num_neighbors; ++j) {
-					entries_init_B_cluster_i[ctr + (i - num_neighbors) * (num_neighbors + 1) + j] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
-					entries_init_B_grad_cluster_i[ctr_grad + (i - num_neighbors) * num_neighbors + j] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
+		if (entries_init_B_cluster_i.size() == 0) {
+			for (int i = 0; i < re_comp->GetNumUniqueREs(); ++i) {
+				for (int j = 0; j < (int)nearest_neighbors_cluster_i[i].size(); ++j) {
+					entries_init_B_cluster_i.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.));
+					entries_init_B_grad_cluster_i.push_back(Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.));
 				}
-				entries_init_B_cluster_i[ctr + (i - num_neighbors) * (num_neighbors + 1) + num_neighbors] = Triplet_t(i, i, 1.);//Put 1's on the diagonal since B = I - A
+				entries_init_B_cluster_i.push_back(Triplet_t(i, i, 1.));//Put 1's on the diagonal since B = I - A
+			}
+		}
+		else {
+			int ctr = 0, ctr_grad = 0;
+			for (int i = 0; i < std::min(num_re, num_neighbors); ++i) {
+				for (int j = 0; j < (int)nearest_neighbors_cluster_i[i].size(); ++j) {
+					entries_init_B_cluster_i[ctr] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
+					entries_init_B_grad_cluster_i[ctr_grad] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
+					ctr++;
+					ctr_grad++;
+				}
+				entries_init_B_cluster_i[ctr] = Triplet_t(i, i, 1.);//Put 1's on the diagonal since B = I - A
+				ctr++;
+			}
+			if (num_neighbors < num_re) {
+#pragma omp parallel for schedule(static)
+				for (int i = num_neighbors; i < num_re; ++i) {
+					CHECK((int)nearest_neighbors_cluster_i[i].size() == num_neighbors);
+					for (int j = 0; j < num_neighbors; ++j) {
+						entries_init_B_cluster_i[ctr + (i - num_neighbors) * (num_neighbors + 1) + j] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
+						entries_init_B_grad_cluster_i[ctr_grad + (i - num_neighbors) * num_neighbors + j] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
+					}
+					entries_init_B_cluster_i[ctr + (i - num_neighbors) * (num_neighbors + 1) + num_neighbors] = Triplet_t(i, i, 1.);//Put 1's on the diagonal since B = I - A
+				}
 			}
 		}
 	}//end UpdateNearestNeighbors
