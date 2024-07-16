@@ -6074,7 +6074,7 @@ namespace GPBoost {
 						lr_aux_pars_ = lr_aux_pars;
 						Log::REDebug("GPModel covariance and auxiliary parameter estimation: Learning rates have been decreased permanently in iteration number %d "
 							"since with the previous learning rates, there was no decrease in the objective function. "
-							"New learning rates: covariance parameters = %g, auxiliary parameters = %g", it + 1, lr_cov_, lr_aux_pars_);
+							"New learning rates: covariance parameters = %g, auxiliary parameters = %g ", it + 1, lr_cov_, lr_aux_pars_);
 					}
 					else {
 						Log::REDebug("GPModel covariance parameter estimation: The learning rate has been decreased permanently in iteration number %d "
