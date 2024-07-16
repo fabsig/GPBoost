@@ -5951,7 +5951,7 @@ namespace GPBoost {
 			int momentum_offset,
 			const double* fixed_effects) {
 			if (use_nesterov_acc && nesterov_schedule_version == 1 && armijo_condition_) {
-				Log::REFatal("Armijo condition backtracking is not implemented when nesterov_schedule_version = 1");
+				Log::REFatal("Armijo condition backtracking is not implemented when nesterov_schedule_version = 1 ");
 			}
 			vec_t cov_pars_new(num_cov_par_ + NumAuxPars());
 			if (profile_out_marginal_variance_) {
