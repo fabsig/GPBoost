@@ -378,19 +378,30 @@ namespace GPBoost {
 		/*!
 		* \brief Determine initial value for additional likelihood parameters (e.g., shape for gamma)
 		* \param y_data Response variable data
+		* \param fixed_effects Fixed effects component of location parameter
 		* \param num_data Number of data points
 		*/
 		const double* FindInitialAuxPars(const double* y_data,
+			const double* fixed_effects,
 			const data_size_t num_data) {
 			if (likelihood_type_ == "gamma") {
 				// Use a simple "MLE" approach for the shape parameter ignoring random and fixed effects and 
 				//	using the approximation: ln(k) - digamma(k) approx = (1 + 1 / (6k + 1)) / (2k), where k = shape
 				//	See https://en.wikipedia.org/wiki/Gamma_distribution#Maximum_likelihood_estimation (as of 02.03.2023)
 				double log_avg = 0., avg_log = 0.;
+				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:log_avg, avg_log)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					log_avg += y_data[i];
-					avg_log += std::log(y_data[i]);
+					for (data_size_t i = 0; i < num_data; ++i) {
+						log_avg += y_data[i];
+						avg_log += std::log(y_data[i]);
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static) reduction(+:log_avg, avg_log)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						log_avg += y_data[i] / std::exp(fixed_effects[i]);
+						avg_log += std::log(y_data[i]) - fixed_effects[i];
+					}
 				}
 				log_avg /= num_data;
 				log_avg = std::log(log_avg);
@@ -401,10 +412,20 @@ namespace GPBoost {
 			else if (likelihood_type_ == "negative_binomial") {
 				// Use a method of moments estimator
 				double avg = 0., sum_sq = 0.;
+				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					avg += y_data[i];
-					sum_sq += y_data[i] * y_data[i];
+					for (data_size_t i = 0; i < num_data; ++i) {
+						avg += y_data[i];
+						sum_sq += y_data[i] * y_data[i];
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static) reduction(+:avg, sum_sq)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						double y_min_FE = y_data[i] / std::exp(fixed_effects[i]);
+						avg += y_min_FE;
+						sum_sq += y_min_FE * y_min_FE;
+					}
 				}
 				avg /= num_data;
 				double avg_sq = avg * avg;
@@ -508,7 +529,7 @@ namespace GPBoost {
 					Log::REFatal("The '%s' parameter is not > 0. This might be due to a problem when estimating the '%s' parameter (e.g., a numerical overflow). "
 						"You can try either (i) manually setting a different initial value using the 'init_aux_pars' parameter "
 						" or (ii) not estimating the '%s' parameter at all by setting 'estimate_aux_pars' to 'false'. "
-						"Both these parameters can be specified in the 'params' argument by calling, e.g., the 'set_optim_params' function of a 'GPModel' ",
+						"Both these options can be specified in the 'params' argument by calling, e.g., the 'set_optim_params' function of a 'GPModel' ",
 						names_aux_pars_[0].c_str(), names_aux_pars_[0].c_str(), names_aux_pars_[0].c_str());
 				}
 				aux_pars_[0] = aux_pars[0];

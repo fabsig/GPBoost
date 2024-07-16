@@ -768,7 +768,7 @@ namespace GPBoost {
 				has_fixed_effects_ = true;
 				fixed_effects_ = Eigen::Map<const vec_t>(fixed_effects, num_data_);
 			}
-			// Initialization of covariance parameters related variables as well as additional parameters for likelihood (aux_pars)
+			// Initialization of covariance parameters
 			int num_cov_par_estimate = num_cov_par_;
 			if (estimate_aux_pars_) {
 				num_cov_par_estimate += NumAuxPars();
@@ -777,29 +777,6 @@ namespace GPBoost {
 			for (int i = 0; i < num_cov_par_; ++i) {
 				cov_aux_pars[i] = init_cov_pars[i];
 			}
-			if (estimate_aux_pars_) {
-				// Find initial values for additional likelihood parameters (aux_pars) if they have not been given
-				if (!(likelihood_[unique_clusters_[0]]->AuxParsHaveBeenSet())) {
-					const double* aux_pars;
-					if (y_data == nullptr) {
-						vec_t y_aux_temp(num_data_);
-						GetY(y_aux_temp.data());
-						aux_pars = likelihood_[unique_clusters_[0]]->FindInitialAuxPars(y_aux_temp.data(), num_data_);
-						y_aux_temp.resize(0);
-					}
-					else {
-						aux_pars = likelihood_[unique_clusters_[0]]->FindInitialAuxPars(y_data, num_data_);
-					}
-					SetAuxPars(aux_pars);
-				}
-				for (int i = 0; i < NumAuxPars(); ++i) {
-					cov_aux_pars[num_cov_par_ + i] = GetAuxPars()[i];
-				}
-			}
-			vec_t cov_aux_pars_lag1 = vec_t(num_cov_par_estimate);
-			vec_t cov_aux_pars_init = cov_aux_pars;
-			vec_t cov_pars_after_grad_aux = cov_aux_pars, cov_aux_pars_after_grad_aux_lag1 = cov_aux_pars;//auxiliary variables used only if use_nesterov_acc == true
-			vec_t cov_aux_pars_before_lr_coef_small, aux_pars_before_lr_cov_small, cov_pars_before_lr_aux_pars_small;//auxiliary variables
 			// Set response variabla data (if needed). Note: for the GPBoost algorithm this is set a prior by calling SetY. For Gaussian data with covariates, this is set later repeatedly.
 			if ((!has_covariates_ || !gauss_likelihood_) && y_data != nullptr) {
 				SetY(y_data);
@@ -896,6 +873,31 @@ namespace GPBoost {
 				}
 				SetY(resid.data());
 			}
+			if (estimate_aux_pars_) {
+				// Find initial values for additional likelihood parameters (aux_pars) if they have not been given
+				if (!(likelihood_[unique_clusters_[0]]->AuxParsHaveBeenSet())) {
+					const double* aux_pars;
+					if (y_data == nullptr) {
+						vec_t y_aux_temp(num_data_);
+						GetY(y_aux_temp.data());
+						aux_pars = likelihood_[unique_clusters_[0]]->FindInitialAuxPars(y_aux_temp.data(), fixed_effects_ptr, num_data_);
+						y_aux_temp.resize(0);
+					}
+					else {
+						aux_pars = likelihood_[unique_clusters_[0]]->FindInitialAuxPars(y_data, fixed_effects_ptr, num_data_);
+					}
+					SetAuxPars(aux_pars);
+				}
+				for (int i = 0; i < NumAuxPars(); ++i) {
+					cov_aux_pars[num_cov_par_ + i] = GetAuxPars()[i];
+				}
+			}//end estimate_aux_pars_
+			// Initialize auxiliary variables for e.g. Nesterov acceleration
+			vec_t cov_aux_pars_lag1 = vec_t(num_cov_par_estimate);
+			vec_t cov_aux_pars_init = cov_aux_pars;
+			vec_t cov_pars_after_grad_aux = cov_aux_pars, cov_aux_pars_after_grad_aux_lag1 = cov_aux_pars;//auxiliary variables used only if use_nesterov_acc == true
+			vec_t cov_aux_pars_before_lr_coef_small, aux_pars_before_lr_cov_small, cov_pars_before_lr_aux_pars_small;//auxiliary variables
+			// Print out initial information
 			if (called_in_GPBoost_algorithm) {
 				Log::REDebug(" ");
 			}
@@ -5951,7 +5953,7 @@ namespace GPBoost {
 			if (use_nesterov_acc && nesterov_schedule_version == 1 && armijo_condition_) {
 				Log::REFatal("Armijo condition backtracking is not implemented when nesterov_schedule_version = 1");
 			}
-			vec_t cov_pars_new(num_cov_par_);
+			vec_t cov_pars_new(num_cov_par_ + NumAuxPars());
 			if (profile_out_marginal_variance_) {
 				cov_pars_new[0] = cov_pars[0];
 			}
