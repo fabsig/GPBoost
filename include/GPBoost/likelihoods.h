@@ -1113,6 +1113,7 @@ namespace GPBoost {
 			}//end approximation_type_ == "laplace"
 			else {
 				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
+				return(1.);
 			}
 		}// end CalcDiagInformationLogLikOneSample
 
