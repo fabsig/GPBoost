@@ -2778,8 +2778,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=num_neighbors, nsim_var_pred=nsim_var_pred)
       pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,
                       X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
-      expected_mu_nn <- c(0.1361984, 0.4161447, 0.6388071)
-      expected_cov_nn <- c(1.00000000, 0.00000000, 0.00000000, 0.00000000, 0.85149451, 0.01824841, 0.00000000, 0.01824841, 0.81056946)
+      expected_mu_nn <- c(0.1361984,0.4161065, 0.6387701)
+      expected_cov_nn <- c(1.00000000, 0.00000000, 0.00000000, 0.00000000, 0.85149347, 0.01824826, 0.00000000, 0.01824826, 0.81056753)
       expect_lt(sum(abs(pred$mu-expected_mu_nn)),tolerance_loc)
       expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_nn)),tolerance_loc)
       pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,
@@ -2885,6 +2885,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
+    # Prediction without prior model fitting
+    exp_mu_no_coef <- c(0.00000000, 0.25771940, 0.17913289)
+    exp_cov_no_coef <- c(0.56250000000, 0.00000000000, 0.00000000000, 0.00000000000, 0.49481305128, 0.00021588667, 0.00000000000, 0.00021588667, 0.48645327980)
+    gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard")
+    pred <- predict(gp_model, gp_coords_pred = coord_test, y = y, predict_response = FALSE,
+                    predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu-exp_mu_no_coef)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-exp_cov_no_coef)),TOLERANCE_STRICT)
     
     ##############
     ## With Vecchia approximation
@@ -2924,6 +2932,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
+    # Prediction without prior model fitting
+    capture.output( gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, 
+                                           cov_function = "matern_ard",
+                                           gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none"), 
+                    file='NUL')
+    gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=n+2)
+    pred <- predict(gp_model, gp_coords_pred = coord_test, y = y, predict_response = FALSE,
+                    predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu-exp_mu_no_coef)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-exp_cov_no_coef)),TOLERANCE_STRICT)
     
     ## Less neighbors 
     for(inv_method in c("cholesky", "iterative")){
@@ -2958,8 +2976,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=num_neighbors, nsim_var_pred=nsim_var_pred)
       pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,
                       X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
-      expected_mu_nn <- c(-0.270115072752, 0.056046012145, 0.005351014963)
-      expected_cov_nn <- c(0.5625000000000, 0.0000000000000, 0.0000000000000, 0.0000000000000, 0.4938347914473, 0.0002168393793, 0.0000000000000, 0.0002168393793, 0.4862319661703)
+      expected_mu_nn <- c(-0.270115042, 0.056026304, 0.004030845)
+      expected_cov_nn <- c(0.5625000000, 0.0000000000, 0.0000000000, 0.0000000000, 0.4938561338, 0.0002305911, 0.0000000000, 0.0002305911, 0.4862230662)
       expect_lt(sum(abs(pred$mu-expected_mu_nn)),tolerance_loc)
       expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_nn)),tolerance_loc)
       pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,
