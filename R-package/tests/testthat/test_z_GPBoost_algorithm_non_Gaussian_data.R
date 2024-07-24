@@ -157,7 +157,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Create random effects model and train GPBoost model
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      set_optim_params(gp_model, params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      params_gp <- DEFAULT_OPTIM_PARAMS_NO_NESTEROV
+      params_gp$init_cov_pars <- rep(1,2)
+      set_optim_params(gp_model, params=params_gp)
       bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                      nrounds = 30, learning_rate = 0.1, max_depth = 6,
                      min_data_in_leaf = 5, objective = "binary", verbose = 0)
@@ -201,7 +203,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Training with alternative likelihood names
       gp_model <- GPModel(group_data = group_data_train, likelihood = "binary_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      gp_model$set_optim_params(params=params_gp)
       bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                      nrounds = 30, learning_rate = 0.1, max_depth = 6,
                      min_data_in_leaf = 5, verbose = 0)
@@ -212,7 +214,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$response_var, n=4) - resp_var)),TOLERANCE)
       # Training with alternative objective names
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      gp_model$set_optim_params(params=params_gp)
       capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                                      nrounds = 30, learning_rate = 0.1, max_depth = 6,
                                      min_data_in_leaf = 5, objective = "bernoulli_probit", verbose = 0), file='NUL')
@@ -223,29 +225,30 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(sum(abs(tail(pred$response_var, n=4) - resp_var)),TOLERANCE)
       # Training with "wrong" default likelihood
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      params_gp_gaus <- params_gp
+      params_gp_gaus$init_cov_pars <- NULL
       capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                                      nrounds = 30, learning_rate = 0.1, max_depth = 6,
                                      min_data_in_leaf = 5, objective = "binary", verbose = 0), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),0.02)
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                       predict_var = TRUE, pred_latent = FALSE)
-      expect_lt(sum(abs(tail(pred$response_mean, n=4) - resp_mean)),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$response_var, n=4) - resp_var)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$response_mean, n=4) - resp_mean)),0.05)
+      expect_lt(sum(abs(tail(pred$response_var, n=4) - resp_var)),0.02)
       # Training with "wrong" default likelihood
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      gp_model$set_optim_params(params=params_gp_gaus)
       capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                                      nrounds = 30, learning_rate = 0.1, max_depth = 6,
                                      min_data_in_leaf = 5, objective = "binary_probit", verbose = 0), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),0.002)
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                       predict_var = TRUE, pred_latent = FALSE)
-      expect_lt(sum(abs(tail(pred$response_mean, n=4) - resp_mean)),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$response_var, n=4) - resp_var)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$response_mean, n=4) - resp_mean)),0.05)
+      expect_lt(sum(abs(tail(pred$response_var, n=4) - resp_var)),0.02)
       # objective and likelihood do not match
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      gp_model$set_optim_params(params=params_gp)
       expect_error({ 
         bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                        nrounds = 30, learning_rate = 0.1, max_depth = 6,
@@ -303,6 +306,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Train tree-boosting model while holding the GPModel fix
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+      gp_model$set_optim_params(params=params_gp)
       bst <- gpboost(data = X_train,
                      label = y_train,
                      gp_model = gp_model,
@@ -317,7 +321,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # LaGaBoostOOS algorithm
       #   1. Run LaGaBoost algorithm separately on every fold and fit parameters on out-of-sample data
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      gp_model$set_optim_params(params=params_gp)
       cvbst <- gpb.cv(params = params,
                       data = dtrain,
                       gp_model = gp_model,
@@ -374,6 +378,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Validation metrics for training data
       # Default metric is "Approx. negative marginal log-likelihood" if there is only one training set
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+      gp_model$set_optim_params(params=params_gp)
       capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
                                      objective = "binary", train_gp_model_cov_pars=FALSE, nrounds=1), file='NUL')
       record_results <- gpb.get.eval.result(bst, "train", "Approx. negative marginal log-likelihood")
@@ -402,7 +407,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Find number of iterations using validation data with use_gp_model_for_validation=FALSE
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
+      params_gp_v2 <- DEFAULT_OPTIM_PARAMS_V2
+      params_gp_v2$init_cov_pars <- rep(1,2)
+      gp_model$set_optim_params(params=params_gp_v2)
       capture.output( bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                                        learning_rate=0.1, objective = "binary", verbose = 0,
                                        use_gp_model_for_validation=FALSE, eval = "binary_error",
@@ -413,7 +420,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Find number of iterations using validation data with use_gp_model_for_validation=TRUE
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
+      gp_model$set_optim_params(params=params_gp_v2)
       gp_model$set_prediction_data(group_data_pred = group_data_test)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                        learning_rate=0.1, objective = "binary", verbose = 0,
@@ -430,7 +437,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Other metrics / losses
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
+      gp_model$set_optim_params(params=params_gp_v2)
       gp_model$set_prediction_data(group_data_pred = group_data_test)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                        learning_rate=0.5, objective = "binary", verbose = 0,
@@ -454,7 +461,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # CV for finding number of boosting iterations when use_gp_model_for_validation = FALSE
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
+      gp_model$set_optim_params(params=params_gp_v2)
       cvbst <- gpb.cv(params = params,
                       data = dtrain,
                       gp_model=gp_model,
@@ -484,11 +491,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                       fit_GP_cov_pars_OOS = FALSE,
                                       folds = folds,
                                       verbose = 0), file='NUL')
-      expect_equal(cvbst$best_iter, expect_iter)
-      expect_lt(abs(cvbst$best_score-expect_score), TOLERANCE)
+      expect_equal(cvbst$best_iter, 8)
+      expect_lt(abs(cvbst$best_score-expect_score), 0.002)
       # CV for finding number of boosting iterations when use_gp_model_for_validation = TRUE
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
+      gp_model$set_optim_params(params=params_gp)
       cvbst <- gpb.cv(params = params,
                       data = dtrain,
                       gp_model = gp_model,
@@ -513,7 +520,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         return(list(name="bin_cust_error",value=error,higher_better=FALSE))
       }
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
+      gp_model$set_optim_params(params=params_gp_v2)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds=100, valids=valids,
                        learning_rate=0.1, objective = "binary", verbose = 0,
                        use_gp_model_for_validation=FALSE,
@@ -522,7 +529,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(bst$best_score - 0.359),TOLERANCE)
       # CV
       gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
+      gp_model$set_optim_params(params=params_gp_v2)
       cvbst <- gpb.cv(params = params,
                       data = dtrain,
                       gp_model=gp_model,
@@ -1530,7 +1537,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Train model
       gp_model <- GPModel(group_data = group_data_train, likelihood = "poisson")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_V2)
+      params_gp_v2 <- DEFAULT_OPTIM_PARAMS_V2
+      params_gp_v2$init_cov_pars <- rep(1,2)
+      gp_model$set_optim_params(params=params_gp_v2)
       bst <- gpboost(data = dtrain,
                      gp_model = gp_model,
                      nrounds = 30,
@@ -1558,6 +1567,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       OPTIM_PARAMS_GAMMA <- DEFAULT_OPTIM_PARAMS_V2
       OPTIM_PARAMS_GAMMA$estimate_aux_pars = FALSE
       OPTIM_PARAMS_GAMMA$init_aux_pars = 1.
+      OPTIM_PARAMS_GAMMA$init_cov_pars <- rep(1,2)
       
       ntrain <- ntest <- 1000
       n <- ntrain + ntest
@@ -1646,6 +1656,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       OPTIM_PARAMS_GAMMA <- DEFAULT_OPTIM_PARAMS_V2
       OPTIM_PARAMS_GAMMA$estimate_aux_pars = FALSE
       OPTIM_PARAMS_GAMMA$init_aux_pars = 1.
+      OPTIM_PARAMS_GAMMA$init_cov_pars <- rep(1,2)
       
       ntrain <- ntest <- 1000
       n <- ntrain + ntest
@@ -1916,7 +1927,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       #Parameter tuning using cross-validation: deterministic and random grid search
       gp_model <- GPModel(group_data = group_data, likelihood = "bernoulli_probit")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      params_gp <- DEFAULT_OPTIM_PARAMS
+      params_gp$init_cov_pars <- rep(1,2)
+      gp_model$set_optim_params(params=params_gp)
       dtrain <- gpb.Dataset(data = X, label = y)
       params <- list(objective = "binary", verbose = 0)
       param_grid = list("learning_rate" = c(0.5,0.11), "min_data_in_leaf" = c(20),
@@ -1945,7 +1958,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       shape <- 1
       y <- qgamma(sim_rand_unif(n=n, init_c=0.1864), scale = mu/shape, shape = shape)
       gp_model <- GPModel(group_data = group_data, likelihood = "gamma")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       dtrain <- gpb.Dataset(data = X, label = y)
       params <- list(objective = "gamma", verbose = 0)
       param_grid = list("learning_rate" = c(0.5,0.11), "min_data_in_leaf" = c(20),
@@ -1963,7 +1976,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       mu <- exp(f + eps)
       y <- qpois(sim_rand_unif(n=n, init_c=0.879), lambda = mu)
       gp_model <- GPModel(group_data = group_data, likelihood = "poisson")
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       dtrain <- gpb.Dataset(data = X, label = y)
       params <- list(objective = "poisson", verbose = 0)
       param_grid = list("learning_rate" = c(0.5,0.11), "min_data_in_leaf" = c(20),

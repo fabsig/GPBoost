@@ -131,7 +131,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Create random effects model and train GPBoost model
       gp_model <- GPModel(group_data = group_data_train)
-      set_optim_params(gp_model, params=DEFAULT_OPTIM_PARAMS)
+      params_gp <- DEFAULT_OPTIM_PARAMS
+      params_gp$init_cov_pars <- c(var(y)/2,rep(var(y)/2,2))
+      set_optim_params(gp_model, params=params_gp)
       bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                      nrounds = 62, learning_rate = 0.01, max_depth = 6,
                      min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -198,19 +200,20 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Validation metrics for training data
       # Default metric is "Negative log-likelihood" if there is only one training set
       gp_model <- GPModel(group_data = group_data_train)
+      gp_model$set_optim_params(params=params_gp)
       capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
                                      objective = "regression_l2", train_gp_model_cov_pars=FALSE, nrounds=1), file='NUL')
       record_results <- gpb.get.eval.result(bst, "train", "Negative log-likelihood")
-      expect_lt(abs(record_results[1]-1411.924206), TOLERANCE)
+      expect_lt(abs(record_results[1]-1410.545), TOLERANCE)
       
       bst <- gpb.train(data = dtrain, gp_model = gp_model, verbose = 0, valids = list(train=dtrain),
                        objective = "regression_l2", train_gp_model_cov_pars=FALSE, nrounds=1)
       record_results <- gpb.get.eval.result(bst, "train", "Negative log-likelihood")
-      expect_lt(abs(record_results[1]-1411.924206), TOLERANCE)
+      expect_lt(abs(record_results[1]-1410.545), TOLERANCE)
       
       # CV for finding number of boosting iterations with use_gp_model_for_validation = FALSE
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
                       nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
                       use_gp_model_for_validation = FALSE, folds = folds, verbose = 0)
@@ -285,7 +288,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # GPBoostOOS algorithm
       #   1. Run GPBoost algorithm separately on every fold and fit parameters on out-of-sample data
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
                       nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
                       use_gp_model_for_validation = FALSE, folds = folds, verbose = 0,
@@ -308,7 +311,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # GPBoostOOS algorithm: fit parameters on out-of-sample data with random folds
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       cvbst <- gpb.cv(params = params, data = dtrain, gp_model = gp_model,
                       nrounds = 100, nfold = 4, eval = "l2", early_stopping_rounds = 5,
                       use_gp_model_for_validation = FALSE, fit_GP_cov_pars_OOS = TRUE,
@@ -318,7 +321,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Use Nelder-Mead for training
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params = list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6))
+      gp_model$set_optim_params(params = list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6, init_cov_pars = params_gp$init_cov_pars))
       bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                      nrounds = 62, learning_rate = 0.01, max_depth = 6,
                      min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -332,7 +335,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Use lbfgs for training
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params = list(optimizer_cov="lbfgs", optimizer_coef = "lbfgs"))
+      gp_model$set_optim_params(params = list(optimizer_cov="lbfgs", optimizer_coef = "lbfgs", init_cov_pars = params_gp$init_cov_pars))
       capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                                      nrounds = 62, learning_rate = 0.01, max_depth = 6,
                                      min_data_in_leaf = 5, objective = "regression_l2", verbose = 0) , file='NUL')
@@ -341,7 +344,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_lbfgs), TOLERANCE)
       # same with optimizer_coef = "wls"
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params = list(optimizer_cov="lbfgs", optimizer_coef = "wls"))
+      gp_model$set_optim_params(params = list(optimizer_cov="lbfgs", optimizer_coef = "wls", init_cov_pars = params_gp$init_cov_pars))
       capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                                      nrounds = 62, learning_rate = 0.01, max_depth = 6,
                                      min_data_in_leaf = 5, objective = "regression_l2", verbose = 0) , file='NUL')
@@ -355,7 +358,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                      objective = "regression_l2",
                      leaves_newton_update = TRUE)
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       cvbst <- gpb.cv(params = params,
                       data = dtrain,
                       gp_model = gp_model,
@@ -374,7 +377,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Using validation set
       # Do not include random effect predictions for validation
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
                        nrounds = 100,
@@ -390,7 +393,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(bst$best_score - 1.0326),TOLERANCE)
       # Include random effect predictions for validation 
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       gp_model$set_prediction_data(group_data_pred = group_data_test)
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
@@ -407,7 +410,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(bst$best_score - 0.04753591),TOLERANCE)
       # Same thing using the set_prediction_data method 
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       set_prediction_data(gp_model, group_data_pred = group_data_test)
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
@@ -429,7 +432,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         return(list(name="l4",value=mean((preds-labels)^4),higher_better=FALSE))
       }
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
                        nrounds = 100,
@@ -446,7 +449,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(bst$best_score - 3.058637),TOLERANCE)
       # CV
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       cvbst <- gpb.cv(params = params,
                       data = dtrain,
                       gp_model = gp_model,
@@ -464,7 +467,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Use of validation data and test_neg_log_likelihood as metric
       gp_model <- GPModel(group_data = group_data_train)
       set_prediction_data(gp_model, group_data_pred = group_data_test)
-      set_optim_params(gp_model, params=DEFAULT_OPTIM_PARAMS)
+      set_optim_params(gp_model, params=params_gp)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 10,
                        learning_rate = 0.01, max_depth = 6, min_data_in_leaf = 5,
                        objective = "regression_l2", verbose = 0,
@@ -478,7 +481,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(bst$best_score - nll),TOLERANCE)
       # Use of validation data and test_neg_log_likelihood as metric but set use_gp_model_for_validation = FALSE
       gp_model <- GPModel(group_data = group_data_train)
-      gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS)
+      gp_model$set_optim_params(params=params_gp)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 10,
                        learning_rate = 0.01, max_depth = 6, min_data_in_leaf = 5,
                        objective = "regression_l2", verbose = 0,

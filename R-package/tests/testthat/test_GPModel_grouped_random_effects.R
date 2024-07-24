@@ -483,11 +483,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_MEDIUM)
     
     # Gradient descent
+    init_cov_pars <- c(var(y)/2,rep(var(y)/2,3))
     gp_model <- fitGPModel(group_data = cbind(group,group2),
                            group_rand_coef_data = x,
                            ind_effect_group_rand_coef = 1,
                            y = y,
-                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE))
+                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE, init_cov_pars=init_cov_pars))
     cov_pars <- c(0.4958303, 1.2493181, 1.0543343, 1.1388604 )
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(),8)
@@ -507,7 +508,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # bfgs_optim_lib
     gp_model <- fitGPModel(group_data = cbind(group,group2),  group_rand_coef_data = x,
                            ind_effect_group_rand_coef = 1, y = y,
-                           params = list(optimizer_cov = "bfgs_optim_lib", std_dev = FALSE))
+                           params = list(optimizer_cov = "bfgs_optim_lib", std_dev = FALSE, init_cov_pars=init_cov_pars))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
     # Adam
     gp_model <- fitGPModel(group_data = cbind(group,group2),
@@ -526,10 +527,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     ## A random effect and a random slope without a corresponding intercept effect
     y <- Z2%*%b2 + Z3%*%b3 + xi
+    init_cov_pars <- c(var(y)/2,rep(var(y)/2,2))
     gp_model <- fitGPModel(group_data = cbind(group,group2),
                            group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                            drop_intercept_group_rand_effect = c(TRUE,FALSE), y = y,
-                           params = list(optimizer_cov = "gradient_descent"))
+                           params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars))
     expected_values <- c(0.5017205, 1.0818474, 1.1157430)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 7)
@@ -666,13 +668,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # cluster_ids and random coefficients
     y <- Z1%*%b1 + Z3%*%b3 + xi
+    init_cov_pars <- c(var(y)/2,rep(var(y)/2,2))
     capture.output( gp_model <- fitGPModel(group_data = group,
                                            cluster_ids = cluster_ids,
                                            group_rand_coef_data = x,
                                            ind_effect_group_rand_coef = 1,
                                            y = y,
                                            params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
-                                                         lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 1000,
+                                                         lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 1000, init_cov_pars=init_cov_pars,
                                                          convergence_criterion = "relative_change_in_parameters"))
                     , file='NUL')
     expected_values <- c(0.4927786, 1.2565102, 1.1333662)

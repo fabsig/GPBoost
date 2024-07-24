@@ -3479,6 +3479,7 @@ namespace GPBoost {
 				}
 				//TODO: find better initial values depending on the likelihood (e.g., poisson, gamma, etc.)
 			}
+			init_marg_var /= num_comps_total_;
 			if (gp_approx_ == "vecchia") {//Neither distances nor coordinates are saved for random coefficient GPs in the Vecchia approximation -> cannot find initial parameters -> just copy the ones from the intercept GP
 				// find initial values for intercept process
 				int num_par_j = ind_par_[1] - ind_par_[0];

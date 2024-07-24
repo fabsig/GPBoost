@@ -691,9 +691,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     ## Two crossed random effects
     probs_2 <- pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2)
     y_2 <- as.numeric(sim_rand_unif(n=n, init_c=0.156) < probs_2)
-    init_cov_pars_2 <- rep(1,2)
+    params = DEFAULT_OPTIM_PARAMS
+    params$init_cov_pars <- rep(1,2)
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), 
-                                           y = y_2, likelihood = "bernoulli_probit", params = DEFAULT_OPTIM_PARAMS)
+                                           y = y_2, likelihood = "bernoulli_probit", params = params)
                     , file='NUL')
     expected_values <- c(0.1950790008, 0.5496159992)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE_STRICT)
@@ -787,10 +788,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Including linear fixed effects
     probs <- pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3 + X%*%beta)
+    params = DEFAULT_OPTIM_PARAMS
+    params$init_cov_pars <- rep(1,3)
     y_lin <- as.numeric(sim_rand_unif(n=n, init_c=0.41) < probs)
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
-                                           y = y_lin, X=X, likelihood = "bernoulli_probit",
-                                           params = DEFAULT_OPTIM_PARAMS)
+                                           y = y_lin, X=X, likelihood = "bernoulli_probit", params = params)
                     , file='NUL')
     cov_pars <- c(0.8047844, 1.5684941, 1.8099834)
     coef <- c(-0.4002821736, 2.5025630022)
@@ -1981,10 +1983,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Multiple random effects
     mu <- exp(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
     y <- qpois(sim_rand_unif(n=n, init_c=0.74532), lambda = mu)
+    init_cov_pars <- rep(1,3)
     # Estimation 
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
                                            ind_effect_group_rand_coef = 1, likelihood = "poisson",
-                                           y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = TRUE, lr_cov=0.1))
+                                           y = y, params = list(optimizer_cov = "gradient_descent", use_nesterov_acc = TRUE, 
+                                                                lr_cov=0.1, init_cov_pars=init_cov_pars))
                     , file='NUL')
     cov_pars <- c(0.4069344, 1.6988978, 1.3415016)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
@@ -2115,6 +2119,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Multiple random effects
     mu <- exp(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
+    params$init_cov_pars <- rep(1,3)
     y <- qgamma(sim_rand_unif(n=n, init_c=0.04532), scale = mu/shape, shape = shape)
     # Estimation 
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
@@ -2135,6 +2140,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
     # Also estimate shape parameter
     params_shape$optimizer_cov <- "nelder_mead"
+    params_shape$init_cov_pars <- rep(1,3)
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
                                            ind_effect_group_rand_coef = 1, likelihood = "gamma",
                                            y = y, params = params_shape), file='NUL')
@@ -2232,6 +2238,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 26)
     
     ## Grouped random effects model with a linear predictor
+    params_shape$init_cov_pars <- params$init_cov_pars <- NULL
     mu_lin <- exp(Z1 %*% b_gr_1 + X%*%beta)
     y_lin <- qgamma(sim_rand_unif(n=n, init_c=0.532), scale = mu_lin/shape, shape = shape)
     gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
@@ -2436,6 +2443,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Multiple random effects
     mu <- exp(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
     y <- qnbinom(sim_rand_unif(n=n, init_c=0.1468), mu = mu, size = shape)
+    params_shape$init_cov_pars <- params$init_cov_pars <- rep(1,3)
     # Estimation 
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
                                            ind_effect_group_rand_coef = 1, likelihood = likelihood,
@@ -2512,6 +2520,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 2)
     
     ## Grouped random effects model with a linear predictor
+    params_shape$init_cov_pars <- params$init_cov_pars <- NULL
     mu_lin <- exp(Z1 %*% b_gr_1 + X%*%beta)
     y_lin <- qnbinom(sim_rand_unif(n=n, init_c=0.13278), mu = mu_lin, size = shape)
     gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
