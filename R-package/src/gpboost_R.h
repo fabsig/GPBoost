@@ -8,6 +8,7 @@
 
 #include <LightGBM/c_api.h>
 
+#define STRICT_R_HEADERS
 #define R_NO_REMAP
 #define R_USE_C99_IN_CXX
 #include <Rinternals.h>

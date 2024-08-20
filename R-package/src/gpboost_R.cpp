@@ -13,6 +13,7 @@
 
 #include <R_ext/Rdynload.h>
 
+#define STRICT_R_HEADERS
 #define R_NO_REMAP
 #define R_USE_C99_IN_CXX
 #include <R_ext/Error.h>
