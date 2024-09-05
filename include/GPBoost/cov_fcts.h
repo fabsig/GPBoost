@@ -1319,7 +1319,7 @@ namespace GPBoost {
 								}
 							}
 						}//end ind_range == 1
-					}//end shape_ == 0.5
+					}//end shape_ == 0.5 && matern_space_time
 					else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {						
 						if (ind_range == 0) {
 							double cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[1] / sqrt(3.));
@@ -1373,7 +1373,7 @@ namespace GPBoost {
 								}
 							}
 						}//end ind_range == 1
-					}//end shape_ == 1.5
+					}//end shape_ == 1.5 && matern_space_time
 					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
 						if (ind_range == 0) {
 							double cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[1] / sqrt(5.));
@@ -1427,7 +1427,7 @@ namespace GPBoost {
 								}
 							}
 						}//end ind_range == 1
-					}//end shape_ == 2.5
+					}//end shape_ == 2.5 && matern_space_time
 #if MSVC_OR_GCC_COMPILER
 					else {//general shape
 						if (ind_range == 0) {
@@ -1484,7 +1484,7 @@ namespace GPBoost {
 								}
 							}
 						}//end ind_range == 1
-					}//end general shape
+					}//end general shape && matern_space_time
 #endif
 				}//end matern_space_time
 				else if (cov_fct_type_ == "matern_ard") {
@@ -1525,7 +1525,7 @@ namespace GPBoost {
 								}
 							}
 						}
-					}//end shape_ == 0.5
+					}//end shape_ == 0.5 && matern_ard
 					else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
 						double cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[ind_range + 1] / sqrt(3.));
 						if (is_symmmetric) {
@@ -1552,7 +1552,7 @@ namespace GPBoost {
 								}
 							}
 						}
-					}//end shape_ == 1.5
+					}//end shape_ == 1.5 && matern_ard
 					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
 						double cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[ind_range + 1] / sqrt(5.));
 						if (is_symmmetric) {
@@ -1579,7 +1579,7 @@ namespace GPBoost {
 								}
 							}
 						}
-					}//end shape_ == 2.5
+					}//end shape_ == 2.5 && matern_ard
 #if MSVC_OR_GCC_COMPILER
 					else {//general shape
 						double cm = transf_scale ? 1. : (-nugget_var * pars[ind_range + 1] / sqrt(2. * shape_));
@@ -1608,7 +1608,7 @@ namespace GPBoost {
 								}
 							}
 						}
-					}//end general shape
+					}//end general shape && matern_ard
 #endif
 				}//end matern_ard
 				else if (cov_fct_type_ == "gaussian_ard") {
@@ -1828,7 +1828,7 @@ namespace GPBoost {
 								}
 							}
 						}//end ind_range == 1
-					}//end shape_ == 0.5
+					}//end shape_ == 0.5 && matern_space_time
 					else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
 						if (ind_range == 0) {
 							double cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[1] / sqrt(3.));
@@ -1893,7 +1893,7 @@ namespace GPBoost {
 								}
 							}
 						}//end ind_range == 1
-					}//end shape_ == 1.5
+					}//end shape_ == 1.5 && matern_space_time
 					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
 						if (ind_range == 0) {
 							double cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[1] / sqrt(5.));
@@ -1963,7 +1963,7 @@ namespace GPBoost {
 								}
 							}
 						}//end ind_range == 1
-					}//end shape_ == 2.5
+					}//end shape_ == 2.5 && matern_space_time
 #if MSVC_OR_GCC_COMPILER
 					else {//general shape
 						if (ind_range == 0) {
@@ -2036,7 +2036,7 @@ namespace GPBoost {
 								}
 							}
 						}//end ind_range == 1
-					}//end general shape
+					}//end general shape && matern_space_time
 #endif
 				}//end matern_space_time
 				else if (cov_fct_type_ == "matern_ard") {
@@ -2085,7 +2085,7 @@ namespace GPBoost {
 								}
 							}
 						}
-					}//end shape_ == 0.5
+					}//end shape_ == 0.5 && matern_ard
 					else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
 						double cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[ind_range + 1] / sqrt(3.));
 						if (is_symmmetric) {
@@ -2120,7 +2120,7 @@ namespace GPBoost {
 								}
 							}
 						}
-					}//end shape_ == 1.5
+					}//end shape_ == 1.5 && matern_ard
 					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
 						double cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[ind_range + 1] / sqrt(5.));
 						if (is_symmmetric) {
@@ -2155,7 +2155,7 @@ namespace GPBoost {
 								}
 							}
 						}
-					}//end shape_ == 2.5
+					}//end shape_ == 2.5 && matern_ard
 #if MSVC_OR_GCC_COMPILER
 					else {//general shape
 						double cm = transf_scale ? 1. : (-nugget_var * pars[ind_range + 1] / sqrt(2. * shape_));
@@ -2192,7 +2192,7 @@ namespace GPBoost {
 								}
 							}
 						}
-					}//end general shape
+					}//end general shape && matern_ard
 #endif
 				}//end matern_ard
 				else if (cov_fct_type_ == "gaussian_ard") {
