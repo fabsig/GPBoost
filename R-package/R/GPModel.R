@@ -582,6 +582,8 @@ gpb.GPModel <- R6::R6Class(
           }
         } else if (private$cov_function == "wendland") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var")
+        } else if (private$cov_function == "matern_estimate_shape") {
+          private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range", "GP_smoothness")
         } else {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range")
         }
@@ -624,6 +626,11 @@ gpb.GPModel <- R6::R6Class(
               } else if (private$cov_function == "wendland") {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_nb_", ii,"_var"))
+              } else if (private$cov_function == "matern_estimate_shape") {
+                private$cov_par_names <- c(private$cov_par_names,
+                                           paste0("GP_rand_coef_nb_", ii,"_var"),
+                                           paste0("GP_rand_coef_nb_", ii,"_range"),
+                                           paste0("GP_rand_coef_nb_", ii,"_smoothness"))
               } else {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_nb_", ii,"_var"),
@@ -647,6 +654,11 @@ gpb.GPModel <- R6::R6Class(
               } else if (private$cov_function == "wendland") {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"))
+              }  else if (private$cov_function == "matern_estimate_shape") {
+                private$cov_par_names <- c(private$cov_par_names,
+                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"),
+                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range"),
+                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_smoothness"))
               } else {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"),
@@ -2018,7 +2030,7 @@ gpb.GPModel <- R6::R6Class(
                   estimate_aux_pars = TRUE),
     
     determine_num_cov_pars = function(likelihood) {
-      if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
+      if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time" | private$cov_function == "matern_estimate_shape") {
         num_par_per_GP <- 3L
       } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | private$cov_function == "exponential_ard") {
         num_par_per_GP <- 1L + private$dim_coords

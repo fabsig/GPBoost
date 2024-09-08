@@ -56,7 +56,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Transform the covariance parameters
-		* \param sigma2 Marginal variance
+		* \param sigma2 Nugget effect / error variance for Gaussian likelihoods
 		* \param pars Vector with covariance parameters on orignal scale
 		* \param[out] pars_trans Transformed covariance parameters
 		*/
@@ -64,7 +64,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Back-transform the covariance parameters to the original scale
-		* \param sigma2 Marginal variance
+		* \param sigma2  Nugget effect / error variance for Gaussian likelihoods
 		* \param pars Vector with covariance parameters
 		* \param[out] pars_orig Back-transformed, original covariance parameters
 		*/
@@ -366,7 +366,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Transform the covariance parameters
-		* \param sigma2 Marginal variance
+		* \param sigma2 Nugget effect / error variance for Gaussian likelihoods
 		* \param pars Vector of length 1 with variance of the grouped random effect
 		* \param[out] pars_trans Transformed covariance parameters
 		*/
@@ -376,7 +376,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Back-transform the covariance parameters to the original scale
-		* \param sigma2 Marginal variance
+		* \param sigma2 Nugget effect / error variance for Gaussian likelihoods
 		* \param pars Vector of length 1 with variance of the grouped random effect
 		* \param[out] pars_orig Back-transformed, original covariance parameters
 		*/
@@ -1094,7 +1094,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Transform the covariance parameters
-		* \param sigma2 Marginal variance
+		* \param sigma2 Nugget effect / error variance for Gaussian likelihoods
 		* \param pars Vector with covariance parameters on orignal scale
 		* \param[out] pars_trans Transformed covariance parameters
 		*/
@@ -1106,7 +1106,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Function that sets the covariance parameters
-		* \param sigma2 Marginal variance
+		* \param sigma2 Nugget effect / error variance for Gaussian likelihoods
 		* \param pars Vector with covariance parameters
 		* \param[out] pars_orig Back-transformed, original covariance parameters
 		*/

@@ -82,6 +82,9 @@ namespace GPBoost {
 			else if (cov_fct_type == "wendland") {
 				num_cov_par_ = 1;
 			}
+			else if (cov_fct_type == "matern_estimate_shape") {
+				num_cov_par_ = 3;
+			}
 			else {
 				num_cov_par_ = 2;
 			}
@@ -102,6 +105,12 @@ namespace GPBoost {
 				if (shape <= 0. || shape > 2.) {
 					Log::REFatal("'shape' needs to be larger than 0 and smaller or equal than 2 for the '%s' covariance function, found %g ", cov_fct_type.c_str(), shape);
 				}
+			}
+			else if (cov_fct_type == "matern_estimate_shape") {
+#if !defined(MSVC_OR_GCC_COMPILER)
+				// Mathematical special functions are not supported in C++17 by Clang and some other compilers (see https://en.cppreference.com/w/cpp/compiler_support/17#C.2B.2B17_library_features) 
+				Log::REFatal("The covariance function '%s' is not supported when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", cov_fct_type.c_str());
+#endif
 			}
 			if (cov_fct_type == "wendland" || apply_tapering) {
 				if (!(TwoNumbersAreEqual<double>(taper_shape, 0.0) || TwoNumbersAreEqual<double>(taper_shape, 1.0) || TwoNumbersAreEqual<double>(taper_shape, 2.0))) {
@@ -177,7 +186,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Transform the covariance parameters
-		* \param sigma2 Marginal variance
+		* \param sigma2 Nugget effect / error variance for Gaussian likelihoods
 		* \param pars Vector with covariance parameters on orignal scale
 		* \param[out] pars_trans Transformed covariance parameters
 		*/
@@ -232,7 +241,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Function transforms the covariance parameters back to the original scale
-		* \param sigma2 Marginal variance
+		* \param sigma2 Nugget effect / error variance for Gaussian likelihoods
 		* \param pars Vector with covariance parameters
 		* \param[out] pars_orig Back-transformed, original covariance parameters
 		*/
@@ -394,6 +403,26 @@ namespace GPBoost {
 					}
 				}
 			}//end cov_fct_type_ == "matern"
+			else if (cov_fct_type_ == "matern_estimate_shape") {
+				if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < (int)dist.rows(); ++i) {
+						sigma(i, i) = pars[0];
+						for (int j = i + 1; j < (int)dist.cols(); ++j) {
+							sigma(i, j) = MaternCovarianceEstimateShape(dist(i, j), pars[0], pars[1], pars[2]);
+							sigma(j, i) = sigma(i, j);
+						}
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < (int)dist.rows(); ++i) {
+						for (int j = 0; j < (int)dist.cols(); ++j) {
+							sigma(i, j) = MaternCovarianceEstimateShape(dist(i, j), pars[0], pars[1], pars[2]);
+						}
+					}
+				}
+			}//end cov_fct_type_ == "matern_estimate_shape"
 			else if (cov_fct_type_ == "gaussian") {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
@@ -696,6 +725,34 @@ namespace GPBoost {
 					}
 				}
 			}//end cov_fct_type_ == "matern"
+			else if (cov_fct_type_ == "matern_estimate_shape") {
+				if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+					for (int k = 0; k < sigma.outerSize(); ++k) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
+							int i = (int)it.row();
+							int j = (int)it.col();
+							if (i == j) {
+								it.valueRef() = pars[0];
+							}
+							else if (i < j) {
+								it.valueRef() = MaternCovarianceEstimateShape(dist.coeff(i, j), pars[0], pars[1], pars[2]);
+								sigma.coeffRef(j, i) = it.value();
+							}
+						}
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static)
+					for (int k = 0; k < sigma.outerSize(); ++k) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
+							int i = (int)it.row();
+							int j = (int)it.col();
+							it.valueRef() = MaternCovarianceEstimateShape(dist.coeff(i, j), pars[0], pars[1], pars[2]);
+						}
+					}
+				}
+			}//end cov_fct_type_ == "matern_estimate_shape"
 			else if (cov_fct_type_ == "gaussian") {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
@@ -946,6 +1003,9 @@ namespace GPBoost {
 			else if (cov_fct_type_ == "matern") {
 				sigma = MaternCovarianceGeneralShape(dist, pars[0], pars[1]);
 			}//end cov_fct_type_ == "matern"
+			else if (cov_fct_type_ == "matern_estimate_shape") {
+				sigma = MaternCovarianceEstimateShape(dist, pars[0], pars[1], pars[2]);
+			}//end cov_fct_type_ == "matern_estimate_shape"
 			else if (cov_fct_type_ == "gaussian") {
 				sigma = GaussianCovariance(dist, pars[0], pars[1]);
 			}//end cov_fct_type_ == "gaussian"
@@ -1228,6 +1288,41 @@ namespace GPBoost {
 					}
 				}
 			}//end matern
+#endif
+#if MSVC_OR_GCC_COMPILER
+			else if (cov_fct_type_ == "matern_estimate_shape") {
+				CHECK(ind_range >= 0 && ind_range <= 1);
+				if (ind_range == 0) {
+					double cm = transf_scale ? 1. : nugget_var / pars[1];
+					cm *= -pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
+					sigma_grad = T_mat(sigma.rows(), sigma.cols());
+					if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < (int)dist.rows(); ++i) {
+							sigma_grad(i, i) = 0.;
+							for (int j = i + 1; j < (int)dist.cols(); ++j) {
+								double range_dist = dist.coeff(i, j) * std::sqrt(2. * pars[2]) / pars[1];
+								sigma_grad(i, j) = cm * std::pow(range_dist, pars[2]) * 
+									(2. * pars[2] * std::cyl_bessel_k(pars[2], range_dist) - range_dist * std::cyl_bessel_k(pars[2] + 1., range_dist));
+								sigma_grad(j, i) = sigma_grad(i, j);
+							}
+						}
+					}
+					else {
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < (int)dist.rows(); ++i) {
+							for (int j = 0; j < (int)dist.cols(); ++j) {
+								double range_dist = dist.coeff(i, j) * sqrt(2. * pars[2]) / pars[1];
+								sigma_grad(i, j) = cm * std::pow(range_dist, pars[2]) *
+									(2. * pars[2] * std::cyl_bessel_k(pars[2], range_dist) - range_dist * std::cyl_bessel_k(pars[2] + 1., range_dist));
+							}
+						}
+					}
+				}//end ind_range == 0
+				else if (ind_range == 1) {//gradient wrt smoothness parameter
+
+				}
+			}//end matern_estimate_shape
 #endif
 			else if (cov_fct_type_ == "gaussian") {
 				double cm = transf_scale ? (-1. * pars[1]) : (2. * nugget_var * std::pow(pars[1], 3. / 2.));
@@ -2400,6 +2495,10 @@ namespace GPBoost {
 						pars[1] = 2. * 5.9 / mean_dist;//same as shape_ = 2.5
 					}
 				}
+				else if (cov_fct_type_ == "matern_estimate_shape") {
+					pars[1] = 2. * 4.7 * mean_dist / std::sqrt(3.);//same as shape_ = 1.5
+					pars[2] = 1.5;					
+				}
 				else if (cov_fct_type_ == "gaussian") {
 					pars[1] = 3. / std::pow(mean_dist / 2., 2.);
 				}
@@ -2506,7 +2605,8 @@ namespace GPBoost {
 			"wendland",
 			"matern_space_time",
 			"matern_ard",
-			"gaussian_ard" };
+			"gaussian_ard",
+			"matern_estimate_shape"};
 
 		/*!
 		* \brief Calculates Wendland correlation function if taper_shape == 0
@@ -2609,6 +2709,32 @@ namespace GPBoost {
 			else {
 #if MSVC_OR_GCC_COMPILER
 				return(var * const_ * std::pow(range_dist, shape_) * std::cyl_bessel_k(shape_, range_dist));
+#else
+				return(1.);
+#endif
+			}
+		}
+
+		/*!
+		* \brief Calculates Matern covariance function for general shape without transformed parameters (parametrization of Rasmussen and Williams, 2006)
+		* \param dist Distance
+		* \param var Marginal variance
+		* \param range Range parameter
+		* \param shape Smoothness parameter
+		* \return Covariance
+		*/
+		inline double MaternCovarianceEstimateShape(const double dist,
+			const double& var,
+			const double& range,
+			const double& shape) const {
+			CHECK(shape > 0.);
+			double range_dist = dist * std::sqrt(2. * shape) / range;
+			if (range_dist <= 0.) {
+				return(var);
+			}
+			else {
+#if MSVC_OR_GCC_COMPILER
+				return(var * std::pow(2., 1 - shape) / std::tgamma(shape) * std::pow(range_dist, shape) * std::cyl_bessel_k(shape, range_dist));
 #else
 				return(1.);
 #endif

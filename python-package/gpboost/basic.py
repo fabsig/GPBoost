@@ -4540,6 +4540,8 @@ class GPModel(object):
                 self.cov_par_names.extend(["GP_var"] + ["GP_range_" + str(i+1) for i in range(0,self.dim_coords)])
             elif self.cov_function == "wendland":
                 self.cov_par_names.extend(["GP_var"])
+            elif self.cov_function == "matern_estimate_shape":
+                self.cov_par_names.extend(["GP_var", "GP_range", "GP_smoothness"])
             else:
                 self.cov_par_names.extend(["GP_var", "GP_range"])
             self.re_comp_names.append("GP")
@@ -4570,6 +4572,11 @@ class GPModel(object):
                                  ["GP_rand_coef_nb_" + str(ii + 1) + str(i+1) for i in range(0,self.dim_coords)])
                         elif self.cov_function == "wendland":
                             self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + "_var"])
+                        elif self.cov_function == "matern_estimate_shape":
+                            self.cov_par_names.extend(
+                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
+                                 "GP_rand_coef_nb_" + str(ii + 1) + "_range",
+                                 "GP_rand_coef_nb_" + str(ii + 1) + "_smoothness"])
                         else:
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
@@ -4588,6 +4595,11 @@ class GPModel(object):
                                  ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(0,self.dim_coords)])
                         elif self.cov_function == "wendland":
                             self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"])
+                        elif self.cov_function == "matern_estimate_shape":
+                            self.cov_par_names.extend(
+                                ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
+                                 "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range",
+                                 "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_smoothness"])
                         else:
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
@@ -4661,7 +4673,8 @@ class GPModel(object):
             self.set_optim_params(params=model_dict["params"])
 
     def __determine_num_cov_pars(self, likelihood):
-        if self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
+        if self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time" or \
+            self.cov_function == "matern_estimate_shape":
             num_par_per_GP = 3
         elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or \
                 self.cov_function == "exponential_ard":
