@@ -1294,16 +1294,17 @@ namespace GPBoost {
 				CHECK(ind_range >= 0 && ind_range <= 1);
 				if (ind_range == 0) {
 					double cm = transf_scale ? 1. : nugget_var / pars[1];
-					cm *= -pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
+					cm *= -pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);					
+					double par_aux = std::sqrt(2. * pars[2]) / pars[1];
 					sigma_grad = T_mat(sigma.rows(), sigma.cols());
 					if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < (int)dist.rows(); ++i) {
 							sigma_grad(i, i) = 0.;
 							for (int j = i + 1; j < (int)dist.cols(); ++j) {
-								double range_dist = dist.coeff(i, j) * std::sqrt(2. * pars[2]) / pars[1];
-								sigma_grad(i, j) = cm * std::pow(range_dist, pars[2]) * 
-									(2. * pars[2] * std::cyl_bessel_k(pars[2], range_dist) - range_dist * std::cyl_bessel_k(pars[2] + 1., range_dist));
+								double z = dist.coeff(i, j) * par_aux;
+								sigma_grad(i, j) = cm * std::pow(z, pars[2]) * 
+									(2. * pars[2] * std::cyl_bessel_k(pars[2], z) - z * std::cyl_bessel_k(pars[2] + 1., z));
 								sigma_grad(j, i) = sigma_grad(i, j);
 							}
 						}
@@ -1312,16 +1313,52 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < (int)dist.rows(); ++i) {
 							for (int j = 0; j < (int)dist.cols(); ++j) {
-								double range_dist = dist.coeff(i, j) * sqrt(2. * pars[2]) / pars[1];
-								sigma_grad(i, j) = cm * std::pow(range_dist, pars[2]) *
-									(2. * pars[2] * std::cyl_bessel_k(pars[2], range_dist) - range_dist * std::cyl_bessel_k(pars[2] + 1., range_dist));
+								double z = dist.coeff(i, j) * par_aux;
+								sigma_grad(i, j) = cm * std::pow(z, pars[2]) *
+									(2. * pars[2] * std::cyl_bessel_k(pars[2], z) - z * std::cyl_bessel_k(pars[2] + 1., z));
 							}
 						}
 					}
 				}//end ind_range == 0
 				else if (ind_range == 1) {//gradient wrt smoothness parameter
-
-				}
+					double delta_step = 1e-6;// based on https://math.stackexchange.com/questions/815113/is-there-a-general-formula-for-estimating-the-step-size-h-in-numerical-different/819015#819015
+					double cm = transf_scale ? pars[2] : nugget_var;
+					cm *= pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
+					double par_aux = std::sqrt(2. * pars[2]) / pars[1];
+					double pars_2_up = pars[2] + delta_step;
+					double pars_2_down = pars[2] - delta_step;
+					double par_aux_up = std::sqrt(2. * pars_2_up) / pars[1];
+					double par_aux_down = std::sqrt(2. * pars_2_down) / pars[1];
+					sigma_grad = T_mat(sigma.rows(), sigma.cols());
+					if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < (int)dist.rows(); ++i) {
+							sigma_grad(i, i) = 0.;
+							for (int j = i + 1; j < (int)dist.cols(); ++j) {
+								double z = dist.coeff(i, j) * par_aux;
+								double z_up = dist.coeff(i, j) * par_aux_up;
+								double z_down = dist.coeff(i, j) * par_aux_down;
+								double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step);
+								sigma_grad(i, j) = cm * std::pow(z, pars[2]) *
+									(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - digamma(pars[2])) + bessel_num_deriv);
+								sigma_grad(j, i) = sigma_grad(i, j);
+							}
+						}
+					}
+					else {
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < (int)dist.rows(); ++i) {
+							for (int j = 0; j < (int)dist.cols(); ++j) {
+								double z = dist.coeff(i, j) * par_aux;
+								double z_up = dist.coeff(i, j) * par_aux_up;
+								double z_down = dist.coeff(i, j) * par_aux_down;
+								double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step);
+								sigma_grad(i, j) = cm * std::pow(z, pars[2]) *
+									(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - digamma(pars[2])) + bessel_num_deriv);
+							}
+						}
+					}
+				}//end ind_range == 1
 			}//end matern_estimate_shape
 #endif
 			else if (cov_fct_type_ == "gaussian") {
@@ -1814,6 +1851,92 @@ namespace GPBoost {
 					}
 				}
 			}//end matern
+#endif
+#if MSVC_OR_GCC_COMPILER
+			else if (cov_fct_type_ == "matern_estimate_shape") {
+				CHECK(ind_range >= 0 && ind_range <= 1);
+				if (ind_range == 0) {
+					double cm = transf_scale ? 1. : nugget_var / pars[1];
+					cm *= -pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
+					double par_aux = std::sqrt(2. * pars[2]) / pars[1];
+					if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+						for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+							for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+								int i = (int)it.row();
+								int j = (int)it.col();
+								if (i == j) {
+									it.valueRef() = 0.;
+								}
+								else if (i < j) {
+									double z = dist.coeff(i, j) * par_aux;
+									it.valueRef() = cm * std::pow(z, pars[2]) *
+										(2. * pars[2] * std::cyl_bessel_k(pars[2], z) - z * std::cyl_bessel_k(pars[2] + 1., z));
+									sigma_grad.coeffRef(j, i) = it.value();
+								}
+							}
+						}
+					}
+					else {
+#pragma omp parallel for schedule(static)
+						for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+							for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+								int i = (int)it.row();
+								int j = (int)it.col();
+								double z = dist.coeff(i, j) * par_aux;
+								it.valueRef() = cm * std::pow(z, pars[2]) *
+									(2. * pars[2] * std::cyl_bessel_k(pars[2], z) - z * std::cyl_bessel_k(pars[2] + 1., z));
+							}
+						}
+					}
+				}//end ind_range == 0
+				else if (ind_range == 1) {//gradient wrt smoothness parameter
+					double delta_step = 1e-6;// based on https://math.stackexchange.com/questions/815113/is-there-a-general-formula-for-estimating-the-step-size-h-in-numerical-different/819015#819015
+					double cm = transf_scale ? pars[2] : nugget_var;
+					cm *= pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
+					double par_aux = std::sqrt(2. * pars[2]) / pars[1];
+					double pars_2_up = pars[2] + delta_step;
+					double pars_2_down = pars[2] - delta_step;
+					double par_aux_up = std::sqrt(2. * pars_2_up) / pars[1];
+					double par_aux_down = std::sqrt(2. * pars_2_down) / pars[1];
+					if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+						for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+							for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+								int i = (int)it.row();
+								int j = (int)it.col();
+								if (i == j) {
+									it.valueRef() = 0.;
+								}
+								else if (i < j) {
+									double z = dist.coeff(i, j) * par_aux;
+									double z_up = dist.coeff(i, j) * par_aux_up;
+									double z_down = dist.coeff(i, j) * par_aux_down;
+									double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step);
+									it.valueRef() = cm * std::pow(z, pars[2]) *
+										(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - digamma(pars[2])) + bessel_num_deriv);
+									sigma_grad.coeffRef(j, i) = it.value();
+								}
+							}
+						}
+					}
+					else {
+#pragma omp parallel for schedule(static)
+						for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+							for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+								int i = (int)it.row();
+								int j = (int)it.col();
+								double z = dist.coeff(i, j) * par_aux;
+								double z_up = dist.coeff(i, j) * par_aux_up;
+								double z_down = dist.coeff(i, j) * par_aux_down;
+								double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step);
+								it.valueRef() = cm * std::pow(z, pars[2]) *
+									(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - digamma(pars[2])) + bessel_num_deriv);
+							}
+						}
+					}
+				}//end ind_range == 1
+			}//end matern_estimate_shape
 #endif
 			else if (cov_fct_type_ == "gaussian") {
 				double cm = transf_scale ? (-1. * pars[1]) : (2. * nugget_var * std::pow(pars[1], 3. / 2.));
