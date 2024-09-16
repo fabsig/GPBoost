@@ -232,6 +232,7 @@ public:
 
             // ChangedForGPBoost
             f.SetNumIter(k - 1);
+            f.SetLag1ProfiledOutVariables();
             if (f.LearnCovarianceParameters() && f.ShouldRedetermineNearestNeighborsVecchia())
             {
                 f.RedetermineNearestNeighborsVecchia();  // called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances

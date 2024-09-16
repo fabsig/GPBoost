@@ -1917,6 +1917,36 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Write the current values of profiled-out variables (if there are any such as nugget effects, regression coefficients) to their lag1 variables. Used only by external optimizers
+		* \param profile_out_marginal_variance If true, the error variance sigma is profiled out (= use closed-form expression for error / nugget variance)
+		* \param profile_out_regression_coef If true, the linear regression coefficients are profiled out (= use closed-form WLS expression)
+		*/
+		void SetLag1ProfiledOutVariables(bool profile_out_marginal_variance,
+			bool profile_out_regression_coef) {
+			if (profile_out_marginal_variance) {
+				sigma2_lag1_ = sigma2_;
+			}
+			if (profile_out_regression_coef) {
+				beta_lag1_ = beta_;
+			}
+		}//end SetLag1ProfiledOutVariables
+
+		/*!
+		* \brief Reset the profiled-out variables (if there are any such as nugget effects, regression coefficients) to their lag1 variables
+		* \param profile_out_marginal_variance If true, the error variance sigma is profiled out (= use closed-form expression for error / nugget variance)
+		* \param profile_out_regression_coef If true, the linear regression coefficients are profiled out (= use closed-form WLS expression)
+		*/
+		void ResetProfiledOutVariablesToLag1(bool profile_out_marginal_variance,
+			bool profile_out_regression_coef) {
+			if (profile_out_marginal_variance) {
+				sigma2_ = sigma2_lag1_;
+			}
+			if (profile_out_regression_coef) {
+				beta_ = beta_lag1_;
+			}
+		}//end ResetProfiledOutVariablesToLag1
+
+		/*!
 		* \brief Factorize the covariance matrix (Gaussian data) or
 		*	calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian likelihoods)
 		*	And calculate the negative log-likelihood (Gaussian data) or the negative approx. marginal log-likelihood (non-Gaussian likelihoods)
@@ -3852,6 +3882,8 @@ namespace GPBoost {
 		vec_t scale_transf_;
 		/*! \brief Linear regression coefficients */
 		vec_t beta_;
+		/*! \brief Linear regression coefficients of previous iteration (used only by external optimizers) */
+		vec_t beta_lag1_;
 		/*! \brief If true, there are additional external offsets */
 		bool has_fixed_effects_ = false;
 		/*! \brief Linear regression coefficients */
@@ -3859,6 +3891,8 @@ namespace GPBoost {
 
 		/*! \brief Variance of idiosyncratic error term (nugget effect) */
 		double sigma2_ = 1.;//initialize with 1. to avoid valgrind false positives in EvalLLforLBFGSpp() in optim_utils.h
+		/*! \brief Previous value of variance of idiosyncratic error term (used only by external optimizers) */
+		double sigma2_lag1_ = 1.;
 		/*! \brief Quadratic form y^T Psi^-1 y (saved for avoiding double computations when profiling out sigma2 for Gaussian data) */
 		double yTPsiInvy_;
 		/*! \brief Determinant of Psi (to avoid double computations) */

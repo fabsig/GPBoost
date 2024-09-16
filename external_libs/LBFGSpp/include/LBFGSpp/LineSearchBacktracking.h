@@ -130,6 +130,7 @@ public:
         if (iter >= param.max_linesearch)
         {
             x.noalias() = xp;
+            f.ResetProfiledOutVariablesToLag1();
             fx = fx_init;
             step = 0.;
             Log::REDebug("GPModel lbfgs: the line search routine reached the maximum number of iterations");

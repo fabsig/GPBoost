@@ -213,7 +213,7 @@ namespace GPBoost {
 		const double* fixed_effects_;//Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
 		bool learn_cov_aux_pars_;//Indicates whether covariance and auxiliary parameters are optimized or not
 		vec_t cov_pars_;//vector of covariance parameters (only used in case the covariance parameters are not estimated)
-		bool profile_out_marginal_variance_;// If true, the error variance sigma is profiled ou t(= use closed-form expression for error / nugget variance)
+		bool profile_out_marginal_variance_;// If true, the error variance sigma is profiled out (= use closed-form expression for error / nugget variance)
 		bool profile_out_regression_coef_;// If true, the linear regression coefficients are profiled out (= use closed-form WLS expression)
 
 		EvalLLforLBFGSpp(REModelTemplate<T_mat, T_chol>* re_model_templ,
@@ -368,6 +368,20 @@ namespace GPBoost {
 		*/
 		void SetNumIter(int iter) {
 			re_model_templ_->SetNumIter(iter);
+		}
+
+		/*!
+		* \brief Write the current values of profiled-out variables (if there are any such as nugget effects, regression coefficients) to their lag1 variables
+		*/
+		void SetLag1ProfiledOutVariables() {
+			re_model_templ_->SetLag1ProfiledOutVariables(profile_out_marginal_variance_, profile_out_regression_coef_);
+		}
+
+		/*!
+		* \brief Reset the profiled-out variables (if there are any such as nugget effects, regression coefficients) to their lag1 variables
+		*/
+		void ResetProfiledOutVariablesToLag1() {
+			re_model_templ_->ResetProfiledOutVariablesToLag1(profile_out_marginal_variance_, profile_out_regression_coef_);
 		}
 
 		/*!
@@ -592,7 +606,7 @@ namespace GPBoost {
 		//Do optimization
 		optim::algo_settings_t settings;
 		settings.iter_max = max_iter;
-		OptDataOptimLib<T_mat, T_chol> 	opt_data = OptDataOptimLib<T_mat, T_chol>(re_model_templ, fixed_effects, learn_cov_aux_pars,
+		OptDataOptimLib<T_mat, T_chol> opt_data = OptDataOptimLib<T_mat, T_chol>(re_model_templ, fixed_effects, learn_cov_aux_pars,
 			cov_pars.segment(0, num_cov_par), profile_out_marginal_variance, &settings, optimizer);
 		if (convergence_criterion == "relative_change_in_parameters") {
 			settings.rel_sol_change_tol = delta_rel_conv;
@@ -639,9 +653,13 @@ namespace GPBoost {
 		//	settings.gd_settings.method = 5;
 		//	optim::gd(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 		//}
-		if (optimizer != "lbfgs" && optimizer != "lbfgs_linesearch_nocedal_wright") {
+		if (optimizer != "lbfgs" && optimizer != "lbfgs_linesearch_nocedal_wright") {//only for optimizers from OptimLib
 			num_it = (int)settings.opt_iter;
 			neg_log_likelihood = settings.opt_fn_value;
+			if (profile_out_marginal_variance || profile_out_regression_coef) {
+				vec_t grad_dummy = pars_init;
+				EvalLLforOptimLib<T_mat, T_chol>(pars_init, &grad_dummy, &opt_data);//re-evaluate log-likelihood to make sure that the profiled-out variables are correct
+			}
 		}
 		// Transform parameters back for export
 		if (learn_cov_aux_pars) {
