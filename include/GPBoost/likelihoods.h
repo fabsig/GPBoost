@@ -1663,7 +1663,7 @@ namespace GPBoost {
 				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
-			//Log::REInfo("FindModePostRandEffCalcMLLVecchia: finished after %d iterations ", it);//for debugging
+			//Log::REInfo("FindModePostRandEffCalcMLLStable: finished after %d iterations ", it);//for debugging
 		}//end FindModePostRandEffCalcMLLStable
 
 		/*!
