@@ -16,6 +16,10 @@ Available options:
 \item{ Note: other likelihoods could be implemented upon request }
 }}
 
+\item{likelihood_shape}{A \code{numeric} specifying an additional shape parameter for the \code{likelihood}
+(e.g., degrees of freedom for t-distribution). 
+This parameter is irrelevant for many likelihoods}
+
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 The elements being group levels defining grouped random effects.
 The elements of 'group_data' can be integer, double, or character.
@@ -276,16 +280,16 @@ fixed effects linear regression term (if there is one)}
         \itemize{
           \item{"Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
       where B^T * D^-1 * B approx= Sigma^-1 }
-      }
           \item{"piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
       where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
+        }
       \item Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering": 
         \itemize{
           \item{"predictive_process_plus_diagonal" (= default): predictive process preconditiioner }
           \item{"none": no preconditioner }
       }
     }
-   }
+    }
 }}
 
 \item{offset}{A \code{numeric} \code{vector} with 

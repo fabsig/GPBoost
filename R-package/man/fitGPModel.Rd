@@ -4,8 +4,9 @@
 \alias{fitGPModel}
 \title{Fits a \code{GPModel}}
 \usage{
-fitGPModel(likelihood = "gaussian", group_data = NULL,
-  group_rand_coef_data = NULL, ind_effect_group_rand_coef = NULL,
+fitGPModel(likelihood = "gaussian", likelihood_shape = 1,
+  group_data = NULL, group_rand_coef_data = NULL,
+  ind_effect_group_rand_coef = NULL,
   drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
   gp_rand_coef_data = NULL, cov_function = "exponential",
   cov_fct_shape = 0.5, gp_approx = "none", cov_fct_taper_range = 1,
@@ -29,6 +30,10 @@ Available options:
 \item{ "negative_binomial": negative binomial distribution with a with log link function }
 \item{ Note: other likelihoods could be implemented upon request }
 }}
+
+\item{likelihood_shape}{A \code{numeric} specifying an additional shape parameter for the \code{likelihood}
+(e.g., degrees of freedom for t-distribution). 
+This parameter is irrelevant for many likelihoods}
 
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 The elements being group levels defining grouped random effects.
@@ -259,16 +264,16 @@ fixed effects linear regression term (if there is one)}
         \itemize{
           \item{"Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
       where B^T * D^-1 * B approx= Sigma^-1 }
-      }
           \item{"piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
       where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
+        }
       \item Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering": 
         \itemize{
           \item{"predictive_process_plus_diagonal" (= default): predictive process preconditiioner }
           \item{"none": no preconditioner }
       }
     }
-   }
+    }
 }}
 
 \item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
