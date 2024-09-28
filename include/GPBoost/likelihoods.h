@@ -18,6 +18,12 @@
 *	f(y) = Gamma(y + r) / Gamma(y + 1) / Gamma(r) * (1 - p)^y * p^r
 *		- p = r / (mu + r), where mu = mean(y) = exp(location_par)
 *		- p = success probability, r = shape parameter, location_par = random + fixed effects
+* 
+* For a student "t" likelihood, the following density is used:
+*	f(y) = Gamma((nu+1)/2) / sigma / sqrt(pi) / sqrt(nu) / Gamma(nu/2) * (1 + (y - b)^2/nu/sigma^2)^(-(nu+1)/2)
+*		- b = location_par = random + fixed effects
+*		- sigma = scale (= aux_pars_[0])
+*		- nu = degrees of freedom (= likelihood_shape_)
 *
 */
 #ifndef GPB_LIKELIHOODS_
@@ -73,7 +79,7 @@ namespace GPBoost {
 		* \param has_a_vec Indicates whether the vector a_vec_ / a = (Z Sigma Zt)^-1 mode is used or not
 		* \param use_Z_for_duplicates If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (only for Gaussian processes)
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
-		* \param approximation_type Type of approximation for non-Gaussian likelihoods
+		* \param likelihood_shape Additional shape parameter for likelihood (e.g., degrees of freedom for t-distribution)
 		*/
 		Likelihood(string_t type,
 			data_size_t num_data,
@@ -81,9 +87,12 @@ namespace GPBoost {
 			bool has_a_vec,
 			bool use_Z_for_duplicates,
 			const data_size_t* random_effects_indices_of_data,
-			string_t approximation_type) {
-			string_t likelihood = ParseLikelihoodAlias(type);
+			double likelihood_shape) {
+			approximation_type_ = "laplace";
+			string_t likelihood = type;
 			likelihood = ParseLikelihoodAliasGradientDescent(likelihood);
+			likelihood = ParseLikelihoodAliasFisherLaplace(likelihood);
+			likelihood = ParseLikelihoodAlias(likelihood);
 			if (SUPPORTED_LIKELIHOODS_.find(likelihood) == SUPPORTED_LIKELIHOODS_.end()) {
 				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
 			}
@@ -91,6 +100,8 @@ namespace GPBoost {
 			num_data_ = num_data;
 			num_re_ = num_re;
 			num_aux_pars_ = 0;
+			likelihood_shape_ = likelihood_shape;
+			information_ll_can_be_negative_ = false;
 			if (likelihood_type_ == "gamma") {
 				aux_pars_ = { 1. };//shape parameter
 				names_aux_pars_ = { "shape" };
@@ -100,6 +111,15 @@ namespace GPBoost {
 				aux_pars_ = { 1. };//shape parameter (aka size, theta, or "number of successes")
 				names_aux_pars_ = { "shape" };
 				num_aux_pars_ = 1;
+			}
+			else if (likelihood_type_ == "t") {
+				aux_pars_ = { 1. };
+				names_aux_pars_ = { "scale" };
+				num_aux_pars_ = 1;
+				CHECK(likelihood_shape_ > 0.);
+				if (approximation_type_ == "laplace") {
+					information_ll_can_be_negative_ = true;
+				}
 			}
 			else if (likelihood_type_ == "gaussian") {
 				aux_pars_ = { 1. };//1 / sqrt(variance)
@@ -118,10 +138,9 @@ namespace GPBoost {
 			}
 			mode_is_zero_ = false;
 			DetermineWhetherToCapChangeModeNewton();
-			if (SUPPORTED_APPROX_TYPE_.find(approximation_type) == SUPPORTED_APPROX_TYPE_.end()) {
-				Log::REFatal("approximation_type of type '%s' is not supported.", approximation_type.c_str());
+			if (SUPPORTED_APPROX_TYPE_.find(approximation_type_) == SUPPORTED_APPROX_TYPE_.end()) {
+				Log::REFatal("'approximation_type' of type '%s' is not supported.", approximation_type_.c_str());
 			}
-			approximation_type_ = approximation_type;
 		}
 
 		/*!
@@ -271,7 +290,7 @@ namespace GPBoost {
 					}
 				}
 			}
-			else {
+			else if (likelihood_type_ != "t") {
 				Log::REFatal("GPModel: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 			}
 		}//end CheckY
@@ -343,6 +362,23 @@ namespace GPBoost {
 				}
 				avg /= num_data;
 				init_intercept = SafeLog(avg) - 0.5 * rand_eff_var; // log-normal distribution: mean of exp(beta_0 + Zb) = exp(beta_0 + 0.5 * sigma^2) => use beta_0 = mean(y) - 0.5 * sigma^2
+			}
+			else if (likelihood_type_ == "t") {
+				//use the median as robust initial estimate
+				std::vector<double> y_v;//for calculating the median
+				if (fixed_effects == nullptr) {
+					y_v.assign(y_data, y_data + num_data);
+				}
+				else {
+					y_v = std::vector<double>(num_data);
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						y_v[i] = y_data[i] - fixed_effects[i];
+					}
+				}
+				int pos_med = (int)(num_data * 0.5);
+				std::nth_element(y_v.begin(), y_v.begin() + pos_med, y_v.end());
+				init_intercept = y_v[pos_med];
 			}
 			else {
 				Log::REFatal("FindInitialIntercept: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
@@ -437,7 +473,49 @@ namespace GPBoost {
 				else {
 					aux_pars_[0] = avg_sq / (sample_var - avg);
 				}
-			}
+			}//end "negative_binomial"
+			else if (likelihood_type_ == "t") {
+				//use MAD as robust initial estimate
+				std::vector<double> y_v;//for calculating the median
+				if (fixed_effects == nullptr) {
+					y_v.assign(y_data, y_data + num_data);
+				}
+				else {
+					y_v = std::vector<double>(num_data);
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						y_v[i] = y_data[i] - fixed_effects[i];
+					}
+				}
+				int pos_med = (int)(num_data * 0.5);
+				std::nth_element(y_v.begin(), y_v.begin() + pos_med, y_v.end());
+				double median = y_v[pos_med];
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					y_v[i] = std::abs(y_v[i] - median);
+				}
+				std::nth_element(y_v.begin(), y_v.begin() + pos_med, y_v.end());
+				aux_pars_[0] = 1.4826 * y_v[pos_med];
+				if (aux_pars_[0] <= EPSILON_NUMBERS) {
+					// use IQR if MAD is zero
+					if (fixed_effects == nullptr) {
+						y_v.assign(y_data, y_data + num_data);
+					}
+					else {
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data; ++i) {
+							y_v[i] = y_data[i] - fixed_effects[i];
+						}
+					}
+					int pos = (int)(num_data * 0.25);
+					std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
+					double q25 = y_v[pos];
+					pos = (int)(num_data * 0.75);
+					std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
+					double q75 = y_v[pos];
+					aux_pars_[0] = (q75 - q25) / 1.349;
+				}
+			}//end "t"
 			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
 				likelihood_type_ != "bernoulli_logit" && likelihood_type_ != "poisson") {
 				Log::REFatal("FindInitialAuxPars: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
@@ -496,6 +574,50 @@ namespace GPBoost {
 				C_mu = std::abs(SafeLog(mean));
 				C_sigma2 = std::abs(SafeLog(sec_mom - mean * mean));
 			}
+			else if (likelihood_type_ == "t") {
+				//use the median and MAD^2
+				std::vector<double> y_v;//for calculating the median
+				if (fixed_effects == nullptr) {
+					y_v.assign(y_data, y_data + num_data);
+				}
+				else {
+					y_v = std::vector<double>(num_data);
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						y_v[i] = y_data[i] - fixed_effects[i];
+					}
+				}
+				int pos_med = (int)(num_data * 0.5);
+				std::nth_element(y_v.begin(), y_v.begin() + pos_med, y_v.end());
+				C_mu = y_v[pos_med];
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					y_v[i] = std::abs(y_v[i] - C_mu);
+				}
+				std::nth_element(y_v.begin(), y_v.begin() + pos_med, y_v.end());
+				C_sigma2 = 1.4826 * y_v[pos_med];//MAD
+				C_sigma2 = C_sigma2 * C_sigma2;
+				if (C_sigma2 <= EPSILON_NUMBERS) {
+					// use IQR if MAD is zero
+					if (fixed_effects == nullptr) {
+						y_v.assign(y_data, y_data + num_data);
+					}
+					else {
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data; ++i) {
+							y_v[i] = y_data[i] - fixed_effects[i];
+						}
+					}
+					int pos = (int)(num_data * 0.25);
+					std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
+					double q25 = y_v[pos];
+					pos = (int)(num_data * 0.75);
+					std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
+					double q75 = y_v[pos];
+					C_sigma2 = (q75 - q25) / 1.349;
+					C_sigma2 = C_sigma2 * C_sigma2;
+				}
+			}//end "t"
 			else {
 				Log::REFatal("FindConstantsCapTooLargeLearningRateCoef: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -524,7 +646,7 @@ namespace GPBoost {
 		*/
 		void SetAuxPars(const double* aux_pars) {
 			if (likelihood_type_ == "gaussian" || likelihood_type_ == "gamma" || 
-				likelihood_type_ == "negative_binomial") {
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "t") {
 				if (!(aux_pars[0] > 0)) {
 					Log::REFatal("The '%s' parameter is not > 0. This might be due to a problem when estimating the '%s' parameter (e.g., a numerical overflow). "
 						"You can try either (i) manually setting a different initial value using the 'init_aux_pars' parameter "
@@ -578,7 +700,7 @@ namespace GPBoost {
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
 				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
-					likelihood_type_ != "bernoulli_logit" && likelihood_type_ != "poisson") {
+					likelihood_type_ != "bernoulli_logit" && likelihood_type_ != "poisson" && likelihood_type_ != "t") {
 					Log::REFatal("CalculateAuxQuantLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 				}
 				aux_normalizing_constant_has_been_calculated_ = true;
@@ -616,6 +738,11 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ == "negative_binomial") {
 					log_normalizing_constant_ = LogNormalizingConstantNegBin(y_data, y_data_int, num_data);
+				}
+				else if (likelihood_type_ == "t") {
+					log_normalizing_constant_ = num_data * (-std::log(aux_pars_[0]) +
+						std::lgamma((likelihood_shape_ + 1.) / 2.) - 0.5 * std::log(likelihood_shape_) - 
+						std::lgamma(likelihood_shape_ / 2.) - 0.5 * std::log(M_PI));
 				}
 				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
 					likelihood_type_ != "bernoulli_logit") {
@@ -723,6 +850,13 @@ namespace GPBoost {
 				}
 				ll += log_normalizing_constant_;
 			}
+			else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					ll += LogLikT(y_data[i], location_par[i], false);
+				}
+				ll += log_normalizing_constant_;
+			}
 			else if (likelihood_type_ == "gaussian") {
 #pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
 				for (data_size_t i = 0; i < num_data; ++i) {
@@ -758,6 +892,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "negative_binomial") {
 				return(LogLikNegBin(y_data_int, location_par, true));
+			}
+			else if (likelihood_type_ == "t") {
+				return(LogLikT(y_data, location_par, true));
 			}
 			else if (likelihood_type_ == "gaussian") {
 				return(LogLikGaussian(y_data, location_par));
@@ -818,6 +955,18 @@ namespace GPBoost {
 			}
 		}
 
+		inline double LogLikT(const double y, const double location_par, bool incl_norm_const) const {
+			double ll = -(likelihood_shape_ + 1.) / 2. * std::log(1. + (y - location_par) * (y - location_par) / (likelihood_shape_ * aux_pars_[0] * aux_pars_[0]));
+			if (incl_norm_const) {
+				return (ll - std::log(aux_pars_[0]) +
+					std::lgamma((likelihood_shape_ + 1.) / 2.) - 0.5 * std::log(likelihood_shape_) -
+					0.5 * std::lgamma(likelihood_shape_ / 2.) - 0.5 * std::log(M_PI));
+			}
+			else {
+				return (ll);
+			}
+		}
+
 		inline double LogLikGaussian(const double y, const double location_par) const {
 			return (std::log(aux_pars_[0]) + normalLogPDF(aux_pars_[0] * (y - location_par)));//aux_pars_[0] = 1. / std::sqrt(variance)
 		}
@@ -862,6 +1011,12 @@ namespace GPBoost {
 						first_deriv_ll_[i] = FirstDerivLogLikNegBin(y_data_int[i], location_par[i]);
 					}
 				}
+				else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						first_deriv_ll_[i] = FirstDerivLogLikT(y_data[i], location_par[i]);
+					}
+				}
 				else if (likelihood_type_ == "gaussian") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -903,6 +1058,12 @@ namespace GPBoost {
 						first_deriv_ll_data_scale_[i] = FirstDerivLogLikNegBin(y_data_int[i], location_par[i]);
 					}
 				}
+				else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						first_deriv_ll_data_scale_[i] = FirstDerivLogLikT(y_data[i], location_par[i]);
+					}
+				}
 				else if (likelihood_type_ == "gaussian") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -940,6 +1101,9 @@ namespace GPBoost {
 			else if (likelihood_type_ == "negative_binomial") {
 				return(FirstDerivLogLikNegBin(y_data_int, location_par));
 			}
+			else if (likelihood_type_ == "t") {
+				return(FirstDerivLogLikT(y_data, location_par));
+			}
 			else if (likelihood_type_ == "gaussian") {
 				return(FirstDerivLogLikGaussian(y_data, location_par));
 			}
@@ -973,6 +1137,11 @@ namespace GPBoost {
 		inline double FirstDerivLogLikNegBin(const int y, const double location_par) const {
 			double mu = std::exp(location_par);
 			return (y - (y + aux_pars_[0]) / (mu + aux_pars_[0]) * mu);
+		}
+
+		inline double FirstDerivLogLikT(const double y, const double location_par) const {
+			double res = (y - location_par);
+			return (likelihood_shape_ + 1.) * res / (likelihood_shape_ * aux_pars_[0] * aux_pars_[0] + res * res);
 		}
 
 		inline double FirstDerivLogLikGaussian(const double y, const double location_par) const {
@@ -1020,6 +1189,12 @@ namespace GPBoost {
 							information_ll_[i] = SecondDerivNegLogLikNegBin(y_data_int[i], location_par[i]);
 						}
 					}
+					else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							information_ll_[i] = SecondDerivNegLogLikT(y_data[i], location_par[i]);
+						}
+					}
 					else if (likelihood_type_ == "gaussian") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 						for (data_size_t i = 0; i < num_data_; ++i) {
@@ -1061,6 +1236,12 @@ namespace GPBoost {
 							information_ll_data_scale_[i] = SecondDerivNegLogLikNegBin(y_data_int[i], location_par[i]);
 						}
 					}
+					else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							information_ll_data_scale_[i] = SecondDerivNegLogLikT(y_data[i], location_par[i]);
+						}
+					}
 					else if (likelihood_type_ == "gaussian") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 						for (data_size_t i = 0; i < num_data_; ++i) {
@@ -1073,6 +1254,69 @@ namespace GPBoost {
 					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, information_ll_data_scale_, information_ll_, true);
 				}//end use_Z_for_duplicates_
 			}//end approximation_type_ == "laplace"
+			else if (approximation_type_ == "fisher_laplace") {
+				if (!use_Z_for_duplicates_) {
+					if (likelihood_type_ == "bernoulli_logit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							information_ll_[i] = SecondDerivNegLogLikBernoulliLogit(location_par[i]);
+						}
+					}
+					else if (likelihood_type_ == "poisson") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							information_ll_[i] = SecondDerivNegLogLikPoisson(location_par[i]);
+						}
+					}
+					else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							information_ll_[i] = FisherInformationT();
+						}
+					}
+					else if (likelihood_type_ == "gaussian") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							information_ll_[i] = SecondDerivNegLogLikGaussian();
+						}
+					}
+					else {
+						Log::REFatal("CalcDiagInformationLogLik: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+							likelihood_type_.c_str(), approximation_type_.c_str());
+					}
+				}//end !use_Z_for_duplicates_
+				else {//use_Z_for_duplicates_
+					if (likelihood_type_ == "bernoulli_logit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							information_ll_data_scale_[i] = SecondDerivNegLogLikBernoulliLogit(location_par[i]);
+						}
+					}
+					else if (likelihood_type_ == "poisson") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							information_ll_data_scale_[i] = SecondDerivNegLogLikPoisson(location_par[i]);
+						}
+					}
+					else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							information_ll_data_scale_[i] = FisherInformationT();
+						}
+					}
+					else if (likelihood_type_ == "gaussian") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							information_ll_data_scale_[i] = SecondDerivNegLogLikGaussian();
+						}
+					}
+					else {
+						Log::REFatal("CalcDiagInformationLogLik: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+							likelihood_type_.c_str(), approximation_type_.c_str());
+					}
+					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, information_ll_data_scale_, information_ll_, true);
+				}//end use_Z_for_duplicates_
+			}//end approximation_type_ == "fisher_laplace"
 			else {
 				Log::REFatal("CalcDiagInformationLogLik: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
 			}
@@ -1111,6 +1355,25 @@ namespace GPBoost {
 					return(1.);
 				}
 			}//end approximation_type_ == "laplace"
+			else if (approximation_type_ == "fisher_laplace") {
+				if (likelihood_type_ == "bernoulli_logit") {
+					return(SecondDerivNegLogLikBernoulliLogit(location_par));
+				}
+				else if (likelihood_type_ == "poisson") {
+					return(SecondDerivNegLogLikPoisson(location_par));
+				}
+				else if (likelihood_type_ == "t") {
+					return(FisherInformationT());
+				}
+				else if (likelihood_type_ == "gaussian") {
+					return(SecondDerivNegLogLikGaussian());
+				}
+				else {
+					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+					return(1.);
+				}
+			}//end approximation_type_ == "fisher_laplace"
 			else {
 				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
 				return(1.);
@@ -1126,7 +1389,7 @@ namespace GPBoost {
 			}
 			else {
 				double dnorm_frac_pnorm = dnorm / pnorm;
-				return(dnorm_frac_pnorm * (location_par + dnorm_frac_pnorm));
+				return (dnorm_frac_pnorm * (location_par + dnorm_frac_pnorm));
 			}
 		}
 
@@ -1151,6 +1414,16 @@ namespace GPBoost {
 
 		inline double SecondDerivNegLogLikGaussian() const {
 			return (aux_pars_[0] * aux_pars_[0]);//aux_pars_[0] = 1 / sqrt(variance)
+		}
+
+		inline double SecondDerivNegLogLikT(const double y, const double location_par) const {
+			double res_sq = (y - location_par) * (y - location_par);
+			double nu_sigma2 = likelihood_shape_ * aux_pars_[0] * aux_pars_[0];
+			return (-(likelihood_shape_ + 1.) * (res_sq - nu_sigma2) / ((nu_sigma2 + res_sq) * (nu_sigma2 + res_sq)));
+		}
+
+		inline double FisherInformationT() const {
+			return ((likelihood_shape_ + 1.) / (likelihood_shape_ + 3.) / (aux_pars_[0] * aux_pars_[0]));
 		}
 
 		/*!
@@ -1209,10 +1482,45 @@ namespace GPBoost {
 						deriv_information_loc_par[i] = -(y_data_int[i] + aux_pars_[0]) * mu * aux_pars_[0] * (mu - aux_pars_[0]) / (mu_plus_r * mu_plus_r * mu_plus_r);
 					}
 				}
+				else if (likelihood_type_ == "t") {
+					double nu_sigma2 = likelihood_shape_ * aux_pars_[0] * aux_pars_[0];
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double res = y_data[i] - location_par[i];
+						double res_sq = res * res;
+						double denom = nu_sigma2 + res_sq;
+						deriv_information_loc_par[i] = -2. * (likelihood_shape_ + 1.) * (res_sq - 3. * nu_sigma2) * res / (denom * denom * denom);
+					}
+				}
 				else {
 					Log::REFatal("CalcFirstDerivInformationLocPar: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				}
 			}//end approximation_type_ == "laplace"
+			else if (approximation_type_ == "fisher_laplace") {
+				if (likelihood_type_ == "bernoulli_logit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double exp_loc_i = std::exp(location_par[i]);
+						deriv_information_loc_par[i] = exp_loc_i * (1. - exp_loc_i) / std::pow(1 + exp_loc_i, 3);
+					}
+				}
+				else if (likelihood_type_ == "poisson") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						deriv_information_loc_par[i] = std::exp(location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						deriv_information_loc_par[i] = 0.;
+					}
+				}
+				else {
+					Log::REFatal("CalcFirstDerivInformationLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+				}
+			}// end approximation_type_ == "fisher_laplace"
 			else {
 				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
 			}
@@ -1256,8 +1564,19 @@ namespace GPBoost {
 				neg_log_grad += num_data * aux_pars_[0] * (digamma(aux_pars_[0]) - std::log(aux_pars_[0]) - 1);
 				grad[0] = neg_log_grad;
 			}
-			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
-				likelihood_type_ != "bernoulli_logit" && likelihood_type_ != "poisson") {
+			else if (likelihood_type_ == "t") {
+				//gradient for scale parameter is calculated on the log-scale
+				double nu_sigma2 = likelihood_shape_ * aux_pars_[0] * aux_pars_[0];
+				double neg_log_grad = 0.;
+#pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					double res_sq = (y_data[i] - location_par[i]) * (y_data[i] - location_par[i]);
+					neg_log_grad -= (likelihood_shape_ + 1.) / (nu_sigma2 / res_sq + 1.);
+				}
+				neg_log_grad += num_data;
+				grad[0] = neg_log_grad;
+			}
+			else if (num_aux_pars_ > 0) {
 				Log::REFatal("CalcGradNegLogLikAuxPars: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
 		}//end CalcGradNegLogLikAuxPars
@@ -1282,32 +1601,69 @@ namespace GPBoost {
 			int ind_aux_par,
 			double* second_deriv_loc_aux_par,
 			double* deriv_information_aux_par) const {
-			if (likelihood_type_ == "gamma") {
-				CHECK(approximation_type_ == "laplace");
-				//note: gradient wrt to aux_pars_[0] on the log-scale
-				CHECK(ind_aux_par == 0);
+			if (approximation_type_ == "laplace") {
+				if (likelihood_type_ == "gamma") {
+					//note: gradient wrt to aux_pars_[0] on the log-scale
+					CHECK(ind_aux_par == 0);
 #pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					second_deriv_loc_aux_par[i] = aux_pars_[0] * (y_data[i] * std::exp(-location_par[i]) - 1.);
-					deriv_information_aux_par[i] = second_deriv_loc_aux_par[i] + aux_pars_[0];
+					for (data_size_t i = 0; i < num_data; ++i) {
+						second_deriv_loc_aux_par[i] = aux_pars_[0] * (y_data[i] * std::exp(-location_par[i]) - 1.);
+						deriv_information_aux_par[i] = second_deriv_loc_aux_par[i] + aux_pars_[0];
+					}
 				}
-			}
-			else if (likelihood_type_ == "negative_binomial") {
-				CHECK(approximation_type_ == "laplace");
-				//gradient for shape parameter is calculated on the log-scale
+				else if (likelihood_type_ == "negative_binomial") {
+					//gradient for shape parameter is calculated on the log-scale
 #pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					double mu = std::exp(location_par[i]);
-					double mu_plus_r = mu + aux_pars_[0];
-					double y_plus_r = y_data_int[i] + aux_pars_[0];
-					double mu_r_div_mu_plus_r_sqr = mu * aux_pars_[0] / (mu_plus_r * mu_plus_r);
-					second_deriv_loc_aux_par[i] = mu_r_div_mu_plus_r_sqr * (y_data_int[i] - mu);
-					deriv_information_aux_par[i] = -mu_r_div_mu_plus_r_sqr * (y_data_int[i] * (aux_pars_[0] - mu) - 2 * aux_pars_[0] * mu) / y_plus_r;
+					for (data_size_t i = 0; i < num_data; ++i) {
+						double mu = std::exp(location_par[i]);
+						double mu_plus_r = mu + aux_pars_[0];
+						double y_plus_r = y_data_int[i] + aux_pars_[0];
+						double mu_r_div_mu_plus_r_sqr = mu * aux_pars_[0] / (mu_plus_r * mu_plus_r);
+						second_deriv_loc_aux_par[i] = mu_r_div_mu_plus_r_sqr * (y_data_int[i] - mu);
+						deriv_information_aux_par[i] = -mu_r_div_mu_plus_r_sqr * (y_data_int[i] * (aux_pars_[0] - mu) - 2 * aux_pars_[0] * mu) / y_plus_r;
+					}
 				}
-			}
-			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
-				likelihood_type_ != "bernoulli_logit" && likelihood_type_ != "poisson") {
-				Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				else if (likelihood_type_ == "t") {
+					//gradient for scale parameter is calculated on the log-scale
+					double sigma2 = aux_pars_[0] * aux_pars_[0];
+					double nu_sigma2 = likelihood_shape_ * sigma2;
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						double res = y_data[i] - location_par[i];
+						double res_sq = res * res;
+						double denom = nu_sigma2 + res_sq;
+						double denom_sq = denom * denom;
+						second_deriv_loc_aux_par[i] = -2. * (likelihood_shape_ + 1.) * likelihood_shape_ * res * sigma2 / denom_sq;
+						deriv_information_aux_par[i] = 2. * (likelihood_shape_ + 1.) * likelihood_shape_ * sigma2 * (3. * res_sq - nu_sigma2) / (denom_sq * denom);
+					}					
+				}
+				else if (num_aux_pars_ > 0) {
+					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+				}
+			}//end // end approximation_type_ == "laplace"
+			else if (approximation_type_ == "fisher_laplace") {
+				if (likelihood_type_ == "t") {
+					//gradient for scale parameter is calculated on the log-scale
+					double sigma2 = aux_pars_[0] * aux_pars_[0];
+					double nu_sigma2 = likelihood_shape_ * sigma2;
+					double sigma4 = sigma2 * sigma2;//sigma^4
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						double res = y_data[i] - location_par[i];
+						double denom = nu_sigma2 + res * res;
+						double denom_sq = denom * denom;
+						second_deriv_loc_aux_par[i] = -2. * (likelihood_shape_ + 1.) * likelihood_shape_ * res * sigma2 / denom_sq;
+						deriv_information_aux_par[i] =  - 2. * (likelihood_shape_ + 1.) / (likelihood_shape_ + 3.) / sigma4;
+					}
+				}
+				else if (num_aux_pars_ > 0) {
+					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+				}
+			}// end approximation_type_ == "fisher_laplace"
+			else {
+				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
 			}
 		}//end CalcSecondDerivLogLikFirstDerivInformationAuxPar
 
@@ -1316,7 +1672,7 @@ namespace GPBoost {
 		*			Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
 		*/
 		inline double CondMeanLikelihood(const double value) const {
-			if (likelihood_type_ == "gaussian") {
+			if (likelihood_type_ == "gaussian" || likelihood_type_ == "t") {
 				return value;
 			}
 			else if (likelihood_type_ == "bernoulli_probit") {
@@ -1347,6 +1703,9 @@ namespace GPBoost {
 				likelihood_type_ == "negative_binomial") {
 				return 1.;
 			}
+			else if (likelihood_type_ == "t") {
+				return (1. / value);
+			}
 			else {
 				Log::REFatal("FirstDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				return 0.;
@@ -1365,6 +1724,9 @@ namespace GPBoost {
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial") {
 				return 0.;
+			}
+			else if (likelihood_type_ == "t") {
+				return (-1. / (value * value));
 			}
 			else {
 				Log::REFatal("SecondDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
@@ -1556,6 +1918,23 @@ namespace GPBoost {
 			}
 		}//end CheckConvergenceModeFinding
 
+		bool HasNegativeValueInformationLogLik() const {
+			bool has_negative = false;
+			if (information_ll_can_be_negative_) {
+#pragma omp parallel for schedule(static) shared(has_negative)
+				for (int i = 0; i < (int)information_ll_.size(); ++i) {
+					if (information_ll_[i] < 0.) {
+#pragma omp critical
+						{
+							has_negative = true;
+						}
+#pragma omp cancel for
+					}
+				}
+			}
+			return has_negative;
+		}//end HasNegativeValueInformationLogLik
+
 		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood..
 		*		Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
@@ -1664,6 +2043,7 @@ namespace GPBoost {
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 			//Log::REInfo("FindModePostRandEffCalcMLLStable: finished after %d iterations ", it);//for debugging
+			//Log::REInfo("mode_[0:2] = %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_));//for debugging
 		}//end FindModePostRandEffCalcMLLStable
 
 		/*!
@@ -3825,6 +4205,23 @@ namespace GPBoost {
 					pred_mean[i] = pm;
 				}
 			}
+			else if (likelihood_type_ == "t") {
+				if (likelihood_shape_ <= 1.) {
+					Log::REFatal("The response mean of a 't' distribution is only defined if the "
+						"'likelihood_shape' parameter (=degrees of freedom) is larger than 1. Currently, it is %g", likelihood_shape_);
+				}
+				if (predict_var && likelihood_shape_ <= 2.) {
+					Log::REFatal("The response mean of a 't' distribution is only defined if the "
+						"'likelihood_shape' parameter (=degrees of freedom) is larger than 2. Currently, it is %g", likelihood_shape_);
+				}
+				if (predict_var) {
+					double pred_var_const = aux_pars_[0] * aux_pars_[0] * likelihood_shape_ / (likelihood_shape_ - 2.);
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < (int)pred_mean.size(); ++i) {
+						pred_var[i] = pred_var[i] + pred_var_const;
+					}
+				}
+			}
 			else {
 				Log::REFatal("PredictResponse: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -4295,14 +4692,18 @@ namespace GPBoost {
 		} //end CalcLogDetStochDerivAuxPar
 
 		static string_t ParseLikelihoodAlias(const string_t& likelihood) {
-			if (likelihood == string_t("binary") || likelihood == string_t("bernoulli_probit") || likelihood == string_t("binary_probit")) {
+			if (likelihood == string_t("binary") || likelihood == string_t("binary_probit")) {
 				return "bernoulli_probit";
 			}
-			else if (likelihood == string_t("bernoulli_logit") || likelihood == string_t("binary_logit")) {
+			else if (likelihood == string_t("binary_logit")) {
 				return "bernoulli_logit";
 			}
-			else if (likelihood == string_t("gaussian") || likelihood == string_t("regression")) {
+			else if (likelihood == string_t("regression")) {
 				return "gaussian";
+			}
+			else if (likelihood == string_t("student_t") || likelihood == string_t("student-t") || 
+				likelihood == string_t("t_distribution") || likelihood == string_t("t-distribution")) {
+				return "t";
 			}
 			return likelihood;
 		}
@@ -4313,6 +4714,17 @@ namespace GPBoost {
 					quasi_newton_for_mode_finding_ = true;
 					DELTA_REL_CONV_ = 1e-9;
 					return likelihood.substr(0, likelihood.size() - 13);
+				}
+			}
+			return likelihood;
+		}
+
+		string_t ParseLikelihoodAliasFisherLaplace(const string_t& likelihood) {
+			if (likelihood.size() > 15) {
+				if (likelihood.substr(likelihood.size() - 15) == string_t("_fisher-laplace") ||
+					likelihood.substr(likelihood.size() - 15) == string_t("_fisher_laplace")) {
+					approximation_type_ = "fisher_laplace";
+					return likelihood.substr(0, likelihood.size() - 15);
 				}
 			}
 			return likelihood;
@@ -4384,7 +4796,8 @@ namespace GPBoost {
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
 		/*! \brief List of supported covariance likelihoods */
-		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "poisson", "gamma", "negative_binomial"};
+		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", 
+			"poisson", "gamma", "negative_binomial", "t"};
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
 		int MAXIT_MODE_NEWTON_ = 1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
@@ -4407,11 +4820,14 @@ namespace GPBoost {
 		std::vector<string_t> names_aux_pars_;
 		/*! \brief True, if the function 'SetAuxPars' has been called */
 		bool aux_pars_have_been_set_ = false;
+		/*! \brief Additional shape parameter for likelihood not containted in aux_pars_ (e.g., degrees of freedom for t-distribution) */
+		double likelihood_shape_;
 		/*! \brief Type of approximation for non-Gaussian likelihoods */
 		string_t approximation_type_ = "laplace";
 		/*! \brief List of supported approximations */
-		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace" };
-		
+		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace", "fisher_laplace" };
+		/*! \brief If true, information_ll_ could contain negative values */
+		bool information_ll_can_be_negative_ = false;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */

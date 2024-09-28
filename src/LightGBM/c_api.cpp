@@ -2708,6 +2708,7 @@ int GPB_CreateREModel(int32_t num_data,
 	double cover_tree_radius,
 	const char* ind_points_selection,
 	const char* likelihood,
+	double likelihood_shape,
 	const char* matrix_inversion_method,
 	int seed,
 	REModelHandle* out) {
@@ -2737,6 +2738,7 @@ int GPB_CreateREModel(int32_t num_data,
 		cover_tree_radius,
 		ind_points_selection,
 		likelihood,
+		likelihood_shape,
 		matrix_inversion_method,
 		seed));
 	*out = ret.release();

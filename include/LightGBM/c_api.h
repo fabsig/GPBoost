@@ -1344,6 +1344,7 @@ GPBOOST_C_EXPORT int LGBM_NetworkInitWithFunctions(int num_machines,
 * \param cover_tree_radius Radius (= "spatial resolution") for the cover tree algorithm
 * \param ind_points_selection Method for choosing inducing points
 * \param likelihood Likelihood function for the observed response variable
+* \param likelihood_shape Additional shape parameter for likelihood (e.g., degrees of freedom for t-distribution)
 * \param matrix_inversion_method Method which is used for matrix inversion
 * \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
 * \param[out] out Created REModel
@@ -1373,6 +1374,7 @@ GPBOOST_C_EXPORT int GPB_CreateREModel(int32_t num_data,
     double cover_tree_radius,
     const char* ind_points_selection,
     const char* likelihood,
+    double likelihood_shape,
     const char* matrix_inversion_method,
     int seed,
     REModelHandle* out);
