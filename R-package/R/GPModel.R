@@ -16,6 +16,9 @@
 #' \item{ "negative_binomial": negative binomial distribution with a with log link function }
 #' \item{ Note: other likelihoods could be implemented upon request }
 #' }
+#' @param likelihood_shape A \code{numeric} specifying an additional shape parameter for the \code{likelihood}
+#' (e.g., degrees of freedom for t-distribution). 
+#' This parameter is irrelevant for many likelihoods
 #' @param group_data A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 #' The elements being group levels defining grouped random effects.
 #' The elements of 'group_data' can be integer, double, or character.
@@ -249,16 +252,16 @@
 #'                    \itemize{
 #'                      \item{"Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
 #'                  where B^T * D^-1 * B approx= Sigma^-1 }
-#'                  }
 #'                      \item{"piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
 #'                  where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
+#'                    }
 #'                  \item Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering": 
 #'                    \itemize{
 #'                      \item{"predictive_process_plus_diagonal" (= default): predictive process preconditiioner }
 #'                      \item{"none": no preconditioner }
 #'                  }
 #'                }
-#'               }
+#'                }
 #'            }
 #' @param offset A \code{numeric} \code{vector} with 
 #' additional fixed effects contributions that are added to the linear predictor (= offset). 
@@ -307,6 +310,7 @@ gpb.GPModel <- R6::R6Class(
     
     # Initialize will create a GPModel
     initialize = function(likelihood = "gaussian",
+                          likelihood_shape = 1.,
                           group_data = NULL,
                           group_rand_coef_data = NULL,
                           ind_effect_group_rand_coef = NULL,
@@ -397,6 +401,7 @@ gpb.GPModel <- R6::R6Class(
         seed = model_list[["seed"]]
         cluster_ids = model_list[["cluster_ids"]]
         likelihood = model_list[["likelihood"]]
+        likelihood_shape = model_list[["likelihood"]]
         matrix_inversion_method = model_list[["matrix_inversion_method"]]
         # Set additionally required data
         private$model_has_been_loaded_from_saved_file = TRUE
@@ -429,6 +434,7 @@ gpb.GPModel <- R6::R6Class(
       }
       private$matrix_inversion_method <- as.character(matrix_inversion_method)
       private$seed <- as.integer(seed)
+      private$likelihood_shape <- as.numeric(likelihood_shape)
       # Set data for grouped random effects
       group_data_c_str <- NULL
       if (!is.null(group_data)) {
@@ -725,6 +731,7 @@ gpb.GPModel <- R6::R6Class(
         , private$cover_tree_radius
         , private$ind_points_selection
         , likelihood
+        , private$likelihood_shape
         , private$matrix_inversion_method
         , private$seed
       )
@@ -1819,6 +1826,7 @@ gpb.GPModel <- R6::R6Class(
       # Parameters
       model_list[["params"]] <- self$get_optim_params()
       model_list[["likelihood"]] <- self$get_likelihood_name()
+      model_list[["likelihood_shape"]] <- private$likelihood_shape
       model_list[["cov_pars"]] <- self$get_cov_pars()
       # Response data
       if (include_response_data) {
@@ -1960,6 +1968,7 @@ gpb.GPModel <- R6::R6Class(
   
   private = list(
     handle = NULL,
+    likelihood_shape = 1.,
     num_data = NULL,
     num_group_re = 0L,
     num_group_rand_coef = 0L,
@@ -2194,6 +2203,7 @@ gpb.GPModel <- R6::R6Class(
 #' @author Fabio Sigrist
 #' @export
 GPModel <- function(likelihood = "gaussian",
+                    likelihood_shape = 1.,
                     group_data = NULL,
                     group_rand_coef_data = NULL,
                     ind_effect_group_rand_coef = NULL,
@@ -2220,6 +2230,7 @@ GPModel <- function(likelihood = "gaussian",
   
   # Create new GPModel
   invisible(gpb.GPModel$new(likelihood = likelihood
+                            , likelihood_shape = likelihood_shape
                             , group_data = group_data
                             , group_rand_coef_data = group_rand_coef_data
                             , ind_effect_group_rand_coef = ind_effect_group_rand_coef
@@ -2398,6 +2409,7 @@ fit.GPModel <- function(gp_model,
 #' @author Fabio Sigrist
 #' @export fitGPModel
 fitGPModel <- function(likelihood = "gaussian",
+                       likelihood_shape = 1.,
                        group_data = NULL,
                        group_rand_coef_data = NULL,
                        ind_effect_group_rand_coef = NULL,
@@ -2428,6 +2440,7 @@ fitGPModel <- function(likelihood = "gaussian",
                        fixed_effects = NULL) {
   #Create model
   gpmodel <- gpb.GPModel$new(likelihood = likelihood
+                             , likelihood_shape = likelihood_shape
                              , group_data = group_data
                              , group_rand_coef_data = group_rand_coef_data
                              , ind_effect_group_rand_coef = ind_effect_group_rand_coef
