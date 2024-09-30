@@ -1320,6 +1320,10 @@ namespace GPBoost {
 			else {
 				Log::REFatal("CalcDiagInformationLogLik: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
 			}
+			if (HasNegativeValueInformationLogLik()) {
+				Log::REDebug("Negative values found in the (diagonal) Fisher information for the Laplace approximation. "
+					"This is not necessarily a problem, but it could lead to non-positive definite matrices ");
+			}
 		}// end CalcDiagInformationLogLik
 
 		/*!
@@ -1923,12 +1927,14 @@ namespace GPBoost {
 			if (information_ll_can_be_negative_) {
 #pragma omp parallel for schedule(static) shared(has_negative)
 				for (int i = 0; i < (int)information_ll_.size(); ++i) {
+					if (has_negative) {
+						continue;
+					}
 					if (information_ll_[i] < 0.) {
 #pragma omp critical
 						{
 							has_negative = true;
 						}
-#pragma omp cancel for
 					}
 				}
 			}
