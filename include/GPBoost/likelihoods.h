@@ -102,6 +102,7 @@ namespace GPBoost {
 			num_aux_pars_ = 0;
 			likelihood_shape_ = likelihood_shape;
 			information_ll_can_be_negative_ = false;
+			information_ll_changes_during_mode_finding_ = true;
 			if (likelihood_type_ == "gamma") {
 				aux_pars_ = { 1. };//shape parameter
 				names_aux_pars_ = { "shape" };
@@ -120,11 +121,15 @@ namespace GPBoost {
 				if (approximation_type_ == "laplace") {
 					information_ll_can_be_negative_ = true;
 				}
+				else if (approximation_type_ == "fisher_laplace") {
+					information_ll_changes_during_mode_finding_ = false;
+				}
 			}
 			else if (likelihood_type_ == "gaussian") {
 				aux_pars_ = { 1. };//1 / sqrt(variance)
 				names_aux_pars_ = { "inverse_std_dev" };
 				num_aux_pars_ = 0;
+				information_ll_changes_during_mode_finding_ = false;
 			} 
 			chol_fact_pattern_analyzed_ = false;
 			has_a_vec_ = has_a_vec;
@@ -1993,14 +1998,16 @@ namespace GPBoost {
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);
-				CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
-				// Calculate right hand side for mode update and sqrt(ZtWZ) / sqrt(W)
-				diag_Wsqrt.array() = information_ll_.array().sqrt();
-				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
 				// Calculate Cholesky factor of matrix B = (Id + ZtWZsqrt * Sigma * ZtWZsqrt) if use_Z_for_duplicates_ or B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt) if !use_Z_for_duplicates_
-				Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
-				Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
-				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt);//this is the bottleneck (for large data and sparse matrices)
+				if (it == 0 || information_ll_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+					diag_Wsqrt.array() = information_ll_.array().sqrt();
+					Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
+					Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
+					CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt);//this is the bottleneck (for large data and sparse matrices)
+				}
+				// Calculate right hand side for mode update
+				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
 				// Update mode and a_vec_
 				rhs2 = (*Sigma) * rhs;//rhs2 = sqrt(W) * Sigma * rhs
 				rhs2.array() *= diag_Wsqrt.array();
@@ -2038,11 +2045,13 @@ namespace GPBoost {
 			}
 			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
-				diag_Wsqrt.array() = information_ll_.array().sqrt();
-				Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
-				Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
-				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt);
+				if (information_ll_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+					diag_Wsqrt.array() = information_ll_.array().sqrt();
+					Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
+					Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
+					CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt);
+				}
 				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();			
 				mode_has_been_calculated_ = true;
 				mode_is_zero_ = false;
@@ -2100,17 +2109,19 @@ namespace GPBoost {
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());
-				CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
-				// Calculate Cholesky factor and update mode
 				rhs = Zt * first_deriv_ll_ - SigmaI * mode_;//right hand side for updating mode
-				SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
-				SigmaI_plus_ZtWZ.makeCompressed();
-				if (!chol_fact_pattern_analyzed_) {
-					chol_fact_SigmaI_plus_ZtWZ_grouped_.analyzePattern(SigmaI_plus_ZtWZ);
-					chol_fact_pattern_analyzed_ = true;
+				// Calculate Cholesky factor
+				if (it == 0 || information_ll_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
+					SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
+					SigmaI_plus_ZtWZ.makeCompressed();
+					if (!chol_fact_pattern_analyzed_) {
+						chol_fact_SigmaI_plus_ZtWZ_grouped_.analyzePattern(SigmaI_plus_ZtWZ);
+						chol_fact_pattern_analyzed_ = true;
+					}
+					chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
 				}
-				chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
-				// Backtracking line search
+				// Update mode and do backtracking line search
 				mode_update = chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(rhs);
 				double lr_mode = 1.;
 				for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_; ++ih) {
@@ -2140,10 +2151,12 @@ namespace GPBoost {
 			}//end mode finding algorithm
 			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
-				SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
-				SigmaI_plus_ZtWZ.makeCompressed();
-				chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
+				if (information_ll_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
+					SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
+					SigmaI_plus_ZtWZ.makeCompressed();
+					chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
+				}
 				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
 				mode_is_zero_ = false;
@@ -2192,14 +2205,15 @@ namespace GPBoost {
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());
-				CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
+				if (it == 0 || information_ll_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
+					CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_, diag_SigmaI_plus_ZtWZ_, true);
+					diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
+				}
 				// Calculate rhs for mode update
 				rhs = -mode_ / sigma2;//right hand side for updating mode
 				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, rhs, false);
-				// Update mode
-				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_, diag_SigmaI_plus_ZtWZ_, true);
-				diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
-				// Backtracking line search
+				// Update mode and do backtracking line search
 				mode_update = (rhs.array() / diag_SigmaI_plus_ZtWZ_.array()).matrix();
 				double lr_mode = 1.;
 				for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_; ++ih) {
@@ -2222,9 +2236,11 @@ namespace GPBoost {
 			}//end mode finding algorithm
 			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
-				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_, diag_SigmaI_plus_ZtWZ_, true);
-				diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
+				if (information_ll_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
+					CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_, diag_SigmaI_plus_ZtWZ_, true);
+					diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
+				}
 				approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * num_re_ * std::log(sigma2);
 				mode_has_been_calculated_ = true;
 				mode_is_zero_ = false;
@@ -2311,7 +2327,9 @@ namespace GPBoost {
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);
-				CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+				if (it == 0 || information_ll_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+				}
 				if (quasi_newton_for_mode_finding_) {
 					vec_t grad = first_deriv_ll_ - B.transpose() * (D_inv * (B * mode_));
 					sp_mat_t D_inv_B = D_inv * B;
@@ -2355,21 +2373,25 @@ namespace GPBoost {
 								has_NA_or_Inf = true;// the inversion of the preconditioner with the Woodbury identity can be numerically unstable when information_ll_ is very large
 							}
 							else {
-								I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
-								I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * information_ll_.asDiagonal() * Sigma_L_k_;
-								chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
+								if (it == 0 || information_ll_changes_during_mode_finding_) {
+									I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
+									I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * information_ll_.asDiagonal() * Sigma_L_k_;
+									chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
+								}
 								CGVecchiaLaplaceVecWinvplusSigma(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, mode_update, has_NA_or_Inf,
 									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 							}
 						}
 						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
-							if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
-								D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + information_ll_).asDiagonal() * B_rm_;
-							}
-							else {
-								SigmaI_plus_W = SigmaI;
-								SigmaI_plus_W.diagonal().array() += information_ll_.array();
-								ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
+							if (it == 0 || information_ll_changes_during_mode_finding_) {
+								if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+									D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + information_ll_).asDiagonal() * B_rm_;
+								}
+								else {
+									SigmaI_plus_W = SigmaI;
+									SigmaI_plus_W.diagonal().array() += information_ll_.array();
+									ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
+								}
 							}
 							CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rhs, mode_update, has_NA_or_Inf,
 								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
@@ -2384,15 +2406,17 @@ namespace GPBoost {
 						}
 					} //end iterative
 					else { // start Cholesky 
-						SigmaI_plus_W = SigmaI;
-						SigmaI_plus_W.diagonal().array() += information_ll_.array();
-						SigmaI_plus_W.makeCompressed();
-						//Calculation of the Cholesky factor is the bottleneck
-						if (!chol_fact_pattern_analyzed_) {
-							chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
-							chol_fact_pattern_analyzed_ = true;
+						if (it == 0 || information_ll_changes_during_mode_finding_) {
+							SigmaI_plus_W = SigmaI;
+							SigmaI_plus_W.diagonal().array() += information_ll_.array();
+							SigmaI_plus_W.makeCompressed();
+							//Calculation of the Cholesky factor is the bottleneck
+							if (!chol_fact_pattern_analyzed_) {
+								chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
+								chol_fact_pattern_analyzed_ = true;
+							}
+							chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
 						}
-						chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
 						//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
 						//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
 						mode_update = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
@@ -2430,7 +2454,9 @@ namespace GPBoost {
 				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+				if (information_ll_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+				}
 				if (matrix_inversion_method_ == "iterative") {
 					//Seed Generator
 					if (!cg_generator_seeded_) {
@@ -2473,14 +2499,16 @@ namespace GPBoost {
 					}//end calculate determinant term for approx_marginal_ll
 				}//end iterative
 				else {
-					SigmaI_plus_W = SigmaI;
-					SigmaI_plus_W.diagonal().array() += information_ll_.array();
-					SigmaI_plus_W.makeCompressed();
-					if (!chol_fact_pattern_analyzed_) {
-						chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
-						chol_fact_pattern_analyzed_ = true;
+					if (information_ll_changes_during_mode_finding_) {
+						SigmaI_plus_W = SigmaI;
+						SigmaI_plus_W.diagonal().array() += information_ll_.array();
+						SigmaI_plus_W.makeCompressed();
+						if (!chol_fact_pattern_analyzed_) {
+							chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
+							chol_fact_pattern_analyzed_ = true;
+						}
+						chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
 					}
-					chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
 					approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
 				}
 			}
@@ -2532,7 +2560,7 @@ namespace GPBoost {
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t Wsqrt_diag(dim_mode_), sigma_ip_inv_cross_cov_T_rhs(num_ip), rhs(dim_mode_), Wsqrt_Sigma_rhs(dim_mode_), vaux(num_ip), vaux2(num_ip), vaux3(dim_mode_), 
 				mode_new(dim_mode_), a_vec_new, DW_plus_I_inv_diag(dim_mode_), a_vec_update, mode_update;//auxiliary variables for updating mode
-			den_mat_t M_aux_Woodbury(num_ip, num_ip); // = sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
+			den_mat_t M_aux_Woodbury(num_ip, num_ip), Wsqrt_cross_cov; // = sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
@@ -2540,14 +2568,16 @@ namespace GPBoost {
 			for (it = 0; it < MAXIT_MODE_NEWTON_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);
-				CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
-				Wsqrt_diag.array() = information_ll_.array().sqrt();
+				if (it == 0 || information_ll_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+					Wsqrt_diag.array() = information_ll_.array().sqrt();
+					DW_plus_I_inv_diag = (information_ll_.array() * fitc_diag.array() + 1.).matrix().cwiseInverse();
+					// Calculate Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
+					Wsqrt_cross_cov = Wsqrt_diag.asDiagonal() * (*cross_cov);
+					M_aux_Woodbury = *sigma_ip + Wsqrt_cross_cov.transpose() * DW_plus_I_inv_diag.asDiagonal() * Wsqrt_cross_cov;// = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
+					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
+				}
 				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
-				DW_plus_I_inv_diag = (information_ll_.array() * fitc_diag.array() + 1.).matrix().cwiseInverse();
-				// Calculate Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
-				den_mat_t Wsqrt_cross_cov = Wsqrt_diag.asDiagonal() * (*cross_cov);
-				M_aux_Woodbury = *sigma_ip + Wsqrt_cross_cov.transpose() * DW_plus_I_inv_diag.asDiagonal() * Wsqrt_cross_cov;// = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
-				chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
 				// Update mode and a_vec_
 				sigma_ip_inv_cross_cov_T_rhs = chol_fact_sigma_ip.solve((*cross_cov).transpose() * rhs);
 				Wsqrt_Sigma_rhs = ((*cross_cov) * sigma_ip_inv_cross_cov_T_rhs) + (fitc_diag.asDiagonal() * rhs);
@@ -2594,10 +2624,16 @@ namespace GPBoost {
 				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
-				vec_t fitc_diag_plus_WI_inv = (fitc_diag + information_ll_.cwiseInverse()).cwiseInverse();
-				M_aux_Woodbury = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov);
-				chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of (sigma_ip + Sigma_nm^T * fitc_diag_plus_WI_inv * Sigma_nm)
+				vec_t fitc_diag_plus_WI_inv;
+				if (information_ll_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+					fitc_diag_plus_WI_inv = (fitc_diag + information_ll_.cwiseInverse()).cwiseInverse();
+					M_aux_Woodbury = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov);
+					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of (sigma_ip + Sigma_nm^T * fitc_diag_plus_WI_inv * Sigma_nm)
+				}
+				else {
+					fitc_diag_plus_WI_inv = (fitc_diag + information_ll_.cwiseInverse()).cwiseInverse();
+				}
 				approx_marginal_ll -= ((den_mat_t)chol_fact_dense_Newton_.matrixL()).diagonal().array().log().sum();
 				approx_marginal_ll += ((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum();
 				approx_marginal_ll += 0.5 * fitc_diag_plus_WI_inv.array().log().sum();
@@ -4373,9 +4409,11 @@ namespace GPBoost {
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
 					rand_vec_trace_P_.col(i) = Sigma_L_k_ * rand_vec_trace_I2_.col(i) + ((information_ll_.cwiseInverse().cwiseSqrt()).array() * rand_vec_trace_I_.col(i).array()).matrix();
 				}
-				I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
-				I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * information_ll_.asDiagonal() * Sigma_L_k_;
-				chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
+				if (information_ll_changes_during_mode_finding_) {
+					I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
+					I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * information_ll_.asDiagonal() * Sigma_L_k_;
+					chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
+				}
 				CGTridiagVecchiaLaplaceWinvplusSigma(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_trace_P_, Tdiags_PI_WI_plus_Sigma, Tsubdiags_PI_WI_plus_Sigma,
 					WI_plus_Sigma_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 				if (!has_NA_or_Inf) {
@@ -4405,9 +4443,11 @@ namespace GPBoost {
 				}
 				else {
 					//Update P with latest W
-					SigmaI_plus_W = SigmaI;
-					SigmaI_plus_W.diagonal().array() += information_ll_.array();
-					ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
+					if (information_ll_changes_during_mode_finding_) {
+						SigmaI_plus_W = SigmaI;
+						SigmaI_plus_W.diagonal().array() += information_ll_.array();
+						ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
+					}
 					//For P = L^T L: z_i = L^T r_i, where r_i ~ N(0,I)
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
@@ -4755,11 +4795,11 @@ namespace GPBoost {
 		bool has_a_vec_;
 		/*! \brief First derivatives of the log-likelihood. If use_Z_for_duplicates_, this corresponds to Z^T * first_deriv_ll, i.e., it length is num_re_ */
 		vec_t first_deriv_ll_;
-		/*! \brief The diagonal of the Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_Z_for_duplicates_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
-		vec_t information_ll_;
 		/*! \brief First derivatives of the log-likelihood on the data scale of length num_data_. Auxiliary variable used only if use_Z_for_duplicates_ */
 		vec_t first_deriv_ll_data_scale_;
-		/*! \brief The diagonal of Fisher the information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_Z_for_duplicates_ */
+		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_Z_for_duplicates_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
+		vec_t information_ll_;
+		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_Z_for_duplicates_ */
 		vec_t information_ll_data_scale_;
 		/*! \brief Diagonal of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'GroupedRE' when there is only one random effect and ZtWZ is diagonal. Otherwise 'diag_SigmaI_plus_ZtWZ_' is used for grouped REs) */
 		vec_t diag_SigmaI_plus_ZtWZ_;
@@ -4832,8 +4872,10 @@ namespace GPBoost {
 		string_t approximation_type_ = "laplace";
 		/*! \brief List of supported approximations */
 		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace", "fisher_laplace" };
-		/*! \brief If true, information_ll_ could contain negative values */
+		/*! \brief If true, 'information_ll_' could contain negative values */
 		bool information_ll_can_be_negative_ = false;
+		/*! \brief If true, the (obsreved or expected) Fisher information ('information_ll_') changes in the mode finding algorithm (usually Newton's method) for the Laplace approximation */
+		bool information_ll_changes_during_mode_finding_ = true;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
