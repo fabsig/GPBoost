@@ -401,7 +401,7 @@ gpb.GPModel <- R6::R6Class(
         seed = model_list[["seed"]]
         cluster_ids = model_list[["cluster_ids"]]
         likelihood = model_list[["likelihood"]]
-        likelihood_shape = model_list[["likelihood"]]
+        likelihood_shape = model_list[["likelihood_shape"]]
         matrix_inversion_method = model_list[["matrix_inversion_method"]]
         # Set additionally required data
         private$model_has_been_loaded_from_saved_file = TRUE
