@@ -75,8 +75,9 @@ After installing `Rtools` and `CMake`, be sure the following paths are added to 
         - `C:\rtools42\usr\bin`
         - NOTE: this is, e.g., `rtools43\` for R 4.3
    - NOTE: 
-      - Two `Rtools` paths are required from `Rtools` 4.0 onwards
-      - When installing in R with `install.packages()`, these paths can be added locally in R, e.g., as follows prior to installation: `Sys.setenv(PATH=paste0(Sys.getenv("PATH"),";C:\\Rtools\\mingw_64\\bin\\;C:\\rtools40\\usr\\bin\\"))` 
+      - Two `Rtools` paths are required from `Rtools` 4.0 onwards (see above)
+      - When installing in R with `install.packages()`, these paths can be added locally in R, e.g., as follows prior to installation: `Sys.setenv(PATH=paste0(Sys.getenv("PATH"),";C:\\Rtools\\mingw_64\\bin\\;C:\\rtools40\\usr\\bin\\"))`
+      - You might need to install the `processx` R package first for RTools 4.4
 
 * `CMake`
     - example: `C:\Program Files\CMake\bin`
