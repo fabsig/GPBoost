@@ -37,7 +37,7 @@ sys.path.insert(0, LIB_PATH)
 INTERNAL_REF_REGEX = compile(r"(?P<url>\.\/.+)(?P<extension>\.rst)(?P<anchor>$|#)")
 
 # -- mock out modules
-MOCK_MODULES = ['numpy', 'scipy', 'scipy.sparse',
+MOCK_MODULES = ['numpy', 'scipy', 'scipy.sparse', 'optuna',
                 'sklearn', 'matplotlib', 'pandas', 'graphviz', 'dask', 'dask.distributed']
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = Mock()

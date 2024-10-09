@@ -23,6 +23,7 @@ GPBoost Algorithm Training and Choosing Tuning Parameters
     :toctree: pythonapi/
 
     train
+    tune_pars_TPE_algorithm_optuna
     grid_search_tune_parameters
     cv
 

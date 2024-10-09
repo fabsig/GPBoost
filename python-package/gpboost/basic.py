@@ -4079,7 +4079,6 @@ class GPModel(object):
                         Negative binomial distribution with a with log link function
 
                     - Note: other likelihoods could be implemented upon request
-
             
             likelihood_shape : float, optional (default=1.)
                  Additional shape parameter for likelihood (e.g., degrees of freedom for t-distribution).

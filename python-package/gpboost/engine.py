@@ -11,6 +11,7 @@ import copy
 from operator import attrgetter
 
 import numpy as np
+import optuna
 
 from . import callback
 from .basic import Booster, Dataset, GPBoostError, _ConfigAliases, _InnerPredictor, _log_warning, GPModel, _format_check_1D_data, is_numeric, is_1d_list, _get_bad_pandas_dtypes, _get_bad_pandas_dtypes_int
@@ -638,12 +639,8 @@ def cv(params, train_set, num_boost_round=100,
         All negative values in categorical features will be treated as missing values.
         The output cannot be monotonically constrained with respect to a categorical feature.
     early_stopping_rounds : int or None, optional (default=None)
-        Activates early stopping.
-        CV score needs to improve at least every ``early_stopping_rounds`` round(s)
-        to continue.
-        Requires at least one metric. If there's more than one, will check all of them.
-        To check only the first metric, set the ``first_metric_only`` parameter to ``True`` in ``params``.
-        Last entry in evaluation history is the one from the best iteration.
+        Activates early stopping. The ``metric`` needs to improve at least every 
+        ``early_stopping_rounds`` round(s) to continue.
     fpreproc : callable or None, optional (default=None)
         Preprocessing function that takes (dtrain, dtest, params)
         and returns transformed versions of those.
@@ -874,7 +871,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                                 early_stopping_rounds=None, fpreproc=None,
                                 verbose_eval=1, seed=0, callbacks=None, metrics=None,
                                 return_all_combinations=False):
-    """Function that allows for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
+    """Function for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
 
     Parameters
     ----------
@@ -917,7 +914,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     shuffle : bool, optional (default=True)
         Whether to shuffle before splitting data.
     metric : string, list of strings or None, optional (default=None)
-        Evaluation metric to be monitored when doing CV and parameter tuning.
+        Evaluation metric to be monitored when doing parameter tuning.
         If not None, the metric in ``params`` will be overridden.
         Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
         "auc", "average_precision", "binary_logloss", "binary_error"
@@ -980,12 +977,8 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         All negative values in categorical features will be treated as missing values.
         The output cannot be monotonically constrained with respect to a categorical feature.
     early_stopping_rounds : int or None, optional (default=None)
-        Activates early stopping.
-        CV score needs to improve at least every ``early_stopping_rounds`` round(s)
-        to continue.
-        Requires at least one metric. If there's more than one, will check all of them.
-        To check only the first metric, set the ``first_metric_only`` parameter to ``True`` in ``params``.
-        Last entry in evaluation history is the one from the best iteration.
+        Activates early stopping. The ``metric`` needs to improve at least every 
+        ``early_stopping_rounds`` round(s) to continue.
     fpreproc : callable or None, optional (default=None)
         Preprocessing function that takes (dtrain, dtest, params)
         and returns transformed versions of those.
@@ -1180,3 +1173,235 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
                     'all_combinations': all_combinations}
     else:
         return {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}
+
+def tune_pars_TPE_algorithm_optuna(X, y, param_grid, n_trials,
+                                max_num_boost_round=1000, early_stopping_rounds=None,
+                                metric=None, gp_model=None, folds=None, nfold=5,
+                                cv_seed=0, tpe_seed=0,
+                                params=None, verbose_train=0, verbose_eval=1,
+                                use_gp_model_for_validation=True,
+                                train_gp_model_cov_pars=True, feval=None,
+                                categorical_feature='auto'):
+    """Function for choosing tuning parameters using the TPE (Tree-structured Parzen Estimator) algorithm implemented in optuna
+
+    Parameters
+    ----------
+    X : string, numpy array, pandas DataFrame, H2O DataTable's Frame, scipy.sparse or list of numpy arrays
+        Predictor variables data for creating a gpb.Dataset.
+        If string, it represents the path to txt file.
+    y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
+        Response variable / label data.
+    param_grid : dict
+        The range for every parameter over which a search is done.
+        The format for every entry of the dict must be 
+        'parameter_name': [lower, upper].
+        See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
+    n_trials: int
+        The number of trials for the TPESampler.
+    max_num_boost_round : int, optional (default=1000)
+        Maximal number of boosting iterations.
+    early_stopping_rounds : int or None, optional (default=None)
+        Activates early stopping. The ``metric`` needs to improve at least every 
+        ``early_stopping_rounds`` round(s) to continue.
+    metric : string, list of strings or None, optional (default=None)
+        Evaluation metric to be monitored when doing parameter tuning.
+        If not None, the metric in ``params`` will be overridden.
+        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
+        "auc", "average_precision", "binary_logloss", "binary_error"
+        See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
+        for a complete list of valid metrics.
+    gp_model : GPModel or None, optional (default=None)
+        GPModel object for the GPBoost algorithm
+    folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
+        If generator or iterator, it should yield the train and test indices for each fold.
+        If object, it should be one of the scikit-learn splitter classes
+        (https://scikit-learn.org/stable/modules/classes.html#splitter-classes)
+        and have ``split`` method.
+        This argument has highest priority over other data split arguments.
+    nfold : int, optional (default=5)
+        Number of folds in CV.
+    cv_seed : int, optional (default=0)
+        Seed used to generate folds if CV is used (passed to numpy.random.seed).
+    tpe_seed : int, optional (default=0)
+        Seed for TPESampler of optuna    
+    params : dict, optional (default=None)
+        Other parameters not included in param_grid.
+    verbose_train: int, optional (default=0)
+        Controls the level of verbosity of the tree-boosting part during estimation
+        < 0: Fatal, = 0: Error (Warning), = 1: Info, > 1: Debug
+    verbose_eval : int or None, optional (default=1)
+        Whether to display information on the progress of tuning parameter choice.
+        If None or 0, verbose is of.
+        If = 1, summary progress information is displayed for every trial of a parameter combination.
+        If >= 2, detailed progress is displayed at every boosting stage for every parameter combination.
+    use_gp_model_for_validation : bool, optional (default=True)
+        If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
+        for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
+        for making predictions and only the tree ensemble is used for making predictions for calculating the validation / test error.
+    train_gp_model_cov_pars : bool, optional (default=True)
+        If True, the covariance parameters of the 'gp_model' (Gaussian process and/or random effects) are estimated
+        in every boosting iterations, otherwise the 'gp_model' parameters are not estimated. In the latter case, you
+        need to either estimate them beforehand or provide values via the 'init_cov_pars' parameter when creating
+        the 'gp_model'
+    feval : callable, list of callable functions or None, optional (default=None)
+        Customized evaluation function.
+        If more than one evaluation function is provided, only the first evaluation function will be used to choose tuning parameters
+        Each evaluation function should accept two parameters: preds, train_data,
+        and return (eval_name, eval_result, is_higher_better) or list of such tuples.
+
+            preds : list or numpy 1-D array
+                The predicted values.
+            train_data : Dataset
+                The training dataset.
+            eval_name : string
+                The name of evaluation function (without whitespaces).
+            eval_result : float
+                The eval result.
+            is_higher_better : bool
+                Is eval result higher better, e.g. AUC is ``is_higher_better``.
+
+        For binary task, the preds is probability of positive class (or margin in case of specified ``fobj``).
+        For multi-class task, the preds is group by class_id first, then group by row_id.
+        If you want to get i-th row preds in j-th class, the access way is preds[j * num_data + i].
+        To ignore the default metric corresponding to the used objective,
+        set ``metric`` to the string ``"None"``.
+    categorical_feature : list of strings or int, or 'auto', optional (default="auto")
+        Categorical features.
+        If list of int, interpreted as indices.
+        If list of strings, interpreted as feature names (need to specify ``feature_name`` as well).
+        If 'auto' and data is pandas DataFrame, pandas unordered categorical columns are used.
+        All values in categorical features should be less than int32 max value (2147483647).
+        Large values could be memory consuming. Consider using consecutive integers starting from zero.
+        All negative values in categorical features will be treated as missing values.
+        The output cannot be monotonically constrained with respect to a categorical feature.
+        
+    Returns
+    -------
+    return : dict
+        Dictionary with the best parameter combination and score
+        The dictionary has the following format:
+        {'best_params': best_params, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+
+    Example
+    -------
+    >>> param_grid= { 'learning_rate': [0.001, 10],
+    >>>   'min_data_in_leaf': [1, 1000],
+    >>>   'max_depth': [-1, 10],
+    >>>   'num_leaves': [2, 1024],
+    >>>   'lambda_l2': [0, 100],
+    >>>   'max_bin': [63, np.min([10000,n])],
+    >>>   'line_search_step_length': [True, False] }
+    >>> metric = "mse"
+    >>> if likelihood in ("bernoulli_probit", "bernoulli_logit"):
+    >>>   metric = "binary_logloss"
+    >>> # Can also use metric = "test_neg_log_likelihood"
+    >>> # For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
+    >>> gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+    >>> # Run parameter optimization using 4-fold CV
+    >>> opt_params = tune_pars_TPE_algorithm_optuna(X=X, y=y, param_grid=param_grid, 
+    >>>                                             nfold=4, gp_model=gp_model, metric=metric, tpe_seed=1,
+    >>>                                             max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
+    >>> print("Best parameters: " + str(opt_params['best_params']))
+    >>> print("Best number of iterations: " + str(opt_params['best_iter']))
+    >>> print("Best score: " + str(opt_params['best_score']))
+    >>> 
+    >>> # Alternatively and faster: using manually defined validation data instead of cross-validation
+    >>> permute_aux = np.random.permutation(n)
+    >>> train_tune_idx = permute_aux[0:int(0.8 * n)] # use 20% of the data as validation data
+    >>> valid_tune_idx = permute_aux[int(0.8 * n):n]
+    >>> folds = [(train_tune_idx, valid_tune_idx)]
+    >>> opt_params = tune_pars_TPE_algorithm_optuna(X=X, y=y, param_grid=param_grid, 
+    >>>                                             folds=folds, gp_model=gp_model, metric=metric, tpe_seed=1,
+    >>>                                             max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
+
+    :Authors:
+        Fabio Sigrist
+    """
+    if not isinstance(param_grid, dict):
+        raise ValueError("param_grid must be a dictionary")
+    if not isinstance(n_trials, int) or n_trials <= 0:
+        raise ValueError("n_trials must be a positive integer")
+    
+    if params is None:
+        params = {}
+    else:
+        params = copy.deepcopy(params)
+    param_grid = copy.deepcopy(param_grid)
+    metric_higher_better = False
+    if metric is not None:
+        if isinstance(metric, str):
+            metric = [metric]
+        if metric[0].startswith(('auc', 'ndcg@', 'map@', 'average_precision')):
+            metric_higher_better = True
+    elif feval is not None:
+        if callable(feval):
+            feval = [feval]
+        PH1, PH2, metric_higher_better = feval[0](np.array([0]), Dataset(np.array([0]), np.array([0])))
+    best_score = -1e99 if metric_higher_better else 1e99
+    best_iter = -1
+    verbose_eval_cv = verbose_eval >= 2
+
+    def objective_opt(trial):
+        nonlocal best_score, best_iter
+        """Objective function for tuning parameter search with Optuna."""
+        # Parse parameters
+        params_loc = {}
+        for param in param_grid:
+            if param in ['learning_rate', 'shrinkage_rate',
+                         'min_gain_to_split', 'min_split_gain',
+                         'min_sum_hessian_in_leaf', 'min_sum_hessian_per_leaf', 'min_sum_hessian', 'min_hessian', 'min_child_weight']:
+                params_loc[param] = trial.suggest_float(param, param_grid[param][0], param_grid[param][1], log=True)
+            elif param in ['lambda_l2', 'reg_lambda', 'lambda',
+                           'lambda_l1', 'reg_alpha',
+                           'bagging_fraction', 'sub_row', 'subsample', 'bagging',
+                           'feature_fraction', 'sub_feature', 'colsample_bytree',
+                           'cat_l2',
+                           'cat_smooth']:
+                params_loc[param] = trial.suggest_float(param, param_grid[param][0], param_grid[param][1], log=False)
+            elif param in ['num_leaves', 'num_leaf', 'max_leaves', 'max_leaf',
+                           'max_depth',
+                           'min_data_in_leaf', 'min_data_per_leaf', 'min_data', 'min_child_samples',
+                           'max_bin']:
+                params_loc[param] = trial.suggest_int(param, param_grid[param][0], param_grid[param][1])
+            elif param in ['line_search_step_length']:
+                params_loc[param] = trial.suggest_categorical(param, [param_grid[param][0], param_grid[param][1]])
+            else: 
+                raise ValueError(f"Unknown parameter '{param}'")
+        params_loc.update({'verbose': verbose_train})
+        params_loc.update(params)
+
+        # Train the model
+        data_bst = Dataset(data=X, label=y)
+        cvbst = cv(params=params_loc, train_set=data_bst, gp_model=gp_model, 
+                   use_gp_model_for_validation=use_gp_model_for_validation,  
+                   train_gp_model_cov_pars=train_gp_model_cov_pars,
+                   num_boost_round=max_num_boost_round, 
+                   early_stopping_rounds=early_stopping_rounds,
+                   folds=folds, nfold=nfold, verbose_eval=verbose_eval_cv, show_stdv=False, 
+                   seed=cv_seed, metric=metric, feval=feval,
+                   categorical_feature=categorical_feature)
+        metric_name = list(cvbst.keys())[0]
+        best_score_trial = np.min(cvbst[metric_name])
+        best_iter_trial = np.argmin(cvbst[metric_name]) + 1
+        if metric_higher_better:
+            best_score_trial = np.max(cvbst[metric_name])
+            best_iter_trial = np.argmax(cvbst[metric_name]) + 1
+
+        # Save the best number of iterations
+        found_better_combination = False
+        if metric_higher_better:
+            if best_score_trial > best_score:
+                found_better_combination = True
+        else:
+            if best_score_trial < best_score:
+                found_better_combination = True
+        if found_better_combination:
+            best_score = best_score_trial
+            best_iter = best_iter_trial
+
+        return best_score_trial
+    
+    direction = 'maximize' if metric_higher_better else 'minimize'
+    study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=tpe_seed))
+    study.optimize(objective_opt, n_trials=n_trials)
+    return {'best_params': study.best_trial.params, 'best_iter': best_iter, 'best_score': study.best_trial.values}
