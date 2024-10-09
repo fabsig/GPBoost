@@ -13,6 +13,7 @@
 #include <GPBoost/utils.h>
 #include <GPBoost/sparse_matrix_utils.h>
 #include <GPBoost/GP_utils.h>
+#include <GPBoost/DF_utils.h>
 
 #include <string>
 #include <set>
@@ -1340,7 +1341,7 @@ namespace GPBoost {
 								double z_down = dist.coeff(i, j) * par_aux_down;
 								double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step);
 								sigma_grad(i, j) = cm * std::pow(z, pars[2]) *
-									(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - digamma(pars[2])) + bessel_num_deriv);
+									(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(pars[2])) + bessel_num_deriv);
 								sigma_grad(j, i) = sigma_grad(i, j);
 							}
 						}
@@ -1354,7 +1355,7 @@ namespace GPBoost {
 								double z_down = dist.coeff(i, j) * par_aux_down;
 								double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step);
 								sigma_grad(i, j) = cm * std::pow(z, pars[2]) *
-									(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - digamma(pars[2])) + bessel_num_deriv);
+									(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(pars[2])) + bessel_num_deriv);
 							}
 						}
 					}
@@ -1914,7 +1915,7 @@ namespace GPBoost {
 									double z_down = dist.coeff(i, j) * par_aux_down;
 									double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step);
 									it.valueRef() = cm * std::pow(z, pars[2]) *
-										(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - digamma(pars[2])) + bessel_num_deriv);
+										(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(pars[2])) + bessel_num_deriv);
 									sigma_grad.coeffRef(j, i) = it.value();
 								}
 							}
@@ -1931,7 +1932,7 @@ namespace GPBoost {
 								double z_down = dist.coeff(i, j) * par_aux_down;
 								double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step);
 								it.valueRef() = cm * std::pow(z, pars[2]) *
-									(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - digamma(pars[2])) + bessel_num_deriv);
+									(std::cyl_bessel_k(pars[2], z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(pars[2])) + bessel_num_deriv);
 							}
 						}
 					}

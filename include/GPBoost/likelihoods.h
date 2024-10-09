@@ -1556,7 +1556,7 @@ namespace GPBoost {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					neg_log_grad += location_par[i] + y_data[i] * std::exp(-location_par[i]);
 				}
-				neg_log_grad -= num_data * (std::log(aux_pars_[0]) + 1. - digamma(aux_pars_[0]));
+				neg_log_grad -= num_data * (std::log(aux_pars_[0]) + 1. - GPBoost::digamma(aux_pars_[0]));
 				neg_log_grad -= aux_log_normalizing_constant_;
 				neg_log_grad *= aux_pars_[0];
 				grad[0] = neg_log_grad;
@@ -1568,9 +1568,9 @@ namespace GPBoost {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					double mu_plus_r = std::exp(location_par[i]) + aux_pars_[0];
 					double y_plus_r = y_data_int[i] + aux_pars_[0];
-					neg_log_grad += aux_pars_[0] * (-digamma(y_plus_r) + std::log(mu_plus_r) + y_plus_r / mu_plus_r);
+					neg_log_grad += aux_pars_[0] * (-GPBoost::digamma(y_plus_r) + std::log(mu_plus_r) + y_plus_r / mu_plus_r);
 				}
-				neg_log_grad += num_data * aux_pars_[0] * (digamma(aux_pars_[0]) - std::log(aux_pars_[0]) - 1);
+				neg_log_grad += num_data * aux_pars_[0] * (GPBoost::digamma(aux_pars_[0]) - std::log(aux_pars_[0]) - 1);
 				grad[0] = neg_log_grad;
 			}
 			else if (likelihood_type_ == "t") {
