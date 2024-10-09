@@ -569,6 +569,8 @@ namespace GPBoost {
 		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
 		* \param reuse_learning_rates_from_previous_call If true, the learning rates for the covariance and potential auxiliary parameters are kept at the values from a previous call and 
 		*			not re-initialized (can only be set to true if called_in_GPBoost_algorithm is true). This option is only used for "gradient_descent"
+		* \param only_intercept_for_GPBoost_algo True if the covariates contain only an intercept and this function is called from the GPBoost algorithm for finding an initial score
+		* \param find_learning_rate_for_GPBoost_algo True if this function is called from the GPBoost algorithm for finding an optimal learning rate
 		*/
 		void OptimLinRegrCoefCovPar(const double* y_data,
 			const double* covariate_data,
@@ -584,7 +586,9 @@ namespace GPBoost {
 			const double* fixed_effects,
 			bool learn_covariance_parameters,
 			bool called_in_GPBoost_algorithm,
-			bool reuse_learning_rates_from_previous_call) {
+			bool reuse_learning_rates_from_previous_call,
+			bool only_intercept_for_GPBoost_algo,
+			bool find_learning_rate_for_GPBoost_algo) {
 			if (NumAuxPars() == 0) {
 				estimate_aux_pars_ = false;
 			}
@@ -685,8 +689,6 @@ namespace GPBoost {
 			num_iter_ = 0;
 			num_it = max_iter_;
 			has_intercept_ = false; //If true, the covariates contain an intercept column (only relevant if there are covariates)
-			bool only_intercept_for_GPBoost_algo = false;//True if the covariates contain only an intercept and this function is called from the GPBoost algorithm for finding an initial score 
-			bool find_learning_rate_for_GPBoost_algo = false;//True if this function is called from the GPBoost algorithm for finding an optimal learning rate
 			intercept_col_ = -1;
 			// Check whether one of the columns contains only 1's (-> has_intercept_)
 			if (has_covariates_) {
@@ -711,8 +713,6 @@ namespace GPBoost {
 						break;
 					}
 				}
-				only_intercept_for_GPBoost_algo = called_in_GPBoost_algorithm && has_intercept_ && num_coef_ == 1 && !learn_covariance_parameters;
-				find_learning_rate_for_GPBoost_algo = called_in_GPBoost_algorithm && !has_intercept_ && num_coef_ == 1 && !learn_covariance_parameters;
 				if (!has_intercept_ && !find_learning_rate_for_GPBoost_algo) {
 					Log::REDebug("The covariate data contains no column of ones, i.e., no intercept is included ");
 				}
@@ -735,9 +735,8 @@ namespace GPBoost {
 			}
 			if (find_learning_rate_for_GPBoost_algo) {
 				CHECK(!only_intercept_for_GPBoost_algo);
-				CHECK(!has_intercept_);
 			}
-			if(only_intercept_for_GPBoost_algo || find_learning_rate_for_GPBoost_algo) {
+			if (only_intercept_for_GPBoost_algo || find_learning_rate_for_GPBoost_algo) {
 				CHECK(has_covariates_);
 				CHECK(num_coef_ == 1);
 				CHECK(!learn_covariance_parameters);

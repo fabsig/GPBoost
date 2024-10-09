@@ -377,7 +377,9 @@ namespace GPBoost {
 				fixed_effects,
 				true,
 				called_in_GPBoost_algorithm,
-				reuse_learning_rates_from_previous_call);
+				reuse_learning_rates_from_previous_call,
+				false,
+				false);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->OptimLinRegrCoefCovPar(y_data,
@@ -394,7 +396,9 @@ namespace GPBoost {
 				fixed_effects,
 				true,
 				called_in_GPBoost_algorithm,
-				reuse_learning_rates_from_previous_call);
+				reuse_learning_rates_from_previous_call,
+				false,
+				false);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(y_data,
@@ -411,7 +415,9 @@ namespace GPBoost {
 				fixed_effects,
 				true,
 				called_in_GPBoost_algorithm,
-				reuse_learning_rates_from_previous_call);
+				reuse_learning_rates_from_previous_call,
+				false,
+				false);
 		}
 		has_covariates_ = false;
 		covariance_matrix_has_been_factorized_ = true;
@@ -458,6 +464,8 @@ namespace GPBoost {
 				fixed_effects,
 				true,
 				false,
+				false,
+				false,
 				false);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
@@ -475,6 +483,8 @@ namespace GPBoost {
 				fixed_effects,
 				true,
 				false,
+				false,
+				false,
 				false);
 		}
 		else {
@@ -491,6 +501,8 @@ namespace GPBoost {
 				calc_std_dev_,
 				fixed_effects,
 				true,
+				false,
+				false,
 				false,
 				false);
 		}
@@ -520,6 +532,8 @@ namespace GPBoost {
 				nullptr,
 				false,//learn_covariance_parameters=false
 				true,
+				false,
+				true,
 				false);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
@@ -537,6 +551,8 @@ namespace GPBoost {
 				nullptr,
 				false,//learn_covariance_parameters=false
 				true,
+				false,
+				true,
 				false);
 		}
 		else {
@@ -553,6 +569,8 @@ namespace GPBoost {
 				false,
 				nullptr,
 				false,//learn_covariance_parameters=false
+				true,
+				false,
 				true,
 				false);
 		}
@@ -578,7 +596,9 @@ namespace GPBoost {
 				score,
 				false,//learn_covariance_parameters=false
 				true,
-				reuse_learning_rates_from_previous_call);
+				reuse_learning_rates_from_previous_call,
+				false,
+				true);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->OptimLinRegrCoefCovPar(nullptr,
@@ -595,7 +615,9 @@ namespace GPBoost {
 				score,
 				false,//learn_covariance_parameters=false
 				true,
-				reuse_learning_rates_from_previous_call);
+				reuse_learning_rates_from_previous_call,
+				false,
+				true);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(nullptr,
@@ -612,7 +634,9 @@ namespace GPBoost {
 				score,
 				false,//learn_covariance_parameters=false
 				true,
-				reuse_learning_rates_from_previous_call);
+				reuse_learning_rates_from_previous_call,
+				false,
+				true);
 		}
 	}//end LineSearchLearningRate
 
