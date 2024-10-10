@@ -44,7 +44,7 @@
 
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
-#include <LightGBM/meta.h>likelihood_additional_param
+#include <LightGBM/meta.h>
 using LightGBM::label_t;
 
 //Mathematical constants usually defined in cmath
