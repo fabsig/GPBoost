@@ -1007,42 +1007,46 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
 
     Example
     -------
-    >>> param_grid = {'learning_rate': [1,0.1,0.01], 
-    >>>   'min_data_in_leaf': [10,100,1000],
-    >>>   'max_depth': [1,2,3,5,10],
-    >>>   'lambda_l2': [0,1,10]}
-    >>> other_params = {'num_leaves': 2**10, 'verbose': 0}
-    >>> # Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
-    >>> #       An alternative strategy is to impose no limit on 'max_depth',  
-    >>> #       and try different values for 'num_leaves' as follows:
-    >>> # param_grid = {'learning_rate': [1,0.1,0.01], 
-    >>> #               'min_data_in_leaf': [10,100,1000],
-    >>> #               'num_leaves': 2**np.arange(1,11),
-    >>> #               'lambda_l2': [0,1,10]}
-    >>> # other_params = {'max_depth': -1, 'verbose': 0}
-    >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
-    >>> data_train = gpb.Dataset(X, y)
+    >>> # Define parameter search grid
+    >>> # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
+    >>> param_grid = { 'learning_rate': [0.001, 0.01, 0.1, 1, 10], 
+    >>>               'min_data_in_leaf': [1, 10, 100, 1000],
+    >>>               'max_depth': [-1, 1, 2, 3, 5, 10],
+    >>>               'num_leaves': 2**np.arange(1,10),
+    >>>               'lambda_l2': [0, 1, 10, 100],
+    >>>               'max_bin': [250, 500, 1000, np.min([10000,n])],
+    >>>               'line_search_step_length': [True, False]}
+    >>> other_params = {'verbose': 0}
+    >>> # Define metric
+    >>> metric = "mse"
+    >>> if likelihood in ("bernoulli_probit", "bernoulli_logit"):
+    >>>   metric = "binary_logloss"
+    >>> gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+    >>> data_train = gpb.Dataset(data=X, label=y)
+    >>> # Run parameter optimization using random grid search and 4-fold CV
+    >>> # Note: deterministic grid search can be done by setting 'num_try_random=None'
     >>> opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
-    >>>                                              num_try_random=None, nfold=4,
+    >>>                                              num_try_random=100, nfold=4, seed=1000,
     >>>                                              train_set=data_train, gp_model=gp_model,
     >>>                                              use_gp_model_for_validation=True, verbose_eval=1,
-    >>>                                              num_boost_round=1000, early_stopping_rounds=10,
-    >>>                                              seed=1000)
+    >>>                                              num_boost_round=1000, early_stopping_rounds=20,
+    >>>                                              metric=metric)                            
     >>> print("Best parameters: " + str(opt_params['best_params']))
     >>> print("Best number of iterations: " + str(opt_params['best_iter']))
     >>> print("Best score: " + str(opt_params['best_score']))
-    >>> 
-    >>> # Using manually defined validation data instead of cross-validation
+
+    >>> # Alternatively and faster: using manually defined validation data instead of cross-validation
+    >>> np.random.seed(10)
     >>> permute_aux = np.random.permutation(n)
-    >>> train_tune_idx = permute_aux[0:int(0.8 * n)]
+    >>> train_tune_idx = permute_aux[0:int(0.8 * n)] # use 20% of the data as validation data
     >>> valid_tune_idx = permute_aux[int(0.8 * n):n]
     >>> folds = [(train_tune_idx, valid_tune_idx)]
     >>> opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
-    >>>                                              num_try_random=None, folds=folds,
+    >>>                                              num_try_random=100, folds=folds, seed=1000,
     >>>                                              train_set=data_train, gp_model=gp_model,
     >>>                                              use_gp_model_for_validation=True, verbose_eval=1,
-    >>>                                              num_boost_round=1000, early_stopping_rounds=10,
-    >>>                                              seed=1000)
+    >>>                                              num_boost_round=1000, early_stopping_rounds=20,
+    >>>                                              metric=metric)
 
     :Authors:
         Fabio Sigrist
@@ -1174,7 +1178,7 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     else:
         return {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}
 
-def tune_pars_TPE_algorithm_optuna(X, y, param_grid, n_trials,
+def tune_pars_TPE_algorithm_optuna(X, y, search_space, n_trials,
                                 max_num_boost_round=1000, early_stopping_rounds=None,
                                 metric=None, gp_model=None, folds=None, nfold=5,
                                 cv_seed=0, tpe_seed=0,
@@ -1191,7 +1195,7 @@ def tune_pars_TPE_algorithm_optuna(X, y, param_grid, n_trials,
         If string, it represents the path to txt file.
     y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
         Response variable / label data.
-    param_grid : dict
+    search_space : dict
         The range for every parameter over which a search is done.
         The format for every entry of the dict must be 
         'parameter_name': [lower, upper].
@@ -1225,7 +1229,7 @@ def tune_pars_TPE_algorithm_optuna(X, y, param_grid, n_trials,
     tpe_seed : int, optional (default=0)
         Seed for TPESampler of optuna    
     params : dict, optional (default=None)
-        Other parameters not included in param_grid.
+        Other parameters not included in search_space.
     verbose_train: int, optional (default=0)
         Controls the level of verbosity of the tree-boosting part during estimation
         < 0: Fatal, = 0: Error (Warning), = 1: Info, > 1: Debug
@@ -1284,49 +1288,52 @@ def tune_pars_TPE_algorithm_optuna(X, y, param_grid, n_trials,
 
     Example
     -------
-    >>> param_grid= { 'learning_rate': [0.001, 10],
-    >>>   'min_data_in_leaf': [1, 1000],
-    >>>   'max_depth': [-1, 10],
-    >>>   'num_leaves': [2, 1024],
-    >>>   'lambda_l2': [0, 100],
-    >>>   'max_bin': [63, np.min([10000,n])],
-    >>>   'line_search_step_length': [True, False] }
+    >>> # Define search space
+    >>> # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
+    >>> search_space = { 'learning_rate': [0.001, 10],
+    >>>                 'min_data_in_leaf': [1, 1000],
+    >>>                 'max_depth': [-1, 10],
+    >>>                 'num_leaves': [2, 1024],
+    >>>                 'lambda_l2': [0, 100],
+    >>>                 'max_bin': [63, np.min([10000,n])],
+    >>>                 'line_search_step_length': [True, False] }
+    >>> # Define metric
     >>> metric = "mse"
     >>> if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     >>>   metric = "binary_logloss"
-    >>> # Can also use metric = "test_neg_log_likelihood"
-    >>> # For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
+    >>> # Note: can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
     >>> gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-    >>> # Run parameter optimization using 4-fold CV
-    >>> opt_params = tune_pars_TPE_algorithm_optuna(X=X, y=y, param_grid=param_grid, 
-    >>>                                             nfold=4, gp_model=gp_model, metric=metric, tpe_seed=1,
-    >>>                                             max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
+    >>> # Run parameter optimization using the TPE algorithm and 4-fold CV 
+    >>> opt_params = gpb.tune_pars_TPE_algorithm_optuna(X=X, y=y, search_space=search_space, 
+    >>>                                                 nfold=4, gp_model=gp_model, metric=metric, tpe_seed=1,
+    >>>                                                 max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
     >>> print("Best parameters: " + str(opt_params['best_params']))
     >>> print("Best number of iterations: " + str(opt_params['best_iter']))
     >>> print("Best score: " + str(opt_params['best_score']))
-    >>> 
+
     >>> # Alternatively and faster: using manually defined validation data instead of cross-validation
+    >>> np.random.seed(10)
     >>> permute_aux = np.random.permutation(n)
     >>> train_tune_idx = permute_aux[0:int(0.8 * n)] # use 20% of the data as validation data
     >>> valid_tune_idx = permute_aux[int(0.8 * n):n]
     >>> folds = [(train_tune_idx, valid_tune_idx)]
-    >>> opt_params = tune_pars_TPE_algorithm_optuna(X=X, y=y, param_grid=param_grid, 
-    >>>                                             folds=folds, gp_model=gp_model, metric=metric, tpe_seed=1,
-    >>>                                             max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
+    >>> opt_params = gpb.tune_pars_TPE_algorithm_optuna(X=X, y=y, search_space=search_space, 
+    >>>                                                 folds=folds, gp_model=gp_model, metric=metric, tpe_seed=1,
+    >>>                                                 max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
 
     :Authors:
         Fabio Sigrist
     """
-    if not isinstance(param_grid, dict):
-        raise ValueError("param_grid must be a dictionary")
+    if not isinstance(search_space, dict):
+        raise ValueError("'search_space' must be a dictionary")
     if not isinstance(n_trials, int) or n_trials <= 0:
-        raise ValueError("n_trials must be a positive integer")
+        raise ValueError("'n_trials' must be a positive integer")
     
     if params is None:
         params = {}
     else:
         params = copy.deepcopy(params)
-    param_grid = copy.deepcopy(param_grid)
+    search_space = copy.deepcopy(search_space)
     metric_higher_better = False
     if metric is not None:
         if isinstance(metric, str):
@@ -1346,25 +1353,28 @@ def tune_pars_TPE_algorithm_optuna(X, y, param_grid, n_trials,
         """Objective function for tuning parameter search with Optuna."""
         # Parse parameters
         params_loc = {}
-        for param in param_grid:
+        for param in search_space:
+            if len(search_space[param]) != 2:
+                raise ValueError(f"search_space['{param}'] must have length 2")
             if param in ['learning_rate', 'shrinkage_rate',
                          'min_gain_to_split', 'min_split_gain',
                          'min_sum_hessian_in_leaf', 'min_sum_hessian_per_leaf', 'min_sum_hessian', 'min_hessian', 'min_child_weight']:
-                params_loc[param] = trial.suggest_float(param, param_grid[param][0], param_grid[param][1], log=True)
+                params_loc[param] = trial.suggest_float(param, search_space[param][0], search_space[param][1], log=True)
             elif param in ['lambda_l2', 'reg_lambda', 'lambda',
                            'lambda_l1', 'reg_alpha',
                            'bagging_fraction', 'sub_row', 'subsample', 'bagging',
                            'feature_fraction', 'sub_feature', 'colsample_bytree',
                            'cat_l2',
                            'cat_smooth']:
-                params_loc[param] = trial.suggest_float(param, param_grid[param][0], param_grid[param][1], log=False)
+                params_loc[param] = trial.suggest_float(param, search_space[param][0], search_space[param][1], log=False)
             elif param in ['num_leaves', 'num_leaf', 'max_leaves', 'max_leaf',
-                           'max_depth',
                            'min_data_in_leaf', 'min_data_per_leaf', 'min_data', 'min_child_samples',
                            'max_bin']:
-                params_loc[param] = trial.suggest_int(param, param_grid[param][0], param_grid[param][1])
+                params_loc[param] = trial.suggest_int(param, search_space[param][0], search_space[param][1], log=True)
+            elif param in ['max_depth']:
+                params_loc[param] = trial.suggest_int(param, search_space[param][0], search_space[param][1], log=False)
             elif param in ['line_search_step_length']:
-                params_loc[param] = trial.suggest_categorical(param, [param_grid[param][0], param_grid[param][1]])
+                params_loc[param] = trial.suggest_categorical(param, [search_space[param][0], search_space[param][1]])
             else: 
                 raise ValueError(f"Unknown parameter '{param}'")
         params_loc.update({'verbose': verbose_train})

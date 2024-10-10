@@ -345,7 +345,8 @@ if __name__ == "__main__":
               'numpy',
               'pandas',
               'scipy',
-              'scikit-learn!=0.22.0'
+              'scikit-learn!=0.22.0',
+              'optuna'
           ],
           extras_require={
               'dask': [
