@@ -79,7 +79,7 @@ namespace GPBoost {
 		* \param cover_tree_radius Radius (= "spatial resolution") for the cover tree algorithm
 		* \param ind_points_selection Method for choosing inducing points
 		* \param likelihood Likelihood function for the observed response variable
-		* \param likelihood_shape Additional shape parameter for likelihood (e.g., degrees of freedom for t-distribution)
+		* \param likelihood_additional_param Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t")
 		* \param matrix_inversion_method Method which is used for matrix inversion
 		* \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
 		*/
@@ -107,7 +107,7 @@ namespace GPBoost {
 			double cover_tree_radius,
 			const char* ind_points_selection,
 			const char* likelihood,
-			double likelihood_shape,
+			double likelihood_additional_param,
 			const char* matrix_inversion_method,
 			int seed) {
 			CHECK(num_data > 0);
@@ -124,7 +124,7 @@ namespace GPBoost {
 				likelihood_strg = Likelihood<T_mat, T_chol>::ParseLikelihoodAlias(std::string(likelihood));
 			}
 			gauss_likelihood_ = likelihood_strg == "gaussian";
-			likelihood_shape_ = likelihood_shape;
+			likelihood_additional_param_ = likelihood_additional_param;
 			//Set up GP approximation
 			if (gp_approx == nullptr) {
 				gp_approx_ = "none";
@@ -3753,7 +3753,7 @@ namespace GPBoost {
 		/*! \brief Likelihood objects */
 		std::map<data_size_t, std::unique_ptr<Likelihood<T_mat, T_chol>>> likelihood_;
 		/*! \brief Additional shape parameter for likelihood (e.g., degrees of freedom for t-distribution) */
-		double likelihood_shape_;
+		double likelihood_additional_param_;
 		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian likelihoods */
 		double neg_log_likelihood_;
 		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian likelihoods of previous iteration in optimization used for convergence checking */
@@ -4797,7 +4797,7 @@ namespace GPBoost {
 						false,
 						only_one_GP_calculations_on_RE_scale_,
 						re_comps_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
-						likelihood_shape_));
+						likelihood_additional_param_));
 				}
 				else if (gp_approx_ == "fitc") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4806,7 +4806,7 @@ namespace GPBoost {
 						true,
 						only_one_GP_calculations_on_RE_scale_,
 						re_comps_cross_cov_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
-						likelihood_shape_));
+						likelihood_additional_param_));
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4815,7 +4815,7 @@ namespace GPBoost {
 						false,
 						false,
 						nullptr,
-						likelihood_shape_));
+						likelihood_additional_param_));
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4824,7 +4824,7 @@ namespace GPBoost {
 						false,
 						false,
 						nullptr,
-						likelihood_shape_));
+						likelihood_additional_param_));
 				}
 				else if (only_one_GP_calculations_on_RE_scale_ && gp_approx_ != "vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4833,7 +4833,7 @@ namespace GPBoost {
 						true,
 						true,
 						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
-						likelihood_shape_));
+						likelihood_additional_param_));
 				}
 				else {//!only_one_GP_calculations_on_RE_scale_ && gp_approx_ == "none"
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
@@ -4842,7 +4842,7 @@ namespace GPBoost {
 						true,
 						false,
 						nullptr,
-						likelihood_shape_));
+						likelihood_additional_param_));
 				}
 				if (!gauss_likelihood_) {
 					likelihood_[cluster_i]->InitializeModeAvec();

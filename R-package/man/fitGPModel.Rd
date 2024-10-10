@@ -4,9 +4,8 @@
 \alias{fitGPModel}
 \title{Fits a \code{GPModel}}
 \usage{
-fitGPModel(likelihood = "gaussian", likelihood_shape = 1,
-  group_data = NULL, group_rand_coef_data = NULL,
-  ind_effect_group_rand_coef = NULL,
+fitGPModel(likelihood = "gaussian", group_data = NULL,
+  group_rand_coef_data = NULL, ind_effect_group_rand_coef = NULL,
   drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
   gp_rand_coef_data = NULL, cov_function = "exponential",
   cov_fct_shape = 0.5, gp_approx = "none", cov_fct_taper_range = 1,
@@ -16,7 +15,8 @@ fitGPModel(likelihood = "gaussian", likelihood_shape = 1,
   matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
   free_raw_data = FALSE, y, X = NULL, params = list(),
   vecchia_approx = NULL, vecchia_pred_type = NULL,
-  num_neighbors_pred = NULL, offset = NULL, fixed_effects = NULL)
+  num_neighbors_pred = NULL, offset = NULL, fixed_effects = NULL,
+  likelihood_additional_param = 1)
 }
 \arguments{
 \item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable. 
@@ -30,10 +30,6 @@ Available options:
 \item{ "negative_binomial": negative binomial distribution with a with log link function }
 \item{ Note: other likelihoods could be implemented upon request }
 }}
-
-\item{likelihood_shape}{A \code{numeric} specifying an additional shape parameter for the \code{likelihood}
-(e.g., degrees of freedom for t-distribution). 
-This parameter is irrelevant for many likelihoods}
 
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 The elements being group levels defining grouped random effects.
@@ -289,6 +285,12 @@ additional fixed effects contributions that are added to the linear predictor (=
 The length of this vector needs to equal the number of training data points.}
 
 \item{fixed_effects}{This is discontinued. Use the renamed equivalent argument \code{offset} instead}
+
+\item{likelihood_additional_param}{A \code{numeric} specifying an additional parameter for the \code{likelihood} 
+which cannot be estimated for this \code{likelihood} (e.g., degrees of freedom for \code{likelihood="t"}). 
+This is not to be confused with any auxiliary parameters that can be estimated and accessed through 
+the function \code{get_aux_pars} after estimation.
+Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.}
 }
 \value{
 A fitted \code{GPModel}

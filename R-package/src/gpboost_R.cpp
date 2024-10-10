@@ -829,7 +829,7 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	SEXP cover_tree_radius,
 	SEXP ind_points_selection,
 	SEXP likelihood,
-	SEXP likelihood_shape,
+	SEXP likelihood_additional_param,
 	SEXP matrix_inversion_method,
 	SEXP seed) {
 	SEXP ret;
@@ -878,7 +878,7 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 		Rf_asReal(cover_tree_radius),
 		ind_points_selection_ptr,
 		likelihood_ptr,
-		Rf_asReal(likelihood_shape),
+		Rf_asReal(likelihood_additional_param),
 		matrix_inversion_method_ptr,
 		Rf_asInteger(seed),
 		&handle));

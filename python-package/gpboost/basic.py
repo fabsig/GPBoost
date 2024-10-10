@@ -4023,7 +4023,6 @@ class GPModel(object):
 
     def __init__(self,
                  likelihood="gaussian",
-                 likelihood_shape=1.,
                  group_data=None,
                  group_rand_coef_data=None,
                  ind_effect_group_rand_coef=None,
@@ -4048,7 +4047,8 @@ class GPModel(object):
                  model_dict=None,
                  vecchia_approx=None,
                  vecchia_pred_type=None,
-                 num_neighbors_pred=None):
+                 num_neighbors_pred=None,
+                 likelihood_additional_param=1.):
         """Initialize a GPModel.
 
         Parameters
@@ -4080,9 +4080,6 @@ class GPModel(object):
 
                     - Note: other likelihoods could be implemented upon request
             
-            likelihood_shape : float, optional (default=1.)
-                 Additional shape parameter for likelihood (e.g., degrees of freedom for t-distribution).
-                 This parameter is irrelevant for many likelihoods
             group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 Either a vector or a matrix whose columns are categorical grouping variables. The elements are group
                 levels defining grouped random effects. The number of columns corresponds to the number of grouped
@@ -4257,6 +4254,11 @@ class GPModel(object):
             num_neighbors_pred : integer or None, optional (default=None)
                 The number of neighbors for making predictions.
                 This is discontinued here. Use the function 'set_prediction_data' to specify this
+            likelihood_additional_param : float, optional (default=1.)
+                 Additional parameter for the 'likelihood' which cannot be estimated for this 'likelihood' (e.g., degrees of freedom for 'likelihood="t"'). 
+                 This is not to be confused with any auxiliary parameters that can be estimated and 
+                 accessed through the function'get_aux_pars' after estimation.
+                 Note that this 'likelihood_additional_param' parameter is irrelevant for many likelihoods.
 
         Example
         -------
@@ -4277,7 +4279,7 @@ class GPModel(object):
                                "Use the function 'set_prediction_data' to specify this")
         # Initialize variables with default values
         self.handle = ctypes.c_void_p()
-        self.likelihood_shape = 1.
+        self.likelihood_additional_param = 1.
         self.num_data = None
         self.num_group_re = 0
         self.num_group_rand_coef = 0
@@ -4385,7 +4387,7 @@ class GPModel(object):
             if model_dict.get("cluster_ids") is not None:
                 cluster_ids = np.array(model_dict.get("cluster_ids"))
             likelihood = model_dict.get("likelihood")
-            likelihood_shape = model_dict.get("likelihood_shape")
+            likelihood_additional_param = model_dict.get("likelihood_additional_param")
             matrix_inversion_method = model_dict.get("matrix_inversion_method")
             # Set additionally required data
             self.model_has_been_loaded_from_saved_file = True
@@ -4416,7 +4418,7 @@ class GPModel(object):
 
         self.matrix_inversion_method = matrix_inversion_method
         self.seed = seed
-        self.likelihood_shape = likelihood_shape
+        self.likelihood_additional_param = likelihood_additional_param
         # Define default NULL values for calling C function
         group_data_c = ctypes.c_void_p()
         group_rand_coef_data_c = ctypes.c_void_p()
@@ -4659,7 +4661,7 @@ class GPModel(object):
             ctypes.c_double(self.cover_tree_radius),
             c_str(self.ind_points_selection),
             c_str(likelihood),
-            ctypes.c_double(self.likelihood_shape),
+            ctypes.c_double(self.likelihood_additional_param),
             c_str(self.matrix_inversion_method),
             ctypes.c_int(self.seed),
             ctypes.byref(self.handle)))
@@ -6047,7 +6049,7 @@ class GPModel(object):
         # Parameters
         model_dict["params"] = self._get_optim_params()
         model_dict["likelihood"] = self._get_likelihood_name()
-        model_dict["likelihood_shape"] = self.likelihood_shape
+        model_dict["likelihood_additional_param"] = self.likelihood_additional_param
         model_dict["cov_pars"] = self.get_cov_pars(format_pandas=False)
         # Response data
         if include_response_data:

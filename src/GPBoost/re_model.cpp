@@ -42,7 +42,7 @@ namespace GPBoost {
 		double cover_tree_radius,
 		const char* ind_points_selection,
 		const char* likelihood,
-		double likelihood_shape,
+		double likelihood_additional_param,
 		const char* matrix_inversion_method,
 		int seed) {
 		string_t cov_fct_str = "none";
@@ -96,7 +96,7 @@ namespace GPBoost {
 				cover_tree_radius,
 				ind_points_selection,
 				likelihood,
-				likelihood_shape,
+				likelihood_additional_param,
 				matrix_inversion_method,
 				seed));
 			num_cov_pars_ = re_model_sp_->num_cov_par_;
@@ -127,7 +127,7 @@ namespace GPBoost {
 				cover_tree_radius,
 				ind_points_selection,
 				likelihood,
-				likelihood_shape,
+				likelihood_additional_param,
 				matrix_inversion_method,
 				seed));
 			num_cov_pars_ = re_model_sp_rm_->num_cov_par_;
@@ -158,7 +158,7 @@ namespace GPBoost {
 				cover_tree_radius,
 				ind_points_selection,
 				likelihood,
-				likelihood_shape,
+				likelihood_additional_param,
 				matrix_inversion_method,
 				seed));
 			num_cov_pars_ = re_model_den_->num_cov_par_;

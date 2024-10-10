@@ -637,7 +637,7 @@ GPBOOST_C_EXPORT SEXP LGBM_BoosterDumpModel_R(
 * \param cover_tree_radius Radius (= "spatial resolution") for the cover tree algorithm
 * \param ind_points_selection Method for choosing inducing points
 * \param likelihood Likelihood function for the observed response variable
-* \param likelihood_shape Additional shape parameter for likelihood (e.g., degrees of freedom for t-distribution)
+* \param likelihood_additional_param Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t")
 * \param matrix_inversion_method Method which is used for matrix inversion
 * \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
 * \return REModel handle
@@ -667,7 +667,7 @@ GPBOOST_C_EXPORT SEXP GPB_CreateREModel_R(
 	SEXP cover_tree_radius,
 	SEXP ind_points_selection,
 	SEXP likelihood,
-	SEXP likelihood_shape,
+	SEXP likelihood_additional_param,
 	SEXP matrix_inversion_method,
 	SEXP seed
 );

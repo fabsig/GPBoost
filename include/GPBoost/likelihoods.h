@@ -23,7 +23,7 @@
 *	f(y) = Gamma((nu+1)/2) / sigma / sqrt(pi) / sqrt(nu) / Gamma(nu/2) * (1 + (y - b)^2/nu/sigma^2)^(-(nu+1)/2)
 *		- b = location_par = random + fixed effects
 *		- sigma = scale (= aux_pars_[0])
-*		- nu = degrees of freedom (= likelihood_shape_)
+*		- nu = degrees of freedom (= additional_param_)
 *
 */
 #ifndef GPB_LIKELIHOODS_
@@ -44,7 +44,7 @@
 
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
-#include <LightGBM/meta.h>
+#include <LightGBM/meta.h>likelihood_additional_param
 using LightGBM::label_t;
 
 //Mathematical constants usually defined in cmath
@@ -79,7 +79,7 @@ namespace GPBoost {
 		* \param has_a_vec Indicates whether the vector a_vec_ / a = (Z Sigma Zt)^-1 mode is used or not
 		* \param use_Z_for_duplicates If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (only for Gaussian processes)
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
-		* \param likelihood_shape Additional shape parameter for likelihood (e.g., degrees of freedom for t-distribution)
+		* \param additional_param Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t")
 		*/
 		Likelihood(string_t type,
 			data_size_t num_data,
@@ -87,7 +87,7 @@ namespace GPBoost {
 			bool has_a_vec,
 			bool use_Z_for_duplicates,
 			const data_size_t* random_effects_indices_of_data,
-			double likelihood_shape) {
+			double additional_param) {
 			approximation_type_ = "laplace";
 			string_t likelihood = type;
 			likelihood = ParseLikelihoodAliasGradientDescent(likelihood);
@@ -100,7 +100,7 @@ namespace GPBoost {
 			num_data_ = num_data;
 			num_re_ = num_re;
 			num_aux_pars_ = 0;
-			likelihood_shape_ = likelihood_shape;
+			additional_param_ = additional_param;
 			information_ll_can_be_negative_ = false;
 			information_ll_changes_during_mode_finding_ = true;
 			if (likelihood_type_ == "gamma") {
@@ -117,7 +117,7 @@ namespace GPBoost {
 				aux_pars_ = { 1. };
 				names_aux_pars_ = { "scale" };
 				num_aux_pars_ = 1;
-				CHECK(likelihood_shape_ > 0.);
+				CHECK(additional_param_ > 0.);
 				if (approximation_type_ == "laplace") {
 					information_ll_can_be_negative_ = true;
 				}
@@ -746,8 +746,8 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ == "t") {
 					log_normalizing_constant_ = num_data * (-std::log(aux_pars_[0]) +
-						std::lgamma((likelihood_shape_ + 1.) / 2.) - 0.5 * std::log(likelihood_shape_) - 
-						std::lgamma(likelihood_shape_ / 2.) - 0.5 * std::log(M_PI));
+						std::lgamma((additional_param_ + 1.) / 2.) - 0.5 * std::log(additional_param_) - 
+						std::lgamma(additional_param_ / 2.) - 0.5 * std::log(M_PI));
 				}
 				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "bernoulli_probit" &&
 					likelihood_type_ != "bernoulli_logit") {
@@ -961,11 +961,11 @@ namespace GPBoost {
 		}
 
 		inline double LogLikT(const double y, const double location_par, bool incl_norm_const) const {
-			double ll = -(likelihood_shape_ + 1.) / 2. * std::log(1. + (y - location_par) * (y - location_par) / (likelihood_shape_ * aux_pars_[0] * aux_pars_[0]));
+			double ll = -(additional_param_ + 1.) / 2. * std::log(1. + (y - location_par) * (y - location_par) / (additional_param_ * aux_pars_[0] * aux_pars_[0]));
 			if (incl_norm_const) {
 				return (ll - std::log(aux_pars_[0]) +
-					std::lgamma((likelihood_shape_ + 1.) / 2.) - 0.5 * std::log(likelihood_shape_) -
-					0.5 * std::lgamma(likelihood_shape_ / 2.) - 0.5 * std::log(M_PI));
+					std::lgamma((additional_param_ + 1.) / 2.) - 0.5 * std::log(additional_param_) -
+					0.5 * std::lgamma(additional_param_ / 2.) - 0.5 * std::log(M_PI));
 			}
 			else {
 				return (ll);
@@ -1146,7 +1146,7 @@ namespace GPBoost {
 
 		inline double FirstDerivLogLikT(const double y, const double location_par) const {
 			double res = (y - location_par);
-			return (likelihood_shape_ + 1.) * res / (likelihood_shape_ * aux_pars_[0] * aux_pars_[0] + res * res);
+			return (additional_param_ + 1.) * res / (additional_param_ * aux_pars_[0] * aux_pars_[0] + res * res);
 		}
 
 		inline double FirstDerivLogLikGaussian(const double y, const double location_par) const {
@@ -1427,12 +1427,12 @@ namespace GPBoost {
 
 		inline double SecondDerivNegLogLikT(const double y, const double location_par) const {
 			double res_sq = (y - location_par) * (y - location_par);
-			double nu_sigma2 = likelihood_shape_ * aux_pars_[0] * aux_pars_[0];
-			return (-(likelihood_shape_ + 1.) * (res_sq - nu_sigma2) / ((nu_sigma2 + res_sq) * (nu_sigma2 + res_sq)));
+			double nu_sigma2 = additional_param_ * aux_pars_[0] * aux_pars_[0];
+			return (-(additional_param_ + 1.) * (res_sq - nu_sigma2) / ((nu_sigma2 + res_sq) * (nu_sigma2 + res_sq)));
 		}
 
 		inline double FisherInformationT() const {
-			return ((likelihood_shape_ + 1.) / (likelihood_shape_ + 3.) / (aux_pars_[0] * aux_pars_[0]));
+			return ((additional_param_ + 1.) / (additional_param_ + 3.) / (aux_pars_[0] * aux_pars_[0]));
 		}
 
 		/*!
@@ -1492,13 +1492,13 @@ namespace GPBoost {
 					}
 				}
 				else if (likelihood_type_ == "t") {
-					double nu_sigma2 = likelihood_shape_ * aux_pars_[0] * aux_pars_[0];
+					double nu_sigma2 = additional_param_ * aux_pars_[0] * aux_pars_[0];
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						double res = y_data[i] - location_par[i];
 						double res_sq = res * res;
 						double denom = nu_sigma2 + res_sq;
-						deriv_information_loc_par[i] = -2. * (likelihood_shape_ + 1.) * (res_sq - 3. * nu_sigma2) * res / (denom * denom * denom);
+						deriv_information_loc_par[i] = -2. * (additional_param_ + 1.) * (res_sq - 3. * nu_sigma2) * res / (denom * denom * denom);
 					}
 				}
 				else {
@@ -1575,12 +1575,12 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "t") {
 				//gradient for scale parameter is calculated on the log-scale
-				double nu_sigma2 = likelihood_shape_ * aux_pars_[0] * aux_pars_[0];
+				double nu_sigma2 = additional_param_ * aux_pars_[0] * aux_pars_[0];
 				double neg_log_grad = 0.;
 #pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
 				for (data_size_t i = 0; i < num_data; ++i) {
 					double res_sq = (y_data[i] - location_par[i]) * (y_data[i] - location_par[i]);
-					neg_log_grad -= (likelihood_shape_ + 1.) / (nu_sigma2 / res_sq + 1.);
+					neg_log_grad -= (additional_param_ + 1.) / (nu_sigma2 / res_sq + 1.);
 				}
 				neg_log_grad += num_data;
 				grad[0] = neg_log_grad;
@@ -1635,15 +1635,15 @@ namespace GPBoost {
 				else if (likelihood_type_ == "t") {
 					//gradient for scale parameter is calculated on the log-scale
 					double sigma2 = aux_pars_[0] * aux_pars_[0];
-					double nu_sigma2 = likelihood_shape_ * sigma2;
+					double nu_sigma2 = additional_param_ * sigma2;
 #pragma omp parallel for schedule(static)
 					for (data_size_t i = 0; i < num_data; ++i) {
 						double res = y_data[i] - location_par[i];
 						double res_sq = res * res;
 						double denom = nu_sigma2 + res_sq;
 						double denom_sq = denom * denom;
-						second_deriv_loc_aux_par[i] = -2. * (likelihood_shape_ + 1.) * likelihood_shape_ * res * sigma2 / denom_sq;
-						deriv_information_aux_par[i] = 2. * (likelihood_shape_ + 1.) * likelihood_shape_ * sigma2 * (3. * res_sq - nu_sigma2) / (denom_sq * denom);
+						second_deriv_loc_aux_par[i] = -2. * (additional_param_ + 1.) * additional_param_ * res * sigma2 / denom_sq;
+						deriv_information_aux_par[i] = 2. * (additional_param_ + 1.) * additional_param_ * sigma2 * (3. * res_sq - nu_sigma2) / (denom_sq * denom);
 					}					
 				}
 				else if (num_aux_pars_ > 0) {
@@ -1655,15 +1655,15 @@ namespace GPBoost {
 				if (likelihood_type_ == "t") {
 					//gradient for scale parameter is calculated on the log-scale
 					double sigma2 = aux_pars_[0] * aux_pars_[0];
-					double nu_sigma2 = likelihood_shape_ * sigma2;
+					double nu_sigma2 = additional_param_ * sigma2;
 					double sigma4 = sigma2 * sigma2;//sigma^4
 #pragma omp parallel for schedule(static)
 					for (data_size_t i = 0; i < num_data; ++i) {
 						double res = y_data[i] - location_par[i];
 						double denom = nu_sigma2 + res * res;
 						double denom_sq = denom * denom;
-						second_deriv_loc_aux_par[i] = -2. * (likelihood_shape_ + 1.) * likelihood_shape_ * res * sigma2 / denom_sq;
-						deriv_information_aux_par[i] =  - 2. * (likelihood_shape_ + 1.) / (likelihood_shape_ + 3.) / sigma4;
+						second_deriv_loc_aux_par[i] = -2. * (additional_param_ + 1.) * additional_param_ * res * sigma2 / denom_sq;
+						deriv_information_aux_par[i] =  - 2. * (additional_param_ + 1.) / (additional_param_ + 3.) / sigma4;
 					}
 				}
 				else if (num_aux_pars_ > 0) {
@@ -4248,16 +4248,16 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "t") {
-				if (likelihood_shape_ <= 1.) {
+				if (additional_param_ <= 1.) {
 					Log::REFatal("The response mean of a 't' distribution is only defined if the "
-						"'likelihood_shape' parameter (=degrees of freedom) is larger than 1. Currently, it is %g", likelihood_shape_);
+						"'additional_param' parameter (=degrees of freedom) is larger than 1. Currently, it is %g", additional_param_);
 				}
-				if (predict_var && likelihood_shape_ <= 2.) {
+				if (predict_var && additional_param_ <= 2.) {
 					Log::REFatal("The response mean of a 't' distribution is only defined if the "
-						"'likelihood_shape' parameter (=degrees of freedom) is larger than 2. Currently, it is %g", likelihood_shape_);
+						"'additional_param' parameter (=degrees of freedom) is larger than 2. Currently, it is %g", additional_param_);
 				}
 				if (predict_var) {
-					double pred_var_const = aux_pars_[0] * aux_pars_[0] * likelihood_shape_ / (likelihood_shape_ - 2.);
+					double pred_var_const = aux_pars_[0] * aux_pars_[0] * additional_param_ / (additional_param_ - 2.);
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < (int)pred_mean.size(); ++i) {
 						pred_var[i] = pred_var[i] + pred_var_const;
@@ -4866,8 +4866,8 @@ namespace GPBoost {
 		std::vector<string_t> names_aux_pars_;
 		/*! \brief True, if the function 'SetAuxPars' has been called */
 		bool aux_pars_have_been_set_ = false;
-		/*! \brief Additional shape parameter for likelihood not containted in aux_pars_ (e.g., degrees of freedom for t-distribution) */
-		double likelihood_shape_;
+		/*! \brief Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t") */
+		double additional_param_;
 		/*! \brief Type of approximation for non-Gaussian likelihoods */
 		string_t approximation_type_ = "laplace";
 		/*! \brief List of supported approximations */

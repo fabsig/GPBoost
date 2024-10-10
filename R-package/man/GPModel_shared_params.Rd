@@ -16,9 +16,11 @@ Available options:
 \item{ Note: other likelihoods could be implemented upon request }
 }}
 
-\item{likelihood_shape}{A \code{numeric} specifying an additional shape parameter for the \code{likelihood}
-(e.g., degrees of freedom for t-distribution). 
-This parameter is irrelevant for many likelihoods}
+\item{likelihood_additional_param}{A \code{numeric} specifying an additional parameter for the \code{likelihood} 
+which cannot be estimated for this \code{likelihood} (e.g., degrees of freedom for \code{likelihood="t"}). 
+This is not to be confused with any auxiliary parameters that can be estimated and accessed through 
+the function \code{get_aux_pars} after estimation.
+Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.}
 
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 The elements being group levels defining grouped random effects.
