@@ -37,9 +37,9 @@ y = f + eps + xi  # observed data
 # define GPModel
 gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 # train
-bst = gpb.GPBoostRegressor(max_depth=3, learning_rate=0.01, n_estimators=50)
+bst = gpb.GPBoostRegressor(max_depth=3, learning_rate=0.01, n_estimators=100)
 bst.fit(X, y, gp_model=gp_model)
-print("Estimated random effects model")
+print("Estimated random effects model: ")
 gp_model.summary()
 
 #--------------------Prediction----------------
@@ -67,33 +67,81 @@ plt.show()
 # feature importances
 print('Feature importances:', list(bst.feature_importances_))
 
-#--------------------Choosing tuning parameters----------------
+#--------------------Choosing tuning parameters using the TPESampler from optuna----------------
+# Define search space
+# Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
+search_space = { 'learning_rate': [0.001, 10],
+                'min_data_in_leaf': [1, 1000],
+                'max_depth': [-1, 10],
+                'num_leaves': [2, 1024],
+                'lambda_l2': [0, 100],
+                'max_bin': [63, np.min([10000,n])],
+                'line_search_step_length': [True, False] }
+# Define metric
+metric = "mse" # Can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
+
+gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+# Run parameter optimization using the TPE algorithm and 4-fold CV 
+opt_params = gpb.tune_pars_TPE_algorithm_optuna(X=X, y=y, search_space=search_space, 
+                                                nfold=4, gp_model=gp_model, metric=metric, tpe_seed=1,
+                                                max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
+print("Best parameters: " + str(opt_params['best_params']))
+print("Best number of iterations: " + str(opt_params['best_iter']))
+print("Best score: " + str(opt_params['best_score']))
+
+# Alternatively and faster: using manually defined validation data instead of cross-validation
+np.random.seed(10)
+permute_aux = np.random.permutation(n)
+train_tune_idx = permute_aux[0:int(0.8 * n)] # use 20% of the data as validation data
+valid_tune_idx = permute_aux[int(0.8 * n):n]
+folds = [(train_tune_idx, valid_tune_idx)]
+opt_params = gpb.tune_pars_TPE_algorithm_optuna(X=X, y=y, search_space=search_space, 
+                                                folds=folds, gp_model=gp_model, metric=metric, tpe_seed=1,
+                                                max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
+
+#--------------------Choosing tuning parameters using random grid search----------------
 # Note: scikit-learn's 'GridSearchCV' is not supported, use the GPBoost internal
 #       function 'grid_search_tune_parameters' instead as shown below
-param_grid = {'learning_rate': [1,0.1,0.01], 
-              'min_data_in_leaf': [10,100,1000],
-              'max_depth': [1,2,3,5,10],
-              'lambda_l2': [0,1,10]}
-other_params = {'objective': "regression_l2", 'num_leaves': 2**10, 'verbose': 0}
-# Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
-#       An alternative strategy is to impose no limit on 'max_depth',  
-#       and try different values for 'num_leaves' as follows:
-# param_grid = {'learning_rate': [1,0.1,0.01], 
-#               'min_data_in_leaf': [10,100,1000],
-#               'num_leaves': 2**np.arange(1,11),
-#               'lambda_l2': [0,1,10]}
-# other_params = {'objective': objective, 'max_depth': -1, 'verbose': 0}
+# Define parameter search grid
+# Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
+param_grid = { 'learning_rate': [0.001, 0.01, 0.1, 1, 10], 
+              'min_data_in_leaf': [1, 10, 100, 1000],
+              'max_depth': [-1, 1, 2, 3, 5, 10],
+              'num_leaves': 2**np.arange(1,10),
+              'lambda_l2': [0, 1, 10, 100],
+              'max_bin': [250, 500, 1000, np.min([10000,n])],
+              'line_search_step_length': [True, False]}
+other_params = {'verbose': 0}
+# Define metric
+metric = "mse" # Can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
-data_train = gpb.Dataset(X, y)
+data_train = gpb.Dataset(data=X, label=y)
+# Run parameter optimization using random grid search and 4-fold CV
+# Note: deterministic grid search can be done by setting 'num_try_random=None'
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
-                                             num_try_random=None, nfold=4,
+                                             num_try_random=100, nfold=4, seed=1000,
                                              train_set=data_train, gp_model=gp_model,
                                              use_gp_model_for_validation=True, verbose_eval=1,
-                                             num_boost_round=1000, early_stopping_rounds=10,
-                                             seed=1000)
+                                             num_boost_round=1000, early_stopping_rounds=20,
+                                             metric=metric)                            
+print("Best parameters: " + str(opt_params['best_params']))
+print("Best number of iterations: " + str(opt_params['best_iter']))
+print("Best score: " + str(opt_params['best_score']))
+
+# Alternatively and faster: using manually defined validation data instead of cross-validation
+np.random.seed(10)
+permute_aux = np.random.permutation(n)
+train_tune_idx = permute_aux[0:int(0.8 * n)] # use 20% of the data as validation data
+valid_tune_idx = permute_aux[int(0.8 * n):n]
+folds = [(train_tune_idx, valid_tune_idx)]
+opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
+                                             num_try_random=100, folds=folds, seed=1000,
+                                             train_set=data_train, gp_model=gp_model,
+                                             use_gp_model_for_validation=True, verbose_eval=1,
+                                             num_boost_round=1000, early_stopping_rounds=20,
+                                             metric=metric)
 
 #--------------------Using a validation set for finding number of iterations----------------
-print('Using validation set...')
 # split into training an test data
 train_ind = random.sample(range(n), int(n / 2))
 test_ind = [x for x in range(n) if (x not in train_ind)]
@@ -151,7 +199,7 @@ gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
 # train
 bst = gpb.GPBoostClassifier(max_depth=3, learning_rate=0.01, n_estimators=50)
 bst.fit(X, y_bin, gp_model=gp_model)
-print("Estimated random effects model")
+print("Estimated random effects model: ")
 gp_model.summary()
 # predict
 group_test = np.arange(m)
