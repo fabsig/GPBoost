@@ -127,28 +127,30 @@ legend(legend=c("True F","Pred F"), "bottomright", bty="n", lwd=3, col=c(2,4))
 plot(b1, pred$random_effect_mean, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 
-#--------------------Choosing tuning parameters----------------
-param_grid <- list("learning_rate" = c(1,0.1,0.01), 
-                   "min_data_in_leaf" = c(10,100,1000),
-                   "max_depth" = c(1,2,3,5,10),
-                   "lambda_l2" = c(0,1,10))
-other_params <- list(num_leaves = 2^10)
-# Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
-#       An alternative strategy is to impose no limit on 'max_depth', 
-#       and try different values for 'num_leaves' as follows:
-# param_grid = list("learning_rate" = c(1,0.1,0.01),
-#                   "min_data_in_leaf" = c(10,100,1000),
-#                   "num_leaves" = 2^(1:10),
-#                   "lambda_l2" = c(0,1,10))
-# other_params <- list(max_depth = -1)
+#--------------------Choosing tuning parameters using random grid search----------------
+param_grid <- list("learning_rate" = c(0.001, 0.01, 0.1, 1, 10), 
+                   "min_data_in_leaf" = c(1, 10, 100, 1000),
+                   "max_depth" = c(-1, 1, 2, 3, 5, 10), # max_depth = -1 means no depth limit
+                   "num_leaves" = 2^(1:10),
+                   "lambda_l2" = c(0, 1, 10, 100),
+                   "max_bin" = c(250, 500, 1000, min(n,10000)),
+                   "line_search_step_length" = c(TRUE, FALSE))
+other_params <- list(verbose = 0) # avoid trace information when training models
+# Define metric
+metric = "mse"
+if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
+  metric = "binary_logloss"
+}
+# Note: can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
-dataset <- gpb.Dataset(data = X, label = y)
+data_train <- gpb.Dataset(data = X, label = y)
 set.seed(1)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
-                                              num_try_random = NULL, nfold = 4,
-                                              data = dataset, gp_model = gp_model,
+                                              num_try_random = 100, nfold = 4,
+                                              data = data_train, gp_model = gp_model,
                                               use_gp_model_for_validation = TRUE, verbose_eval = 1,
-                                              nrounds = 1000, early_stopping_rounds = 10)
+                                              nrounds = 1000, early_stopping_rounds = 20,
+                                              metric = metric)
 print(paste0("Best parameters: ",
              paste0(unlist(lapply(seq_along(opt_params$best_params), 
                                   function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, 
@@ -156,45 +158,29 @@ print(paste0("Best parameters: ",
                                   n=names(opt_params$best_params))), collapse=", ")))
 print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
-# Note: by default, 'test_neg_log_likelihood' is used as 'metric' 
-#       Other evaluation metrics / scoring rules can be chosen using the 
-#       'metric' argument, e.g., metric = "mse" or metric = "binary_logloss"
-#       For more information on available metrics, see 
-#       https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
-metric = "mse"
-if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
-  metric = "binary_logloss"
-}
-set.seed(1)
-opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
-                                              num_try_random = NULL, nfold = 4,
-                                              data = dataset, gp_model = gp_model,
-                                              use_gp_model_for_validation = TRUE, verbose_eval = 1,
-                                              nrounds = 1000, early_stopping_rounds = 10,
-                                              metric = metric)
 
-# Faster computation for large data:
-#   using manually defined validation data instead of cross-validation
+# Alternatively and faster: using manually defined validation data instead of cross-validation
 valid_tune_idx <- sample.int(length(y), as.integer(0.2*length(y))) # use 20% of the data as validation data
 folds <- list(valid_tune_idx)
 opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
-                                              num_try_random = NULL, folds = folds,
+                                              num_try_random = 100, folds = folds,
                                               data = dataset, gp_model = gp_model,
                                               use_gp_model_for_validation = TRUE, verbose_eval = 1,
-                                              nrounds = 1000, early_stopping_rounds = 10)
+                                              nrounds = 1000, early_stopping_rounds = 20,
+                                              metric = metric)
 
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
 dataset <- gpb.Dataset(data = X, label = y)
 bst <- gpb.cv(data = dataset, gp_model = gp_model,
               use_gp_model_for_validation = TRUE, params = params,
-              nrounds = 1000, nfold = 4, early_stopping_rounds = 10)
+              nrounds = 1000, nfold = 4, early_stopping_rounds = 20)
 print(paste0("Optimal number of iterations: ", bst$best_iter))
 
 #--------------------Using a validation set for finding number of iterations----------------
 # Partition data into training and validation data
 set.seed(1)
-train_ind <- sample.int(n,size=as.integer(n*0.7))
+train_ind <- sample.int(n,size=as.integer(n*0.8))
 dtrain <- gpb.Dataset(data = X[train_ind,], label = y[train_ind])
 dvalid <- gpb.Dataset.create.valid(dtrain, data = X[-train_ind,], label = y[-train_ind])
 valids <- list(test = dvalid)
@@ -202,7 +188,7 @@ gp_model <- GPModel(group_data = group[train_ind], likelihood = likelihood)
 gp_model$set_prediction_data(group_data_pred = group[-train_ind])
 bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 1000,
                  params = params, verbose = 1, valids = valids,
-                 early_stopping_rounds = 10, use_gp_model_for_validation = TRUE)
+                 early_stopping_rounds = 20, use_gp_model_for_validation = TRUE)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
              ", best test error: ", bst$best_score))
 # Plot validation error
@@ -429,23 +415,10 @@ plot4 <- ggplot(data=data.frame(x=X_test[,1],f=pred$fixed_effect), aes(x=x,y=f))
 grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
 
 #--------------------Choosing tuning parameters----------------
-run_slow_demo <- FALSE # the following takes some time
-if (run_slow_demo) {
-  
-  param_grid = list("learning_rate" = c(1,0.1,0.01), 
-                    "min_data_in_leaf" = c(10,100,1000),
-                    "max_depth" = c(1,2,3,5,10),
-                    "lambda_l2" = c(0,1,10))
-  other_params <- list(num_leaves = 2^10)
-  gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
-                      likelihood = likelihood)
-  dtrain <- gpb.Dataset(data = X_train, label = y_train)
-  set.seed(1)
-  opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
-                                                num_try_random = NULL, nfold = 4,
-                                                data = dtrain, gp_model = gp_model,
-                                                use_gp_model_for_validation = TRUE, verbose_eval = 1,
-                                                nrounds = 1000, early_stopping_rounds = 10)
-  
-}
+# Choosing tuning parameters carefully is important.
+# See the above demo code for grouped random effects on how this can be done.
+# You just have to replace the gp_model. E.g.,    
+# gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential", likelihood = likelihood)
 
+#--------------------Model interpretation----------------
+# See the above demo code for grouped random effects on how this can be done.
