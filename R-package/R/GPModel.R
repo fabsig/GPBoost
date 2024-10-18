@@ -1097,12 +1097,14 @@ gpb.GPModel <- R6::R6Class(
       num_aux_pars <- self$get_num_aux_pars()
       if (num_aux_pars > 0) {
         aux_pars <- numeric(num_aux_pars)
-        aux_pars_name <- .Call(
+        aux_pars_name_str <- .Call(
           GPB_GetAuxPars_R
           , private$handle
           , aux_pars
         )
-        names(aux_pars) <- rep(aux_pars_name, num_aux_pars)
+        aux_pars_name <- strsplit(aux_pars_name_str, "_SEP_")[[1]]
+        if (length(aux_pars_name) != num_aux_pars) stop("get_aux_pars: wrong length of 'aux_par_name'")
+        names(aux_pars) <- aux_pars_name
       } else {
         aux_pars <- NULL
       }

@@ -1228,15 +1228,15 @@ namespace GPBoost {
 		const double* aux_pars_temp;
 		if (matrix_format_ == "sp_mat_t") {
 			aux_pars_temp = re_model_sp_->GetAuxPars();
-			re_model_sp_->GetNameFirstAuxPar(name);
+			re_model_sp_->GetNamesAuxPars(name);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			aux_pars_temp = re_model_sp_rm_->GetAuxPars();
-			re_model_sp_rm_->GetNameFirstAuxPar(name);
+			re_model_sp_rm_->GetNamesAuxPars(name);
 		}
 		else {
 			aux_pars_temp = re_model_den_->GetAuxPars();
-			re_model_den_->GetNameFirstAuxPar(name);
+			re_model_den_->GetNamesAuxPars(name);
 		}
 		for (int j = 0; j < NumAuxPars(); ++j) {
 			aux_pars[j] = aux_pars_temp[j];

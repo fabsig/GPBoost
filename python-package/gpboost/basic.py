@@ -5332,10 +5332,12 @@ class GPModel(object):
                 self.handle,
                 aux_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
                 ptr_string_buffer))
-            name = string_buffer.value.decode()
+            names_str = string_buffer.value.decode()
+            names = names_str.split("_SEP_")
+            if len(names) != num_aux_pars:
+                raise ValueError("Number of names for auxiliary parameters does not match the number of parameters")
             if format_pandas:
-                aux_pars = pd.DataFrame(aux_pars.reshape((1, -1)), columns=[name for i in range(num_aux_pars)],
-                                        index=['Param.'])
+                aux_pars = pd.DataFrame(aux_pars.reshape((1, -1)), columns=names, index=['Param.'])
         else:
             aux_pars = None
         return aux_pars

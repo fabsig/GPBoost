@@ -1906,8 +1906,8 @@ namespace GPBoost {
 			}
 		}
 
-		void GetNameFirstAuxPar(string_t& name) {
-			likelihood_[unique_clusters_[0]]->GetNameFirstAuxPar(name);
+		void GetNamesAuxPars(string_t& name) {
+			likelihood_[unique_clusters_[0]]->GetNamesAuxPars(name);
 		}
 
 		/*!
@@ -2321,8 +2321,10 @@ namespace GPBoost {
 					}
 				}
 				if (estimate_aux_pars_ && print_cov_aux_pars) {
+					SetAuxPars(aux_pars);//hack to avoid that wrong parameters are displayed for likelihoods when some parameters are not estimated (e.g., the 'df' parameter for a 't' likelihood)
+					const double* aux_pars_print = GetAuxPars();
 					for (int i = 0; i < NumAuxPars(); ++i) {
-						Log::REDebug("%s: %g", likelihood_[unique_clusters_[0]]->GetNameAuxPars(i), aux_pars[i]);
+						Log::REDebug("%s: %g", likelihood_[unique_clusters_[0]]->GetNameAuxPars(i), aux_pars_print[i]);
 					}
 				}
 			}
@@ -3908,7 +3910,8 @@ namespace GPBoost {
 		/*! \brief true if 'optimizer_coef_' has been set */
 		bool optimizer_cov_pars_has_been_set_ = false;
 		/*! \brief List of supported optimizers for covariance parameters */
-		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring", "newton", "nelder_mead", "bfgs_optim_lib", "adam", "lbfgs", "lbfgs_not_profile_out_nugget", "lbfgs_linesearch_nocedal_wright" };
+		const std::set<string_t> SUPPORTED_OPTIM_COV_PAR_{ "gradient_descent", "fisher_scoring", "newton", "nelder_mead", 
+			"bfgs_optim_lib", "adam", "lbfgs", "lbfgs_not_profile_out_nugget", "lbfgs_linesearch_nocedal_wright" };
 		/*! \brief Convergence criterion for terminating the 'OptimLinRegrCoefCovPar' optimization algorithm */
 		string_t convergence_criterion_ = "relative_change_in_log_likelihood";
 		/*! \brief List of supported convergence criteria used for terminating the optimization algorithm */
