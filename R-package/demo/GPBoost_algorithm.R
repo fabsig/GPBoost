@@ -130,7 +130,7 @@ plot(b1, pred$random_effect_mean, xlab="truth", ylab="predicted",
 #--------------------Choosing tuning parameters using random grid search----------------
 param_grid <- list("learning_rate" = c(0.001, 0.01, 0.1, 1, 10), 
                    "min_data_in_leaf" = c(1, 10, 100, 1000),
-                   "max_depth" = c(-1, 1, 2, 3, 5, 10), # max_depth = -1 means no depth limit
+                   "max_depth" = c(-1), # -1 means no depth limit as we tune 'num_leaves'. Can also additionaly tune 'max_depth', e.g., "max_depth" = c(-1, 1, 2, 3, 5, 10)
                    "num_leaves" = 2^(1:10),
                    "lambda_l2" = c(0, 1, 10, 100),
                    "max_bin" = c(250, 500, 1000, min(n,10000)),

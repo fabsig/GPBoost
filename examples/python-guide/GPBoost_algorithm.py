@@ -153,7 +153,7 @@ plt.show(block=False)
 # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
 search_space = { 'learning_rate': [0.001, 10],
                 'min_data_in_leaf': [1, 1000],
-                'max_depth': [-1, 10],
+                'max_depth': [-1,-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionaly tune 'max_depth', e.g., 'max_depth': [-1,10]
                 'num_leaves': [2, 1024],
                 'lambda_l2': [0, 100],
                 'max_bin': [63, np.min([10000,n])],
@@ -187,12 +187,12 @@ opt_params = gpb.tune_pars_TPE_algorithm_optuna(X=X, y=y, search_space=search_sp
 # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
 param_grid = { 'learning_rate': [0.001, 0.01, 0.1, 1, 10], 
               'min_data_in_leaf': [1, 10, 100, 1000],
-              'max_depth': [-1, 1, 2, 3, 5, 10],
+              'max_depth': [-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionaly tune 'max_depth', e.g., 'max_depth': [-1, 1, 2, 3, 5, 10]
               'num_leaves': 2**np.arange(1,10),
               'lambda_l2': [0, 1, 10, 100],
               'max_bin': [250, 500, 1000, np.min([10000,n])],
               'line_search_step_length': [True, False]}
-other_params = {'verbose': 0}
+other_params = {'verbose': 0} # avoid trace information when training models
 # Define metric
 metric = "mse"
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
@@ -229,7 +229,7 @@ gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(data=X, label=y)
 cvbst = gpb.cv(params=params, train_set=data_train,
                gp_model=gp_model, use_gp_model_for_validation=True,
-               num_boost_round=1000, early_stopping_rounds=10,
+               num_boost_round=1000, early_stopping_rounds=20,
                nfold=4, verbose_eval=True, show_stdv=False, seed=1)
 metric_name = list(cvbst.keys())[0]
 print("Best number of iterations: " + str(np.argmin(cvbst[metric_name]) + 1))
@@ -246,7 +246,7 @@ gp_model.set_prediction_data(group_data_pred=group[test_ind])
 evals_result = {}  # record eval results for plotting
 bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
                 gp_model=gp_model, valid_sets=data_eval, 
-                early_stopping_rounds=10, use_gp_model_for_validation=True,
+                early_stopping_rounds=20, use_gp_model_for_validation=True,
                 evals_result=evals_result)
 gpb.plot_metric(evals_result, figsize=(10, 5))# plot validation scores
 plt.show(block=False)
