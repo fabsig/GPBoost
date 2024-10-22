@@ -3775,7 +3775,7 @@ namespace GPBoost {
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: Psi^-1*y_ (from last iteration) */
 		std::map<data_size_t, vec_t> last_y_aux_;
 		/*! \brief Psi^-1*X_ (from last iteration) */
-		den_mat_t last_psi_inv_X_;
+		std::map<data_size_t, den_mat_t> last_psi_inv_X_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when only_grouped_REs_use_woodbury_identity_==true) */
 		std::map<data_size_t, vec_t> y_tilde_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: Z * L ^ -T * L ^ -1 * Z ^ T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when only_grouped_REs_use_woodbury_identity_==true) */
@@ -4676,7 +4676,7 @@ namespace GPBoost {
 						else {
 							//Use last solution as initial guess
 							if (num_iter_ > 0 && optimizer_coef_ == "wls") {
-								psi_inv_X = last_psi_inv_X_;
+								psi_inv_X = last_psi_inv_X_[cluster_i];
 							}
 							else {
 								psi_inv_X.resize(num_data_per_cluster_[cluster_i], X_cluster_i.cols());
@@ -4691,7 +4691,7 @@ namespace GPBoost {
 							CGFSA_MULTI_RHS<T_mat>(*sigma_resid, (*cross_cov), chol_fact_sigma_ip_[cluster_i], X_cluster_i, psi_inv_X,
 								NaN_found, num_data_per_cluster_[cluster_i], (int)X_cluster_i.cols(), cg_max_num_it, cg_delta_conv_,
 								cg_preconditioner_type_, chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
-							last_psi_inv_X_ = psi_inv_X;
+							last_psi_inv_X_[cluster_i] = psi_inv_X;
 							if (NaN_found) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 							}
