@@ -1978,7 +1978,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}
+		}//end UpdateFixedEffects
 
 		/*!
 		* \brief Update fixed effects with member variable linear regression coefficients beta_
@@ -2006,7 +2006,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}
+		}//end UpdateFixedEffectsInternal
 
 		/*!
 		* \brief Calculate the value of the negative log-likelihood for a "gaussian" likelihood
@@ -2298,7 +2298,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}
+		}//end PrintTraceParameters
 
 		/*!
 		* \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
@@ -5838,89 +5838,30 @@ namespace GPBoost {
 					fixed_effects_cluster_i_ptr = fixed_effects_cluster_i.data();
 				}
 				if (gp_approx_ == "vecchia") {
-					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxVecchia(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						B_[cluster_i],
-						D_inv_[cluster_i],
-						B_grad_[cluster_i],
-						D_grad_[cluster_i],
-						false,
-						true,
-						false,
-						nullptr,
-						grad_F_cluster_i,
-						nullptr,
-						false,
-						num_comps_total_,
-						false);
+					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i],
+						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, num_comps_total_, false);
 				}
 				else if (gp_approx_ == "fitc") {
-					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxFITC(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						re_comps_ip_[cluster_i][0]->GetZSigmaZt(),
-						chol_fact_sigma_ip_[cluster_i],
-						re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(),
-						FITC_Diag_[cluster_i],
-						re_comps_ip_[cluster_i],
-						re_comps_cross_cov_[cluster_i],
-						false,
-						true,
-						false,
-						nullptr,
-						grad_F_cluster_i,
-						nullptr,
-						false,
-						false);
+					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxFITC(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, re_comps_ip_[cluster_i][0]->GetZSigmaZt(), chol_fact_sigma_ip_[cluster_i],
+						re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(), FITC_Diag_[cluster_i], re_comps_ip_[cluster_i], re_comps_cross_cov_[cluster_i],
+						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, false);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
-					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
-						SigmaI_[cluster_i],
-						Zt_[cluster_i],
-						cum_num_rand_eff_[cluster_i],
-						false,
-						true,
-						false,
-						nullptr,
-						grad_F_cluster_i,
-						nullptr,
-						false,
-						false);
+					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], cum_num_rand_eff_[cluster_i],
+						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, false);
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
-					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
-						re_comps_[cluster_i][0]->cov_pars_[0],
-						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
-						false,
-						true,
-						false,
-						nullptr,
-						grad_F_cluster_i,
-						nullptr,
-						false,
-						false);
+					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], re_comps_[cluster_i][0]->cov_pars_[0], re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
+						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, false);
 				}
 				else {
-					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxStable(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						ZSigmaZt_[cluster_i],
-						re_comps_[cluster_i],
-						false,
-						true,
-						false,
-						nullptr,
-						grad_F_cluster_i,
-						nullptr,
-						false,
-						false);
+					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxStable(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, ZSigmaZt_[cluster_i], re_comps_[cluster_i],
+						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, false);
 				}
 				//write on output
 				if (num_clusters_ == 1 && (gp_approx_ != "vecchia" || vecchia_ordering_ == "none")) {//only one cluster / independent realization and order of data does not matter
@@ -6602,53 +6543,31 @@ namespace GPBoost {
 						//TODO: only after cov-pars step, not after fixed-effect step
 						PivotedCholsekyFactorizationSigma(re_comps_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, PIV_CHOL_STOP_TOL);
 					}
-					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						B_[cluster_i],
-						D_inv_[cluster_i],
-						first_update_,
-						Sigma_L_k,
-						calc_mll,
-						mll_cluster_i);
+					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, B_[cluster_i], D_inv_[cluster_i],
+						first_update_, Sigma_L_k, calc_mll, mll_cluster_i);
 				}
 				else if (gp_approx_ == "fitc") {
 					if (num_comps_total_ > 1) {
 						Log::REFatal("'fitc' is currently not implemented when having more than one GP ");
 					}
-					likelihood_[cluster_i]->FindModePostRandEffCalcMLLFITC(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						re_comps_ip_[cluster_i][0]->GetZSigmaZt(),
-						chol_fact_sigma_ip_[cluster_i],
-						re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(),
-						FITC_Diag_[cluster_i],
-						mll_cluster_i);
+					likelihood_[cluster_i]->FindModePostRandEffCalcMLLFITC(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, re_comps_ip_[cluster_i][0]->GetZSigmaZt(),
+						chol_fact_sigma_ip_[cluster_i], re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(),
+						FITC_Diag_[cluster_i], mll_cluster_i);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
-					likelihood_[cluster_i]->FindModePostRandEffCalcMLLGroupedRE(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
-						SigmaI_[cluster_i],
-						Zt_[cluster_i],
-						mll_cluster_i);
+					likelihood_[cluster_i]->FindModePostRandEffCalcMLLGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], mll_cluster_i);
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
-					likelihood_[cluster_i]->FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
-						re_comps_[cluster_i][0]->cov_pars_[0],
-						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
-						mll_cluster_i);
+					likelihood_[cluster_i]->FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
+						re_comps_[cluster_i][0]->cov_pars_[0], re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(), mll_cluster_i);
 				}
 				else {
-					likelihood_[cluster_i]->FindModePostRandEffCalcMLLStable(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						ZSigmaZt_[cluster_i],
-						mll_cluster_i);
+					likelihood_[cluster_i]->FindModePostRandEffCalcMLLStable(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, ZSigmaZt_[cluster_i], mll_cluster_i);
 					//Note: if(only_one_GP_calculations_on_RE_scale_), ZSigmaZt_[cluster_i] contains Sigma=Cov(b) and not Z*Sigma*Zt since has_Z_==false for this random effects component
 				}
 				mll += mll_cluster_i;
@@ -6656,6 +6575,60 @@ namespace GPBoost {
 			num_ll_evaluations_++;
 			return(mll);
 		}//CalcModePostRandEffCalcMLL
+
+		/*!
+		* \brief Create the covariance matrix Psi and factorize it (either calculate a Cholesky factor or the inverse covariance matrix)
+		* \param calc_gradient If true, the gradient is also calculated (only for Vecchia approximation)
+		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale. Default = true (only for Vecchia approximation)
+		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if gp_approx_ == "vecchia" and transf_scale == false to transform back, normally this is equal to one, since the variance paramter is modelled separately and factored out)
+		* \param calc_gradient_nugget If true, derivatives are also taken with respect to the nugget / noise variance (only for Vecchia approximation)
+		*/
+		void CalcCovFactor(bool calc_gradient,
+			bool transf_scale,
+			double nugget_var,
+			bool calc_gradient_nugget) {
+			if (gp_approx_ == "vecchia") {
+				for (const auto& cluster_i : unique_clusters_) {
+					data_size_t num_re_cluster_i = re_comps_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs();
+					CalcCovFactorVecchia<T_mat>(num_re_cluster_i, calc_gradient, re_comps_[cluster_i], nearest_neighbors_[cluster_i],
+						dist_obs_neighbors_[cluster_i], dist_between_neighbors_[cluster_i],
+						entries_init_B_[cluster_i], entries_init_B_grad_[cluster_i], z_outer_z_obs_neighbors_[cluster_i],
+						B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i], transf_scale, nugget_var,
+						calc_gradient_nugget, num_gp_total_, ind_intercept_gp_, gauss_likelihood_);
+				}
+			}
+			else {
+				CalcSigmaComps();
+				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
+					CalcCovFactorsPPFSA();
+				}
+				else {
+					for (const auto& cluster_i : unique_clusters_) {
+						if (only_grouped_REs_use_woodbury_identity_) {//Use Woodburry matrix inversion formula: used only if there are only grouped REs
+							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
+								CalcSigmaIGroupedREsOnly(SigmaI_[cluster_i], cluster_i, true);
+								sqrt_diag_SigmaI_plus_ZtZ_[cluster_i] = (SigmaI_[cluster_i].diagonal().array() + ZtZ_[cluster_i].diagonal().array()).sqrt().matrix();
+							}
+							else {
+								sp_mat_t SigmaI;
+								CalcSigmaIGroupedREsOnly(SigmaI, cluster_i, true);
+								T_mat SigmaIplusZtZ = SigmaI + ZtZ_[cluster_i];
+								CalcChol(SigmaIplusZtZ, cluster_i);
+							}
+						}//end only_grouped_REs_use_woodbury_identity_
+						else {//not only_grouped_REs_use_woodbury_identity_
+							T_mat psi;
+							CalcZSigmaZt(psi, cluster_i);
+							CalcChol(psi, cluster_i);
+						}//end not only_grouped_REs_use_woodbury_identity_
+					}
+				}
+			}
+			covariance_matrix_has_been_factorized_ = true;
+			if (gauss_likelihood_) {//note: for non-Gaussian likelihoods, a call to 'CalcModePostRandEffCalcMLL' (=finding the mode for the Laplace approximation) is counted as a likelihood evaluation
+				num_ll_evaluations_++;
+			}
+		}//end CalcCovFactor
 
 		void CalcCovFactorsPPFSA() {
 			for (const auto& cluster_i : unique_clusters_) {
@@ -6720,60 +6693,6 @@ namespace GPBoost {
 				}
 			}
 		}//end CalcCovFactorsPPFSA
-
-		/*!
-		* \brief Create the covariance matrix Psi and factorize it (either calculate a Cholesky factor or the inverse covariance matrix)
-		* \param calc_gradient If true, the gradient is also calculated (only for Vecchia approximation)
-		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale. Default = true (only for Vecchia approximation)
-		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if gp_approx_ == "vecchia" and transf_scale == false to transform back, normally this is equal to one, since the variance paramter is modelled separately and factored out)
-		* \param calc_gradient_nugget If true, derivatives are also taken with respect to the nugget / noise variance (only for Vecchia approximation)
-		*/
-		void CalcCovFactor(bool calc_gradient,
-			bool transf_scale,
-			double nugget_var,
-			bool calc_gradient_nugget) {
-			if (gp_approx_ == "vecchia") {
-				for (const auto& cluster_i : unique_clusters_) {
-					data_size_t num_re_cluster_i = re_comps_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs();
-					CalcCovFactorVecchia<T_mat>(num_re_cluster_i, calc_gradient, re_comps_[cluster_i], nearest_neighbors_[cluster_i],
-						dist_obs_neighbors_[cluster_i], dist_between_neighbors_[cluster_i],
-						entries_init_B_[cluster_i], entries_init_B_grad_[cluster_i], z_outer_z_obs_neighbors_[cluster_i],
-						B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i], transf_scale, nugget_var,
-						calc_gradient_nugget, num_gp_total_, ind_intercept_gp_, gauss_likelihood_);
-				}
-			}
-			else {
-				CalcSigmaComps();
-				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-					CalcCovFactorsPPFSA();
-				}
-				else {
-					for (const auto& cluster_i : unique_clusters_) {
-						if (only_grouped_REs_use_woodbury_identity_) {//Use Woodburry matrix inversion formula: used only if there are only grouped REs
-							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
-								CalcSigmaIGroupedREsOnly(SigmaI_[cluster_i], cluster_i, true);
-								sqrt_diag_SigmaI_plus_ZtZ_[cluster_i] = (SigmaI_[cluster_i].diagonal().array() + ZtZ_[cluster_i].diagonal().array()).sqrt().matrix();
-							}
-							else {
-								sp_mat_t SigmaI;
-								CalcSigmaIGroupedREsOnly(SigmaI, cluster_i, true);
-								T_mat SigmaIplusZtZ = SigmaI + ZtZ_[cluster_i];
-								CalcChol(SigmaIplusZtZ, cluster_i);
-							}
-						}//end only_grouped_REs_use_woodbury_identity_
-						else {//not only_grouped_REs_use_woodbury_identity_
-							T_mat psi;
-							CalcZSigmaZt(psi, cluster_i);
-							CalcChol(psi, cluster_i);
-						}//end not only_grouped_REs_use_woodbury_identity_
-					}
-				}
-			}
-			covariance_matrix_has_been_factorized_ = true;
-			if (gauss_likelihood_) {//note: for non-Gaussian likelihoods, a call to 'CalcModePostRandEffCalcMLL' (=finding the mode for the Laplace approximation) is counted as a likelihood evaluation
-				num_ll_evaluations_++;
-			}
-		}//end CalcCovFactor
 
 		/*!
 		* \brief Calculate Psi^-1*y (and save in y_aux_)
@@ -6985,7 +6904,7 @@ namespace GPBoost {
 				FI = den_mat_t(num_cov_par_ - 1, num_cov_par_ - 1);
 			}
 			FI.setZero();
-			int start_cov_pars = include_error_var ? 1 : 0;
+			int first_cov_par = include_error_var ? 1 : 0;
 
 			if (use_stochastic_trace_for_Fisher_information_Vecchia_) {
 				if (saved_rand_vec_fisher_info_.size() == 0) {
@@ -6995,131 +6914,87 @@ namespace GPBoost {
 				}
 			}
 
-			for (const auto& cluster_i : unique_clusters_) {
-				if (gp_approx_ == "vecchia") {
-					//Note: if transf_scale==false, then all matrices and derivatives have been calculated on the original scale for the Vecchia approximation, that is why there is no adjustment here
-
-					if (use_stochastic_trace_for_Fisher_information_Vecchia_) {
-						// Using Hutchinson's trace estimator
-						sp_mat_t D(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
-						D.setIdentity();
-						D.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(-1);
-						// Sample vectors
-						if (!saved_rand_vec_fisher_info_[cluster_i]) {
-							if (!cg_generator_seeded_) {
-								cg_generator_ = RNG_t(seed_rand_vec_trace_);
-								cg_generator_seeded_ = true;
-							}
-							rand_vec_fisher_info_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-							GenRandVecTrace(cg_generator_, rand_vec_fisher_info_[cluster_i]);
-							if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
-								saved_rand_vec_fisher_info_[cluster_i] = true;
-							}
+			if (gp_approx_ == "vecchia") {
+				CalcFisherInformation_Vecchia(FI, transf_scale, include_error_var, first_cov_par);
+			}//end gp_approx_ == "vecchia"
+			else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
+				CalcFisherInformation_FITC_FSA(cov_pars, FI, transf_scale, include_error_var, first_cov_par);
+			}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
+			else if (only_grouped_REs_use_woodbury_identity_) {
+				CalcFisherInformation_Only_Grouped_REs_Woodbury(cov_pars, FI, transf_scale, include_error_var, use_saved_psi_inv, first_cov_par);
+			}//end only_grouped_REs_use_woodbury_identity_
+			else {//gp_approx == "none" and not only_grouped_REs_use_woodbury_identity_
+				for (const auto& cluster_i : unique_clusters_) {
+					T_mat psi_inv;
+					if (use_saved_psi_inv) {
+						psi_inv = psi_inv_[cluster_i];
+					}
+					else {
+						CalcPsiInv(psi_inv, cluster_i, false);
+					}
+					if (!transf_scale) {
+						psi_inv /= cov_pars[0];//psi_inv has been calculated with a transformed parametrization, so we need to divide everything by cov_pars[0] to obtain the covariance matrix
+					}
+					//Calculate Psi^-1 * derivative(Psi)
+					std::vector<T_mat> psi_inv_deriv_psi(num_cov_par_ - 1);
+					int deriv_par_nb = 0;
+					for (int j = 0; j < num_comps_total_; ++j) {//there is currently no possibility to loop over the parameters directly
+						for (int jpar = 0; jpar < re_comps_[cluster_i][j]->num_cov_par_; ++jpar) {
+							psi_inv_deriv_psi[deriv_par_nb] = psi_inv * *(re_comps_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]));
+							deriv_par_nb++;
 						}
-						den_mat_t BT_inv_rand_vec;
-						TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(B_[cluster_i], rand_vec_fisher_info_[cluster_i], BT_inv_rand_vec, true);
-						den_mat_t D_BT_inv_rand_vec = D * BT_inv_rand_vec;
-						den_mat_t Bi_D_BT_inv_rand_vec;
-						TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(B_[cluster_i], D_BT_inv_rand_vec, Bi_D_BT_inv_rand_vec, false);//Bi_D_BT_inv_rand_vec = B^-1 * D * B^-T * rand_vec
-						D_BT_inv_rand_vec.resize(0, 0);
-						for (int par_nb = 1; par_nb < num_cov_par_; ++par_nb) {
-							den_mat_t minus_dB_Bi_D_BT_inv_rand_vec = -B_grad_[cluster_i][par_nb - 1] * Bi_D_BT_inv_rand_vec + D_grad_[cluster_i][par_nb - 1] * BT_inv_rand_vec;//minus_dB_Bi_D_BT_inv_rand_vec = -dBk * B^-1 * D * B^-T * rand_vec + dDk * B^-T * rand_vec
-							sigma_inv_sigma_grad_rand_vec_[par_nb] = (B_[cluster_i].transpose() * (D_inv_[cluster_i] * minus_dB_Bi_D_BT_inv_rand_vec)) - (B_grad_[cluster_i][par_nb - 1]).transpose() * BT_inv_rand_vec;
-						}
-						Bi_D_BT_inv_rand_vec.resize(0, 0);
-						BT_inv_rand_vec.resize(0, 0);
-						if (include_error_var && !transf_scale) {
-							//The derivative for the nugget variance is the identity matrix on the orginal scale, i.e. psi_inv_grad_psi_sigma2 = psi_inv
-							sigma_inv_sigma_grad_rand_vec_[0] = B_[cluster_i].transpose() * (D_inv_[cluster_i] * (B_[cluster_i] * rand_vec_fisher_info_[cluster_i]));
-						}
-						//Calculate Fisher information
-						sp_mat_t D_inv_B_grad_B_inv, B_grad_B_inv_D;
-						if (include_error_var) {
-							//First calculate terms for nugget effect / noise variance parameter
-							if (transf_scale) {//Optimization is done on transformed scale (in particular, log-scale)
-								//The derivative for the nugget variance on the log scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
-								FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
-								for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-									FI(0, par_nb + 1) += (double)((D_inv_[cluster_i].diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array()).sum()) / 2.;
-								}
-								//Remaining covariance parameters
-								for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-									for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
-										FI(par_nb + start_cov_pars, par_nb_cross + start_cov_pars) += (sigma_inv_sigma_grad_rand_vec_[par_nb + 1]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb_cross + 1]).colwise().sum().mean() / 2.;
-									}
-								}
-							}
-							else {//Original scale for asymptotic covariance matrix
-								for (int par_nb = 0; par_nb < num_cov_par_; ++par_nb) {
-									for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_; ++par_nb_cross) {
-										FI(par_nb, par_nb_cross) += (sigma_inv_sigma_grad_rand_vec_[par_nb]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb_cross]).colwise().sum().mean() / 2.;
-									}
-								}
-							}
-						}//end include_error_var
-						else {//!include_error_var
+					}
+					//Calculate Fisher information
+					if (include_error_var) {
+						//First calculate terms for nugget effect / noise variance parameter
+						if (transf_scale) {//Optimization is done on transformed scale (error variance factored out and log-scale)
+							//The derivative for the nugget variance on the transformed scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
+							FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
 							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-								for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
-									FI(par_nb, par_nb_cross) += (sigma_inv_sigma_grad_rand_vec_[par_nb + 1]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb_cross + 1]).colwise().sum().mean() / 2.;
-								}
+								FI(0, par_nb + 1) += psi_inv_deriv_psi[par_nb].diagonal().sum() / 2.;
 							}
 						}
-					}//end use_stochastic_trace_for_Fisher_information_Vecchia_
-					else {//!use_stochastic_trace_for_Fisher_information_Vecchia_
-						//Calculate auxiliary matrices for use below
-						sp_mat_t Identity(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
-						Identity.setIdentity();
-						sp_mat_t B_inv;
-						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B_[cluster_i], Identity, B_inv, false);//No noticeable difference in (n=500, nn=100/30) compared to using eigen_sp_Lower_sp_RHS_cs_solve()
-						//eigen_sp_Lower_sp_RHS_cs_solve(B_[cluster_i], Identity, B_inv, true);
-						sp_mat_t D(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
-						D.setIdentity();
-						D.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(-1);
-						sp_mat_t D_inv_2 = sp_mat_t(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
-						D_inv_2.setIdentity();
-						D_inv_2.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(2);
-						//Calculate derivative(B) * B^-1
-						std::vector<sp_mat_t> B_grad_B_inv(num_cov_par_ - 1);
-						for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-							B_grad_B_inv[par_nb] = B_grad_[cluster_i][par_nb] * B_inv;
-						}
-						//Calculate Fisher information
-						sp_mat_t D_inv_B_grad_B_inv, B_grad_B_inv_D;
-						if (include_error_var) {
-							//First calculate terms for nugget effect / noise variance parameter
-							if (transf_scale) {//Optimization is done on transformed scale (in particular, log-scale)
-								//The derivative for the nugget variance on the log scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
-								FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
-								for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-									FI(0, par_nb + 1) += (double)((D_inv_[cluster_i].diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array()).sum()) / 2.;
-								}
-							}
-							else {//Original scale for asymptotic covariance matrix
-								int ind_grad_nugget = num_cov_par_ - 1;
-								D_inv_B_grad_B_inv = D_inv_[cluster_i] * B_grad_[cluster_i][ind_grad_nugget] * B_inv;
-								B_grad_B_inv_D = B_grad_[cluster_i][ind_grad_nugget] * B_inv * D;
-								double diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array()).sum());
-								FI(0, 0) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
-								for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-									B_grad_B_inv_D = B_grad_B_inv[par_nb] * D;
-									diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array()).sum());
-									FI(0, par_nb + 1) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
-								}
-							}
-						}//end include_error_var
-						//Remaining covariance parameters
-						for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-							D_inv_B_grad_B_inv = D_inv_[cluster_i] * B_grad_B_inv[par_nb];
-							for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
-								B_grad_B_inv_D = B_grad_B_inv[par_nb_cross] * D;
-								double diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array() * D_grad_[cluster_i][par_nb_cross].diagonal().array()).sum());
-								FI(par_nb + start_cov_pars, par_nb_cross + start_cov_pars) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
+						else {//Original scale for asymptotic covariance matrix
+							//The derivative for the nugget variance is the identity matrix, i.e. psi_inv_grad_psi_sigma2 = psi_inv.
+							FI(0, 0) += ((double)(psi_inv.cwiseProduct(psi_inv)).sum()) / 2.;
+							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+								FI(0, par_nb + 1) += ((double)(psi_inv.cwiseProduct(psi_inv_deriv_psi[par_nb])).sum()) / 2.;
 							}
 						}
-					}//end !use_stochastic_trace_for_Fisher_information_Vecchia_
-				}//end gp_approx_ == "vecchia"
-				else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-					// Hutchinson's Trace estimator
+					}
+					//Remaining covariance parameters
+					for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+						T_mat psi_inv_grad_psi_par_nb_T = psi_inv_deriv_psi[par_nb].transpose();
+						FI(par_nb + first_cov_par, par_nb + first_cov_par) += ((double)(psi_inv_grad_psi_par_nb_T.cwiseProduct(psi_inv_deriv_psi[par_nb])).sum()) / 2.;
+						for (int par_nb_cross = par_nb + 1; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
+							FI(par_nb + first_cov_par, par_nb_cross + first_cov_par) += ((double)(psi_inv_grad_psi_par_nb_T.cwiseProduct(psi_inv_deriv_psi[par_nb_cross])).sum()) / 2.;
+						}
+						psi_inv_deriv_psi[par_nb].resize(0, 0);//not needed anymore
+						psi_inv_grad_psi_par_nb_T.resize(0, 0);
+					}
+				}//end loop over clusterI
+			}//end gp_approx == "none" and not only_grouped_REs_use_woodbury_identity_
+			FI.triangularView<Eigen::StrictlyLower>() = FI.triangularView<Eigen::StrictlyUpper>().transpose();
+			//for (int i = 0; i < std::min((int)FI.rows(),4); ++i) {//For debugging only
+			//    for (int j = i; j < std::min((int)FI.cols(),4); ++j) {
+			//	    Log::REInfo("FI(%d,%d) %g", i, j, FI(i, j));
+			//    }
+			//}
+		}//end CalcFisherInformation
+
+		void CalcFisherInformation_Vecchia(den_mat_t& FI,
+			bool transf_scale,
+			bool include_error_var,
+			int first_cov_par) {
+			CHECK(gauss_likelihood_);
+			CHECK(gp_approx_ == "vecchia");
+			for (const auto& cluster_i : unique_clusters_) {
+				//Note: if transf_scale==false, then all matrices and derivatives have been calculated on the original scale for the Vecchia approximation, that is why there is no disinction for 'transf_scale'
+				if (use_stochastic_trace_for_Fisher_information_Vecchia_) {
+					// Using Hutchinson's trace estimator
+					sp_mat_t D(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
+					D.setIdentity();
+					D.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(-1);
 					// Sample vectors
 					if (!saved_rand_vec_fisher_info_[cluster_i]) {
 						if (!cg_generator_seeded_) {
@@ -7132,283 +7007,356 @@ namespace GPBoost {
 							saved_rand_vec_fisher_info_[cluster_i] = true;
 						}
 					}
-					std::shared_ptr<T_mat> sigma_resid;
-					den_mat_t sigma_inv_rand_vec_nugget;
-					int deriv_par_nb = 0;
-					for (int j = 0; j < num_comps_total_; ++j) {
-						if (gp_approx_ == "full_scale_tapering" && matrix_inversion_method_ == "iterative") {
-							re_comps_resid_[cluster_i][j]->CalcSigma();
-							// Subtract predictive process covariance
-							re_comps_resid_[cluster_i][j]->SubtractPredProcFromSigmaForResidInFullScale(chol_ip_cross_cov_[cluster_i], true);
-							// Apply Taper
-							re_comps_resid_[cluster_i][j]->ApplyTaper();
-							if (gauss_likelihood_) {
-								re_comps_resid_[cluster_i][j]->AddConstantToDiagonalSigma(1.);//add nugget effect variance
-							}
-							sigma_resid = re_comps_resid_[cluster_i][j]->GetZSigmaZt();
-						}
-						std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][j]->GetZSigmaZt();
-						den_mat_t sigma_ip_inv_sigma_cross_cov = chol_fact_sigma_ip_[cluster_i].solve((*cross_cov).transpose());
-						int num_par_comp = re_comps_ip_[cluster_i][j]->num_cov_par_;
-						// Inverse of Sigma residual times cross covariance
-						den_mat_t Sigma_inv_cross_cov;
-						den_mat_t Sigma_inv_rand_vec;
-						if (matrix_inversion_method_ == "cholesky" && gp_approx_ == "full_scale_tapering") {
-							Sigma_inv_cross_cov = chol_fact_resid_[cluster_i].solve(*cross_cov);
-							Sigma_inv_rand_vec = chol_fact_resid_[cluster_i].solve(rand_vec_fisher_info_[cluster_i]);
-						}
-						for (int jpar = 0; jpar < num_par_comp; ++jpar) {
-							// Derivative of Components
-							std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]);
-							den_mat_t sigma_ip_stable_grad = *(re_comps_ip_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]));
-							den_mat_t sigma_ip_grad_inv_sigma_cross_cov = sigma_ip_stable_grad * sigma_ip_inv_sigma_cross_cov;
-							if (gp_approx_ == "full_scale_tapering") {
-								// Initialize Residual Process
-								re_comps_resid_[cluster_i][j]->CalcSigma();
-								std::shared_ptr<T_mat> sigma_resid_grad = re_comps_resid_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]);
-								// Subtract gradient of predictive process covariance
-								SubtractProdFromMat<T_mat>(*sigma_resid_grad, -sigma_ip_inv_sigma_cross_cov, sigma_ip_grad_inv_sigma_cross_cov, true);
-								SubtractProdFromMat<T_mat>(*sigma_resid_grad, (*cross_cov_grad).transpose(), sigma_ip_inv_sigma_cross_cov, false);
-								SubtractProdFromMat<T_mat>(*sigma_resid_grad, sigma_ip_inv_sigma_cross_cov, (*cross_cov_grad).transpose(), false);
-								// Apply taper
-								re_comps_resid_[cluster_i][j]->ApplyTaper(*(re_comps_resid_[cluster_i][j]->dist_), *sigma_resid_grad);
-								// Inverse times Gradient times Random vectors
-								// Gradient times Random vectors
-								den_mat_t sigma_resid_grad_rand_vec(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-								sigma_resid_grad_rand_vec.setZero();
-#pragma omp parallel for schedule(static)   
-								for (int i = 0; i < num_rand_vec_trace_; ++i) {
-									sigma_resid_grad_rand_vec.col(i) += (*sigma_resid_grad) * rand_vec_fisher_info_[cluster_i].col(i);
-								}
-								sigma_resid_grad_rand_vec += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * rand_vec_fisher_info_[cluster_i])
-									+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i])
-									- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i]);
-								// Inverse times Gradient times Random vectors
-								den_mat_t sigma_inv_sigma_grad_rand_vec_interim(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-								if (matrix_inversion_method_ == "cholesky") {
-									den_mat_t Sigma_inv_Grad_rand_vec = chol_fact_resid_[cluster_i].solve(sigma_resid_grad_rand_vec);
-									sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = Sigma_inv_Grad_rand_vec - Sigma_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * Sigma_inv_Grad_rand_vec));
-								}
-								else if (matrix_inversion_method_ == "iterative") {
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], sigma_resid_grad_rand_vec, sigma_inv_sigma_grad_rand_vec_interim, NaN_found,
-										num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
-										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
-									sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = sigma_inv_sigma_grad_rand_vec_interim;
-								}
-								// Gradient times Inverse times Random vectors
-								// Inverse times Random vectors
-								den_mat_t sigma_inv_rand_vec(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-								if (matrix_inversion_method_ == "cholesky") {
-									sigma_inv_rand_vec = Sigma_inv_rand_vec - Sigma_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * Sigma_inv_rand_vec));
-									sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
-								}
-								else if (matrix_inversion_method_ == "iterative") {
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], rand_vec_fisher_info_[cluster_i], sigma_inv_rand_vec, NaN_found,
-										num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
-										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
-									sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
-								}
-								// Gradient times Inverse times Random vectors
-								sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] = (*sigma_resid_grad) * sigma_inv_rand_vec;
-								sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * sigma_inv_rand_vec)
-									+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * sigma_inv_rand_vec)
-									- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * sigma_inv_rand_vec);
-							}
-							else if (gp_approx_ == "fitc") {
-								den_mat_t sigma_ip_stable_grad_nugget = *(re_comps_ip_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, 1.));
-								vec_t FITC_Diag_grad = vec_t::Zero(num_data_per_cluster_[cluster_i]);
-								FITC_Diag_grad = FITC_Diag_grad.array() + sigma_ip_stable_grad_nugget.coeffRef(0, 0);
-#pragma omp parallel for schedule(static)
-								for (int ii = 0; ii < num_data_per_cluster_[cluster_i]; ++ii) {
-									FITC_Diag_grad[ii] -= 2 * sigma_ip_inv_sigma_cross_cov.col(ii).dot((*cross_cov_grad).row(ii))
-										- sigma_ip_inv_sigma_cross_cov.col(ii).dot(sigma_ip_grad_inv_sigma_cross_cov.col(ii));
-								}
-								// Inverse times Gradient times Random vectors
-								// Gradient times Random vectors
-								den_mat_t sigma_resid_grad_rand_vec = FITC_Diag_grad.asDiagonal() * rand_vec_fisher_info_[cluster_i];
-								sigma_resid_grad_rand_vec += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * rand_vec_fisher_info_[cluster_i])
-									+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i])
-									- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i]);
-								// Inverse times Gradient times Random vectors
-								den_mat_t FITC_Diag_inv_Grad_rand_vec = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * sigma_resid_grad_rand_vec;
-								den_mat_t FITC_Diag_inv_cross_cov = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * (*cross_cov);
-								sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = FITC_Diag_inv_Grad_rand_vec - FITC_Diag_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * FITC_Diag_inv_Grad_rand_vec));
-								// Gradient times Inverse times Random vectors
-								// Inverse times Random vectors
-								den_mat_t FITC_Diag_inv_rand_vec = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * rand_vec_fisher_info_[cluster_i];
-								den_mat_t sigma_inv_rand_vec = FITC_Diag_inv_rand_vec - FITC_Diag_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * FITC_Diag_inv_rand_vec));
-								sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
-								// Gradient times Inverse times Random vectors
-								sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] = FITC_Diag_grad.asDiagonal() * sigma_inv_rand_vec;
-								sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * sigma_inv_rand_vec)
-									+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * sigma_inv_rand_vec)
-									- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * sigma_inv_rand_vec);
-							}
-							deriv_par_nb += 1;
-						}
+					den_mat_t BT_inv_rand_vec;
+					TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(B_[cluster_i], rand_vec_fisher_info_[cluster_i], BT_inv_rand_vec, true);
+					den_mat_t D_BT_inv_rand_vec = D * BT_inv_rand_vec;
+					den_mat_t Bi_D_BT_inv_rand_vec;
+					TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(B_[cluster_i], D_BT_inv_rand_vec, Bi_D_BT_inv_rand_vec, false);//Bi_D_BT_inv_rand_vec = B^-1 * D * B^-T * rand_vec
+					D_BT_inv_rand_vec.resize(0, 0);
+					for (int par_nb = 1; par_nb < num_cov_par_; ++par_nb) {
+						den_mat_t minus_dB_Bi_D_BT_inv_rand_vec = -B_grad_[cluster_i][par_nb - 1] * Bi_D_BT_inv_rand_vec + D_grad_[cluster_i][par_nb - 1] * BT_inv_rand_vec;//minus_dB_Bi_D_BT_inv_rand_vec = -dBk * B^-1 * D * B^-T * rand_vec + dDk * B^-T * rand_vec
+						sigma_inv_sigma_grad_rand_vec_[par_nb] = (B_[cluster_i].transpose() * (D_inv_[cluster_i] * minus_dB_Bi_D_BT_inv_rand_vec)) - (B_grad_[cluster_i][par_nb - 1]).transpose() * BT_inv_rand_vec;
 					}
+					Bi_D_BT_inv_rand_vec.resize(0, 0);
+					BT_inv_rand_vec.resize(0, 0);
+					if (include_error_var && !transf_scale) {
+						//The derivative for the nugget variance is the identity matrix on the orginal scale, i.e. psi_inv_grad_psi_sigma2 = psi_inv
+						sigma_inv_sigma_grad_rand_vec_[0] = B_[cluster_i].transpose() * (D_inv_[cluster_i] * (B_[cluster_i] * rand_vec_fisher_info_[cluster_i]));
+					}
+					//Calculate Fisher information
+					sp_mat_t D_inv_B_grad_B_inv, B_grad_B_inv_D;
 					if (include_error_var) {
 						//First calculate terms for nugget effect / noise variance parameter
-						if (transf_scale) {//Optimization is done on transformed scale (error variance factored out and log-scale)
-							//The derivative for the nugget variance on the transformed scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
+						if (transf_scale) {//Optimization is done on transformed scale (in particular, log-scale)
+							//The derivative for the nugget variance on the log scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
 							FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
 							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-								FI(0, par_nb + 1) += (rand_vec_fisher_info_[cluster_i]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb]).colwise().sum().mean() / 2.;
+								FI(0, par_nb + 1) += (double)((D_inv_[cluster_i].diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array()).sum()) / 2.;
+							}
+							//Remaining covariance parameters
+							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+								for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
+									FI(par_nb + first_cov_par, par_nb_cross + first_cov_par) += (sigma_inv_sigma_grad_rand_vec_[par_nb + 1]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb_cross + 1]).colwise().sum().mean() / 2.;
+								}
 							}
 						}
 						else {//Original scale for asymptotic covariance matrix
-							//The derivative for the nugget variance is the identity matrix, i.e. psi_inv_grad_psi_sigma2 = psi_inv.
-							FI(0, 0) += (sigma_inv_rand_vec_nugget).cwiseProduct(sigma_inv_rand_vec_nugget).colwise().sum().mean() / 2.;
-							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-								FI(0, par_nb + 1) += (sigma_inv_rand_vec_nugget).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb]).colwise().sum().mean() / 2.;
+							for (int par_nb = 0; par_nb < num_cov_par_; ++par_nb) {
+								for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_; ++par_nb_cross) {
+									FI(par_nb, par_nb_cross) += (sigma_inv_sigma_grad_rand_vec_[par_nb]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb_cross]).colwise().sum().mean() / 2.;
+								}
+							}
+						}
+					}//end include_error_var
+					else {//!include_error_var
+						for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+							for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
+								FI(par_nb, par_nb_cross) += (sigma_inv_sigma_grad_rand_vec_[par_nb + 1]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb_cross + 1]).colwise().sum().mean() / 2.;
 							}
 						}
 					}
+				}//end use_stochastic_trace_for_Fisher_information_Vecchia_
+				else {//!use_stochastic_trace_for_Fisher_information_Vecchia_
+					//Calculate auxiliary matrices for use below
+					sp_mat_t Identity(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
+					Identity.setIdentity();
+					sp_mat_t B_inv;
+					TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B_[cluster_i], Identity, B_inv, false);//No noticeable difference in (n=500, nn=100/30) compared to using eigen_sp_Lower_sp_RHS_cs_solve()
+					//eigen_sp_Lower_sp_RHS_cs_solve(B_[cluster_i], Identity, B_inv, true);
+					sp_mat_t D(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
+					D.setIdentity();
+					D.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(-1);
+					sp_mat_t D_inv_2 = sp_mat_t(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
+					D_inv_2.setIdentity();
+					D_inv_2.diagonal().array() = D_inv_[cluster_i].diagonal().array().pow(2);
+					//Calculate derivative(B) * B^-1
+					std::vector<sp_mat_t> B_grad_B_inv(num_cov_par_ - 1);
+					for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+						B_grad_B_inv[par_nb] = B_grad_[cluster_i][par_nb] * B_inv;
+					}
+					//Calculate Fisher information
+					sp_mat_t D_inv_B_grad_B_inv, B_grad_B_inv_D;
+					if (include_error_var) {
+						//First calculate terms for nugget effect / noise variance parameter
+						if (transf_scale) {//Optimization is done on transformed scale (in particular, log-scale)
+							//The derivative for the nugget variance on the log scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
+							FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
+							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+								FI(0, par_nb + 1) += (double)((D_inv_[cluster_i].diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array()).sum()) / 2.;
+							}
+						}
+						else {//Original scale for asymptotic covariance matrix
+							int ind_grad_nugget = num_cov_par_ - 1;
+							D_inv_B_grad_B_inv = D_inv_[cluster_i] * B_grad_[cluster_i][ind_grad_nugget] * B_inv;
+							B_grad_B_inv_D = B_grad_[cluster_i][ind_grad_nugget] * B_inv * D;
+							double diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array()).sum());
+							FI(0, 0) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
+							for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+								B_grad_B_inv_D = B_grad_B_inv[par_nb] * D;
+								diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][ind_grad_nugget].diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array()).sum());
+								FI(0, par_nb + 1) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
+							}
+						}
+					}//end include_error_var
 					//Remaining covariance parameters
 					for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+						D_inv_B_grad_B_inv = D_inv_[cluster_i] * B_grad_B_inv[par_nb];
 						for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
-							FI(par_nb + start_cov_pars, par_nb_cross + start_cov_pars) += (sigma_grad_sigma_inv_rand_vec_[par_nb]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb_cross]).colwise().sum().mean() / 2.;
+							B_grad_B_inv_D = B_grad_B_inv[par_nb_cross] * D;
+							double diag = (double)((D_inv_2.diagonal().array() * D_grad_[cluster_i][par_nb].diagonal().array() * D_grad_[cluster_i][par_nb_cross].diagonal().array()).sum());
+							FI(par_nb + first_cov_par, par_nb_cross + first_cov_par) += ((double)(B_grad_B_inv_D.cwiseProduct(D_inv_B_grad_B_inv)).sum() + diag / 2.);
 						}
 					}
-					if (!transf_scale) {
-						FI /= (cov_pars[0] * cov_pars[0]);
+				}//end !use_stochastic_trace_for_Fisher_information_Vecchia_
+			}//end loop over cluster_i
+		}//end CalcFisherInformation_Vecchia
+
+		void CalcFisherInformation_FITC_FSA(const vec_t& cov_pars,
+			den_mat_t& FI,
+			bool transf_scale,
+			bool include_error_var,
+			int first_cov_par) {
+			for (const auto& cluster_i : unique_clusters_) {
+				// Hutchinson's Trace estimator
+				// Sample vectors
+				if (!saved_rand_vec_fisher_info_[cluster_i]) {
+					if (!cg_generator_seeded_) {
+						cg_generator_ = RNG_t(seed_rand_vec_trace_);
+						cg_generator_seeded_ = true;
 					}
-				}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
-				else {// gp_approx_ == "none"
-					if (only_grouped_REs_use_woodbury_identity_) {
-						//Notation used below: M = Sigma^-1 + ZtZ, Sigma = cov(b) b=latent random effects, L=chol(M) i.e. M=LLt, MInv = M^-1 = L^-TL^-1
-						if (!use_saved_psi_inv) {
-							LInvZtZj_[cluster_i] = std::vector<T_mat>(num_comps_total_);
-							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ == ZtZj_ and L_inv are diagonal  
-								LInvZtZj_[cluster_i][0] = ZtZ_[cluster_i];
-								LInvZtZj_[cluster_i][0].diagonal().array() /= sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array();
+					rand_vec_fisher_info_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
+					GenRandVecTrace(cg_generator_, rand_vec_fisher_info_[cluster_i]);
+					if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
+						saved_rand_vec_fisher_info_[cluster_i] = true;
+					}
+				}
+				std::shared_ptr<T_mat> sigma_resid;
+				den_mat_t sigma_inv_rand_vec_nugget;
+				int deriv_par_nb = 0;
+				for (int j = 0; j < num_comps_total_; ++j) {
+					if (gp_approx_ == "full_scale_tapering" && matrix_inversion_method_ == "iterative") {
+						re_comps_resid_[cluster_i][j]->CalcSigma();
+						// Subtract predictive process covariance
+						re_comps_resid_[cluster_i][j]->SubtractPredProcFromSigmaForResidInFullScale(chol_ip_cross_cov_[cluster_i], true);
+						// Apply Taper
+						re_comps_resid_[cluster_i][j]->ApplyTaper();
+						if (gauss_likelihood_) {
+							re_comps_resid_[cluster_i][j]->AddConstantToDiagonalSigma(1.);//add nugget effect variance
+						}
+						sigma_resid = re_comps_resid_[cluster_i][j]->GetZSigmaZt();
+					}
+					std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][j]->GetZSigmaZt();
+					den_mat_t sigma_ip_inv_sigma_cross_cov = chol_fact_sigma_ip_[cluster_i].solve((*cross_cov).transpose());
+					int num_par_comp = re_comps_ip_[cluster_i][j]->num_cov_par_;
+					// Inverse of Sigma residual times cross covariance
+					den_mat_t Sigma_inv_cross_cov;
+					den_mat_t Sigma_inv_rand_vec;
+					if (matrix_inversion_method_ == "cholesky" && gp_approx_ == "full_scale_tapering") {
+						Sigma_inv_cross_cov = chol_fact_resid_[cluster_i].solve(*cross_cov);
+						Sigma_inv_rand_vec = chol_fact_resid_[cluster_i].solve(rand_vec_fisher_info_[cluster_i]);
+					}
+					for (int jpar = 0; jpar < num_par_comp; ++jpar) {
+						// Derivative of Components
+						std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]);
+						den_mat_t sigma_ip_stable_grad = *(re_comps_ip_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]));
+						den_mat_t sigma_ip_grad_inv_sigma_cross_cov = sigma_ip_stable_grad * sigma_ip_inv_sigma_cross_cov;
+						if (gp_approx_ == "full_scale_tapering") {
+							// Initialize Residual Process
+							re_comps_resid_[cluster_i][j]->CalcSigma();
+							std::shared_ptr<T_mat> sigma_resid_grad = re_comps_resid_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]);
+							// Subtract gradient of predictive process covariance
+							SubtractProdFromMat<T_mat>(*sigma_resid_grad, -sigma_ip_inv_sigma_cross_cov, sigma_ip_grad_inv_sigma_cross_cov, true);
+							SubtractProdFromMat<T_mat>(*sigma_resid_grad, (*cross_cov_grad).transpose(), sigma_ip_inv_sigma_cross_cov, false);
+							SubtractProdFromMat<T_mat>(*sigma_resid_grad, sigma_ip_inv_sigma_cross_cov, (*cross_cov_grad).transpose(), false);
+							// Apply taper
+							re_comps_resid_[cluster_i][j]->ApplyTaper(*(re_comps_resid_[cluster_i][j]->dist_), *sigma_resid_grad);
+							// Inverse times Gradient times Random vectors
+							// Gradient times Random vectors
+							den_mat_t sigma_resid_grad_rand_vec(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
+							sigma_resid_grad_rand_vec.setZero();
+#pragma omp parallel for schedule(static)   
+							for (int i = 0; i < num_rand_vec_trace_; ++i) {
+								sigma_resid_grad_rand_vec.col(i) += (*sigma_resid_grad) * rand_vec_fisher_info_[cluster_i].col(i);
+							}
+							sigma_resid_grad_rand_vec += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * rand_vec_fisher_info_[cluster_i])
+								+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i])
+								- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i]);
+							// Inverse times Gradient times Random vectors
+							den_mat_t sigma_inv_sigma_grad_rand_vec_interim(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
+							if (matrix_inversion_method_ == "cholesky") {
+								den_mat_t Sigma_inv_Grad_rand_vec = chol_fact_resid_[cluster_i].solve(sigma_resid_grad_rand_vec);
+								sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = Sigma_inv_Grad_rand_vec - Sigma_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * Sigma_inv_Grad_rand_vec));
+							}
+							else if (matrix_inversion_method_ == "iterative") {
+								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], sigma_resid_grad_rand_vec, sigma_inv_sigma_grad_rand_vec_interim, NaN_found,
+									num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
+									chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
+								sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = sigma_inv_sigma_grad_rand_vec_interim;
+							}
+							// Gradient times Inverse times Random vectors
+							// Inverse times Random vectors
+							den_mat_t sigma_inv_rand_vec(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
+							if (matrix_inversion_method_ == "cholesky") {
+								sigma_inv_rand_vec = Sigma_inv_rand_vec - Sigma_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * Sigma_inv_rand_vec));
+								sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
+							}
+							else if (matrix_inversion_method_ == "iterative") {
+								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_fact_sigma_ip_[cluster_i], rand_vec_fisher_info_[cluster_i], sigma_inv_rand_vec, NaN_found,
+									num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
+									chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
+								sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
+							}
+							// Gradient times Inverse times Random vectors
+							sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] = (*sigma_resid_grad) * sigma_inv_rand_vec;
+							sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * sigma_inv_rand_vec)
+								+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * sigma_inv_rand_vec)
+								- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * sigma_inv_rand_vec);
+						}
+						else if (gp_approx_ == "fitc") {
+							den_mat_t sigma_ip_stable_grad_nugget = *(re_comps_ip_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, 1.));
+							vec_t FITC_Diag_grad = vec_t::Zero(num_data_per_cluster_[cluster_i]);
+							FITC_Diag_grad = FITC_Diag_grad.array() + sigma_ip_stable_grad_nugget.coeffRef(0, 0);
+#pragma omp parallel for schedule(static)
+							for (int ii = 0; ii < num_data_per_cluster_[cluster_i]; ++ii) {
+								FITC_Diag_grad[ii] -= 2 * sigma_ip_inv_sigma_cross_cov.col(ii).dot((*cross_cov_grad).row(ii))
+									- sigma_ip_inv_sigma_cross_cov.col(ii).dot(sigma_ip_grad_inv_sigma_cross_cov.col(ii));
+							}
+							// Inverse times Gradient times Random vectors
+							// Gradient times Random vectors
+							den_mat_t sigma_resid_grad_rand_vec = FITC_Diag_grad.asDiagonal() * rand_vec_fisher_info_[cluster_i];
+							sigma_resid_grad_rand_vec += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * rand_vec_fisher_info_[cluster_i])
+								+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i])
+								- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i]);
+							// Inverse times Gradient times Random vectors
+							den_mat_t FITC_Diag_inv_Grad_rand_vec = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * sigma_resid_grad_rand_vec;
+							den_mat_t FITC_Diag_inv_cross_cov = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * (*cross_cov);
+							sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = FITC_Diag_inv_Grad_rand_vec - FITC_Diag_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * FITC_Diag_inv_Grad_rand_vec));
+							// Gradient times Inverse times Random vectors
+							// Inverse times Random vectors
+							den_mat_t FITC_Diag_inv_rand_vec = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * rand_vec_fisher_info_[cluster_i];
+							den_mat_t sigma_inv_rand_vec = FITC_Diag_inv_rand_vec - FITC_Diag_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * FITC_Diag_inv_rand_vec));
+							sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
+							// Gradient times Inverse times Random vectors
+							sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] = FITC_Diag_grad.asDiagonal() * sigma_inv_rand_vec;
+							sigma_grad_sigma_inv_rand_vec_[deriv_par_nb] += sigma_ip_inv_sigma_cross_cov.transpose() * ((*cross_cov_grad).transpose() * sigma_inv_rand_vec)
+								+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * sigma_inv_rand_vec)
+								- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * sigma_inv_rand_vec);
+						}
+						deriv_par_nb += 1;
+					}
+				}
+				if (include_error_var) {
+					//First calculate terms for nugget effect / noise variance parameter
+					if (transf_scale) {//Optimization is done on transformed scale (error variance factored out and log-scale)
+						//The derivative for the nugget variance on the transformed scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
+						FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
+						for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+							FI(0, par_nb + 1) += (rand_vec_fisher_info_[cluster_i]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb]).colwise().sum().mean() / 2.;
+						}
+					}
+					else {//Original scale for asymptotic covariance matrix
+						//The derivative for the nugget variance is the identity matrix, i.e. psi_inv_grad_psi_sigma2 = psi_inv.
+						FI(0, 0) += (sigma_inv_rand_vec_nugget).cwiseProduct(sigma_inv_rand_vec_nugget).colwise().sum().mean() / 2.;
+						for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+							FI(0, par_nb + 1) += (sigma_inv_rand_vec_nugget).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb]).colwise().sum().mean() / 2.;
+						}
+					}
+				}
+				//Remaining covariance parameters
+				for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
+					for (int par_nb_cross = par_nb; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
+						FI(par_nb + first_cov_par, par_nb_cross + first_cov_par) += (sigma_grad_sigma_inv_rand_vec_[par_nb]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb_cross]).colwise().sum().mean() / 2.;
+					}
+				}
+				if (!transf_scale) {
+					FI /= (cov_pars[0] * cov_pars[0]);
+				}
+			}//end loop over cluster_i
+		}//end CalcFisherInformation_FITC_FSA
+
+		void CalcFisherInformation_Only_Grouped_REs_Woodbury(const vec_t& cov_pars,
+			den_mat_t& FI,
+			bool transf_scale,
+			bool include_error_var,
+			bool use_saved_psi_inv,
+			int first_cov_par) {
+			for (const auto& cluster_i : unique_clusters_) {
+				//Notation used below: M = Sigma^-1 + ZtZ, Sigma = cov(b) b=latent random effects, L=chol(M) i.e. M=LLt, MInv = M^-1 = L^-TL^-1
+				if (!use_saved_psi_inv) {
+					LInvZtZj_[cluster_i] = std::vector<T_mat>(num_comps_total_);
+					if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ == ZtZj_ and L_inv are diagonal  
+						LInvZtZj_[cluster_i][0] = ZtZ_[cluster_i];
+						LInvZtZj_[cluster_i][0].diagonal().array() /= sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array();
+					}
+					else {
+						for (int j = 0; j < num_comps_total_; ++j) {
+							if (CholeskyHasPermutation<T_chol>(chol_facts_[cluster_i])) {
+								TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i].CholFactMatrix(), P_ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], false);
 							}
 							else {
-								for (int j = 0; j < num_comps_total_; ++j) {
-									if (CholeskyHasPermutation<T_chol>(chol_facts_[cluster_i])) {
-										TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i].CholFactMatrix(), P_ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], false);
-									}
-									else {
-										TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i].CholFactMatrix(), ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], false);
-									}
-								}
+								TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i].CholFactMatrix(), ZtZj_[cluster_i][j], LInvZtZj_[cluster_i][j], false);
 							}
 						}
-						if (include_error_var) {
-							if (transf_scale) {//Optimization is done on transformed scale (error variance factored out and log-scale)
-								//The derivative for the nugget variance on the transformed scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
-								FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
-								for (int j = 0; j < num_comps_total_; ++j) {
-									double trace_PsiInvGradPsi = Zj_square_sum_[cluster_i][j] - LInvZtZj_[cluster_i][j].squaredNorm();
-									FI(0, j + 1) += trace_PsiInvGradPsi * cov_pars[j + 1] / 2.;
-								}
-							}//end transf_scale
-							else {//not transf_scale
-								T_mat MInv_ZtZ;//=(Sigma_inv + ZtZ)^-1 * ZtZ
-								if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ == ZtZj_ and L_inv are diagonal 
-									MInv_ZtZ = T_mat(ZtZ_[cluster_i].rows(), ZtZ_[cluster_i].cols());
-									MInv_ZtZ.setIdentity();//initialize
-									MInv_ZtZ.diagonal().array() = ZtZ_[cluster_i].diagonal().array() / (sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().square());
-								}
-								else {
-									SolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZ_[cluster_i], MInv_ZtZ);
-
-								}
-								T_mat MInv_ZtZ_t = MInv_ZtZ.transpose();
-								FI(0, 0) += (num_data_per_cluster_[cluster_i] - 2. * MInv_ZtZ.diagonal().sum() + (double)(MInv_ZtZ.cwiseProduct(MInv_ZtZ_t)).sum()) / (cov_pars[0] * cov_pars[0] * 2.);
-								for (int j = 0; j < num_comps_total_; ++j) {
-									T_mat ZjZ_MInv_ZtZ_t = MInv_ZtZ_t * ZtZj_[cluster_i][j];
-									double trace_PsiInvGradPsi;
-									if (num_comps_total_ > 1) {
-										T_mat MInv_ZtZj;
-										SolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZj_[cluster_i][j], MInv_ZtZj);
-										trace_PsiInvGradPsi = Zj_square_sum_[cluster_i][j] - 2. * (double)(LInvZtZj_[cluster_i][j].squaredNorm()) +
-											(double)(ZjZ_MInv_ZtZ_t.cwiseProduct(MInv_ZtZj)).sum();
-									}
-									else {
-										trace_PsiInvGradPsi = Zj_square_sum_[cluster_i][j] - 2. * (double)(LInvZtZj_[cluster_i][j].squaredNorm()) +
-											(double)(ZjZ_MInv_ZtZ_t.cwiseProduct(MInv_ZtZ)).sum();
-									}
-									FI(0, j + 1) += trace_PsiInvGradPsi / (cov_pars[0] * cov_pars[0] * 2.);
-								}
-							}//end not transf_scale
-						}//end include_error_var
-						//Remaining covariance parameters
+					}
+				}
+				if (include_error_var) {
+					if (transf_scale) {//Optimization is done on transformed scale (error variance factored out and log-scale)
+						//The derivative for the nugget variance on the transformed scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
+						FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
 						for (int j = 0; j < num_comps_total_; ++j) {
-							sp_mat_t* Z_j = re_comps_[cluster_i][j]->GetZ();
-							for (int k = j; k < num_comps_total_; ++k) {
-								sp_mat_t* Z_k = re_comps_[cluster_i][k]->GetZ();
-								T_mat Zjt_Zk = T_mat((*Z_j).transpose() * (*Z_k));
-								T_mat LInvZtZj_t_LInvZtZk = LInvZtZj_[cluster_i][j].transpose() * LInvZtZj_[cluster_i][k];
-								double FI_jk = Zjt_Zk.squaredNorm() + LInvZtZj_t_LInvZtZk.squaredNorm() - 2. * (double)(Zjt_Zk.cwiseProduct(LInvZtZj_t_LInvZtZk)).sum();
-								if (transf_scale) {
-									FI_jk *= cov_pars[j + 1] * cov_pars[k + 1];
-								}
-								else {
-									FI_jk /= cov_pars[0] * cov_pars[0];
-								}
-								FI(j + start_cov_pars, k + start_cov_pars) += FI_jk / 2.;
-							}
+							double trace_PsiInvGradPsi = Zj_square_sum_[cluster_i][j] - LInvZtZj_[cluster_i][j].squaredNorm();
+							FI(0, j + 1) += trace_PsiInvGradPsi * cov_pars[j + 1] / 2.;
 						}
-					}//end only_grouped_REs_use_woodbury_identity_
-					else {//gp_approx == "none" and not only_grouped_REs_use_woodbury_identity_
-						T_mat psi_inv;
-						if (use_saved_psi_inv) {
-							psi_inv = psi_inv_[cluster_i];
+					}//end transf_scale
+					else {//not transf_scale
+						T_mat MInv_ZtZ;//=(Sigma_inv + ZtZ)^-1 * ZtZ
+						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ == ZtZj_ and L_inv are diagonal 
+							MInv_ZtZ = T_mat(ZtZ_[cluster_i].rows(), ZtZ_[cluster_i].cols());
+							MInv_ZtZ.setIdentity();//initialize
+							MInv_ZtZ.diagonal().array() = ZtZ_[cluster_i].diagonal().array() / (sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().square());
 						}
 						else {
-							CalcPsiInv(psi_inv, cluster_i, false);
+							SolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZ_[cluster_i], MInv_ZtZ);
+
 						}
-						if (!transf_scale) {
-							psi_inv /= cov_pars[0];//psi_inv has been calculated with a transformed parametrization, so we need to divide everything by cov_pars[0] to obtain the covariance matrix
-						}
-						//Calculate Psi^-1 * derivative(Psi)
-						std::vector<T_mat> psi_inv_deriv_psi(num_cov_par_ - 1);
-						int deriv_par_nb = 0;
-						for (int j = 0; j < num_comps_total_; ++j) {//there is currently no possibility to loop over the parameters directly
-							for (int jpar = 0; jpar < re_comps_[cluster_i][j]->num_cov_par_; ++jpar) {
-								psi_inv_deriv_psi[deriv_par_nb] = psi_inv * *(re_comps_[cluster_i][j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]));
-								deriv_par_nb++;
+						T_mat MInv_ZtZ_t = MInv_ZtZ.transpose();
+						FI(0, 0) += (num_data_per_cluster_[cluster_i] - 2. * MInv_ZtZ.diagonal().sum() + (double)(MInv_ZtZ.cwiseProduct(MInv_ZtZ_t)).sum()) / (cov_pars[0] * cov_pars[0] * 2.);
+						for (int j = 0; j < num_comps_total_; ++j) {
+							T_mat ZjZ_MInv_ZtZ_t = MInv_ZtZ_t * ZtZj_[cluster_i][j];
+							double trace_PsiInvGradPsi;
+							if (num_comps_total_ > 1) {
+								T_mat MInv_ZtZj;
+								SolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZj_[cluster_i][j], MInv_ZtZj);
+								trace_PsiInvGradPsi = Zj_square_sum_[cluster_i][j] - 2. * (double)(LInvZtZj_[cluster_i][j].squaredNorm()) +
+									(double)(ZjZ_MInv_ZtZ_t.cwiseProduct(MInv_ZtZj)).sum();
 							}
-						}
-						//Calculate Fisher information
-						if (include_error_var) {
-							//First calculate terms for nugget effect / noise variance parameter
-							if (transf_scale) {//Optimization is done on transformed scale (error variance factored out and log-scale)
-								//The derivative for the nugget variance on the transformed scale is the original covariance matrix Psi, i.e. psi_inv_grad_psi_sigma2 is the identity matrix.
-								FI(0, 0) += num_data_per_cluster_[cluster_i] / 2.;
-								for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-									FI(0, par_nb + 1) += psi_inv_deriv_psi[par_nb].diagonal().sum() / 2.;
-								}
+							else {
+								trace_PsiInvGradPsi = Zj_square_sum_[cluster_i][j] - 2. * (double)(LInvZtZj_[cluster_i][j].squaredNorm()) +
+									(double)(ZjZ_MInv_ZtZ_t.cwiseProduct(MInv_ZtZ)).sum();
 							}
-							else {//Original scale for asymptotic covariance matrix
-								//The derivative for the nugget variance is the identity matrix, i.e. psi_inv_grad_psi_sigma2 = psi_inv.
-								FI(0, 0) += ((double)(psi_inv.cwiseProduct(psi_inv)).sum()) / 2.;
-								for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-									FI(0, par_nb + 1) += ((double)(psi_inv.cwiseProduct(psi_inv_deriv_psi[par_nb])).sum()) / 2.;
-								}
-							}
+							FI(0, j + 1) += trace_PsiInvGradPsi / (cov_pars[0] * cov_pars[0] * 2.);
 						}
-						//Remaining covariance parameters
-						for (int par_nb = 0; par_nb < num_cov_par_ - 1; ++par_nb) {
-							T_mat psi_inv_grad_psi_par_nb_T = psi_inv_deriv_psi[par_nb].transpose();
-							FI(par_nb + start_cov_pars, par_nb + start_cov_pars) += ((double)(psi_inv_grad_psi_par_nb_T.cwiseProduct(psi_inv_deriv_psi[par_nb])).sum()) / 2.;
-							for (int par_nb_cross = par_nb + 1; par_nb_cross < num_cov_par_ - 1; ++par_nb_cross) {
-								FI(par_nb + start_cov_pars, par_nb_cross + start_cov_pars) += ((double)(psi_inv_grad_psi_par_nb_T.cwiseProduct(psi_inv_deriv_psi[par_nb_cross])).sum()) / 2.;
-							}
-							psi_inv_deriv_psi[par_nb].resize(0, 0);//not needed anymore
-							psi_inv_grad_psi_par_nb_T.resize(0, 0);
+					}//end not transf_scale
+				}//end include_error_var
+				//Remaining covariance parameters
+				for (int j = 0; j < num_comps_total_; ++j) {
+					sp_mat_t* Z_j = re_comps_[cluster_i][j]->GetZ();
+					for (int k = j; k < num_comps_total_; ++k) {
+						sp_mat_t* Z_k = re_comps_[cluster_i][k]->GetZ();
+						T_mat Zjt_Zk = T_mat((*Z_j).transpose() * (*Z_k));
+						T_mat LInvZtZj_t_LInvZtZk = LInvZtZj_[cluster_i][j].transpose() * LInvZtZj_[cluster_i][k];
+						double FI_jk = Zjt_Zk.squaredNorm() + LInvZtZj_t_LInvZtZk.squaredNorm() - 2. * (double)(Zjt_Zk.cwiseProduct(LInvZtZj_t_LInvZtZk)).sum();
+						if (transf_scale) {
+							FI_jk *= cov_pars[j + 1] * cov_pars[k + 1];
 						}
-					}//end gp_approx == "none" and not only_grouped_REs_use_woodbury_identity_
-				}//end gp_approx == "none"
+						else {
+							FI_jk /= cov_pars[0] * cov_pars[0];
+						}
+						FI(j + first_cov_par, k + first_cov_par) += FI_jk / 2.;
+					}
+				}
 			}//end loop over clusters
-			FI.triangularView<Eigen::StrictlyLower>() = FI.triangularView<Eigen::StrictlyUpper>().transpose();
-			//for (int i = 0; i < std::min((int)FI.rows(),4); ++i) {//For debugging only
-			//    for (int j = i; j < std::min((int)FI.cols(),4); ++j) {
-			//	    Log::REInfo("FI(%d,%d) %g", i, j, FI(i, j));
-			//    }
-			//}
-		}//end CalcFisherInformation
+		}//end CalcFisherInformation_Only_Grouped_REs_Woodbury			
 
 		/*!
 		* \brief Calculate the standard deviations for the MLE of the covariance parameters as the diagonal of the inverse Fisher information (on the orignal scale and not the transformed scale used in the optimization, for Gaussian data only)
@@ -7932,48 +7880,23 @@ namespace GPBoost {
 				// Note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
 				// The mode has been calculated already before in the Predict() function above
 				if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
-					likelihood_[cluster_i]->PredictLaplaceApproxGroupedRE(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
-						SigmaI_[cluster_i],
-						Zt_[cluster_i],
-						Ztilde,
-						Sigma,
-						mean_pred_id,
-						cov_mat_pred_id,
-						var_pred_id,
-						predict_cov_mat,
-						predict_var,
-						false);
+					likelihood_[cluster_i]->PredictLaplaceApproxGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], Ztilde, Sigma,
+						mean_pred_id, cov_mat_pred_id, var_pred_id,
+						predict_cov_mat, predict_var, false);
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
-					likelihood_[cluster_i]->PredictLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						num_data_per_cluster_[cluster_i],
-						re_comps_[cluster_i][0]->cov_pars_[0],
-						re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
-						cross_cov,
-						mean_pred_id,
-						cov_mat_pred_id,
-						var_pred_id,
-						predict_cov_mat,
-						predict_var,
-						false);
+					likelihood_[cluster_i]->PredictLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
+						re_comps_[cluster_i][0]->cov_pars_[0], re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(), cross_cov,
+						mean_pred_id, cov_mat_pred_id, var_pred_id,
+						predict_cov_mat, predict_var, false);
 				}
 				else {
-					likelihood_[cluster_i]->PredictLaplaceApproxStable(y_[cluster_i].data(),
-						y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr,
-						ZSigmaZt_[cluster_i],
-						cross_cov,
-						mean_pred_id,
-						cov_mat_pred_id,
-						var_pred_id,
-						predict_cov_mat,
-						predict_var,
-						false);
+					likelihood_[cluster_i]->PredictLaplaceApproxStable(y_[cluster_i].data(), y_int_[cluster_i].data(),
+						fixed_effects_cluster_i_ptr, ZSigmaZt_[cluster_i], cross_cov,
+						mean_pred_id, cov_mat_pred_id, var_pred_id,
+						predict_cov_mat, predict_var, false);
 				}
 			}//end not gauss_likelihood_
 		}//end CalcPred
