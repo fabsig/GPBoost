@@ -4113,6 +4113,12 @@ namespace GPBoost {
 		std::map<data_size_t, sp_mat_t> P_Zt_;
 		/*! \brief Permuted matrices ZtZj_ when Cholesky factors have a permutation matrix */
 		std::map<data_size_t, std::vector<sp_mat_t>> P_ZtZj_;
+		/*! \brief Collects matrices Z_j^T * Z_k (usually not saved, only if only_grouped_REs_use_woodbury_identity_ and Fisher scoring is used) */
+		std::map<data_size_t, std::vector<T_mat>> Zjt_Zk_;
+		/*! \brief Indicates whether Zjt_Zk_ has been saved */
+		bool Zjt_Zk_saved_ = false;
+		/*! \brief Collects matrices (Z_j^T * Z_k).squaredNorm() (usually not saved, only if only_grouped_REs_use_woodbury_identity_ and Fisher scoring is used) */
+		std::map<data_size_t, std::vector<double>> Zjt_Zk_squaredNorm_;
 
 		// VECCHIA APPROXIMATION for GP
 		/*! \brief If true, a memory optimized version of the Vecchia approximation is used (at the expense of being slightly slower). THiS IS CURRENTLY NOT IMPLEMENTED */
@@ -7339,23 +7345,38 @@ namespace GPBoost {
 					}//end not transf_scale
 				}//end include_error_var
 				//Remaining covariance parameters
+				int counter = 0;
 				for (int j = 0; j < num_comps_total_; ++j) {
 					sp_mat_t* Z_j = re_comps_[cluster_i][j]->GetZ();
 					for (int k = j; k < num_comps_total_; ++k) {
-						sp_mat_t* Z_k = re_comps_[cluster_i][k]->GetZ();
-						T_mat Zjt_Zk = T_mat((*Z_j).transpose() * (*Z_k));
+						// if used for Fisher scoring, this is repeatedly done -> save quantities that do not change over iterations
+						if (!Zjt_Zk_saved_) {
+							sp_mat_t* Z_k = re_comps_[cluster_i][k]->GetZ();
+							Zjt_Zk_[cluster_i].push_back((T_mat)((*Z_j).transpose() * (*Z_k)));
+							Zjt_Zk_squaredNorm_[cluster_i].push_back(Zjt_Zk_[cluster_i][counter].squaredNorm());
+						}
 						T_mat LInvZtZj_t_LInvZtZk = LInvZtZj_[cluster_i][j].transpose() * LInvZtZj_[cluster_i][k];
-						double FI_jk = Zjt_Zk.squaredNorm() + LInvZtZj_t_LInvZtZk.squaredNorm() - 2. * (double)(Zjt_Zk.cwiseProduct(LInvZtZj_t_LInvZtZk)).sum();
+						double FI_jk = Zjt_Zk_squaredNorm_[cluster_i][counter] + 
+							LInvZtZj_t_LInvZtZk.squaredNorm() - 
+							2. * (double)(Zjt_Zk_[cluster_i][counter].cwiseProduct(LInvZtZj_t_LInvZtZk)).sum();
 						if (transf_scale) {
 							FI_jk *= cov_pars[j + 1] * cov_pars[k + 1];
 						}
 						else {
 							FI_jk /= cov_pars[0] * cov_pars[0];
+							Zjt_Zk_[cluster_i][counter].resize(0, 0);//can be released as it is not used anylonger
 						}
 						FI(j + first_cov_par, k + first_cov_par) += FI_jk / 2.;
-					}
-				}
+						counter++;
+					}//end loop k
+				}//end loop j
 			}//end loop over clusters
+			if (transf_scale) {
+				Zjt_Zk_saved_ = true;
+			}
+			else {
+				Zjt_Zk_saved_ = false;
+			}
 		}//end CalcFisherInformation_Only_Grouped_REs_Woodbury			
 
 		/*!
