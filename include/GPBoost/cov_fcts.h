@@ -69,10 +69,10 @@ namespace GPBoost {
 				Log::REFatal("Covariance of type '%s' is not supported ", cov_fct_type.c_str());
 			}
 			if (cov_fct_type == "matern_space_time" || cov_fct_type == "matern_ard" || cov_fct_type == "gaussian_ard") {
-				save_distances_ = false;
+				is_isotropic_ = false;
 			}
 			else {
-				save_distances_ = true;
+				is_isotropic_ = true;
 			}
 			if (cov_fct_type == "matern_space_time") {
 				num_cov_par_ = 3;
@@ -134,8 +134,8 @@ namespace GPBoost {
 			return(cov_fct_type_);
 		}
 
-		bool ShouldSaveDistances() const {
-			return(save_distances_);
+		bool IsIsotropic() const {
+			return(is_isotropic_);
 		}
 
 		bool IsSpaceTimeModel() const {
@@ -303,6 +303,7 @@ namespace GPBoost {
 		* \param pars Vector with covariance parameters
 		* \param[out] sigma Covariance matrix
 		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g., for training data)
+		* \param distances_provided If true, 'dist' is provided, otherwise 'coords' (and 'coords_pred')
 		*/
 		template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
 		void GetCovMat(const T_mat& dist,
@@ -310,16 +311,26 @@ namespace GPBoost {
 			const den_mat_t& coords_pred,
 			const vec_t& pars,
 			T_mat& sigma,
-			bool is_symmmetric) const {
+			bool is_symmmetric,
+			bool distances_provided) const {
 			CHECK(pars.size() == num_cov_par_);
-			if (save_distances_) {
+			if (distances_provided) {
+				CHECK(dist.rows() > 0);
+				CHECK(dist.cols() > 0);
+				if (is_symmmetric) {
+					CHECK(dist.rows() == dist.cols());
+				}
 				sigma = T_mat(dist.rows(), dist.cols());
 			}
 			else {
+				CHECK(coords.rows() > 0);
+				CHECK(coords.cols() > 0);
 				if (is_symmmetric) {
 					sigma = T_mat(coords.rows(), coords.rows());
 				}
 				else {
+					CHECK(coords_pred.rows() > 0);
+					CHECK(coords_pred.cols() > 0);
 					sigma = T_mat(coords_pred.rows(), coords.rows());
 				}
 			}
@@ -609,8 +620,24 @@ namespace GPBoost {
 			const den_mat_t& coords_pred,
 			const vec_t& pars,
 			T_mat& sigma,
-			bool is_symmmetric) const {
+			bool is_symmmetric,
+			bool distances_provided) const {
 			CHECK(pars.size() == num_cov_par_);
+			if (distances_provided) {
+				CHECK(dist.rows() > 0);
+				CHECK(dist.cols() > 0);
+				if (is_symmmetric) {
+					CHECK(dist.rows() == dist.cols());
+				}
+			}
+			else {
+				CHECK(coords.rows() > 0);
+				CHECK(coords.cols() > 0);
+				if (!is_symmmetric) {
+					CHECK(coords_pred.rows() > 0);
+					CHECK(coords_pred.cols() > 0);
+				}
+			}
 			sigma = dist;
 			sigma.makeCompressed();
 			if (cov_fct_type_ == "exponential" ||
@@ -1219,6 +1246,7 @@ namespace GPBoost {
 		* \param nugget_var Nugget / error variance parameters sigma^2 (used only if transf_scale = false to transform back for gaussian likelihoods since then the nugget is factored out)
 		* \param ind_range Which range parameter (if there are multiple)
 		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g., for training data)
+		* \param distances_provided If true, 'dist' is provided, otherwise 'coords' (and 'coords_pred')
 		*/
 		template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
 		void GetCovMatGradRange(const T_mat& dist,
@@ -1230,9 +1258,10 @@ namespace GPBoost {
 			bool transf_scale,
 			double nugget_var,
 			int ind_range,
-			bool is_symmmetric) const {
+			bool is_symmmetric,
+			bool distances_provided) const {
 			CHECK(pars.size() == num_cov_par_);
-			if (save_distances_) {
+			if (distances_provided) {
 				CHECK(sigma.cols() == dist.cols());
 				CHECK(sigma.rows() == dist.rows());
 			}
@@ -1796,9 +1825,24 @@ namespace GPBoost {
 			bool transf_scale,
 			double nugget_var,
 			int ind_range,
-			bool is_symmmetric) const {
+			bool is_symmmetric,
+			bool distances_provided) const {
 			CHECK(pars.size() == num_cov_par_);
 			CHECK(sigma.cols() == sigma.rows());
+			if (distances_provided) {
+				CHECK(sigma.cols() == dist.cols());
+				CHECK(sigma.rows() == dist.rows());
+			}
+			else {
+				if (is_symmmetric) {
+					CHECK(sigma.rows() == coords.rows());
+					CHECK(sigma.cols() == coords.rows());
+				}
+				else {
+					CHECK(sigma.rows() == coords_pred.rows());
+					CHECK(sigma.cols() == coords.rows());
+				}
+			}
 			int dim_space = (int)coords.cols();
 			if (cov_fct_type_ == "matern_space_time") {
 				dim_space = (int)coords.cols() - 1;
@@ -2719,8 +2763,8 @@ namespace GPBoost {
 		bool apply_tapering_ = false;
 		/*! \brief Number of covariance parameters */
 		int num_cov_par_;
-		/*! \brief If true, distances should be saved depending on the covariance function (in re_comp.h) */
-		bool save_distances_;
+		/*! \brief If true, the covariance function is isotropic */
+		bool is_isotropic_;
 		/*! \brief List of supported covariance functions */
 		const std::set<string_t> SUPPORTED_COV_TYPES_{ "exponential",
 			"gaussian",
