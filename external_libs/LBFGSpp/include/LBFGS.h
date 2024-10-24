@@ -78,12 +78,16 @@ public:
     ///           found.
     /// \param fx Out: The objective function value at `x`.
     /// \param reuse_m_bfgs_from_previous_call If true, a given m_bfgs matrix is used (provided in m_bfgs_out)
-    /// \param m_bfgs_given 
+    /// \param[out] m_bfgs_given Initial approximation to the Hessian matrix. The final matrix is written on this
     ///
     /// \return Number of iterations used.
     ///
     template <typename Foo>
-    inline int minimize(Foo& f, Vector& x, Scalar& fx, bool reuse_m_bfgs_from_previous_call, BFGSMat<Scalar>& m_bfgs_given)
+    inline int minimize(Foo& f, 
+        Vector& x, 
+        Scalar& fx, 
+        bool reuse_m_bfgs_from_previous_call, 
+        BFGSMat<Scalar>& m_bfgs_given)
     {
         using std::abs;
 
@@ -95,7 +99,7 @@ public:
         const int fpast = m_param.past;
 
         // Evaluate function and compute gradient
-        fx = f(x, m_grad, true, true);// ChangedForGPBoost
+        fx = f(x, m_grad, true, true);
 
         std::string init_coef_str = "";
         if (f.HasCovariates())
@@ -123,9 +127,6 @@ public:
         if (fpast > 0)
             m_fx[0] = fx;
 
-        // std::cout << "x0 = " << x.transpose() << std::endl;
-        // std::cout << "f(x0) = " << fx << ", ||grad|| = " << m_gnorm << std::endl << std::endl;
-
         // Early exit if the initial x is already a minimizer
         if (m_gnorm <= m_param.epsilon || m_gnorm <= m_param.epsilon_rel * x.norm())
         {
@@ -150,10 +151,9 @@ public:
         {
             // Initial direction
             m_drt.noalias() = -m_grad;
-            step = Scalar(m_param.initial_step_factor) / m_drt.norm();  // ChangedForGPBoost
+            step = Scalar(m_param.initial_step_factor) / m_drt.norm();
         }
         
-
         // Tolerance for s'y >= eps * (y'y)
         constexpr Scalar eps = std::numeric_limits<Scalar>::epsilon();
         // s and y vectors
@@ -163,16 +163,13 @@ public:
         int k = 1;
         for (;;)
         {
-
-            // std::cout << "Iter " << k << " begins" << std::endl << std::endl;
-
             // Save the curent x and gradient
             m_xp.noalias() = x;
             m_gradp.noalias() = m_grad;
             Scalar dg = m_grad.dot(m_drt);
             const Scalar step_max = m_param.max_step;
 
-            // ChangedForGPBoost
+            // Determine maximally allowed learning rate
             Vector neg_mdrt = -m_drt;
             double max_lr = f.GetMaximalLearningRate(x, neg_mdrt);
             if (max_lr < step)
@@ -181,68 +178,92 @@ public:
             }
             // Line search to update x, fx and gradient
             LineSearch<Scalar>::LineSearch(f, m_param, m_xp, m_drt, step_max, step, fx, m_grad, dg, x);
+            f(x, m_grad, false, true); // calculate new gradient
+            m_gnorm = m_grad.norm(); // new gradient norm for convergence tests
 
-            // New gradient norm
-            m_gnorm = m_grad.norm();
-
-            // std::cout << "Iter " << k << " finished line search" << std::endl;
-            // std::cout << "   x = " << x.transpose() << std::endl;
-            // std::cout << "   f(x) = " << fx << ", ||grad|| = " << m_gnorm << std::endl << std::endl;
-
+            // convergence tests
+            bool has_converged = false, has_converged_maxit = false;
             // Convergence test -- gradient
             if (m_gnorm <= m_param.epsilon || m_gnorm <= m_param.epsilon_rel * x.norm())
             {
-                m_bfgs_given = m_bfgs;
-                return k;
+                has_converged = true;
             }
             // Convergence test -- objective function value
             if (fpast > 0)
             {
                 const Scalar fxd = m_fx[k % fpast];
-
-                // ChangedForGPBoost
                 if (k >= fpast && (fxd - fx) <= m_param.delta * std::max(abs(fxd), Scalar(1)))
                 {
-                    m_bfgs_given = m_bfgs;
-                    return k;
-                }                   
-
-                m_fx[k % fpast] = fx;
+                    has_converged = true;
+                }
             }
             // Maximum number of iterations
             if (m_param.max_iterations != 0 && k >= m_param.max_iterations)
             {
+                has_converged = true;
+                has_converged_maxit = true;
+            }
+            //end convergence tests
+
+            // Potentially redetermine nearest neighbors for Vecchia approximation
+            f.SetNumIter(k - 1);
+            f.SetLag1ProfiledOutVariables();
+            if (f.LearnCovarianceParameters() && f.ShouldRedetermineNearestNeighborsVecchia(has_converged))
+            {
+                f.RedetermineNearestNeighborsVecchia(has_converged); // called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
+                m_fx[k % fpast] = f(m_xp, m_gradp, true, true);       // recalculate lag-1 objective and gradient
+                fx = f(x, m_grad, true, true); // recalculate new objective and gradient
+                // check convergence again
+                if (has_converged && !has_converged_maxit) 
+                {
+                    has_converged = false;
+                    m_gnorm = m_grad.norm();  // new gradient norm
+                    if (m_gnorm <= m_param.epsilon || m_gnorm <= m_param.epsilon_rel * x.norm())
+                    {
+                        has_converged = true;
+                    }
+                    if (fpast > 0)
+                    {
+                        if (fpast != 1)
+                        {
+                            Log::REFatal("'fpast' must be 1 for 'RedetermineNearestNeighborsVecchia' but was %g ", fpast);
+                        }
+                        const Scalar fxd = m_fx[k % fpast];
+                        if (k >= fpast && (fxd - fx) <= m_param.delta * std::max(abs(fxd), Scalar(1)))
+                        {
+                            has_converged = true;
+                        }
+                    }
+                }//end check convergence again
+            }//end potentially redetermine nearest neighbors for Vecchia approximation
+
+            if (has_converged)
+            {
                 m_bfgs_given = m_bfgs;
                 return k;
             }
-
-            // Update s and y
-            // s_{k+1} = x_{k+1} - x_k
-            // y_{k+1} = g_{k+1} - g_k
-            vecs.noalias() = x - m_xp;
-            vecy.noalias() = m_grad - m_gradp;
-            if (vecs.dot(vecy) > eps * vecy.squaredNorm())
-                m_bfgs.add_correction(vecs, vecy);
-
-            // Recursive formula to compute d = -H * g
-            m_bfgs.apply_Hv(m_grad, -Scalar(1), m_drt);
-
-            // Reset step = 1.0 as initial guess for the next line search
-            step = Scalar(1);
-
-            // ChangedForGPBoost
-            f.SetNumIter(k - 1);
-            f.SetLag1ProfiledOutVariables();
-            if (f.LearnCovarianceParameters() && f.ShouldRedetermineNearestNeighborsVecchia())
+            else
             {
-                f.RedetermineNearestNeighborsVecchia();  // called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
-                fx = f(x, m_grad, true, false);
+                // Update s and y
+                // s_{k+1} = x_{k+1} - x_k
+                // y_{k+1} = g_{k+1} - g_k
+                vecs.noalias() = x - m_xp;
+                vecy.noalias() = m_grad - m_gradp;
+                if (vecs.dot(vecy) > eps * vecy.squaredNorm())
+                    m_bfgs.add_correction(vecs, vecy);
+
+                // Reset step = 1.0 as initial guess for the next line search
+                step = Scalar(1);
+
+                // Recursive formula to compute d = -H * g
                 m_bfgs.apply_Hv(m_grad, -Scalar(1), m_drt);
+
                 if (fpast > 0)
                 {
                     m_fx[k % fpast] = fx;
                 }
             }
+
             if ((k < 10 || (k % 10 == 0 && k < 100) || (k % 100 == 0 && k < 1000) ||
                  (k % 1000 == 0 && k < 10000) || (k % 10000 == 0)))
             {

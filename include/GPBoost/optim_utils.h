@@ -140,8 +140,13 @@ namespace GPBoost {
 		else {//!should_print_trace
 			if (should_redetermine_neighbors_vecchia) {
 				re_model_templ_->SetNumIter((int)objfn_data->settings_->opt_iter);
-				if (re_model_templ_->ShouldRedetermineNearestNeighborsVecchia()) {
-					re_model_templ_->RedetermineNearestNeighborsVecchia(); // called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
+				bool force_redermination = false;
+				if ((*gradient)[2] >= 1e30 && (*gradient)[2] <= 1.00000000002e30){//hack to indicate that convergece has been achieved and nearest neighbors in Vecchia approximation should potentially been redetermined
+					force_redermination = true;
+				}
+				if (re_model_templ_->ShouldRedetermineNearestNeighborsVecchia(force_redermination)) {
+					re_model_templ_->RedetermineNearestNeighborsVecchia(force_redermination); // called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
+					neg_log_likelihood = 1.00000000001e30;//hack to tell the optimizers that the neighbors have indeed been redetermined
 				}
 			} //end should_redetermine_neighbors_vecchia
 			if (calc_likelihood) {
@@ -386,17 +391,19 @@ namespace GPBoost {
 
 		/*!
 		* \brief Indicates whether correlation-based nearest neighbors for Vecchia approximation should be updated
+		* \param force_redermination If true, the neighbors are redetermined if applicaple irrespective of num_iter_
 		* \return True, if nearest neighbors have been redetermined
 		*/
-		bool ShouldRedetermineNearestNeighborsVecchia() {
-			return(re_model_templ_->ShouldRedetermineNearestNeighborsVecchia());
+		bool ShouldRedetermineNearestNeighborsVecchia(bool force_redermination) {
+			return(re_model_templ_->ShouldRedetermineNearestNeighborsVecchia(force_redermination));
 		}
 
 		/*!
 		* \brief Redetermine correlation-based nearest neighbors for Vecchia approximation
+		* \param force_redermination If true, the neighbors are redetermined if applicaple irrespective of num_iter_
 		*/
-		void RedetermineNearestNeighborsVecchia() {
-			re_model_templ_->RedetermineNearestNeighborsVecchia();
+		void RedetermineNearestNeighborsVecchia(bool force_redermination) {
+			re_model_templ_->RedetermineNearestNeighborsVecchia(force_redermination);
 		}
 
 		/*!
@@ -629,10 +636,10 @@ namespace GPBoost {
 		else if (optimizer == "lbfgs" || optimizer == "lbfgs_linesearch_nocedal_wright") {
 			LBFGSpp::LBFGSParam<double> param_LBFGSpp;
 			param_LBFGSpp.max_iterations = max_iter;
-			param_LBFGSpp.past = 1;//convergence should be determined by checking the change in the obejctive function and not the norm of the gradient
-			param_LBFGSpp.delta = delta_rel_conv;
-			param_LBFGSpp.epsilon = 1e-10;
-			param_LBFGSpp.epsilon_rel = 1e-10;
+			param_LBFGSpp.past = 1;//convergence should be determined by checking the change in the objective function and not the norm of the gradient
+			param_LBFGSpp.delta = delta_rel_conv;//tolerence for relative change in objective function as convergence chec
+			param_LBFGSpp.epsilon = 1e-10;//tolerance for norm of gradient as convergence check
+			param_LBFGSpp.epsilon_rel = 1e-10;//tolerance for norm of gradient relative to norm of parameters as convergence check
 			param_LBFGSpp.max_linesearch = 20;
 			param_LBFGSpp.m = 6;
 			param_LBFGSpp.initial_step_factor = initial_step_factor;

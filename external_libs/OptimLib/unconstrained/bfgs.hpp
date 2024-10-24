@@ -229,7 +229,8 @@ internal::bfgs_impl(
 
     size_t iter = 0;
 
-    while (grad_err > grad_err_tol && rel_sol_change > rel_sol_change_tol && iter < iter_max) {
+    bool has_converged = false;
+    while (!has_converged) {
         ++iter;
 
         //
@@ -252,15 +253,10 @@ internal::bfgs_impl(
             W = W_term_1 * W * OPTIM_MATOPS_TRANSPOSE_IN_PLACE(W_term_1) + s * OPTIM_MATOPS_TRANSPOSE_IN_PLACE(s) / W_denom_term;
         }
 
-        //
-
         grad_err = OPTIM_MATOPS_L2NORM(grad_p);
         rel_sol_change = OPTIM_MATOPS_L1NORM( OPTIM_MATOPS_ARRAY_DIV_ARRAY(s, (OPTIM_MATOPS_ARRAY_ADD_SCALAR(OPTIM_MATOPS_ABS(x), 1.0e-08)) ) );
         
-        x = x_p;
-        grad = grad_p;
-
-        //
+        has_converged = !(grad_err > grad_err_tol && rel_sol_change > rel_sol_change_tol && iter < iter_max);
     
         //ChangedForGPBoost
         //OPTIM_BFGS_TRACE(iter, grad_err, rel_sol_change, x, d, grad, s, y, W);
@@ -271,7 +267,23 @@ internal::bfgs_impl(
         Vec_t gradient_dummy(2);//"hack" for redermininig neighbors for the Vecchia approximation
         gradient_dummy[0] = 1.00000000001e30;
         gradient_dummy[1] = -1.00000000001e30;
-        opt_objfn(x, &gradient_dummy, opt_data);
+        if (has_converged) {
+            gradient_dummy[2] = 1.00000000001e30;//hack to force redetermination of nearest neighbors
+        }
+        else {
+            gradient_dummy[2] = -1.00000000001e30;
+        }
+        double neighbors_have_been_redetermined = opt_objfn(x, &gradient_dummy, opt_data);
+        //recalculated gradient of objective function if neighbors have been redetermined and check convergence again
+        if (neighbors_have_been_redetermined >= 1e30 && neighbors_have_been_redetermined <= 1.00000000002e30) {//hack that indicates that the neighbors have been redetermined
+            box_objfn(x_p, &grad_p, opt_data);
+            grad_err = OPTIM_MATOPS_L2NORM(grad_p);
+            has_converged = !(grad_err > grad_err_tol && rel_sol_change > rel_sol_change_tol && iter < iter_max);
+        }
+
+        x = x_p;
+        grad = grad_p;
+
         //print trace information
         if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
             (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {

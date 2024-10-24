@@ -139,7 +139,6 @@ public:
         {
             Log::REDebug("LineSearch for 'lbfgs' finished after %d iterations, step length = %g", iter, step);
         }
-        f(x, grad, false, true);//calculate gradient
          
     }
 };

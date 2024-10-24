@@ -915,9 +915,9 @@ namespace GPBoost {
 			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian likelihoods)
 			// - calculate initial value of objective function
 			// - Note: initial values of aux_pars (additional parameters of likelihood) are set in likelihoods.h
-			if (ShouldRedetermineNearestNeighborsVecchia()) {
+			if (ShouldRedetermineNearestNeighborsVecchia(true)) {
 				SetCovParsComps(cov_aux_pars.segment(0, num_cov_par_));
-				RedetermineNearestNeighborsVecchia();//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
+				RedetermineNearestNeighborsVecchia(true);//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
 			}
 			if (optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright") {
 				CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);
@@ -1179,26 +1179,30 @@ namespace GPBoost {
 					}
 					if (!na_or_inf_occurred) {
 						// Check convergence
-						if (convergence_criterion_ == "relative_change_in_parameters") {
-							if (has_covariates_) {
-								if (((beta_ - beta_lag1).norm() <= delta_rel_conv_ * beta_lag1.norm()) && ((cov_aux_pars - cov_aux_pars_lag1).norm() < delta_rel_conv_ * cov_aux_pars_lag1.norm())) {
-									terminate_optim = true;
+						terminate_optim = CheckOptimizerHasConverged(cov_aux_pars, cov_aux_pars_lag1, beta_lag1);
+						if (learn_covariance_parameters && ShouldRedetermineNearestNeighborsVecchia(terminate_optim)) {
+							RedetermineNearestNeighborsVecchia(terminate_optim);//called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
+							if (convergence_criterion_ == "relative_change_in_log_likelihood") {
+								//recalculate old and new objective function when neighbors have been redetermined
+								if (has_covariates_) {
+									UpdateFixedEffects(beta_lag1, fixed_effects, fixed_effects_vec);
+									fixed_effects_ptr = fixed_effects_vec.data();
 								}
-							}
-							else {
-								if ((cov_aux_pars - cov_aux_pars_lag1).norm() <= delta_rel_conv_ * cov_aux_pars_lag1.norm()) {
-									terminate_optim = true;
+								if (estimate_aux_pars_) {
+									SetAuxPars(cov_aux_pars_lag1.data() + num_cov_par_);
 								}
+								CalcCovFactorOrModeAndNegLL(cov_aux_pars_lag1.segment(0, num_cov_par_), fixed_effects_ptr);//recalculate old log-likelihood
+								neg_log_likelihood_lag1_ = neg_log_likelihood_;
+								if (has_covariates_) {
+									UpdateFixedEffects(beta_, fixed_effects, fixed_effects_vec);
+									fixed_effects_ptr = fixed_effects_vec.data();
+								}
+								if (estimate_aux_pars_) {
+									SetAuxPars(cov_aux_pars.data() + num_cov_par_);
+								}
+								CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);//recalculate new log-likelihood
+								terminate_optim = CheckOptimizerHasConverged(cov_aux_pars, cov_aux_pars_lag1, beta_lag1);
 							}
-						}
-						else if (convergence_criterion_ == "relative_change_in_log_likelihood") {
-							if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) <= delta_rel_conv_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
-								terminate_optim = true;
-							}
-						} // end check convergence
-						if (learn_covariance_parameters && ShouldRedetermineNearestNeighborsVecchia()) {
-							RedetermineNearestNeighborsVecchia();//called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
-							CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);//recalculate log-likelihood
 						}
 						// Trace output for convergence monitoring
 						if ((num_iter_ < 10 || ((num_iter_ + 1) % 10 == 0 && (num_iter_ + 1) < 100) || ((num_iter_ + 1) % 100 == 0 && (num_iter_ + 1) < 1000) ||
@@ -1353,6 +1357,29 @@ namespace GPBoost {
 				}
 			}
 		}//end OptimLinRegrCoefCovPar
+
+		bool CheckOptimizerHasConverged(const vec_t& cov_aux_pars, 
+			const vec_t& cov_aux_pars_lag1,
+			const vec_t& beta_lag1) const {
+			if (convergence_criterion_ == "relative_change_in_parameters") {
+				if (has_covariates_) {
+					if (((beta_ - beta_lag1).norm() <= delta_rel_conv_ * beta_lag1.norm()) && ((cov_aux_pars - cov_aux_pars_lag1).norm() < delta_rel_conv_ * cov_aux_pars_lag1.norm())) {
+						return true;
+					}
+				}
+				else {
+					if ((cov_aux_pars - cov_aux_pars_lag1).norm() <= delta_rel_conv_ * cov_aux_pars_lag1.norm()) {
+						return true;
+					}
+				}
+			}
+			else if (convergence_criterion_ == "relative_change_in_log_likelihood") {
+				if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) <= delta_rel_conv_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
+					return true;
+				}
+			} // end check convergence
+			return false;
+		}//CheckOptimizerHasConverged
 
 		/*!
 		* \brief Calculate gradient wrt the covariance and auxiliary parameters and regression coefficients
@@ -2048,12 +2075,9 @@ namespace GPBoost {
 				const vec_t cov_pars_vec = Eigen::Map<const vec_t>(cov_pars, num_cov_par_);
 				SetCovParsComps(cov_pars_vec);
 				if (redetermine_neighbors_vecchia) {
-					int num_it_temp = num_iter_;//"hack" to make sure that 'RedetermineNearestNeighborsVecchia' is called (if applicable) even if a model has been estimated already
-					num_iter_ = 0;
-					if (ShouldRedetermineNearestNeighborsVecchia()) {
-						RedetermineNearestNeighborsVecchia();//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
+					if (ShouldRedetermineNearestNeighborsVecchia(true)) {
+						RedetermineNearestNeighborsVecchia(true);//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
 					}
-					num_iter_ = num_it_temp;
 				}
 				CalcCovFactor(false, true, 1., false);//Create covariance matrix and factorize it
 			}
@@ -2236,12 +2260,9 @@ namespace GPBoost {
 					const vec_t cov_pars_vec = Eigen::Map<const vec_t>(cov_pars, num_cov_par_);
 					SetCovParsComps(cov_pars_vec);
 					if (redetermine_neighbors_vecchia) {
-						int num_it_temp = num_iter_;//"hack" to make sure that 'RedetermineNearestNeighborsVecchia' is called (if applicable) even if a model has been estimated already
-						num_iter_ = 0;
-						if(ShouldRedetermineNearestNeighborsVecchia()) {
-							RedetermineNearestNeighborsVecchia();//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
+						if(ShouldRedetermineNearestNeighborsVecchia(true)) {
+							RedetermineNearestNeighborsVecchia(true);//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
 						}
-						num_iter_ = num_it_temp;
 					}
 					if (gp_approx_ == "vecchia" || gp_approx_ == "fitc") {
 						CalcCovFactor(true, true, 1., false);
@@ -3635,14 +3656,15 @@ namespace GPBoost {
 
 		/*!
 		* \brief Indicates whether correlation-based nearest neighbors for Vecchia approximation should be updated
+		* \param force_redermination If true, the neighbors are redetermined if applicaple irrespective of num_iter_  
 		* \return redetermine_nn True, if nearest neighbors have been redetermined
 		*/
-		bool ShouldRedetermineNearestNeighborsVecchia() {
+		bool ShouldRedetermineNearestNeighborsVecchia(bool force_redermination) {
 			bool redetermine_nn = false;
 			if (gp_approx_ == "vecchia") {
 				std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[unique_clusters_[0]][ind_intercept_gp_]);
 				if (!(re_comp->ShouldSaveDistances())) {
-					if ((((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0) {//(num_iter_ + 1) is power of 2 or 0. 
+					if ((((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0 || force_redermination) {//(num_iter_ + 1) is power of 2 or 0. 
 						// Note that convergence of internal optimizers is not checked in iterations with redetermine_nn if convergence_criterion_ == "relative_change_in_log_likelihood"
 						redetermine_nn = true;
 					}
@@ -3653,9 +3675,10 @@ namespace GPBoost {
 
 		/*!
 		* \brief Redetermine correlation-based nearest neighbors for Vecchia approximation
+		* \param force_redermination If true, the neighbors are redetermined if applicaple irrespective of num_iter_  
 		*/
-		void RedetermineNearestNeighborsVecchia() {
-			CHECK(ShouldRedetermineNearestNeighborsVecchia());
+		void RedetermineNearestNeighborsVecchia(bool force_redermination) {
+			CHECK(ShouldRedetermineNearestNeighborsVecchia(force_redermination));
 			for (const auto& cluster_i : unique_clusters_) {
 				// redetermine nearest neighbors for models for which neighbors are selected based on correlations / scaled distances
 				UpdateNearestNeighbors(re_comps_[cluster_i], nearest_neighbors_[cluster_i],
@@ -7583,12 +7606,9 @@ namespace GPBoost {
 				// no need to call CalcCovFactor here for the Vecchia approximation for Gaussian data, this is done in the prediction steps below, 
 				//	but when predicting training data random effects, this is required
 				if (calc_cov_factor) {
-					int num_it_temp = num_iter_;//"hack" to make sure that 'RedetermineNearestNeighborsVecchia' is called (if applicable) even if a model has been estimated already
-					num_iter_ = 0;
-					if (ShouldRedetermineNearestNeighborsVecchia()) {
-						RedetermineNearestNeighborsVecchia();//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
+					if (ShouldRedetermineNearestNeighborsVecchia(true)) {
+						RedetermineNearestNeighborsVecchia(true);//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
 					}
-					num_iter_ = num_it_temp;
 					if (gauss_likelihood_) {
 						CalcCovFactor(false, true, 1., false);// Create covariance matrix and factorize it
 					}

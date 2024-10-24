@@ -194,7 +194,8 @@ internal::nm_impl(
     simplex_fn_vals_old = simplex_fn_vals;
     simplex_points_old = simplex_points;
 
-    while (rel_objfn_change > rel_objfn_change_tol && rel_sol_change > rel_sol_change_tol && iter < iter_max) {
+    bool has_converged = false;
+    while (!has_converged) {
         ++iter;
         bool next_iter = false;
         
@@ -307,18 +308,35 @@ internal::nm_impl(
             simplex_points_old = simplex_points;
         }
 
-        // printing
+        has_converged = !(rel_objfn_change > rel_objfn_change_tol && rel_sol_change > rel_sol_change_tol && iter < iter_max);
 
         //ChangedForGPBoost
-        //OPTIM_NM_TRACE(iter, min_val, rel_objfn_change, rel_sol_change, simplex_fn_vals, simplex_points);
         if (settings_inp) {
             settings_inp->opt_iter = iter - 1;
         }
         //redetermine neighbors for the Vecchia approximation if applicable
-        Vec_t gradient_dummy(3);//"hack" for redermininig neighbors for the Vecchia approximation
+        Vec_t gradient_dummy(3);//"hack" for redermininig neighbors for the Vecchia approximation (i.e. calling RedetermineNearestNeighborsVecchia())
         gradient_dummy[0] = 1.00000000001e30;
         gradient_dummy[1] = -1.00000000001e30;
-        opt_objfn(simplex_points.row(index_min(simplex_fn_vals)), &gradient_dummy, opt_data);
+        if (has_converged) {
+            gradient_dummy[2] = 1.00000000001e30;//hack to force redetermination of nearest neighbors
+        }
+        else {
+            gradient_dummy[2] = -1.00000000001e30;
+        }
+        double neighbors_have_been_redetermined = opt_objfn(simplex_points.row(index_min(simplex_fn_vals)), &gradient_dummy, opt_data);
+        if (neighbors_have_been_redetermined >= 1e30 && neighbors_have_been_redetermined <= 1.00000000002e30) {//hack that indicates that the neighbors have indeed been redetermined
+            //recalculated objective values if neighbors have been redetermined and check convergence again
+#ifdef OPTIM_USE_OMP
+#pragma omp parallel for
+#endif
+            for (size_t i = 1; i < n_vals + 1; i++) {
+                simplex_fn_vals(i) = box_objfn(OPTIM_MATOPS_TRANSPOSE(simplex_points.row(i)), nullptr, opt_data);
+            }
+            rel_objfn_change = (OPTIM_MATOPS_ABS_MAX_VAL(simplex_fn_vals - simplex_fn_vals_old)) / (1.0e-08 + OPTIM_MATOPS_ABS_MAX_VAL(simplex_fn_vals_old));
+            has_converged = !(rel_objfn_change > rel_objfn_change_tol && rel_sol_change > rel_sol_change_tol && iter < iter_max);
+        }
+
         //print trace information
         if ((iter < 10 || (iter % 10 == 0 && iter < 100) || (iter % 100 == 0 && iter < 1000) ||
             (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
@@ -327,7 +345,8 @@ internal::nm_impl(
             gradient_dummy[2] = min_val;
             opt_objfn(simplex_points.row(index_min(simplex_fn_vals)), &gradient_dummy, opt_data);
         }
-    }
+        //OPTIM_NM_TRACE(iter, min_val, rel_objfn_change, rel_sol_change, simplex_fn_vals, simplex_points);
+    }//end while loop
 
     //ChangedForGPBoost
     //if (print_level > 0) {
