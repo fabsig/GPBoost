@@ -617,10 +617,13 @@ namespace GPBoost {
 			cov_pars.segment(0, num_cov_par), profile_out_marginal_variance, &settings, optimizer);
 		if (convergence_criterion == "relative_change_in_parameters") {
 			settings.rel_sol_change_tol = delta_rel_conv;
+			settings.rel_objfn_change_tol = 1e-20;
+			settings.grad_err_tol = 1e-20;
 		}
 		else if (convergence_criterion == "relative_change_in_log_likelihood") {
 			settings.rel_objfn_change_tol = delta_rel_conv;
 			settings.grad_err_tol = delta_rel_conv;
+			settings.rel_sol_change_tol = 1e-20;
 		}
 		if (optimizer == "nelder_mead") {
 			optim::nm(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
@@ -638,8 +641,8 @@ namespace GPBoost {
 			param_LBFGSpp.max_iterations = max_iter;
 			param_LBFGSpp.past = 1;//convergence should be determined by checking the change in the objective function and not the norm of the gradient
 			param_LBFGSpp.delta = delta_rel_conv;//tolerence for relative change in objective function as convergence chec
-			param_LBFGSpp.epsilon = 1e-10;//tolerance for norm of gradient as convergence check
-			param_LBFGSpp.epsilon_rel = 1e-10;//tolerance for norm of gradient relative to norm of parameters as convergence check
+			param_LBFGSpp.epsilon = 1e-20;//tolerance for norm of gradient as convergence check
+			param_LBFGSpp.epsilon_rel = 1e-20;//tolerance for norm of gradient relative to norm of parameters as convergence check
 			param_LBFGSpp.max_linesearch = 20;
 			param_LBFGSpp.m = 6;
 			param_LBFGSpp.initial_step_factor = initial_step_factor;
