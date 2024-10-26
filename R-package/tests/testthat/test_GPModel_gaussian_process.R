@@ -2026,6 +2026,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   test_that("ARD Gaussian process model with linear regression term ", {
+    
     # Simulate data
     d <- 3 # dimension of GP locations
     coords_ARD <- matrix(sim_rand_unif(n=n*d, init_c=0.981), ncol=d)
@@ -2401,6 +2402,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_ITERATIVE)
+    # Prediction
+    coord_test_mult <- rbind(c(10000,0.2,0.9),c(10000,0.2,0.9), coords_ARD_mult[1,])
+    coord_test_mult[-c(1,2),c(2:3)] <- coord_test_mult[-c(1,2),c(2:3)] + 0.01
+    exp_mu_mult <- c(2.219261651, 2.219261651, 2.801233150)
+    exp_cov_mult <- c(2.000000, 1.000000, 0.000000, 1.000000, 2.000000, 0.000000, 0.000000, 0.000000, 1.348149)
+    pred <- predict(gp_model, gp_coords_pred = coord_test_mult,
+                    X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu-exp_mu_mult)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-exp_cov_mult)),TOLERANCE_STRICT)
+    pred <- predict(gp_model, gp_coords_pred = coord_test_mult,
+                    X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu-exp_mu_mult)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-exp_cov_mult[c(1,5,9)])),TOLERANCE_STRICT)
+    
     ## With Vecchia approximation
     # Evaluate negative log-likelihood
     capture.output( gp_model <- GPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard",
@@ -2417,6 +2432,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7,9)+1]-cov_pars[c(1,3,5,7,9)+1])),2*TOLERANCE_ITERATIVE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_ITERATIVE)
+    # Prediction
+    gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=n)
+    pred <- predict(gp_model, gp_coords_pred = coord_test_mult,
+                    X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu-exp_mu_mult)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-exp_cov_mult)),TOLERANCE_STRICT)
+    pred <- predict(gp_model, gp_coords_pred = coord_test_mult,
+                    X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu-exp_mu_mult)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-exp_cov_mult[c(1,5,9)])),TOLERANCE_STRICT)
     ## With fitc approximation
     # Evaluate negative log-likelihood
     capture.output( gp_model <- GPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard",
@@ -2433,6 +2458,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7,9)+1]-cov_pars[c(1,3,5,7,9)+1])),2*TOLERANCE_ITERATIVE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_STRICT)
+    # Prediction
+    pred <- predict(gp_model, gp_coords_pred = coord_test_mult,
+                    X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu-exp_mu_mult)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-exp_cov_mult[c(1,5,9)])),TOLERANCE_STRICT)
   })
   
 }
