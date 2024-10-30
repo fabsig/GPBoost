@@ -39,6 +39,7 @@ namespace GPBoost {
 	/*!
 	* \brief This class implements the covariance functions used for the Gaussian proceses
 	*/
+	template <class T_mat>
 	class CovFunction {
 	public:
 		/*! \brief Constructor */
@@ -102,7 +103,7 @@ namespace GPBoost {
 					// Mathematical special functions are not supported in C++17 by Clang and some other compilers (see https://en.cppreference.com/w/cpp/compiler_support/17#C.2B.2B17_library_features) 
 					Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", shape, cov_fct_type.c_str());
 #endif
-				}				
+				}
 			}
 			else if (cov_fct_type == "powered_exponential") {
 				if (shape <= 0. || shape > 2.) {
@@ -126,6 +127,8 @@ namespace GPBoost {
 				taper_mu_ = taper_mu;
 				apply_tapering_ = true;
 			}
+			InitializeCovFct();
+			InitializeCovFctGrad();
 		}
 
 		/*! \brief Destructor */
@@ -179,25 +182,73 @@ namespace GPBoost {
 			const den_mat_t& coords,
 			den_mat_t& coords_scaled) const {
 			coords_scaled = den_mat_t(coords.rows(), coords.cols());
-				if (cov_fct_type_ == "matern_space_time") {
-					coords_scaled.col(0) = coords.col(0) * pars[1];
-					int dim_space = (int)coords.cols() - 1;
-					coords_scaled.rightCols(dim_space) = coords.rightCols(dim_space) * pars[2];
+			if (cov_fct_type_ == "matern_space_time") {
+				coords_scaled.col(0) = coords.col(0) * pars[1];
+				int dim_space = (int)coords.cols() - 1;
+				coords_scaled.rightCols(dim_space) = coords.rightCols(dim_space) * pars[2];
+			}
+			else if (cov_fct_type_ == "matern_ard") {
+				for (int i = 0; i < (int)coords.cols(); ++i) {
+					coords_scaled.col(i) = coords.col(i) * pars[i + 1];
 				}
-				else if (cov_fct_type_ == "matern_ard") {
-					for (int i = 0; i < (int)coords.cols(); ++i) {
-						coords_scaled.col(i) = coords.col(i) * pars[i + 1];
-					}
+			}
+			else if (cov_fct_type_ == "gaussian_ard") {
+				for (int i = 0; i < (int)coords.cols(); ++i) {
+					coords_scaled.col(i) = coords.col(i) * std::sqrt(pars[i + 1]);
 				}
-				else if (cov_fct_type_ == "gaussian_ard") {
-					for (int i = 0; i < (int)coords.cols(); ++i) {
-						coords_scaled.col(i) = coords.col(i) * std::sqrt(pars[i + 1]);
-					}
+			}
+			else {
+				Log::REFatal("'ScaleCoordinates' is called for a model for which this function is not implemented ");
+			}
+		}//end ScaleCoordinates
+
+		/*!
+		* \brief Define pointers for caclulating distances and potentially scale / transform coordinates for anisotropic covariance functions
+		* \param pars Vector with covariance parameters
+		* \param coords Original coordinates
+		* \param coords_pred Original coordinates
+		* \param is_symmmetric If true, dist and sigma are symmetric (e.g., for training data)
+		* \param[out] coords_scaled Scaled coordinates
+		* \param[out] coords_pred_scaled Scaled coordinates
+		* \param[out] coords_ptr
+		* \param[out] coords_pred_ptr
+		*/
+		void DefineCoordsPtrScaleCoords(const vec_t& pars,
+			const den_mat_t& coords,
+			const den_mat_t& coords_pred,
+			bool is_symmmetric,
+			den_mat_t& coords_scaled,
+			den_mat_t& coords_pred_scaled,
+			const den_mat_t** coords_ptr,
+			const den_mat_t** coords_pred_ptr) const {
+			if (scale_coordinates_) {
+				ScaleCoordinates(pars, coords, coords_scaled);
+				if (!is_symmmetric) {
+					ScaleCoordinates(pars, coords_pred, coords_pred_scaled);
+				}
+			}
+			// choose coords to be used (if applicable)
+			if (is_symmmetric) {
+				if (scale_coordinates_) {
+					*coords_ptr = &coords_scaled;
+					*coords_pred_ptr = &coords_scaled;
 				}
 				else {
-					Log::REFatal("'ScaleCoordinates' is called for a model for which this function is not implemented ");
+					*coords_ptr = &coords;
+					*coords_pred_ptr = &coords;
 				}
-		}//end ScaleCoordinates
+			}
+			else {
+				if (scale_coordinates_) {
+					*coords_ptr = &coords_scaled;
+					*coords_pred_ptr = &coords_pred_scaled;
+				}
+				else {
+					*coords_ptr = &coords;
+					*coords_pred_ptr = &coords_pred;
+				}
+			}
+		}//end DefineCoordsPtrScaleCoords
 
 		/*!
 		* \brief Transform the covariance parameters
@@ -205,7 +256,7 @@ namespace GPBoost {
 		* \param pars Vector with covariance parameters on orignal scale
 		* \param[out] pars_trans Transformed covariance parameters
 		*/
-		void TransformCovPars(const double sigma2,
+		void TransformCovPars(double sigma2,
 			const vec_t& pars,
 			vec_t& pars_trans) const {
 			pars_trans = pars;
@@ -261,7 +312,7 @@ namespace GPBoost {
 		* \param pars Vector with covariance parameters
 		* \param[out] pars_orig Back-transformed, original covariance parameters
 		*/
-		void TransformBackCovPars(const double sigma2,
+		void TransformBackCovPars(double sigma2,
 			const vec_t& pars,
 			vec_t& pars_orig) const {
 			pars_orig = pars;
@@ -318,10 +369,10 @@ namespace GPBoost {
 		* \param coords_pred Second set of coordinates for predictions
 		* \param pars Vector with covariance parameters
 		* \param[out] sigma Covariance matrix
-		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g., for training data)
+		* \param is_symmmetric If true, dist and sigma are symmetric (e.g., for training data)
 		* \param use_dist_for_calc_cov If true, 'dist' is used for calculating covariances, otherwise 'coords' (and 'coords_pred')
 		*/
-		template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
 		void GetCovMat(const T_mat& dist,
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
@@ -351,7 +402,7 @@ namespace GPBoost {
 			int num_rows, num_cols;
 			if (use_dist_for_calc_cov) {
 				num_cols = (int)dist.cols();
-				num_rows = (int)dist.rows();				
+				num_rows = (int)dist.rows();
 			}
 			else {
 				num_cols = (int)coords.rows();
@@ -364,8 +415,7 @@ namespace GPBoost {
 			}
 			sigma = T_mat(num_rows, num_cols);
 			if (cov_fct_type_ == "wendland") {
-				// note: this dense matrix version is usually not used
-				// initialize Wendland covariance matrix
+				// initialize Wendland covariance matrix. Note: this dense matrix version is usually not used
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)dist.rows(); ++i) {
 					for (int j = 1; j < (int)dist.cols(); ++j) {
@@ -381,63 +431,24 @@ namespace GPBoost {
 			}// end cov_fct_type_ == "wendland"
 			else {// cov_fct_type_ != "wendland"
 				den_mat_t coords_scaled, coords_pred_scaled;
-				double range;
-				// potentially scale coordinates for anisotropic covariance functions
-				if (scale_coordinates_) {
-					ScaleCoordinates(pars, coords, coords_scaled);
-					if (!is_symmmetric) {
-						ScaleCoordinates(pars, coords_pred, coords_pred_scaled);
-					}
-					range = 1.;
+				const den_mat_t* coords_ptr = nullptr;
+				const den_mat_t* coords_pred_ptr = nullptr;
+				if (!use_dist_for_calc_cov) {
+					DefineCoordsPtrScaleCoords(pars, coords, coords_pred, is_symmmetric, coords_scaled, coords_pred_scaled, &coords_ptr, &coords_pred_ptr);
 				}
-				else {
-					range = pars[1];
+				double range, shape = 0.;
+				range = scale_coordinates_ ? 1. : pars[1];
+				if (cov_fct_type_ == "matern_estimate_shape") {
+					shape = pars[2];
 				}
+				// calculate covariances
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_rows; ++i) {
 						sigma(i, i) = pars[0];
 						for (int j = i + 1; j < num_cols; ++j) {
-							// calculate distances if not provided
-							double dist_ij;
-							if (use_dist_for_calc_cov) {
-								dist_ij = dist.coeff(i, j);
-							}
-							else {// not use_dist_for_calc_cov
-								if (scale_coordinates_) {
-									dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-								}
-								else {
-									dist_ij = (coords.row(i) - coords.row(j)).lpNorm<2>();
-								}
-							}// end not use_dist_for_calc_cov
-							// calculate covariances
-							if (cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard") {
-								if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
-									sigma(i, j) = MaternCovarianceShape0_5(dist_ij, pars[0], range);
-								}
-								else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
-									sigma(i, j) = MaternCovarianceShape1_5(dist_ij, pars[0], range);
-								}
-								else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
-									sigma(i, j) = MaternCovarianceShape2_5(dist_ij, pars[0], range);
-								}
-								else {
-									sigma(i, j) = MaternCovarianceGeneralShape(dist_ij, pars[0], range);
-								}
-							}//end cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard"
-							else if (cov_fct_type_ == "matern_estimate_shape") {
-								sigma(i, j) = MaternCovarianceEstimateShape(dist_ij, pars[0], range, pars[2]);
-							}
-							else if (cov_fct_type_ == "gaussian" || cov_fct_type_ == "gaussian_ard") {
-								sigma(i, j) = GaussianCovariance(dist_ij, pars[0], range);
-							}
-							else if (cov_fct_type_ == "powered_exponential") {
-								sigma(i, j) = PoweredExponentialCovariance(dist_ij, pars[0], range);
-							}
-							else {
-								Log::REFatal("GetCovMat: covariance of type '%s' is not supported.", cov_fct_type_.c_str());
-							}
+							double dist_ij = use_dist_for_calc_cov ? dist.coeff(i, j) : ((*coords_pred_ptr).row(i) - (*coords_ptr).row(j)).lpNorm<2>();
+							sigma(i, j) = CovFct_(dist_ij, pars[0], range, shape);
 							sigma(j, i) = sigma(i, j);
 						}// end loop cols
 					}// end loop rows
@@ -446,52 +457,14 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_rows; ++i) {
 						for (int j = 0; j < num_cols; ++j) {
-							// calculate distances if not provided
-							double dist_ij;
-							if (use_dist_for_calc_cov) {
-								dist_ij = dist.coeff(i, j);
-							}
-							else {// not use_dist_for_calc_cov
-								if (scale_coordinates_) {
-									dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-								}
-								else {
-									dist_ij = (coords_pred.row(i) - coords.row(j)).lpNorm<2>();
-								}
-							}// end not use_dist_for_calc_cov
-							// calculate covariances
-							if (cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard") {
-								if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
-									sigma(i, j) = MaternCovarianceShape0_5(dist_ij, pars[0], range);
-								}
-								else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
-									sigma(i, j) = MaternCovarianceShape1_5(dist_ij, pars[0], range);
-								}
-								else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
-									sigma(i, j) = MaternCovarianceShape2_5(dist_ij, pars[0], range);
-								}
-								else {
-									sigma(i, j) = MaternCovarianceGeneralShape(dist_ij, pars[0], range);
-								}
-							}//end cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard"
-							else if (cov_fct_type_ == "matern_estimate_shape") {
-								sigma(i, j) = MaternCovarianceEstimateShape(dist_ij, pars[0], range, pars[2]);
-							}
-							else if (cov_fct_type_ == "gaussian" || cov_fct_type_ == "gaussian_ard") {
-								sigma(i, j) = GaussianCovariance(dist_ij, pars[0], range);
-							}
-							else if (cov_fct_type_ == "powered_exponential") {
-								sigma(i, j) = PoweredExponentialCovariance(dist_ij, pars[0], range);
-							}
-							else {
-								Log::REFatal("GetCovMat: covariance of type '%s' is not supported.", cov_fct_type_.c_str());
-							}
+							double dist_ij = use_dist_for_calc_cov ? dist.coeff(i, j) : ((*coords_pred_ptr).row(i) - (*coords_ptr).row(j)).lpNorm<2>();
+							sigma(i, j) = CovFct_(dist_ij, pars[0], range, shape);
 						}// end loop cols
 					}// end loop rows
 				}// end !is_symmmetric
 			}// end cov_fct_type_ != "wendland"
 		}// end GetCovMat (dense)
-		template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
 		void GetCovMat(const T_mat& dist,
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
@@ -529,18 +502,17 @@ namespace GPBoost {
 			}
 			else {// cov_fct_type_ != "wendland"
 				den_mat_t coords_scaled, coords_pred_scaled;
-				double range;
-				// potentially scale coordinates for anisotropic covariance functions
-				if (scale_coordinates_) {
-					ScaleCoordinates(pars, coords, coords_scaled);
-					if (!is_symmmetric) {
-						ScaleCoordinates(pars, coords_pred, coords_pred_scaled);
-					}
-					range = 1.;
+				const den_mat_t* coords_ptr = nullptr;
+				const den_mat_t* coords_pred_ptr = nullptr;
+				if (!use_dist_for_calc_cov) {
+					DefineCoordsPtrScaleCoords(pars, coords, coords_pred, is_symmmetric, coords_scaled, coords_pred_scaled, &coords_ptr, &coords_pred_ptr);
 				}
-				else {
-					range = pars[1];
+				double range, shape = 0.;
+				range = scale_coordinates_ ? 1. : pars[1];
+				if (cov_fct_type_ == "matern_estimate_shape") {
+					shape = pars[2];
 				}
+				// calculate covariances
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int k = 0; k < sigma.outerSize(); ++k) {
@@ -551,46 +523,8 @@ namespace GPBoost {
 								it.valueRef() = pars[0];
 							}
 							else if (i < j) {
-								// calculate distances if not provided
-								double dist_ij;
-								if (use_dist_for_calc_cov) {
-									dist_ij = dist.coeff(i, j);
-								}
-								else {// not use_dist_for_calc_cov
-									if (scale_coordinates_) {
-										dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-									}
-									else {
-										dist_ij = (coords.row(i) - coords.row(j)).lpNorm<2>();
-									}
-								}// end not use_dist_for_calc_cov
-								// calculate covariances
-								if (cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard") {
-									if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
-										it.valueRef() = MaternCovarianceShape0_5(dist_ij, pars[0], range);
-									}
-									else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
-										it.valueRef() = MaternCovarianceShape1_5(dist_ij, pars[0], range);
-									}
-									else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
-										it.valueRef() = MaternCovarianceShape2_5(dist_ij, pars[0], range);
-									}
-									else {
-										it.valueRef() = MaternCovarianceGeneralShape(dist_ij, pars[0], range);
-									}
-								}//end cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard"
-								else if (cov_fct_type_ == "matern_estimate_shape") {
-									it.valueRef() = MaternCovarianceEstimateShape(dist_ij, pars[0], range, pars[2]);
-								}
-								else if (cov_fct_type_ == "gaussian" || cov_fct_type_ == "gaussian_ard") {
-									it.valueRef() = GaussianCovariance(dist_ij, pars[0], range);
-								}
-								else if (cov_fct_type_ == "powered_exponential") {
-									it.valueRef() = PoweredExponentialCovariance(dist_ij, pars[0], range);
-								}
-								else {
-									Log::REFatal("GetCovMat: covariance of type '%s' is not supported.", cov_fct_type_.c_str());
-								}
+								double dist_ij = use_dist_for_calc_cov ? dist.coeff(i, j) : ((*coords_pred_ptr).row(i) - (*coords_ptr).row(j)).lpNorm<2>();
+								it.valueRef() = CovFct_(dist_ij, pars[0], range, shape);
 								sigma.coeffRef(j, i) = it.value();
 							}
 						}
@@ -602,46 +536,8 @@ namespace GPBoost {
 						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
-							// calculate distances if not provided
-							double dist_ij;
-							if (use_dist_for_calc_cov) {
-								dist_ij = dist.coeff(i, j);
-							}
-							else {// not use_dist_for_calc_cov
-								if (scale_coordinates_) {
-									dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-								}
-								else {
-									dist_ij = (coords_pred.row(i) - coords.row(j)).lpNorm<2>();
-								}
-							}// end not use_dist_for_calc_cov
-							// calculate covariances
-							if (cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard") {
-								if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
-									it.valueRef() = MaternCovarianceShape0_5(dist_ij, pars[0], range);
-								}
-								else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
-									it.valueRef() = MaternCovarianceShape1_5(dist_ij, pars[0], range);
-								}
-								else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
-									it.valueRef() = MaternCovarianceShape2_5(dist_ij, pars[0], range);
-								}
-								else {
-									it.valueRef() = MaternCovarianceGeneralShape(dist_ij, pars[0], range);
-								}
-							}//end cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard"
-							else if (cov_fct_type_ == "matern_estimate_shape") {
-								it.valueRef() = MaternCovarianceEstimateShape(dist_ij, pars[0], range, pars[2]);
-							}
-							else if (cov_fct_type_ == "gaussian" || cov_fct_type_ == "gaussian_ard") {
-								it.valueRef() = GaussianCovariance(dist_ij, pars[0], range);
-							}
-							else if (cov_fct_type_ == "powered_exponential") {
-								it.valueRef() = PoweredExponentialCovariance(dist_ij, pars[0], range);
-							}
-							else {
-								Log::REFatal("GetCovMat: covariance of type '%s' is not supported.", cov_fct_type_.c_str());
-							}
+							double dist_ij = use_dist_for_calc_cov ? dist.coeff(i, j) : ((*coords_pred_ptr).row(i) - (*coords_ptr).row(j)).lpNorm<2>();
+							it.valueRef() = CovFct_(dist_ij, pars[0], range, shape);
 						}
 					}
 				}// end !is_symmmetric
@@ -650,42 +546,19 @@ namespace GPBoost {
 
 		/*!
 		* \brief Covariance function for one distance value
-		* \param dist Distance 
+		* \param dist Distance
 		* \param pars Vector with covariance parameters
 		* \param[out] sigma Covariance at dist
 		*/
-		void GetCovMat(const double& dist,
+		void GetCovMat(double dist,
 			const vec_t& pars,
 			double& sigma) const {
+			CHECK(pars.size() == num_cov_par_);
 			if (cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard" || cov_fct_type_ == "gaussian_ard") {
 				Log::REFatal("'GetCovMat()' is not implemented for one distance when cov_fct_type_ == '%s' ", cov_fct_type_.c_str());
 			}
-			CHECK(pars.size() == num_cov_par_);
-			if (cov_fct_type_ == "matern") {
-				if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
-					sigma = MaternCovarianceShape0_5(dist, pars[0], pars[1]);
-				}//end cov_fct_type_ == "exponential"
-				else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
-					sigma = MaternCovarianceShape1_5(dist, pars[0], pars[1]);
-				}
-				else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
-					sigma = MaternCovarianceShape2_5(dist, pars[0], pars[1]);
-				}
-				else {
-					sigma = MaternCovarianceGeneralShape(dist, pars[0], pars[1]);
-				}
-			}//end cov_fct_type_ == "matern"
-			else if (cov_fct_type_ == "matern_estimate_shape") {
-				sigma = MaternCovarianceEstimateShape(dist, pars[0], pars[1], pars[2]);
-			}//end cov_fct_type_ == "matern_estimate_shape"
-			else if (cov_fct_type_ == "gaussian") {
-				sigma = GaussianCovariance(dist, pars[0], pars[1]);
-			}//end cov_fct_type_ == "gaussian"
-			else if (cov_fct_type_ == "powered_exponential") {
-				sigma = PoweredExponentialCovariance(dist, pars[0], pars[1]);
-			}//end cov_fct_type_ == "powered_exponential"
 			else if (cov_fct_type_ == "wendland") {
-				// note: this dense matrix version is usually not used
+				// note: this is usually not used
 				if (dist >= taper_range_) {
 					sigma = 0.;
 				}
@@ -693,11 +566,12 @@ namespace GPBoost {
 					sigma = pars[0];
 					MultiplyWendlandCorrelationTaper(dist, sigma);
 				}
-			}//end cov_fct_type_ == "wendland"
-			else {
-				Log::REFatal("GetCovMat: Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
-		}//end GetCovMat (double)
+			else {
+				double shape = (cov_fct_type_ == "matern_estimate_shape") ? pars[2] : 0.;
+				sigma = CovFct_(dist, pars[0], pars[1], shape);
+			}
+		}//end GetCovMat (one single entry)
 
 		/*!
 		* \brief Multiply covariance matrix element-wise with Wendland correlation tapering function
@@ -705,7 +579,7 @@ namespace GPBoost {
 		* \param[out] sigma Covariance matrix
 		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g. for training data)
 		*/
-		template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
 		void MultiplyWendlandCorrelationTaper(const T_mat& dist,
 			T_mat& sigma,
 			bool is_symmmetric) const {
@@ -750,7 +624,7 @@ namespace GPBoost {
 				}
 			}
 		}//end MultiplyWendlandCorrelationTaper (dense)
-		template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
 		void MultiplyWendlandCorrelationTaper(const T_mat& dist,
 			T_mat& sigma,
 			bool is_symmmetric) const {
@@ -807,7 +681,7 @@ namespace GPBoost {
 		* \param dist Distance
 		* \param[out] sigma Covariance at dist after applying tapering
 		*/
-		void MultiplyWendlandCorrelationTaper(const double& dist,
+		void MultiplyWendlandCorrelationTaper(double dist,
 			double& sigma) const {
 			CHECK(apply_tapering_);
 			if (TwoNumbersAreEqual<double>(taper_shape_, 0.)) {
@@ -838,7 +712,7 @@ namespace GPBoost {
 		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g., for training data)
 		* \param use_dist_for_calc_cov If true, 'dist' is use for calculations, otherwise 'coords' (and 'coords_pred')
 		*/
-		template <class T_mat, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value>::type* = nullptr >
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
 		void GetCovMatGradRange(const T_mat& dist,
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
@@ -851,6 +725,7 @@ namespace GPBoost {
 			bool is_symmmetric,
 			bool use_dist_for_calc_cov) const {
 			CHECK(pars.size() == num_cov_par_);
+			CHECK(scale_coordinates_ != use_dist_for_calc_cov);
 			if (use_dist_for_calc_cov) {
 				CHECK(sigma.cols() == dist.cols());
 				CHECK(sigma.rows() == dist.rows());
@@ -907,136 +782,21 @@ namespace GPBoost {
 				}
 				sigma_grad = T_mat(sigma.rows(), sigma.cols());
 				den_mat_t coords_scaled, coords_pred_scaled;
-				// potentially scale coordinates for anisotropic covariance functions
-				if (scale_coordinates_) {
-					ScaleCoordinates(pars, coords, coords_scaled);
-					if (!is_symmmetric) {
-						ScaleCoordinates(pars, coords_pred, coords_pred_scaled);
-					}
+				const den_mat_t* coords_ptr = nullptr;
+				const den_mat_t* coords_pred_ptr = nullptr;
+				if (!use_dist_for_calc_cov) {
+					DefineCoordsPtrScaleCoords(pars, coords, coords_pred, is_symmmetric, coords_scaled, coords_pred_scaled, &coords_ptr, &coords_pred_ptr);
 				}
-				double cm, par_aux, delta_step, pars_2_up, pars_2_down, par_aux_up, par_aux_down;//constants and auxiliary parameters
-				if (cov_fct_type_ == "matern") {//general shape
-					cm = transf_scale ? 1. : (-nugget_var * pars[1] / std::sqrt(2. * shape_));
-					cm *= pars[0] * const_;
-				}
-				else if (cov_fct_type_ == "matern_estimate_shape") {
-					CHECK(ind_range >= 0 && ind_range <= 1);
-					if (ind_range == 0) {
-						cm = transf_scale ? 1. : nugget_var / pars[1];
-						cm *= -pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
-						par_aux = std::sqrt(2. * pars[2]) / pars[1];
-					}
-					else if (ind_range == 1) {//gradient wrt smoothness parameter
-						//for calculating finite differences
-						delta_step = 1e-6;// based on https://math.stackexchange.com/questions/815113/is-there-a-general-formula-for-estimating-the-step-size-h-in-numerical-different/819015#819015
-						cm = transf_scale ? pars[2] : nugget_var;
-						cm *= pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
-						par_aux = std::sqrt(2. * pars[2]) / pars[1];
-						pars_2_up = pars[2] + delta_step;
-						pars_2_down = pars[2] - delta_step;
-						par_aux_up = std::sqrt(2. * pars_2_up) / pars[1];
-						par_aux_down = std::sqrt(2. * pars_2_down) / pars[1];
-					}
-				}// end cov_fct_type_ == "matern_estimate_shape"
-				else if (cov_fct_type_ == "matern_space_time") {
-					CHECK(ind_range >= 0 && ind_range <= 1);
-					// calculate constants that are the same for all entries
-					if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
-						if (ind_range == 0) {
-							cm = transf_scale ? -1. : (nugget_var * pars[1]);
-						}
-						else if (ind_range == 1) {
-							cm = transf_scale ? -1. : (nugget_var * pars[2]);//TODO DELETE: merge these two statements and below
-						}
-					}
-					else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
-						if (ind_range == 0) {
-							cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[1] / sqrt(3.));
-						}
-						else if (ind_range == 1) {
-							cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[2] / sqrt(3.));
-						}
-					}
-					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
-						if (ind_range == 0) {
-							cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[1] / sqrt(5.));
-						}
-						else if (ind_range == 1) {
-							cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[2] / sqrt(5.));
-						}
-					}
-					else {//general shape
-						if (ind_range == 0) {
-							cm = transf_scale ? 1. : (-nugget_var * pars[1] / sqrt(2. * shape_));
-							cm *= pars[0] * const_;
-						}
-						else if (ind_range == 1) {
-							cm = transf_scale ? 1. : (-nugget_var * pars[2] / sqrt(2. * shape_));
-							cm *= pars[0] * const_;
-						}
-					}
-				}// end cov_fct_type_ == "matern_space_time"
-				else if (cov_fct_type_ == "matern_ard") {
-					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
-					if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
-						cm = transf_scale ? -1. : (nugget_var * pars[ind_range + 1]);
-					}
-					else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
-						cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[ind_range + 1] / sqrt(3.));
-					}
-					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
-						cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[ind_range + 1] / sqrt(5.));
-					}
-					else {//general shape
-						cm = transf_scale ? 1. : (-nugget_var * pars[ind_range + 1] / sqrt(2. * shape_));
-						cm *= pars[0] * const_;
-					}
-				}// end (cov_fct_type_ == "matern_ard"
-				else if (cov_fct_type_ == "gaussian_ard") {
-					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
-					cm = transf_scale ? -1. : (2. * nugget_var * std::sqrt(pars[1]));
-				}
+				double cm, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape;//constants and auxiliary parameters
+				DetermineConstantsForGradient(pars, (int)coords.cols(), transf_scale, nugget_var, ind_range, cm, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape);
 				// calculate gradients
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_rows; ++i) {
 						sigma_grad(i, i) = 0.;
 						for (int j = i + 1; j < num_cols; ++j) {
-							if (cov_fct_type_ == "matern") {//general shape
-								sigma_grad(i, j) = MaternGeneralShapeGradRange(cm, dist.coeff(i, j), pars[1]);
-							}
-							else if (cov_fct_type_ == "matern_estimate_shape") {
-								if (ind_range == 0) {
-									sigma_grad(i, j) = MaternEstimateShapeGradRange(cm, dist.coeff(i, j), par_aux, pars[2]);
-								}
-								else if (ind_range == 1) {//gradient wrt smoothness parameter
-									sigma_grad(i, j) = MaternEstimateShapeGradSmoothnessFiniteDifference(cm, dist.coeff(i, j), par_aux,
-										par_aux_up, par_aux_down, pars_2_up, pars_2_down, delta_step, pars[2]);
-								}
-							}// end "matern_estimate_shape"
-							else if (cov_fct_type_ == "matern_space_time") {
-								double dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-								double dist_sq_ij_time = 0., dist_sq_ij_space = 0.;
-								if (ind_range == 0) {
-									dist_sq_ij_time = (coords_scaled.coeff(i, 0) - coords_scaled.coeff(j, 0));
-									dist_sq_ij_time = dist_sq_ij_time * dist_sq_ij_time;
-								}
-								else if (ind_range == 1) {
-									dist_sq_ij_space = (coords_scaled.row(i).tail(dim_space) - coords_scaled.row(j).tail(dim_space)).squaredNorm();
-								}
-								sigma_grad(i, j) = MaternSpaceTimeGradRange(cm, dist_ij, dist_sq_ij_time, dist_sq_ij_space, sigma.coeff(i, j), ind_range);
-							}// end "matern_space_time"
-							else if (cov_fct_type_ == "matern_ard") {
-								double dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-								double dist_sq_ij_coord = (coords_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
-								dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
-								sigma_grad(i, j) = MaternARDGradRange(cm, dist_ij, dist_sq_ij_coord, sigma.coeff(i, j));
-							}//end "matern_ard"
-							else if (cov_fct_type_ == "gaussian_ard") {
-								double dist_sq_ij_coord = (coords_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
-								dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
-								sigma_grad(i, j) = GaussianARDGradRange(cm, dist_sq_ij_coord, sigma.coeff(i, j));
-							}
+							sigma_grad(i, j) = CovFctGrad_(cm, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
+								dim_space, ind_range, i, j, dist, sigma, coords_ptr, coords_pred_ptr);
 							sigma_grad(j, i) = sigma_grad(i, j);
 						}// end loop over cols
 					}// end loop over rows
@@ -1045,50 +805,14 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_rows; ++i) {
 						for (int j = 0; j < num_cols; ++j) {
-							if (cov_fct_type_ == "matern") {//general shape
-								sigma_grad(i, j) = MaternGeneralShapeGradRange(cm, dist.coeff(i, j), pars[1]);
-							}
-							else if (cov_fct_type_ == "matern_estimate_shape") {
-								if (ind_range == 0) {
-									sigma_grad(i, j) = MaternEstimateShapeGradRange(cm, dist.coeff(i, j), par_aux, pars[2]);
-								}
-								else if (ind_range == 1) {//gradient wrt smoothness parameter
-									sigma_grad(i, j) = MaternEstimateShapeGradSmoothnessFiniteDifference(cm, dist.coeff(i, j), par_aux,
-										par_aux_up, par_aux_down, pars_2_up, pars_2_down, delta_step, pars[2]);
-								}
-							}//end "matern_estimate_shape"
-							else if (cov_fct_type_ == "matern_space_time") {
-								double dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-								double dist_sq_ij_time = 0., dist_sq_ij_space = 0.;
-								if (ind_range == 0) {
-									dist_sq_ij_time = (coords_pred_scaled.coeff(i, 0) - coords_scaled.coeff(j, 0));
-									dist_sq_ij_time = dist_sq_ij_time * dist_sq_ij_time;
-								}
-								else if (ind_range == 1) {
-									dist_sq_ij_space = (coords_pred_scaled.row(i).tail(dim_space) - coords_scaled.row(j).tail(dim_space)).squaredNorm();
-								}
-								sigma_grad(i, j) = MaternSpaceTimeGradRange(cm, dist_ij, dist_sq_ij_time, dist_sq_ij_space, sigma.coeff(i, j), ind_range);
-							}//end cov_fct_type_ == "matern_space_time"
-							else if (cov_fct_type_ == "matern_ard") {
-								double dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-								double dist_sq_ij_coord = (coords_pred_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
-								dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
-								sigma_grad(i, j) = MaternARDGradRange(cm, dist_ij, dist_sq_ij_coord, sigma.coeff(i, j));
-							}//end "matern_ard"
-							else if (cov_fct_type_ == "gaussian_ard") {
-								double dist_sq_ij_coord = (coords_pred_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
-								dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
-								sigma_grad(i, j) = GaussianARDGradRange(cm, dist_sq_ij_coord, sigma.coeff(i, j));
-							}
-							else {
-								Log::REFatal("GetCovMatGradRange: Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
-							}
+							sigma_grad(i, j) = CovFctGrad_(cm, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
+								dim_space, ind_range, i, j, dist, sigma, coords_ptr, coords_pred_ptr);
 						}// end loop over cols
 					}// end loop over rows
 				}// end !is_symmmetric
 			}// end cov_fct_type_ == "matern" and general shape, "matern_estimate_shape", "matern_space_time", "matern_space_ard"
 		}//end GetCovMatGradRange (dense)
-		template <class T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_mat>::value || std::is_same<sp_mat_rm_t, T_mat>::value>::type* = nullptr >
+		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
 		void GetCovMatGradRange(const T_mat& dist,
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
@@ -1102,6 +826,7 @@ namespace GPBoost {
 			bool use_dist_for_calc_cov) const {
 			CHECK(pars.size() == num_cov_par_);
 			CHECK(sigma.cols() == sigma.rows());
+			CHECK(scale_coordinates_ != use_dist_for_calc_cov);
 			if (use_dist_for_calc_cov) {
 				CHECK(sigma.cols() == dist.cols());
 				CHECK(sigma.rows() == dist.rows());
@@ -1136,112 +861,15 @@ namespace GPBoost {
 				sigma_grad.coeffs() = cm * 1. / 3. * (dist.coeffs().square() * (1. + pars[1] * dist.coeffs()) * ((-pars[1] * dist.coeffs()).exp())).matrix();
 			}
 			else {// cov_fct_type_ == "matern" and general shape, "matern_estimate_shape", "matern_space_time", "matern_space_ard"
-				// define num_rows, num_cols, and sigma
-				int num_rows, num_cols;
-				if (use_dist_for_calc_cov) {
-					num_cols = (int)dist.cols();
-					num_rows = (int)dist.rows();
-				}
-				else {
-					num_cols = (int)coords.rows();
-					if (is_symmmetric) {
-						num_rows = (int)coords.rows();
-					}
-					else {
-						num_rows = (int)coords_pred.rows();
-					}
-				}
 				sigma_grad = T_mat(sigma.rows(), sigma.cols());
 				den_mat_t coords_scaled, coords_pred_scaled;
-				// potentially scale coordinates for anisotropic covariance functions
-				if (scale_coordinates_) {
-					ScaleCoordinates(pars, coords, coords_scaled);
-					if (!is_symmmetric) {
-						ScaleCoordinates(pars, coords_pred, coords_pred_scaled);
-					}
+				const den_mat_t* coords_ptr = nullptr;
+				const den_mat_t* coords_pred_ptr = nullptr;
+				if (!use_dist_for_calc_cov) {
+					DefineCoordsPtrScaleCoords(pars, coords, coords_pred, is_symmmetric, coords_scaled, coords_pred_scaled, &coords_ptr, &coords_pred_ptr);
 				}
-				double cm, par_aux, delta_step, pars_2_up, pars_2_down, par_aux_up, par_aux_down;//constants and auxiliary parameters
-				if (cov_fct_type_ == "matern") {//general shape
-					cm = transf_scale ? 1. : (-nugget_var * pars[1] / std::sqrt(2. * shape_));
-					cm *= pars[0] * const_;
-				}
-				else if (cov_fct_type_ == "matern_estimate_shape") {
-					CHECK(ind_range >= 0 && ind_range <= 1);
-					if (ind_range == 0) {
-						cm = transf_scale ? 1. : nugget_var / pars[1];
-						cm *= -pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
-						par_aux = std::sqrt(2. * pars[2]) / pars[1];
-					}
-					else if (ind_range == 1) {//gradient wrt smoothness parameter
-						//for calculating finite differences
-						delta_step = 1e-6;// based on https://math.stackexchange.com/questions/815113/is-there-a-general-formula-for-estimating-the-step-size-h-in-numerical-different/819015#819015
-						cm = transf_scale ? pars[2] : nugget_var;
-						cm *= pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
-						par_aux = std::sqrt(2. * pars[2]) / pars[1];
-						pars_2_up = pars[2] + delta_step;
-						pars_2_down = pars[2] - delta_step;
-						par_aux_up = std::sqrt(2. * pars_2_up) / pars[1];
-						par_aux_down = std::sqrt(2. * pars_2_down) / pars[1];
-					}
-				}// end cov_fct_type_ == "matern_estimate_shape"
-				else if (cov_fct_type_ == "matern_space_time") {
-					CHECK(ind_range >= 0 && ind_range <= 1);
-					// calculate constants that are the same for all entries
-					if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
-						if (ind_range == 0) {
-							cm = transf_scale ? -1. : (nugget_var * pars[1]);
-						}
-						else if (ind_range == 1) {
-							cm = transf_scale ? -1. : (nugget_var * pars[2]);//TODO DELETE: merge these two statements and below
-						}
-					}
-					else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
-						if (ind_range == 0) {
-							cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[1] / sqrt(3.));
-						}
-						else if (ind_range == 1) {
-							cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[2] / sqrt(3.));
-						}
-					}
-					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
-						if (ind_range == 0) {
-							cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[1] / sqrt(5.));
-						}
-						else if (ind_range == 1) {
-							cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[2] / sqrt(5.));
-						}
-					}
-					else {//general shape
-						if (ind_range == 0) {
-							cm = transf_scale ? 1. : (-nugget_var * pars[1] / sqrt(2. * shape_));
-							cm *= pars[0] * const_;
-						}
-						else if (ind_range == 1) {
-							cm = transf_scale ? 1. : (-nugget_var * pars[2] / sqrt(2. * shape_));
-							cm *= pars[0] * const_;
-						}
-					}
-				}// end cov_fct_type_ == "matern_space_time"
-				else if (cov_fct_type_ == "matern_ard") {
-					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
-					if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
-						cm = transf_scale ? -1. : (nugget_var * pars[ind_range + 1]);
-					}
-					else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
-						cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[ind_range + 1] / sqrt(3.));
-					}
-					else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
-						cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[ind_range + 1] / sqrt(5.));
-					}
-					else {//general shape
-						cm = transf_scale ? 1. : (-nugget_var * pars[ind_range + 1] / sqrt(2. * shape_));
-						cm *= pars[0] * const_;
-					}
-				}// end (cov_fct_type_ == "matern_ard"
-				else if (cov_fct_type_ == "gaussian_ard") {
-					CHECK(ind_range >= 0 && ind_range < (int)coords.cols());
-					cm = transf_scale ? -1. : (2. * nugget_var * std::sqrt(pars[1]));
-				}
+				double cm, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape;//constants and auxiliary parameters
+				DetermineConstantsForGradient(pars, (int)coords.cols(), transf_scale, nugget_var, ind_range, cm, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape);
 				// calculate gradients
 				sigma_grad = sigma;
 				if (is_symmmetric) {
@@ -1254,41 +882,8 @@ namespace GPBoost {
 								it.valueRef() = 0.;
 							}
 							else if (i < j) {
-								if (cov_fct_type_ == "matern") {//general shape
-									it.valueRef() = MaternGeneralShapeGradRange(cm, dist.coeff(i, j), pars[1]);
-								}
-								else if (cov_fct_type_ == "matern_estimate_shape") {
-									if (ind_range == 0) {
-										it.valueRef() = MaternEstimateShapeGradRange(cm, dist.coeff(i, j), par_aux, pars[2]);
-									}
-									else if (ind_range == 1) {//gradient wrt smoothness parameter
-										it.valueRef() = MaternEstimateShapeGradSmoothnessFiniteDifference(cm, dist.coeff(i, j), par_aux,
-											par_aux_up, par_aux_down, pars_2_up, pars_2_down, delta_step, pars[2]);
-									}
-								}// end "matern_estimate_shape"
-								else if (cov_fct_type_ == "matern_space_time") {
-									double dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-									double dist_sq_ij_time = 0., dist_sq_ij_space = 0.;
-									if (ind_range == 0) {
-										dist_sq_ij_time = (coords_scaled.coeff(i, 0) - coords_scaled.coeff(j, 0));
-										dist_sq_ij_time = dist_sq_ij_time * dist_sq_ij_time;
-									}
-									else if (ind_range == 1) {
-										dist_sq_ij_space = (coords_scaled.row(i).tail(dim_space) - coords_scaled.row(j).tail(dim_space)).squaredNorm();
-									}
-									it.valueRef() = MaternSpaceTimeGradRange(cm, dist_ij, dist_sq_ij_time, dist_sq_ij_space, sigma.coeff(i, j), ind_range);
-								}// end "matern_space_time"
-								else if (cov_fct_type_ == "matern_ard") {
-									double dist_ij = (coords_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-									double dist_sq_ij_coord = (coords_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
-									dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
-									it.valueRef() = MaternARDGradRange(cm, dist_ij, dist_sq_ij_coord, sigma.coeff(i, j));
-								}//end "matern_ard"
-								else if (cov_fct_type_ == "gaussian_ard") {
-									double dist_sq_ij_coord = (coords_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
-									dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
-									it.valueRef() = GaussianARDGradRange(cm, dist_sq_ij_coord, sigma.coeff(i, j));
-								}
+								it.valueRef() = CovFctGrad_(cm, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
+									dim_space, ind_range, i, j, dist, sigma, coords_ptr, coords_pred_ptr);
 								sigma_grad.coeffRef(j, i) = it.value();
 							}
 						}// end loop over cols
@@ -1300,44 +895,8 @@ namespace GPBoost {
 						for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
 							int i = (int)it.row();
 							int j = (int)it.col();
-							if (cov_fct_type_ == "matern") {//general shape
-								it.valueRef() = MaternGeneralShapeGradRange(cm, dist.coeff(i, j), pars[1]);
-							}
-							else if (cov_fct_type_ == "matern_estimate_shape") {
-								if (ind_range == 0) {
-									it.valueRef() = MaternEstimateShapeGradRange(cm, dist.coeff(i, j), par_aux, pars[2]);
-								}
-								else if (ind_range == 1) {//gradient wrt smoothness parameter
-									it.valueRef() = MaternEstimateShapeGradSmoothnessFiniteDifference(cm, dist.coeff(i, j), par_aux,
-										par_aux_up, par_aux_down, pars_2_up, pars_2_down, delta_step, pars[2]);
-								}
-							}//end "matern_estimate_shape"
-							else if (cov_fct_type_ == "matern_space_time") {
-								double dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-								double dist_sq_ij_time = 0., dist_sq_ij_space = 0.;
-								if (ind_range == 0) {
-									dist_sq_ij_time = (coords_pred_scaled.coeff(i, 0) - coords_scaled.coeff(j, 0));
-									dist_sq_ij_time = dist_sq_ij_time * dist_sq_ij_time;
-								}
-								else if (ind_range == 1) {
-									dist_sq_ij_space = (coords_pred_scaled.row(i).tail(dim_space) - coords_scaled.row(j).tail(dim_space)).squaredNorm();
-								}
-								it.valueRef() = MaternSpaceTimeGradRange(cm, dist_ij, dist_sq_ij_time, dist_sq_ij_space, sigma.coeff(i, j), ind_range);
-							}//end cov_fct_type_ == "matern_space_time"
-							else if (cov_fct_type_ == "matern_ard") {
-								double dist_ij = (coords_pred_scaled.row(i) - coords_scaled.row(j)).lpNorm<2>();
-								double dist_sq_ij_coord = (coords_pred_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
-								dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
-								it.valueRef() = MaternARDGradRange(cm, dist_ij, dist_sq_ij_coord, sigma.coeff(i, j));
-							}//end "matern_ard"
-							else if (cov_fct_type_ == "gaussian_ard") {
-								double dist_sq_ij_coord = (coords_pred_scaled.coeff(i, ind_range) - coords_scaled.coeff(j, ind_range));
-								dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
-								it.valueRef() = GaussianARDGradRange(cm, dist_sq_ij_coord, sigma.coeff(i, j));
-							}
-							else {
-								Log::REFatal("GetCovMatGradRange: Covariance of type '%s' is not supported.", cov_fct_type_.c_str());
-							}
+							it.valueRef() = CovFctGrad_(cm, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
+								dim_space, ind_range, i, j, dist, sigma, coords_ptr, coords_pred_ptr);
 						}// end loop over cols
 					}// end loop over rows
 				}// end !is_symmmetric
@@ -1501,7 +1060,7 @@ namespace GPBoost {
 				}
 				else if (cov_fct_type_ == "matern_estimate_shape") {
 					pars[1] = 2. * 4.7 * mean_dist / std::sqrt(3.);//same as shape_ = 1.5
-					pars[2] = 1.5;					
+					pars[2] = 1.5;
 				}
 				else if (cov_fct_type_ == "gaussian") {
 					pars[1] = 3. / std::pow(mean_dist / 2., 2.);
@@ -1612,14 +1171,16 @@ namespace GPBoost {
 			"matern_space_time",
 			"matern_ard",
 			"gaussian_ard",
-			"matern_estimate_shape"};
+			"matern_estimate_shape" };
+		/*! \brief for calculating finite differences  */
+		const double delta_step_ = 1e-6;// based on https://math.stackexchange.com/questions/815113/is-there-a-general-formula-for-estimating-the-step-size-h-in-numerical-different/819015#819015
 
 		/*!
 		* \brief Calculates Wendland correlation function if taper_shape == 0
 		* \param dist Distance
 		* \return Wendland correlation
 		*/
-		inline double WendlandCorrelationShape0(const double dist) const {
+		inline double WendlandCorrelationShape0(double dist) const {
 			if (dist < EPSILON_NUMBERS) {
 				return(1.);
 			}
@@ -1633,7 +1194,7 @@ namespace GPBoost {
 		* \param dist Distance
 		* \return Wendland correlation
 		*/
-		inline double WendlandCorrelationShape1(const double dist) const {
+		inline double WendlandCorrelationShape1(double dist) const {
 			if (dist < EPSILON_NUMBERS) {
 				return(1.);
 			}
@@ -1647,7 +1208,7 @@ namespace GPBoost {
 		* \param dist Distance
 		* \return Wendland correlation
 		*/
-		inline double WendlandCorrelationShape2(const double dist) const {
+		inline double WendlandCorrelationShape2(double dist) const {
 			if (dist < EPSILON_NUMBERS) {
 				return(1.);
 			}
@@ -1658,15 +1219,126 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Generic function for calculating covariances
+		* \param dist Distance
+		* \param var Marginal variance
+		* \param range Transformed range parameter
+		* \param shape Smoothness parameter (if applicable)
+		* \return Covariance
+		*/
+		std::function<double(double /* dist_ij */, double /* var */, double /* range */, double /* shape */)> CovFct_;
+
+		void InitializeCovFct() {
+			// define covariance function
+			if (cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard") {
+				if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
+					CovFct_ = [this](double dist_ij, double var, double range, double) -> double {
+						return MaternCovarianceShape0_5(dist_ij, var, range);
+					};
+				}
+				else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
+					CovFct_ = [this](double dist_ij, double var, double range, double) -> double {
+						return MaternCovarianceShape1_5(dist_ij, var, range);
+					};
+				}
+				else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
+					CovFct_ = [this](double dist_ij, double var, double range, double) -> double {
+						return MaternCovarianceShape2_5(dist_ij, var, range);
+					};
+				}
+				else {//general shape
+					CovFct_ = [this](double dist_ij, double var, double range, double) -> double {
+						return MaternCovarianceGeneralShape(dist_ij, var, range);
+					};
+				}
+			}//end cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard"
+			else if (cov_fct_type_ == "matern_estimate_shape") {
+				CovFct_ = [this](double dist_ij, double var, double range, double shape) -> double {
+					return MaternCovarianceEstimateShape(dist_ij, var, range, shape);
+				};
+			}
+			else if (cov_fct_type_ == "gaussian" || cov_fct_type_ == "gaussian_ard") {
+				CovFct_ = [this](double dist_ij, double var, double range, double) -> double {
+					return GaussianCovariance(dist_ij, var, range);
+				};
+			}
+			else if (cov_fct_type_ == "powered_exponential") {
+				CovFct_ = [this](double dist_ij, double var, double range, double) -> double {
+					return PoweredExponentialCovariance(dist_ij, var, range);
+				};
+			}
+			else if (cov_fct_type_ != "wendland") {
+				Log::REFatal("InitializeCovFct: covariance of type '%s' is not supported.", cov_fct_type_.c_str());
+			}
+		}//end InitializeCovFct
+
+		/*!
+		* \brief Generic function for calculating gradients of covariances
+		*/
+		std::function<double(double /* cm */, double /* par_aux */, double /* shape */,
+			double /* par_aux_up */, double /* par_aux_down */, double /* pars_2_up */, double /* pars_2_down */,
+			const int /* dim_space */, const int /* ind_range */, const int /* i */, const int /* j */,
+			const T_mat& /* dist */, const T_mat& /* sigma */, const den_mat_t* /* coords_ptr */, const den_mat_t* /* coords_pred_ptr */)> CovFctGrad_;
+
+		void InitializeCovFctGrad() {
+			if (cov_fct_type_ == "matern") {
+				if (!TwoNumbersAreEqual<double>(shape_, 0.5) && !TwoNumbersAreEqual<double>(shape_, 1.5) && !TwoNumbersAreEqual<double>(shape_, 2.5)) {
+					CovFctGrad_ = [this](double cm, double par_aux, double /* shape */,
+						double /* par_aux_up */, double /* par_aux_down */, double /* pars_2_up */, double /* pars_2_down */,
+						const int /* dim_space */, const int /* ind_range */, const int i, const int j,
+						const T_mat& dist, const T_mat& /* sigma */, const den_mat_t* /* coords_ptr */, const den_mat_t* /* coords_pred_ptr */) -> double {
+							return MaternGeneralShapeGradRange(cm, dist, i, j, par_aux);
+					};
+				}
+			}
+			else if (cov_fct_type_ == "matern_space_time") {
+				CovFctGrad_ = [this](double cm, double /* par_aux */, double /* shape */,
+					double /* par_aux_up */, double /* par_aux_down */, double /* pars_2_up */, double /* pars_2_down */,
+					const int dim_space, const int ind_range, const int i, const int j,
+					const T_mat& /* dist */, const T_mat& sigma, const den_mat_t* coords_ptr, const den_mat_t* coords_pred_ptr) -> double {
+						return MaternSpaceTimeGradRange(cm, sigma, dim_space, ind_range, i, j, coords_ptr, coords_pred_ptr);
+
+				};
+			}
+			else if (cov_fct_type_ == "matern_ard") {
+				CovFctGrad_ = [this](double cm, double /* par_aux */, double /* shape */,
+					double /* par_aux_up */, double /* par_aux_down */, double /* pars_2_up */, double /* pars_2_down */,
+					const int /* dim_space */, const int ind_range, const int i, const int j,
+					const T_mat& /* dist */, const T_mat& sigma, const den_mat_t* coords_ptr, const den_mat_t* coords_pred_ptr) -> double {
+						return MaternARDGradRange(cm, sigma, ind_range, i, j, coords_ptr, coords_pred_ptr);
+				};
+			}
+			else if (cov_fct_type_ == "matern_estimate_shape") {
+				CovFctGrad_ = [this](double cm, double par_aux, double shape,
+					double par_aux_up, double par_aux_down, double pars_2_up, double pars_2_down,
+					const int /* dim_space */, const int ind_range, const int i, const int j,
+					const T_mat& dist, const T_mat& /* sigma */, const den_mat_t* /* coords_ptr */, const den_mat_t* /* coords_pred_ptr */) -> double {
+						return MaternEstimateShapeGrad(cm, dist, i, j, par_aux, par_aux_up, par_aux_down, pars_2_up, pars_2_down, shape, ind_range);
+				};
+			}
+			else if (cov_fct_type_ == "gaussian_ard") {
+				CovFctGrad_ = [this](double cm, double /* par_aux */, double /* shape */,
+					double /* par_aux_up */, double /* par_aux_down */, double /* pars_2_up */, double /* pars_2_down */,
+					const int /* dim_space */, const int ind_range, const int i, const int j,
+					const T_mat& /* dist */, const T_mat& sigma, const den_mat_t* coords_ptr, const den_mat_t* coords_pred_ptr) -> double {
+						return GaussianARDGradRange(cm, sigma, ind_range, i, j, coords_ptr, coords_pred_ptr);
+				};
+			}
+			else if (cov_fct_type_ != "wendland" && cov_fct_type_ != "powered_exponential" && cov_fct_type_ != "gaussian") {
+				Log::REFatal("InitializeCovFctGrad: covariance of type '%s' is not supported.", cov_fct_type_.c_str());
+			}
+		}//end InitializeCovFctGrad
+
+		/*!
 		* \brief Calculates Matern covariance function if shape == 0.5
 		* \param dist Distance
 		* \param var Marginal variance
 		* \param range Transformed range parameter
 		* \return Covariance
 		*/
-		inline double MaternCovarianceShape0_5(const double dist,
-			const double var,
-			const double range) const {
+		inline double MaternCovarianceShape0_5(double dist,
+			double var,
+			double range) const {
 			return(var * std::exp(-range * dist));
 		}
 
@@ -1677,9 +1349,9 @@ namespace GPBoost {
 		* \param range Transformed range parameter
 		* \return Covariance
 		*/
-		inline double MaternCovarianceShape1_5(const double dist,
-			const double var,
-			const double range) const {
+		inline double MaternCovarianceShape1_5(double dist,
+			double var,
+			double range) const {
 			double range_dist = range * dist;
 			return(var * (1. + range_dist) * std::exp(-range_dist));
 		}
@@ -1691,9 +1363,9 @@ namespace GPBoost {
 		* \param range Transformed range parameter
 		* \return Covariance
 		*/
-		inline double MaternCovarianceShape2_5(const double dist,
-			const double var,
-			const double range) const {
+		inline double MaternCovarianceShape2_5(double dist,
+			double var,
+			double range) const {
 			double range_dist = range * dist;
 			return(var * (1. + range_dist + range_dist * range_dist / 3.) * std::exp(-range_dist));
 		}
@@ -1705,9 +1377,9 @@ namespace GPBoost {
 		* \param range Transformed range parameter
 		* \return Covariance
 		*/
-		inline double MaternCovarianceGeneralShape(const double dist,
-			const double var,
-			const double range) const {
+		inline double MaternCovarianceGeneralShape(double dist,
+			double var,
+			double range) const {
 			double range_dist = range * dist;
 			if (range_dist <= 0.) {
 				return(var);
@@ -1729,10 +1401,10 @@ namespace GPBoost {
 		* \param shape Smoothness parameter
 		* \return Covariance
 		*/
-		inline double MaternCovarianceEstimateShape(const double dist,
-			const double var,
-			const double range,
-			const double shape) const {
+		inline double MaternCovarianceEstimateShape(double dist,
+			double var,
+			double range,
+			double shape) const {
 			CHECK(shape > 0.);
 			double range_dist = dist * std::sqrt(2. * shape) / range;
 			if (range_dist <= 0.) {
@@ -1754,9 +1426,9 @@ namespace GPBoost {
 		* \param range Transformed range parameter
 		* \return Covariance
 		*/
-		inline double GaussianCovariance(const double dist,
-			const double var,
-			const double range) const {
+		inline double GaussianCovariance(double dist,
+			double var,
+			double range) const {
 			return(var * std::exp(-range * dist * dist));
 		}
 
@@ -1767,11 +1439,89 @@ namespace GPBoost {
 		* \param range Transformed range parameter
 		* \return Covariance
 		*/
-		inline double PoweredExponentialCovariance(const double dist,
-			const double var,
-			const double range) const {
+		inline double PoweredExponentialCovariance(double dist,
+			double var,
+			double range) const {
 			return(var * std::exp(-range * std::pow(dist, shape_)));
 		}
+
+		/*!
+		* \brief Determine constants required for calculating gradients of covariances
+		*/
+		inline void DetermineConstantsForGradient(const vec_t& pars,
+			int dim_coords,
+			bool transf_scale,
+			double nugget_var,
+			int ind_range,
+			double& cm,
+			double& par_aux,
+			double& pars_2_up,
+			double& pars_2_down,
+			double& par_aux_up,
+			double& par_aux_down,
+			double& shape) const {
+			if (cov_fct_type_ == "matern") {//general shape
+				cm = transf_scale ? 1. : (-nugget_var * pars[1] / std::sqrt(2. * shape_));
+				cm *= pars[0] * const_;
+				par_aux = pars[1];
+			}
+			else if (cov_fct_type_ == "matern_estimate_shape") {
+				CHECK(ind_range >= 0 && ind_range <= 1);
+				if (ind_range == 0) {
+					cm = transf_scale ? 1. : nugget_var / pars[1];
+					cm *= -pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
+					par_aux = std::sqrt(2. * pars[2]) / pars[1];
+				}
+				else if (ind_range == 1) {//gradient wrt smoothness parameter
+					//for calculating finite differences
+					cm = transf_scale ? pars[2] : nugget_var;
+					cm *= pars[0] * std::pow(2., 1 - pars[2]) / std::tgamma(pars[2]);
+					par_aux = std::sqrt(2. * pars[2]) / pars[1];
+					pars_2_up = pars[2] + delta_step_;
+					pars_2_down = pars[2] - delta_step_;
+					par_aux_up = std::sqrt(2. * pars_2_up) / pars[1];
+					par_aux_down = std::sqrt(2. * pars_2_down) / pars[1];
+				}
+				shape = pars[2];
+			}// end cov_fct_type_ == "matern_estimate_shape"
+			else if (cov_fct_type_ == "matern_space_time") {
+				CHECK(ind_range >= 0 && ind_range <= 1);
+				// calculate constants that are the same for all entries
+				if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
+					cm = transf_scale ? -1. : (nugget_var * pars[ind_range + 1]);
+				}
+				else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
+					cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[ind_range + 1] / sqrt(3.));
+				}
+				else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
+					cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[ind_range + 1] / sqrt(5.));
+				}
+				else {//general shape
+					cm = transf_scale ? 1. : (-nugget_var * pars[ind_range + 1] / sqrt(2. * shape_));
+					cm *= pars[0] * const_;
+				}
+			}// end cov_fct_type_ == "matern_space_time"
+			else if (cov_fct_type_ == "matern_ard") {
+				CHECK(ind_range >= 0 && ind_range < dim_coords);
+				if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
+					cm = transf_scale ? -1. : (nugget_var * pars[ind_range + 1]);
+				}
+				else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
+					cm = transf_scale ? (-1. * pars[0]) : (nugget_var * pars[0] * pars[ind_range + 1] / sqrt(3.));
+				}
+				else if (TwoNumbersAreEqual<double>(shape_, 2.5)) {
+					cm = transf_scale ? (-1. / 3. * pars[0]) : (nugget_var / 3. * pars[0] * pars[ind_range + 1] / sqrt(5.));
+				}
+				else {//general shape
+					cm = transf_scale ? 1. : (-nugget_var * pars[ind_range + 1] / sqrt(2. * shape_));
+					cm *= pars[0] * const_;
+				}
+			}// end (cov_fct_type_ == "matern_ard"
+			else if (cov_fct_type_ == "gaussian_ard") {
+				CHECK(ind_range >= 0 && ind_range < dim_coords);
+				cm = transf_scale ? -1. : (2. * nugget_var * std::sqrt(pars[1]));
+			}
+		}//end DetermineConstantsForGradient
 
 		/*!
 		* \brief Calculates the gradient wrt a range parameters for a Matern covariance
@@ -1780,62 +1530,95 @@ namespace GPBoost {
 		* \param cm_range Multiplicative constant for distancs
 		* \return Gradient
 		*/
-		inline double MaternGeneralShapeGradRange(const double cm, 
-			const double dist,
-			const double cm_dist) const {
+		inline double MaternGeneralShapeGradRange(double cm,
+			const T_mat& dist,
+			const int i,
+			const int j,
+			double cm_dist) const {
 #if MSVC_OR_GCC_COMPILER
-			double range_dist = cm_dist * dist;
+			double range_dist = cm_dist * dist.coeff(i, j);
 			return(cm * std::pow(range_dist, shape_) * (2. * shape_ * std::cyl_bessel_k(shape_, range_dist) - range_dist * std::cyl_bessel_k(shape_ + 1., range_dist)));
 #else
 			return(1.);
 #endif
 		}
 
-		inline double MaternEstimateShapeGradRange(const double cm,
-			const double dist,
-			const double cm_dist,
-			const double shape) const {
+		inline double MaternEstimateShapeGrad(double cm,
+			const T_mat& dist,
+			const int i,
+			const int j,
+			double par_aux,
+			double par_aux_up,
+			double par_aux_down,
+			double pars_2_up,
+			double pars_2_down,
+			double shape,
+			const int ind_range) const {
+			if (ind_range == 0) {
+				return(MaternEstimateShapeGradRange(cm, dist.coeff(i, j), par_aux, shape));
+			}
+			else if (ind_range == 1) {//gradient wrt smoothness parameter
+				return(MaternEstimateShapeGradSmoothnessFiniteDifference(cm, dist.coeff(i, j), par_aux,
+					par_aux_up, par_aux_down, pars_2_up, pars_2_down, shape));
+			}
+			return(1.);
+		}
+
+		inline double MaternEstimateShapeGradRange(double cm,
+			double dist_ij,
+			double cm_dist,
+			double shape) const {
 #if MSVC_OR_GCC_COMPILER
-			double z = dist * cm_dist;
+			double z = dist_ij * cm_dist;
 			return(cm * std::pow(z, shape) * (2. * shape * std::cyl_bessel_k(shape, z) - z * std::cyl_bessel_k(shape + 1., z)));
 #else
 			return(1.);
 #endif
 		}
 
-		inline double MaternEstimateShapeGradSmoothnessFiniteDifference(const double cm,
-			const double dist,
-			const double par_aux,
-			const double par_aux_up,
-			const double par_aux_down,
-			const double pars_2_up,
-			const double pars_2_down,
-			const double delta_step,
-			const double shape) const {
+		inline double MaternEstimateShapeGradSmoothnessFiniteDifference(double cm,
+			double dist_ij,
+			double par_aux,
+			double par_aux_up,
+			double par_aux_down,
+			double pars_2_up,
+			double pars_2_down,
+			double shape) const {
 #if MSVC_OR_GCC_COMPILER
-			double z = dist * par_aux;
-			double z_up = dist * par_aux_up;
-			double z_down = dist * par_aux_down;
-			double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step);
+			double z = dist_ij * par_aux;
+			double z_up = dist_ij * par_aux_up;
+			double z_down = dist_ij * par_aux_down;
+			double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step_);
 			return (cm * std::pow(z, shape) * (std::cyl_bessel_k(shape, z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(shape)) + bessel_num_deriv));
 #else
 			return(1.);
 #endif
 		}
 
-		inline double MaternSpaceTimeGradRange(const double cm,
-			const double dist_ij,
-			const double dist_sq_ij_time,
-			const double dist_sq_ij_space,
-			const double sigma_ij,
-			const int ind_range) const {
+		inline double MaternSpaceTimeGradRange(double cm,
+			const T_mat& sigma,
+			const int dim_space,
+			const int ind_range,
+			const int i,
+			const int j,
+			const den_mat_t* coords_ptr,
+			const den_mat_t* coords_pred_ptr) const {
+			double dist_ij = ((*coords_pred_ptr).row(i) - (*coords_ptr).row(j)).lpNorm<2>();
+			double dist_sq_ij_time = 0., dist_sq_ij_space = 0.;
+			if (ind_range == 0) {
+				dist_sq_ij_time = ((*coords_pred_ptr).coeff(i, 0) - (*coords_ptr).coeff(j, 0));
+				dist_sq_ij_time = dist_sq_ij_time * dist_sq_ij_time;
+			}
+			else if (ind_range == 1) {
+				dist_sq_ij_space = ((*coords_pred_ptr).row(i).tail(dim_space) - (*coords_ptr).row(j).tail(dim_space)).squaredNorm();
+			}
 			if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
 				if (ind_range == 0) {
 					if (dist_sq_ij_time < EPSILON_NUMBERS) {
 						return(0.);
 					}
 					else {
-						return(cm * dist_sq_ij_time / dist_ij * sigma_ij);
+						return(cm * dist_sq_ij_time / dist_ij * sigma.coeff(i, j));
 					}
 				}
 				else if (ind_range == 1) {
@@ -1843,7 +1626,7 @@ namespace GPBoost {
 						return(0.);
 					}
 					else {
-						return(cm * dist_sq_ij_space / dist_ij * sigma_ij);
+						return(cm * dist_sq_ij_space / dist_ij * sigma.coeff(i, j));
 					}
 				}
 			}// end TwoNumbersAreEqual<double>(shape_, 0.5)
@@ -1878,16 +1661,22 @@ namespace GPBoost {
 			return(1.);//to avoid compiler warnings
 		}//end MaternSpaceTimeGradRange
 
-		inline double MaternARDGradRange(const double cm,
-			const double dist_ij,
-			const double dist_sq_ij_coord,
-			const double sigma_ij) const {
+		inline double MaternARDGradRange(double cm,
+			const T_mat& sigma,
+			const int ind_range,
+			const int i,
+			const int j,
+			const den_mat_t* coords_ptr,
+			const den_mat_t* coords_pred_ptr) const {
+			double dist_ij = ((*coords_pred_ptr).row(i) - (*coords_ptr).row(j)).lpNorm<2>();
+			double dist_sq_ij_coord = ((*coords_pred_ptr).coeff(i, ind_range) - (*coords_ptr).coeff(j, ind_range));
+			dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
 			if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
 				if (dist_sq_ij_coord < EPSILON_NUMBERS) {
 					return(0.);
 				}
 				else {
-					return(cm * dist_sq_ij_coord / dist_ij * sigma_ij);
+					return(cm * dist_sq_ij_coord / dist_ij * sigma.coeff(i, j));
 				}
 			}
 			else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
@@ -1905,18 +1694,24 @@ namespace GPBoost {
 			}
 		}//end MaternARDGradRange
 
-		inline double GaussianARDGradRange(const double cm,
-			const double dist_sq_ij_coord,
-			const double sigma_ij) const {
+		inline double GaussianARDGradRange(double cm,
+			const T_mat& sigma,
+			const int ind_range,
+			const int i,
+			const int j,
+			const den_mat_t* coords_ptr,
+			const den_mat_t* coords_pred_ptr) const {
+			double dist_sq_ij_coord = ((*coords_pred_ptr).coeff(i, ind_range) - (*coords_ptr).coeff(j, ind_range));
+			dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
 			if (dist_sq_ij_coord < EPSILON_NUMBERS) {
 				return(0.);
 			}
 			else {
-				return(cm * dist_sq_ij_coord * sigma_ij);
+				return(cm * dist_sq_ij_coord * sigma.coeff(i, j));
 			}
 		}//end GaussianARDGradRange
 
-		inline void ParseCovFunctionAlias(string_t& likelihood, 
+		inline void ParseCovFunctionAlias(string_t & likelihood,
 			double& shape) const {
 			if (likelihood == string_t("exponential_space_time")) {
 				likelihood = "matern_space_time";
