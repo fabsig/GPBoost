@@ -668,7 +668,6 @@ namespace GPBoost {
 				re_model_den_->TransformCovPars(cov_pars_orig, cov_pars_trafo);
 			}
 		}
-
 		if (matrix_format_ == "sp_mat_t") {
 			if (re_model_sp_->gauss_likelihood_) {
 				re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), fixed_effects, 

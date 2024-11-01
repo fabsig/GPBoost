@@ -3834,7 +3834,7 @@ namespace GPBoost {
 			sp_mat_t& Bp,
 			const vec_t& Dp,
 			vec_t& pred_mean,
-			T_mat& pred_cov,
+			den_mat_t& pred_cov,
 			vec_t& pred_var,
 			bool calc_pred_cov,
 			bool calc_pred_var,
@@ -3876,9 +3876,8 @@ namespace GPBoost {
 						Bp_inv_Bpo_rm = Bp_inv_rm * Bpo_rm;
 						Bp_inv_Dp_rm = Bp_inv_rm * Dp.asDiagonal();
 					}
-					den_mat_t pred_cov_dense;
 					if (calc_pred_cov) {
-						pred_cov_dense = den_mat_t::Zero(num_pred, num_pred);
+						pred_cov = den_mat_t::Zero(num_pred, num_pred);
 					}
 					if (calc_pred_var) {
 						pred_var = vec_t::Zero(num_pred);
@@ -3939,7 +3938,7 @@ namespace GPBoost {
 								den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
 #pragma omp critical
 								{
-									pred_cov_dense += pred_cov_private;
+									pred_cov += pred_cov_private;
 								}
 							}
 							if (calc_pred_var) {
@@ -3953,14 +3952,13 @@ namespace GPBoost {
 
 					}
 					if (calc_pred_cov) {
-						pred_cov_dense /= nsim_var_pred_;
+						pred_cov /= nsim_var_pred_;
 						if (CondObsOnly) {
-							pred_cov_dense.diagonal().array() += Dp.array();
+							pred_cov.diagonal().array() += Dp.array();
 						}
 						else {
-							pred_cov_dense += Bp_inv_Dp_rm * Bp_inv_rm.transpose();
+							pred_cov += Bp_inv_Dp_rm * Bp_inv_rm.transpose();
 						}
-						ConvertTo_T_mat_FromDense<T_mat>(pred_cov_dense, pred_cov);
 					}
 					if (calc_pred_var) {
 						pred_var /= nsim_var_pred_;

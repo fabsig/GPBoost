@@ -202,12 +202,7 @@ namespace GPBoost {
 				CHECK(gp_coords_data != nullptr);
 				CHECK(cov_fct != nullptr);
 				dim_gp_coords_ = dim_gp_coords;
-				cov_fct_ = std::string(cov_fct);
-				cov_fct_shape_ = cov_fct_shape;
-				cov_fct_taper_range_ = cov_fct_taper_range;
-				cov_fct_taper_shape_ = cov_fct_taper_shape;
 				if (gp_approx_ == "vecchia") {
-					Log::REInfo("Starting nearest neighbor search for Vecchia approximation");
 					CHECK(num_neighbors > 0);
 					num_neighbors_ = num_neighbors;
 					num_neighbors_pred_ = 2 * num_neighbors_;
@@ -239,35 +234,33 @@ namespace GPBoost {
 				num_comps_total_ += num_gp_total_;
 			}
 			DetermineSpecialCasesModelsEstimationPrediction();
-			//Create RE/GP component models
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gp_approx_ == "vecchia") {
-					std::vector<std::shared_ptr<RECompBase<T_mat>>> re_comps_cluster_i;
+					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cluster_i;
 					std::vector<std::vector<int>> nearest_neighbors_cluster_i;
 					std::vector<den_mat_t> dist_obs_neighbors_cluster_i;
 					std::vector<den_mat_t> dist_between_neighbors_cluster_i;
 					std::vector<Triplet_t> entries_init_B_cluster_i;
-					std::vector<Triplet_t> entries_init_B_grad_cluster_i;
 					std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i;
-					CreateREComponentsVecchia<T_mat>(num_data_, dim_gp_coords_, data_indices_per_cluster_, cluster_i,
+					CreateREComponentsVecchia(num_data_, dim_gp_coords_, data_indices_per_cluster_, cluster_i,
 						num_data_per_cluster_, gp_coords_data, gp_rand_coef_data,
 						re_comps_cluster_i, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
-						entries_init_B_cluster_i, entries_init_B_grad_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
+						entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
 						vecchia_ordering_, num_neighbors_, vecchia_neighbor_selection_, true, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
-						cov_fct_, cov_fct_shape_, cov_fct_taper_range_, cov_fct_taper_shape_, gp_approx_ == "tapering");
+						std::string(cov_fct), cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_);
 					nearest_neighbors_.insert({ cluster_i, nearest_neighbors_cluster_i });
 					dist_obs_neighbors_.insert({ cluster_i, dist_obs_neighbors_cluster_i });
 					dist_between_neighbors_.insert({ cluster_i, dist_between_neighbors_cluster_i });
 					entries_init_B_.insert({ cluster_i, entries_init_B_cluster_i });
-					entries_init_B_grad_.insert({ cluster_i, entries_init_B_grad_cluster_i });
 					z_outer_z_obs_neighbors_.insert({ cluster_i, z_outer_z_obs_neighbors_cluster_i });
-					re_comps_.insert({ cluster_i, re_comps_cluster_i });
+					re_comps_vecchia_.insert({ cluster_i, re_comps_cluster_i });
 				}//end gp_approx_ == "vecchia"
 				else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
 					CreateREComponentsPPFSA(num_data_, data_indices_per_cluster_, cluster_i, gp_coords_data,
+						std::string(cov_fct), cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
 						re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false);
 					re_comps_ip_.insert({ cluster_i, re_comps_ip_cluster_i });
 					re_comps_cross_cov_.insert({ cluster_i, re_comps_cross_cov_cluster_i });
@@ -275,15 +268,11 @@ namespace GPBoost {
 				}
 				else {
 					std::vector<std::shared_ptr<RECompBase<T_mat>>> re_comps_cluster_i;
-					CreateREComponents(num_data_,
-						data_indices_per_cluster_,
-						cluster_i,
-						re_group_levels,
-						num_data_per_cluster_,
-						re_group_rand_coef_data,
-						gp_coords_data,
-						gp_rand_coef_data,
+					CreateREComponents(num_data_, data_indices_per_cluster_, cluster_i,
+						re_group_levels, num_data_per_cluster_, re_group_rand_coef_data,
+						gp_coords_data, gp_rand_coef_data,
 						!only_grouped_REs_use_woodbury_identity_,
+						std::string(cov_fct), cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
 						re_comps_cluster_i);
 					re_comps_.insert({ cluster_i, re_comps_cluster_i });
 				}
@@ -294,9 +283,6 @@ namespace GPBoost {
 			}
 			if (gp_approx_ != "vecchia") {
 				InitializeIdentityMatricesForGaussianData();
-			}
-			if (gp_approx_ == "vecchia") {
-				Log::REInfo("Nearest neighbors for Vecchia approximation found");
 			}
 			InitializeLikelihoods(likelihood_strg);
 			DetermineCovarianceParameterIndicesNumCovPars();
@@ -349,7 +335,12 @@ namespace GPBoost {
 				if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
 					CHECK(gp_approx_ != "full_scale_tapering");
 					for (const auto& cluster_i : unique_clusters_) {
-						re_comps_[cluster_i][0]->DropZ();
+						if (gp_approx_ == "vecchia") {
+							re_comps_vecchia_[cluster_i][0]->DropZ();
+						}
+						else {
+							re_comps_[cluster_i][0]->DropZ();
+						}
 					}
 				}
 			}
@@ -360,7 +351,12 @@ namespace GPBoost {
 				if (only_one_GP_calculations_on_RE_scale_before || only_one_grouped_RE_calculations_on_RE_scale_before) {
 					CHECK(gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering");
 					for (const auto& cluster_i : unique_clusters_) {
-						re_comps_[cluster_i][0]->AddZ();
+						if (gp_approx_ == "vecchia") {
+							re_comps_vecchia_[cluster_i][0]->AddZ();
+						}
+						else {
+							re_comps_[cluster_i][0]->AddZ();
+						}
 					}
 				}
 			}
@@ -1424,7 +1420,7 @@ namespace GPBoost {
 								u = D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];//TODO: this is already calculated in CalcYAux -> save it there and re-use here?
 							}
 							for (int j = 0; j < num_comps_total_; ++j) {
-								int num_par_comp = re_comps_[cluster_i][j]->num_cov_par_;
+								int num_par_comp = re_comps_vecchia_[cluster_i][j]->num_cov_par_;
 								for (int ipar = 0; ipar < num_par_comp; ++ipar) {
 									uk = B_grad_[cluster_i][num_par_comp * j + ipar] * y_[cluster_i];
 									grad_cov_aux_par[first_cov_par + ind_par_[j] - 1 + ipar] += ((uk.dot(u) - 0.5 * u.dot(D_grad_[cluster_i][num_par_comp * j + ipar] * u)) / cov_pars[0] +
@@ -2602,29 +2598,29 @@ namespace GPBoost {
 					if (predict_cov_mat || predict_var || predict_response) {
 						if (gp_approx_ == "vecchia") {
 							//TODO: move this code out into another function for better readability
+							std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = re_comps_vecchia_[unique_clusters_[0]][ind_intercept_gp_];
 							// Initialize RE components
 							std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<Triplet_t> entries_init_B_cluster_i;
-							std::vector<Triplet_t> entries_init_B_grad_cluster_i;
 							std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
-							CreateREComponentsVecchia<T_mat>(num_data_pred, dim_gp_coords_, data_indices_per_cluster_pred, cluster_i,
+							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_vecchia_cluster_i;
+							CreateREComponentsVecchia(num_data_pred, dim_gp_coords_, data_indices_per_cluster_pred, cluster_i,
 								num_data_per_cluster_pred, gp_coords_data_pred,
-								gp_rand_coef_data_pred, re_comps_cluster_i,
+								gp_rand_coef_data_pred, re_comps_vecchia_cluster_i,
 								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
-								entries_init_B_cluster_i, entries_init_B_grad_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
+								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
 								"none", num_neighbors_pred_, vecchia_neighbor_selection_, false, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
-								cov_fct_, cov_fct_shape_, cov_fct_taper_range_, cov_fct_taper_shape_, gp_approx_ == "tapering");//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
+								re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+								gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
-								re_comps_cluster_i[j]->SetCovPars(pars);
+								re_comps_vecchia_cluster_i[j]->SetCovPars(pars);
 							}
-							std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp_]);
-							if (!(re_comp->ShouldSaveDistances())) {//determine nearest neighbors when using correlation-based approach
-								UpdateNearestNeighbors(re_comps_cluster_i, nearest_neighbors_cluster_i,
-									entries_init_B_cluster_i, entries_init_B_grad_cluster_i,
-									num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
+							if (!(re_comp_gp_clus0->HasIsotropicCovFct())) {//determine nearest neighbors when using correlation-based approach
+								UpdateNearestNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i,
+									entries_init_B_cluster_i, num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
 									has_duplicates_coords_, false, gauss_likelihood_);
 							}
 							// Calculate a Cholesky factor
@@ -2632,12 +2628,11 @@ namespace GPBoost {
 							sp_mat_t D_inv_cluster_i;
 							std::vector<sp_mat_t> B_grad_cluster_i;//not used, but needs to be passed to function
 							std::vector<sp_mat_t> D_grad_cluster_i;//not used, but needs to be passed to function
-							CalcCovFactorVecchia<T_mat>(num_data_per_cluster_pred[cluster_i], false, re_comps_cluster_i,
+							CalcCovFactorVecchia(num_data_per_cluster_pred[cluster_i], false, re_comps_vecchia_cluster_i,
 								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
-								entries_init_B_cluster_i, entries_init_B_grad_cluster_i,
-								z_outer_z_obs_neighbors_cluster_i,
+								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i,
 								B_cluster_i, D_inv_cluster_i, B_grad_cluster_i, D_grad_cluster_i,
-								true, 1., false, num_gp_total_, ind_intercept_gp_, gauss_likelihood_);
+								true, 1., false, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_);
 							//Calculate Psi
 							sp_mat_t D_sqrt(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
 							D_sqrt.setIdentity();
@@ -2647,6 +2642,7 @@ namespace GPBoost {
 							psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
 						}//end gp_approx_ == "vecchia"
 						else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
+							std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = re_comps_ip_[unique_clusters_[0]][ind_intercept_gp_];
 							psi = T_mat(num_REs_pred, num_REs_pred);
 							if (gauss_likelihood_ && predict_response) {
 								psi.setIdentity();//nugget effect
@@ -2658,6 +2654,7 @@ namespace GPBoost {
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 							std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
 							CreateREComponentsPPFSA(num_data_pred, data_indices_per_cluster_pred, cluster_i, gp_coords_data_pred,
+								re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 								re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, true);
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
@@ -2697,10 +2694,20 @@ namespace GPBoost {
 							}
 						}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
 						else if (gp_approx_ == "none") {
-							CreateREComponents(num_data_pred, data_indices_per_cluster_pred,
-								cluster_i, re_group_levels_pred, num_data_per_cluster_pred,
-								re_group_rand_coef_data_pred, gp_coords_data_pred,
-								gp_rand_coef_data_pred, true, re_comps_cluster_i);
+							string_t cov_fct = "";
+							double cov_fct_shape = 0., cov_fct_taper_range = 0., cov_fct_taper_shape = 0.;
+							if (num_gp_ > 0) {
+								std::shared_ptr<RECompGP<T_mat>> re_comp_gp_clus0 = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[unique_clusters_[0]][ind_intercept_gp_]);
+								cov_fct = re_comp_gp_clus0->CovFunctionName();
+								cov_fct_shape = re_comp_gp_clus0->CovFunctionShape();
+								cov_fct_taper_range = re_comp_gp_clus0->CovFunctionTaperRange();
+								cov_fct_taper_shape = re_comp_gp_clus0->CovFunctionTaperShape();
+							}
+							CreateREComponents(num_data_pred, data_indices_per_cluster_pred, cluster_i, 
+								re_group_levels_pred, num_data_per_cluster_pred, re_group_rand_coef_data_pred, 
+								gp_coords_data_pred, gp_rand_coef_data_pred, true, 
+								cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+								re_comps_cluster_i);
 							if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
 								num_REs_pred = re_comps_cluster_i[0]->GetNumUniqueREs();
 							}
@@ -2866,13 +2873,12 @@ namespace GPBoost {
 					vec_t var_pred_id;
 					sp_mat_t Bpo, Bp; // used only if gp_approx_ == "vecchia" && !gauss_likelihood_
 					vec_t Dp;
-					std::shared_ptr<RECompGP<T_mat>> re_comp;
-					if (gp_approx_ == "vecchia") {
-						re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][ind_intercept_gp_]);
-					}
+					
 					bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);//variance needs to be available for response prediction for non-Gaussian likelihoods
 					// Calculate predictions
 					if (gp_approx_ == "vecchia") {
+						den_mat_t cov_mat_pred_vecchia_id;
+						std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp = re_comps_vecchia_[cluster_i][ind_intercept_gp_];
 						if (gauss_likelihood_) {
 							int num_data_tot = num_data_per_cluster_[cluster_i] + num_data_per_cluster_pred[cluster_i];
 							double num_mem_d = ((double)num_neighbors_pred_) * ((double)num_neighbors_pred_) * (double)(num_data_tot)+(double)(num_neighbors_pred_) * (double)(num_data_tot);
@@ -2884,31 +2890,31 @@ namespace GPBoost {
 									num_neighbors_pred_, num_data_per_cluster_[cluster_i], num_data_per_cluster_pred[cluster_i], mem_size);
 							}
 							if (vecchia_pred_type_ == "order_obs_first_cond_obs_only") {
-								CalcPredVecchiaObservedFirstOrder<T_mat>(true, cluster_i, num_data_pred, data_indices_per_cluster_pred,
-									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
-									re_comps_, ind_intercept_gp_, num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
-									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
+								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, data_indices_per_cluster_pred,
+									re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
+									re_comps_vecchia_, ind_intercept_gp_, num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
+									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_vecchia_id, var_pred_id, Bpo, Bp, Dp, save_distances_isotropic_cov_fct_Vecchia_);
 							}
 							else if (vecchia_pred_type_ == "order_obs_first_cond_all") {
-								CalcPredVecchiaObservedFirstOrder<T_mat>(false, cluster_i, num_data_pred, data_indices_per_cluster_pred,
-									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
-									re_comps_, ind_intercept_gp_, num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
-									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
+								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, data_indices_per_cluster_pred,
+									re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
+									re_comps_vecchia_, ind_intercept_gp_, num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
+									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_vecchia_id, var_pred_id, Bpo, Bp, Dp, save_distances_isotropic_cov_fct_Vecchia_);
 							}
 							else if (vecchia_pred_type_ == "order_pred_first") {
-								CalcPredVecchiaPredictedFirstOrder<T_mat>(cluster_i, num_data_pred, data_indices_per_cluster_pred,
-									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
-									re_comps_, ind_intercept_gp_, num_gp_rand_coef_, num_gp_total_, y_[cluster_i], rng_,
-									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_id, var_pred_id);
+								CalcPredVecchiaPredictedFirstOrder(cluster_i, num_data_pred, data_indices_per_cluster_pred,
+									re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
+									re_comps_vecchia_, ind_intercept_gp_, num_gp_rand_coef_, num_gp_total_, y_[cluster_i], rng_,
+									predict_cov_mat, predict_var, mean_pred_id, cov_mat_pred_vecchia_id, var_pred_id, save_distances_isotropic_cov_fct_Vecchia_);
 							}
 							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
 								if (num_gp_rand_coef_ > 0) {
 									Log::REFatal("The Vecchia approximation for latent process(es) is currently not implemented when having random coefficients");
 								}
-								CalcPredVecchiaLatentObservedFirstOrder<T_mat>(true, cluster_i,
-									re_comp->coords_, gp_coords_mat_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
-									re_comps_, ind_intercept_gp_, y_[cluster_i], rng_,
-									predict_cov_mat, predict_var, predict_response, mean_pred_id, cov_mat_pred_id, var_pred_id);
+								CalcPredVecchiaLatentObservedFirstOrder(true, cluster_i,
+									re_comp_gp->coords_, gp_coords_mat_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
+									re_comps_vecchia_, ind_intercept_gp_, y_[cluster_i], rng_,
+									predict_cov_mat, predict_var, predict_response, mean_pred_id, cov_mat_pred_vecchia_id, var_pred_id, save_distances_isotropic_cov_fct_Vecchia_);
 								// Note: we use the function 'CalcPredVecchiaLatentObservedFirstOrder' instead of the function 'CalcPredVecchiaObservedFirstOrder' since 
 								//	the current implementation cannot handle duplicate values in gp_coords (coordinates / input features) for Vecchia approximations
 								//	for latent processes (as matrices that need to be inverted will be singular due to the duplicate values).
@@ -2919,10 +2925,10 @@ namespace GPBoost {
 								if (num_gp_rand_coef_ > 0) {
 									Log::REFatal("The Vecchia approximation for latent process(es) is currently not implemented when having random coefficients");
 								}
-								CalcPredVecchiaLatentObservedFirstOrder<T_mat>(false, cluster_i,
-									re_comp->coords_, gp_coords_mat_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
-									re_comps_, ind_intercept_gp_, y_[cluster_i], rng_,
-									predict_cov_mat, predict_var, predict_response, mean_pred_id, cov_mat_pred_id, var_pred_id);
+								CalcPredVecchiaLatentObservedFirstOrder(false, cluster_i,
+									re_comp_gp->coords_, gp_coords_mat_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
+									re_comps_vecchia_, ind_intercept_gp_, y_[cluster_i], rng_,
+									predict_cov_mat, predict_var, predict_response, mean_pred_id, cov_mat_pred_vecchia_id, var_pred_id, save_distances_isotropic_cov_fct_Vecchia_);
 							}
 							else {
 								Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
@@ -2935,7 +2941,7 @@ namespace GPBoost {
 									if (predict_cov_mat) {
 #pragma omp parallel for schedule(static)
 										for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-											cov_mat_pred_id.coeffRef(i, i) -= 1.;
+											cov_mat_pred_vecchia_id.coeffRef(i, i) -= 1.;
 										}
 									}
 									if (predict_var) {
@@ -2953,29 +2959,32 @@ namespace GPBoost {
 							// The mode has been calculated already before in the Predict() function above
 							// mean_pred_id and cov_mat_pred_id are not calculate in 'CalcPredVecchiaObservedFirstOrder', only Bpo, Bp, and Dp for non-Gaussian likelihoods
 							if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
-								CalcPredVecchiaObservedFirstOrder<T_mat>(true, cluster_i, num_data_pred, data_indices_per_cluster_pred,
-									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
-									re_comps_, ind_intercept_gp_, num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
-									false, false, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
+								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred, data_indices_per_cluster_pred,
+									re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
+									re_comps_vecchia_, ind_intercept_gp_, num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
+									false, false, mean_pred_id, cov_mat_pred_vecchia_id, var_pred_id, Bpo, Bp, Dp, save_distances_isotropic_cov_fct_Vecchia_);
 								likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
 									B_[cluster_i], D_inv_[cluster_i], Bpo, Bp, Dp,
-									mean_pred_id, cov_mat_pred_id, var_pred_id,
+									mean_pred_id, cov_mat_pred_vecchia_id, var_pred_id,
 									predict_cov_mat, predict_var_or_response, false, true);
 							}
 							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
-								CalcPredVecchiaObservedFirstOrder<T_mat>(false, cluster_i, num_data_pred, data_indices_per_cluster_pred,
-									re_comp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
-									re_comps_, ind_intercept_gp_, num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
-									false, false, mean_pred_id, cov_mat_pred_id, var_pred_id, Bpo, Bp, Dp);
+								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred, data_indices_per_cluster_pred,
+									re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
+									re_comps_vecchia_, ind_intercept_gp_, num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
+									false, false, mean_pred_id, cov_mat_pred_vecchia_id, var_pred_id, Bpo, Bp, Dp, save_distances_isotropic_cov_fct_Vecchia_);
 								likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
 									B_[cluster_i], D_inv_[cluster_i], Bpo, Bp, Dp,
-									mean_pred_id, cov_mat_pred_id, var_pred_id,
+									mean_pred_id, cov_mat_pred_vecchia_id, var_pred_id,
 									predict_cov_mat, predict_var_or_response, false, false);
 							}
 							else {
 								Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
 							}
 						}//end not gauss_likelihood_
+						if (predict_cov_mat) {
+							ConvertTo_T_mat_FromDense(cov_mat_pred_vecchia_id, cov_mat_pred_id);
+						}
 					}//end gp_approx_ == "vecchia"
 					else {// not gp_approx_ == "vecchia"
 						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
@@ -3306,7 +3315,7 @@ namespace GPBoost {
 						if (only_one_GP_calculations_on_RE_scale_) {//there are duplicates
 #pragma omp parallel for schedule(static)// Write on output
 							for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-								out_predict[data_indices_per_cluster_[cluster_i][i]] = (*mode)[(re_comps_[cluster_i][0]->random_effects_indices_of_data_)[i]];
+								out_predict[data_indices_per_cluster_[cluster_i][i]] = (*mode)[(re_comps_vecchia_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_)[i]];
 							}
 						}
 						else {//no duplicates
@@ -3321,7 +3330,7 @@ namespace GPBoost {
 							if (only_one_GP_calculations_on_RE_scale_) {//there are duplicates
 #pragma omp parallel for schedule(static)// Write on output
 								for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-									out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_] = var_pred_id[(re_comps_[cluster_i][0]->random_effects_indices_of_data_)[i]];
+									out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_] = var_pred_id[(re_comps_vecchia_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_)[i]];
 								}
 							}
 							else {//no duplicates
@@ -3509,7 +3518,7 @@ namespace GPBoost {
 				// find initial values for intercept process
 				int num_par_j = ind_par_[1] - ind_par_[0];
 				vec_t pars = vec_t(num_par_j);
-				re_comps_[unique_clusters_[0]][0]->FindInitCovPar(rng_, pars, init_marg_var);
+				re_comps_vecchia_[unique_clusters_[0]][ind_intercept_gp_]->FindInitCovPar(rng_, pars, init_marg_var);
 				for (int jj = 0; jj < num_par_j; ++jj) {
 					init_cov_pars[ind_par] = pars[jj];
 					ind_par++;
@@ -3523,7 +3532,7 @@ namespace GPBoost {
 					}
 				}
 			}
-			else {
+			else {//not gp_approx_ == "vecchia")
 				for (int j = 0; j < num_comps_total_; ++j) {
 					int num_par_j = ind_par_[j + 1] - ind_par_[j];
 					vec_t pars = vec_t(num_par_j);
@@ -3662,8 +3671,8 @@ namespace GPBoost {
 		bool ShouldRedetermineNearestNeighborsVecchia(bool force_redermination) {
 			bool redetermine_nn = false;
 			if (gp_approx_ == "vecchia") {
-				std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[unique_clusters_[0]][ind_intercept_gp_]);
-				if (!(re_comp->ShouldSaveDistances())) {
+				std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_[unique_clusters_[0]][ind_intercept_gp_];
+				if (!(re_comp->HasIsotropicCovFct())) {
 					if ((((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0 || force_redermination) {//(num_iter_ + 1) is power of 2 or 0. 
 						// Note that convergence of internal optimizers is not checked in iterations with redetermine_nn if convergence_criterion_ == "relative_change_in_log_likelihood"
 						redetermine_nn = true;
@@ -3681,9 +3690,8 @@ namespace GPBoost {
 			CHECK(ShouldRedetermineNearestNeighborsVecchia(force_redermination));
 			for (const auto& cluster_i : unique_clusters_) {
 				// redetermine nearest neighbors for models for which neighbors are selected based on correlations / scaled distances
-				UpdateNearestNeighbors(re_comps_[cluster_i], nearest_neighbors_[cluster_i],
-					entries_init_B_[cluster_i], entries_init_B_grad_[cluster_i],
-					num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
+				UpdateNearestNeighbors(re_comps_vecchia_[cluster_i], nearest_neighbors_[cluster_i],
+					entries_init_B_[cluster_i], num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
 					has_duplicates_coords_, true, gauss_likelihood_);
 				if (!gauss_likelihood_) {
 					likelihood_[cluster_i]->SetCholFactPatternAnalyzedFalse();
@@ -3803,14 +3811,6 @@ namespace GPBoost {
 		int ind_intercept_gp_;
 		/*! \brief Dimension of the coordinates (=number of features) for Gaussian process */
 		int dim_gp_coords_ = 2;//required to save since it is needed in the Predict() function when predictions are made for new independent realizations of GPs
-		/*! \brief Type of covariance(kernel) function for Gaussian processes */
-		string_t cov_fct_ = "exponential";//required to also save here since it is needed in the Predict() function when predictions are made for new independent realizations of GPs
-		/*! \brief Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. For the Wendland covariance function, we follow the notation of Bevilacqua et al. (2019, AOS)). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian. */
-		double cov_fct_shape_ = 0.;
-		/*! \brief Range parameter of the Wendland covariance functionand Wendland correlation taper. We follow the notation of Bevilacqua et al. (2019, AOS)) */
-		double cov_fct_taper_range_ = 1.;
-		/*! \brief Shape parameter of the Wendland correlation taper. We follow the notation of Bevilacqua et al. (2019, AOS) */
-		double cov_fct_taper_shape_ = 0.;
 		/*! \brief If true, there are duplicates in coords among the neighbors (currently only for non-Gaussian likelihoods for some GP approximations) */
 		bool has_duplicates_coords_ = false;
 		/*! \brief Type of GP-approximation for handling large data */
@@ -4191,12 +4191,14 @@ namespace GPBoost {
 		std::map<data_size_t, std::vector<sp_mat_t>> D_grad_;
 		/*! \brief Triplets for initializing the matrices B */
 		std::map<data_size_t, std::vector<Triplet_t>> entries_init_B_;
-		/*! \brief Triplets for initializing the matrices B_grad */
-		std::map<data_size_t, std::vector<Triplet_t>> entries_init_B_grad_;
 		/*! \brief If true, the function 'SetVecchiaPredType' has been called and vecchia_pred_type_ has been set */
 		bool vecchia_pred_type_has_been_set_ = false;
 		/*! \brief If true, a stochastic trace approximation is used to calculate the Fisher information for a Vecchia approximation for Gaussian likelihoods */
 		bool use_stochastic_trace_for_Fisher_information_Vecchia_ = true;
+		/*! \brief If true, distances among points and neighbors are saved for Vecchia approximations for isotropic covariance functions */
+		bool save_distances_isotropic_cov_fct_Vecchia_ = false;
+		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with Vecchia GP components */
+		std::map<data_size_t, std::vector<std::shared_ptr<RECompGP<den_mat_t>>>> re_comps_vecchia_;
 
 		// PREDICTIVE PROCESS AND FULL SCALE APPROXIMATION FOR GP
 		/*! \brief Method for choosing inducing points */
@@ -4535,7 +4537,7 @@ namespace GPBoost {
 		*/
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
 		void CalcPsiInv(T_mat& psi_inv, data_size_t cluster_i, bool only_at_non_zeros_of_psi) {
-			if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
+			if (gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				Log::REFatal("'CalcPsiInv': no implemented for approximation '%s' ", gp_approx_.c_str());
 			}
 			if (only_grouped_REs_use_woodbury_identity_) {
@@ -4589,7 +4591,7 @@ namespace GPBoost {
 		}// end CalcPsiInv for sparse matrices
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
 		void CalcPsiInv(den_mat_t& psi_inv, data_size_t cluster_i, bool) {
-			if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
+			if (gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				Log::REFatal("'CalcPsiInv': no implemented for approximation '%s' ", gp_approx_.c_str());
 			}
 			if (only_grouped_REs_use_woodbury_identity_) {//typically currently not called as only_grouped_REs_use_woodbury_identity_ is only true for grouped REs only i.e. sparse matrices
@@ -4795,10 +4797,10 @@ namespace GPBoost {
 				if (gp_approx_ == "vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood,
 						num_data_per_cluster_[cluster_i],
-						re_comps_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs(),
+						re_comps_vecchia_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs(),
 						false,
 						only_one_GP_calculations_on_RE_scale_,
-						re_comps_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
+						re_comps_vecchia_[cluster_i][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
 						likelihood_additional_param_));
 				}
 				else if (gp_approx_ == "fitc") {
@@ -4876,13 +4878,19 @@ namespace GPBoost {
 					num_cov_par_ += re_comps_ip_[unique_clusters_[0]][j]->NumCovPar();
 				}
 			}
+			else if (gp_approx_ == "vecchia") {
+				for (int j = 0; j < (int)re_comps_vecchia_[unique_clusters_[0]].size(); ++j) {
+					ind_par_.push_back(ind_par_.back() + re_comps_vecchia_[unique_clusters_[0]][j]->NumCovPar());//end points of parameter indices of components
+					num_cov_par_ += re_comps_vecchia_[unique_clusters_[0]][j]->NumCovPar();
+				}
+			}
 			else {
 				for (int j = 0; j < (int)re_comps_[unique_clusters_[0]].size(); ++j) {
 					ind_par_.push_back(ind_par_.back() + re_comps_[unique_clusters_[0]][j]->NumCovPar());//end points of parameter indices of components
 					num_cov_par_ += re_comps_[unique_clusters_[0]][j]->NumCovPar();
 				}
 			}
-		}
+		}//end DetermineCovarianceParameterIndicesNumCovPars
 
 		/*!
 		* \brief Function that determines whether to use special options for estimation and prediction for certain special cases of random effects models
@@ -5097,6 +5105,10 @@ namespace GPBoost {
 		* \param gp_coords_data Coordinates (features) for Gaussian process
 		* \param gp_rand_coef_data Covariate data for Gaussian process random coefficients
 		* \param calculateZZt If true, the matrix Z*Z^T is calculated for grouped random effects and saved (usually not needed if Woodbury identity is used)
+		* \param cov_fct Type of covariance function
+		* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+		* \param cov_fct_taper_range Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
+		* \param cov_fct_taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param[out] re_comps_cluster_i Container that collects the individual component models
 		*/
 		void CreateREComponents(data_size_t num_data,
@@ -5108,6 +5120,10 @@ namespace GPBoost {
 			const double* gp_coords_data,
 			const double* gp_rand_coef_data,
 			bool calculateZZt,
+			string_t cov_fct,
+			double cov_fct_shape,
+			double cov_fct_taper_range,
+			double cov_fct_taper_shape,
 			std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i) {
 			//Grouped random effects
 			if (num_re_group_ > 0) {
@@ -5162,15 +5178,16 @@ namespace GPBoost {
 				bool use_Z_for_duplicates = (gp_approx_ == "none");
 				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 					gp_coords_mat,
-					cov_fct_,
-					cov_fct_shape_,
-					cov_fct_taper_range_,
-					cov_fct_taper_shape_,
+					cov_fct,
+					cov_fct_shape,
+					cov_fct_taper_range,
+					cov_fct_taper_shape,
 					gp_approx_ == "tapering",
 					false,
 					true,
 					use_Z_for_duplicates,
-					only_one_GP_calculations_on_RE_scale_)));
+					only_one_GP_calculations_on_RE_scale_,
+					true)));
 				//Random slope GPs
 				if (num_gp_rand_coef_ > 0) {
 					for (int j = 0; j < num_gp_rand_coef_; ++j) {
@@ -5184,10 +5201,10 @@ namespace GPBoost {
 							re_comp->has_Z_,
 							&re_comp->Z_,
 							rand_coef_data,
-							cov_fct_,
-							cov_fct_shape_,
-							cov_fct_taper_range_,
-							cov_fct_taper_shape_,
+							cov_fct,
+							cov_fct_shape,
+							cov_fct_taper_range,
+							cov_fct_taper_shape,
 							re_comp->GetTaperMu(),
 							gp_approx_ == "tapering",
 							false,
@@ -5203,15 +5220,23 @@ namespace GPBoost {
 		* \param data_indices_per_cluster Keys: Labels of independent realizations of REs/GPs, values: vectors with indices for data points
 		* \param cluster_i Index / label of the realization of the Gaussian process for which the components should be constructed
 		* \param gp_coords_data Coordinates (features) for Gaussian process
-		* \param gp_rand_coef_data Covariate data for Gaussian process random coefficients
+		* \param cov_fct Type of covariance function
+		* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+		* \param cov_fct_taper_range Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
+		* \param cov_fct_taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param[out] re_comps_ip_cluster_i Inducing point GP for predictive process
 		* \param[out] re_comps_cross_cov_cluster_i Cross-covariance GP for predictive process
 		* \param[out] re_comps_resid_cluster_i Residual GP component for full scale approximation
+		* \param for_prediction_new_cluster
 		*/
 		void CreateREComponentsPPFSA(data_size_t num_data,
 			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
 			data_size_t cluster_i,
 			const double* gp_coords_data,
+			string_t cov_fct,
+			double cov_fct_shape,
+			double cov_fct_taper_range,
+			double cov_fct_taper_shape,
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 			std::vector<std::shared_ptr<RECompGP<T_mat>>>& re_comps_resid_cluster_i,
@@ -5252,7 +5277,7 @@ namespace GPBoost {
 						"For this reason, 'gp_approx' is internally changed to 'full_scale_tapering' with a very small taper range. "
 						"Note that this is just a technical trick that results in an euquivalent model and you don't need to do something ");
 					gp_approx_ = "full_scale_tapering";
-					cov_fct_taper_range_ = 1e-8;
+					cov_fct_taper_range = 1e-8;
 				}
 				gp_coords_all_unique = gp_coords_all_mat(uniques, Eigen::all);
 				if ((int)gp_coords_all_unique.rows() < num_ind_points) {
@@ -5283,19 +5308,19 @@ namespace GPBoost {
 			}
 			gp_coords_all_unique.resize(0, 0);
 			std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
-				gp_coords_ip_mat, cov_fct_, cov_fct_shape_, cov_fct_taper_range_, cov_fct_taper_shape_, false, false, true, false, false));
+				gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, false, false, true, false, false, true));
 			if (gp_ip->HasDuplicatedCoords()) {
 				Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
 			}
 			re_comps_ip_cluster_i.push_back(gp_ip);
 			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;
 			re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
-				gp_coords_all_mat, gp_coords_ip_mat, cov_fct_, cov_fct_shape_, cov_fct_taper_range_, cov_fct_taper_shape_, false, false, only_one_GP_calculations_on_RE_scale_)));
+				gp_coords_all_mat, gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, false, false, only_one_GP_calculations_on_RE_scale_)));
 			has_duplicates_coords_ = only_one_GP_calculations_on_RE_scale_;
 			if (gp_approx_ == "full_scale_tapering") {
 				re_comps_resid_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
-					gp_coords_all_mat, cov_fct_, cov_fct_shape_, cov_fct_taper_range_, cov_fct_taper_shape_,
-					true, true, true, false, false)));
+					gp_coords_all_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+					true, true, true, false, false, true)));
 			}
 			//Random slope GPs
 			if (num_gp_rand_coef_ > 0) {
@@ -5321,6 +5346,9 @@ namespace GPBoost {
 						if (gp_approx_ == "full_scale_tapering") {
 							re_comps_resid_[cluster_i][j]->SetCovPars(pars);
 						}
+					}
+					else if (gp_approx_ == "vecchia") {
+						re_comps_vecchia_[cluster_i][j]->SetCovPars(pars);
 					}
 					else {
 						re_comps_[cluster_i][j]->SetCovPars(pars);
@@ -5360,28 +5388,22 @@ namespace GPBoost {
 			if (gauss_likelihood_) {
 				cov_pars_trans[0] = cov_pars[0];
 			}
+			double nugget_var = gauss_likelihood_ ? cov_pars[0] : 1.;
 			for (int j = 0; j < num_comps_total_; ++j) {
 				const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 				vec_t pars_trans = pars;
 				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-					if (gauss_likelihood_) {
-						re_comps_ip_[unique_clusters_[0]][j]->TransformCovPars(cov_pars[0], pars, pars_trans);
-					}
-					else {
-						re_comps_ip_[unique_clusters_[0]][j]->TransformCovPars(1., pars, pars_trans);
-					}
+					re_comps_ip_[unique_clusters_[0]][j]->TransformCovPars(nugget_var, pars, pars_trans);
+				}
+				else if (gp_approx_ == "vecchia") {
+					re_comps_vecchia_[unique_clusters_[0]][j]->TransformCovPars(nugget_var, pars, pars_trans);
 				}
 				else {
-					if (gauss_likelihood_) {
-						re_comps_[unique_clusters_[0]][j]->TransformCovPars(cov_pars[0], pars, pars_trans);
-					}
-					else {
-						re_comps_[unique_clusters_[0]][j]->TransformCovPars(1., pars, pars_trans);
-					}
+					re_comps_[unique_clusters_[0]][j]->TransformCovPars(nugget_var, pars, pars_trans);
 				}
 				cov_pars_trans.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]) = pars_trans;
 			}
-		}
+		}//end TransformCovPars
 
 		/*!
 		* \brief Back-transform the covariance parameters to the original scale
@@ -5395,24 +5417,18 @@ namespace GPBoost {
 			if (gauss_likelihood_) {
 				cov_pars_orig[0] = cov_pars[0];
 			}
+			double nugget_var = gauss_likelihood_ ? cov_pars[0] : 1.;
 			for (int j = 0; j < num_comps_total_; ++j) {
 				const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 				vec_t pars_orig = pars;
 				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-					if (gauss_likelihood_) {
-						re_comps_ip_[unique_clusters_[0]][j]->TransformBackCovPars(cov_pars[0], pars, pars_orig);
-					}
-					else {
-						re_comps_ip_[unique_clusters_[0]][j]->TransformBackCovPars(1, pars, pars_orig);
-					}
+					re_comps_ip_[unique_clusters_[0]][j]->TransformBackCovPars(nugget_var, pars, pars_orig);
+				}
+				else if (gp_approx_ == "vecchia") {
+					re_comps_vecchia_[unique_clusters_[0]][j]->TransformBackCovPars(nugget_var, pars, pars_orig);
 				}
 				else {
-					if (gauss_likelihood_) {
-						re_comps_[unique_clusters_[0]][j]->TransformBackCovPars(cov_pars[0], pars, pars_orig);
-					}
-					else {
-						re_comps_[unique_clusters_[0]][j]->TransformBackCovPars(1, pars, pars_orig);
-					}
+					re_comps_[unique_clusters_[0]][j]->TransformBackCovPars(nugget_var, pars, pars_orig);
 				}
 				cov_pars_orig.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]) = pars_orig;
 			}
@@ -5464,6 +5480,7 @@ namespace GPBoost {
 		* \brief Calculate covariance matrices of the components
 		*/
 		void CalcSigmaComps() {
+			CHECK(gp_approx_ != "vecchia");
 			for (const auto& cluster_i : unique_clusters_) {
 				for (int j = 0; j < num_comps_total_; ++j) {
 					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
@@ -6570,7 +6587,7 @@ namespace GPBoost {
 					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "piv_chol_on_Sigma") {
 						//Do pivoted Cholesky decomposition for Sigma
 						//TODO: only after cov-pars step, not after fixed-effect step
-						PivotedCholsekyFactorizationSigma(re_comps_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, PIV_CHOL_STOP_TOL);
+						PivotedCholsekyFactorizationSigma(re_comps_vecchia_[cluster_i][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, PIV_CHOL_STOP_TOL);
 					}
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, B_[cluster_i], D_inv_[cluster_i],
@@ -6618,12 +6635,12 @@ namespace GPBoost {
 			bool calc_gradient_nugget) {
 			if (gp_approx_ == "vecchia") {
 				for (const auto& cluster_i : unique_clusters_) {
-					data_size_t num_re_cluster_i = re_comps_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs();
-					CalcCovFactorVecchia<T_mat>(num_re_cluster_i, calc_gradient, re_comps_[cluster_i], nearest_neighbors_[cluster_i],
+					data_size_t num_re_cluster_i = re_comps_vecchia_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs();
+					CalcCovFactorVecchia(num_re_cluster_i, calc_gradient, re_comps_vecchia_[cluster_i], nearest_neighbors_[cluster_i],
 						dist_obs_neighbors_[cluster_i], dist_between_neighbors_[cluster_i],
-						entries_init_B_[cluster_i], entries_init_B_grad_[cluster_i], z_outer_z_obs_neighbors_[cluster_i],
+						entries_init_B_[cluster_i], z_outer_z_obs_neighbors_[cluster_i],
 						B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i], transf_scale, nugget_var,
-						calc_gradient_nugget, num_gp_total_, ind_intercept_gp_, gauss_likelihood_);
+						calc_gradient_nugget, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_);
 				}
 			}
 			else {
@@ -6738,69 +6755,65 @@ namespace GPBoost {
 				if (gp_approx_ == "vecchia") {
 					y_aux_[cluster_i] = B_[cluster_i].transpose() * D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];
 				}
-				else {//not gp_approx_ == "vecchia"
-					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-						std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
-						if (matrix_inversion_method_ == "cholesky") {
-							if (gp_approx_ == "fitc") {
-								vec_t cross_covT_y = (*cross_cov).transpose() * (FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * y_[cluster_i]);
-								vec_t sigma_woodbury_I_cross_covT_y = chol_fact_sigma_woodbury_[cluster_i].solve(cross_covT_y);
-								cross_covT_y.resize(0);
-								vec_t cross_cov_sigma_woodbury_I_cross_covT_y = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * ((*cross_cov) * sigma_woodbury_I_cross_covT_y);
-								sigma_woodbury_I_cross_covT_y.resize(0);
-								y_aux_[cluster_i] = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * y_[cluster_i] - cross_cov_sigma_woodbury_I_cross_covT_y;
-							}
-							else if (gp_approx_ == "full_scale_tapering") {
-								vec_t sigma_resid_I_y = chol_fact_resid_[cluster_i].solve(y_[cluster_i]);
-								vec_t cross_covT_sigma_resid_I_y = (*cross_cov).transpose() * sigma_resid_I_y;
-								vec_t sigma_woodbury_I_cross_covT_sigma_resid_I_y = chol_fact_sigma_woodbury_[cluster_i].solve(cross_covT_sigma_resid_I_y);
-								cross_covT_sigma_resid_I_y.resize(0);
-								vec_t cross_cov_sigma_woodbury_I_cross_covT_sigma_resid_I_y = (*cross_cov) * sigma_woodbury_I_cross_covT_sigma_resid_I_y;
-								sigma_woodbury_I_cross_covT_sigma_resid_I_y.resize(0);
-								vec_t sigma_resid_I_cross_cov_sigma_woodbury_I_cross_covT_sigma_resid_I_y = chol_fact_resid_[cluster_i].solve(cross_cov_sigma_woodbury_I_cross_covT_sigma_resid_I_y);
-								y_aux_[cluster_i] = sigma_resid_I_y - sigma_resid_I_cross_cov_sigma_woodbury_I_cross_covT_sigma_resid_I_y;
-							}
+				else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
+					std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
+					if (matrix_inversion_method_ == "cholesky") {
+						if (gp_approx_ == "fitc") {
+							vec_t cross_covT_y = (*cross_cov).transpose() * (FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * y_[cluster_i]);
+							vec_t sigma_woodbury_I_cross_covT_y = chol_fact_sigma_woodbury_[cluster_i].solve(cross_covT_y);
+							cross_covT_y.resize(0);
+							vec_t cross_cov_sigma_woodbury_I_cross_covT_y = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * ((*cross_cov) * sigma_woodbury_I_cross_covT_y);
+							sigma_woodbury_I_cross_covT_y.resize(0);
+							y_aux_[cluster_i] = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * y_[cluster_i] - cross_cov_sigma_woodbury_I_cross_covT_y;
 						}
-						else {
-							//Use last solution as initial guess
-							if (num_iter_ > 0 && last_y_aux_[cluster_i].size() > 0) {
-								y_aux_[cluster_i] = last_y_aux_[cluster_i];
-							}
-							else {
-								y_aux_[cluster_i] = vec_t::Zero(num_data_per_cluster_[cluster_i]);
-							}
-							//Reduce max. number of iterations for the CG in first update
-							int cg_max_num_it = cg_max_num_it_;
-							if (first_update_) {
-								cg_max_num_it = (int)round(cg_max_num_it_ / 3);
-							}
-							std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
-							CGFSA<T_mat>(*sigma_resid, (*cross_cov), chol_ip_cross_cov_[cluster_i], y_[cluster_i], y_aux_[cluster_i],
-								NaN_found, cg_max_num_it, cg_delta_conv_, THRESHOLD_ZERO_RHS_CG_, cg_preconditioner_type_,
-								chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
-							last_y_aux_[cluster_i] = y_aux_[cluster_i];
-							if (NaN_found) {
-								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
-							}
-
+						else if (gp_approx_ == "full_scale_tapering") {
+							vec_t sigma_resid_I_y = chol_fact_resid_[cluster_i].solve(y_[cluster_i]);
+							vec_t cross_covT_sigma_resid_I_y = (*cross_cov).transpose() * sigma_resid_I_y;
+							vec_t sigma_woodbury_I_cross_covT_sigma_resid_I_y = chol_fact_sigma_woodbury_[cluster_i].solve(cross_covT_sigma_resid_I_y);
+							cross_covT_sigma_resid_I_y.resize(0);
+							vec_t cross_cov_sigma_woodbury_I_cross_covT_sigma_resid_I_y = (*cross_cov) * sigma_woodbury_I_cross_covT_sigma_resid_I_y;
+							sigma_woodbury_I_cross_covT_sigma_resid_I_y.resize(0);
+							vec_t sigma_resid_I_cross_cov_sigma_woodbury_I_cross_covT_sigma_resid_I_y = chol_fact_resid_[cluster_i].solve(cross_cov_sigma_woodbury_I_cross_covT_sigma_resid_I_y);
+							y_aux_[cluster_i] = sigma_resid_I_y - sigma_resid_I_cross_cov_sigma_woodbury_I_cross_covT_sigma_resid_I_y;
 						}
 					}
 					else {
-						if (only_grouped_REs_use_woodbury_identity_) {
-							vec_t MInvZty;
-							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
-								MInvZty = (Zty_[cluster_i].array() / sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().square()).matrix();
-							}
-							else {
-								MInvZty = chol_facts_[cluster_i].solve(Zty_[cluster_i]);
-							}
-							y_aux_[cluster_i] = y_[cluster_i] - Zt_[cluster_i].transpose() * MInvZty;
+						//Use last solution as initial guess
+						if (num_iter_ > 0 && last_y_aux_[cluster_i].size() > 0) {
+							y_aux_[cluster_i] = last_y_aux_[cluster_i];
 						}
 						else {
-							y_aux_[cluster_i] = chol_facts_[cluster_i].solve(y_[cluster_i]);
+							y_aux_[cluster_i] = vec_t::Zero(num_data_per_cluster_[cluster_i]);
 						}
+						//Reduce max. number of iterations for the CG in first update
+						int cg_max_num_it = cg_max_num_it_;
+						if (first_update_) {
+							cg_max_num_it = (int)round(cg_max_num_it_ / 3);
+						}
+						std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
+						CGFSA<T_mat>(*sigma_resid, (*cross_cov), chol_ip_cross_cov_[cluster_i], y_[cluster_i], y_aux_[cluster_i],
+							NaN_found, cg_max_num_it, cg_delta_conv_, THRESHOLD_ZERO_RHS_CG_, cg_preconditioner_type_,
+							chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
+						last_y_aux_[cluster_i] = y_aux_[cluster_i];
+						if (NaN_found) {
+							Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
+						}
+
 					}
-				}//end non-Vecchia
+				}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
+				else if (only_grouped_REs_use_woodbury_identity_) {
+					vec_t MInvZty;
+					if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
+						MInvZty = (Zty_[cluster_i].array() / sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().square()).matrix();
+					}
+					else {
+						MInvZty = chol_facts_[cluster_i].solve(Zty_[cluster_i]);
+					}
+					y_aux_[cluster_i] = y_[cluster_i] - Zt_[cluster_i].transpose() * MInvZty;
+				}
+				else {//not only_grouped_REs_use_woodbury_identity_ || gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
+					y_aux_[cluster_i] = chol_facts_[cluster_i].solve(y_[cluster_i]);
+				}
 				if (!TwoNumbersAreEqual<double>(marg_variance, 1.)) {
 					y_aux_[cluster_i] /= marg_variance;
 				}
@@ -8005,7 +8018,7 @@ namespace GPBoost {
 			den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][0]->GetZSigmaZt());
 			// Cross-covariance between predictions and inducing points C_pm
 			den_mat_t cov_mat_pred_id, cross_dist; // unused dummy variables
-			std::shared_ptr<RECompGP<den_mat_t>> re_comp_cross_cov_cluster_i_pred_ip = std::dynamic_pointer_cast<RECompGP<den_mat_t>>(re_comps_cross_cov_[cluster_i][0]);
+			std::shared_ptr<RECompGP<den_mat_t>> re_comp_cross_cov_cluster_i_pred_ip = re_comps_cross_cov_[cluster_i][0];
 			re_comp_cross_cov_cluster_i_pred_ip->AddPredCovMatrices(re_comp_cross_cov_cluster_i_pred_ip->coords_ind_point_, gp_coords_mat_pred, cross_cov_pred_ip,
 				cov_mat_pred_id, true, false, true, nullptr, false, cross_dist);
 			// Construct residual part or "FITC diagonal" part for cross covariance between prediction and training locations
@@ -8107,7 +8120,8 @@ namespace GPBoost {
 					ConvertTo_T_mat_FromDense<T_mat>(chol_ip_cross_cov_ip_pred.transpose() * chol_ip_cross_cov_ip_pred, PP_Part);
 					pred_cov += PP_Part;
 					if (gp_approx_ == "full_scale_tapering") {
-						Log::REFatal("Predictive covariance matrices are currently not implemented for the '%s' approximation ", gp_approx_.c_str());
+						Log::REFatal("Predictive covariance matrices are currently not implemented for the '%s' approximation and "
+							"when having multiple observations at the same location for the 'fitc' approximation ", gp_approx_.c_str());
 						std::shared_ptr<RECompGP<T_mat>> re_comps_resid_pp_cluster_i = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_resid_[cluster_i][0]);
 						re_comps_resid_pp_cluster_i->AddPredCovMatrices(gp_coords_mat_pred, gp_coords_mat_pred, sigma_resid_pred,
 							cov_mat_pred, true, false, true, nullptr, true, cross_dist_resid_pred);
