@@ -725,11 +725,11 @@ namespace GPBoost {
 			if (calc_cov_factor) {
 				re_model_sp_->SetCovParsComps(cov_pars_);
 				if (re_model_sp_->gauss_likelihood_) {//Gaussian data
-					re_model_sp_->CalcCovFactor(false, true, 1., false);
+					re_model_sp_->CalcCovFactor(true, 1.);
 				}
 				else {//not gauss_likelihood_
 					if (re_model_sp_->gp_approx_ == "vecchia") {
-						re_model_sp_->CalcCovFactor(false, true, 1., false);
+						re_model_sp_->CalcCovFactor(true, 1.);
 					}
 					else {
 						re_model_sp_->CalcSigmaComps();
@@ -753,11 +753,11 @@ namespace GPBoost {
 			if (calc_cov_factor) {
 				re_model_sp_rm_->SetCovParsComps(cov_pars_);
 				if (re_model_sp_rm_->gauss_likelihood_) {//Gaussian data
-					re_model_sp_rm_->CalcCovFactor(false, true, 1., false);
+					re_model_sp_rm_->CalcCovFactor(true, 1.);
 				}
 				else {//not gauss_likelihood_
 					if (re_model_sp_rm_->gp_approx_ == "vecchia") {
-						re_model_sp_rm_->CalcCovFactor(false, true, 1., false);
+						re_model_sp_rm_->CalcCovFactor(true, 1.);
 					}
 					else {
 						re_model_sp_rm_->CalcSigmaComps();
@@ -781,11 +781,11 @@ namespace GPBoost {
 			if (calc_cov_factor) {
 				re_model_den_->SetCovParsComps(cov_pars_);
 				if (re_model_den_->gauss_likelihood_) {//Gaussian data
-					re_model_den_->CalcCovFactor(false, true, 1., false);
+					re_model_den_->CalcCovFactor(true, 1.);
 				}
 				else {//not gauss_likelihood_
 					if (re_model_den_->gp_approx_ == "vecchia") {
-						re_model_den_->CalcCovFactor(false, true, 1., false);
+						re_model_den_->CalcCovFactor(true, 1.);
 					}
 					else {
 						re_model_den_->CalcSigmaComps();

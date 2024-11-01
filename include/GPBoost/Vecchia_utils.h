@@ -156,9 +156,10 @@ namespace GPBoost {
 		bool gauss_likelihood);
 
 	/*!
-	* \brief Calculate matrices A and D_inv as well as their derivatives for the Vecchia approximation for one cluster (independent realization of GP)
+	* \brief Calculate matrices A and D_inv and their derivatives for the Vecchia approximation for one cluster (independent realization of GP)
 	* \param num_re_cluster_i Number of random effects
-	* \param calc_gradient If true, the gradient also be calculated (only for Vecchia approximation)
+	* \param calc_cov_factor If true, A and D_inv are calculated
+	* \param calc_gradient If true, gradient are calculated
 	* \param re_comps_vecchia_cluster_i Container that collects the individual component models
 	* \param nearest_neighbors_cluster_i Collects indices of nearest neighbors
 	* \param dist_obs_neighbors_cluster_i Distances between locations and their nearest neighbors
@@ -177,7 +178,8 @@ namespace GPBoost {
 	* \param gauss_likelihood If true, the response variables have a Gaussian likelihood, otherwise not
 	* \param save_distances_isotropic_cov_fct If true, distances among points and neighbors are saved for Vecchia approximations for isotropic covariance functions
 	*/
-	void CalcCovFactorVecchia(data_size_t num_re_cluster_i,
+	void CalcCovFactorGradientVecchia(data_size_t num_re_cluster_i,
+		bool calc_cov_factor,
 		bool calc_gradient,
 		const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
 		const std::vector<std::vector<int>>& nearest_neighbors_cluster_i,

@@ -514,7 +514,8 @@ namespace GPBoost {
 		}
 	}//end UpdateNearestNeighbors
 
-	void CalcCovFactorVecchia(data_size_t num_re_cluster_i,
+	void CalcCovFactorGradientVecchia(data_size_t num_re_cluster_i,
+		bool calc_cov_factor,
 		bool calc_gradient,
 		const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
 		const std::vector<std::vector<int>>& nearest_neighbors_cluster_i,
@@ -536,15 +537,17 @@ namespace GPBoost {
 		int num_par_comp = re_comps_vecchia_cluster_i[ind_intercept_gp]->NumCovPar();
 		int num_par_gp = num_par_comp * num_gp_total + calc_gradient_nugget;
 		//Initialize matrices B = I - A and D^-1 as well as their derivatives (in order that the code below can be run in parallel)
-		B_cluster_i = sp_mat_t(num_re_cluster_i, num_re_cluster_i);//B = I - A
-		B_cluster_i.setFromTriplets(entries_init_B_cluster_i.begin(), entries_init_B_cluster_i.end());//Note: 1's are put on the diagonal
-		D_inv_cluster_i = sp_mat_t(num_re_cluster_i, num_re_cluster_i);//D^-1. Note: we first calculate D, and then take the inverse below
-		D_inv_cluster_i.setIdentity();//Put 1's on the diagonal for nugget effect (entries are not overriden but added below)
-		if (!transf_scale && gauss_likelihood) {
-			D_inv_cluster_i.diagonal().array() = nugget_var;//nugget effect is not 1 if not on transformed scale
-		}
-		if (!gauss_likelihood) {
-			D_inv_cluster_i.diagonal().array() = 0.;
+		if (calc_cov_factor) {
+			B_cluster_i = sp_mat_t(num_re_cluster_i, num_re_cluster_i);//B = I - A
+			B_cluster_i.setFromTriplets(entries_init_B_cluster_i.begin(), entries_init_B_cluster_i.end());//Note: 1's are put on the diagonal
+			D_inv_cluster_i = sp_mat_t(num_re_cluster_i, num_re_cluster_i);//D^-1. Note: we first calculate D, and then take the inverse below
+			D_inv_cluster_i.setIdentity();//Put 1's on the diagonal for nugget effect (entries are not overriden but added below)
+			if (!transf_scale && gauss_likelihood) {
+				D_inv_cluster_i.diagonal().array() = nugget_var;//nugget effect is not 1 if not on transformed scale
+			}
+			if (!gauss_likelihood) {
+				D_inv_cluster_i.diagonal().array() = 0.;
+			}
 		}
 		bool exclude_marg_var_grad = !gauss_likelihood && (re_comps_vecchia_cluster_i.size() == 1);//gradient is not needed if there is only one GP for non-Gaussian likelihoods
 		if (calc_gradient) {
@@ -599,7 +602,6 @@ namespace GPBoost {
 							calc_gradient, transf_scale, nugget_var, true);
 						//multiply by coefficient matrix
 						cov_mat_obs_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 0, num_nn, 1)).array();//cov_mat_obs_neighbors_j.cwiseProduct()
-						//cov_mat_obs_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(0, 1, 1, num_nn)).array();//cov_mat_obs_neighbors_j.cwiseProduct()//DELETE_FIRST
 						cov_mat_between_neighbors_j.array() *= (z_outer_z_obs_neighbors_cluster_i[i][j - 1].block(1, 1, num_nn, num_nn)).array();
 						cov_mat_obs_neighbors += cov_mat_obs_neighbors_j;
 						cov_mat_between_neighbors += cov_mat_between_neighbors_j;
@@ -622,7 +624,9 @@ namespace GPBoost {
 				if (j > 0) {//random coefficient
 					d_comp_j *= z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
 				}
-				D_inv_cluster_i.coeffRef(i, i) += d_comp_j;
+				if (calc_cov_factor) {
+					D_inv_cluster_i.coeffRef(i, i) += d_comp_j;
+				}
 				if (calc_gradient) {
 					if (!(exclude_marg_var_grad && j == 0)) {
 						if (transf_scale) {
@@ -659,10 +663,12 @@ namespace GPBoost {
 				den_mat_t A_i_grad_sigma2;
 				Eigen::LLT<den_mat_t> chol_fact_between_neighbors = cov_mat_between_neighbors.llt();
 				A_i = (chol_fact_between_neighbors.solve(cov_mat_obs_neighbors)).transpose();
-				for (int inn = 0; inn < num_nn; ++inn) {
-					B_cluster_i.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i(0, inn);
+				if (calc_cov_factor) {
+					for (int inn = 0; inn < num_nn; ++inn) {
+						B_cluster_i.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i(0, inn);
+					}
+					D_inv_cluster_i.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors)(0, 0);
 				}
-				D_inv_cluster_i.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors)(0, 0);
 				if (calc_gradient) {
 					if (calc_gradient_nugget) {
 						A_i_grad_sigma2 = -(chol_fact_between_neighbors.solve(A_i.transpose())).transpose();
@@ -696,21 +702,25 @@ namespace GPBoost {
 					}
 				}//end calc_gradient
 			}//end if i > 0
-			D_inv_cluster_i.coeffRef(i, i) = 1. / D_inv_cluster_i.coeffRef(i, i);
-		}//end loop over data i
-		Eigen::Index minRow, minCol;
-		double min_D_inv = D_inv_cluster_i.diagonal().minCoeff(&minRow, &minCol);
-		if (min_D_inv <= 0.) {
-			const char* min_D_inv_below_zero_msg = "The matrix D in the Vecchia approximation contains negative or zero values. "
-				"This likely results from numerical instabilities ";
-			if (gauss_likelihood) {
-				Log::REWarning(min_D_inv_below_zero_msg);
+			if (calc_cov_factor) {
+				D_inv_cluster_i.coeffRef(i, i) = 1. / D_inv_cluster_i.coeffRef(i, i);
 			}
-			else {
-				Log::REFatal(min_D_inv_below_zero_msg);
+		}//end loop over data i
+		if (calc_cov_factor) {
+			Eigen::Index minRow, minCol;
+			double min_D_inv = D_inv_cluster_i.diagonal().minCoeff(&minRow, &minCol);
+			if (min_D_inv <= 0.) {
+				const char* min_D_inv_below_zero_msg = "The matrix D in the Vecchia approximation contains negative or zero values. "
+					"This likely results from numerical instabilities ";
+				if (gauss_likelihood) {
+					Log::REWarning(min_D_inv_below_zero_msg);
+				}
+				else {
+					Log::REFatal(min_D_inv_below_zero_msg);
+				}
 			}
 		}
-	}//end CalcCovFactorVecchia
+	}//end CalcCovFactorGradientVecchia
 
 	void CalcPredVecchiaObservedFirstOrder(bool CondObsOnly,
 		data_size_t cluster_i,

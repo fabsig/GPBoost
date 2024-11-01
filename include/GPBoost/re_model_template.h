@@ -259,7 +259,7 @@ namespace GPBoost {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
-					CreateREComponentsPPFSA(num_data_, data_indices_per_cluster_, cluster_i, gp_coords_data,
+					CreateREComponentsFITC_FSA(num_data_, data_indices_per_cluster_, cluster_i, gp_coords_data,
 						std::string(cov_fct), cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
 						re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false);
 					re_comps_ip_.insert({ cluster_i, re_comps_ip_cluster_i });
@@ -1403,6 +1403,9 @@ namespace GPBoost {
 			bool save_psi_inv_for_FI,
 			const double* fixed_effects,
 			bool call_for_std_dev_coef) {
+			if (gp_approx_ == "vecchia" && calc_cov_aux_par_grad) {
+				CalcGradientVecchia(true, 1., false);
+			}
 			if (gauss_likelihood_) {//Gaussian likelihood
 				if (calc_cov_aux_par_grad) {
 					grad_cov_aux_par = include_error_var ? vec_t::Zero(num_cov_par_) : vec_t::Zero(num_cov_par_ - 1);
@@ -1952,7 +1955,7 @@ namespace GPBoost {
 			const double* fixed_effects) {
 			SetCovParsComps(cov_pars);
 			if (gauss_likelihood_) {
-				CalcCovFactor(gp_approx_ == "vecchia", true, 1., false);//Create covariance matrix and factorize it (and also calculate derivatives if Vecchia approximation is used)
+				CalcCovFactor(true, 1.);//Create covariance matrix and factorize it (and also calculate derivatives if Vecchia approximation is used)
 				if (only_grouped_REs_use_woodbury_identity_) {
 					CalcYtilde(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
 				}
@@ -1963,7 +1966,7 @@ namespace GPBoost {
 			}//end gauss_likelihood_
 			else {//not gauss_likelihood_
 				if (gp_approx_ == "vecchia" || gp_approx_ == "fitc") {
-					CalcCovFactor(true, true, 1., false);//note: calc_gradient = true is only used for gp_approx_ == "vecchia"
+					CalcCovFactor(true, 1.);
 				}
 				else {
 					CalcSigmaComps();
@@ -2075,7 +2078,7 @@ namespace GPBoost {
 						RedetermineNearestNeighborsVecchia(true);//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
 					}
 				}
-				CalcCovFactor(false, true, 1., false);//Create covariance matrix and factorize it
+				CalcCovFactor(true, 1.);//Create covariance matrix and factorize it
 			}
 			//Calculate quadratic form y^T Psi^-1 y
 			CalcYTPsiIInvY(yTPsiInvy_, true, 1, CalcYAux_already_done, CalcYtilde_already_done);
@@ -2261,7 +2264,7 @@ namespace GPBoost {
 						}
 					}
 					if (gp_approx_ == "vecchia" || gp_approx_ == "fitc") {
-						CalcCovFactor(true, true, 1., false);
+						CalcCovFactor(true, 1.);
 					}
 					else {
 						CalcSigmaComps();
@@ -2628,7 +2631,7 @@ namespace GPBoost {
 							sp_mat_t D_inv_cluster_i;
 							std::vector<sp_mat_t> B_grad_cluster_i;//not used, but needs to be passed to function
 							std::vector<sp_mat_t> D_grad_cluster_i;//not used, but needs to be passed to function
-							CalcCovFactorVecchia(num_data_per_cluster_pred[cluster_i], false, re_comps_vecchia_cluster_i,
+							CalcCovFactorGradientVecchia(num_data_per_cluster_pred[cluster_i], true, false, re_comps_vecchia_cluster_i,
 								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
 								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i,
 								B_cluster_i, D_inv_cluster_i, B_grad_cluster_i, D_grad_cluster_i,
@@ -2653,7 +2656,7 @@ namespace GPBoost {
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 							std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
-							CreateREComponentsPPFSA(num_data_pred, data_indices_per_cluster_pred, cluster_i, gp_coords_data_pred,
+							CreateREComponentsFITC_FSA(num_data_pred, data_indices_per_cluster_pred, cluster_i, gp_coords_data_pred,
 								re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 								re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, true);
 							for (int j = 0; j < num_comps_total_; ++j) {
@@ -2988,7 +2991,7 @@ namespace GPBoost {
 					}//end gp_approx_ == "vecchia"
 					else {// not gp_approx_ == "vecchia"
 						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-							CalcPredPPFSA(cluster_i, gp_coords_mat_pred, predict_cov_mat,
+							CalcPredFITC_FSA(cluster_i, gp_coords_mat_pred, predict_cov_mat,
 								predict_var_or_response, predict_response, mean_pred_id, cov_mat_pred_id, var_pred_id, nsim_var_pred_, cg_delta_conv_pred_);
 						}
 						else {
@@ -4199,6 +4202,8 @@ namespace GPBoost {
 		bool save_distances_isotropic_cov_fct_Vecchia_ = false;
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: vectors with Vecchia GP components */
 		std::map<data_size_t, std::vector<std::shared_ptr<RECompGP<den_mat_t>>>> re_comps_vecchia_;
+		/*! \brief Indicates whether the matrices A and D_inv for the Vecchia approximation have last been calculated on the transformed scale or not */
+		bool cov_factor_vecchia_calculated_on_transf_scale_;
 
 		// PREDICTIVE PROCESS AND FULL SCALE APPROXIMATION FOR GP
 		/*! \brief Method for choosing inducing points */
@@ -5229,7 +5234,7 @@ namespace GPBoost {
 		* \param[out] re_comps_resid_cluster_i Residual GP component for full scale approximation
 		* \param for_prediction_new_cluster
 		*/
-		void CreateREComponentsPPFSA(data_size_t num_data,
+		void CreateREComponentsFITC_FSA(data_size_t num_data,
 			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
 			data_size_t cluster_i,
 			const double* gp_coords_data,
@@ -5326,7 +5331,7 @@ namespace GPBoost {
 			if (num_gp_rand_coef_ > 0) {
 				Log::REFatal("Random coefficients are currently not supported for '%s' approximation ", ind_points_selection_.c_str());
 			}
-		}//end CreateREComponentsPPFSA
+		}//end CreateREComponentsFITC_FSA
 
 		/*!
 		* \brief Set the covariance parameters of the components
@@ -6624,29 +6629,18 @@ namespace GPBoost {
 
 		/*!
 		* \brief Create the covariance matrix Psi and factorize it (either calculate a Cholesky factor or the inverse covariance matrix)
-		* \param calc_gradient If true, the gradient is also calculated (only for Vecchia approximation)
-		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale. Default = true (only for Vecchia approximation)
+		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale (only for Vecchia approximation)
 		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if gp_approx_ == "vecchia" and transf_scale == false to transform back, normally this is equal to one, since the variance paramter is modelled separately and factored out)
-		* \param calc_gradient_nugget If true, derivatives are also taken with respect to the nugget / noise variance (only for Vecchia approximation)
 		*/
-		void CalcCovFactor(bool calc_gradient,
-			bool transf_scale,
-			double nugget_var,
-			bool calc_gradient_nugget) {
+		void CalcCovFactor(bool transf_scale,
+			double nugget_var) {
 			if (gp_approx_ == "vecchia") {
-				for (const auto& cluster_i : unique_clusters_) {
-					data_size_t num_re_cluster_i = re_comps_vecchia_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs();
-					CalcCovFactorVecchia(num_re_cluster_i, calc_gradient, re_comps_vecchia_[cluster_i], nearest_neighbors_[cluster_i],
-						dist_obs_neighbors_[cluster_i], dist_between_neighbors_[cluster_i],
-						entries_init_B_[cluster_i], z_outer_z_obs_neighbors_[cluster_i],
-						B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i], transf_scale, nugget_var,
-						calc_gradient_nugget, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_);
-				}
+				CalcCovFactorVecchia(transf_scale, nugget_var);
 			}
 			else {
 				CalcSigmaComps();
 				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-					CalcCovFactorsPPFSA();
+					CalcCovFactorFITC_FSA();
 				}
 				else {
 					for (const auto& cluster_i : unique_clusters_) {
@@ -6676,7 +6670,45 @@ namespace GPBoost {
 			}
 		}//end CalcCovFactor
 
-		void CalcCovFactorsPPFSA() {
+		/*!
+		* \brief Calculate matrices A and D_inv for Vecchia approximation
+		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale
+		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale == false to transform back, normally this is equal to one, since the variance paramter is modelled separately and factored out)
+		*/
+		void CalcCovFactorVecchia(bool transf_scale,
+			double nugget_var) {
+			cov_factor_vecchia_calculated_on_transf_scale_ = transf_scale;
+			for (const auto& cluster_i : unique_clusters_) {
+				data_size_t num_re_cluster_i = re_comps_vecchia_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs();
+				CalcCovFactorGradientVecchia(num_re_cluster_i, true, false, re_comps_vecchia_[cluster_i], nearest_neighbors_[cluster_i],
+					dist_obs_neighbors_[cluster_i], dist_between_neighbors_[cluster_i],
+					entries_init_B_[cluster_i], z_outer_z_obs_neighbors_[cluster_i],
+					B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i], transf_scale, nugget_var,
+					false, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_);
+			}
+		}//end CalcCovFactorVecchia
+
+		/*!
+		* \brief Calculate gradients of matrices A and D_inv for Vecchia approximation
+		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale
+		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale == false to transform back, normally this is equal to one, since the variance paramter is modelled separately and factored out)
+		* \param calc_gradient_nugget If true, derivatives are also taken with respect to the nugget / noise variance 
+		*/
+		void CalcGradientVecchia(bool transf_scale,
+			double nugget_var,
+			bool calc_gradient_nugget) {
+			CHECK(cov_factor_vecchia_calculated_on_transf_scale_ == transf_scale);
+			for (const auto& cluster_i : unique_clusters_) {
+				data_size_t num_re_cluster_i = re_comps_vecchia_[cluster_i][ind_intercept_gp_]->GetNumUniqueREs();
+				CalcCovFactorGradientVecchia(num_re_cluster_i, false, true, re_comps_vecchia_[cluster_i], nearest_neighbors_[cluster_i],
+					dist_obs_neighbors_[cluster_i], dist_between_neighbors_[cluster_i],
+					entries_init_B_[cluster_i], z_outer_z_obs_neighbors_[cluster_i],
+					B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i], transf_scale, nugget_var,
+					calc_gradient_nugget, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_);
+			}
+		}//end CalcGradientVecchia
+
+		void CalcCovFactorFITC_FSA() {
 			for (const auto& cluster_i : unique_clusters_) {
 				// factorize matrix used in Woodbury identity
 				std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
@@ -6738,7 +6770,7 @@ namespace GPBoost {
 					Log::REFatal("Matrix inversion method '%s' is not supported.", matrix_inversion_method_.c_str());
 				}
 			}
-		}//end CalcCovFactorsPPFSA
+		}//end CalcCovFactorFITC_FSA
 
 		/*!
 		* \brief Calculate Psi^-1*y (and save in y_aux_)
@@ -7423,7 +7455,10 @@ namespace GPBoost {
 		void CalcStdDevCovPar(const vec_t& cov_pars,
 			vec_t& std_dev) {
 			SetCovParsComps(cov_pars);
-			CalcCovFactor(true, false, cov_pars[0], true);
+			CalcCovFactor(false, cov_pars[0]);
+			if (gp_approx_ == "vecchia") {
+				CalcGradientVecchia(false, cov_pars[0], true);
+			}
 			den_mat_t FI;
 			CalcFisherInformation(cov_pars, FI, false, true, false);
 			std_dev = FI.inverse().diagonal().array().sqrt().matrix();
@@ -7446,7 +7481,7 @@ namespace GPBoost {
 			}
 			else {
 				SetCovParsComps(cov_pars);
-				CalcCovFactor(false, true, 1., false);
+				CalcCovFactor(true, 1.);
 				den_mat_t FI((int)X.cols(), (int)X.cols());
 				CalcXTPsiInvX(X, FI);
 				FI /= cov_pars[0];
@@ -7623,7 +7658,7 @@ namespace GPBoost {
 						RedetermineNearestNeighborsVecchia(true);//called only if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances
 					}
 					if (gauss_likelihood_) {
-						CalcCovFactor(false, true, 1., false);// Create covariance matrix and factorize it
+						CalcCovFactor(true, 1.);// Create covariance matrix and factorize it
 					}
 					else {//not gauss_likelihood_
 						//We reset the initial modes to 0. This is done to avoid that different calls to the prediction function lead to (very small) differences
@@ -7634,7 +7669,7 @@ namespace GPBoost {
 							likelihood_[cluster_i]->InitializeModeAvec();
 						}
 						if (gp_approx_ == "vecchia" || gp_approx_ == "fitc") {
-							CalcCovFactor(false, true, 1., false);
+							CalcCovFactor(true, 1.);
 						}
 						else {
 							CalcSigmaComps();
@@ -7991,7 +8026,7 @@ namespace GPBoost {
 		* \param nsim_var_pred Number of random vectors
 		* \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 		*/
-		void CalcPredPPFSA(data_size_t cluster_i,
+		void CalcPredFITC_FSA(data_size_t cluster_i,
 			const den_mat_t& gp_coords_mat_pred,
 			bool calc_pred_cov,
 			bool calc_pred_var,
@@ -8011,7 +8046,7 @@ namespace GPBoost {
 			sp_mat_t FITC_correction;//FITC correction for entries for which the prediction and training coordinates are the same
 			bool has_fitc_correction = false;
 			if (num_comps_total_ > 1) {
-				Log::REFatal("CalcPredPPFSA is not implemented when num_comps_total_ > 1");
+				Log::REFatal("CalcPredFITC_FSA is not implemented when num_comps_total_ > 1");
 			}
 			// Construct components
 			std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
@@ -8368,7 +8403,7 @@ namespace GPBoost {
 					calc_pred_var,
 					false);
 			}//end !gauss_likelihood_
-		}//end CalcPredPPFSA
+		}//end CalcPredFITC_FSA
 
 		friend class REModel;
 
