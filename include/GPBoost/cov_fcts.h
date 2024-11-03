@@ -376,7 +376,7 @@ namespace GPBoost {
 		* \param is_symmmetric If true, dist and sigma are symmetric (e.g., for training data)
 		*/
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
-		void GetCovMat(const T_mat& dist,
+		void CalculateCovMat(const T_mat& dist,
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
 			const vec_t& pars,
@@ -464,9 +464,9 @@ namespace GPBoost {
 					}// end loop rows
 				}// end !is_symmmetric
 			}// end cov_fct_type_ != "wendland"
-		}// end GetCovMat (dense)
+		}// end CalculateCovMat (dense)
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
-		void GetCovMat(const T_mat& dist,
+		void CalculateCovMat(const T_mat& dist,
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
 			const vec_t& pars,
@@ -541,7 +541,7 @@ namespace GPBoost {
 					}
 				}// end !is_symmmetric
 			}// end cov_fct_type_ != "wendland"
-		}//end GetCovMat (sparse)
+		}//end CalculateCovMat (sparse)
 
 		/*!
 		* \brief Covariance function for one distance value
@@ -549,12 +549,12 @@ namespace GPBoost {
 		* \param pars Vector with covariance parameters
 		* \param[out] sigma Covariance at dist
 		*/
-		void GetCovMat(double dist,
+		void CalculateCovMat(double dist,
 			const vec_t& pars,
 			double& sigma) const {
 			CHECK(pars.size() == num_cov_par_);
 			if (cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard" || cov_fct_type_ == "gaussian_ard") {
-				Log::REFatal("'GetCovMat()' is not implemented for one distance when cov_fct_type_ == '%s' ", cov_fct_type_.c_str());
+				Log::REFatal("'CalculateCovMat()' is not implemented for one distance when cov_fct_type_ == '%s' ", cov_fct_type_.c_str());
 			}
 			else if (cov_fct_type_ == "wendland") {
 				// note: this is usually not used
@@ -570,7 +570,7 @@ namespace GPBoost {
 				double shape = (cov_fct_type_ == "matern_estimate_shape") ? pars[2] : 0.;
 				sigma = CovFct_(dist, pars[0], pars[1], shape);
 			}
-		}//end GetCovMat (one single entry)
+		}//end CalculateCovMat (one single entry)
 
 		/*!
 		* \brief Multiply covariance matrix element-wise with Wendland correlation tapering function
@@ -698,7 +698,7 @@ namespace GPBoost {
 		}//end MultiplyWendlandCorrelationTaper (double)
 
 		/*!
-		* \brief Calculates derivatives of the covariance matrix with respect to the range parameters
+		* \brief Calculates derivatives of the covariance matrix with respect to covariance parameters such as range and smoothness parameters (except marginal variance parameters)
 		* \param dist Distance matrix
 		* \param coords Coordinate matrix
 		* \param coords_pred Second set of coordinates for predictions
@@ -711,7 +711,7 @@ namespace GPBoost {
 		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g., for training data)
 		*/
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
-		void GetCovMatGradRange(const T_mat& dist,
+		void CalculateGradientCovMat(const T_mat& dist,
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
 			const T_mat& sigma,
@@ -785,9 +785,9 @@ namespace GPBoost {
 					}// end loop over cols
 				}// end loop over rows
 			}// end !is_symmmetric
-		}//end GetCovMatGradRange (dense)
+		}//end CalculateGradientCovMat (dense)
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
-		void GetCovMatGradRange(const T_mat& dist,
+		void CalculateGradientCovMat(const T_mat& dist,
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
 			const T_mat& sigma,
@@ -856,7 +856,7 @@ namespace GPBoost {
 					}// end loop over cols
 				}// end loop over rows
 			}// end !is_symmmetric
-		}//end GetCovMatGradRange (sparse)
+		}//end CalculateGradientCovMat (sparse)
 
 		/*!
 		* \brief Find "reasonable" default values for the intial values of the covariance parameters (on transformed scale)
