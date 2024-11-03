@@ -900,7 +900,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                       predict_var = TRUE, pred_latent = FALSE)
       expect_lt(sum(abs(tail(pred$response_mean,n=4)-c(0.5592939, 0.3226671, 0.2836602, 0.6995181))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$response_var,n=4)-c(0.2464842, 0.2185530, 0.2031971, 0.2101925))),TOLERANCE)
-      
+    
       # Use validation set to determine number of boosting iteration with use_gp_model_for_validation = TRUE
       dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)
       valids <- list(test = dtest)
@@ -921,6 +921,15 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                        use_gp_model_for_validation = TRUE)
       expect_equal(bst$best_iter, 9)
       expect_lt(abs(bst$best_score - 0.5785662),TOLERANCE)
+      
+      # Train tree-boosting model while holding the GPModel fix
+      init_cov_pars = c(2.4,1.1)
+      gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                          likelihood = "bernoulli_probit")
+      gp_model$set_optim_params(params = list(init_cov_pars = init_cov_pars))
+      bst <- gpb.train(data = dtrain, gp_model = gp_model, train_gp_model_cov_pars = FALSE,
+                       nrounds = 2, objective = "binary", verbose = 0)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-init_cov_pars)),TOLERANCE)
       
       # Training with Vecchia approximation
       for(inv_method in c("cholesky", "iterative")){
@@ -952,6 +961,16 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.09503200, 0.10440602, 0.09169082, 0.09131758))),tolerance_loc)
         if(inv_method == "iterative") tolerance_loc <- 0.3
         expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4060860, -0.5598213, -0.7936279, 0.5029883))),tolerance_loc)
+        
+        # Train tree-boosting model while holding the GPModel fix
+        capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                            likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                            num_neighbors = 30, vecchia_ordering = "none", matrix_inversion_method = inv_method),
+                        file='NUL')
+        gp_model$set_optim_params(params = list(init_cov_pars = init_cov_pars))
+        bst <- gpb.train(data = dtrain, gp_model = gp_model, train_gp_model_cov_pars = FALSE,
+                         nrounds = 2, objective = "binary", verbose = 0)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-init_cov_pars)),TOLERANCE)
       }
       
       # Training with Wendland covariance
