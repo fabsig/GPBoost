@@ -181,7 +181,7 @@ namespace GPBoost {
 			L_solve(L_ptr, (int)L.cols(), X_ptr);
 		}
 	}//end TriangularSolve (L = den_mat_t && R = vec_t)
-	template <class T_mat_L, class T_mat_R, class T_mat_X, typename std::enable_if <std::is_same<sp_mat_t, T_mat_L>::value && !std::is_same<vec_t, T_mat_R>::value && !std::is_same<den_mat_t, T_mat_R>::value>::type* = nullptr >
+	template <class T_mat_L, class T_mat_R, class T_mat_X, typename std::enable_if <std::is_same<sp_mat_t, T_mat_L>::value && !std::is_same<vec_t, T_mat_R>::value && !std::is_same<den_mat_t, T_mat_R>::value && !std::is_same<den_mat_t, T_mat_X>::value>::type* = nullptr >
 	void TriangularSolve(const T_mat_L& L, const T_mat_R& R, T_mat_X& X, bool transpose) {
 		CHECK(L.cols() == R.rows());
 		int ncols_R = (int)R.cols();
@@ -236,7 +236,33 @@ namespace GPBoost {
 		// Note 2: Alternative version using 'eigen_sp_Lower_sp_RHS_cs_solve' which is based
 		//			on the CSparse function 'cs_spsolve' might be faster.
 		//			However, this can cause problems with some compilers / OS's (e.g., gcc on Linux).
-	}//end TriangularSolve (L = sp_mat_t && R != vec_t && R != den_mat_t)
+	}//end TriangularSolve (L = sp_mat_t && R != vec_t && R != den_mat_t && X != den_mat_t)
+	template <class T_mat_L, class T_mat_R, class T_mat_X, typename std::enable_if <std::is_same<sp_mat_t, T_mat_L>::value && !std::is_same<vec_t, T_mat_R>::value && !std::is_same<den_mat_t, T_mat_R>::value && std::is_same<den_mat_t, T_mat_X>::value>::type* = nullptr >
+	void TriangularSolve(const T_mat_L& L, const T_mat_R& R, T_mat_X& X, bool transpose) {
+		// Note: this code has not beed tested as often the version below with R == den_mat_t && X == den_mat_t is called since 'ApplyPermutationCholeskyFactor' "converts" the sp_mat_t R already into a den_mat_t
+		CHECK(L.cols() == R.rows());
+		int ncols_R = (int)R.cols();
+		int nrows_R = (int)R.rows();
+		const T_mat_R* R_ptr = &R;//can be both sp_mat_t and sp_mat_rm_t
+		const double* val = L.valuePtr();
+		const int* row_idx = L.innerIndexPtr();
+		const int* col_ptr = L.outerIndexPtr();
+		X = den_mat_t(R.rows(), R.cols());
+		if (transpose) {
+#pragma omp parallel for schedule(static)
+			for (int j = 0; j < ncols_R; ++j) {
+				X.col(j) = R_ptr->col(j);
+				sp_L_t_solve(val, row_idx, col_ptr, nrows_R, X.data() + j * nrows_R);
+			}
+		}
+		else {
+#pragma omp parallel for schedule(static)
+			for (int j = 0; j < ncols_R; ++j) {
+				X.col(j) = R_ptr->col(j);
+				sp_L_solve(val, row_idx, col_ptr, nrows_R, X.data() + j * nrows_R);
+			}
+		}
+	}//end TriangularSolve (L = sp_mat_t && (R != vec_t && R != den_mat_t) && X == den_mat_t). 
 	template <class T_mat_L, class T_mat_R, class T_mat_X, typename std::enable_if <std::is_same<sp_mat_t, T_mat_L>::value && std::is_same<den_mat_t, T_mat_R>::value>::type* = nullptr >
 	void TriangularSolve(const T_mat_L& L, const T_mat_R& R, T_mat_X& X, bool transpose) {
 		CHECK(L.cols() == R.rows());
@@ -327,19 +353,19 @@ namespace GPBoost {
 		else {
 			if (CholeskyHasPermutation<T_chol>(chol)) {
 				ApplyPermutationCholeskyFactor<T_mat_X, T_chol>(chol, R, X, false);
-				TriangularSolve<T_chol_mat, T_mat_R, T_mat_X>(chol.CholFactMatrix(), X, X, false);
+				TriangularSolve<T_chol_mat, T_mat_X, T_mat_X>(chol.CholFactMatrix(), X, X, false);
 			}
 			else {
 				TriangularSolve<T_chol_mat, T_mat_R, T_mat_X>(chol.CholFactMatrix(), R, X, false);
 			}
 		}
-	}
+	}//end TriangularSolveGivenCholesky (chol != chol_den_mat_t || R ! sp_mat_t)
 	template <class T_chol, class T_chol_mat, class T_mat_R, class T_mat_X, typename std::enable_if <std::is_same<chol_den_mat_t, T_chol>::value && std::is_same<sp_mat_t, T_mat_R>::value>::type* = nullptr >
 	void TriangularSolveGivenCholesky(const T_chol& chol, const T_mat_R& R, T_mat_X& X, bool transpose) {
-		// If chol is chol_den_mat_t and the R is sp_mat_t, then the RHS needs to converted to den_mat_t
+		// If chol is chol_den_mat_t and R is sp_mat_t, then R is to converted to den_mat_t
 		den_mat_t R_den = (den_mat_t)(R);
 		TriangularSolveGivenCholesky<chol_den_mat_t, T_chol_mat, den_mat_t, den_mat_t>(chol, R_den, X, transpose);
-	}
+	}//end TriangularSolveGivenCholesky (chol = chol_den_mat_t && R = sp_mat_t)
 
 	/*!
 	* \brief Solve a linear system L*L^T * X = R given a lower Cholesky factor
@@ -352,14 +378,14 @@ namespace GPBoost {
 	void SolveGivenCholesky(const T_chol& chol, const T_mat_R& R, T_mat_X& X) {
 		// Covers all types except if chol is chol_den_mat_t and R is sp_mat_t (it would also cover chol chol_sp_mat_t and R den_mat_t which does not compile, but this is never used)
 		TriangularSolveGivenCholesky<T_chol, T_chol_mat, T_mat_R, T_mat_X>(chol, R, X, false);
-		TriangularSolveGivenCholesky<T_chol, T_chol_mat, T_mat_R, T_mat_X>(chol, X, X, true);
-	}
+		TriangularSolveGivenCholesky<T_chol, T_chol_mat, T_mat_X, T_mat_X>(chol, X, X, true);
+	}//end SolveGivenCholesky (chol != chol_den_mat_t || R ! sp_mat_t)
 	template <class T_chol, class T_chol_mat, class T_mat_R, class T_mat_X, typename std::enable_if <std::is_same<chol_den_mat_t, T_chol>::value && std::is_same<sp_mat_t, T_mat_R>::value>::type* = nullptr >
 	void SolveGivenCholesky(const T_chol& chol, const T_mat_R& R, T_mat_X& X) {
 		// If chol is chol_den_mat_t and the R is sp_mat_t, then the RHS needs to converted to den_mat_t
 		den_mat_t R_den = (den_mat_t)(R);
 		SolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol, R_den, X);
-	}
+	}//end SolveGivenCholesky (chol = chol_den_mat_t && R = sp_mat_t)
 	// ALternative version using Eigen's interval solver
 	//template <class T_mat, class T_chol, typename std::enable_if <std::is_same<den_mat_t, T_mat>::value || std::is_same<sp_mat_t, T_mat>::value>::type* = nullptr >
 	//void SolveGivenCholesky(const T_chol& chol, const T_mat& R, T_mat& X) {
