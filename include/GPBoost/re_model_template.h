@@ -2683,12 +2683,6 @@ namespace GPBoost {
 								re_comps_ip_cluster_i[j]->CalcSigma();
 								re_comps_cross_cov_cluster_i[j]->CalcSigma();
 								den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[j]->GetZSigmaZt());
-								if (fitc_stable_) {
-									sigma_ip_stable.diagonal().array() *= JITTER_MULT_FITC_FSA_STABLE;
-								}
-								else {
-									sigma_ip_stable.diagonal().array() *= JITTER_MULT_FITC_FSA;
-								}
 								chol_den_mat_t chol_fact_sigma_ip;
 								chol_fact_sigma_ip.compute(sigma_ip_stable);
 								den_mat_t cross_cov = *(re_comps_cross_cov_cluster_i[j]->GetZSigmaZt());
@@ -5201,17 +5195,8 @@ namespace GPBoost {
 				den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords_);
 				bool use_Z_for_duplicates = (gp_approx_ == "none");
 				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
-					gp_coords_mat,
-					cov_fct,
-					cov_fct_shape,
-					cov_fct_taper_range,
-					cov_fct_taper_shape,
-					gp_approx_ == "tapering",
-					false,
-					true,
-					use_Z_for_duplicates,
-					only_one_GP_calculations_on_RE_scale_,
-					true)));
+					gp_coords_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+					gp_approx_ == "tapering", false, true, use_Z_for_duplicates, only_one_GP_calculations_on_RE_scale_, true, false, 1.)));
 				//Random slope GPs
 				if (num_gp_rand_coef_ > 0) {
 					for (int j = 0; j < num_gp_rand_coef_; ++j) {
@@ -5221,18 +5206,9 @@ namespace GPBoost {
 						}
 						std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp_]);
 						re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
-							re_comp->dist_,
-							re_comp->has_Z_,
-							&re_comp->Z_,
-							rand_coef_data,
-							cov_fct,
-							cov_fct_shape,
-							cov_fct_taper_range,
-							cov_fct_taper_shape,
-							re_comp->GetTaperMu(),
-							gp_approx_ == "tapering",
-							false,
-							dim_gp_coords_)));
+							re_comp->dist_, re_comp->has_Z_, &re_comp->Z_, rand_coef_data,
+							cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+							re_comp->GetTaperMu(), gp_approx_ == "tapering", false, dim_gp_coords_)));
 					}
 				}
 			}
@@ -5330,8 +5306,10 @@ namespace GPBoost {
 				Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
 			}
 			gp_coords_all_unique.resize(0, 0);
+			double jitter_mult = fitc_stable_ ? JITTER_MULT_FITC_FSA_STABLE : JITTER_MULT_FITC_FSA;
 			std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
-				gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, false, false, true, false, false, true));
+				gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, 
+				false, false, true, false, false, true, true, jitter_mult));
 			if (gp_ip->HasDuplicatedCoords()) {
 				Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
 			}
@@ -5343,7 +5321,7 @@ namespace GPBoost {
 			if (gp_approx_ == "full_scale_tapering") {
 				re_comps_resid_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 					gp_coords_all_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
-					true, true, true, false, false, true)));
+					true, true, true, false, false, true, false, 1.)));
 			}
 			//Random slope GPs
 			if (num_gp_rand_coef_ > 0) {
@@ -5510,12 +5488,6 @@ namespace GPBoost {
 						re_comps_ip_[cluster_i][j]->CalcSigma();
 						re_comps_cross_cov_[cluster_i][j]->CalcSigma();
 						den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][j]->GetZSigmaZt());
-						if (fitc_stable_) {
-							sigma_ip_stable.diagonal().array() *= JITTER_MULT_FITC_FSA_STABLE;
-						}
-						else {
-							sigma_ip_stable.diagonal().array() *= JITTER_MULT_FITC_FSA;
-						}
 						chol_fact_sigma_ip_[cluster_i].compute(sigma_ip_stable);
 						if (gp_approx_ == "fitc") {
 							std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
@@ -6731,12 +6703,6 @@ namespace GPBoost {
 				// factorize matrix used in Woodbury identity
 				std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
 				den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][0]->GetZSigmaZt());
-				if (fitc_stable_) {
-					sigma_ip_stable.diagonal().array() *= JITTER_MULT_FITC_FSA_STABLE;
-				}
-				else {
-					sigma_ip_stable.diagonal().array() *= JITTER_MULT_FITC_FSA;
-				}
 				den_mat_t sigma_woodbury;// sigma_woodbury = sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov or for Preconditioner sigma_ip + cross_cov^T * D^-1 * cross_cov
 				if (matrix_inversion_method_ == "iterative") {
 					if (gp_approx_ == "fitc") {

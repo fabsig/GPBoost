@@ -723,6 +723,8 @@ namespace GPBoost {
 		*			This option can only be selected when save_dist_use_Z_for_duplicates = true
 		* \param use_precomputed_dist_for_calc_cov If true, precomputed distances ('dist') are used for calculating covariances, otherwise the coordinates are used ('coords' and 'coords_pred'). 
 		*			This is currently only false for Vecchia approximations
+		* \param add_jitter_to_sigma If true, a small value is added to the (training data) covariance matrix 'sigma_' in 'CalcSigma()'
+		* \param jitter_mult If add_jitter_to_sigma == true, the diagonal of 'sigma_' is multiplied with jitter_mult
 		*/
 		RECompGP(const den_mat_t& coords,
 			string_t cov_fct,
@@ -734,7 +736,9 @@ namespace GPBoost {
 			bool save_dist,
 			bool use_Z_for_duplicates,
 			bool save_random_effects_indices_of_data_and_no_Z,
-			bool use_precomputed_dist_for_calc_cov) {
+			bool use_precomputed_dist_for_calc_cov,
+			bool add_jitter_to_sigma,
+			double jitter_mult) {
 			if (save_random_effects_indices_of_data_and_no_Z && !use_Z_for_duplicates) {
 				Log::REFatal("RECompGP: 'use_Z_for_duplicates' cannot be 'false' when 'save_random_effects_indices_of_data_and_no_Z' is 'true'");
 			}
@@ -748,6 +752,9 @@ namespace GPBoost {
 			is_cross_covariance_IP_ = false;
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
+			add_jitter_to_sigma_ = add_jitter_to_sigma;
+			CHECK(jitter_mult > 0.);
+			jitter_mult_ = jitter_mult;
 			cov_function_ = std::shared_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering, (int)coords.cols(), use_precomputed_dist_for_calc_cov));
 			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
@@ -1146,6 +1153,9 @@ namespace GPBoost {
 				if (!apply_tapering_manually_) {
 					ApplyTaper();
 				}
+			}
+			if (add_jitter_to_sigma_) {
+				sigma_.diagonal().array() *= jitter_mult_;
 			}
 		}
 
@@ -1610,6 +1620,10 @@ namespace GPBoost {
 		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland" };
 		/*! \brief True if the GP has a compactly supported covariance function */
 		bool has_compact_cov_fct_;
+		/*! \brief If true, a small value is added to the (training data) covariance matrix 'sigma_' in 'CalcSigma()' */
+		bool add_jitter_to_sigma_ = false;
+		/*! \brief If add_jitter_to_sigma_ == true, the diagonal of 'sigma_' is multiplied with jitter_mult_ */
+		double jitter_mult_ = 1.;
 
 		/*!
 		* \brief Chooses parameter taper_mu for Wendland covariance function and Wendland correlation tapering function
