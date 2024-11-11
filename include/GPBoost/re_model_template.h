@@ -138,10 +138,6 @@ namespace GPBoost {
 			}
 			else {
 				gp_approx_ = std::string(gp_approx);
-				if (gp_approx_ == "fitc_stable") {//experimental option
-					gp_approx_ = "fitc";
-					fitc_stable_ = true;
-				}
 				if (gp_approx_ == "full_scale_tapering_pred_var_stochastic_stable" || 
 					gp_approx_ == "full_scale_tapering_pred_var_exact_stable" || 
 					gp_approx_ == "full_scale_tapering_pred_var_exact") {
@@ -3831,8 +3827,6 @@ namespace GPBoost {
 		string_t gp_approx_ = "none";
 		/*! \brief List of supported optimizers for covariance parameters */
 		const std::set<string_t> SUPPORTED_GP_APPROX_{ "none", "vecchia", "tapering", "fitc", "full_scale_tapering" };
-		/*! \brief Experimental feature for more stable FITC approximation */
-		bool fitc_stable_ = false;//experimental option
 		/*! \brief How to calculate predictive variances and covariances for "full_scale_tapering" when using the cholesky decomposition */
 		string_t calc_pred_cov_var_FSA_cholesky_ = "stochastic_stable";//"exact" (direct calculation), "exact_stable" (using a numerically stable version, but potentially large memory and time footpringt), "stochastic_stable" (using a numerically stable version and simulations to reduce memory and time footpringt)
 
@@ -5306,10 +5300,9 @@ namespace GPBoost {
 				Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
 			}
 			gp_coords_all_unique.resize(0, 0);
-			double jitter_mult = fitc_stable_ ? JITTER_MULT_FITC_FSA_STABLE : JITTER_MULT_FITC_FSA;
 			std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
 				gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, 
-				false, false, true, false, false, true, true, jitter_mult));
+				false, false, true, false, false, true, true, JITTER_MULT_FITC_FSA));
 			if (gp_ip->HasDuplicatedCoords()) {
 				Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
 			}
@@ -6740,12 +6733,7 @@ namespace GPBoost {
 					sigma_woodbury += sigma_ip_stable;
 
 					//// adding jitter to this Woodbury matrix changes the results too much without helping really (06.11.2024)
-					//if (fitc_stable_) {
-					//	sigma_woodbury.diagonal().array() *= JITTER_MULT_FITC_FSA_STABLE;
-					//}
-					//else {
-					//	sigma_woodbury.diagonal().array() *= JITTER_MULT_FITC_FSA;
-					//}
+					//sigma_woodbury.diagonal().array() *= JITTER_MULT_FITC_FSA;
 
 					chol_fact_sigma_woodbury_[cluster_i].compute(sigma_woodbury);
 
