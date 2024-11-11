@@ -193,7 +193,7 @@ Model specification parameters
 
       - ``gaussian_ard``: Anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate dimension / column of ``gp_coords``
 
--  ``cov_fct_shape`` : double, (default = 0.5)
+-  ``cov_fct_shape`` : double, (default = 1.5)
 
    -  Shape parameter of the covariance function (=smoothness parameter for Matern covariance). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
 
@@ -215,7 +215,7 @@ Model specification parameters
 
    -  Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 
--  ``cov_fct_taper_shape`` : double, (default = 0.)
+-  ``cov_fct_taper_shape`` : double, (default = 1.)
 
    -  Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 
@@ -295,15 +295,15 @@ The following list shows options for the optimization of the variance and covari
 
    -  Optimizer used for estimating covariance parameters
 
-   -  Options: ``gradient_descent``, ``lbfgs``, ``fisher_scoring``, ``nelder_mead``, ``adam``
+   -  Options: ``gradient_descent``, ``lbfgs``, ``fisher_scoring``, ``nelder_mead``
 
 -  ``optimizer_coef`` : string, optional (default = ``wls`` for Gaussian data and ``gradient_descent`` for other likelihoods)
 
    -  Optimizer used for estimating linear regression coefficients, if there are any (for the GPBoost algorithm there are usually none)
 
-   -  Options: ``gradient_descent``, ``lbfgs``, ``wls``, ``nelder_mead``, ``adam``. Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. ``wls`` refers to doing coordinate descent for the regression coefficients using weighted least squares
+   -  Options: ``gradient_descent``, ``lbfgs``, ``wls``, ``nelder_mead``. Gradient descent steps are done simultaneously with gradient descent steps for the covariance paramters. ``wls`` refers to doing coordinate descent for the regression coefficients using weighted least squares
 
-   -  If ``optimizer_cov`` is set to ``nelder_mead``, ``lbfgs``, or ``adam``, ``optimizer_coef`` is automatically also set to the same value
+   -  If ``optimizer_cov`` is set to ``nelder_mead`` or ``lbfgs``, ``optimizer_coef`` is automatically also set to the same value
 
 -  ``maxit`` : integer, optional (default = 1000)
 
@@ -311,7 +311,7 @@ The following list shows options for the optimization of the variance and covari
 
 -  ``delta_rel_conv`` : double, optional (default = 1e-6 except for ``nelder_mead`` for which the default is 1e-8)
 
-   -  Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. For ``adam``, the L2 norm of the gradient is used instead of the relative change in the log-likelihood
+   -  Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. 
 
    -  If < 0, internal default values are used (= 1e-6 except for ``nelder_mead`` for which the default is 1e-8)
 

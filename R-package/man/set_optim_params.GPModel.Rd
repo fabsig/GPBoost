@@ -13,23 +13,22 @@
  \itemize{
     \item{optimizer_cov: \code{string} (default = "lbfgs"). 
     Optimizer used for estimating covariance parameters. 
-    Options: "gradient_descent", "lbfgs", "fisher_scoring", "newton", "nelder_mead", "adam".
+    Options: "gradient_descent", "lbfgs", "fisher_scoring", "newton", "nelder_mead".
     If there are additional auxiliary parameters for non-Gaussian likelihoods, 
     'optimizer_cov' is also used for those }
     \item{optimizer_coef: \code{string} (default = "wls" for Gaussian likelihoods and "lbfgs" for other likelihoods). 
     Optimizer used for estimating linear regression coefficients, if there are any 
     (for the GPBoost algorithm there are usually none). 
-    Options: "gradient_descent", "lbfgs", "wls", "nelder_mead", "adam". Gradient descent steps are done simultaneously 
+    Options: "gradient_descent", "lbfgs", "wls", "nelder_mead". Gradient descent steps are done simultaneously 
     with gradient descent steps for the covariance parameters. 
     "wls" refers to doing coordinate descent for the regression coefficients using weighted least squares.
-    If 'optimizer_cov' is set to "nelder_mead", "lbfgs", or "adam", 
+    If 'optimizer_cov' is set to "nelder_mead" or "lbfgs", 
     'optimizer_coef' is automatically also set to the same value.}
     \item{maxit: \code{integer} (default = 1000). 
     Maximal number of iterations for optimization algorithm }
     \item{delta_rel_conv: \code{numeric} (default = 1E-6 except for "nelder_mead" for which the default is 1E-8). 
     Convergence tolerance. The algorithm stops if the relative change 
     in either the (approximate) log-likelihood or the parameters is below this value. 
-    For "adam", the L2 norm of the gradient is used instead of the relative change in the log-likelihood. 
     If < 0, internal default values are used }
     \item{convergence_criterion: \code{string} (default = "relative_change_in_log_likelihood"). 
     The convergence criterion used for terminating the optimization algorithm.

@@ -390,7 +390,7 @@ if likelihood in ("bernoulli_probit", "bernoulli_logit"):
 
 #--------------------Training----------------
 # Define Gaussian process model
-gp_model = gpb.GPModel(gp_coords=coords_train, ov_function="matern", cov_fct_shape=1.5,
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        likelihood=likelihood)
 # Create dataset for gpb.train
 data_train = gpb.Dataset(X_train, y_train)
@@ -460,7 +460,7 @@ axs[1, 1].legend()
 Choosing tuning parameters carefully is important.
 See the above demo code for grouped random effects on how this can be done.
 You just have to replace the gp_model. E.g.,    
-gp_model = gpb.GPModel(gp_coords=coords_train, ov_function="matern", cov_fct_shape=1.5, likelihood=likelihood)
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5, likelihood=likelihood)
 """
 
 #--------------------Model interpretation----------------
