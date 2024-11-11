@@ -2655,7 +2655,10 @@ namespace GPBoost {
 					DW_plus_I_inv_diag = (information_ll_.array() * fitc_diag.array() + 1.).matrix().cwiseInverse();
 					// Calculate Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
 					Wsqrt_cross_cov = Wsqrt_diag.asDiagonal() * (*cross_cov);
-					M_aux_Woodbury = *sigma_ip + Wsqrt_cross_cov.transpose() * DW_plus_I_inv_diag.asDiagonal() * Wsqrt_cross_cov;// = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
+					M_aux_Woodbury = *sigma_ip;
+					M_aux_Woodbury.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+					M_aux_Woodbury += Wsqrt_cross_cov.transpose() * DW_plus_I_inv_diag.asDiagonal() * Wsqrt_cross_cov;// = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
+					//M_aux_Woodbury = *sigma_ip + Wsqrt_cross_cov.transpose() * DW_plus_I_inv_diag.asDiagonal() * Wsqrt_cross_cov;// = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)//DELETE
 					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
 				}
 				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
@@ -2709,7 +2712,10 @@ namespace GPBoost {
 				if (information_ll_changes_during_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
 					fitc_diag_plus_WI_inv = (fitc_diag + information_ll_.cwiseInverse()).cwiseInverse();
-					M_aux_Woodbury = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov);
+					M_aux_Woodbury = *sigma_ip;
+					M_aux_Woodbury.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+					M_aux_Woodbury += (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov);
+					//M_aux_Woodbury = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov);//DELETE
 					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of (sigma_ip + Sigma_nm^T * fitc_diag_plus_WI_inv * Sigma_nm)
 				}
 				else {

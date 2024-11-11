@@ -368,7 +368,7 @@ namespace GPBoost {
 		only_one_GP_calculations_on_RE_scale = num_gp_total == 1 && num_comps_total == 1 && !gauss_likelihood;
 		re_comps_vecchia_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
 			gp_coords_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, apply_tapering,
-			false, false, only_one_GP_calculations_on_RE_scale, only_one_GP_calculations_on_RE_scale, save_distances_isotropic_cov_fct, false, 1.)));
+			false, false, only_one_GP_calculations_on_RE_scale, only_one_GP_calculations_on_RE_scale, save_distances_isotropic_cov_fct)));
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_cluster_i[ind_intercept_gp];
 		if ((vecchia_ordering == "time" || vecchia_ordering == "time_random_space") && !(re_comp->IsSpaceTimeModel())) {
 			Log::REFatal("'vecchia_ordering' is '%s' but the 'cov_function' is not a space-time covariance function ", vecchia_ordering.c_str());
