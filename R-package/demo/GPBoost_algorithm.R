@@ -326,8 +326,8 @@ n <- ntrain + ntest
 # Simulate spatial Gaussian process
 sigma2_1 <- 0.25 # marginal variance of GP
 rho <- 0.1 # range parameter
-D <- as.matrix(dist(coords))
-Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
+D_scaled <- sqrt(3) * as.matrix(dist(coords)) / rho
+Sigma <- sigma2_1 * (1 + D_scaled) * exp(-D_scaled) + diag(1E-20,n) # Matern 1.5 covariance
 C <- t(chol(Sigma))
 b_1 <- as.vector(C %*% rnorm(n=n))
 b_1 <- b_1 - mean(b_1)
@@ -354,7 +354,7 @@ if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
 
 #--------------------Training----------------
 # Define Gaussian process model
-gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                     likelihood = likelihood)
 # Create dataset for gpb.train
 dtrain <- gpb.Dataset(data = X_train, label = y_train)
@@ -418,7 +418,7 @@ grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
 # Choosing tuning parameters carefully is important.
 # See the above demo code for grouped random effects on how this can be done.
 # You just have to replace the gp_model. E.g.,    
-# gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential", likelihood = likelihood)
+# gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5, likelihood = likelihood)
 
 #--------------------Model interpretation----------------
 # See the above demo code for grouped random effects on how this can be done.

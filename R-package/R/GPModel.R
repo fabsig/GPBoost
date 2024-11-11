@@ -318,11 +318,11 @@ gpb.GPModel <- R6::R6Class(
                           drop_intercept_group_rand_effect = NULL,
                           gp_coords = NULL,
                           gp_rand_coef_data = NULL,
-                          cov_function = "exponential",
-                          cov_fct_shape = 0.5,
+                          cov_function = "matern",
+                          cov_fct_shape = 1.5,
                           gp_approx = "none",
                           cov_fct_taper_range = 1.,
-                          cov_fct_taper_shape = 0.,
+                          cov_fct_taper_shape = 1.,
                           num_neighbors = 20L,
                           vecchia_ordering = "random",
                           ind_points_selection = "kmeans++",
@@ -1990,11 +1990,11 @@ gpb.GPModel <- R6::R6Class(
     drop_intercept_group_rand_effect = NULL,
     gp_coords = NULL,
     gp_rand_coef_data = NULL,
-    cov_function = "exponential",
-    cov_fct_shape = 0.5,
+    cov_function = "matern",
+    cov_fct_shape = 1.5,
     gp_approx = "none",
     cov_fct_taper_range = 1.,
-    cov_fct_taper_shape = 0.,
+    cov_fct_taper_shape = 1.,
     num_neighbors = 20L,
     vecchia_ordering = "random",
     vecchia_pred_type = NULL,
@@ -2197,12 +2197,12 @@ gpb.GPModel <- R6::R6Class(
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
 #' 
 #' #--------------------Gaussian process model----------------
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+#' gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                     likelihood="gaussian")
 #'
 #' #--------------------Combine Gaussian process with grouped random effects----------------
 #' gp_model <- GPModel(group_data = group_data,
-#'                     gp_coords = coords, cov_function = "exponential",
+#'                     gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                     likelihood="gaussian")
 #' @author Fabio Sigrist
 #' @export
@@ -2213,11 +2213,11 @@ GPModel <- function(likelihood = "gaussian",
                     drop_intercept_group_rand_effect = NULL,
                     gp_coords = NULL,
                     gp_rand_coef_data = NULL,
-                    cov_function = "exponential",
-                    cov_fct_shape = 0.5,
+                    cov_function = "matern",
+                    cov_fct_shape = 1.5,
                     gp_approx = "none",
                     cov_fct_taper_range = 1.,
-                    cov_fct_taper_shape = 0.,
+                    cov_fct_taper_shape = 1.,
                     num_neighbors = 20L,
                     vecchia_ordering = "random",
                     ind_points_selection = "kmeans++",
@@ -2306,7 +2306,7 @@ fit <- function(gp_model, y, X, params, offset = NULL, fixed_effects = NULL) Use
 #' pred$cov # Predicted covariance
 #'  
 #' #--------------------Gaussian process model----------------
-#' gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+#' gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                     likelihood="gaussian")
 #' fit(gp_model, y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
@@ -2381,7 +2381,7 @@ fit.GPModel <- function(gp_model,
 #' summary(gp_model)
 #'
 #' #--------------------Gaussian process model----------------
-#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' # Make predictions
@@ -2391,20 +2391,20 @@ fit.GPModel <- function(gp_model,
 #' pred$cov # Predicted (posterior) covariance matrix of GP
 #'
 #' #--------------------Gaussian process model with Vecchia approximation----------------
-#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                        gp_approx = "vecchia", num_neighbors = 20,
 #'                        likelihood="gaussian", y = y)
 #' summary(gp_model)
 #'
 #' #--------------------Gaussian process model with random coefficients----------------
-#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                        gp_rand_coef_data = X[,2], y=y,
 #'                        likelihood = "gaussian", params = list(std_dev = TRUE))
 #' summary(gp_model)
 #'
 #' #--------------------Combine Gaussian process with grouped random effects----------------
 #' gp_model <- fitGPModel(group_data = group_data,
-#'                        gp_coords = coords, cov_function = "exponential",
+#'                        gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                        likelihood = "gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' }
@@ -2419,11 +2419,11 @@ fitGPModel <- function(likelihood = "gaussian",
                        drop_intercept_group_rand_effect = NULL,
                        gp_coords = NULL,
                        gp_rand_coef_data = NULL,
-                       cov_function = "exponential",
-                       cov_fct_shape = 0.5,
+                       cov_function = "matern",
+                       cov_fct_shape = 1.5,
                        gp_approx = "none",
                        cov_fct_taper_range = 1.,
-                       cov_fct_taper_shape = 0.,
+                       cov_fct_taper_shape = 1.,
                        num_neighbors = 20L,
                        vecchia_ordering = "random",
                        ind_points_selection = "kmeans++",
@@ -2503,7 +2503,7 @@ fitGPModel <- function(likelihood = "gaussian",
 #'
 #' \donttest{
 #' #--------------------Gaussian process model----------------
-#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' }
@@ -2579,7 +2579,7 @@ summary.GPModel <- function(object, ...){
 #'
 #'
 #' #--------------------Gaussian process model----------------
-#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+#' gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 #' summary(gp_model)
 #' # Make predictions

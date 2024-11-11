@@ -259,7 +259,8 @@ for i in range(0, n):
     for j in range(i + 1, n):
         D[i, j] = np.linalg.norm(coords[i, :] - coords[j, :])
         D[j, i] = D[i, j]
-Sigma = sigma2_1 * np.exp(-D / rho) + np.diag(np.zeros(n) + 1e-20)
+D_scaled = 3**0.5 * D / rho
+Sigma = sigma2_1 * (1. + D_scaled) * np.exp(-D_scaled) + np.diag(np.zeros(n) + 1e-20) # Matern 1.5 covariance
 C = np.linalg.cholesky(Sigma)
 b = C.dot(np.random.normal(size=n)) # simulate GP
 b = b - np.mean(b)
@@ -286,14 +287,14 @@ rand_eff = rand_eff - np.mean(rand_eff)
 y_svc = simulate_response_variable(lp=0, rand_eff=rand_eff, likelihood=likelihood)
 
 #--------------------Training----------------
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
 
 # Other covariance functions:
 # gp_model = gpb.GPModel(gp_coords=coords, cov_function="gaussian", likelihood=likelihood)
-# gp_model = gpb.GPModel(gp_coords=coords, cov_function="matern", cov_fct_shape=1.5, likelihood=likelihood)
+# gp_model = gpb.GPModel(gp_coords=coords, cov_function="matern", cov_fct_shape=1., likelihood=likelihood)
 # gp_model = gpb.GPModel(gp_coords=coords, cov_function="powered_exponential", cov_fct_shape=1.1, likelihood=likelihood)
 
 # Optional arguments for the 'params' argument of the 'fit' function:
@@ -302,7 +303,7 @@ gp_model.summary()
 # - change optimization algorithm options (see below)
 # For available optimization options, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-#gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential", 
+#gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5, 
 #                       likelihood=likelihood)
 #gp_model.fit(y=y, X=X, params={"trace": True, 
 #                               "std_dev": True,
@@ -358,7 +359,7 @@ plt.show(block=False)
 
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        likelihood=likelihood)
 gp_model.fit(y=y_lin, X=X, params={"std_dev": True})
 gp_model.summary()
@@ -376,7 +377,7 @@ gp_model.fit(y=y_train)
 gp_model.summary()
 
 # --------------------Gaussian process model with Vecchia approximation----------------
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        gp_approx="vecchia", num_neighbors=20, likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
@@ -389,7 +390,7 @@ plt.title("Predicted latent GP mean with Vecchia approxmation")
 plt.show(block=False)
 
 # --------------------Gaussian process model with FITC / modified predictive process approximation----------------
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        gp_approx="fitc", num_ind_points=500, likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
@@ -401,7 +402,7 @@ plt.title("Predicted latent GP mean with FITC approxmation")
 plt.show(block=False)
 
 #--------------------Gaussian process model with tapering----------------
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        gp_approx = "tapering", cov_fct_taper_shape=0., 
                        cov_fct_taper_range=0.5, likelihood=likelihood)
 gp_model.fit(y=y_train)
@@ -409,7 +410,7 @@ gp_model.summary()
 
 # --------------------Gaussian process model with random coefficents----------------
 # Define and train model
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential", 
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5, 
                        gp_rand_coef_data=X_SVC, likelihood=likelihood)
 gp_model.fit(y=y_svc) # takes some time for non-Gaussian data
 pd.set_option('display.max_columns', None)
@@ -430,7 +431,7 @@ plt.show(block=False)
 # --------------------Using cluster_ids for independent realizations of GPs----------------
 cluster_ids = np.zeros(ntrain)
 cluster_ids[int(ntrain/2):ntrain] = 1
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        cluster_ids=cluster_ids, likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
@@ -440,7 +441,7 @@ if likelihood == "gaussian":
   cov_pars = [0.1,sigma2_1,rho]
 else:
   cov_pars = [sigma2_1,rho]
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        likelihood=likelihood)
 gp_model.neg_log_likelihood(cov_pars=cov_pars, y=y_train)
 
@@ -469,7 +470,8 @@ for i in range(0, n):
     for j in range(i + 1, n):
         D[i, j] = np.linalg.norm(coords[i, :] - coords[j, :])
         D[j, i] = D[i, j]
-Sigma = sigma2_2 * np.exp(-D / rho) + np.diag(np.zeros(n) + 1e-20)
+D_scaled = 3**0.5 * D / rho
+Sigma = sigma2_2 * (1. + D_scaled) * np.exp(-D_scaled) + np.diag(np.zeros(n) + 1e-20) # Matern 1.5 covariance
 C = np.linalg.cholesky(Sigma)
 b1 = sigma2_1**0.5 * np.random.normal(size=m)  # simulate random effect
 b2 = C.dot(np.random.normal(size=n))
@@ -478,6 +480,6 @@ rand_eff = rand_eff - np.mean(rand_eff)
 y_comb = simulate_response_variable(lp=0, rand_eff=rand_eff, likelihood=likelihood)
 # Define and train model
 gp_model = gpb.GPModel(group_data=group, gp_coords=coords, 
-                       cov_function="exponential", likelihood=likelihood)
+                       cov_function="matern", cov_fct_shape=1.5, likelihood=likelihood)
 gp_model.fit(y=y_comb)
 gp_model.summary()

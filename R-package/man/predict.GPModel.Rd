@@ -115,7 +115,7 @@ pred$cov # Predicted covariance
 
 
 #--------------------Gaussian process model----------------
-gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 summary(gp_model)
 # Make predictions

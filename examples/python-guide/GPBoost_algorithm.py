@@ -368,7 +368,8 @@ for i in range(0, n):
     for j in range(i + 1, n):
         D[i, j] = np.linalg.norm(coords[i, :] - coords[j, :])
         D[j, i] = D[i, j]
-Sigma = sigma2_1 * np.exp(-D / rho) + np.diag(np.zeros(n) + 1e-20)
+D_scaled = 3**0.5 * D / rho
+Sigma = sigma2_1 * (1. + D_scaled) * np.exp(-D_scaled) + np.diag(np.zeros(n) + 1e-20) # Matern 1.5 covariance
 C = np.linalg.cholesky(Sigma)
 b = C.dot(np.random.normal(size=n)) # simulate GP
 b = b - np.mean(b)
@@ -389,7 +390,7 @@ if likelihood in ("bernoulli_probit", "bernoulli_logit"):
 
 #--------------------Training----------------
 # Define Gaussian process model
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential",
+gp_model = gpb.GPModel(gp_coords=coords_train, ov_function="matern", cov_fct_shape=1.5,
                        likelihood=likelihood)
 # Create dataset for gpb.train
 data_train = gpb.Dataset(X_train, y_train)
@@ -459,7 +460,7 @@ axs[1, 1].legend()
 Choosing tuning parameters carefully is important.
 See the above demo code for grouped random effects on how this can be done.
 You just have to replace the gp_model. E.g.,    
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="exponential", likelihood=likelihood)
+gp_model = gpb.GPModel(gp_coords=coords_train, ov_function="matern", cov_fct_shape=1.5, likelihood=likelihood)
 """
 
 #--------------------Model interpretation----------------

@@ -4029,11 +4029,11 @@ class GPModel(object):
                  drop_intercept_group_rand_effect=None,
                  gp_coords=None,
                  gp_rand_coef_data=None,
-                 cov_function="exponential",
-                 cov_fct_shape=0.,
+                 cov_function="matern",
+                 cov_fct_shape=1.5,
                  gp_approx="none",
                  cov_fct_taper_range=1.,
-                 cov_fct_taper_shape=0.,
+                 cov_fct_taper_shape=1.,
                  num_neighbors=20,
                  vecchia_ordering="random",
                  ind_points_selection="kmeans++",
@@ -4265,7 +4265,7 @@ class GPModel(object):
         >>> # Grouped random effects model
         >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
         >>> # Gaussian process model
-        >>> gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential", likelihood="gaussian")
+        >>> gp_model = gpb.GPModel(gp_coords=coords, cov_function="matern", cov_fct_shape=1.5, likelihood="gaussian")
         """
 
         if vecchia_approx is not None:
@@ -4297,11 +4297,11 @@ class GPModel(object):
         self.drop_intercept_group_rand_effect = None
         self.gp_coords = None
         self.gp_rand_coef_data = None
-        self.cov_function = "exponential"
-        self.cov_fct_shape = 0.5
+        self.cov_function = "matern"
+        self.cov_fct_shape = 1.5
         self.gp_approx = "none"
         self.cov_fct_taper_range = 1.
-        self.cov_fct_taper_shape = 0.
+        self.cov_fct_taper_shape = 1.
         self.num_neighbors = 20
         self.vecchia_ordering = "random"
         self.vecchia_pred_type = None
@@ -4874,7 +4874,7 @@ class GPModel(object):
         >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
         >>> gp_model.fit(y=y, X=X)
         >>> # Gaussian process model
-        >>> gp_model = gpb.GPModel(gp_coords=X, cov_function="exponential", likelihood="gaussian")
+        >>> gp_model = gpb.GPModel(gp_coords=X, cov_function="matern", cov_fct_shape=1.5, likelihood="gaussian")
         >>> gp_model.fit(y=y)
         """
 
@@ -5498,7 +5498,7 @@ class GPModel(object):
         >>> print(pred['mu']) # Predicted latent mean
         >>> print(pred['var']) # Predicted latent variance
         >>> # Gaussian process model
-        >>> gp_model = gpb.GPModel(gp_coords=X, cov_function="exponential", likelihood="gaussian")
+        >>> gp_model = gpb.GPModel(gp_coords=X, cov_function="matern", cov_fct_shape=1.5, likelihood="gaussian")
         >>> gp_model.fit(y=y)
         >>> pred = gp_model.predict(X_pred=X_test, gp_coords_pred=coords_test,
         >>>                         predict_var=True, predict_response=False)

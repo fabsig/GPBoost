@@ -260,8 +260,8 @@ n <- ntrain + ntest
 # Simulate spatial Gaussian process
 sigma2_1 <- 0.25 # marginal variance of GP
 rho <- 0.1 # range parameter
-D <- as.matrix(dist(coords))
-Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
+D_scaled <- sqrt(3) * as.matrix(dist(coords)) / rho
+Sigma <- sigma2_1 * (1 + D_scaled) * exp(-D_scaled) + diag(1E-20,n) # Matern 1.5 covariance
 C <- t(chol(Sigma))
 b_1 <- as.vector(C %*% rnorm(n=n))
 b_1 <- b_1 - mean(b_1)
@@ -289,7 +289,7 @@ rand_eff <- rand_eff - mean(rand_eff)
 y_svc <- simulate_response_variable(lp=0, rand_eff=rand_eff, likelihood=likelihood)
 
 #--------------------Training----------------
-gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                        likelihood = likelihood, y = y_train)
 summary(gp_model)
 
@@ -297,7 +297,7 @@ summary(gp_model)
 # gp_model <- fitGPModel(gp_coords = coords, cov_function = "gaussian",
 #                        likelihood = likelihood, y = y_train)
 # gp_model <- fitGPModel(gp_coords = coords,
-#                        cov_function = "matern", cov_fct_shape=1.5,
+#                        cov_function = "matern", cov_fct_shape=1.,
 #                        likelihood = likelihood, y = y_train)
 # gp_model <- fitGPModel(gp_coords = coords,
 #                        cov_function = "powered_exponential", cov_fct_shape=1.1,
@@ -360,7 +360,7 @@ plot(b_1_train, GP_smooth[,1], xlab="truth", ylab="predicted",
 
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
-gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                        y = y_lin, X = X, likelihood = likelihood, params = list(std_dev = TRUE))
 summary(gp_model)
 
@@ -375,7 +375,7 @@ gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern_space_ti
 summary(gp_model)
 
 #--------------------Gaussian process model with Vecchia approximation----------------
-gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential", 
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5, 
                        gp_approx = "vecchia", num_neighbors = 20, y = y_train,
                        likelihood = likelihood)
 summary(gp_model)
@@ -388,7 +388,7 @@ ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2],
   ggtitle("Predicted latent GP mean with Vecchia approxmation")
 
 # --------------------Gaussian process model with FITC / modified predictive process approximation----------------
-gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential", 
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5, 
                        gp_approx = "fitc", num_ind_points = 500, y = y_train,
                        likelihood = likelihood)
 summary(gp_model)
@@ -400,13 +400,13 @@ ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2],
   ggtitle("Predicted latent GP mean with FITC approxmation")
 
 #--------------------Gaussian process model with tapering----------------
-gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential", 
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5, 
                        gp_approx = "tapering", cov_fct_taper_shape = 0., cov_fct_taper_range = 0.5, 
                        y = y_train, likelihood = likelihood)
 summary(gp_model)
 
 #--------------------Gaussian process model with random coefficients----------------
-gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                        gp_rand_coef_data = Z_SVC,
                        y = y_svc, likelihood = likelihood)
 summary(gp_model)
@@ -424,13 +424,13 @@ legend(x =  "topleft", legend = c("Intercept GP", "1. random coef. GP", "2. rand
 # --------------------Using cluster_ids for independent realizations of GPs----------------
 cluster_ids = rep(0,ntrain)
 cluster_ids[(ntrain/2+1):ntrain] = 1
-gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "exponential",
+gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                        cluster_ids = cluster_ids, likelihood = likelihood,
                        y = y_train)
 summary(gp_model)
 
 # --------------------Evaluate negative log-likelihood and do optimization using optim----------------
-gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                     likelihood = likelihood)
 if (likelihood == "gaussian") {
   cov_pars <- c(1,1,0.2)
@@ -478,8 +478,8 @@ sigma2_1 <- 0.25 # random effect variance
 sigma2_2 <- 0.25 # marginal variance of GP
 rho <- 0.1 # range parameter
 b1 <- sqrt(sigma2_1) * rnorm(m) # simulate random effects
-D <- as.matrix(dist(coords))
-Sigma <- sigma2_2 * exp(-D/rho)+diag(1E-20,n)
+D_scaled <- sqrt(3) * as.matrix(dist(coords)) / rho
+Sigma <- sigma2_2 * (1 + D_scaled) * exp(-D_scaled) + diag(1E-20,n) # Matern 1.5 covariance
 C <- t(chol(Sigma))
 b_2 <- C %*% rnorm(n) # simulate GP
 rand_eff <- b1[group] + b_2
@@ -488,6 +488,6 @@ y <- simulate_response_variable(lp=0, rand_eff=rand_eff, likelihood=likelihood)
 
 # Define and train model
 gp_model <- fitGPModel(group_data = group,
-                       gp_coords = coords, cov_function = "exponential",
+                       gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                        y = y, likelihood = likelihood)
 summary(gp_model)

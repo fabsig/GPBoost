@@ -7,14 +7,13 @@
 fitGPModel(likelihood = "gaussian", group_data = NULL,
   group_rand_coef_data = NULL, ind_effect_group_rand_coef = NULL,
   drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
-  gp_rand_coef_data = NULL, cov_function = "exponential",
-  cov_fct_shape = 0.5, gp_approx = "none", cov_fct_taper_range = 1,
-  cov_fct_taper_shape = 0, num_neighbors = 20L,
-  vecchia_ordering = "random", ind_points_selection = "kmeans++",
-  num_ind_points = 500L, cover_tree_radius = 1,
-  matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
-  free_raw_data = FALSE, y, X = NULL, params = list(),
-  vecchia_approx = NULL, vecchia_pred_type = NULL,
+  gp_rand_coef_data = NULL, cov_function = "matern", cov_fct_shape = 1.5,
+  gp_approx = "none", cov_fct_taper_range = 1, cov_fct_taper_shape = 1,
+  num_neighbors = 20L, vecchia_ordering = "random",
+  ind_points_selection = "kmeans++", num_ind_points = 500L,
+  cover_tree_radius = 1, matrix_inversion_method = "cholesky", seed = 0L,
+  cluster_ids = NULL, free_raw_data = FALSE, y, X = NULL,
+  params = list(), vecchia_approx = NULL, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL, offset = NULL, fixed_effects = NULL,
   likelihood_additional_param = 1)
 }
@@ -330,7 +329,7 @@ gp_model <- fitGPModel(group_data = group_data, likelihood="gaussian",
 summary(gp_model)
 
 #--------------------Gaussian process model----------------
-gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 summary(gp_model)
 # Make predictions
@@ -340,20 +339,20 @@ pred$mu # Predicted (posterior) mean of GP
 pred$cov # Predicted (posterior) covariance matrix of GP
 
 #--------------------Gaussian process model with Vecchia approximation----------------
-gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                        gp_approx = "vecchia", num_neighbors = 20,
                        likelihood="gaussian", y = y)
 summary(gp_model)
 
 #--------------------Gaussian process model with random coefficients----------------
-gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                        gp_rand_coef_data = X[,2], y=y,
                        likelihood = "gaussian", params = list(std_dev = TRUE))
 summary(gp_model)
 
 #--------------------Combine Gaussian process with grouped random effects----------------
 gp_model <- fitGPModel(group_data = group_data,
-                       gp_coords = coords, cov_function = "exponential",
+                       gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                        likelihood = "gaussian", y = y, X = X1, params = list(std_dev = TRUE))
 summary(gp_model)
 }
