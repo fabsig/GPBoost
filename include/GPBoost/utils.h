@@ -25,8 +25,11 @@ namespace GPBoost {
 	/*! \brief Small number that is added in some cases to covariance matrices to make inversion numerically stable */
 	const double EPSILON_ADD_COVARIANCE_STABLE = 1e-10;
 
-	/*! \brief Number by which the diagonal of inducing points matrix in the FITC & full scales approximations is multiplied with (increased) to make inversions numerically stable */
-	const double JITTER_MULT_FITC_FSA = 1. + 1e-6;
+	/*! \brief Small numbers by which the diagonals of covariance matrtices are multiplied with when calculating Vecchia approximations without a nugget effect to make inversions numerically stable */
+	const double JITTER_MULT_VECCHIA= 1 + 1e-10;
+
+	/*! \brief Small number by which the diagonal of inducing points matrix in the FITC & full scales approximations is multiplied with (increased) to make inversions numerically stable */
+	const double JITTER_MULT_IP_FITC_FSA = 1. + 1e-6;
 
 	/*! \brief Termination criterion for low-rank pivoted Cholesky decomposition */
 	const double PIV_CHOL_STOP_TOL = 1e-6;
