@@ -1522,7 +1522,7 @@ namespace GPBoost {
 					else if (gp_approx_ == "fitc") {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxFITC(y_[cluster_i].data(), y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr, re_comps_ip_[cluster_i][0]->GetZSigmaZt(), chol_fact_sigma_ip_[cluster_i],
-							re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(), FITC_Diag_[cluster_i], re_comps_ip_[cluster_i], re_comps_cross_cov_[cluster_i],
+							re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(), fitc_resid_diag_[cluster_i], re_comps_ip_[cluster_i], re_comps_cross_cov_[cluster_i],
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par,
 							grad_cov_aux_cluster_i.data(), grad_F_cluster_i,
 							grad_cov_aux_cluster_i.data() + num_cov_par_, false, call_for_std_dev_coef);
@@ -1720,9 +1720,9 @@ namespace GPBoost {
 								- sigma_ip_inv_sigma_cross_cov.col(ii).dot(sigma_ip_grad_inv_sigma_cross_cov.col(ii));
 						}
 						grad_cov_aux_par[first_cov_par + ind_par_[j] - 1 + ipar] -= 0.5 * y_aux_[cluster_i].dot(FITC_Diag_grad.asDiagonal() * y_aux_[cluster_i]) / cov_pars[0];
-						grad_cov_aux_par[first_cov_par + ind_par_[j] - 1 + ipar] += 0.5 * FITC_Diag_grad.dot(FITC_Diag_[cluster_i].cwiseInverse());
+						grad_cov_aux_par[first_cov_par + ind_par_[j] - 1 + ipar] += 0.5 * FITC_Diag_grad.dot(fitc_resid_diag_[cluster_i].cwiseInverse());
 						// Derivative of Woodbury Matrix
-						den_mat_t cross_cov_FITC_inv = (*cross_cov).transpose() * FITC_Diag_[cluster_i].cwiseInverse().asDiagonal();
+						den_mat_t cross_cov_FITC_inv = (*cross_cov).transpose() * fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal();
 						cross_cov_grad_sigma_resid_inv_cross_cov_T = cross_cov_FITC_inv * (*cross_cov_grad);
 						sigma_woodbury_grad = cross_cov_grad_sigma_resid_inv_cross_cov_T + cross_cov_grad_sigma_resid_inv_cross_cov_T.transpose();
 						sigma_woodbury_grad -= (cross_cov_FITC_inv * FITC_Diag_grad.asDiagonal()) * cross_cov_FITC_inv.transpose();
@@ -2121,7 +2121,7 @@ namespace GPBoost {
 								log_det_Psi_ += 2. * (((T_mat)chol_fact_resid_[cluster_i].matrixL()).diagonal().array().log().sum());
 							}
 							else {
-								log_det_Psi_ += FITC_Diag_[cluster_i].array().log().sum();
+								log_det_Psi_ += fitc_resid_diag_[cluster_i].array().log().sum();
 							}
 						}//end Cholesky
 						else if (matrix_inversion_method_ == "iterative") {//Conjugate Gradient
@@ -2132,11 +2132,11 @@ namespace GPBoost {
 									cg_generator_seeded_ = true;
 								}
 								rand_vec_probe_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-								GenRandVecTrace(cg_generator_, rand_vec_probe_[cluster_i]);
+								GenRandVecNormal(cg_generator_, rand_vec_probe_[cluster_i]);
 								// Sample probe vectors from N(0,P)
 								if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
 									rand_vec_probe_low_rank_[cluster_i].resize(num_ind_points_, num_rand_vec_trace_);
-									GenRandVecTrace(cg_generator_, rand_vec_probe_low_rank_[cluster_i]);
+									GenRandVecNormal(cg_generator_, rand_vec_probe_low_rank_[cluster_i]);
 									rand_vec_probe_P_[cluster_i] = rand_vec_probe_[cluster_i];
 								}
 								if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
@@ -4099,7 +4099,7 @@ namespace GPBoost {
 		bool cg_generator_seeded_ = false;
 		/*! Indicates if we observe a NAN or Inf value in a conjugate gradient iteration */
 		bool NaN_found = false;
-		/*! Random number generator used generate Rademacher-vectors in GenRandVecTrace() and GenRandVecDiag()*/
+		/*! Random number generator used generate Rademacher-vectors in GenRandVecNormal() and GenRandVecRademacher()*/
 		RNG_t cg_generator_;
 		/*! Matrix of random Rademacher vectors (u_1,...,u_t), where u_i is of dimension n & Cov(u_i) = I*/
 		std::map<data_size_t, den_mat_t> rand_vec_probe_;
@@ -4234,10 +4234,12 @@ namespace GPBoost {
 		std::map<data_size_t, den_mat_t> chol_ip_cross_cov_;
 		std::map<data_size_t, den_mat_t> sigma_inv_sigma_grad_rand_vec_;
 		std::map<data_size_t, den_mat_t> sigma_grad_sigma_inv_rand_vec_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of Cholesky factor of inducing points matrix sigma_ip times cross-covariance */
-		std::map<data_size_t, den_mat_t> resid_inv_cross_cov_;
+
+		///*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of Cholesky factor of inducing points matrix sigma_ip times cross-covariance *///DELETE
+		//std::map<data_size_t, den_mat_t> resid_inv_cross_cov_;
+
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: diagonal of fully independent training conditional for predictive process */
-		std::map<data_size_t, vec_t> FITC_Diag_;
+		std::map<data_size_t, vec_t> fitc_resid_diag_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of residual covariance matrix */
 		std::map<data_size_t, T_chol> chol_fact_resid_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov used in Woodbury identity */
@@ -4669,12 +4671,12 @@ namespace GPBoost {
 						std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
 						if (matrix_inversion_method_ == "cholesky") {
 							if (gp_approx_ == "fitc") {
-								den_mat_t cross_covT_X = (*cross_cov).transpose() * (FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * X_cluster_i);
+								den_mat_t cross_covT_X = (*cross_cov).transpose() * (fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * X_cluster_i);
 								den_mat_t sigma_woodbury_I_cross_covT_X = chol_fact_sigma_woodbury_[cluster_i].solve(cross_covT_X);
 								cross_covT_X.resize(0, 0);
-								den_mat_t cross_cov_sigma_woodbury_I_cross_covT_X = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * ((*cross_cov) * sigma_woodbury_I_cross_covT_X);
+								den_mat_t cross_cov_sigma_woodbury_I_cross_covT_X = fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * ((*cross_cov) * sigma_woodbury_I_cross_covT_X);
 								sigma_woodbury_I_cross_covT_X.resize(0, 0);
-								psi_inv_X = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * X_cluster_i - cross_cov_sigma_woodbury_I_cross_covT_X;
+								psi_inv_X = fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * X_cluster_i - cross_cov_sigma_woodbury_I_cross_covT_X;
 							}
 							else if (gp_approx_ == "full_scale_tapering") {
 								den_mat_t sigma_resid_I_X = chol_fact_resid_[cluster_i].solve(X_cluster_i);
@@ -5490,15 +5492,15 @@ namespace GPBoost {
 							TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i],
 								(*cross_cov).transpose(), sigma_ip_Ihalf_sigma_cross_covT, false);
 							if (gauss_likelihood_) {
-								FITC_Diag_[cluster_i] = vec_t::Ones(re_comps_cross_cov_[cluster_i][0]->GetNumUniqueREs());//add nugget effect variance
+								fitc_resid_diag_[cluster_i] = vec_t::Ones(re_comps_cross_cov_[cluster_i][0]->GetNumUniqueREs());//add nugget effect variance
 							}
 							else {
-								FITC_Diag_[cluster_i] = vec_t::Zero(re_comps_cross_cov_[cluster_i][0]->GetNumUniqueREs());
+								fitc_resid_diag_[cluster_i] = vec_t::Zero(re_comps_cross_cov_[cluster_i][0]->GetNumUniqueREs());
 							}
-							FITC_Diag_[cluster_i].array() += sigma_ip_stable.coeffRef(0, 0);
+							fitc_resid_diag_[cluster_i].array() += sigma_ip_stable.coeffRef(0, 0);
 #pragma omp parallel for schedule(static)
 							for (int ii = 0; ii < re_comps_cross_cov_[cluster_i][0]->GetNumUniqueREs(); ++ii) {
-								FITC_Diag_[cluster_i][ii] -= sigma_ip_Ihalf_sigma_cross_covT.col(ii).array().square().sum();
+								fitc_resid_diag_[cluster_i][ii] -= sigma_ip_Ihalf_sigma_cross_covT.col(ii).array().square().sum();
 							}
 						}
 						else if (gp_approx_ == "full_scale_tapering") {
@@ -5881,7 +5883,7 @@ namespace GPBoost {
 				else if (gp_approx_ == "fitc") {
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxFITC(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, re_comps_ip_[cluster_i][0]->GetZSigmaZt(), chol_fact_sigma_ip_[cluster_i],
-						re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(), FITC_Diag_[cluster_i], re_comps_ip_[cluster_i], re_comps_cross_cov_[cluster_i],
+						re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(), fitc_resid_diag_[cluster_i], re_comps_ip_[cluster_i], re_comps_cross_cov_[cluster_i],
 						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, false);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
@@ -6590,7 +6592,7 @@ namespace GPBoost {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLFITC(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, re_comps_ip_[cluster_i][0]->GetZSigmaZt(),
 						chol_fact_sigma_ip_[cluster_i], re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(),
-						FITC_Diag_[cluster_i], mll_cluster_i);
+						fitc_resid_diag_[cluster_i], mll_cluster_i);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
@@ -6721,7 +6723,7 @@ namespace GPBoost {
 				}
 				else if (matrix_inversion_method_ == "cholesky") {
 					if (gp_approx_ == "fitc") {						
-						sigma_woodbury = ((*cross_cov).transpose() * FITC_Diag_[cluster_i].cwiseInverse().asDiagonal()) * (*cross_cov);
+						sigma_woodbury = ((*cross_cov).transpose() * fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal()) * (*cross_cov);
 					}
 					else if (gp_approx_ == "full_scale_tapering") {
 						// factorize residual covariance matrix
@@ -6774,12 +6776,12 @@ namespace GPBoost {
 					std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
 					if (matrix_inversion_method_ == "cholesky") {
 						if (gp_approx_ == "fitc") {
-							vec_t cross_covT_y = (*cross_cov).transpose() * (FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * y_[cluster_i]);
+							vec_t cross_covT_y = (*cross_cov).transpose() * (fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * y_[cluster_i]);
 							vec_t sigma_woodbury_I_cross_covT_y = chol_fact_sigma_woodbury_[cluster_i].solve(cross_covT_y);
 							cross_covT_y.resize(0);
-							vec_t cross_cov_sigma_woodbury_I_cross_covT_y = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * ((*cross_cov) * sigma_woodbury_I_cross_covT_y);
+							vec_t cross_cov_sigma_woodbury_I_cross_covT_y = fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * ((*cross_cov) * sigma_woodbury_I_cross_covT_y);
 							sigma_woodbury_I_cross_covT_y.resize(0);
-							y_aux_[cluster_i] = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * y_[cluster_i] - cross_cov_sigma_woodbury_I_cross_covT_y;
+							y_aux_[cluster_i] = fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * y_[cluster_i] - cross_cov_sigma_woodbury_I_cross_covT_y;
 						}
 						else if (gp_approx_ == "full_scale_tapering") {
 							vec_t sigma_resid_I_y = chol_fact_resid_[cluster_i].solve(y_[cluster_i]);
@@ -7059,7 +7061,7 @@ namespace GPBoost {
 							cg_generator_seeded_ = true;
 						}
 						rand_vec_fisher_info_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-						GenRandVecTrace(cg_generator_, rand_vec_fisher_info_[cluster_i]);
+						GenRandVecNormal(cg_generator_, rand_vec_fisher_info_[cluster_i]);
 						if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
 							saved_rand_vec_fisher_info_[cluster_i] = true;
 						}
@@ -7182,7 +7184,7 @@ namespace GPBoost {
 						cg_generator_seeded_ = true;
 					}
 					rand_vec_fisher_info_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-					GenRandVecTrace(cg_generator_, rand_vec_fisher_info_[cluster_i]);
+					GenRandVecNormal(cg_generator_, rand_vec_fisher_info_[cluster_i]);
 					if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
 						saved_rand_vec_fisher_info_[cluster_i] = true;
 					}
@@ -7285,12 +7287,12 @@ namespace GPBoost {
 								+ (*cross_cov_grad) * (sigma_ip_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i])
 								- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * rand_vec_fisher_info_[cluster_i]);
 							// Inverse times Gradient times Random vectors
-							den_mat_t FITC_Diag_inv_Grad_rand_vec = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * sigma_resid_grad_rand_vec;
-							den_mat_t FITC_Diag_inv_cross_cov = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * (*cross_cov);
+							den_mat_t FITC_Diag_inv_Grad_rand_vec = fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * sigma_resid_grad_rand_vec;
+							den_mat_t FITC_Diag_inv_cross_cov = fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * (*cross_cov);
 							sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = FITC_Diag_inv_Grad_rand_vec - FITC_Diag_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * FITC_Diag_inv_Grad_rand_vec));
 							// Gradient times Inverse times Random vectors
 							// Inverse times Random vectors
-							den_mat_t FITC_Diag_inv_rand_vec = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * rand_vec_fisher_info_[cluster_i];
+							den_mat_t FITC_Diag_inv_rand_vec = fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * rand_vec_fisher_info_[cluster_i];
 							den_mat_t sigma_inv_rand_vec = FITC_Diag_inv_rand_vec - FITC_Diag_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * FITC_Diag_inv_rand_vec));
 							sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
 							// Gradient times Inverse times Random vectors
@@ -8026,7 +8028,7 @@ namespace GPBoost {
 			T_mat sigma_resid_pred_obs, cross_dist_resid, sigma_resid_pred, cross_dist_resid_pred;
 			T_mat cov_mat_pred_obs, cov_mat_pred; // unused dummy variables
 			std::shared_ptr<T_mat> sigma_resid;
-			sp_mat_t FITC_correction;//FITC correction for entries for which the prediction and training coordinates are the same
+			sp_mat_t fitc_resid_pred_obs;//FITC residual correction for entries for which the prediction and training coordinates are the same
 			bool has_fitc_correction = false;
 			if (num_comps_total_ > 1) {
 				Log::REFatal("CalcPredFITC_FSA is not implemented when num_comps_total_ > 1");
@@ -8088,8 +8090,8 @@ namespace GPBoost {
 					}
 				}
 				if (has_fitc_correction) {
-					FITC_correction = sp_mat_t(num_REs_pred, num_REs_obs);
-					FITC_correction.setFromTriplets(triplets.begin(), triplets.end());
+					fitc_resid_pred_obs = sp_mat_t(num_REs_pred, num_REs_obs);
+					fitc_resid_pred_obs.setFromTriplets(triplets.begin(), triplets.end());
 				}
 			}//end gp_approx_ == "fitc"
 			// Calculating predictive mean for gauss_likelihood_
@@ -8104,9 +8106,9 @@ namespace GPBoost {
 					pred_mean += sigma_resid_pred_obs * y_aux_[cluster_i];
 				}
 				else if (gp_approx_ == "fitc") {
-					pred_mean = cross_cov_pred_ip * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * (FITC_Diag_[cluster_i].cwiseInverse().cwiseProduct(y_[cluster_i]))));
+					pred_mean = cross_cov_pred_ip * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * (fitc_resid_diag_[cluster_i].cwiseInverse().cwiseProduct(y_[cluster_i]))));
 					if (has_fitc_correction) {
-						pred_mean += FITC_correction * y_aux_[cluster_i];
+						pred_mean += fitc_resid_pred_obs * y_aux_[cluster_i];
 					}
 				}//end if gp_approx_ == "fitc"
 			}//end gauss_likelihood_
@@ -8189,7 +8191,7 @@ namespace GPBoost {
 						den_mat_t Maux_rhs = cross_cov_pred_ip.transpose();
 						sp_mat_t resid_obs_inv_resid_pred_obs_t;
 						if (has_fitc_correction) {
-							resid_obs_inv_resid_pred_obs_t = FITC_Diag_[cluster_i].cwiseInverse().asDiagonal() * (FITC_correction.transpose());
+							resid_obs_inv_resid_pred_obs_t = fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * (fitc_resid_pred_obs.transpose());
 							Maux_rhs -= (*cross_cov).transpose() * resid_obs_inv_resid_pred_obs_t;
 						}
 						den_mat_t woodburry_part_sqrt;
@@ -8199,7 +8201,7 @@ namespace GPBoost {
 							ConvertTo_T_mat_FromDense<T_mat>(woodburry_part_sqrt.transpose() * woodburry_part_sqrt, Maux);
 							pred_cov += Maux;
 							if (has_fitc_correction) {
-								den_mat_t diag_correction = FITC_correction * resid_obs_inv_resid_pred_obs_t;
+								den_mat_t diag_correction = fitc_resid_pred_obs * resid_obs_inv_resid_pred_obs_t;
 								T_mat diag_correction_T_mat;
 								ConvertTo_T_mat_FromDense<T_mat>(diag_correction, diag_correction_T_mat);
 								pred_cov -= diag_correction_T_mat;
@@ -8213,7 +8215,7 @@ namespace GPBoost {
 							if (has_fitc_correction) {
 #pragma omp parallel for schedule(static)
 								for (int i = 0; i < num_REs_pred; ++i) {
-									pred_var[i] -= FITC_correction.row(i).dot(resid_obs_inv_resid_pred_obs_t.col(i));
+									pred_var[i] -= fitc_resid_pred_obs.row(i).dot(resid_obs_inv_resid_pred_obs_t.col(i));
 								}
 							}
 						}//end calc_pred_var
@@ -8229,7 +8231,7 @@ namespace GPBoost {
 								// Use stochastic estimate of sigma_resid_pred_obs * resid_obs_inv * sigma_resid_pred_obs.transpose()
 								cg_generator_ = RNG_t(seed_rand_vec_trace_);
 								den_mat_t rand_vecs(nsim_var_pred, num_REs_obs);
-								GenRandVecTrace(cg_generator_, rand_vecs);
+								GenRandVecNormal(cg_generator_, rand_vecs);
 								den_mat_t sample_resid_cov;
 								vec_t sample_resid_var;
 								if (calc_pred_cov) {
@@ -8272,7 +8274,7 @@ namespace GPBoost {
 									//			instead of the diagonal of sigma_resid_pred_obs * sigma_resid_obs^-1 * sigma_resid_pred_obs^T
 //									sample_resid_var = vec_t::Zero(num_REs_pred);
 //									den_mat_t rand_vec_s(nsim_var_pred, num_REs_pred);
-//									GenRandVecDiag(cg_generator_, rand_vec_s);
+//									GenRandVecRademacher(cg_generator_, rand_vec_s);
 //#pragma omp parallel for schedule(static)
 //									for (int i = 0; i < nsim_var_pred; ++i) {
 //										vec_t rand_vec_i_0 = rand_vec_s.row(i);
@@ -8400,7 +8402,7 @@ namespace GPBoost {
 								// Sample vectors
 								cg_generator_ = RNG_t(seed_rand_vec_trace_);
 								den_mat_t rand_vec_probe_init(num_REs_pred, nsim_var_pred);
-								GenRandVecDiag(cg_generator_, rand_vec_probe_init);
+								GenRandVecRademacher(cg_generator_, rand_vec_probe_init);
 								den_mat_t rand_vec_probe_pred(num_REs_obs, nsim_var_pred);
 								rand_vec_probe_pred.setZero();
 								// sigma_resid_pred^T * rand_vec_probe_init
@@ -8504,10 +8506,10 @@ namespace GPBoost {
 					re_comps_ip_[cluster_i][0]->GetZSigmaZt(),
 					chol_fact_sigma_ip_[cluster_i],
 					re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(),
-					FITC_Diag_[cluster_i],
+					fitc_resid_diag_[cluster_i],
 					cross_cov_pred_ip,
 					has_fitc_correction,
-					FITC_correction,
+					fitc_resid_pred_obs,
 					pred_mean,
 					pred_cov,
 					pred_var,

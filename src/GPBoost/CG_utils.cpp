@@ -116,7 +116,7 @@ namespace GPBoost {
 			h = z + b * h;
 		}
 		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
+			"This could happen if the initial learning rate is too large in a line search phase. Otherwise increase 'cg_max_num_it'.", p);
 	} // end CGVecchiaLaplaceVec
 
 	void CGVecchiaLaplaceVecWinvplusSigma(const vec_t& diag_W,

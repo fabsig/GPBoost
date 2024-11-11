@@ -2551,7 +2551,7 @@ namespace GPBoost {
 							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
 								rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
 								rand_vec_trace_I2_.resize(std::min(piv_chol_rank_, dim_mode_), num_rand_vec_trace_);
-								GenRandVecTrace(cg_generator_, rand_vec_trace_I2_);
+								GenRandVecNormal(cg_generator_, rand_vec_trace_I2_);
 								WI_plus_Sigma_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
 							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
@@ -2561,7 +2561,7 @@ namespace GPBoost {
 							else {
 								Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
 							}
-							GenRandVecTrace(cg_generator_, rand_vec_trace_I_);
+							GenRandVecNormal(cg_generator_, rand_vec_trace_I_);
 							if (reuse_rand_vec_trace_) {
 								saved_rand_vec_trace_ = true;
 							}
@@ -2605,7 +2605,7 @@ namespace GPBoost {
 		* \param sigma_ip Covariance matrix of inducing point process
 		* \param chol_fact_sigma_ip Cholesky factor of 'sigma_ip'
 		* \param cross_cov Cross-covariance matrix between inducing points and all data points
-		* \param fitc_diag Diagonal correction of predictive process
+		* \param fitc_resid_diag Diagonal correction of predictive process
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
 		void FindModePostRandEffCalcMLLFITC(const double* y_data,
@@ -2614,12 +2614,12 @@ namespace GPBoost {
 			const std::shared_ptr<den_mat_t> sigma_ip,
 			const chol_den_mat_t& chol_fact_sigma_ip,
 			const std::shared_ptr<den_mat_t> cross_cov,
-			const vec_t& fitc_diag,
+			const vec_t& fitc_resid_diag,
 			double& approx_marginal_ll) {
 			int num_ip = (int)((*sigma_ip).rows());
 			CHECK((int)((*cross_cov).rows()) == dim_mode_);
 			CHECK((int)((*cross_cov).cols()) == num_ip);
-			CHECK((int)fitc_diag.size() == dim_mode_);
+			CHECK((int)fitc_resid_diag.size() == dim_mode_);
 			// Initialize variables
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
@@ -2629,8 +2629,8 @@ namespace GPBoost {
 				a_vec_previous_value_ = a_vec_;
 				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 				vec_t v_aux_mode = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_);
-				mode_ = ((*cross_cov) * v_aux_mode) + (fitc_diag.asDiagonal() * a_vec_);//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since a_vec != Sigma^(-1)mode
-				// Note: avoid the inversion of Sigma = (cross_cov * sigma_ip^-1 * cross_cov^T + fitc_diag) with the Woodbury formula since fitc_diag can be zero.
+				mode_ = ((*cross_cov) * v_aux_mode) + (fitc_resid_diag.asDiagonal() * a_vec_);//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since a_vec != Sigma^(-1)mode
+				// Note: avoid the inversion of Sigma = (cross_cov * sigma_ip^-1 * cross_cov^T + fitc_resid_diag) with the Woodbury formula since fitc_resid_diag can be zero.
 				//		 This is also the reason why we initilize with mode_ = Sigma * a_vec_ and not a_vec_ = Sigma^-1 mode_
 			}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
@@ -2652,7 +2652,7 @@ namespace GPBoost {
 				if (it == 0 || information_ll_changes_during_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
 					Wsqrt_diag.array() = information_ll_.array().sqrt();
-					DW_plus_I_inv_diag = (information_ll_.array() * fitc_diag.array() + 1.).matrix().cwiseInverse();
+					DW_plus_I_inv_diag = (information_ll_.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
 					// Calculate Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
 					Wsqrt_cross_cov = Wsqrt_diag.asDiagonal() * (*cross_cov);
 					M_aux_Woodbury = *sigma_ip;
@@ -2664,7 +2664,7 @@ namespace GPBoost {
 				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
 				// Update mode and a_vec_
 				sigma_ip_inv_cross_cov_T_rhs = chol_fact_sigma_ip.solve((*cross_cov).transpose() * rhs);
-				Wsqrt_Sigma_rhs = ((*cross_cov) * sigma_ip_inv_cross_cov_T_rhs) + (fitc_diag.asDiagonal() * rhs);
+				Wsqrt_Sigma_rhs = ((*cross_cov) * sigma_ip_inv_cross_cov_T_rhs) + (fitc_resid_diag.asDiagonal() * rhs);
 				Wsqrt_Sigma_rhs.array() *= Wsqrt_diag.array();//Wsqrt_Sigma_rhs = sqrt(W) * Sigma * rhs
 				vaux = Wsqrt_cross_cov.transpose() * (DW_plus_I_inv_diag.asDiagonal() * Wsqrt_Sigma_rhs);
 				vaux2 = chol_fact_dense_Newton_.solve(vaux);
@@ -2674,7 +2674,7 @@ namespace GPBoost {
 				a_vec_update.array() *= -1.;
 				a_vec_update.array() += rhs.array();//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
 				vaux3 = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_update);
-				mode_update = ((*cross_cov) * vaux3) + (fitc_diag.asDiagonal() * a_vec_update);//mode_ = Sigma * a_vec_
+				mode_update = ((*cross_cov) * vaux3) + (fitc_resid_diag.asDiagonal() * a_vec_update);//mode_ = Sigma * a_vec_
 				double lr_mode = 1.;
 				for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_; ++ih) {
 					if (ih == 0) {
@@ -2711,7 +2711,7 @@ namespace GPBoost {
 				vec_t fitc_diag_plus_WI_inv;
 				if (information_ll_changes_during_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
-					fitc_diag_plus_WI_inv = (fitc_diag + information_ll_.cwiseInverse()).cwiseInverse();
+					fitc_diag_plus_WI_inv = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 					M_aux_Woodbury = *sigma_ip;
 					M_aux_Woodbury.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 					M_aux_Woodbury += (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov);
@@ -2719,7 +2719,7 @@ namespace GPBoost {
 					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of (sigma_ip + Sigma_nm^T * fitc_diag_plus_WI_inv * Sigma_nm)
 				}
 				else {
-					fitc_diag_plus_WI_inv = (fitc_diag + information_ll_.cwiseInverse()).cwiseInverse();
+					fitc_diag_plus_WI_inv = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 				}
 				approx_marginal_ll -= ((den_mat_t)chol_fact_dense_Newton_.matrixL()).diagonal().array().log().sum();
 				approx_marginal_ll += ((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum();
@@ -3428,7 +3428,7 @@ namespace GPBoost {
 		* \param sigma_ip Covariance matrix of inducing point process
 		* \param chol_fact_sigma_ip Cholesky factor of 'sigma_ip'
 		* \param cross_cov Cross-covariance matrix between inducing points and all data points
-		* \param fitc_diag Diagonal correction of predictive process
+		* \param fitc_resid_diag Diagonal correction of predictive process
 		* \param re_comps_ip_cluster_i
 		* \param re_comps_cross_cov_cluster_i
 		* \param calc_cov_grad If true, the gradient wrt the covariance parameters is calculated
@@ -3446,7 +3446,7 @@ namespace GPBoost {
 			const std::shared_ptr<den_mat_t> sigma_ip,
 			const chol_den_mat_t& chol_fact_sigma_ip,
 			const std::shared_ptr<den_mat_t> cross_cov,
-			const vec_t& fitc_diag,
+			const vec_t& fitc_resid_diag,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 			bool calc_cov_grad,
@@ -3460,11 +3460,11 @@ namespace GPBoost {
 			int num_ip = (int)((*sigma_ip).rows());
 			CHECK((int)((*cross_cov).rows()) == dim_mode_);
 			CHECK((int)((*cross_cov).cols()) == num_ip);
-			CHECK((int)fitc_diag.size() == dim_mode_);
+			CHECK((int)fitc_resid_diag.size() == dim_mode_);
 			if (calc_mode) {// Calculate mode and Cholesky factor 
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLFITC(y_data, y_data_int, fixed_effects, sigma_ip, chol_fact_sigma_ip, 
-					cross_cov, fitc_diag, mll);
+					cross_cov, fitc_resid_diag, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				if (call_for_std_dev_coef) {
@@ -3490,7 +3490,7 @@ namespace GPBoost {
 				CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_loc_par);
 			}
 			vec_t WI = information_ll_.cwiseInverse();
-			vec_t DW_plus_I_inv_diag = (information_ll_.array() * fitc_diag.array() + 1.).matrix().cwiseInverse();
+			vec_t DW_plus_I_inv_diag = (information_ll_.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
 			den_mat_t L_inv_cross_cov_T_DW_plus_I_inv = (*cross_cov).transpose() * (DW_plus_I_inv_diag.asDiagonal());
 			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, L_inv_cross_cov_T_DW_plus_I_inv, L_inv_cross_cov_T_DW_plus_I_inv, false);
 			vec_t SigmaI_plus_W_inv_diag = (L_inv_cross_cov_T_DW_plus_I_inv.cwiseProduct(L_inv_cross_cov_T_DW_plus_I_inv)).colwise().sum();// SigmaI_plus_W_inv_diag = diagonal of (Sigma^-1 + ZtWZ)^-1
@@ -3503,7 +3503,7 @@ namespace GPBoost {
 			// Calculate gradient wrt covariance parameters
 			if (calc_cov_grad) {
 				vec_t sigma_ip_inv_cross_cov_T_a_vec = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_);// sigma_ip^-1 * cross_cov^T * sigma^-1 * mode
-				vec_t fitc_diag_plus_WI_inv = (fitc_diag + WI).cwiseInverse();
+				vec_t fitc_diag_plus_WI_inv = (fitc_resid_diag + WI).cwiseInverse();
 				int par_count = 0;
 				double explicit_derivative;
 				for (int j = 0; j < (int)re_comps_ip_cluster_i.size(); ++j) {
@@ -4028,10 +4028,10 @@ namespace GPBoost {
 		* \param sigma_ip Covariance matrix of inducing point process
 		* \param chol_fact_sigma_ip Cholesky factor of 'sigma_ip'
 		* \param cross_cov Cross - covariance matrix between inducing points and all data points
-		* \param fitc_diag Diagonal correction of predictive process
+		* \param fitc_resid_diag Diagonal correction of predictive process
 		* \param cross_cov_pred_ip Cross covariance matrix between prediction points and inducing points
-		* \param has_fitc_correction  If true, there is an 'FITC_correction' otherwise not
-		* \param FITC_correction "FITC correction" for entries for which the prediction and training coordinates are the same
+		* \param has_fitc_correction If true, there is an 'fitc_resid_pred_obs' otherwise not
+		* \param fitc_resid_pred_obs FITC residual "correction" for entries for which the prediction and training coordinates are the same
 		* \param pred_mean[out] Predictive mean
 		* \param pred_cov[out] Predictive covariance matrix
 		* \param pred_var[out] Predictive variances
@@ -4045,10 +4045,10 @@ namespace GPBoost {
 			const std::shared_ptr<den_mat_t> sigma_ip,
 			const chol_den_mat_t& chol_fact_sigma_ip,
 			const std::shared_ptr<den_mat_t> cross_cov,
-			const vec_t& fitc_diag,
+			const vec_t& fitc_resid_diag,
 			const den_mat_t& cross_cov_pred_ip,
 			bool has_fitc_correction,
-			const sp_mat_t& FITC_correction,
+			const sp_mat_t& fitc_resid_pred_obs,
 			vec_t& pred_mean,
 			T_mat& pred_cov,
 			vec_t& pred_var,
@@ -4058,7 +4058,7 @@ namespace GPBoost {
 			if (calc_mode) {// Calculate mode and Cholesky factor 
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLFITC(y_data, y_data_int, fixed_effects, sigma_ip, chol_fact_sigma_ip,
-					cross_cov, fitc_diag, mll);
+					cross_cov, fitc_resid_diag, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
@@ -4066,15 +4066,15 @@ namespace GPBoost {
 			CHECK(mode_has_been_calculated_);
 			pred_mean = cross_cov_pred_ip * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * first_deriv_ll_));
 			if (has_fitc_correction) {
-				pred_mean += FITC_correction * first_deriv_ll_;
+				pred_mean += fitc_resid_pred_obs * first_deriv_ll_;
 			}
 
 			if (calc_pred_cov || calc_pred_var) {
 				den_mat_t Maux_rhs = cross_cov_pred_ip.transpose();
 				sp_mat_t resid_obs_inv_resid_pred_obs_t;
 				if (has_fitc_correction) {
-					vec_t fitc_diag_plus_WI_inv = (fitc_diag + information_ll_.cwiseInverse()).cwiseInverse();
-					resid_obs_inv_resid_pred_obs_t = fitc_diag_plus_WI_inv.asDiagonal() * (FITC_correction.transpose());
+					vec_t fitc_diag_plus_WI_inv = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
+					resid_obs_inv_resid_pred_obs_t = fitc_diag_plus_WI_inv.asDiagonal() * (fitc_resid_pred_obs.transpose());
 					Maux_rhs -= (*cross_cov).transpose() * resid_obs_inv_resid_pred_obs_t;
 				}
 				den_mat_t woodburry_part_sqrt;
@@ -4084,7 +4084,7 @@ namespace GPBoost {
 					ConvertTo_T_mat_FromDense<T_mat>(woodburry_part_sqrt.transpose() * woodburry_part_sqrt, Maux);
 					pred_cov += Maux;
 					if (has_fitc_correction) {
-						den_mat_t diag_correction = FITC_correction * resid_obs_inv_resid_pred_obs_t;
+						den_mat_t diag_correction = fitc_resid_pred_obs * resid_obs_inv_resid_pred_obs_t;
 						T_mat diag_correction_T_mat;
 						ConvertTo_T_mat_FromDense<T_mat>(diag_correction, diag_correction_T_mat);
 						pred_cov -= diag_correction_T_mat;
@@ -4098,7 +4098,7 @@ namespace GPBoost {
 					if (has_fitc_correction) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < (int)pred_mean.size(); ++i) {
-							pred_var[i] -= FITC_correction.row(i).dot(resid_obs_inv_resid_pred_obs_t.col(i));
+							pred_var[i] -= fitc_resid_pred_obs.row(i).dot(resid_obs_inv_resid_pred_obs_t.col(i));
 						}
 					}
 				}//end calc_pred_var

@@ -162,7 +162,7 @@ namespace GPBoost {
 	* \param generator Random number generator
 	* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
 	*/
-	void GenRandVecTrace(RNG_t& generator,
+	void GenRandVecNormal(RNG_t& generator,
 		den_mat_t& R);
 	
 	/*!
@@ -170,7 +170,7 @@ namespace GPBoost {
 	* \param generator Random number generator
 	* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
 	*/
-	void GenRandVecDiag(RNG_t& generator,
+	void GenRandVecRademacher(RNG_t& generator,
 		den_mat_t& R);
 
 	/*!
