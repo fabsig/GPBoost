@@ -4062,41 +4062,37 @@ namespace GPBoost {
 			if (has_fitc_correction) {
 				pred_mean += FITC_correction * first_deriv_ll_;
 			}
-			if (calc_pred_cov || calc_pred_var) {
 
-				vec_t fitc_diag_plus_WI_inv = (fitc_diag + information_ll_.cwiseInverse()).cwiseInverse();
-				den_mat_t sigma_ip_inv_cross_cov_pred_T = chol_fact_sigma_ip.solve(cross_cov_pred_ip.transpose());
-				den_mat_t M_aux_1 = (((*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal()) * (*cross_cov)) * sigma_ip_inv_cross_cov_pred_T;//dimension = m x np (= number of IPs x number prediction points)
-				sp_mat_t FITC_correction_diag_inv;
-				den_mat_t FITC_correction_diag_inv_cross_cov;
+			if (calc_pred_cov || calc_pred_var) {
+				den_mat_t Maux_rhs = cross_cov_pred_ip.transpose();
+				sp_mat_t resid_obs_inv_resid_pred_obs_t;
 				if (has_fitc_correction) {
-					FITC_correction_diag_inv = FITC_correction * fitc_diag_plus_WI_inv.asDiagonal();
-					FITC_correction_diag_inv_cross_cov = FITC_correction_diag_inv * (*cross_cov);
-					M_aux_1 += FITC_correction_diag_inv_cross_cov.transpose();
+					vec_t fitc_diag_plus_WI_inv = (fitc_diag + information_ll_.cwiseInverse()).cwiseInverse();
+					resid_obs_inv_resid_pred_obs_t = fitc_diag_plus_WI_inv.asDiagonal() * (FITC_correction.transpose());
+					Maux_rhs -= (*cross_cov).transpose() * resid_obs_inv_resid_pred_obs_t;
 				}
 				den_mat_t woodburry_part_sqrt;
-				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, M_aux_1, woodburry_part_sqrt, false);
+				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, Maux_rhs, woodburry_part_sqrt, false);
 				if (calc_pred_cov) {
 					T_mat Maux;
-					ConvertTo_T_mat_FromDense<T_mat>(sigma_ip_inv_cross_cov_pred_T.transpose() * M_aux_1, Maux);
-					pred_cov -= Maux;
 					ConvertTo_T_mat_FromDense<T_mat>(woodburry_part_sqrt.transpose() * woodburry_part_sqrt, Maux);
 					pred_cov += Maux;
 					if (has_fitc_correction) {
-						ConvertTo_T_mat_FromDense<T_mat>(FITC_correction_diag_inv_cross_cov * sigma_ip_inv_cross_cov_pred_T + FITC_correction_diag_inv * FITC_correction.transpose(), Maux);
-						pred_cov -= Maux;
+						den_mat_t diag_correction = FITC_correction * resid_obs_inv_resid_pred_obs_t;
+						T_mat diag_correction_T_mat;
+						ConvertTo_T_mat_FromDense<T_mat>(diag_correction, diag_correction_T_mat);
+						pred_cov -= diag_correction_T_mat;
 					}
 				}//end calc_pred_cov
 				if (calc_pred_var) {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < (int)pred_mean.size(); ++i) {
-						pred_var[i] -= M_aux_1.col(i).dot(sigma_ip_inv_cross_cov_pred_T.col(i)) - woodburry_part_sqrt.col(i).array().square().sum();
+						pred_var[i] += woodburry_part_sqrt.col(i).array().square().sum();
 					}
 					if (has_fitc_correction) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < (int)pred_mean.size(); ++i) {
-							pred_var[i] -= FITC_correction_diag_inv_cross_cov.row(i).dot(sigma_ip_inv_cross_cov_pred_T.col(i)) +
-								FITC_correction_diag_inv.row(i).dot(FITC_correction.row(i));
+							pred_var[i] -= FITC_correction.row(i).dot(resid_obs_inv_resid_pred_obs_t.col(i));
 						}
 					}
 				}//end calc_pred_var

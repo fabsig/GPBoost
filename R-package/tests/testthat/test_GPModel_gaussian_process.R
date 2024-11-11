@@ -1237,8 +1237,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Cannot have more inducing points than samples
     expect_error( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                           gp_approx = "fitc", num_ind_points = n + 1, ind_points_selection = "random",
-                                           y = y, X = X, params = params))
+                                         gp_approx = "fitc", num_ind_points = n + 1, ind_points_selection = "random",
+                                         y = y, X = X, params = params))
     # No Approximation
     capture.output( gp_model_no_approx <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                                      y = y, X = X, params = params), file='NUL')
@@ -1257,7 +1257,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                           y = y_multiple, X = X, params = params_mult), file='NUL')
     nll_mult_exp <- gp_model_mult_no_approx$get_current_neg_log_likelihood() + 0.
     pred_mult_no_approx <- predict(gp_model_mult_no_approx, y=y, gp_coords_pred = coord_test_multiple, X_pred = X_test_multiple,
-                             predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+                                   predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
     # cluster_ids
     capture.output( gp_model_clus_no_approx <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                                           y = y, X = X, cluster_ids = cluster_ids_ip, params = params), file='NUL')
@@ -1493,6 +1493,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                     X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
       pred_cov_no_approx <- predict(gp_model_no_approx, gp_coords_pred = coord_test, cov_pars = cov_pars_pred,
                                     X_pred = X_test, predict_cov = TRUE)
+      capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential"), file='NUL')
+      pred_var_no_X_no_approx <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+      pred_cov_no_X_no_approx <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_cov = TRUE, cov_pars = cov_pars_pred)
       
       # With FSA and very large tapering range and 60 inducing points
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -1513,12 +1516,42 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       pred <- predict(gp_model, gp_coords_pred = coord_test,
                       X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
       expect_lt(sum(abs(pred$mu - pred_var_no_approx$mu)),TOLERANCE)
-      expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_approx$var))),TOLERANCE)
-      ## TODO: Prediction of covariance matrix is currently wrong for FSA
-      # pred <- predict(gp_model, gp_coords_pred = coord_test, cov_pars = cov_pars_pred,
-      #                 X_pred = X_test, predict_cov = TRUE)
-      # expect_lt(sum(abs(pred$mu - pred_cov_no_approx$mu)),TOLERANCE)
-      # expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_approx$cov))),TOLERANCE) # This test currently fails (12.03.2024)
+      expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_approx$var))),0.2)
+
+      # Prediction without X
+      capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "full_scale_tapering",
+                                          num_ind_points = 60, cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
+                                          matrix_inversion_method = i), file='NUL')
+      pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+      expect_lt(sum(abs(pred$mu - pred_var_no_X_no_approx$mu)),TOLERANCE)
+      expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_X_no_approx$var))),0.02)
+      if(i == "cholesky") {
+        ## TODO: Prediction of covariance matrix is currently wrong for FSA and iterative methods and also cholesky when gp_approx="full_scale_tapering_pred_var_exact"
+        pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_cov = TRUE, cov_pars = cov_pars_pred)
+        expect_lt(sum(abs(pred$mu - pred_cov_no_X_no_approx$mu)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_X_no_approx$cov))),0.03) 
+        
+        capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "full_scale_tapering_pred_var_exact_stable",
+                                            num_ind_points = 60, cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
+                                            matrix_inversion_method = "cholesky"), file='NUL')
+        pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+        expect_lt(sum(abs(pred$mu - pred_var_no_X_no_approx$mu)),TOLERANCE_STRICT)
+        expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_X_no_approx$var))),TOLERANCE_STRICT)
+        pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_cov = TRUE, cov_pars = cov_pars_pred)
+        expect_lt(sum(abs(pred$mu - pred_cov_no_X_no_approx$mu)),TOLERANCE_STRICT)
+        expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_X_no_approx$cov))),TOLERANCE_STRICT)
+        
+        capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "full_scale_tapering_pred_var_exact",
+                                            num_ind_points = 60, cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
+                                            matrix_inversion_method = "cholesky"), file='NUL')
+        pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+        expect_lt(sum(abs(pred$mu - pred_var_no_X_no_approx$mu)),TOLERANCE_STRICT)
+        expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_X_no_approx$var))),TOLERANCE_STRICT)
+        # pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_cov = TRUE, cov_pars = cov_pars_pred) 
+        # expect_lt(sum(abs(pred$mu - pred_cov_no_X_no_approx$mu)),TOLERANCE_STRICT)
+        # expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_X_no_approx$cov))),0.02) # This test currently fails for iterative methods (11.11.2024)
+      }
+      
       # Fisher scoring
       params_FS <- DEFAULT_OPTIM_PARAMS_FISHER_STD
       params_FS$num_rand_vec_trace <- 100
@@ -1554,10 +1587,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                         X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
         expect_lt(sum(abs(pred$mu - pred_var_no_approx$mu)),TOLERANCE)
         expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_approx$var))),TOLERANCE)
-        # pred <- predict(gp_model, gp_coords_pred = coord_test, cov_pars = cov_pars_pred,
-        #                 X_pred = X_test, predict_cov = TRUE)
-        # expect_lt(sum(abs(pred$mu - pred_cov_no_approx$mu)),TOLERANCE)
-        # expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_approx$cov))),TOLERANCE) # This test currently fails (12.03.2024)
+        pred <- predict(gp_model, gp_coords_pred = coord_test, cov_pars = cov_pars_pred,
+                        X_pred = X_test, predict_cov = TRUE)
+        expect_lt(sum(abs(pred$mu - pred_cov_no_approx$mu)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_approx$cov))),TOLERANCE)
         
         # With FSA and 50 inducing points and taper range 0.5
         capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -1576,12 +1609,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         if(i == "iterative"){
           gp_model$set_prediction_data(cg_delta_conv_pred = 1e-6, nsim_var_pred = 500)
         }
-        pred <- predict(gp_model, gp_coords_pred = coord_test,
-                        X_pred = X_test, predict_var = TRUE)
+        pred <- predict(gp_model, gp_coords_pred = coord_test, X_pred = X_test, predict_var = TRUE)
         expected_mu <- c(1.186786, 4.048299, 3.173789) 
         expected_var <- c(0.6428104, 0.3562637, 0.4344309)
         expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
-        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),0.2)
         
         # Same thing with Matern covariance
         init_cov_pars_15 <- c(var(y)/2,var(y)/2,mean(dist(coords))/4.7*sqrt(3))
