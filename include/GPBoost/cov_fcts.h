@@ -867,7 +867,6 @@ namespace GPBoost {
 		* \param[out] pars Vector with covariance parameters
 		* \param marginal_variance Initial value for marginal variance
 		*/
-		template <typename T_mat>
 		void FindInitCovPar(const T_mat& dist,
 			const den_mat_t& coords,
 			bool use_distances,
