@@ -505,11 +505,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            ind_effect_group_rand_coef = 1, y = y,
                            params = list(optimizer_cov = "lbfgs", std_dev = FALSE))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
-    # bfgs_optim_lib
-    gp_model <- fitGPModel(group_data = cbind(group,group2),  group_rand_coef_data = x,
-                           ind_effect_group_rand_coef = 1, y = y,
-                           params = list(optimizer_cov = "bfgs_optim_lib", std_dev = FALSE, init_cov_pars=init_cov_pars))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
     # Adam
     gp_model <- fitGPModel(group_data = cbind(group,group2),
                            group_rand_coef_data = x,
