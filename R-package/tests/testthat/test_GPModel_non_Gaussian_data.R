@@ -2678,13 +2678,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Evaluate negative log-likelihood
     gp_model <- GPModel(gp_coords = cbind(time, coords), likelihood = likelihood, 
-                        cov_function = "matern_space_time")
+                        cov_function = "matern_space_time", cov_fct_shape = 0.5)
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     nll_exp <- 70.2364458
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
     gp_model <- fitGPModel(gp_coords = cbind(time, coords), likelihood = likelihood, 
-                           cov_function = "matern_space_time",
+                           cov_function = "matern_space_time", cov_fct_shape = 0.5,
                            y = y, X = X, params = params)
     cov_pars <- c(0.1732524, 0.0705018, 0.1248471)
     coef <- c(0.1361989, 0.2177408, 0.2689329, 0.3004328)
@@ -2716,14 +2716,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     ##############
     # Evaluate negative log-likelihood
     capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), likelihood = likelihood,
-                                        cov_function = "matern_space_time",
+                                        cov_function = "matern_space_time", cov_fct_shape = 0.5,
                                         gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
     capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), likelihood = likelihood, 
-                                           cov_function = "matern_space_time",
+                                           cov_function = "matern_space_time", cov_fct_shape = 0.5,
                                            gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none",
                                            y = y, X=X, params = params), 
                     file='NUL')
@@ -2765,7 +2765,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       # Evaluate negative log-likelihood
       num_neighbors <- 50
       capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), likelihood = likelihood, 
-                                          cov_function = "matern_space_time", matrix_inversion_method = inv_method,
+                                          cov_function = "matern_space_time", cov_fct_shape = 0.5, matrix_inversion_method = inv_method,
                                           gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
                       file='NUL')
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
@@ -2773,7 +2773,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll2,y=y)
       expect_lt(abs(nll-70.6574683),0.2)
       # Fit model
-      capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), likelihood = likelihood, cov_function = "matern_space_time",
+      capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), likelihood = likelihood, cov_function = "matern_space_time", cov_fct_shape = 0.5,
                                              gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                              y = y, X=X, params = params), 
                       file='NUL')
@@ -2805,13 +2805,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params = DEFAULT_OPTIM_PARAMS_STD
     params$init_cov_pars <- c(1,mean(dist(unique(coords_ST)[,1]))/3,mean(dist(unique(coords_ST)[,-1]))/3)
     # Evaluate negative log-likelihood
-    gp_model <- GPModel(gp_coords = coords_ST, cov_function = "matern_space_time",
+    gp_model <- GPModel(gp_coords = coords_ST, cov_function = "matern_space_time", cov_fct_shape = 0.5,
                         likelihood = likelihood)
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     nll_exp <- 70.85206038
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
-    gp_model <- fitGPModel(gp_coords = coords_ST, cov_function = "matern_space_time",
+    gp_model <- fitGPModel(gp_coords = coords_ST, cov_function = "matern_space_time", cov_fct_shape = 0.5,
                            y = y, X=X, params = params, likelihood = likelihood)
     cov_pars <- c(0.07478838338, 0.06647974215, 0.10436422267)
     coef <- c(0.1364351905, 0.2089784079, 0.2630968184, 0.2936127737)
@@ -2821,14 +2821,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
     ## With Vecchia approximation
     # Evaluate negative log-likelihood
-    capture.output( gp_model <- GPModel(gp_coords = coords_ST, cov_function = "matern_space_time",
+    capture.output( gp_model <- GPModel(gp_coords = coords_ST, cov_function = "matern_space_time", cov_fct_shape = 0.5,
                                         gp_approx = "vecchia", num_neighbors = n-6, vecchia_ordering = "none",
                                         likelihood = likelihood), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
-    capture.output( gp_model <- fitGPModel(gp_coords = coords_ST, cov_function = "matern_space_time",
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_ST, cov_function = "matern_space_time", cov_fct_shape = 0.5,
                                            gp_approx = "vecchia", num_neighbors = n-6, vecchia_ordering = "none",
                                            y = y, X=X, params = params, likelihood = likelihood), 
                     file='NUL')
@@ -2868,13 +2868,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Evaluate negative log-likelihood
     gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, 
-                        cov_function = "matern_ard")
+                        cov_function = "matern_ard", cov_fct_shape = 0.5)
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     nll_exp <- 69.7023612
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
     gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, 
-                           cov_function = "matern_ard", y = y, X = X, params = params)
+                           cov_function = "matern_ard", cov_fct_shape = 0.5, y = y, X = X, params = params)
     cov_pars <- c(0.13905428093, 0.06867025605, 0.04247690364, 0.15469536599)
     coef <- c(-0.2543743520, 0.1505760147)
     nrounds <- 15
@@ -2897,7 +2897,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction without prior model fitting
     exp_mu_no_coef <- c(0.00000000, 0.25771940, 0.17913289)
     exp_cov_no_coef <- c(0.56250000000, 0.00000000000, 0.00000000000, 0.00000000000, 0.49481305128, 0.00021588667, 0.00000000000, 0.00021588667, 0.48645327980)
-    gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard")
+    gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard", cov_fct_shape = 0.5)
     pred <- predict(gp_model, gp_coords_pred = coord_test, y = y, predict_response = FALSE,
                     predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
     expect_lt(sum(abs(pred$mu-exp_mu_no_coef)),TOLERANCE_STRICT)
@@ -2908,14 +2908,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     ##############
     # Evaluate negative log-likelihood
     capture.output( gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood,
-                                        cov_function = "matern_ard",
+                                        cov_function = "matern_ard", cov_fct_shape = 0.5,
                                         gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
     capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, 
-                                           cov_function = "matern_ard",
+                                           cov_function = "matern_ard", cov_fct_shape = 0.5,
                                            gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none",
                                            y = y, X=X, params = params), 
                     file='NUL')
@@ -2943,7 +2943,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
     # Prediction without prior model fitting
     capture.output( gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, 
-                                           cov_function = "matern_ard",
+                                           cov_function = "matern_ard", cov_fct_shape = 0.5,
                                            gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none"), 
                     file='NUL')
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=n+2)
@@ -2963,13 +2963,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       # Evaluate negative log-likelihood
       num_neighbors <- 50
       capture.output( gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, 
-                                          cov_function = "matern_ard", matrix_inversion_method = inv_method,
+                                          cov_function = "matern_ard", cov_fct_shape = 0.5, matrix_inversion_method = inv_method,
                                           gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
                       file='NUL')
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
       expect_lt(abs(nll-69.70236284),tolerance_loc)
       # Fit model
-      capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard",
+      capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                              gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                              y = y, X=X, params = params), 
                       file='NUL')
@@ -2999,13 +2999,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     ## With FITC approximation
     ##############
     # Evaluate negative log-likelihood
-    capture.output( gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard",
+    capture.output( gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                         gp_approx = "fitc", num_ind_points = n, ind_points_selection = "random"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
-    capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard",
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                            gp_approx = "fitc", num_ind_points = n, ind_points_selection = "random",
                                            y = y, X = X, params = params), 
                     file='NUL')
@@ -3026,13 +3026,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     ## Less inducing points 
     # Evaluate negative log-likelihood
     num_ind_points <- 50
-    capture.output( gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard",
+    capture.output( gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                         gp_approx = "fitc", num_ind_points = num_ind_points, ind_points_selection = "kmeans++"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     expect_lt(abs(nll-69.84929039),TOLERANCE_STRICT)
     # Fit model
-    capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard",
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                            gp_approx = "fitc", num_ind_points = num_ind_points, ind_points_selection = "kmeans++",
                                            y = y, X = X, params = params), 
                     file='NUL')
@@ -3056,13 +3056,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     for (i in 1:dim(coords_ARD)[2]) init_cov_pars_mult <- c(init_cov_pars_mult, mean(dist(unique(coords_ARD_mult)[,i])/3))
     params$init_cov_pars <- init_cov_pars_mult
     # Evaluate negative log-likelihood
-    gp_model <- GPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard",
+    gp_model <- GPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard", cov_fct_shape = 0.5,
                         likelihood = likelihood)
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     nll_exp <- 69.34595415
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
-    gp_model <- fitGPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard",
+    gp_model <- fitGPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard", cov_fct_shape = 0.5,
                            y = y, X=X, params = params, likelihood = likelihood)
     cov_pars <- c(0.44308197588, 0.09997589302, 0.03067100521, 0.12031834901)
     coef <- c(-0.2800805796, 0.1785353899)
@@ -3073,13 +3073,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_STRICT)
     ## With Vecchia approximation
-    capture.output( gp_model <- GPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard",
+    capture.output( gp_model <- GPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                         gp_approx = "vecchia", num_neighbors = n-6, vecchia_ordering = "none",
                                         likelihood = likelihood), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
-    capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard",
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                            gp_approx = "vecchia", num_neighbors = n-6, vecchia_ordering = "none",
                                            y = y, X=X, params = params, likelihood = likelihood), 
                     file='NUL')
@@ -3087,13 +3087,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_MEDIUM)
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
     ## With FITC approximation
-    capture.output( gp_model <- GPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard",
+    capture.output( gp_model <- GPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                         gp_approx = "fitc", num_ind_points = n - 5, ind_points_selection = "random",
                                         likelihood = likelihood), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
-    capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard",
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                            gp_approx = "fitc", num_ind_points = n - 5, ind_points_selection = "random",
                                            y = y, X=X, params = params, likelihood = likelihood), 
                     file='NUL')

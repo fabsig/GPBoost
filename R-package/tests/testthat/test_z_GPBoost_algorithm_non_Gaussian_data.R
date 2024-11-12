@@ -1176,8 +1176,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                       use_gp_model_for_validation = TRUE,
                       folds = folds,
                       verbose = 0)
-      expcet_iter <- 8
-      expcet_score <- 0.32
+      expcet_iter <- 6
+      expcet_score <- 0.315
       expect_equal(cvbst$best_iter, expcet_iter)
       expect_lt(abs(cvbst$best_score-expcet_score), TOLERANCE)
       # same thing but "wrong" default likelihood in gp_model
