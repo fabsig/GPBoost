@@ -26,7 +26,6 @@ CVBooster <- R6::R6Class(
 #' @title CV function for number of boosting iterations
 #' @description Cross validation function for determining number of boosting iterations
 #' @inheritParams gpb_shared_params
-#' @param nfold the original dataset is randomly partitioned into \code{nfold} equal size subsamples.
 #' @param label Vector of labels, used if \code{data} is not an \code{\link{gpb.Dataset}}
 #' @param weight vector of response values. If not NULL, will set to dataset
 #' @param record Boolean, TRUE will record iteration message to \code{booster$record_evals}
@@ -34,17 +33,11 @@ CVBooster <- R6::R6Class(
 #'               This parameter defaults to \code{TRUE}.
 #' @param stratified a \code{boolean} indicating whether sampling of folds should be stratified
 #'                   by the values of outcome labels.
-#' @param folds \code{list} provides a possibility to use a list of pre-defined CV folds
-#'              (each element must be a vector of test fold's indices). When folds are supplied,
-#'              the \code{nfold} and \code{stratified} parameters are ignored.
 #' @param fit_GP_cov_pars_OOS Boolean (default = FALSE). If TRUE, the covariance parameters of the 
 #'            \code{gp_model} model are estimated using the out-of-sample (OOS) predictions 
 #'            on the validation data using the optimal number of iterations (after performing the CV). 
 #'            This corresponds to the GPBoostOOS algorithm.
 #' @param colnames feature names, if not null, will use this to overwrite the names in dataset
-#' @param categorical_feature categorical features. This can either be a character vector of feature
-#'                            names or an integer vector with the indices of the features (e.g.
-#'                            \code{c(1L, 10L)} to say "the first and tenth columns").
 #' @param callbacks List of callback functions that are applied at each iteration.
 #' @param reset_data Boolean, setting it to TRUE (not the default value) will transform the booster model
 #'                   into a predictor model which frees up memory and the original datasets
@@ -82,19 +75,21 @@ CVBooster <- R6::R6Class(
 #' @export
 gpb.cv <- function(params = list()
                    , data
-                   , nrounds = 100L
                    , gp_model = NULL
+                   , nrounds = 1000L
+                   , early_stopping_rounds = NULL
+                   , folds = NULL
+                   , nfold = 5L
+                   , metric = NULL
+                   , verbose = 1L
                    , line_search_step_length = FALSE
                    , use_gp_model_for_validation = TRUE
                    , fit_GP_cov_pars_OOS = FALSE
                    , train_gp_model_cov_pars = TRUE
-                   , folds = NULL
-                   , nfold = 4L
                    , label = NULL
                    , weight = NULL
                    , obj = NULL
                    , eval = NULL
-                   , verbose = 1L
                    , record = TRUE
                    , eval_freq = 1L
                    , showsd = FALSE
@@ -102,7 +97,6 @@ gpb.cv <- function(params = list()
                    , init_model = NULL
                    , colnames = NULL
                    , categorical_feature = NULL
-                   , early_stopping_rounds = NULL
                    , callbacks = list()
                    , reset_data = FALSE
                    , delete_boosters_folds = FALSE
@@ -126,6 +120,9 @@ gpb.cv <- function(params = list()
   }
   
   # Setup temporary variables
+  if (!is.null(metric)) {
+    params <- append(params, list(metric = metric))
+  }
   params <- append(params, list(...))
   params$verbose <- verbose
   params <- gpb.check.obj(params = params, obj = obj)
@@ -901,22 +898,11 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #' @param param_grid \code{list} with candidate parameters defining the grid over which a search is done
 #' @param params \code{list} with other parameters not included in \code{param_grid}
 #' @param num_try_random \code{integer} with number of random trial on parameter grid. If NULL, a deterministic search is done
-#' @param folds \code{list} provides a possibility to use a list of pre-defined CV folds
-#'              (each element must be a vector of test fold's indices). When folds are supplied,
-#'              the \code{nfold} and \code{stratified} parameters are ignored.
-#' @param nfold the original dataset is randomly partitioned into \code{nfold} equal size subsamples.
 #' @param label Vector of labels, used if \code{data} is not an \code{\link{gpb.Dataset}}
 #' @param weight vector of response values. If not NULL, will set to dataset
-#' @param verbose_eval \code{integer}. Whether to display information on the progress of tuning parameter choice. 
-#' If None or 0, verbose is of.
-#' If = 1, summary progress information is displayed for every parameter combination.
-#' If >= 2, detailed progress is displayed at every boosting stage for every parameter combination.
 #' @param stratified a \code{boolean} indicating whether sampling of folds should be stratified
 #'                   by the values of outcome labels.
 #' @param colnames feature names, if not null, will use this to overwrite the names in dataset
-#' @param categorical_feature categorical features. This can either be a character vector of feature
-#'                            names or an integer vector with the indices of the features (e.g.
-#'                            \code{c(1L, 10L)} to say "the first and tenth columns").
 #' @param callbacks List of callback functions that are applied at each iteration.
 #' @param return_all_combinations a \code{boolean} indicating whether all tried 
 #' parameter combinations are returned
@@ -934,28 +920,27 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' 
-#' # Create random effects model, dataset, and define parameter grid
+#' n <- length(y)
+#' param_grid <- list("learning_rate" = c(0.001, 0.01, 0.1, 1, 10), 
+#'                    "min_data_in_leaf" = c(1, 10, 100, 1000),
+#'                    "max_depth" = c(-1), 
+#'                    "num_leaves" = 2^(1:10),
+#'                    "lambda_l2" = c(0, 1, 10, 100),
+#'                    "max_bin" = c(250, 500, 1000, min(n,10000)),
+#'                    "line_search_step_length" = c(TRUE, FALSE))
+#' # Note: "max_depth" = c(-1) means no depth limit as we tune 'num_leaves'. 
+#' #    Can also additionally tune 'max_depth', e.g., "max_depth" = c(-1, 1, 2, 3, 5, 10)
+#' metric = "mse" # Define metric
+#' # Note: can also use metric = "test_neg_log_likelihood". 
+#' # See https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
-#' dataset <- gpb.Dataset(X, label = y)
-#' param_grid = list("learning_rate" = c(1,0.1,0.01), 
-#'                   "min_data_in_leaf" = c(10,100,1000),
-#'                   "max_depth" = c(1,2,3,5,10),
-#'                   "lambda_l2" = c(0,1,10))
-#' other_params <- list(num_leaves = 2^10)
-#' # Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
-#' #       An alternative strategy is to impose no limit on 'max_depth', 
-#' #       and try different values for 'num_leaves' as follows:
-#' # param_grid = list("learning_rate" = c(1,0.1,0.01), 
-#' #                   "min_data_in_leaf" = c(10,100,1000),
-#' #                   "num_leaves" = 2^(1:10),
-#' #                   "lambda_l2" = c(0,1,10))
-#' # other_params <- list(max_depth = -1)
+#' data_train <- gpb.Dataset(data = X, label = y)
 #' set.seed(1)
-#' opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
-#'                                               num_try_random = NULL, nfold = 4,
-#'                                               data = dataset, gp_model = gp_model,
-#'                                               use_gp_model_for_validation=TRUE, verbose_eval = 1,
-#'                                               nrounds = 1000, early_stopping_rounds = 10)
+#' opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
+#'                                               data = data_train, gp_model = gp_model,
+#'                                               num_try_random = 100, nfold = 5,
+#'                                               nrounds = 1000, early_stopping_rounds = 20,
+#'                                               verbose_eval = 1, metric = metric, cv_seed = 4)
 #' print(paste0("Best parameters: ",
 #'              paste0(unlist(lapply(seq_along(opt_params$best_params), 
 #'                                   function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, 
@@ -963,42 +948,43 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #'                                   n=names(opt_params$best_params))), collapse=", ")))
 #' print(paste0("Best number of iterations: ", opt_params$best_iter))
 #' print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
-#' # Note: other scoring / evaluation metrics can be chosen using the 
-#' #       'metric' argument, e.g., metric = "l1"
-#' 
-#' # Using manually defined validation data instead of cross-validation
-#' valid_tune_idx <- sample.int(length(y), as.integer(0.2*length(y)))
-#' folds = list(valid_tune_idx)
-#' opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
-#'                                               num_try_random = NULL, folds = folds,
-#'                                               data = dataset, gp_model = gp_model,
-#'                                               use_gp_model_for_validation=TRUE, verbose_eval = 1,
-#'                                               nrounds = 1000, early_stopping_rounds = 10)
+
+#' # Alternatively and faster: using manually defined validation data instead of cross-validation
+#' # use 20% of the data as validation data
+#' valid_tune_idx <- sample.int(length(y), as.integer(0.2*length(y))) 
+#' folds <- list(valid_tune_idx)
+#' opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
+#'                                               data = data_train, gp_model = gp_model,
+#'                                               num_try_random = 100, folds = folds,
+#'                                               nrounds = 1000, early_stopping_rounds = 20,
+#'                                               verbose_eval = 1, metric = metric, cv_seed = 4)
 #' 
 #' }
 #' @author Fabio Sigrist
 #' @export
 gpb.grid.search.tune.parameters <- function(param_grid
-                                            , data
-                                            , params = list()
                                             , num_try_random = NULL
-                                            , nrounds = 100L
+                                            , data
                                             , gp_model = NULL
+                                            , params = list()
+                                            , nrounds = 1000L
+                                            , early_stopping_rounds = NULL
+                                            , folds = NULL
+                                            , nfold = 5L
+                                            , metric = NULL
+                                            , verbose_eval = 1L
+                                            , cv_seed = NULL
                                             , line_search_step_length = FALSE
                                             , use_gp_model_for_validation = TRUE
                                             , train_gp_model_cov_pars = TRUE
-                                            , folds = NULL
-                                            , nfold = 4L
                                             , label = NULL
                                             , weight = NULL
                                             , obj = NULL
                                             , eval = NULL
-                                            , verbose_eval = 1L
                                             , stratified = TRUE
                                             , init_model = NULL
                                             , colnames = NULL
                                             , categorical_feature = NULL
-                                            , early_stopping_rounds = NULL
                                             , callbacks = list()
                                             , return_all_combinations = FALSE
                                             , ...
@@ -1023,17 +1009,25 @@ gpb.grid.search.tune.parameters <- function(param_grid
   }
   # Higher better?
   higher_better = FALSE
-  eval_copy <- eval
-  if (!is.null(eval_copy)) {
-    if (!is.list(eval_copy)) {
-      eval_copy <- list(eval_copy)
-    }
-    if (is.function(eval_copy[[1]])) {
-      dummy_data <- gpb.Dataset(data=matrix(c(0,1)),label=c(0,1))
-      dummy_data$construct()
-      higher_better <- eval_copy[[1]](0,dummy_data)$higher_better
-    } else {
-      higher_better <- .METRICS_HIGHER_BETTER()[eval_copy[[1]]]
+  if (is.null(metric)) {
+    eval_copy <- eval
+    if (!is.null(eval_copy)) {
+      if (!is.list(eval_copy)) {
+        eval_copy <- list(eval_copy)
+      }
+      if (is.function(eval_copy[[1]])) {
+        dummy_data <- gpb.Dataset(data=matrix(c(0,1)),label=c(0,1))
+        dummy_data$construct()
+        higher_better <- eval_copy[[1]](0,dummy_data)$higher_better
+      } else {
+        if (any(startsWith(eval_copy[[1]], c('auc', 'ndcg@', 'map@', 'average_precision')))){
+          higher_better <- TRUE
+        }
+      }
+    } 
+  } else {
+    if (any(startsWith(metric, c('auc', 'ndcg@', 'map@', 'average_precision')))){
+      higher_better <- TRUE
     }
   }
   # Determine combinations of parameter values that should be tried out
@@ -1063,7 +1057,7 @@ gpb.grid.search.tune.parameters <- function(param_grid
   best_score <- 1E99
   if (higher_better) best_score <- -1E99
   best_params <- list()
-  best_nrounds <- nrounds
+  best_iter <- nrounds
   counter_num_comb <- 1
   for (param_comb_number in try_param_combs) {
     param_comb = get.param.combination(param_comb_number=param_comb_number,
@@ -1078,15 +1072,20 @@ gpb.grid.search.tune.parameters <- function(param_grid
                      " of ", length(try_param_combs), ": ", param_comb_str))
     }
     current_score_is_better <- FALSE
+    if (!is.null(cv_seed)) {
+      set.seed(cv_seed)
+    }
     cvbst <- gpb.cv(params = params
                     , data = data
-                    , nrounds = nrounds
                     , gp_model = gp_model
+                    , nrounds = nrounds
+                    , early_stopping_rounds = early_stopping_rounds
+                    , folds = folds
+                    , nfold = nfold
+                    , metric = metric
                     , line_search_step_length = line_search_step_length
                     , use_gp_model_for_validation = use_gp_model_for_validation
                     , train_gp_model_cov_pars = train_gp_model_cov_pars
-                    , folds = folds
-                    , nfold = nfold
                     , label = label
                     , weight = weight
                     , obj = obj
@@ -1099,7 +1098,6 @@ gpb.grid.search.tune.parameters <- function(param_grid
                     , init_model = init_model
                     , colnames = colnames
                     , categorical_feature = categorical_feature
-                    , early_stopping_rounds = early_stopping_rounds
                     , callbacks = callbacks
                     , delete_boosters_folds = TRUE
                     , ...

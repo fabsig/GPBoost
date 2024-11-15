@@ -10,12 +10,33 @@
 may allow you to pass other types of data like \code{matrix} and then separately supply
 \code{label} as a keyword argument.}
 
+\item{folds}{\code{list} provides a possibility to use a list of pre-defined CV folds
+(each element must be a vector of test fold's indices). When folds are supplied,
+the \code{nfold} and \code{stratified} parameters are ignored.}
+
+\item{nfold}{the original dataset is randomly partitioned into \code{nfold} equal size subsamples.}
+
+\item{cv_seed}{Seed for generating folds when doing \code{nfold} CV}
+
 \item{early_stopping_rounds}{int. Activates early stopping. Requires at least one validation data
 and one metric. When this parameter is non-null,
 training will stop if the evaluation of any metric on any validation set
 fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
 If training stops early, the returned model will have attribute \code{best_iter}
 set to the iteration number of the best iteration.}
+
+\item{metric}{Evaluation metric to be monitored when doing CV and parameter tuning. 
+Can be a \code{character} string or vector of \code{character} strings.
+If not NULL, the metric in \code{params} will be overridden.
+Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", 
+"auc", "average_precision", "binary_logloss", "binary_error". 
+See \href{https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters}{
+the "metric" section of the parameter documentation} for a complete list of valid metrics.}
+
+\item{verbose_eval}{\code{integer}. Whether to display information on the progress of tuning parameter choice. 
+If None or 0, verbose is of.
+If = 1, summary progress information is displayed for every parameter combination.
+If >= 2, detailed progress is displayed at every boosting stage for every parameter combination.}
 
 \item{eval}{Evaluation metric to be monitored when doing CV and parameter tuning. 
 This can be a string, function, or list with a mixture of strings and functions.

@@ -4,30 +4,58 @@
 \alias{gpb.grid.search.tune.parameters}
 \title{Function for choosing tuning parameters}
 \usage{
-gpb.grid.search.tune.parameters(param_grid, data, params = list(),
-  num_try_random = NULL, nrounds = 100L, gp_model = NULL,
-  line_search_step_length = FALSE, use_gp_model_for_validation = TRUE,
-  train_gp_model_cov_pars = TRUE, folds = NULL, nfold = 4L,
+gpb.grid.search.tune.parameters(param_grid, num_try_random = NULL, data,
+  gp_model = NULL, params = list(), nrounds = 1000L,
+  early_stopping_rounds = NULL, folds = NULL, nfold = 5L, metric = NULL,
+  verbose_eval = 1L, cv_seed = NULL, line_search_step_length = FALSE,
+  use_gp_model_for_validation = TRUE, train_gp_model_cov_pars = TRUE,
   label = NULL, weight = NULL, obj = NULL, eval = NULL,
-  verbose_eval = 1L, stratified = TRUE, init_model = NULL,
-  colnames = NULL, categorical_feature = NULL,
-  early_stopping_rounds = NULL, callbacks = list(),
+  stratified = TRUE, init_model = NULL, colnames = NULL,
+  categorical_feature = NULL, callbacks = list(),
   return_all_combinations = FALSE, ...)
 }
 \arguments{
 \item{param_grid}{\code{list} with candidate parameters defining the grid over which a search is done}
 
+\item{num_try_random}{\code{integer} with number of random trial on parameter grid. If NULL, a deterministic search is done}
+
 \item{data}{a \code{gpb.Dataset} object, used for training. Some functions, such as \code{\link{gpb.cv}},
 may allow you to pass other types of data like \code{matrix} and then separately supply
 \code{label} as a keyword argument.}
 
-\item{params}{\code{list} with other parameters not included in \code{param_grid}}
+\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
 
-\item{num_try_random}{\code{integer} with number of random trial on parameter grid. If NULL, a deterministic search is done}
+\item{params}{\code{list} with other parameters not included in \code{param_grid}}
 
 \item{nrounds}{number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting}
 
-\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
+\item{early_stopping_rounds}{int. Activates early stopping. Requires at least one validation data
+and one metric. When this parameter is non-null,
+training will stop if the evaluation of any metric on any validation set
+fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
+If training stops early, the returned model will have attribute \code{best_iter}
+set to the iteration number of the best iteration.}
+
+\item{folds}{\code{list} provides a possibility to use a list of pre-defined CV folds
+(each element must be a vector of test fold's indices). When folds are supplied,
+the \code{nfold} and \code{stratified} parameters are ignored.}
+
+\item{nfold}{the original dataset is randomly partitioned into \code{nfold} equal size subsamples.}
+
+\item{metric}{Evaluation metric to be monitored when doing CV and parameter tuning. 
+Can be a \code{character} string or vector of \code{character} strings.
+If not NULL, the metric in \code{params} will be overridden.
+Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", 
+"auc", "average_precision", "binary_logloss", "binary_error". 
+See \href{https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters}{
+the "metric" section of the parameter documentation} for a complete list of valid metrics.}
+
+\item{verbose_eval}{\code{integer}. Whether to display information on the progress of tuning parameter choice. 
+If None or 0, verbose is of.
+If = 1, summary progress information is displayed for every parameter combination.
+If >= 2, detailed progress is displayed at every boosting stage for every parameter combination.}
+
+\item{cv_seed}{Seed for generating folds when doing \code{nfold} CV}
 
 \item{line_search_step_length}{Boolean. If TRUE, a line search is done to find the optimal step length for every boosting update 
 (see, e.g., Friedman 2001). This is then multiplied by the \code{learning_rate}. 
@@ -43,12 +71,6 @@ of the \code{gp_model} (Gaussian process and/or random effects) are estimated in
 boosting iterations, otherwise the \code{gp_model} parameters are not estimated. 
 In the latter case, you need to either estimate them beforehand or provide the values via 
 the \code{init_cov_pars} parameter when creating the \code{gp_model}}
-
-\item{folds}{\code{list} provides a possibility to use a list of pre-defined CV folds
-(each element must be a vector of test fold's indices). When folds are supplied,
-the \code{nfold} and \code{stratified} parameters are ignored.}
-
-\item{nfold}{the original dataset is randomly partitioned into \code{nfold} equal size subsamples.}
 
 \item{label}{Vector of labels, used if \code{data} is not an \code{\link{gpb.Dataset}}}
 
@@ -91,11 +113,6 @@ This can be a string, function, or list with a mixture of strings and functions.
                 }
             }}
 
-\item{verbose_eval}{\code{integer}. Whether to display information on the progress of tuning parameter choice. 
-If None or 0, verbose is of.
-If = 1, summary progress information is displayed for every parameter combination.
-If >= 2, detailed progress is displayed at every boosting stage for every parameter combination.}
-
 \item{stratified}{a \code{boolean} indicating whether sampling of folds should be stratified
 by the values of outcome labels.}
 
@@ -106,13 +123,6 @@ by the values of outcome labels.}
 \item{categorical_feature}{categorical features. This can either be a character vector of feature
 names or an integer vector with the indices of the features (e.g.
 \code{c(1L, 10L)} to say "the first and tenth columns").}
-
-\item{early_stopping_rounds}{int. Activates early stopping. Requires at least one validation data
-and one metric. When this parameter is non-null,
-training will stop if the evaluation of any metric on any validation set
-fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
-If training stops early, the returned model will have attribute \code{best_iter}
-set to the iteration number of the best iteration.}
 
 \item{callbacks}{List of callback functions that are applied at each iteration.}
 
@@ -153,28 +163,27 @@ Function that allows for choosing tuning parameters from a grid in a determinsti
 library(gpboost)
 data(GPBoost_data, package = "gpboost")
 
-# Create random effects model, dataset, and define parameter grid
+n <- length(y)
+param_grid <- list("learning_rate" = c(0.001, 0.01, 0.1, 1, 10), 
+                   "min_data_in_leaf" = c(1, 10, 100, 1000),
+                   "max_depth" = c(-1), 
+                   "num_leaves" = 2^(1:10),
+                   "lambda_l2" = c(0, 1, 10, 100),
+                   "max_bin" = c(250, 500, 1000, min(n,10000)),
+                   "line_search_step_length" = c(TRUE, FALSE))
+# Note: "max_depth" = c(-1) means no depth limit as we tune 'num_leaves'. 
+#    Can also additionally tune 'max_depth', e.g., "max_depth" = c(-1, 1, 2, 3, 5, 10)
+metric = "mse" # Define metric
+# Note: can also use metric = "test_neg_log_likelihood". 
+# See https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
-dataset <- gpb.Dataset(X, label = y)
-param_grid = list("learning_rate" = c(1,0.1,0.01), 
-                  "min_data_in_leaf" = c(10,100,1000),
-                  "max_depth" = c(1,2,3,5,10),
-                  "lambda_l2" = c(0,1,10))
-other_params <- list(num_leaves = 2^10)
-# Note: here we try different values for 'max_depth' and thus set 'num_leaves' to a large value.
-#       An alternative strategy is to impose no limit on 'max_depth', 
-#       and try different values for 'num_leaves' as follows:
-# param_grid = list("learning_rate" = c(1,0.1,0.01), 
-#                   "min_data_in_leaf" = c(10,100,1000),
-#                   "num_leaves" = 2^(1:10),
-#                   "lambda_l2" = c(0,1,10))
-# other_params <- list(max_depth = -1)
+data_train <- gpb.Dataset(data = X, label = y)
 set.seed(1)
-opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
-                                              num_try_random = NULL, nfold = 4,
-                                              data = dataset, gp_model = gp_model,
-                                              use_gp_model_for_validation=TRUE, verbose_eval = 1,
-                                              nrounds = 1000, early_stopping_rounds = 10)
+opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
+                                              data = data_train, gp_model = gp_model,
+                                              num_try_random = 100, nfold = 5,
+                                              nrounds = 1000, early_stopping_rounds = 20,
+                                              verbose_eval = 1, metric = metric, cv_seed = 4)
 print(paste0("Best parameters: ",
              paste0(unlist(lapply(seq_along(opt_params$best_params), 
                                   function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, 
@@ -182,17 +191,15 @@ print(paste0("Best parameters: ",
                                   n=names(opt_params$best_params))), collapse=", ")))
 print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
-# Note: other scoring / evaluation metrics can be chosen using the 
-#       'metric' argument, e.g., metric = "l1"
-
-# Using manually defined validation data instead of cross-validation
-valid_tune_idx <- sample.int(length(y), as.integer(0.2*length(y)))
-folds = list(valid_tune_idx)
-opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
-                                              num_try_random = NULL, folds = folds,
-                                              data = dataset, gp_model = gp_model,
-                                              use_gp_model_for_validation=TRUE, verbose_eval = 1,
-                                              nrounds = 1000, early_stopping_rounds = 10)
+# Alternatively and faster: using manually defined validation data instead of cross-validation
+# use 20\% of the data as validation data
+valid_tune_idx <- sample.int(length(y), as.integer(0.2*length(y))) 
+folds <- list(valid_tune_idx)
+opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
+                                              data = data_train, gp_model = gp_model,
+                                              num_try_random = 100, folds = folds,
+                                              nrounds = 1000, early_stopping_rounds = 20,
+                                              verbose_eval = 1, metric = metric, cv_seed = 4)
 
 }
 }

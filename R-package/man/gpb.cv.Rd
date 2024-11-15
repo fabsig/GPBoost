@@ -4,15 +4,15 @@
 \alias{gpb.cv}
 \title{CV function for number of boosting iterations}
 \usage{
-gpb.cv(params = list(), data, nrounds = 100L, gp_model = NULL,
-  line_search_step_length = FALSE, use_gp_model_for_validation = TRUE,
-  fit_GP_cov_pars_OOS = FALSE, train_gp_model_cov_pars = TRUE,
-  folds = NULL, nfold = 4L, label = NULL, weight = NULL, obj = NULL,
-  eval = NULL, verbose = 1L, record = TRUE, eval_freq = 1L,
+gpb.cv(params = list(), data, gp_model = NULL, nrounds = 1000L,
+  early_stopping_rounds = NULL, folds = NULL, nfold = 5L, metric = NULL,
+  verbose = 1L, line_search_step_length = FALSE,
+  use_gp_model_for_validation = TRUE, fit_GP_cov_pars_OOS = FALSE,
+  train_gp_model_cov_pars = TRUE, label = NULL, weight = NULL,
+  obj = NULL, eval = NULL, record = TRUE, eval_freq = 1L,
   showsd = FALSE, stratified = TRUE, init_model = NULL, colnames = NULL,
-  categorical_feature = NULL, early_stopping_rounds = NULL,
-  callbacks = list(), reset_data = FALSE, delete_boosters_folds = FALSE,
-  ...)
+  categorical_feature = NULL, callbacks = list(), reset_data = FALSE,
+  delete_boosters_folds = FALSE, ...)
 }
 \arguments{
 \item{params}{list of "tuning" parameters. 
@@ -50,9 +50,32 @@ A few key parameters:
 may allow you to pass other types of data like \code{matrix} and then separately supply
 \code{label} as a keyword argument.}
 
+\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
+
 \item{nrounds}{number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting}
 
-\item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
+\item{early_stopping_rounds}{int. Activates early stopping. Requires at least one validation data
+and one metric. When this parameter is non-null,
+training will stop if the evaluation of any metric on any validation set
+fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
+If training stops early, the returned model will have attribute \code{best_iter}
+set to the iteration number of the best iteration.}
+
+\item{folds}{\code{list} provides a possibility to use a list of pre-defined CV folds
+(each element must be a vector of test fold's indices). When folds are supplied,
+the \code{nfold} and \code{stratified} parameters are ignored.}
+
+\item{nfold}{the original dataset is randomly partitioned into \code{nfold} equal size subsamples.}
+
+\item{metric}{Evaluation metric to be monitored when doing CV and parameter tuning. 
+Can be a \code{character} string or vector of \code{character} strings.
+If not NULL, the metric in \code{params} will be overridden.
+Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", 
+"auc", "average_precision", "binary_logloss", "binary_error". 
+See \href{https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters}{
+the "metric" section of the parameter documentation} for a complete list of valid metrics.}
+
+\item{verbose}{verbosity for output, if <= 0, also will disable the print of evaluation during training}
 
 \item{line_search_step_length}{Boolean. If TRUE, a line search is done to find the optimal step length for every boosting update 
 (see, e.g., Friedman 2001). This is then multiplied by the \code{learning_rate}. 
@@ -73,12 +96,6 @@ of the \code{gp_model} (Gaussian process and/or random effects) are estimated in
 boosting iterations, otherwise the \code{gp_model} parameters are not estimated. 
 In the latter case, you need to either estimate them beforehand or provide the values via 
 the \code{init_cov_pars} parameter when creating the \code{gp_model}}
-
-\item{folds}{\code{list} provides a possibility to use a list of pre-defined CV folds
-(each element must be a vector of test fold's indices). When folds are supplied,
-the \code{nfold} and \code{stratified} parameters are ignored.}
-
-\item{nfold}{the original dataset is randomly partitioned into \code{nfold} equal size subsamples.}
 
 \item{label}{Vector of labels, used if \code{data} is not an \code{\link{gpb.Dataset}}}
 
@@ -121,8 +138,6 @@ This can be a string, function, or list with a mixture of strings and functions.
                 }
             }}
 
-\item{verbose}{verbosity for output, if <= 0, also will disable the print of evaluation during training}
-
 \item{record}{Boolean, TRUE will record iteration message to \code{booster$record_evals}}
 
 \item{eval_freq}{evaluation output frequency, only effect when verbose > 0}
@@ -140,13 +155,6 @@ by the values of outcome labels.}
 \item{categorical_feature}{categorical features. This can either be a character vector of feature
 names or an integer vector with the indices of the features (e.g.
 \code{c(1L, 10L)} to say "the first and tenth columns").}
-
-\item{early_stopping_rounds}{int. Activates early stopping. Requires at least one validation data
-and one metric. When this parameter is non-null,
-training will stop if the evaluation of any metric on any validation set
-fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
-If training stops early, the returned model will have attribute \code{best_iter}
-set to the iteration number of the best iteration.}
 
 \item{callbacks}{List of callback functions that are applied at each iteration.}
 
