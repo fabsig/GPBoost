@@ -266,9 +266,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     dtrain <- gpb.Dataset(train$data, label = train$label)
     params <- list(objective = "regression", metric = "l2,l1")
     bst <- gpb.cv(
-      params
-      , dtrain
-      , 10L
+      params = params
+      , data = dtrain
+      , nrounds = 10L
       , nfold = 5L
       , min_data = 1L
       , learning_rate = 1.0
@@ -284,9 +284,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     for (nround_value in c(-10L, 0L)) {
       expect_error({
         bst <- gpb.cv(
-          params
-          , dtrain
-          , nround_value
+          params = params
+          , data = dtrain
+          , nrounds = nround_value
           , nfold = 5L
           , min_data = 1L
           , verbose = 0
@@ -309,7 +309,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         bst <- gpb.cv(
           params = list(objective = "regression", metric = "l2,l1")
           , data = val
-          , 10L
+          , nrounds = 10L
           , nfold = 5L
           , min_data = 1L
           , verbose = 0
@@ -462,7 +462,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_error({
         bst <- gpb.train(
           params
-          , dtrain
+          , data = dtrain
           , nround_value
         )
       }, "nrounds should be greater than zero")

@@ -1952,25 +1952,52 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       dtrain <- gpb.Dataset(data = X, label = y)
       params <- list(objective = "binary", verbose = 0)
       param_grid = list("learning_rate" = c(0.5,0.11), "min_data_in_leaf" = c(20),
-                        "max_depth" = c(5), "num_leaves" = 2^17, "max_bin" = c(10,255))
+                        "max_depth" = c(2), "num_leaves" = 2^17, "max_bin" = c(10,255))
       opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = params,
                                                     data = dtrain, gp_model = gp_model, verbose_eval = 1,
                                                     nrounds = 100, early_stopping_rounds = 5,
                                                     eval = "binary_logloss", folds = folds)
-      expect_lt(abs(opt_params$best_score-0.5131497),TOLERANCE)
-      expect_equal(opt_params$best_iter,31)
+      expect_lt(abs(opt_params$best_score-0.51101812),TOLERANCE)
+      expect_equal(opt_params$best_iter,59)
       expect_equal(opt_params$best_params$learning_rate,0.11)
-      expect_equal(opt_params$best_params$max_bin,255)
-      expect_equal(opt_params$best_params$max_depth,5)
+      expect_equal(opt_params$best_params$max_bin,10)
+      expect_equal(opt_params$best_params$max_depth,2)
+      opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = params,
+                                                    data = dtrain, gp_model = gp_model, verbose_eval = 1,
+                                                    nrounds = 100, early_stopping_rounds = 5,
+                                                    metric = "binary_logloss", folds = folds)
+      expect_lt(abs(opt_params$best_score-0.51101812),TOLERANCE)
+      expect_equal(opt_params$best_iter,59)
+      expect_equal(opt_params$best_params$learning_rate,0.11)
+      expect_equal(opt_params$best_params$max_bin,10)
+      expect_equal(opt_params$best_params$max_depth,2)
       opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = params,
                                                     data = dtrain, gp_model = gp_model, verbose_eval = 1,
                                                     nrounds = 100, early_stopping_rounds = 5,
                                                     eval = "test_neg_log_likelihood", folds = folds)
-      expect_lt(abs(opt_params$best_score-0.5131497),TOLERANCE)
-      expect_equal(opt_params$best_iter,31)
+      expect_lt(abs(opt_params$best_score-0.51101812),TOLERANCE)
+      expect_equal(opt_params$best_iter,59)
       expect_equal(opt_params$best_params$learning_rate,0.11)
-      expect_equal(opt_params$best_params$max_bin,255)
-      expect_equal(opt_params$best_params$max_depth,5)
+      expect_equal(opt_params$best_params$max_bin,10)
+      expect_equal(opt_params$best_params$max_depth,2)
+      opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = params,
+                                                    data = dtrain, gp_model = gp_model, verbose_eval = 1,
+                                                    nrounds = 100, early_stopping_rounds = 5,
+                                                    eval = "auc", folds = folds)
+      expect_lt(abs(opt_params$best_score-0.65502697),TOLERANCE)
+      expect_equal(opt_params$best_iter,52)
+      expect_equal(opt_params$best_params$learning_rate,0.11)
+      expect_equal(opt_params$best_params$max_bin,10)
+      expect_equal(opt_params$best_params$max_depth,2)
+      opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = params,
+                                                    data = dtrain, gp_model = gp_model, verbose_eval = 1,
+                                                    nrounds = 100, early_stopping_rounds = 5,
+                                                    metric = "auc", folds = folds)
+      expect_lt(abs(opt_params$best_score-0.65502697),TOLERANCE)
+      expect_equal(opt_params$best_iter,52)
+      expect_equal(opt_params$best_params$learning_rate,0.11)
+      expect_equal(opt_params$best_params$max_bin,10)
+      expect_equal(opt_params$best_params$max_depth,2)
       
       # Gamma distribution
       mu <- exp(f + eps)
