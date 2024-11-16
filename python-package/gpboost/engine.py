@@ -36,7 +36,7 @@ def train(params, train_set, num_boost_round=100,
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
-    num_boost_round : int, optional (default=100)
+    num_boost_round : int, optional (default=1000)
         Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
@@ -525,14 +525,11 @@ def _agg_cv_result(raw_results, eval_train_metric=False):
     return [('cv_agg', k, np.mean(v), metric_type[k], np.std(v)) for k, v in cvmap.items()]
 
 
-def cv(params, train_set, num_boost_round=100,
-       gp_model=None, line_search_step_length=False,
+def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_rounds=None,
+       folds=None, nfold=5, metric=None, verbose_eval=None, line_search_step_length=False,
        use_gp_model_for_validation=True, fit_GP_cov_pars_OOS=False, train_gp_model_cov_pars=True,
-       folds=None, nfold=5, stratified=False, shuffle=True,
-       metric=None, fobj=None, feval=None, init_model=None,
-       feature_name='auto', categorical_feature='auto',
-       early_stopping_rounds=None, fpreproc=None,
-       verbose_eval=None, show_stdv=False, seed=0,
+       stratified=False, shuffle=True, fobj=None, feval=None, init_model=None,
+       feature_name='auto', categorical_feature='auto', fpreproc=None, show_stdv=False, seed=0,
        callbacks=None, eval_train_metric=False,
        return_cvbooster=False, metrics=None):
     """Perform cross-validation for choosing number of boosting iterations.
@@ -544,10 +541,33 @@ def cv(params, train_set, num_boost_round=100,
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
-    num_boost_round : int, optional (default=100)
-        Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
+    num_boost_round : int, optional (default=1000)
+        Number of boosting iterations.
+    early_stopping_rounds : int or None, optional (default=None)
+        Activates early stopping. The ``metric`` needs to improve at least every 
+        ``early_stopping_rounds`` round(s) to continue.
+    folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
+        If generator or iterator, it should yield the train and test indices for each fold.
+        If object, it should be one of the scikit-learn splitter classes
+        (https://scikit-learn.org/stable/modules/classes.html#splitter-classes)
+        and have ``split`` method.
+        This argument has highest priority over other data split arguments.
+    nfold : int, optional (default=5)
+        Number of folds in CV.
+    metric : string, list of strings or None, optional (default=None)
+        Evaluation metric to be monitored when doing CV and parameter tuning.
+        If not None, the metric in ``params`` will be overridden.
+        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
+        "auc", "average_precision", "binary_logloss", "binary_error"
+        See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
+        for a complete list of valid metrics.
+    verbose_eval : bool, int, or None, optional (default=None)
+        Whether to display the progress.
+        If None, progress will be displayed when np.ndarray is returned.
+        If True, progress will be displayed at every boosting stage.
+        If int, progress will be displayed at every given ``verbose_eval`` boosting stage.
     line_search_step_length : bool, optional (default=False)
         If True, a line search is done to find the optimal step length for every boosting update
         (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
@@ -565,25 +585,10 @@ def cv(params, train_set, num_boost_round=100,
         in every boosting iterations, otherwise the 'gp_model' parameters are not estimated. In the latter case, you
         need to either estimate them beforehand or provide values via the 'init_cov_pars' parameter when creating
         the 'gp_model'
-    folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
-        If generator or iterator, it should yield the train and test indices for each fold.
-        If object, it should be one of the scikit-learn splitter classes
-        (https://scikit-learn.org/stable/modules/classes.html#splitter-classes)
-        and have ``split`` method.
-        This argument has highest priority over other data split arguments.
-    nfold : int, optional (default=5)
-        Number of folds in CV.
     stratified : bool, optional (default=False)
         Whether to perform stratified sampling.
     shuffle : bool, optional (default=True)
         Whether to shuffle before splitting data.
-    metric : string, list of strings or None, optional (default=None)
-        Evaluation metric to be monitored when doing CV and parameter tuning.
-        If not None, the metric in ``params`` will be overridden.
-        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
-        "auc", "average_precision", "binary_logloss", "binary_error"
-        See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
-        for a complete list of valid metrics.
     fobj : callable or None, optional (default=None)
         Customized objective function. Only for independent boosting.
         The GPBoost algorithm currently does not support this.
@@ -638,17 +643,9 @@ def cv(params, train_set, num_boost_round=100,
         Large values could be memory consuming. Consider using consecutive integers starting from zero.
         All negative values in categorical features will be treated as missing values.
         The output cannot be monotonically constrained with respect to a categorical feature.
-    early_stopping_rounds : int or None, optional (default=None)
-        Activates early stopping. The ``metric`` needs to improve at least every 
-        ``early_stopping_rounds`` round(s) to continue.
     fpreproc : callable or None, optional (default=None)
         Preprocessing function that takes (dtrain, dtest, params)
         and returns transformed versions of those.
-    verbose_eval : bool, int, or None, optional (default=None)
-        Whether to display the progress.
-        If None, progress will be displayed when np.ndarray is returned.
-        If True, progress will be displayed at every boosting stage.
-        If int, progress will be displayed at every given ``verbose_eval`` boosting stage.
     show_stdv : bool, optional (default=False)
         Whether to display the standard deviation in progress.
         Results are not affected by this parameter, and always contain std.
@@ -683,7 +680,7 @@ def cv(params, train_set, num_boost_round=100,
     >>> cvbst = gpb.cv(params=params, train_set=data_train,
     >>>                gp_model=gp_model, use_gp_model_for_validation=True,
     >>>                num_boost_round=1000, early_stopping_rounds=5,
-    >>>                nfold=4, verbose_eval=True, show_stdv=False, seed=1)
+    >>>                nfold=5, verbose_eval=True, show_stdv=False, seed=1)
 
     :Authors:
         Authors of the LightGBM Python package
@@ -861,14 +858,13 @@ def _get_param_combination(param_comb_number, param_grid):
     return (param_comb)
 
 
-def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_random=None,
-                                num_boost_round=100, gp_model=None,
+def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_random=None, params=None,
+                                num_boost_round=1000, early_stopping_rounds=None, 
+                                folds=None, nfold=5, metric=None, 
                                 line_search_step_length=False,
                                 use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
-                                folds=None, nfold=5, stratified=False, shuffle=True,
-                                metric=None, fobj=None, feval=None, init_model=None,
-                                feature_name='auto', categorical_feature='auto',
-                                early_stopping_rounds=None, fpreproc=None,
+                                stratified=False, shuffle=True, fobj=None, feval=None, init_model=None,
+                                feature_name='auto', categorical_feature='auto', fpreproc=None,
                                 verbose_eval=1, seed=0, callbacks=None, metrics=None,
                                 return_all_combinations=False):
     """Function for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
@@ -880,14 +876,32 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
-    params : dict, optional (default=None)
-        Other parameters not included in param_grid.
-    num_try_random : int, optional (default=None)
-        Number of random trial on parameter grid. If none, a deterministic search is done
-    num_boost_round : int, optional (default=100)
-        Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
+    num_try_random : int, optional (default=None)
+        Number of random trial on parameter grid. If none, a deterministic search is done
+    params : dict, optional (default=None)
+        Other parameters not included in param_grid.
+    num_boost_round : int, optional (default=1000)
+        Number of boosting iterations.
+    early_stopping_rounds : int or None, optional (default=None)
+        Activates early stopping. The ``metric`` needs to improve at least every 
+        ``early_stopping_rounds`` round(s) to continue.
+    folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
+        If generator or iterator, it should yield the train and test indices for each fold.
+        If object, it should be one of the scikit-learn splitter classes
+        (https://scikit-learn.org/stable/modules/classes.html#splitter-classes)
+        and have ``split`` method.
+        This argument has highest priority over other data split arguments.
+    nfold : int, optional (default=5)
+        Number of folds in CV.
+    metric : string, list of strings or None, optional (default=None)
+        Evaluation metric to be monitored when doing parameter tuning.
+        If not None, the metric in ``params`` will be overridden.
+        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
+        "auc", "average_precision", "binary_logloss", "binary_error"
+        See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
+        for a complete list of valid metrics.
     line_search_step_length : bool, optional (default=False)
         If True, a line search is done to find the optimal step length for every boosting update
         (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
@@ -901,25 +915,10 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         in every boosting iterations, otherwise the 'gp_model' parameters are not estimated. In the latter case, you
         need to either estimate them beforehand or provide values via the 'init_cov_pars' parameter when creating
         the 'gp_model'
-    folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
-        If generator or iterator, it should yield the train and test indices for each fold.
-        If object, it should be one of the scikit-learn splitter classes
-        (https://scikit-learn.org/stable/modules/classes.html#splitter-classes)
-        and have ``split`` method.
-        This argument has highest priority over other data split arguments.
-    nfold : int, optional (default=5)
-        Number of folds in CV.
     stratified : bool, optional (default=False)
         Whether to perform stratified sampling.
     shuffle : bool, optional (default=True)
         Whether to shuffle before splitting data.
-    metric : string, list of strings or None, optional (default=None)
-        Evaluation metric to be monitored when doing parameter tuning.
-        If not None, the metric in ``params`` will be overridden.
-        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
-        "auc", "average_precision", "binary_logloss", "binary_error"
-        See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
-        for a complete list of valid metrics.
     fobj : callable or None, optional (default=None)
         Customized objective function. Only for independent boosting.
         The GPBoost algorithm currently does not support this.
@@ -976,9 +975,6 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
         Large values could be memory consuming. Consider using consecutive integers starting from zero.
         All negative values in categorical features will be treated as missing values.
         The output cannot be monotonically constrained with respect to a categorical feature.
-    early_stopping_rounds : int or None, optional (default=None)
-        Activates early stopping. The ``metric`` needs to improve at least every 
-        ``early_stopping_rounds`` round(s) to continue.
     fpreproc : callable or None, optional (default=None)
         Preprocessing function that takes (dtrain, dtest, params)
         and returns transformed versions of those.
@@ -1010,31 +1006,30 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     >>> # Define parameter search grid
     >>> # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
     >>> param_grid = { 'learning_rate': [0.001, 0.01, 0.1, 1, 10], 
-    >>>               'min_data_in_leaf': [1, 10, 100, 1000],
-    >>>               'max_depth': [-1, 1, 2, 3, 5, 10],
-    >>>               'num_leaves': 2**np.arange(1,10),
-    >>>               'lambda_l2': [0, 1, 10, 100],
-    >>>               'max_bin': [250, 500, 1000, np.min([10000,n])],
-    >>>               'line_search_step_length': [True, False]}
-    >>> other_params = {'verbose': 0}
-    >>> # Define metric
-    >>> metric = "mse"
+    >>>   'min_data_in_leaf': [1, 10, 100, 1000],
+    >>>   'max_depth': [-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionally tune 'max_depth', e.g., 'max_depth': [-1, 1, 2, 3, 5, 10]
+    >>>   'num_leaves': 2**np.arange(1,10),
+    >>>   'lambda_l2': [0, 1, 10, 100],
+    >>>   'max_bin': [250, 500, 1000, np.min([10000,n])],
+    >>>   'line_search_step_length': [True, False]}
+    >>> other_params = {'verbose': 0} # avoid trace information when training models
+    >>> metric = "mse" # Define metric
     >>> if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     >>>   metric = "binary_logloss"
+    >>> # Note: can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
     >>> gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
     >>> data_train = gpb.Dataset(data=X, label=y)
     >>> # Run parameter optimization using random grid search and 4-fold CV
     >>> # Note: deterministic grid search can be done by setting 'num_try_random=None'
     >>> opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
-    >>>                                              num_try_random=100, nfold=4, seed=1000,
     >>>                                              train_set=data_train, gp_model=gp_model,
-    >>>                                              use_gp_model_for_validation=True, verbose_eval=1,
+    >>>                                              num_try_random=100, nfold=5, 
     >>>                                              num_boost_round=1000, early_stopping_rounds=20,
-    >>>                                              metric=metric)                            
+    >>>                                              verbose_eval=1, metric=metric, seed=4)                           
     >>> print("Best parameters: " + str(opt_params['best_params']))
     >>> print("Best number of iterations: " + str(opt_params['best_iter']))
     >>> print("Best score: " + str(opt_params['best_score']))
-
+    >>>
     >>> # Alternatively and faster: using manually defined validation data instead of cross-validation
     >>> np.random.seed(10)
     >>> permute_aux = np.random.permutation(n)
@@ -1042,11 +1037,10 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     >>> valid_tune_idx = permute_aux[int(0.8 * n):n]
     >>> folds = [(train_tune_idx, valid_tune_idx)]
     >>> opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
-    >>>                                              num_try_random=100, folds=folds, seed=1000,
     >>>                                              train_set=data_train, gp_model=gp_model,
-    >>>                                              use_gp_model_for_validation=True, verbose_eval=1,
+    >>>                                              num_try_random=100, folds=folds, 
     >>>                                              num_boost_round=1000, early_stopping_rounds=20,
-    >>>                                              metric=metric)
+    >>>                                              verbose_eval=1, metric=metric, seed=4)
 
     :Authors:
         Fabio Sigrist
@@ -1178,23 +1172,17 @@ def grid_search_tune_parameters(param_grid, train_set, params=None, num_try_rand
     else:
         return {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}
 
-def tune_pars_TPE_algorithm_optuna(X, y, search_space, n_trials,
+def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None,
                                 max_num_boost_round=1000, early_stopping_rounds=None,
-                                metric=None, gp_model=None, folds=None, nfold=5,
+                                metric=None, folds=None, nfold=5,
                                 cv_seed=0, tpe_seed=0,
                                 params=None, verbose_train=0, verbose_eval=1,
-                                use_gp_model_for_validation=True,
-                                train_gp_model_cov_pars=True, feval=None,
+                                use_gp_model_for_validation=True, train_gp_model_cov_pars=True, feval=None,
                                 categorical_feature='auto'):
     """Function for choosing tuning parameters using the TPE (Tree-structured Parzen Estimator) algorithm implemented in optuna
 
     Parameters
     ----------
-    X : string, numpy array, pandas DataFrame, H2O DataTable's Frame, scipy.sparse or list of numpy arrays
-        Predictor variables data for creating a gpb.Dataset.
-        If string, it represents the path to txt file.
-    y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
-        Response variable / label data.
     search_space : dict
         The range for every parameter over which a search is done.
         The format for every entry of the dict must be 
@@ -1202,6 +1190,13 @@ def tune_pars_TPE_algorithm_optuna(X, y, search_space, n_trials,
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     n_trials: int
         The number of trials for the TPESampler.
+    X : string, numpy array, pandas DataFrame, H2O DataTable's Frame, scipy.sparse or list of numpy arrays
+        Predictor variables data for creating a gpb.Dataset.
+        If string, it represents the path to txt file.
+    y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
+        Response variable / label data.
+    gp_model : GPModel or None, optional (default=None)
+        GPModel object for the GPBoost algorithm
     max_num_boost_round : int, optional (default=1000)
         Maximal number of boosting iterations.
     early_stopping_rounds : int or None, optional (default=None)
@@ -1214,8 +1209,6 @@ def tune_pars_TPE_algorithm_optuna(X, y, search_space, n_trials,
         "auc", "average_precision", "binary_logloss", "binary_error"
         See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
         for a complete list of valid metrics.
-    gp_model : GPModel or None, optional (default=None)
-        GPModel object for the GPBoost algorithm
     folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
         If generator or iterator, it should yield the train and test indices for each fold.
         If object, it should be one of the scikit-learn splitter classes
@@ -1291,35 +1284,38 @@ def tune_pars_TPE_algorithm_optuna(X, y, search_space, n_trials,
     >>> # Define search space
     >>> # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
     >>> search_space = { 'learning_rate': [0.001, 10],
-    >>>                 'min_data_in_leaf': [1, 1000],
-    >>>                 'max_depth': [-1, 10],
-    >>>                 'num_leaves': [2, 1024],
-    >>>                 'lambda_l2': [0, 100],
-    >>>                 'max_bin': [63, np.min([10000,n])],
-    >>>                 'line_search_step_length': [True, False] }
-    >>> # Define metric
-    >>> metric = "mse"
+    >>>   'min_data_in_leaf': [1, 1000],
+    >>>   'max_depth': [-1,-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionally tune 'max_depth', e.g., 'max_depth': [-1,10]
+    >>>   'num_leaves': [2, 1024],
+    >>>   'lambda_l2': [0, 100],
+    >>>   'max_bin': [63, np.min([10000,n])],
+    >>>   'line_search_step_length': [True, False] }
+    >>> metric = "mse" # Define metric
     >>> if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     >>>   metric = "binary_logloss"
     >>> # Note: can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
     >>> gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
     >>> # Run parameter optimization using the TPE algorithm and 4-fold CV 
-    >>> opt_params = gpb.tune_pars_TPE_algorithm_optuna(X=X, y=y, search_space=search_space, 
-    >>>                                                 nfold=4, gp_model=gp_model, metric=metric, tpe_seed=1,
-    >>>                                                 max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
+    >>> opt_params = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_trials=100, 
+    >>>                                                 X=X, y=y, gp_model=gp_model,
+    >>>                                                 max_num_boost_round=1000, early_stopping_rounds=20, 
+    >>>                                                 nfold=5, metric=metric,
+    >>>                                                 cv_seed=4, tpe_seed=1)
     >>> print("Best parameters: " + str(opt_params['best_params']))
     >>> print("Best number of iterations: " + str(opt_params['best_iter']))
     >>> print("Best score: " + str(opt_params['best_score']))
-
+    >>> 
     >>> # Alternatively and faster: using manually defined validation data instead of cross-validation
     >>> np.random.seed(10)
     >>> permute_aux = np.random.permutation(n)
     >>> train_tune_idx = permute_aux[0:int(0.8 * n)] # use 20% of the data as validation data
     >>> valid_tune_idx = permute_aux[int(0.8 * n):n]
     >>> folds = [(train_tune_idx, valid_tune_idx)]
-    >>> opt_params = gpb.tune_pars_TPE_algorithm_optuna(X=X, y=y, search_space=search_space, 
-    >>>                                                 folds=folds, gp_model=gp_model, metric=metric, tpe_seed=1,
-    >>>                                                 max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
+    >>> opt_params = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_trials=100, 
+    >>>                                                 X=X, y=y, gp_model=gp_model,
+    >>>                                                 max_num_boost_round=1000, early_stopping_rounds=20, 
+    >>>                                                 folds=folds, metric=metric,
+    >>>                                                 cv_seed=4, tpe_seed=1)
 
     :Authors:
         Fabio Sigrist
