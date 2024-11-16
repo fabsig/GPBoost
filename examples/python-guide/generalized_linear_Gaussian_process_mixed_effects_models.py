@@ -419,7 +419,7 @@ gp_model.summary()
 #   -> covariance parameters estimates can have high variance
 
 # Predict latent GP at training data locations (=smoothing)
-GP_smooth = gp_model.predict_training_data_random_effects(predict_var = True) # predict_var = True gives uncertainty for random effect predictions
+GP_smooth = gp_model.predict_training_data_random_effects(predict_var = False) # predict_var = True gives uncertainty for random effect predictions
 # Compare true and predicted random effects
 plt.scatter(b_train, GP_smooth['GP'], label="Intercept GP", alpha=0.5)
 plt.scatter(b2, GP_smooth['GP_rand_coef_nb_1'], label="1. random coef. GP", alpha=0.5)

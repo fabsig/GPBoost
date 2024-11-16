@@ -153,21 +153,22 @@ plt.show(block=False)
 # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
 search_space = { 'learning_rate': [0.001, 10],
                 'min_data_in_leaf': [1, 1000],
-                'max_depth': [-1,-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionaly tune 'max_depth', e.g., 'max_depth': [-1,10]
+                'max_depth': [-1,-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionally tune 'max_depth', e.g., 'max_depth': [-1,10]
                 'num_leaves': [2, 1024],
                 'lambda_l2': [0, 100],
                 'max_bin': [63, np.min([10000,n])],
                 'line_search_step_length': [True, False] }
-# Define metric
-metric = "mse"
+metric = "mse" # Define metric
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     metric = "binary_logloss"
 # Note: can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-# Run parameter optimization using the TPE algorithm and 4-fold CV 
-opt_params = gpb.tune_pars_TPE_algorithm_optuna(X=X, y=y, search_space=search_space, 
-                                                nfold=4, gp_model=gp_model, metric=metric, tpe_seed=1,
-                                                max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
+# Run parameter optimization using the TPE algorithm and k-fold CV 
+opt_params = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_trials=100, 
+                                                X=X, y=y, gp_model=gp_model,
+                                                max_num_boost_round=1000, early_stopping_rounds=20, 
+                                                nfold=5, metric=metric,
+                                                cv_seed=4, tpe_seed=1)
 print("Best parameters: " + str(opt_params['best_params']))
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
@@ -178,35 +179,36 @@ permute_aux = np.random.permutation(n)
 train_tune_idx = permute_aux[0:int(0.8 * n)] # use 20% of the data as validation data
 valid_tune_idx = permute_aux[int(0.8 * n):n]
 folds = [(train_tune_idx, valid_tune_idx)]
-opt_params = gpb.tune_pars_TPE_algorithm_optuna(X=X, y=y, search_space=search_space, 
-                                                folds=folds, gp_model=gp_model, metric=metric, tpe_seed=1,
-                                                max_num_boost_round=1000, n_trials=100, early_stopping_rounds=20)
+opt_params = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_trials=100, 
+                                                X=X, y=y, gp_model=gp_model,
+                                                max_num_boost_round=1000, early_stopping_rounds=20, 
+                                                folds=folds, metric=metric,
+                                                cv_seed=4, tpe_seed=1)
 
 #--------------------Choosing tuning parameters using random grid search----------------
 # Define parameter search grid
 # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
 param_grid = { 'learning_rate': [0.001, 0.01, 0.1, 1, 10], 
               'min_data_in_leaf': [1, 10, 100, 1000],
-              'max_depth': [-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionaly tune 'max_depth', e.g., 'max_depth': [-1, 1, 2, 3, 5, 10]
+              'max_depth': [-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionally tune 'max_depth', e.g., 'max_depth': [-1, 1, 2, 3, 5, 10]
               'num_leaves': 2**np.arange(1,10),
               'lambda_l2': [0, 1, 10, 100],
               'max_bin': [250, 500, 1000, np.min([10000,n])],
               'line_search_step_length': [True, False]}
 other_params = {'verbose': 0} # avoid trace information when training models
-# Define metric
-metric = "mse"
+metric = "mse" # Define metric
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     metric = "binary_logloss"
+# Note: can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(data=X, label=y)
-# Run parameter optimization using random grid search and 4-fold CV
+# Run parameter optimization using random grid search and k-fold CV
 # Note: deterministic grid search can be done by setting 'num_try_random=None'
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
-                                             num_try_random=100, nfold=4, seed=1000,
                                              train_set=data_train, gp_model=gp_model,
-                                             use_gp_model_for_validation=True, verbose_eval=1,
+                                             num_try_random=100, nfold=5, 
                                              num_boost_round=1000, early_stopping_rounds=20,
-                                             metric=metric)                            
+                                             verbose_eval=1, metric=metric, seed=4)                           
 print("Best parameters: " + str(opt_params['best_params']))
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
@@ -218,19 +220,18 @@ train_tune_idx = permute_aux[0:int(0.8 * n)] # use 20% of the data as validation
 valid_tune_idx = permute_aux[int(0.8 * n):n]
 folds = [(train_tune_idx, valid_tune_idx)]
 opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other_params,
-                                             num_try_random=100, folds=folds, seed=1000,
                                              train_set=data_train, gp_model=gp_model,
-                                             use_gp_model_for_validation=True, verbose_eval=1,
+                                             num_try_random=100, folds=folds, 
                                              num_boost_round=1000, early_stopping_rounds=20,
-                                             metric=metric)
-  
+                                             verbose_eval=1, metric=metric, seed=4)
+
+
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(data=X, label=y)
-cvbst = gpb.cv(params=params, train_set=data_train,
-               gp_model=gp_model, use_gp_model_for_validation=True,
+cvbst = gpb.cv(params=params, train_set=data_train, gp_model=gp_model, 
                num_boost_round=1000, early_stopping_rounds=20,
-               nfold=4, verbose_eval=True, show_stdv=False, seed=1)
+               nfold=5, verbose_eval=True, show_stdv=False, seed=1)
 metric_name = list(cvbst.keys())[0]
 print("Best number of iterations: " + str(np.argmin(cvbst[metric_name]) + 1))
 
@@ -246,8 +247,7 @@ gp_model.set_prediction_data(group_data_pred=group[test_ind])
 evals_result = {}  # record eval results for plotting
 bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
                 gp_model=gp_model, valid_sets=data_eval, 
-                early_stopping_rounds=20, use_gp_model_for_validation=True,
-                evals_result=evals_result)
+                early_stopping_rounds=20, evals_result=evals_result)
 gpb.plot_metric(evals_result, figsize=(10, 5))# plot validation scores
 plt.show(block=False)
 
@@ -258,8 +258,8 @@ if likelihood == "gaussian":
     params_newton['learning_rate'] = 0.1
     evals_result = {}  # record eval results for plotting
     bst = gpb.train(params=params_newton, train_set=data_train, num_boost_round=1000,
-                    gp_model=gp_model, valid_sets=data_eval, early_stopping_rounds=5,
-                    use_gp_model_for_validation=True, evals_result=evals_result)
+                    gp_model=gp_model, valid_sets=data_eval, early_stopping_rounds=20,
+                    evals_result=evals_result)
     gpb.plot_metric(evals_result, figsize=(10, 5))# plot validation scores
 
 #--------------------Model interpretation----------------
