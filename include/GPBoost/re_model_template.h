@@ -3411,9 +3411,9 @@ namespace GPBoost {
 						}
 					}//end only_one_grouped_RE_calculations_on_RE_scale_ || only_one_GP_calculations_on_RE_scale_
 					else {//at least one GP and additional components
-						//Note: use the "general" prediction formula since the mode is calculated on the aggragate scale and not for every component separaretly (mode_.size() == num_data and not num_data * num_comps_total_)
+						//Note: use the "general" prediction formula since the mode is calculated on the aggregate scale and not for every component separaretly (mode_.size() == num_data and not num_data * num_comps_total_)
 						if (calc_var) {
-							Log::REFatal("PredictTrainingDataRandomEffects(): calculating of variances is not implemented when having at least on GP and additional random effects ");
+							Log::REFatal("PredictTrainingDataRandomEffects(): calculating of variances is not implemented when having at least one GP and additional random effects ");
 						}
 						const vec_t* first_deriv = likelihood_[cluster_i]->GetFirstDerivLL();
 						int cn = 0;//component number counter
