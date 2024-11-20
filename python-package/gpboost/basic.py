@@ -5399,18 +5399,18 @@ class GPModel(object):
         return self
 
     def predict(self,
+                predict_response=True,
+                predict_var=False,
+                predict_cov_mat=False,
                 y=None,
+                cov_pars=None,
                 group_data_pred=None,
                 group_rand_coef_data_pred=None,
                 gp_coords_pred=None,
                 gp_rand_coef_data_pred=None,
                 cluster_ids_pred=None,
-                predict_cov_mat=False,
-                predict_var=False,
-                cov_pars=None,
                 X_pred=None,
                 use_saved_data=False,
-                predict_response=True,
                 offset=None,
                 offset_pred=None,
                 fixed_effects=None,
@@ -5421,9 +5421,19 @@ class GPModel(object):
 
         Parameters
         ----------
+            predict_response : bool (default=False)
+                If True, the response variable (label) is predicted, otherwise the latent random effects
+            predict_var : bool (default=False)
+                If True, the (posterior) predictive variances are calculated
+            predict_cov_mat : bool (default=False)
+                If True, the (posterior) predictive covariance is calculated in addition to the
+                (posterior) predictive mean
             y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
                 Observed response variable data (can be None, e.g. when the model has been estimated already and
                 the same data is used for making predictions)
+            cov_pars : numpy array or None, optional (default = None)
+                A vector containing covariance parameters which are used if the gp_model has not been trained or
+                if predictions should be made for other parameters than the estimated ones
             group_data_pred : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 The elements are group levels for which predictions are made (if there are any grouped random effects
                 in the model)
@@ -5436,21 +5446,11 @@ class GPModel(object):
             cluster_ids_pred : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data or None, optional (default=None)
                 The elements indicating independent realizations of random effects / Gaussian processes for which
                 predictions are made (set to None if you have not specified this when creating the model)
-            predict_cov_mat : bool (default=False)
-                If True, the (posterior) predictive covariance is calculated in addition to the
-                (posterior) predictive mean
-            predict_var : bool (default=False)
-                If True, the (posterior) predictive variances are calculated
-            cov_pars : numpy array or None, optional (default = None)
-                A vector containing covariance parameters which are used if the gp_model has not been trained or
-                if predictions should be made for other parameters than the estimated ones
             X_pred : numpy array or pandas DataFrame with numeric data or None, optional (default=None)
                 Prediction covariate data for the fixed effects linear regression term (if there is one)
             use_saved_data : bool (default=False)
                 If True, predictions are done using a priory set data via the function 'set_prediction_data'
                 (this option is not used by users directly)
-            predict_response : bool (default=False)
-                If True, the response variable (label) is predicted, otherwise the latent random effects
             offset : numpy 1-D array or None, optional (default=None)
                 Additional fixed effects contributions that are added to the linear predictor (= offset).
                 The length of this vector needs to equal the number of training data points.

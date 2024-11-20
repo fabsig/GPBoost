@@ -4,20 +4,33 @@
 \alias{predict.GPModel}
 \title{Make predictions for a \code{GPModel}}
 \usage{
-\method{predict}{GPModel}(object, y = NULL, group_data_pred = NULL,
+\method{predict}{GPModel}(object, predict_response = TRUE,
+  predict_var = FALSE, predict_cov_mat = FALSE, y = NULL,
+  cov_pars = NULL, group_data_pred = NULL,
   group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
-  gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL,
-  predict_cov_mat = FALSE, predict_var = FALSE, cov_pars = NULL,
-  X_pred = NULL, use_saved_data = FALSE, predict_response = TRUE,
-  offset = NULL, offset_pred = NULL, fixed_effects = NULL,
-  fixed_effects_pred = NULL, vecchia_pred_type = NULL,
-  num_neighbors_pred = NULL, ...)
+  gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL,
+  use_saved_data = FALSE, offset = NULL, offset_pred = NULL,
+  fixed_effects = NULL, fixed_effects_pred = NULL,
+  vecchia_pred_type = NULL, num_neighbors_pred = NULL, ...)
 }
 \arguments{
 \item{object}{a \code{GPModel}}
 
+\item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) 
+is predicted, otherwise the latent random effects}
+
+\item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
+predictive variances are calculated}
+
+\item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior) 
+predictive covariance is calculated in addition to the (posterior) predictive mean}
+
 \item{y}{Observed data (can be NULL, e.g. when the model has been estimated 
 already and the same data is used for making predictions)}
+
+\item{cov_pars}{A \code{vector} containing covariance parameters which are used if the 
+\code{GPModel} has not been trained or if predictions should be made for other 
+parameters than the trained ones}
 
 \item{group_data_pred}{A \code{vector} or \code{matrix} with elements being group levels 
 for which predictions are made (if there are grouped random effects in the \code{GPModel})}
@@ -35,24 +48,11 @@ Gaussian process random coefficients (if there are some in the \code{GPModel})}
 random effects / Gaussian processes for which predictions are made 
 (set to NULL if you have not specified this when creating the \code{GPModel})}
 
-\item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior) 
-predictive covariance is calculated in addition to the (posterior) predictive mean}
-
-\item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
-predictive variances are calculated}
-
-\item{cov_pars}{A \code{vector} containing covariance parameters which are used if the 
-\code{GPModel} has not been trained or if predictions should be made for other 
-parameters than the trained ones}
-
 \item{X_pred}{A \code{matrix} with prediction covariate data for the 
 fixed effects linear regression term (if there is one in the \code{GPModel})}
 
 \item{use_saved_data}{A \code{boolean}. If TRUE, predictions are done using 
 a priory set data via the function '$set_prediction_data' (this option is not used by users directly)}
-
-\item{predict_response}{A \code{boolean}. If TRUE, the response variable (label) 
-is predicted, otherwise the latent random effects}
 
 \item{offset}{A \code{numeric} \code{vector} with 
 additional fixed effects contributions that are added to the linear predictor (= offset). 
