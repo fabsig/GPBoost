@@ -1347,6 +1347,7 @@ GPBOOST_C_EXPORT int LGBM_NetworkInitWithFunctions(int num_machines,
 * \param likelihood_additional_param Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t")
 * \param matrix_inversion_method Method which is used for matrix inversion
 * \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
+* \param num_parallel_threads Number of parallel threads for OMP
 * \param[out] out Created REModel
 * \return 0 when succeed, -1 when failure happens
 */
@@ -1377,6 +1378,7 @@ GPBOOST_C_EXPORT int GPB_CreateREModel(int32_t num_data,
     double likelihood_additional_param,
     const char* matrix_inversion_method,
     int seed,
+    int num_parallel_threads,
     REModelHandle* out);
 
 /*!

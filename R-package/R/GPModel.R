@@ -75,6 +75,8 @@
 #' inducing point / predictive process approximation with tapering on the residual process; 
 #' see Gyger, Furrer, and Sigrist (2024) for more details }
 #' }
+#' @param num_parallel_threads An \code{integer} specifying the number of parallel threads for OMP. 
+#' If num_parallel_threads = NULL, all available threads are used
 #' @param cov_fct_taper_range A \code{numeric} specifying the range parameter 
 #' of the Wendland covariance function and Wendland correlation taper function. 
 #' We follow the notation of Bevilacqua et al. (2019, AOS)
@@ -320,6 +322,7 @@ gpb.GPModel <- R6::R6Class(
                           cov_function = "matern",
                           cov_fct_shape = 1.5,
                           gp_approx = "none",
+                          num_parallel_threads = NULL,
                           cov_fct_taper_range = 1.,
                           cov_fct_taper_shape = 1.,
                           num_neighbors = 20L,
@@ -400,6 +403,7 @@ gpb.GPModel <- R6::R6Class(
         ind_points_selection = model_list[["ind_points_selection"]]
         cover_tree_radius = model_list[["cover_tree_radius"]]
         seed = model_list[["seed"]]
+        num_parallel_threads = model_list[["num_parallel_threads"]]
         cluster_ids = model_list[["cluster_ids"]]
         likelihood = model_list[["likelihood"]]
         likelihood_additional_param = model_list[["likelihood_additional_param"]]
@@ -435,6 +439,11 @@ gpb.GPModel <- R6::R6Class(
       }
       private$matrix_inversion_method <- as.character(matrix_inversion_method)
       private$seed <- as.integer(seed)
+      if (!is.null(num_parallel_threads)) {
+        if (num_parallel_threads > 0) {
+          private$num_parallel_threads <- as.integer(num_parallel_threads)
+        }
+      }
       private$likelihood_additional_param <- as.numeric(likelihood_additional_param)
       # Set data for grouped random effects
       group_data_c_str <- NULL
@@ -735,6 +744,7 @@ gpb.GPModel <- R6::R6Class(
         , private$likelihood_additional_param
         , private$matrix_inversion_method
         , private$seed
+        , private$num_parallel_threads
       )
       # Check whether the handle was created properly if it was not stopped earlier by a stop call
       if (gpb.is.null.handle(handle)) {
@@ -1856,6 +1866,7 @@ gpb.GPModel <- R6::R6Class(
       model_list[["ind_points_selection"]] <- private$ind_points_selection
       model_list[["matrix_inversion_method"]] <- private$matrix_inversion_method
       model_list[["seed"]] <- private$seed
+      model_list[["num_parallel_threads"]] <- private$num_parallel_threads
       # Covariate data
       model_list[["has_covariates"]] <- private$has_covariates
       if (private$has_covariates) {
@@ -1992,6 +2003,7 @@ gpb.GPModel <- R6::R6Class(
     cov_function = "matern",
     cov_fct_shape = 1.5,
     gp_approx = "none",
+    num_parallel_threads = -1L,
     cov_fct_taper_range = 1.,
     cov_fct_taper_shape = 1.,
     num_neighbors = 20L,
@@ -2215,6 +2227,7 @@ GPModel <- function(likelihood = "gaussian",
                     cov_function = "matern",
                     cov_fct_shape = 1.5,
                     gp_approx = "none",
+                    num_parallel_threads = NULL,
                     cov_fct_taper_range = 1.,
                     cov_fct_taper_shape = 1.,
                     num_neighbors = 20L,
@@ -2242,6 +2255,7 @@ GPModel <- function(likelihood = "gaussian",
                             , cov_function = cov_function
                             , cov_fct_shape = cov_fct_shape
                             , gp_approx = gp_approx
+                            , num_parallel_threads = num_parallel_threads
                             , cov_fct_taper_range = cov_fct_taper_range
                             , cov_fct_taper_shape = cov_fct_taper_shape
                             , num_neighbors = num_neighbors
@@ -2421,6 +2435,7 @@ fitGPModel <- function(likelihood = "gaussian",
                        cov_function = "matern",
                        cov_fct_shape = 1.5,
                        gp_approx = "none",
+                       num_parallel_threads = NULL,
                        cov_fct_taper_range = 1.,
                        cov_fct_taper_shape = 1.,
                        num_neighbors = 20L,
@@ -2452,6 +2467,7 @@ fitGPModel <- function(likelihood = "gaussian",
                              , cov_function = cov_function
                              , cov_fct_shape = cov_fct_shape
                              , gp_approx = gp_approx
+                             , num_parallel_threads = num_parallel_threads
                              , cov_fct_taper_range = cov_fct_taper_range
                              , cov_fct_taper_shape = cov_fct_taper_shape
                              , num_neighbors = num_neighbors

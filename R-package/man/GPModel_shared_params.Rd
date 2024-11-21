@@ -85,6 +85,9 @@ inducing point / predictive process approximation with tapering on the residual 
 see Gyger, Furrer, and Sigrist (2024) for more details }
 }}
 
+\item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP. 
+If num_parallel_threads = NULL, all available threads are used}
+
 \item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter 
 of the Wendland covariance function and Wendland correlation taper function. 
 We follow the notation of Bevilacqua et al. (2019, AOS)}

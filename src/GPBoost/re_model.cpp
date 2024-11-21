@@ -44,7 +44,8 @@ namespace GPBoost {
 		const char* likelihood,
 		double likelihood_additional_param,
 		const char* matrix_inversion_method,
-		int seed) {
+		int seed,
+		int num_parallel_threads) {
 		string_t cov_fct_str = "none";
 		if (cov_fct != nullptr) {
 			cov_fct_str = std::string(cov_fct);
@@ -99,7 +100,8 @@ namespace GPBoost {
 				likelihood,
 				likelihood_additional_param,
 				matrix_inversion_method,
-				seed));
+				seed,
+				num_parallel_threads));
 			num_cov_pars_ = re_model_sp_->num_cov_par_;
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
@@ -130,7 +132,8 @@ namespace GPBoost {
 				likelihood,
 				likelihood_additional_param,
 				matrix_inversion_method,
-				seed));
+				seed,
+				num_parallel_threads));
 			num_cov_pars_ = re_model_sp_rm_->num_cov_par_;
 		}
 		else {
@@ -161,7 +164,8 @@ namespace GPBoost {
 				likelihood,
 				likelihood_additional_param,
 				matrix_inversion_method,
-				seed));
+				seed,
+				num_parallel_threads));
 			num_cov_pars_ = re_model_den_->num_cov_par_;
 		}
 	}

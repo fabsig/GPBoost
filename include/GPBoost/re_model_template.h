@@ -82,6 +82,7 @@ namespace GPBoost {
 		* \param likelihood_additional_param Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t")
 		* \param matrix_inversion_method Method which is used for matrix inversion
 		* \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
+		* \param num_parallel_threads Number of parallel threads for OMP
 		*/
 		REModelTemplate(data_size_t num_data,
 			const data_size_t* cluster_ids_data,
@@ -109,7 +110,12 @@ namespace GPBoost {
 			const char* likelihood,
 			double likelihood_additional_param,
 			const char* matrix_inversion_method,
-			int seed) {
+			int seed,
+			int num_parallel_threads) {
+			if (num_parallel_threads > 0) {
+				Eigen::setNbThreads(num_parallel_threads);
+				omp_set_num_threads(num_parallel_threads);
+			}
 			CHECK(num_data > 0);
 			num_data_ = num_data;
 			//Initialize RNG

@@ -640,6 +640,7 @@ GPBOOST_C_EXPORT SEXP LGBM_BoosterDumpModel_R(
 * \param likelihood_additional_param Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t")
 * \param matrix_inversion_method Method which is used for matrix inversion
 * \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
+* \param num_parallel_threads Number of parallel threads for OMP
 * \return REModel handle
 */
 GPBOOST_C_EXPORT SEXP GPB_CreateREModel_R(
@@ -669,7 +670,8 @@ GPBOOST_C_EXPORT SEXP GPB_CreateREModel_R(
 	SEXP likelihood,
 	SEXP likelihood_additional_param,
 	SEXP matrix_inversion_method,
-	SEXP seed
+	SEXP seed,
+	SEXP num_parallel_threads
 );
 
 /*!

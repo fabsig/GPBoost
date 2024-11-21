@@ -2711,6 +2711,7 @@ int GPB_CreateREModel(int32_t num_data,
 	double likelihood_additional_param,
 	const char* matrix_inversion_method,
 	int seed,
+	int num_parallel_threads,
 	REModelHandle* out) {
 	API_BEGIN();
 	std::unique_ptr<REModel> ret;
@@ -2740,7 +2741,8 @@ int GPB_CreateREModel(int32_t num_data,
 		likelihood,
 		likelihood_additional_param,
 		matrix_inversion_method,
-		seed));
+		seed,
+		num_parallel_threads));
 	*out = ret.release();
 	API_END();
 }

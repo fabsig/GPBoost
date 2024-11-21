@@ -4032,6 +4032,7 @@ class GPModel(object):
                  cov_function="matern",
                  cov_fct_shape=1.5,
                  gp_approx="none",
+                 num_parallel_threads=None,
                  cov_fct_taper_range=1.,
                  cov_fct_taper_shape=1.,
                  num_neighbors=20,
@@ -4171,6 +4172,8 @@ class GPModel(object):
                         A full scale approximation combining an inducing point / predictive process approximation with
                         tapering on the residual process; see Gyger, Furrer, and Sigrist (2024) for more details
 
+            num_parallel_threads : integer, optional (default=None)
+                The number of parallel threads for OMP. If num_parallel_threads=None, all available threads are used
             cov_fct_taper_range : float, optional (default=1.)
                 Range parameter of the Wendland covariance function and Wendland correlation taper function.
                 We follow the notation of Bevilacqua et al. (2019, AOS)
@@ -4300,6 +4303,7 @@ class GPModel(object):
         self.cov_function = "matern"
         self.cov_fct_shape = 1.5
         self.gp_approx = "none"
+        self.num_parallel_threads = -1
         self.cov_fct_taper_range = 1.
         self.cov_fct_taper_shape = 1.
         self.num_neighbors = 20
@@ -4384,6 +4388,7 @@ class GPModel(object):
             cover_tree_radius = model_dict.get("cover_tree_radius")
             ind_points_selection = model_dict.get("ind_points_selection")
             seed = model_dict.get("seed")
+            num_parallel_threads = model_dict.get("num_parallel_threads")
             if model_dict.get("cluster_ids") is not None:
                 cluster_ids = np.array(model_dict.get("cluster_ids"))
             likelihood = model_dict.get("likelihood")
@@ -4418,6 +4423,9 @@ class GPModel(object):
 
         self.matrix_inversion_method = matrix_inversion_method
         self.seed = seed
+        if num_parallel_threads is not None:
+            if num_parallel_threads > 0:
+                self.num_parallel_threads = num_parallel_threads
         self.likelihood_additional_param = likelihood_additional_param
         # Define default NULL values for calling C function
         group_data_c = ctypes.c_void_p()
@@ -4664,6 +4672,7 @@ class GPModel(object):
             ctypes.c_double(self.likelihood_additional_param),
             c_str(self.matrix_inversion_method),
             ctypes.c_int(self.seed),
+            ctypes.c_int(self.num_parallel_threads),
             ctypes.byref(self.handle)))
 
         # Should we free raw data?
@@ -6075,6 +6084,7 @@ class GPModel(object):
         model_dict["ind_points_selection"] = self.ind_points_selection
         model_dict["matrix_inversion_method"] = self.matrix_inversion_method
         model_dict["seed"] = self.seed
+        model_dict["num_parallel_threads"] = self.num_parallel_threads
         # Covariate data
         model_dict["has_covariates"] = self.has_covariates
         if self.has_covariates:

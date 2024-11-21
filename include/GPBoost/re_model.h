@@ -59,6 +59,7 @@ namespace GPBoost {
 		* \param likelihood_additional_param Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t")
 		* \param matrix_inversion_method Method which is used for matrix inversion
 		* \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
+		* \param num_parallel_threads Number of parallel threads for OMP
 		*/
 		LIGHTGBM_EXPORT REModel(data_size_t num_data,
 			const data_size_t* cluster_ids_data,
@@ -86,7 +87,8 @@ namespace GPBoost {
 			const char* likelihood,
 			double likelihood_additional_param,
 			const char* matrix_inversion_method,
-			int seed);
+			int seed,
+			int num_parallel_threads);
 
 		/*! \brief Destructor */
 		LIGHTGBM_EXPORT ~REModel();
