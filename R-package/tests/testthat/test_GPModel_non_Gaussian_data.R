@@ -2555,7 +2555,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              likelihood = likelihood, y = y, params = params_gp,
                                              gp_approx = "vecchia", num_neighbors = 30, vecchia_ordering = "random",
                                              matrix_inversion_method = inv_method), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.400761, 0.143670))),tolerance_loc_2)
+      cov_pars_exp <- c(0.400761, 0.143670)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_exp)),tolerance_loc_2)
       # Prediction
       coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
       gp_model$set_prediction_data(nsim_var_pred = 10000)
@@ -2575,6 +2576,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       } else{
         expect_lt(abs(nll-nll_exp),0.05)
       }
+      # "vecchia_latent"
+      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                             likelihood = likelihood, y = y, params = params_gp,
+                                             gp_approx = "vecchia_latent", num_neighbors = 30, vecchia_ordering = "random",
+                                             matrix_inversion_method = inv_method), file='NUL')
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_exp)),tolerance_loc_2)
       # Also estimate shape parameter with gradient descent
       params_shape_gp$optimizer_cov <- "gradient_descent"
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 

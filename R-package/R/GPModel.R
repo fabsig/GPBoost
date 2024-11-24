@@ -428,7 +428,7 @@ gpb.GPModel <- R6::R6Class(
         private$model_fitted = model_list[["model_fitted"]]
       }# end !is.null(modelfile) | !is.null(model_list)
       
-      if(likelihood == "gaussian"){
+      if(likelihood == "gaussian" & gp_approx != "vecchia_latent"){
         private$cov_par_names <- c("Error_term")
       }else{
         private$cov_par_names <- c()
@@ -547,7 +547,7 @@ gpb.GPModel <- R6::R6Class(
           }
           if (!is.null(private$drop_intercept_group_rand_effect)) {
             if (sum(private$drop_intercept_group_rand_effect) > 0) {
-              ind_drop <- ((1:private$num_group_re) + (likelihood == "gaussian"))[private$drop_intercept_group_rand_effect]
+              ind_drop <- ((1:private$num_group_re) + (likelihood == "gaussian" & gp_approx != "vecchia_latent"))[private$drop_intercept_group_rand_effect]
               private$cov_par_names <- private$cov_par_names[-ind_drop]
               private$re_comp_names <- private$re_comp_names[-which(private$drop_intercept_group_rand_effect)]
             }
@@ -781,8 +781,8 @@ gpb.GPModel <- R6::R6Class(
       if (gpb.is.null.handle(private$handle)) {
         stop("fit.GPModel: Gaussian process model has not been initialized")
       }
-      if ((private$num_cov_pars == 1L && self$get_likelihood_name() == "gaussian") ||
-          (private$num_cov_pars == 0L && self$get_likelihood_name() != "gaussian")) {
+      if ((private$num_cov_pars == 1L && (self$get_likelihood_name() == "gaussian" & private$gp_approx != "vecchia_latent")) ||
+          (private$num_cov_pars == 0L && (self$get_likelihood_name() != "gaussian" | private$gp_approx == "vecchia_latent"))) {
         stop("fit.GPModel: No random effects (grouped, spatial, etc.) have been defined")
       }
       if (!is.vector(y)) {
@@ -1065,7 +1065,7 @@ gpb.GPModel <- R6::R6Class(
         cov_pars <- optim_pars[1:private$num_cov_pars]
       }
       names(cov_pars) <- private$cov_par_names
-      if (private$params[["std_dev"]] & self$get_likelihood_name() == "gaussian") {
+      if (private$params[["std_dev"]] & self$get_likelihood_name() == "gaussian" & private$gp_approx != "vecchia_latent") {
         cov_pars_std_dev <- optim_pars[1:private$num_cov_pars+private$num_cov_pars]
         cov_pars <- rbind(cov_pars,cov_pars_std_dev)
         rownames(cov_pars) <- c("Param.", "Std. dev.")
@@ -2068,7 +2068,7 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(private$drop_intercept_group_rand_effect)) {
         private$num_cov_pars <- private$num_cov_pars - sum(private$drop_intercept_group_rand_effect)
       }
-      if (likelihood == "gaussian"){
+      if (likelihood == "gaussian" & private$gp_approx != "vecchia_latent"){
         private$num_cov_pars <- private$num_cov_pars + 1L
       }
       storage.mode(private$num_cov_pars) <- "integer"
@@ -2172,7 +2172,7 @@ gpb.GPModel <- R6::R6Class(
       if (likelihood != "gaussian" && "Error_term" %in% private$cov_par_names){
         private$cov_par_names <- private$cov_par_names["Error_term" != private$cov_par_names]
       }
-      if (likelihood == "gaussian" && !("Error_term" %in% private$cov_par_names)){
+      if (likelihood == "gaussian" & private$gp_approx != "vecchia_latent" && !("Error_term" %in% private$cov_par_names)){
         private$cov_par_names <- c("Error_term",private$cov_par_names)
       }
     },

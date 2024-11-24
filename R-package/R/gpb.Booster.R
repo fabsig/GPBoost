@@ -142,7 +142,8 @@ Booster <- R6::R6Class(
             
           } else {
             
-            if (private$gp_model$get_likelihood_name() == "gaussian") {
+            if (private$gp_model$get_likelihood_name() == "gaussian" & 
+                private$gp_model$.__enclos_env__$private$gp_approx != "vecchia_latent") {
               private$residual_loaded_from_file <- save_data[["residual"]]
             } else {
               private$fixed_effect_train_loaded_from_file <- save_data[["fixed_effect_train"]]
@@ -193,7 +194,8 @@ Booster <- R6::R6Class(
             
           } else {
             
-            if (private$gp_model$get_likelihood_name() == "gaussian") {
+            if (private$gp_model$get_likelihood_name() == "gaussian" & 
+                private$gp_model$.__enclos_env__$private$gp_approx != "vecchia_latent") {
               private$residual_loaded_from_file <- save_data[["residual"]]
             } else {
               private$fixed_effect_train_loaded_from_file <- save_data[["fixed_effect_train"]]
@@ -651,7 +653,8 @@ Booster <- R6::R6Class(
                                                   , predcontrib = FALSE
                                                   , header = header
                                                   , reshape = FALSE )
-          if (private$gp_model$get_likelihood_name() == "gaussian") {
+          if (private$gp_model$get_likelihood_name() == "gaussian" & 
+              private$gp_model$.__enclos_env__$private$gp_approx != "vecchia_latent") {
             residual = private$train_set$.__enclos_env__$private$info$label - fixed_effect_train
             save_data[["residual"]] <- as.vector(residual)
           } else {
@@ -763,7 +766,8 @@ Booster <- R6::R6Class(
         response_mean <- NA
         response_var <- NA
         
-        if(private$gp_model$get_likelihood_name() == "gaussian"){
+        if(private$gp_model$get_likelihood_name() == "gaussian" & 
+           private$gp_model$.__enclos_env__$private$gp_approx != "vecchia_latent"){
           
           # Either use raw_data or data loaded from file for determining residual
           if (private$gp_model_prediction_data_loaded_from_file & 

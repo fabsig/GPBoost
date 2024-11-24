@@ -2462,7 +2462,7 @@ class Booster:
                 if save_data.get("raw_data") is not None:
                     self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
                 else:
-                    if self.gp_model._get_likelihood_name() == "gaussian":
+                    if self.gp_model._get_likelihood_name() == "gaussian" and self.gp_model.gp_approx != "vecchia_latent":
                         self.residual_loaded_from_file = np.array(save_data['residual'])
                     else:
                         self.fixed_effect_train_loaded_from_file = np.array(save_data['fixed_effect_train'])
@@ -2491,7 +2491,7 @@ class Booster:
                 if save_data.get("raw_data") is not None:
                     self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
                 else:
-                    if self.gp_model._get_likelihood_name() == "gaussian":
+                    if self.gp_model._get_likelihood_name() == "gaussian" and self.gp_model.gp_approx != "vecchia_latent":
                         self.residual_loaded_from_file = np.array(save_data['residual'])
                     else:
                         self.fixed_effect_train_loaded_from_file = np.array(save_data['fixed_effect_train'])
@@ -2548,7 +2548,7 @@ class Booster:
                     state['train_set'] = Dataset(data=save_data['raw_data']['data'],
                                                  label=save_data['raw_data']['label'])
                 else:
-                    if state['gp_model']._get_likelihood_name() == "gaussian":
+                    if state['gp_model']._get_likelihood_name() == "gaussian" and state['gp_model'].gp_approx != "vecchia_latent":
                         state['residual_loaded_from_file'] = np.array(save_data['residual'])
                     else:
                         state['fixed_effect_train_loaded_from_file'] = np.array(save_data['fixed_effect_train'])
@@ -3315,7 +3315,7 @@ class Booster:
                 fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
                                                        num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                        pred_contrib=False, data_has_header=False, is_reshape=False)
-                if self.gp_model._get_likelihood_name() == "gaussian":  # Gaussian data
+                if self.gp_model._get_likelihood_name() and self.gp_model.gp_approx != "vecchia_latent":  # Gaussian data
                     residual = self.train_set.label - fixed_effect_train
                     save_data['residual'] = residual
                 else:
@@ -3539,7 +3539,7 @@ class Booster:
                 if start_iteration != 0:
                     raise GPBoostError("Cannot use the option 'start_iteration' after loading "
                                        "from file without raw data. Set 'save_raw_data = TRUE' when you save the model")
-            if self.gp_model._get_likelihood_name() == "gaussian":  # Gaussian data
+            if self.gp_model._get_likelihood_name() == "gaussian" and self.gp_model.gp_approx != "vecchia_latent":  # Gaussian data
                 if not has_raw_data and self.gp_model_prediction_data_loaded_from_file:
                     residual = self.residual_loaded_from_file
                 else:
@@ -4321,7 +4321,7 @@ class GPModel(object):
         self.cluster_ids = None
         self.cluster_ids_map_to_int = None
         self.free_raw_data = False
-        if likelihood == "gaussian":
+        if likelihood == "gaussian" and gp_approx != "vecchia_latent":
             self.cov_par_names = ["Error_term"]
         else:
             self.cov_par_names = []
@@ -4514,7 +4514,7 @@ class GPModel(object):
                     self.re_comp_names.append(new_name)
                 if self.drop_intercept_group_rand_effect is not None:
                     if self.drop_intercept_group_rand_effect.sum() > 0:
-                        offset = int(likelihood == "gaussian")
+                        offset = int(likelihood == "gaussian" and gp_approx != "vecchia_latent")
                         for i in np.arange(0, self.num_group_re):
                             if self.drop_intercept_group_rand_effect[i]:
                                 del self.cov_par_names[i + offset]
@@ -4706,7 +4706,7 @@ class GPModel(object):
                             num_par_per_GP * (self.num_gp + self.num_gp_rand_coef)
         if self.drop_intercept_group_rand_effect is not None:
             self.num_cov_pars = self.num_cov_pars - self.drop_intercept_group_rand_effect.sum()
-        if likelihood == "gaussian":
+        if likelihood == "gaussian" and self.gp_approx != "vecchia_latent":
             self.num_cov_pars = self.num_cov_pars + 1
 
     def __update_params(self, params):
@@ -4749,7 +4749,7 @@ class GPModel(object):
         self.__determine_num_cov_pars(likelihood)
         if likelihood != "gaussian" and "Error_term" in self.cov_par_names:
             self.cov_par_names.remove("Error_term")
-        if likelihood == "gaussian" and "Error_term" not in self.cov_par_names:
+        if likelihood == "gaussian" and self.gp_approx != "vecchia_latent" and "Error_term" not in self.cov_par_names:
             self.cov_par_names.insert(0, "Error_term")
 
     def __del__(self):
@@ -4889,8 +4889,8 @@ class GPModel(object):
         if fixed_effects is not None:
             raise GPBoostError("The argument 'fixed_effects' is discontinued. "
                                "Use the renamed equivalent argument 'offset' instead")
-        if ((self.num_cov_pars == 1 and self._get_likelihood_name() == "gaussian") or
-                (self.num_cov_pars == 0 and self._get_likelihood_name() != "gaussian")):
+        if ((self.num_cov_pars == 1 and self._get_likelihood_name() == "gaussian" and self.gp_approx != "vecchia_latent") or
+                (self.num_cov_pars == 0 and (self._get_likelihood_name() != "gaussian" or self.gp_approx == "vecchia_latent"))):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
         y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
                                   convert_to_type=np.float64)
@@ -4976,7 +4976,7 @@ class GPModel(object):
         >>> fixed_effects = X.dot(coef)
         >>> gp_model.neg_log_likelihood(y=y, cov_pars=[1.,1.], fixed_effects=fixed_effects)
         """
-        if ((self.num_cov_pars == 1 and self._get_likelihood_name() == "gaussian") or
+        if ((self.num_cov_pars == 1 and self._get_likelihood_name() == "gaussian" and self.gp_approx != "vecchia_latent") or
                 (self.num_cov_pars == 0 and self._get_likelihood_name() != "gaussian")):
             raise ValueError("No random effects (grouped, spatial, etc.) have been defined")
         y = _format_check_1D_data(y, data_name="y", check_data_type=True, check_must_be_int=False,
@@ -5253,13 +5253,13 @@ class GPModel(object):
                 self.handle,
                 optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
                 ctypes.c_bool(self.params["std_dev"])))
-            if self.params["std_dev"] and self._get_likelihood_name() == "gaussian":
+            if self.params["std_dev"] and self._get_likelihood_name() == "gaussian" and self.gp_approx != "vecchia_latent":
                 cov_pars = np.row_stack((optim_pars[0:self.num_cov_pars],
                                          optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
             else:
                 cov_pars = optim_pars[0:self.num_cov_pars]
         if format_pandas:
-            if self.params["std_dev"] and self._get_likelihood_name() == "gaussian":
+            if self.params["std_dev"] and self._get_likelihood_name() == "gaussian" and self.gp_approx != "vecchia_latent":
                 cov_pars = pd.DataFrame(cov_pars, columns=self.cov_par_names, index=['Param.', 'Std. dev.'])
             else:
                 cov_pars = pd.DataFrame(cov_pars.reshape((1, -1)), columns=self.cov_par_names, index=['Param.'])
