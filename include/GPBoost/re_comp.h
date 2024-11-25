@@ -88,7 +88,6 @@ namespace GPBoost {
 		/*!
 		* \brief Virtual function that calculates the covariance matrix Z*Sigma*Z^T
 		* \return Covariance matrix Z*Sigma*Z^T of this component
-		*   Note that since sigma_ is saved (since it is used in GetZSigmaZt and GetZSigmaZtGrad) we return a pointer and do not write on an input parameter in order to avoid copying
 		*/
 		virtual std::shared_ptr<T_mat> GetZSigmaZt() const = 0;
 
@@ -929,7 +928,8 @@ namespace GPBoost {
 			is_cross_covariance_IP_ = true;
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
-			cov_function_ = std::shared_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering, (int)coords.cols(), true));
+			bool save_distances = false;
+			cov_function_ = std::shared_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering, (int)coords.cols(), save_distances));
 			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			coords_ind_point_ = coords_ind_point;
@@ -954,7 +954,7 @@ namespace GPBoost {
 				coords_ = coords;
 			}
 			num_random_effects_ = (data_size_t)coords_.rows();
-			if (cov_function_->IsIsotropic() || apply_tapering_ || apply_tapering_manually_) {
+			if ((save_distances && cov_function_->IsIsotropic()) || apply_tapering_ || apply_tapering_manually_) {
 				//Calculate distances
 				T_mat dist;
 				if (has_compact_cov_fct_) {//compactly suported covariance
@@ -1199,6 +1199,10 @@ namespace GPBoost {
 			T_mat& sigma) {
 			CHECK(apply_tapering_);
 			(*cov_function_).template MultiplyWendlandCorrelationTaper<T_mat>(dist, sigma, false);
+		}
+
+		const T_mat* GetSigmaPtr() const {
+			return(&sigma_);
 		}
 
 		/*!

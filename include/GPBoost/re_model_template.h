@@ -1534,7 +1534,7 @@ namespace GPBoost {
 					else if (gp_approx_ == "fitc") {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxFITC(y_[cluster_i].data(), y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr, re_comps_ip_[cluster_i][0]->GetZSigmaZt(), chol_fact_sigma_ip_[cluster_i],
-							re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(), fitc_resid_diag_[cluster_i], re_comps_ip_[cluster_i], re_comps_cross_cov_[cluster_i],
+							re_comps_cross_cov_[cluster_i][0]->GetSigmaPtr(), fitc_resid_diag_[cluster_i], re_comps_ip_[cluster_i], re_comps_cross_cov_[cluster_i],
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par,
 							grad_cov_aux_cluster_i.data(), grad_F_cluster_i,
 							grad_cov_aux_cluster_i.data() + num_cov_par_, false, call_for_std_dev_coef);
@@ -1603,7 +1603,7 @@ namespace GPBoost {
 			for (int j = 0; j < num_comps_total_; ++j) {
 				int num_par_comp = re_comps_ip_[cluster_i][j]->num_cov_par_;
 				// sigma_cross_cov
-				std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][j]->GetZSigmaZt();
+				const den_mat_t* cross_cov = re_comps_cross_cov_[cluster_i][j]->GetSigmaPtr();
 				// sigma_ip^-1 * sigma_cross_cov * sigma^-1 * y
 				vec_t sigma_ip_inv_cross_cov_y_aux = chol_fact_sigma_ip_[cluster_i].solve((*cross_cov).transpose() * y_aux_[cluster_i]);
 				// Initialize Matrices
@@ -1624,7 +1624,7 @@ namespace GPBoost {
 				}
 				else if (matrix_inversion_method_ == "iterative") {
 					if (gp_approx_ == "fitc") {
-						Log::REFatal("The iterative methods are not implemented for Predictive Processes. Please use Cholesky.");
+						Log::REFatal("'iterative' methods are not implemented for gp_approx = '%s'. Use 'cholesky' ", gp_approx_.c_str());
 					}
 					// P^-1 * sample vectors
 					if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
@@ -1731,14 +1731,17 @@ namespace GPBoost {
 							FITC_Diag_grad[ii] -= 2 * sigma_ip_inv_sigma_cross_cov.col(ii).dot((*cross_cov_grad).transpose().col(ii))
 								- sigma_ip_inv_sigma_cross_cov.col(ii).dot(sigma_ip_grad_inv_sigma_cross_cov.col(ii));
 						}
+						sigma_ip_inv_sigma_cross_cov.resize(0, 0);
+						sigma_ip_grad_inv_sigma_cross_cov.resize(0, 0);
 						grad_cov_aux_par[first_cov_par + ind_par_[j] - 1 + ipar] -= 0.5 * y_aux_[cluster_i].dot(FITC_Diag_grad.asDiagonal() * y_aux_[cluster_i]) / cov_pars[0];
 						grad_cov_aux_par[first_cov_par + ind_par_[j] - 1 + ipar] += 0.5 * FITC_Diag_grad.dot(fitc_resid_diag_[cluster_i].cwiseInverse());
 						// Derivative of Woodbury Matrix
-						den_mat_t cross_cov_FITC_inv = (*cross_cov).transpose() * fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal();
-						cross_cov_grad_sigma_resid_inv_cross_cov_T = cross_cov_FITC_inv * (*cross_cov_grad);
+						vec_t fitc_resid_diag_I = fitc_resid_diag_[cluster_i].cwiseInverse();
+						cross_cov_grad_sigma_resid_inv_cross_cov_T = (*cross_cov).transpose() * fitc_resid_diag_I.asDiagonal() * (*cross_cov_grad);
 						sigma_woodbury_grad = cross_cov_grad_sigma_resid_inv_cross_cov_T + cross_cov_grad_sigma_resid_inv_cross_cov_T.transpose();
-						sigma_woodbury_grad -= (cross_cov_FITC_inv * FITC_Diag_grad.asDiagonal()) * cross_cov_FITC_inv.transpose();
-
+						fitc_resid_diag_I.array() *= fitc_resid_diag_I.array();
+						fitc_resid_diag_I.array() *= FITC_Diag_grad.array();
+						sigma_woodbury_grad -= (*cross_cov).transpose() * fitc_resid_diag_I.asDiagonal() * (*cross_cov);
 					}
 					// sigma_woodbury^-1 * sigma_woodbury_grad
 					if (matrix_inversion_method_ == "cholesky") {
@@ -2153,7 +2156,7 @@ namespace GPBoost {
 								den_mat_t chol_ip_cross_cov_Z = chol_ip_cross_cov_[cluster_i].transpose() * rand_vec_probe_low_rank_[cluster_i];
 								rand_vec_probe_[cluster_i] = chol_ip_cross_cov_Z + diagonal_approx_preconditioner_[cluster_i].cwiseSqrt().asDiagonal() * rand_vec_probe_P_[cluster_i];
 							}
-							std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
+							const den_mat_t* cross_cov = re_comps_cross_cov_[cluster_i][0]->GetSigmaPtr();
 							std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
 							// Initialize Solution Sigma^-1 (u_1,...,u_t) 
 							solution_for_trace_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
@@ -4701,7 +4704,7 @@ namespace GPBoost {
 						XT_psi_inv_X += BX.transpose() * D_inv_[cluster_i] * BX;
 					}
 					else if (gp_approx_ == "full_scale_tapering" || gp_approx_ == "fitc") {
-						std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
+						const den_mat_t* cross_cov = re_comps_cross_cov_[cluster_i][0]->GetSigmaPtr();
 						if (matrix_inversion_method_ == "cholesky") {
 							if (gp_approx_ == "fitc") {
 								den_mat_t cross_covT_X = (*cross_cov).transpose() * (fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * X_cluster_i);
@@ -5527,11 +5530,11 @@ namespace GPBoost {
 						den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][j]->GetZSigmaZt());
 						sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 						chol_fact_sigma_ip_[cluster_i].compute(sigma_ip_stable);
+						const den_mat_t* cross_cov = re_comps_cross_cov_[cluster_i][j]->GetSigmaPtr();
 						if (gp_approx_ == "fitc") {
-							std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
-							den_mat_t sigma_ip_Ihalf_sigma_cross_covT;
+							den_mat_t sigma_ip_Ihalf_sigma_cross_covT = (*cross_cov).transpose();
 							TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i],
-								(*cross_cov).transpose(), sigma_ip_Ihalf_sigma_cross_covT, false);
+								sigma_ip_Ihalf_sigma_cross_covT, sigma_ip_Ihalf_sigma_cross_covT, false);
 							if (gauss_likelihood_) {
 								fitc_resid_diag_[cluster_i] = vec_t::Ones(re_comps_cross_cov_[cluster_i][0]->GetNumUniqueREs());//add nugget effect variance
 							}
@@ -5547,8 +5550,9 @@ namespace GPBoost {
 						else if (gp_approx_ == "full_scale_tapering") {
 							re_comps_resid_[cluster_i][j]->CalcSigma();
 							// Subtract predictive process covariance
+							chol_ip_cross_cov_[cluster_i] = (*cross_cov).transpose();
 							TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i],
-								(*(re_comps_cross_cov_[cluster_i][j]->GetZSigmaZt())).transpose(), chol_ip_cross_cov_[cluster_i], false);
+								chol_ip_cross_cov_[cluster_i], chol_ip_cross_cov_[cluster_i], false);
 							re_comps_resid_[cluster_i][j]->SubtractPredProcFromSigmaForResidInFullScale(chol_ip_cross_cov_[cluster_i], true);
 							// Apply Taper
 							re_comps_resid_[cluster_i][j]->ApplyTaper();
@@ -5946,7 +5950,7 @@ namespace GPBoost {
 				else if (gp_approx_ == "fitc") {
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxFITC(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, re_comps_ip_[cluster_i][0]->GetZSigmaZt(), chol_fact_sigma_ip_[cluster_i],
-						re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(), fitc_resid_diag_[cluster_i], re_comps_ip_[cluster_i], re_comps_cross_cov_[cluster_i],
+						re_comps_cross_cov_[cluster_i][0]->GetSigmaPtr(), fitc_resid_diag_[cluster_i], re_comps_ip_[cluster_i], re_comps_cross_cov_[cluster_i],
 						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, false);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
@@ -6628,7 +6632,7 @@ namespace GPBoost {
 					}
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLFITC(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, re_comps_ip_[cluster_i][0]->GetZSigmaZt(),
-						chol_fact_sigma_ip_[cluster_i], re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(),
+						chol_fact_sigma_ip_[cluster_i], re_comps_cross_cov_[cluster_i][0]->GetSigmaPtr(),
 						fitc_resid_diag_[cluster_i], mll_cluster_i);
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
@@ -6740,7 +6744,7 @@ namespace GPBoost {
 		void CalcCovFactorFITC_FSA() {
 			for (const auto& cluster_i : unique_clusters_) {
 				// factorize matrix used in Woodbury identity
-				std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
+				const den_mat_t* cross_cov = re_comps_cross_cov_[cluster_i][0]->GetSigmaPtr();
 				den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][0]->GetZSigmaZt());
 				sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 				den_mat_t sigma_woodbury;// sigma_woodbury = sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov or for Preconditioner sigma_ip + cross_cov^T * D^-1 * cross_cov
@@ -6816,7 +6820,7 @@ namespace GPBoost {
 					y_aux_[cluster_i] = B_[cluster_i].transpose() * D_inv_[cluster_i] * B_[cluster_i] * y_[cluster_i];
 				}
 				else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-					std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
+					const den_mat_t* cross_cov = re_comps_cross_cov_[cluster_i][0]->GetSigmaPtr();
 					if (matrix_inversion_method_ == "cholesky") {
 						if (gp_approx_ == "fitc") {
 							vec_t cross_covT_y = (*cross_cov).transpose() * (fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * y_[cluster_i]);
@@ -7251,7 +7255,7 @@ namespace GPBoost {
 						}
 						sigma_resid = re_comps_resid_[cluster_i][j]->GetZSigmaZt();
 					}
-					std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][j]->GetZSigmaZt();
+					const den_mat_t* cross_cov = re_comps_cross_cov_[cluster_i][j]->GetSigmaPtr();
 					den_mat_t sigma_ip_inv_sigma_cross_cov = chol_fact_sigma_ip_[cluster_i].solve((*cross_cov).transpose());
 					int num_par_comp = re_comps_ip_[cluster_i][j]->num_cov_par_;
 					// Inverse of Sigma residual times cross covariance
@@ -8075,7 +8079,7 @@ namespace GPBoost {
 				Log::REFatal("CalcPredFITC_FSA is not implemented when num_comps_total_ > 1");
 			}
 			// Construct components
-			std::shared_ptr<den_mat_t> cross_cov = re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt();
+			const den_mat_t* cross_cov = re_comps_cross_cov_[cluster_i][0]->GetSigmaPtr();
 			den_mat_t sigma_ip_stable = *(re_comps_ip_[cluster_i][0]->GetZSigmaZt());
 			// Cross-covariance between predictions and inducing points C_pm
 			den_mat_t cov_mat_pred_id, cross_dist; // unused dummy variables
@@ -8546,7 +8550,7 @@ namespace GPBoost {
 					fixed_effects_cluster_i_ptr,
 					re_comps_ip_[cluster_i][0]->GetZSigmaZt(),
 					chol_fact_sigma_ip_[cluster_i],
-					re_comps_cross_cov_[cluster_i][0]->GetZSigmaZt(),
+					re_comps_cross_cov_[cluster_i][0]->GetSigmaPtr(),
 					fitc_resid_diag_[cluster_i],
 					cross_cov_pred_ip,
 					has_fitc_correction,

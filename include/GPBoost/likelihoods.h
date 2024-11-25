@@ -2692,7 +2692,7 @@ namespace GPBoost {
 			const double* fixed_effects,
 			const std::shared_ptr<den_mat_t> sigma_ip,
 			const chol_den_mat_t& chol_fact_sigma_ip,
-			const std::shared_ptr<den_mat_t> cross_cov,
+			const den_mat_t* cross_cov,
 			const vec_t& fitc_resid_diag,
 			double& approx_marginal_ll) {
 			int num_ip = (int)((*sigma_ip).rows());
@@ -2719,8 +2719,8 @@ namespace GPBoost {
 			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t Wsqrt_diag(dim_mode_), sigma_ip_inv_cross_cov_T_rhs(num_ip), rhs(dim_mode_), Wsqrt_Sigma_rhs(dim_mode_), vaux(num_ip), vaux2(num_ip), vaux3(dim_mode_), 
-				mode_new(dim_mode_), a_vec_new, DW_plus_I_inv_diag(dim_mode_), a_vec_update, mode_update;//auxiliary variables for updating mode
-			den_mat_t M_aux_Woodbury(num_ip, num_ip), Wsqrt_cross_cov; // = sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
+				mode_new(dim_mode_), a_vec_new, DW_plus_I_inv_diag(dim_mode_), a_vec_update, mode_update, W_times_DW_plus_I_inv_diag;//auxiliary variables for updating mode
+			den_mat_t M_aux_Woodbury(num_ip, num_ip); // = sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
@@ -2733,21 +2733,23 @@ namespace GPBoost {
 					Wsqrt_diag.array() = information_ll_.array().sqrt();
 					DW_plus_I_inv_diag = (information_ll_.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
 					// Calculate Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
-					Wsqrt_cross_cov = Wsqrt_diag.asDiagonal() * (*cross_cov);
 					M_aux_Woodbury = *sigma_ip;
 					M_aux_Woodbury.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
-					M_aux_Woodbury += Wsqrt_cross_cov.transpose() * DW_plus_I_inv_diag.asDiagonal() * Wsqrt_cross_cov;// = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
+					W_times_DW_plus_I_inv_diag = Wsqrt_diag;
+					W_times_DW_plus_I_inv_diag.array() *= W_times_DW_plus_I_inv_diag.array();
+					W_times_DW_plus_I_inv_diag.array() *= DW_plus_I_inv_diag.array();
+					M_aux_Woodbury += (*cross_cov).transpose() * W_times_DW_plus_I_inv_diag.asDiagonal() * (*cross_cov);// = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
 					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
 				}
 				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
 				// Update mode and a_vec_
 				sigma_ip_inv_cross_cov_T_rhs = chol_fact_sigma_ip.solve((*cross_cov).transpose() * rhs);
-				Wsqrt_Sigma_rhs = ((*cross_cov) * sigma_ip_inv_cross_cov_T_rhs) + (fitc_resid_diag.asDiagonal() * rhs);
-				Wsqrt_Sigma_rhs.array() *= Wsqrt_diag.array();//Wsqrt_Sigma_rhs = sqrt(W) * Sigma * rhs
-				vaux = Wsqrt_cross_cov.transpose() * (DW_plus_I_inv_diag.asDiagonal() * Wsqrt_Sigma_rhs);
+				Wsqrt_Sigma_rhs = ((*cross_cov) * sigma_ip_inv_cross_cov_T_rhs) + (fitc_resid_diag.asDiagonal() * rhs);//Sigma * rhs
+				vaux = (*cross_cov).transpose() * (W_times_DW_plus_I_inv_diag.asDiagonal() * Wsqrt_Sigma_rhs);
 				vaux2 = chol_fact_dense_Newton_.solve(vaux);
+				Wsqrt_Sigma_rhs.array() *= Wsqrt_diag.array();//Wsqrt_Sigma_rhs = sqrt(W) * Sigma * rhs
 				// Backtracking line search
-				a_vec_update = DW_plus_I_inv_diag.asDiagonal() * (Wsqrt_Sigma_rhs - Wsqrt_cross_cov * vaux2);
+				a_vec_update = DW_plus_I_inv_diag.asDiagonal() * (Wsqrt_Sigma_rhs - Wsqrt_diag.asDiagonal() * ((*cross_cov) * vaux2));
 				a_vec_update.array() *= Wsqrt_diag.array();
 				a_vec_update.array() *= -1.;
 				a_vec_update.array() += rhs.array();//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
@@ -3605,7 +3607,7 @@ namespace GPBoost {
 			const double* fixed_effects,
 			const std::shared_ptr<den_mat_t> sigma_ip,
 			const chol_den_mat_t& chol_fact_sigma_ip,
-			const std::shared_ptr<den_mat_t> cross_cov,
+			const den_mat_t* cross_cov,
 			const vec_t& fitc_resid_diag,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
@@ -3688,11 +3690,13 @@ namespace GPBoost {
 						fitc_diag_grad += (sigma_ip_inv_cross_cov_T.cwiseProduct(sigma_ip_grad_sigma_ip_inv_cross_cov_T)).colwise().sum();
 						// Derivative of Woodbury matrix
 						den_mat_t sigma_woodbury_grad = sigma_ip_grad;
-						den_mat_t cross_cov_T_fitc_diag_plus_WI_inv = (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal();
-						den_mat_t cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad = cross_cov_T_fitc_diag_plus_WI_inv * (*cross_cov_grad);
+						den_mat_t cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad = (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov_grad);
 						sigma_woodbury_grad += cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad + cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad.transpose();
 						cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad.resize(0, 0);
-						sigma_woodbury_grad -= cross_cov_T_fitc_diag_plus_WI_inv * fitc_diag_grad.asDiagonal() * cross_cov_T_fitc_diag_plus_WI_inv.transpose();
+						vec_t v_aux_grad = fitc_diag_plus_WI_inv;
+						v_aux_grad.array() *= v_aux_grad.array();
+						v_aux_grad.array() *= fitc_diag_grad.array();
+						sigma_woodbury_grad -= (*cross_cov).transpose() * v_aux_grad.asDiagonal() * (*cross_cov);
 						den_mat_t sigma_woodbury_inv_sigma_woodbury_grad = chol_fact_dense_Newton_.solve(sigma_woodbury_grad);
 						// Calculate explicit derivative of approx. mariginal log-likelihood
 						explicit_derivative = -((*cross_cov_grad).transpose() * a_vec_).dot(sigma_ip_inv_cross_cov_T_a_vec) +
@@ -3708,10 +3712,10 @@ namespace GPBoost {
 							SigmaDeriv_first_deriv_ll += sigma_ip_inv_cross_cov_T.transpose() * ((*cross_cov_grad).transpose() * first_deriv_ll_);
 							SigmaDeriv_first_deriv_ll -= sigma_ip_inv_cross_cov_T.transpose() * (sigma_ip_grad_sigma_ip_inv_cross_cov_T * first_deriv_ll_);
 							SigmaDeriv_first_deriv_ll += fitc_diag_grad.asDiagonal() * first_deriv_ll_;
-							vec_t rhs = cross_cov_T_fitc_diag_plus_WI_inv * SigmaDeriv_first_deriv_ll;
+							vec_t rhs = (*cross_cov).transpose() * (fitc_diag_plus_WI_inv.asDiagonal() * SigmaDeriv_first_deriv_ll);
 							vec_t vaux = chol_fact_dense_Newton_.solve(rhs);
 							vec_t d_mode_d_par = WI.asDiagonal() *
-								(fitc_diag_plus_WI_inv.asDiagonal() * SigmaDeriv_first_deriv_ll - cross_cov_T_fitc_diag_plus_WI_inv.transpose() * vaux);
+								(fitc_diag_plus_WI_inv.asDiagonal() * SigmaDeriv_first_deriv_ll - fitc_diag_plus_WI_inv.asDiagonal() * ((*cross_cov) * vaux));
 							cov_grad[par_count] += d_mll_d_mode.dot(d_mode_d_par);
 							////for debugging
 							//if (ipar == 0) {
@@ -4225,7 +4229,7 @@ namespace GPBoost {
 			const double* fixed_effects,
 			const std::shared_ptr<den_mat_t> sigma_ip,
 			const chol_den_mat_t& chol_fact_sigma_ip,
-			const std::shared_ptr<den_mat_t> cross_cov,
+			const den_mat_t* cross_cov,
 			const vec_t& fitc_resid_diag,
 			const den_mat_t& cross_cov_pred_ip,
 			bool has_fitc_correction,
@@ -4251,15 +4255,14 @@ namespace GPBoost {
 			}
 
 			if (calc_pred_cov || calc_pred_var) {
-				den_mat_t Maux_rhs = cross_cov_pred_ip.transpose();
+				den_mat_t woodburry_part_sqrt = cross_cov_pred_ip.transpose();
 				sp_mat_t resid_obs_inv_resid_pred_obs_t;
 				if (has_fitc_correction) {
 					vec_t fitc_diag_plus_WI_inv = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 					resid_obs_inv_resid_pred_obs_t = fitc_diag_plus_WI_inv.asDiagonal() * (fitc_resid_pred_obs.transpose());
-					Maux_rhs -= (*cross_cov).transpose() * resid_obs_inv_resid_pred_obs_t;
+					woodburry_part_sqrt -= (*cross_cov).transpose() * resid_obs_inv_resid_pred_obs_t;
 				}
-				den_mat_t woodburry_part_sqrt;
-				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, Maux_rhs, woodburry_part_sqrt, false);
+				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, woodburry_part_sqrt, woodburry_part_sqrt, false);
 				if (calc_pred_cov) {
 					T_mat Maux;
 					ConvertTo_T_mat_FromDense<T_mat>(woodburry_part_sqrt.transpose() * woodburry_part_sqrt, Maux);

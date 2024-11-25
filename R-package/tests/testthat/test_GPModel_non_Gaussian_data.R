@@ -1748,9 +1748,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                         num_ind_points = n, ind_points_selection = "random")
     expect_lt(abs(gp_model$neg_log_likelihood(y = y, cov_pars = cov_pars_ll) - 
                     gp_model_no_approx$neg_log_likelihood(y = y, cov_pars = cov_pars_ll)),TOLERANCE_STRICT)
-    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", 
+    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", 
                         likelihood = "bernoulli_probit", gp_approx = "fitc", 
-                        num_ind_points  = 50, ind_points_selection = "kmeans++")
+                        num_ind_points  = 50, ind_points_selection = "kmeans++") , file='NUL')
     nll2 <- 63.19375632
     expect_lt(abs(gp_model$neg_log_likelihood(y = y, cov_pars = cov_pars_ll) - nll2),TOLERANCE_STRICT)
     
@@ -1847,9 +1847,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_clus_no_approx_new$var))),TOLERANCE_STRICT)
     
     # Fitc and smaller num_ind_points
-    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
                            y = y, X=X, params = params, gp_approx = "fitc", 
-                           num_ind_points = 50, ind_points_selection = "kmeans++")
+                           num_ind_points = 50, ind_points_selection = "kmeans++") , file='NUL')
     cov_pars_2 <- c(1.7324736196, 0.2309298927)
     coefs_2 <- c(0.295343207, 1.652497060)
     nll_2 <- 48.12118327
@@ -1878,9 +1878,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred_train_no_approx$mu - pred_train_fitc$mu)), 7)
     expect_lt(sum(abs(pred_train_no_approx$var - pred_train_fitc$var)), 5)
     # With duplicate locations
-    gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", likelihood = "bernoulli_probit",
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", likelihood = "bernoulli_probit",
                            y = y_multiple, X=X, params = params_mult, gp_approx = "fitc", 
-                           num_ind_points = 12, ind_points_selection = "kmeans++")
+                           num_ind_points = 12, ind_points_selection = "kmeans++")  , file='NUL')
     cov_pars_2 <- c(5.14508166660, 0.07137513197)
     coefs_2 <- c(1.545233283, 4.393281778)
     nll_2 <- 31.49300336
@@ -1899,9 +1899,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef()) - as.vector(gp_model_NM_no_approx$get_coef()))),TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_NM_exp),TOLERANCE_STRICT_LOWER)
     # Nelder-Mead for fitc and smaller num_ind_points
-    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
                            y = y, X=X, params = params_NM, gp_approx = "fitc", 
-                           num_ind_points = 50, ind_points_selection = "kmeans++")
+                           num_ind_points = 50, ind_points_selection = "kmeans++") , file='NUL')
     cov_pars_NM2 <- c(1.6426189413, 0.2444053821)
     coefs_NM2 <- c(0.249596402, 1.609043132)
     nll_NM2 <- 48.11741695
