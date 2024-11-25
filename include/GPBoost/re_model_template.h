@@ -6708,9 +6708,9 @@ namespace GPBoost {
 					}
 				}
 			}
-			covariance_matrix_has_been_factorized_ = true;
-			if (gauss_likelihood_) {//note: for non-Gaussian likelihoods, a call to 'CalcModePostRandEffCalcMLL' (=finding the mode for the Laplace approximation) is counted as a likelihood evaluation
-				num_ll_evaluations_++;
+			if (gauss_likelihood_) {
+				covariance_matrix_has_been_factorized_ = true;
+				num_ll_evaluations_++;//note: for non-Gaussian likelihoods, a call to 'CalcModePostRandEffCalcMLL' (=finding the mode for the Laplace approximation) is counted as a likelihood evaluation
 			}
 		}//end CalcCovFactor
 
@@ -6819,6 +6819,7 @@ namespace GPBoost {
 		* \param marg_variance The marginal variance. Default = 1.
 		*/
 		void CalcYAux(double marg_variance) {
+			CHECK(gauss_likelihood_);
 			for (const auto& cluster_i : unique_clusters_) {
 				if (y_.find(cluster_i) == y_.end()) {
 					Log::REFatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first ");
@@ -6900,6 +6901,7 @@ namespace GPBoost {
 		* \param also_calculate_ytilde2 If true, y_tilde2 = Z * L^-T * L^-1 * Z^T * y is also calculated
 		*/
 		void CalcYtilde(bool also_calculate_ytilde2) {
+			CHECK(gauss_likelihood_);
 			for (const auto& cluster_i : unique_clusters_) {
 				if (y_.find(cluster_i) == y_.end()) {
 					Log::REFatal("Response variable data (y_) for random effects model has not been set. Call 'SetY' first ");
@@ -6934,6 +6936,7 @@ namespace GPBoost {
 			data_size_t cluster_ind,
 			bool CalcYAux_already_done,
 			bool CalcYtilde_already_done) {
+			CHECK(gauss_likelihood_);
 			yTPsiInvy = 0;
 			std::vector<data_size_t> clusters_iterate;
 			if (all_clusters) {
@@ -6991,6 +6994,7 @@ namespace GPBoost {
 		* \brief Update linear fixed-effect coefficients using generalized least squares (GLS)
 		*/
 		void UpdateCoefGLS() {
+			CHECK(gauss_likelihood_);
 			vec_t y_aux(num_data_);
 			GetYAux(y_aux);
 			den_mat_t XT_psi_inv_X;
@@ -7232,6 +7236,7 @@ namespace GPBoost {
 			bool transf_scale,
 			bool include_error_var,
 			int first_cov_par) {
+			CHECK(gauss_likelihood_);
 			for (const auto& cluster_i : unique_clusters_) {
 				// Hutchinson's Trace estimator
 				// Sample vectors
@@ -7396,6 +7401,7 @@ namespace GPBoost {
 			bool include_error_var,
 			bool use_saved_psi_inv,
 			int first_cov_par) {
+			CHECK(gauss_likelihood_);
 			for (const auto& cluster_i : unique_clusters_) {
 				//Notation used below: M = Sigma^-1 + ZtZ, Sigma = cov(b) b=latent random effects, L=chol(M) i.e. M=LLt, MInv = M^-1 = L^-TL^-1
 				if (!use_saved_psi_inv) {
