@@ -5321,7 +5321,9 @@ namespace GPBoost {
 			std::vector<int> indices;
 			den_mat_t gp_coords_ip_mat;
 			if (ind_points_selection_ == "cover_tree") {
+				Log::REInfo("Starting cover tree algorithm for determining inducing points ");
 				CoverTree(gp_coords_all_unique, cover_tree_radius_, rng_, gp_coords_ip_mat);
+				Log::REInfo("Inducing points have been determined ");
 				num_ind_points = (int)gp_coords_ip_mat.rows();
 			}
 			else if (ind_points_selection_ == "random") {
@@ -5334,7 +5336,9 @@ namespace GPBoost {
 			else if (ind_points_selection_ == "kmeans++") {
 				gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
 				int max_it_kmeans = 1000;
+				Log::REInfo("Starting kmeans++ algorithm for determining inducing points ");
 				kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans);
+				Log::REInfo("Inducing points have been determined ");
 			}
 			else {
 				Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
@@ -6742,7 +6746,7 @@ namespace GPBoost {
 				den_mat_t sigma_woodbury;// sigma_woodbury = sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov or for Preconditioner sigma_ip + cross_cov^T * D^-1 * cross_cov
 				if (matrix_inversion_method_ == "iterative") {
 					if (gp_approx_ == "fitc") {
-						Log::REFatal("The iterative methods are not implemented for Predictive Processes. Please use Cholesky.");
+						Log::REFatal("'iterative' methods are not implemented for gp_approx = '%s'. Use 'cholesky' ", gp_approx_.c_str());
 					}
 					else if (gp_approx_ == "full_scale_tapering") {
 						std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
