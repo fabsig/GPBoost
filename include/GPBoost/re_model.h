@@ -254,7 +254,7 @@ namespace GPBoost {
 		void GetCurrentNegLogLikelihood(double& negll);
 
 		/*!
-		* \brief Calculate gradient and write on input (for Gaussian data, the gradient is Psi^-1*y (=y_aux))
+		* \brief Calculate gradient wrt fixed effects F (for GPBoost algorithm) and write on input (for Gaussian data, the gradient is Psi^-1*y (=y_aux))
 		* \param[out] y Input response data and output gradient written on it. 
 		*		For the GPBoost algorithm for Gaussian data, the input is F - y where F is the fitted value of the ensemble at the training data and y the response data.
 		*		For the GPBoost algorithm for non-Gaussian data, this input is ignored as the response data has been set before.

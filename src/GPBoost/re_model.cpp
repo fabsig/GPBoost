@@ -726,91 +726,13 @@ namespace GPBoost {
 		}
 		CHECK(cov_pars_initialized_);
 		if (matrix_format_ == "sp_mat_t") {
-			//1. Factorize covariance matrix
-			if (calc_cov_factor) {
-				re_model_sp_->SetCovParsComps(cov_pars_);
-				if (re_model_sp_->gauss_likelihood_) {//Gaussian data
-					re_model_sp_->CalcCovFactor(true, 1.);
-				}
-				else {//not gauss_likelihood_
-					if (re_model_sp_->gp_approx_ == "vecchia") {
-						re_model_sp_->CalcCovFactor(true, 1.);
-					}
-					else {
-						re_model_sp_->CalcSigmaComps();
-						re_model_sp_->CalcCovMatrixNonGauss();
-					}
-					re_model_sp_->CalcModePostRandEffCalcMLL(fixed_effects, true);
-				}//end gauss_likelihood_
-			}//end calc_cov_factor
-			//2. Calculate gradient
-			if (re_model_sp_->gauss_likelihood_) {//Gaussian data
-				re_model_sp_->SetY(y);
-				re_model_sp_->CalcYAux(cov_pars_[0]);
-				re_model_sp_->GetYAux(y);
-			}
-			else {//not gauss_likelihood_
-				re_model_sp_->CalcGradFLaplace(y, fixed_effects);
-			}
-		}//end matrix_format_ == "sp_mat_t"
+			re_model_sp_->CalcGradientF(y, fixed_effects, calc_cov_factor, cov_pars_);
+		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
-			//1. Factorize covariance matrix
-			if (calc_cov_factor) {
-				re_model_sp_rm_->SetCovParsComps(cov_pars_);
-				if (re_model_sp_rm_->gauss_likelihood_) {//Gaussian data
-					re_model_sp_rm_->CalcCovFactor(true, 1.);
-				}
-				else {//not gauss_likelihood_
-					if (re_model_sp_rm_->gp_approx_ == "vecchia") {
-						re_model_sp_rm_->CalcCovFactor(true, 1.);
-					}
-					else {
-						re_model_sp_rm_->CalcSigmaComps();
-						re_model_sp_rm_->CalcCovMatrixNonGauss();
-					}
-					re_model_sp_rm_->CalcModePostRandEffCalcMLL(fixed_effects, true);
-				}//end gauss_likelihood_
-			}//end calc_cov_factor
-			//2. Calculate gradient
-			if (re_model_sp_rm_->gauss_likelihood_) {//Gaussian data
-				re_model_sp_rm_->SetY(y);
-				re_model_sp_rm_->CalcYAux(cov_pars_[0]);
-				re_model_sp_rm_->GetYAux(y);
-			}
-			else {//not gauss_likelihood_
-				re_model_sp_rm_->CalcGradFLaplace(y, fixed_effects);
-			}
-		}//end matrix_format_ == "sp_mat_rm_t"
-		else {//matrix_format_ == "den_mat_t"
-			//1. Factorize covariance matrix
-			if (calc_cov_factor) {
-				re_model_den_->SetCovParsComps(cov_pars_);
-				if (re_model_den_->gauss_likelihood_) {//Gaussian data
-					re_model_den_->CalcCovFactor(true, 1.);
-				}
-				else {//not gauss_likelihood_
-					if (re_model_den_->gp_approx_ == "vecchia") {
-						re_model_den_->CalcCovFactor(true, 1.);
-					}
-					else {
-						re_model_den_->CalcSigmaComps();
-						re_model_den_->CalcCovMatrixNonGauss();
-					}
-					re_model_den_->CalcModePostRandEffCalcMLL(fixed_effects, true);
-				}//end gauss_likelihood_
-			}//end calc_cov_factor
-			//2. Calculate gradient
-			if (re_model_den_->gauss_likelihood_) {//Gaussian data
-				re_model_den_->SetY(y);
-				re_model_den_->CalcYAux(cov_pars_[0]);
-				re_model_den_->GetYAux(y);
-			}//end gauss_likelihood_
-			else {//not gauss_likelihood_
-				re_model_den_->CalcGradFLaplace(y, fixed_effects);
-			}
-		}//end not matrix_format_ == "sp_mat_t"
-		if (calc_cov_factor) {
-			covariance_matrix_has_been_factorized_ = true;
+			re_model_sp_rm_->CalcGradientF(y, fixed_effects, calc_cov_factor, cov_pars_);
+		}
+		else {
+			re_model_den_->CalcGradientF(y, fixed_effects, calc_cov_factor, cov_pars_);
 		}
 	}
 

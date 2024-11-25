@@ -2346,6 +2346,48 @@ namespace GPBoost {
 		}//end PrintTraceParameters
 
 		/*!
+		* \brief Calculate gradient wrt fixed effects F (for GPBoost algorithm) and write on input (for Gaussian data, the gradient is Psi^-1*y (=y_aux))
+		* \param[out] y Input response data and output gradient written on it.
+		*		For the GPBoost algorithm for Gaussian data, the input is F - y where F is the fitted value of the ensemble at the training data and y the response data.
+		*		For the GPBoost algorithm for non-Gaussian data, this input is ignored as the response data has been set before.
+		*		The gradient (Psi^-1*y for Gaussian data) is then written on it as output. y needs to be of length num_data_
+		* \param fixed_effects Fixed effects component F of location parameter (only used for non-Gaussian data). For Gaussian data, this is ignored (and can be set to nullptr)
+		* \param calc_cov_factor If true, the covariance matrix is factorized, otherwise the existing factorization is used
+		* \param cov_pars Covariance parameters
+		*/
+		void CalcGradientF(double* y, 
+			const double* fixed_effects, 
+			bool calc_cov_factor,
+			const vec_t& cov_pars) {
+			//1. Factorize covariance matrix
+			if (calc_cov_factor) {
+				SetCovParsComps(cov_pars);
+				if (gauss_likelihood_) {//Gaussian data
+					CalcCovFactor(true, 1.);
+				}
+				else {//not gauss_likelihood_
+					if (gp_approx_ == "vecchia") {
+						CalcCovFactor(true, 1.);
+					}
+					else {
+						CalcSigmaComps();
+						CalcCovMatrixNonGauss();
+					}
+					CalcModePostRandEffCalcMLL(fixed_effects, true);
+				}//end gauss_likelihood_
+			}//end calc_cov_factor
+			//2. Calculate gradient
+			if (gauss_likelihood_) {//Gaussian data
+				SetY(y);
+				CalcYAux(cov_pars[0]);
+				GetYAux(y);
+			}
+			else {//not gauss_likelihood_
+				CalcGradFLaplace(y, fixed_effects);
+			}
+		}// end CalcGradientF
+
+		/*!
 		* \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
 		* \param num_data_pred Number of data points for which predictions are made
 		* \param cluster_ids_data_pred IDs / labels indicating independent realizations of Gaussian processes (same values = same process realization) for which predictions are to be made
