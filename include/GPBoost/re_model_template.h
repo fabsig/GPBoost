@@ -1979,8 +1979,8 @@ namespace GPBoost {
 		void CalcCovFactorOrModeAndNegLL(const vec_t& cov_pars,
 			const double* fixed_effects) {
 			SetCovParsComps(cov_pars);
+			CalcCovFactor(true, 1.);
 			if (gauss_likelihood_) {
-				CalcCovFactor(true, 1.);//Create covariance matrix and factorize it (and also calculate derivatives if Vecchia approximation is used)
 				if (only_grouped_REs_use_woodbury_identity_) {
 					CalcYtilde(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
 				}
@@ -1990,13 +1990,6 @@ namespace GPBoost {
 				EvalNegLogLikelihood(nullptr, cov_pars.data(), nullptr, neg_log_likelihood_, true, true, true, false);
 			}//end gauss_likelihood_
 			else {//not gauss_likelihood_
-				if (gp_approx_ == "vecchia" || gp_approx_ == "fitc") {
-					CalcCovFactor(true, 1.);
-				}
-				else {
-					CalcSigmaComps();
-					CalcCovMatrixNonGauss();
-				}
 				neg_log_likelihood_ = -CalcModePostRandEffCalcMLL(fixed_effects, true);//calculate mode and approximate marginal likelihood
 			}//end not gauss_likelihood_
 		}//end CalcCovFactorOrModeAndNegLL
@@ -2078,6 +2071,7 @@ namespace GPBoost {
 			bool CalcYAux_already_done,
 			bool CalcYtilde_already_done,
 			bool redetermine_neighbors_vecchia) {
+			CHECK(gauss_likelihood_);
 			CHECK(!(CalcYAux_already_done && !CalcCovFactor_already_done));// CalcYAux_already_done && !CalcCovFactor_already_done makes no sense
 			if (fixed_effects != nullptr) {
 				if (y_data == nullptr) {
@@ -2261,6 +2255,7 @@ namespace GPBoost {
 			bool InitializeModeCovMat,
 			bool CalcModePostRandEff_already_done,
 			bool redetermine_neighbors_vecchia) {
+			CHECK(!gauss_likelihood_);
 			if (y_data != nullptr) {
 				SetY(y_data);
 			}
@@ -2288,13 +2283,7 @@ namespace GPBoost {
 							RedetermineNearestNeighborsVecchia(true);//called only if gp_approx_ == "vecchia" and neighbors are selected based on correlations and not distances
 						}
 					}
-					if (gp_approx_ == "vecchia" || gp_approx_ == "fitc") {
-						CalcCovFactor(true, 1.);
-					}
-					else {
-						CalcSigmaComps();
-						CalcCovMatrixNonGauss();
-					}
+					CalcCovFactor(true, 1.);
 				}//end InitializeModeCovMat
 				negll = -CalcModePostRandEffCalcMLL(fixed_effects, true);
 			}//end not CalcModePostRandEff_already_done
@@ -2362,17 +2351,8 @@ namespace GPBoost {
 			//1. Factorize covariance matrix
 			if (calc_cov_factor) {
 				SetCovParsComps(cov_pars);
-				if (gauss_likelihood_) {//Gaussian data
-					CalcCovFactor(true, 1.);
-				}
-				else {//not gauss_likelihood_
-					if (gp_approx_ == "vecchia") {
-						CalcCovFactor(true, 1.);
-					}
-					else {
-						CalcSigmaComps();
-						CalcCovMatrixNonGauss();
-					}
+				CalcCovFactor(true, 1.);
+				if (!gauss_likelihood_) {//not gauss_likelihood_
 					CalcModePostRandEffCalcMLL(fixed_effects, true);
 				}//end gauss_likelihood_
 			}//end calc_cov_factor
@@ -5531,7 +5511,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate covariance matrices of the components
+		* \brief Calculate covariance matrices of the components and some auxiliary quantities for some approximations
 		*/
 		void CalcSigmaComps() {
 			CHECK(gp_approx_ != "vecchia");
@@ -5578,6 +5558,28 @@ namespace GPBoost {
 					}
 				}
 			}
+			if (!gauss_likelihood_ && (gp_approx_ == "none" || gp_approx_ == "tapering")) {
+				// Calculate the covariance matrix 'ZSigmaZt_' if !only_grouped_REs_use_woodbury_identity_ or the inverse covariance matrix 'SigmaI_' if only_grouped_REs_use_woodbury_identity_
+				if (!only_one_grouped_RE_calculations_on_RE_scale_) {//Nothing to calculate if only_one_grouped_RE_calculations_on_RE_scale_
+					if (only_grouped_REs_use_woodbury_identity_) {
+						for (const auto& cluster_i : unique_clusters_) {
+							CalcSigmaIGroupedREsOnly(SigmaI_[cluster_i], cluster_i, true);
+						}
+					}
+					else {
+						for (const auto& cluster_i : unique_clusters_) {
+							if (num_comps_total_ == 1) {//no need to sum up different components
+								ZSigmaZt_[cluster_i] = re_comps_[cluster_i][0]->GetZSigmaZt();
+							}
+							else {
+								T_mat ZSigmaZt;
+								CalcZSigmaZt(ZSigmaZt, cluster_i);
+								ZSigmaZt_[cluster_i] = std::make_shared<T_mat>(ZSigmaZt);
+							}
+						}
+					}
+				}
+			}//end !gauss_likelihood_
 		}//end CalcSigmaComps
 
 		/*!
@@ -6581,32 +6583,6 @@ namespace GPBoost {
 		}//end CalcZSigmaZt
 
 		/*!
-		* \brief Calculate the covariance matrix ZSigmaZt if only_grouped_REs_use_woodbury_identity_==false or the inverse covariance matrix Sigma^-1 if there are only grouped REs i.e. if only_grouped_REs_use_woodbury_identity_==true.
-		*		This function is only used for non-Gaussian likelihoods as in the Gaussian case this needs not be saved
-		*/
-		void CalcCovMatrixNonGauss() {
-			if (!only_one_grouped_RE_calculations_on_RE_scale_) {//Nothing to calculate if only_one_grouped_RE_calculations_on_RE_scale_
-				if (only_grouped_REs_use_woodbury_identity_) {
-					for (const auto& cluster_i : unique_clusters_) {
-						CalcSigmaIGroupedREsOnly(SigmaI_[cluster_i], cluster_i, true);
-					}
-				}
-				else {
-					for (const auto& cluster_i : unique_clusters_) {
-						if (num_comps_total_ == 1) {//no need to sum up different components
-							ZSigmaZt_[cluster_i] = re_comps_[cluster_i][0]->GetZSigmaZt();
-						}
-						else {
-							T_mat ZSigmaZt;
-							CalcZSigmaZt(ZSigmaZt, cluster_i);
-							ZSigmaZt_[cluster_i] = std::make_shared<T_mat>(ZSigmaZt);
-						}
-					}
-				}
-			}
-		}//end CalcCovMatrixNonGauss
-
-		/*!
 		* \brief Calculate the mode of the posterior of the latent random effects and the Laplace-approximated marginal log-likelihood. This function is only used for non-Gaussian likelihoods
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param calc_mll If true the marginal log-likelihood is also calculated (only relevant for gp_approx_ == "vecchia" && matrix_inversion_method_ == "iterative")
@@ -6672,7 +6648,7 @@ namespace GPBoost {
 		}//CalcModePostRandEffCalcMLL
 
 		/*!
-		* \brief Create the covariance matrix Psi and factorize it (either calculate a Cholesky factor or the inverse covariance matrix)
+		* \brief Calculate covariance matrices and, for "gaussian" likelihood, factorize them (either calculate a Cholesky factor or the inverse covariance matrix)
 		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale (only for Vecchia approximation)
 		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if gp_approx_ == "vecchia" and transf_scale == false to transform back, normally this is equal to one, since the variance paramter is modelled separately and factored out)
 		*/
@@ -6683,31 +6659,33 @@ namespace GPBoost {
 			}
 			else {
 				CalcSigmaComps();
-				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-					CalcCovFactorFITC_FSA();
-				}
-				else {
-					for (const auto& cluster_i : unique_clusters_) {
-						if (only_grouped_REs_use_woodbury_identity_) {//Use Woodburry matrix inversion formula: used only if there are only grouped REs
-							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
-								CalcSigmaIGroupedREsOnly(SigmaI_[cluster_i], cluster_i, true);
-								sqrt_diag_SigmaI_plus_ZtZ_[cluster_i] = (SigmaI_[cluster_i].diagonal().array() + ZtZ_[cluster_i].diagonal().array()).sqrt().matrix();
-							}
-							else {
-								sp_mat_t SigmaI;
-								CalcSigmaIGroupedREsOnly(SigmaI, cluster_i, true);
-								T_mat SigmaIplusZtZ = SigmaI + ZtZ_[cluster_i];
-								CalcChol(SigmaIplusZtZ, cluster_i);
-							}
-						}//end only_grouped_REs_use_woodbury_identity_
-						else {//not only_grouped_REs_use_woodbury_identity_
-							T_mat psi;
-							CalcZSigmaZt(psi, cluster_i);
-							CalcChol(psi, cluster_i);
-						}//end not only_grouped_REs_use_woodbury_identity_
+				if (gauss_likelihood_) {
+					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
+						CalcCovFactorFITC_FSA();
 					}
-				}
-			}
+					else {
+						for (const auto& cluster_i : unique_clusters_) {
+							if (only_grouped_REs_use_woodbury_identity_) {//Use Woodburry matrix inversion formula: used only if there are only grouped REs
+								if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
+									CalcSigmaIGroupedREsOnly(SigmaI_[cluster_i], cluster_i, true);
+									sqrt_diag_SigmaI_plus_ZtZ_[cluster_i] = (SigmaI_[cluster_i].diagonal().array() + ZtZ_[cluster_i].diagonal().array()).sqrt().matrix();
+								}
+								else {
+									sp_mat_t SigmaI;
+									CalcSigmaIGroupedREsOnly(SigmaI, cluster_i, true);
+									T_mat SigmaIplusZtZ = SigmaI + ZtZ_[cluster_i];
+									CalcChol(SigmaIplusZtZ, cluster_i);
+								}
+							}//end only_grouped_REs_use_woodbury_identity_
+							else {//not only_grouped_REs_use_woodbury_identity_
+								T_mat psi;
+								CalcZSigmaZt(psi, cluster_i);
+								CalcChol(psi, cluster_i);
+							}//end not only_grouped_REs_use_woodbury_identity_
+						}
+					}
+				}//end gauss_likelihood_
+			}//end gp_approx_ != "vecchia"
 			if (gauss_likelihood_) {
 				covariance_matrix_has_been_factorized_ = true;
 				num_ll_evaluations_++;//note: for non-Gaussian likelihoods, a call to 'CalcModePostRandEffCalcMLL' (=finding the mode for the Laplace approximation) is counted as a likelihood evaluation
@@ -6752,6 +6730,9 @@ namespace GPBoost {
 			}
 		}//end CalcGradientVecchia
 
+		/*!
+		* \brief Calculate cholesky factor of Woodbury matrix for fitc and full scale approximations
+		*/
 		void CalcCovFactorFITC_FSA() {
 			for (const auto& cluster_i : unique_clusters_) {
 				// factorize matrix used in Woodbury identity
@@ -7496,12 +7477,13 @@ namespace GPBoost {
 		}//end CalcFisherInformation_Only_Grouped_REs_Woodbury			
 
 		/*!
-		* \brief Calculate the standard deviations for the MLE of the covariance parameters as the diagonal of the inverse Fisher information (on the orignal scale and not the transformed scale used in the optimization, for Gaussian data only)
+		* \brief Calculate the standard deviations for the MLE of the covariance parameters as the diagonal of the inverse Fisher information (on the orignal scale and not the transformed scale used in the optimization, for "gaussian" likelihood only)
 		* \param cov_pars MLE of covariance parameters
 		* \param[out] std_dev Standard deviations
 		*/
 		void CalcStdDevCovPar(const vec_t& cov_pars,
 			vec_t& std_dev) {
+			CHECK(gauss_likelihood_);
 			SetCovParsComps(cov_pars);
 			CalcCovFactor(false, cov_pars[0]);
 			if (gp_approx_ == "vecchia") {
@@ -7513,7 +7495,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate standard deviations for the MLE of the regression coefficients as the diagonal of the inverse Fisher information (for Gaussian data only)
+		* \brief Calculate standard deviations for the MLE of the regression coefficients as the diagonal of the inverse Fisher information (for "gaussian" likelihood only)
 		* \param cov_pars MLE of covariance parameters
 		* \param X Covariate data for linear fixed-effect
 		* \param[out] std_dev Standard deviations
@@ -7521,6 +7503,7 @@ namespace GPBoost {
 		void CalcStdDevCoef(const vec_t& cov_pars,
 			const den_mat_t& X,
 			vec_t& std_dev) {
+			CHECK(gauss_likelihood_);
 			if ((int)std_dev.size() >= num_data_) {
 				Log::REWarning("Sample size too small to calculate standard deviations for coefficients");
 				for (int i = 0; i < (int)std_dev.size(); ++i) {
@@ -7705,23 +7688,14 @@ namespace GPBoost {
 					if (ShouldRedetermineNearestNeighborsVecchia(true)) {
 						RedetermineNearestNeighborsVecchia(true);//called only if gp_approx_ == "vecchia" and neighbors are selected based on correlations and not distances
 					}
-					if (gauss_likelihood_) {
-						CalcCovFactor(true, 1.);// Create covariance matrix and factorize it
-					}
-					else {//not gauss_likelihood_
+					CalcCovFactor(true, 1.);
+					if (!gauss_likelihood_) {
 						//We reset the initial modes to 0. This is done to avoid that different calls to the prediction function lead to (very small) differences
 						//	as the mode is calculated from different starting values.
 						//	If one is willing to accept these (very) small differences, one could disable this with the advantage of having faster predictions
 						//	as the mode does not need to be found anew.
 						for (const auto& cluster_i : unique_clusters_) {
 							likelihood_[cluster_i]->InitializeModeAvec();
-						}
-						if (gp_approx_ == "vecchia" || gp_approx_ == "fitc") {
-							CalcCovFactor(true, 1.);
-						}
-						else {
-							CalcSigmaComps();
-							CalcCovMatrixNonGauss();
 						}
 						CalcModePostRandEffCalcMLL(fixed_effects_ptr, false);
 					}//end not gauss_likelihood_
