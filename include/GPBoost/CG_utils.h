@@ -83,6 +83,22 @@ namespace GPBoost {
 		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
 		const den_mat_t& Sigma_L_k);
 
+
+	void CGVecchiaLaplaceVecWinvplusSigma_FITC_P(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const int find_mode_it,
+		const double delta_conv,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
+		const den_mat_t* cross_cov,
+		const vec_t& diagonal_approx_inv_preconditioner);
+
+
 	/*!
 	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
 	*		 A linear system A U = rhs is solved, where the rhs is a matrix of dimension nxt of t random column-vectors and 
@@ -156,6 +172,22 @@ namespace GPBoost {
 		const double delta_conv,
 		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
 		const den_mat_t& Sigma_L_k);
+
+	void CGTridiagVecchiaLaplaceWinvplusSigma_FITC_P(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
+		const den_mat_t* cross_cov,
+		const vec_t& diagonal_approx_inv_preconditioner);
 
 	/*!
 	* \brief Fills a given matrix with standard normal RV's.

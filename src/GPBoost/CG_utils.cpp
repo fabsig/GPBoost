@@ -199,7 +199,7 @@ namespace GPBoost {
 					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 				}
-				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
+				Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				return;
 			}
 
@@ -216,6 +216,106 @@ namespace GPBoost {
 			h = z + b * h;
 		}
 	} // end CGVecchiaLaplaceVecSigmaplusWinv
+
+
+	void CGVecchiaLaplaceVecWinvplusSigma_FITC_P(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const int find_mode_it,
+		const double delta_conv,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
+		const den_mat_t* cross_cov,
+		const vec_t& diagonal_approx_inv_preconditioner) {
+
+		p = std::min(p, (int)B_rm.cols());
+
+		CHECK((*cross_cov).rows() == B_rm.cols());
+		CHECK((*cross_cov).rows() == diag_W.size());
+
+		vec_t r, r_old;
+		vec_t z, z_old;
+		vec_t h, v, diag_W_inv, B_invt_u, B_invt_h, B_invt_rhs, Sigma_rhs, W_r;
+		double a, b, r_norm;
+
+		//Avoid numerical instabilites when rhs is de facto 0
+		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+			u.setZero();
+			return;
+		}
+
+		diag_W_inv = diag_W.cwiseInverse();
+
+		//Sigma * rhs, where Sigma = B^(-1) D B^(-T)
+		B_invt_rhs = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rhs);
+		Sigma_rhs = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_rhs);
+
+		//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
+		if (find_mode_it == 0) {
+			u.setZero();
+			//r = Sigma * rhs - (W^(-1) + Sigma) * u
+			r = Sigma_rhs; //since u is 0
+		}
+		else {
+			//r = Sigma * rhs - (W^(-1) + Sigma) * u
+			B_invt_u = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(u);
+			r = Sigma_rhs - (D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_u) + diag_W_inv.cwiseProduct(u));
+		}
+
+		//z = P^(-1) r 
+		W_r = diagonal_approx_inv_preconditioner.asDiagonal() * r;
+		//No case distinction for the brackets since Sigma_L_k is dense
+		z = W_r - diagonal_approx_inv_preconditioner.asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner.solve((*cross_cov).transpose() * W_r));
+
+		h = z;
+		
+		for (int j = 0; j < p; ++j) {
+			//(W^(-1) + Sigma) * h
+			B_invt_h = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(h);
+			v = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_h) + diag_W_inv.cwiseProduct(h);
+
+			a = r.transpose() * z;
+			a /= h.transpose() * v;
+
+			u += a * h;
+			r_old = r;
+			r -= a * v;
+
+			r_norm = r.norm();
+			if (std::isnan(r_norm) || std::isinf(r_norm)) {
+				NA_or_Inf_found = true;
+				return;
+			}
+			if (r_norm < delta_conv || (j + 1) == p) {
+				//u = W^(-1) u
+				u = diag_W_inv.cwiseProduct(u);
+				if ((j + 1) == p) {
+					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
+				}
+				Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
+				return;
+			}
+
+			z_old = z;
+
+			//z = P^(-1) r
+			W_r = diagonal_approx_inv_preconditioner.asDiagonal() * r;
+			//No case distinction for the brackets since Sigma_L_k is dense
+			z = W_r - diagonal_approx_inv_preconditioner.asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner.solve((*cross_cov).transpose() * W_r));
+
+
+
+			b = r.transpose() * z;
+			b /= r_old.transpose() * z_old;
+
+			h = z + b * h;
+		}
+	} // end CGVecchiaLaplaceVecWinvplusSigma_FITC_P
 
 	void CGTridiagVecchiaLaplace(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -469,6 +569,111 @@ namespace GPBoost {
 		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
 	} // end CGTridiagVecchiaLaplaceSigmaplusWinv
+
+
+	void CGTridiagVecchiaLaplaceWinvplusSigma_FITC_P(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
+		const den_mat_t* cross_cov,
+		const vec_t& diagonal_approx_inv_preconditioner) {
+
+		p = std::min(p, (int)num_data);
+
+		den_mat_t B_invt_U(num_data, t), Sigma_Lkt_W_R, B_invt_H(num_data, t), W_R;
+		den_mat_t R(num_data, t), R_old, Z, Z_old, H, V(num_data, t);
+		vec_t v1(num_data), diag_W_inv;
+		vec_t a(t), a_old(t);
+		vec_t b(t), b_old(t);
+		bool early_stop_alg = false;
+		double mean_R_norm;
+
+		diag_W_inv = diag_W.cwiseInverse();
+		U.setZero();
+		v1.setOnes();
+		a.setOnes();
+		b.setZero();
+
+		//R = rhs - (W^(-1) + Sigma) * U
+		R = rhs; //Since U is 0
+
+		//Z = P^(-1) R 
+		W_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
+		//No case distinction for the brackets since Sigma_L_k is dense
+		Z = W_R - diagonal_approx_inv_preconditioner.asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner.solve((*cross_cov).transpose() * W_R));
+
+		H = Z;
+
+		for (int j = 0; j < p; ++j) {
+			//V = (W^(-1) + Sigma) * H - expensive part of the loop
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				B_invt_H.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(H.col(i));
+			}
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				V.col(i) = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_H.col(i));
+			}
+			V += diag_W_inv.replicate(1, t).cwiseProduct(H);
+
+			a_old = a;
+			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
+
+			U += H * a.asDiagonal();
+			R_old = R;
+			R -= V * a.asDiagonal();
+
+			mean_R_norm = R.colwise().norm().mean();
+
+			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
+				NA_or_Inf_found = true;
+				return;
+			}
+			if (mean_R_norm < delta_conv) {
+				early_stop_alg = true;
+				//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
+			}
+
+			Z_old = Z;
+
+			//Z = P^(-1) R 
+			W_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
+			//No case distinction for the brackets since Sigma_L_k is dense
+			Z = W_R - diagonal_approx_inv_preconditioner.asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner.solve((*cross_cov).transpose() * W_R));
+
+			b_old = b;
+			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+
+			H = Z + H * b.asDiagonal();
+
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < t; ++i) {
+				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
+				if (j > 0) {
+					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
+				}
+			}
+
+			if (early_stop_alg) {
+				for (int i = 0; i < t; ++i) {
+					Tdiags[i].conservativeResize(j + 1, 1);
+					Tsubdiags[i].conservativeResize(j, 1);
+				}
+				return;
+			}
+		}
+		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+	} // end CGTridiagVecchiaLaplaceWinvplusSigma_FITC_P
 
 	void simProbeVect(RNG_t& generator, den_mat_t& Z, const bool rademacher) {
 
