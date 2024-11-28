@@ -1376,8 +1376,6 @@ namespace GPBoost {
 						pars_2_up = pars[2] + delta_step_;
 						pars_2_down = pars[2] - delta_step_;
 						CHECK(pars_2_down > 0.);
-						//DELETE
-						// calculate gradient on original and not on log-scale even if transf_scale == TRUE and just multiply with pars[2] to go to log-scale as the code below is easier (no case distinction for transf_scale in 'GradientSmoothnessMaternEstimateShapesFiniteDifference')
 					}
 					par_aux_up = std::sqrt(2. * pars_2_up) / pars[1];
 					par_aux_down = std::sqrt(2. * pars_2_down) / pars[1];
