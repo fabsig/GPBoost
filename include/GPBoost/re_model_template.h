@@ -176,8 +176,6 @@ namespace GPBoost {
 			num_comps_total_ = 0;
 			//Do some checks for grouped RE components and set meta data (number of components etc.)
 			std::vector<std::vector<re_group_t>> re_group_levels;//Matrix with group levels for the grouped random effects (re_group_levels[j] contains the levels for RE number j)
-			Log::REInfo("Test000");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			if (num_re_group > 0) {
 				if (gp_approx_ != "none") {
 					Log::REFatal("The GP approximation '%s' can currently not be used when there are grouped random effects ", gp_approx_.c_str());
@@ -271,8 +269,6 @@ namespace GPBoost {
 				num_gp_total_ = num_gp_ + num_gp_rand_coef_;
 				num_comps_total_ += num_gp_total_;
 			}
-			Log::REInfo("Test00");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			DetermineSpecialCasesModelsEstimationPrediction();
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gp_approx_ == "vecchia") {
@@ -340,8 +336,6 @@ namespace GPBoost {
 			InitializeDefaultSettings();
 			CheckCompatibilitySpecialOptions();
 			SetMatrixInversionPropertiesLikelihood();
-			Log::REInfo("Test0");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 		}//end REModelTemplate
 
 		/*! \brief Destructor */
@@ -373,8 +367,6 @@ namespace GPBoost {
 		* \param likelihood Likelihood name
 		*/
 		void SetLikelihood(const string_t& likelihood) {
-			Log::REInfo("Test000");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			bool gauss_likelihood_before = gauss_likelihood_;
 			bool only_one_grouped_RE_calculations_on_RE_scale_before = only_one_grouped_RE_calculations_on_RE_scale_;
 			bool only_one_GP_calculations_on_RE_scale_before = only_one_GP_calculations_on_RE_scale_;
@@ -444,8 +436,6 @@ namespace GPBoost {
 			InitializeDefaultSettings();
 			CheckPreconditionerType();
 			SetMatrixInversionPropertiesLikelihood(); 
-			Log::REInfo("Test0000");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 		}//end SetLikelihood
 
 		/*!
@@ -511,8 +501,6 @@ namespace GPBoost {
 			int seed_rand_vec_trace,
 			int piv_chol_rank,
 			bool estimate_aux_pars) {
-			Log::REInfo("Test00000");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			lr_cov_init_ = lr;
 			lr_cov_after_first_iteration_ = lr;
 			lr_cov_after_first_optim_boosting_iteration_ = lr;
@@ -602,8 +590,6 @@ namespace GPBoost {
 				lr_aux_pars_after_first_optim_boosting_iteration_ = lr;
 			}
 			set_optim_config_has_been_called_ = true;
-			Log::REInfo("Test000000");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 		}//end SetOptimConfig
 
 		/*!
@@ -2040,8 +2026,6 @@ namespace GPBoost {
 		*/
 		void CalcCovFactorOrModeAndNegLL(const vec_t& cov_pars,
 			const double* fixed_effects) {
-			Log::REInfo("Test111");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			SetCovParsComps(cov_pars);
 			CalcCovFactor(true, 1.);
 			if (gauss_likelihood_) {
@@ -5355,8 +5339,6 @@ namespace GPBoost {
 			std::vector<std::shared_ptr<RECompGP<T_mat>>>& re_comps_resid_cluster_i,
 			bool for_prediction_new_cluster,
 			bool for_fitc_preconditioner) {
-			Log::REInfo("Test1");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			int num_ind_points = num_ind_points_;
 			string_t ind_points_selection;
 			if (for_prediction_new_cluster) {
@@ -5369,8 +5351,6 @@ namespace GPBoost {
 			else {
 				ind_points_selection = ind_points_selection_;
 			}
-			Log::REInfo("Test2 %i", num_ind_points);
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			if (gp_approx_ == "fitc") {
 				if (num_data_per_cluster_[cluster_i] < num_ind_points) {
 					Log::REFatal("Cannot have more inducing points than data points for '%s' approximation ", gp_approx_.c_str());
@@ -5389,8 +5369,6 @@ namespace GPBoost {
 				}
 			}
 			den_mat_t gp_coords_all_mat = Eigen::Map<den_mat_t>(gp_coords_all.data(), num_data_per_cluster_[cluster_i], dim_gp_coords_);
-			Log::REInfo("Test1 %g %g %i", gp_coords_all_mat.coeffRef(0,1), gp_coords_all_mat.coeffRef(1, 1), gp_coords_all_mat.rows());
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			// Determine inducing points on unique locataions
 			den_mat_t gp_coords_all_unique;
 			std::vector<int> uniques;//unique points
@@ -5412,8 +5390,6 @@ namespace GPBoost {
 					Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
 				}
 			}
-			Log::REInfo("Test1");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			std::vector<int> indices;
 			den_mat_t gp_coords_ip_mat;
 			if (ind_points_selection == "cover_tree") {
@@ -5439,8 +5415,6 @@ namespace GPBoost {
 			else {
 				Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
 			}
-			Log::REInfo("Test1");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			gp_coords_all_unique.resize(0, 0);
 			std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
 				gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, 
@@ -5462,8 +5436,6 @@ namespace GPBoost {
 			if (num_gp_rand_coef_ > 0) {
 				Log::REFatal("Random coefficients are currently not supported for '%s' approximation ", ind_points_selection_.c_str());
 			}
-			Log::REInfo("Test");
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 		}//end CreateREComponentsFITC_FSA
 
 		/*!
@@ -6762,8 +6734,6 @@ namespace GPBoost {
 		void CalcCovFactor(bool transf_scale,
 			double nugget_var) {
 			if (gp_approx_ == "vecchia") {
-				Log::REInfo("Test2");
-				std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 				CalcCovFactorVecchia(transf_scale, nugget_var);
 				if (cg_preconditioner_type_ == "predictive_process_plus_diagonal" && matrix_inversion_method_ == "iterative") {
 					for (const auto& cluster_i : unique_clusters_) {
@@ -6783,8 +6753,6 @@ namespace GPBoost {
 							re_comps_ip_preconditioner_[cluster_i][j]->CalcSigma();
 							re_comps_cross_cov_preconditioner_[cluster_i][j]->CalcSigma();
 							den_mat_t sigma_ip_stable = *(re_comps_ip_preconditioner_[cluster_i][j]->GetZSigmaZt());
-							Log::REInfo("Test1 %i %i", sigma_ip_stable.rows(), sigma_ip_stable.cols());
-							std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 							sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 							chol_fact_sigma_ip_preconditioner_[cluster_i].compute(sigma_ip_stable);
 							const den_mat_t* cross_cov = re_comps_cross_cov_preconditioner_[cluster_i][j]->GetSigmaPtr();
@@ -6794,13 +6762,9 @@ namespace GPBoost {
 						}
 					}
 				}
-				Log::REInfo("Test3");
-				std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 			}
 			else {
 				CalcSigmaComps();
-				Log::REInfo("Test2");
-				std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 				if (gauss_likelihood_) {
 					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 						if (cg_preconditioner_type_ == "predictive_process_plus_diagonal" && matrix_inversion_method_ == "iterative") {
@@ -6831,8 +6795,6 @@ namespace GPBoost {
 										re_comps_ip_preconditioner_[cluster_i][j]->CalcSigma();
 										re_comps_cross_cov_preconditioner_[cluster_i][j]->CalcSigma();
 										den_mat_t sigma_ip_stable = *(re_comps_ip_preconditioner_[cluster_i][j]->GetZSigmaZt());
-										Log::REInfo("Test1 %i %i", sigma_ip_stable.rows(), sigma_ip_stable.cols());
-										std::this_thread::sleep_for(std::chrono::milliseconds(500));//only for debugging
 										sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 										chol_fact_sigma_ip_preconditioner_[cluster_i].compute(sigma_ip_stable);
 										const den_mat_t* cross_cov = re_comps_cross_cov_preconditioner_[cluster_i][j]->GetSigmaPtr();
