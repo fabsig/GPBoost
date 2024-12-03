@@ -296,7 +296,7 @@ namespace GPBoost {
 						std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
 						CreateREComponentsFITC_FSA(num_data_, data_indices_per_cluster_, cluster_i, gp_coords_data,
 							std::string(cov_fct), cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
-							re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false, false);
+							re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false);
 						re_comps_ip_.insert({ cluster_i, re_comps_ip_cluster_i });
 						re_comps_cross_cov_.insert({ cluster_i, re_comps_cross_cov_cluster_i });
 						re_comps_resid_.insert({ cluster_i, re_comps_resid_cluster_i });
@@ -308,7 +308,7 @@ namespace GPBoost {
 					std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
 					CreateREComponentsFITC_FSA(num_data_, data_indices_per_cluster_, cluster_i, gp_coords_data,
 						std::string(cov_fct), cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
-						re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false, false);
+						re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false);
 					re_comps_ip_.insert({ cluster_i, re_comps_ip_cluster_i });
 					re_comps_cross_cov_.insert({ cluster_i, re_comps_cross_cov_cluster_i });
 					re_comps_resid_.insert({ cluster_i, re_comps_resid_cluster_i });
@@ -2757,7 +2757,7 @@ namespace GPBoost {
 							std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
 							CreateREComponentsFITC_FSA(num_data_pred, data_indices_per_cluster_pred, cluster_i, gp_coords_data_pred,
 								re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
-								re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, true, false);
+								re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, true);
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_ip_cluster_i[j]->SetCovPars(pars);
@@ -5337,19 +5337,10 @@ namespace GPBoost {
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 			std::vector<std::shared_ptr<RECompGP<T_mat>>>& re_comps_resid_cluster_i,
-			bool for_prediction_new_cluster,
-			bool for_fitc_preconditioner) {
+			bool for_prediction_new_cluster) {
 			int num_ind_points = num_ind_points_;
-			string_t ind_points_selection;
 			if (for_prediction_new_cluster) {
 				num_ind_points = std::min(num_ind_points_, num_data_per_cluster_[cluster_i]);
-			}
-			if (for_fitc_preconditioner) {
-				num_ind_points = piv_chol_rank_;
-				ind_points_selection = "kmeans++";
-			}
-			else {
-				ind_points_selection = ind_points_selection_;
 			}
 			if (gp_approx_ == "fitc") {
 				if (num_data_per_cluster_[cluster_i] < num_ind_points) {
@@ -5392,20 +5383,20 @@ namespace GPBoost {
 			}
 			std::vector<int> indices;
 			den_mat_t gp_coords_ip_mat;
-			if (ind_points_selection == "cover_tree") {
+			if (ind_points_selection_ == "cover_tree") {
 				Log::REInfo("Starting cover tree algorithm for determining inducing points ");
 				CoverTree(gp_coords_all_unique, cover_tree_radius_, rng_, gp_coords_ip_mat);
 				Log::REInfo("Inducing points have been determined ");
 				num_ind_points = (int)gp_coords_ip_mat.rows();
 			}
-			else if (ind_points_selection == "random") {
+			else if (ind_points_selection_ == "random") {
 				SampleIntNoReplaceSort((int)gp_coords_all_unique.rows(), num_ind_points, rng_, indices);
 				gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
 				for (int j = 0; j < num_ind_points; ++j) {
 					gp_coords_ip_mat.row(j) = gp_coords_all_unique.row(indices[j]);
 				}
 			}
-			else if (ind_points_selection == "kmeans++") {
+			else if (ind_points_selection_ == "kmeans++") {
 				gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
 				int max_it_kmeans = 1000;
 				Log::REInfo("Starting kmeans++ algorithm for determining inducing points ");
@@ -5427,7 +5418,7 @@ namespace GPBoost {
 			re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
 				gp_coords_all_mat, gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, false, false, only_one_GP_calculations_on_RE_scale_)));
 			has_duplicates_coords_ = only_one_GP_calculations_on_RE_scale_;
-			if (gp_approx_ == "full_scale_tapering" && !for_fitc_preconditioner) {
+			if (gp_approx_ == "full_scale_tapering") {
 				re_comps_resid_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 					gp_coords_all_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
 					true, true, true, false, false, true)));
@@ -6741,11 +6732,50 @@ namespace GPBoost {
 						std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 						std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 						std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
-						CreateREComponentsFITC_FSA(num_data_, data_indices_per_cluster_, cluster_i, gp_coords_data_,
-							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
-							re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false, true);
+
+
+						int num_ind_points = piv_chol_rank_;
+						if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
+								Log::REFatal("Need to have less inducing points than data points for '%s' approximation ", gp_approx_.c_str());
+						}
+						den_mat_t gp_coords_all_mat = re_comp_gp_clus0->GetCoords();
+						// Determine inducing points on unique locataions
+						den_mat_t gp_coords_all_unique;
+						std::vector<int> uniques;//unique points
+						std::vector<int> unique_idx;//not used
+						DetermineUniqueDuplicateCoordsFast(gp_coords_all_mat, num_data_per_cluster_[cluster_i], uniques, unique_idx);
+						if ((data_size_t)uniques.size() == num_data_per_cluster_[cluster_i]) {//no multiple observations at the same locations -> no incidence matrix needed
+							gp_coords_all_unique = gp_coords_all_mat;
+						}
+						else {//there are multiple observations at the same locations
+							gp_coords_all_unique = gp_coords_all_mat(uniques, Eigen::all);
+							if ((int)gp_coords_all_unique.rows() < num_ind_points) {
+								Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
+							}
+						}
+						std::vector<int> indices;
+						den_mat_t gp_coords_ip_mat;
+						gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
+						int max_it_kmeans = 1000;
+						Log::REInfo("Starting kmeans++ algorithm for determining inducing points ");
+						kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans);
+						Log::REInfo("Inducing points have been determined ");
+						gp_coords_all_unique.resize(0, 0);
+						std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
+							gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+							false, false, true, false, false, true));
+						if (gp_ip->HasDuplicatedCoords()) {
+							Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
+						}
+						re_comps_ip_cluster_i.push_back(gp_ip);
+						only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;
+						re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
+							gp_coords_all_mat, gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(), 
+							false, false, only_one_GP_calculations_on_RE_scale_)));
+						has_duplicates_coords_ = only_one_GP_calculations_on_RE_scale_;
 						re_comps_ip_preconditioner_.insert({ cluster_i, re_comps_ip_cluster_i });
 						re_comps_cross_cov_preconditioner_.insert({ cluster_i, re_comps_cross_cov_cluster_i });
+
 						vec_t pars = re_comp_gp_clus0->CovPars();
 						for (int j = 0; j < num_comps_total_; ++j) {
 							re_comps_ip_preconditioner_[cluster_i][j]->SetCovPars(pars);
@@ -6785,9 +6815,47 @@ namespace GPBoost {
 									std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 									std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 									std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
-									CreateREComponentsFITC_FSA(num_data_, data_indices_per_cluster_, cluster_i, gp_coords_data_,
-										re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
-										re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false, true);
+									int num_ind_points = piv_chol_rank_;
+									if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
+										Log::REFatal("Need to have less inducing points than data points for '%s' approximation ", gp_approx_.c_str());
+									}
+									den_mat_t gp_coords_all_mat = re_comp_gp_clus0->GetCoords();
+									// Determine inducing points on unique locataions
+									den_mat_t gp_coords_all_unique;
+									std::vector<int> uniques;//unique points
+									std::vector<int> unique_idx;//not used
+									DetermineUniqueDuplicateCoordsFast(gp_coords_all_mat, num_data_per_cluster_[cluster_i], uniques, unique_idx);
+									if ((data_size_t)uniques.size() == num_data_per_cluster_[cluster_i]) {//no multiple observations at the same locations -> no incidence matrix needed
+										gp_coords_all_unique = gp_coords_all_mat;
+									}
+									else {//there are multiple observations at the same locations
+										gp_coords_all_unique = gp_coords_all_mat(uniques, Eigen::all);
+										if ((int)gp_coords_all_unique.rows() < num_ind_points) {
+											Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
+										}
+									}
+									std::vector<int> indices;
+									den_mat_t gp_coords_ip_mat;
+									gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
+									int max_it_kmeans = 1000;
+									Log::REInfo("Starting kmeans++ algorithm for determining inducing points ");
+									kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans);
+									Log::REInfo("Inducing points have been determined ");
+									gp_coords_all_unique.resize(0, 0);
+									std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
+										gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+										false, false, true, false, false, true));
+									if (gp_ip->HasDuplicatedCoords()) {
+										Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
+									}
+									re_comps_ip_cluster_i.push_back(gp_ip);
+									only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;
+									re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
+										gp_coords_all_mat, gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+										false, false, only_one_GP_calculations_on_RE_scale_)));
+									has_duplicates_coords_ = only_one_GP_calculations_on_RE_scale_;
+									re_comps_ip_preconditioner_.insert({ cluster_i, re_comps_ip_cluster_i });
+									re_comps_cross_cov_preconditioner_.insert({ cluster_i, re_comps_cross_cov_cluster_i });
 									re_comps_ip_preconditioner_.insert({ cluster_i, re_comps_ip_cluster_i });
 									re_comps_cross_cov_preconditioner_.insert({ cluster_i, re_comps_cross_cov_cluster_i });
 									vec_t pars = re_comp_gp_clus0->CovPars();
