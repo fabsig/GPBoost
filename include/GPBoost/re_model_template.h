@@ -6755,9 +6755,10 @@ namespace GPBoost {
 							den_mat_t sigma_ip_stable = *(re_comps_ip_preconditioner_[cluster_i][j]->GetZSigmaZt());
 							sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 							chol_fact_sigma_ip_preconditioner_[cluster_i].compute(sigma_ip_stable);
-							const den_mat_t* cross_cov = re_comps_cross_cov_preconditioner_[cluster_i][j]->GetSigmaPtr();
-							Log::REInfo("dim %i %i %i %i", sigma_ip_stable.rows(), sigma_ip_stable.cols, (*cross_cov).cols(), (*cross_cov).rows());
-							chol_ip_cross_cov_preconditioner_[cluster_i] = (*cross_cov).transpose();
+							const den_mat_t* cross_cov_p = re_comps_cross_cov_preconditioner_[cluster_i][0]->GetSigmaPtr();
+							Log::REInfo("dim %i %i %i %i", sigma_ip_stable.rows(), sigma_ip_stable.cols(),
+								(int)(*cross_cov_p).cols(), (int)(*cross_cov_p).rows());
+							chol_ip_cross_cov_preconditioner_[cluster_i] = (*cross_cov_p).transpose();
 							TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_preconditioner_[cluster_i],
 								chol_ip_cross_cov_preconditioner_[cluster_i], chol_ip_cross_cov_preconditioner_[cluster_i], false);
 						}
