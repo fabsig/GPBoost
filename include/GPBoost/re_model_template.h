@@ -6898,7 +6898,7 @@ namespace GPBoost {
 								diagonal_approx_preconditioner_[cluster_i] = vec_t::Ones(re_comps_cross_cov_preconditioner_[cluster_i][0]->GetNumUniqueREs());//add nugget effect variance
 								diagonal_approx_preconditioner_[cluster_i].array() += sigma_ip_stable_preconditioner.coeffRef(0, 0);
 #pragma omp parallel for schedule(static)
-								for (int ii = 0; ii < re_comps_cross_cov_preconditioner_[cluster_i][0]->GetNumUniqueREs(); ++ii) {
+								for (int ii = 0; ii < diagonal_approx_preconditioner_[cluster_i].size(); ++ii) {
 									diagonal_approx_preconditioner_[cluster_i][ii] -= chol_ip_cross_cov_preconditioner_[cluster_i].col(ii).array().square().sum();
 								}
 							}

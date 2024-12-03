@@ -2564,7 +2564,7 @@ namespace GPBoost {
 									Log::REInfo("Calculate FITC Preconditioner2");
 									diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
 #pragma omp parallel for schedule(static)
-									for (int ii = 0; ii < sigma_ip_stable.cols(); ++ii) {
+									for (int ii = 0; ii < diagonal_approx_preconditioner_.size(); ++ii) {
 										diagonal_approx_preconditioner_[ii] -= chol_ip_cross_cov.col(ii).array().square().sum();
 									}
 									diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
@@ -4789,7 +4789,7 @@ namespace GPBoost {
 					sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 					diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
 #pragma omp parallel for schedule(static)
-					for (int ii = 0; ii < sigma_ip_stable.cols(); ++ii) {
+					for (int ii = 0; ii < diagonal_approx_preconditioner_.size(); ++ii) {
 						diagonal_approx_preconditioner_[ii] -= chol_ip_cross_cov_.col(ii).array().square().sum();
 					}
 					diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
