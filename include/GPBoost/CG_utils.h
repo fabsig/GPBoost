@@ -353,6 +353,7 @@ namespace GPBoost {
 	template <class T_mat>
 	void CGFSA(const T_mat& sigma_resid,
 		const den_mat_t& sigma_cross_cov,
+		const den_mat_t& sigma_cross_cov_preconditioner,
 		const den_mat_t& chol_ip_cross_cov,
 		const vec_t& rhs,
 		vec_t& u,
@@ -397,9 +398,9 @@ namespace GPBoost {
 			diag_sigma_resid_inv_r = diagonal_approx_inv_preconditioner.asDiagonal() * r; // ??? cwiseProd (TODO)
 
 			//Cmn*D^-1*r
-			sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov.transpose() * diag_sigma_resid_inv_r;
+			sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_r;
 			//P^-1*r using Woodbury Identity
-			z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
+			z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
 
 		}
 		else if (cg_preconditioner_type == "none") {
@@ -436,8 +437,8 @@ namespace GPBoost {
 			//z = P^(-1) r 
 			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
 				diag_sigma_resid_inv_r = diagonal_approx_inv_preconditioner.asDiagonal() * r; // ??? cwiseProd (TODO)
-				sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov.transpose() * diag_sigma_resid_inv_r;
-				z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
+				sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_r;
+				z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
 
 			}
 			else if (cg_preconditioner_type == "none") {
@@ -454,7 +455,7 @@ namespace GPBoost {
 
 			if (early_stop_alg) {
 
-				//Log::REInfo("CGFSA stop after %i CG-Iterations.", j + 1);
+				Log::REInfo("CGFSA stop after %i CG-Iterations.", j + 1);
 
 				return;
 			}
@@ -488,6 +489,7 @@ namespace GPBoost {
 	template <class T_mat>
 	void CGTridiagFSA(const T_mat& sigma_resid,
 		const den_mat_t& sigma_cross_cov,
+		const den_mat_t& sigma_cross_cov_preconditioner,
 		const den_mat_t& chol_ip_cross_cov,
 		const den_mat_t& rhs,
 		std::vector<vec_t>& Tdiags,
@@ -533,9 +535,9 @@ namespace GPBoost {
 			//D^-1*R
 			diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 			//Cmn*D^-1*R
-			sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+			sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
 			//P^-1*R using Woodbury Identity
-			Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+			Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
 
 		}
 		else if (cg_preconditioner_type == "none") {
@@ -575,9 +577,9 @@ namespace GPBoost {
 			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
 				diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 				//Cmn*D^-1*R
-				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
 				//P^-1*R using Woodbury Identity
-				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
 
 			}
 			else if (cg_preconditioner_type == "none") {
@@ -632,6 +634,7 @@ namespace GPBoost {
 	template <class T_mat>
 	void CGFSA_MULTI_RHS(const T_mat& sigma_resid,
 		const den_mat_t& sigma_cross_cov,
+		const den_mat_t& sigma_cross_cov_preconditioner,
 		const chol_den_mat_t& chol_fact_sigma_ip,
 		const den_mat_t& rhs,
 		den_mat_t& U,
@@ -675,9 +678,9 @@ namespace GPBoost {
 			//D^-1*R
 			diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 			//Cmn*D^-1*R
-			sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+			sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
 			//P^-1*R using Woodbury Identity
-			Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+			Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
 
 		}
 		else if (cg_preconditioner_type == "none") {
@@ -719,9 +722,9 @@ namespace GPBoost {
 			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
 				diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 				//Cmn*D^-1*R
-				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
 				//P^-1*R using Woodbury Identity
-				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
 
 			}
 			else if (cg_preconditioner_type == "none") {
