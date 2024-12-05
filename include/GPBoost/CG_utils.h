@@ -95,7 +95,7 @@ namespace GPBoost {
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
-		const den_mat_t* cross_cov,
+		const den_mat_t cross_cov,
 		const vec_t& diagonal_approx_inv_preconditioner);
 
 

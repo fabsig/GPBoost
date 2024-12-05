@@ -6704,7 +6704,6 @@ namespace GPBoost {
 						if (!ind_points_determined_for_preconditioner) {
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
-							std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
 
 
 							int num_ind_points = piv_chol_rank_;
@@ -6778,8 +6777,7 @@ namespace GPBoost {
 							den_mat_t sigma_ip_stable = *(re_comps_ip_preconditioner_[cluster_i][j]->GetZSigmaZt());
 							sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 							chol_fact_sigma_ip_preconditioner_[cluster_i].compute(sigma_ip_stable);
-							const den_mat_t* cross_cov_p = re_comps_cross_cov_preconditioner_[cluster_i][0]->GetSigmaPtr();
-								(int)(*cross_cov_p).cols(), (int)(*cross_cov_p).rows());
+							const den_mat_t* cross_cov_p = re_comps_cross_cov_preconditioner_[cluster_i][j]->GetSigmaPtr();
 							chol_ip_cross_cov_preconditioner_[cluster_i] = (*cross_cov_p).transpose();
 							TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_preconditioner_[cluster_i],
 								chol_ip_cross_cov_preconditioner_[cluster_i], chol_ip_cross_cov_preconditioner_[cluster_i], false);
@@ -6795,10 +6793,8 @@ namespace GPBoost {
 							for (const auto& cluster_i : unique_clusters_) {
 								re_comps_ip_preconditioner_[cluster_i] = re_comps_ip_[cluster_i];
 								re_comps_cross_cov_preconditioner_[cluster_i] = re_comps_cross_cov_[cluster_i];
-								for (int j = 0; j < num_comps_total_; ++j) {
-									chol_fact_sigma_ip_preconditioner_[cluster_i] = chol_fact_sigma_ip_[cluster_i];
-									chol_ip_cross_cov_preconditioner_[cluster_i] = chol_ip_cross_cov_[cluster_i];
-								}
+								chol_fact_sigma_ip_preconditioner_[cluster_i] = chol_fact_sigma_ip_[cluster_i];
+								chol_ip_cross_cov_preconditioner_[cluster_i] = chol_ip_cross_cov_[cluster_i];
 							}
 						}
 						CalcCovFactorFITC_FSA();

@@ -229,13 +229,13 @@ namespace GPBoost {
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
-		const den_mat_t* cross_cov,
+		const den_mat_t cross_cov,
 		const vec_t& diagonal_approx_inv_preconditioner) {
 
 		p = std::min(p, (int)B_rm.cols());
 
-		CHECK((*cross_cov).rows() == B_rm.cols());
-		CHECK((*cross_cov).rows() == diag_W.size());
+		CHECK((cross_cov).rows() == B_rm.cols());
+		CHECK((cross_cov).rows() == diag_W.size());
 
 		vec_t r, r_old;
 		vec_t z, z_old;
@@ -269,7 +269,7 @@ namespace GPBoost {
 		//z = P^(-1) r 
 		W_r = diagonal_approx_inv_preconditioner.asDiagonal() * r;
 		//No case distinction for the brackets since Sigma_L_k is dense
-		z = W_r - diagonal_approx_inv_preconditioner.asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner.solve((*cross_cov).transpose() * W_r));
+		z = W_r - diagonal_approx_inv_preconditioner.asDiagonal() * ((cross_cov) * chol_fact_woodbury_preconditioner.solve((cross_cov).transpose() * W_r));
 
 		h = z;
 		
@@ -306,7 +306,7 @@ namespace GPBoost {
 			//z = P^(-1) r
 			W_r = diagonal_approx_inv_preconditioner.asDiagonal() * r;
 			//No case distinction for the brackets since Sigma_L_k is dense
-			z = W_r - diagonal_approx_inv_preconditioner.asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner.solve((*cross_cov).transpose() * W_r));
+			z = W_r - diagonal_approx_inv_preconditioner.asDiagonal() * ((cross_cov) * chol_fact_woodbury_preconditioner.solve((cross_cov).transpose() * W_r));
 
 
 
