@@ -14,7 +14,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                          cg_max_num_it = 1000,
                                          cg_max_num_it_tridiag = 1000,
                                          num_rand_vec_trace = 1000,
-                                         reuse_rand_vec_trace = T)
+                                         reuse_rand_vec_trace = TRUE)
   OPTIM_PARAMS_GRAD_DESC <- list(optimizer_cov = "gradient_descent",
                                  lr_cov = 0.1, use_nesterov_acc = TRUE,
                                  acc_rate_cov = 0.5, delta_rel_conv = 1E-6,

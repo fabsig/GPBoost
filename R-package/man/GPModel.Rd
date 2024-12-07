@@ -90,6 +90,8 @@ modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024)
 \item{"full_scale_tapering": A full scale approximation combining an 
 inducing point / predictive process approximation with tapering on the residual process; 
 see Gyger, Furrer, and Sigrist (2024) for more details }
+\item{"vecchia_latent": similar as "vecchia" but a Vecchia approximation is applied to the latent Gaussian process 
+for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecchia_latent" are equivalent }
 }}
 
 \item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP. 

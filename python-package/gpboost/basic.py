@@ -4146,7 +4146,7 @@ class GPModel(object):
 
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance).
-                This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
+                This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
             gp_approx : string, optional (default="none")
                 Specifies the use of a large data approximation for Gaussian processes. Available options:
 
@@ -4171,6 +4171,11 @@ class GPModel(object):
 
                         A full scale approximation combining an inducing point / predictive process approximation with
                         tapering on the residual process; see Gyger, Furrer, and Sigrist (2024) for more details
+
+                    - "vecchia_latent":
+
+                        Similar as "vecchia" but a Vecchia approximation is applied to the latent Gaussian process 
+                        for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecchia_latent" are equivalent
 
             num_parallel_threads : integer, optional (default=None)
                 The number of parallel threads for OMP. If num_parallel_threads=None, all available threads are used
@@ -4858,15 +4863,17 @@ class GPModel(object):
                 - cg_preconditioner_type: string, optional
                     Type of preconditioner used for conjugate gradient algorithms.
 
-                        - Options for non-Gaussian likelihoods and gp_approx = "vecchia":
+                        - Options for likelihood != "gaussian" and gp_approx == "vecchia" or likelihood == "gaussian" and gp_approx == "vecchia_latent":
 
-                            - "Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
+                            - "vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
 
-                            - "piv_chol_on_Sigma" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
+                            - "pivoted_cholesky" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
 
-                        - Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering":
+                            - "incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 
 
-                            - "predictive_process_plus_diagonal" (= default): predictive process preconditiioner
+                        - Options for likelihood == "gaussian" and gp_approx == "full_scale_tapering":
+
+                            - "fitc" (= default): modified predictive process preconditioner
 
                             - "none": no preconditioner
 
@@ -5107,15 +5114,17 @@ class GPModel(object):
                 - cg_preconditioner_type: string, optional
                     Type of preconditioner used for conjugate gradient algorithms.
 
-                        - Options for non-Gaussian likelihoods and gp_approx = "vecchia":
+                        - Options for likelihood != "gaussian" and gp_approx == "vecchia" or likelihood == "gaussian" and gp_approx == "vecchia_latent":
 
-                            - "Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
+                            - "vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
 
-                            - "piv_chol_on_Sigma" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
+                            - "pivoted_cholesky" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
 
-                        - Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering":
+                            - "incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 
 
-                            - "predictive_process_plus_diagonal" (= default): predictive process preconditiioner
+                        - Options for likelihood == "gaussian" and gp_approx == "full_scale_tapering":
+
+                            - "fitc" (= default): modified predictive process preconditioner
 
                             - "none": no preconditioner
 
