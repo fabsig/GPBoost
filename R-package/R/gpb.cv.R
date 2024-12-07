@@ -1069,6 +1069,7 @@ gpb.grid.search.tune.parameters <- function(param_grid
   best_params <- list()
   best_iter <- nrounds
   counter_num_comb <- 1
+  has_found_better_score <- FALSE
   for (param_comb_number in try_param_combs) {
     param_comb = get.param.combination(param_comb_number=param_comb_number,
                                        param_grid=param_grid)
@@ -1116,10 +1117,12 @@ gpb.grid.search.tune.parameters <- function(param_grid
       if (higher_better) {
         if (cvbst$best_score > best_score) {
           current_score_is_better <- TRUE
+          has_found_better_score <- TRUE
         }
       } else {
         if (cvbst$best_score < best_score) {
           current_score_is_better <- TRUE
+          has_found_better_score <- TRUE
         }
       }
     }
@@ -1142,8 +1145,8 @@ gpb.grid.search.tune.parameters <- function(param_grid
     }
     counter_num_comb <- counter_num_comb + 1L
   }
-  if (!current_score_is_better) {
-    warning("Found no parameter combination with a non-NA score ")
+  if (!has_found_better_score) {
+    warning("Found no parameter combination with a score that is not NA or Inf ")
   }
   if (return_all_combinations) {
     return(list(best_params=best_params, best_iter=best_iter, best_score=best_score, all_combinations=all_combinations))
