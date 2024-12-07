@@ -5144,11 +5144,13 @@ namespace GPBoost {
 			else if (type == string_t("piv_chol") || type == string_t("pivoted_cholesky")) {
 				return "piv_chol_on_Sigma";
 			}
-			else if (type == string_t("ZIRC") || type == string_t("zirc") || 
-				type == string_t("ZIC") || type == string_t("zic") || 
+			else if (type == string_t("ZIRC") || type == string_t("zirc") ||
+				type == string_t("ZIC") || type == string_t("zic") ||
 				type == string_t("incomplete_cholesky") ||
-				"zero_fillin_incomplete_cholesky" || "zero_fill_in_incomplete_cholesky" || "zero_fill-in_incomplete_cholesky" || "zero_infill_incomplete_cholesky" ||
-				"zero_fillin_incomplete_reverse_cholesky" || "zero_fill_in_incomplete_reverse_cholesky" || "zero_fill-in_incomplete_reverse_cholesky" || "zero_infill_incomplete_reverse_cholesky") {
+				type == string_t("zero_fillin_incomplete_cholesky") || type == string_t("zero_fill_in_incomplete_cholesky") || 
+				type == string_t("zero_fill-in_incomplete_cholesky") || type == string_t("zero_infill_incomplete_cholesky") ||
+				type == string_t("zero_fillin_incomplete_reverse_cholesky") || type == string_t("zero_fill_in_incomplete_reverse_cholesky") || 
+				type == string_t("zero_fill-in_incomplete_reverse_cholesky") || type == string_t("zero_infill_incomplete_reverse_cholesky")) {
 				return "zero_infill_incomplete_cholesky";
 			}
 			else if (type == string_t("FITC") || type == string_t("fitc")) {
