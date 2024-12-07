@@ -157,6 +157,8 @@ tune.pars.bayesian.optimization <- function(search_space
   
   best_score <- 1E99
   if (higher_better) best_score <- -1E99
+  worst_score <- best_score
+  worst_score_init <- worst_score
   best_params <- list()
   best_iter <- nrounds
   counter_num_comb <- 1
@@ -207,19 +209,56 @@ tune.pars.bayesian.optimization <- function(search_space
       if (verbose_eval >= 1L) {
         message(paste0("Trial number ", counter_num_comb, " with the parameters: ", param_comb_str))
       }
-      cvbst <- gpb.cv(data = data, gp_model = gp_model,
-                      params = params_loc, nrounds = nrounds, early_stopping_rounds = early_stopping_rounds, 
-                      folds = folds, nfold = nfold, metric = metric,
-                      verbose = verbose_cv, use_gp_model_for_validation = use_gp_model_for_validation,
-                      ...)
+      tryCatch({
+        cvbst <- gpb.cv(data = data, gp_model = gp_model,
+                        params = params_loc, nrounds = nrounds, early_stopping_rounds = early_stopping_rounds, 
+                        folds = folds, nfold = nfold, metric = metric,
+                        verbose = verbose_cv, use_gp_model_for_validation = use_gp_model_for_validation,
+                        ...)
+      } ,
+      error = function(err) {
+        cvbst <<- list(best_score = worst_score)
+      }
+      ) #end tryCatch
       current_score_is_better <- FALSE
-      if (higher_better) {
-        if (cvbst$best_score > best_score) {
-          current_score_is_better <- TRUE
+      if (is.na(cvbst$best_score) || is.infinite(cvbst$best_score)) {
+        if (counter_num_comb > 1) {
+          # impute current score in case there are NA's Inf's
+          if (higher_better) {
+            cvbst$best_score <- worst_score - 0.2 * (best_score - worst_score)
+          } else {
+            cvbst$best_score <- worst_score + 0.2 * (worst_score - best_score)
+          }
         }
       } else {
-        if (cvbst$best_score < best_score) {
-          current_score_is_better <- TRUE
+        if (higher_better) {
+          if (cvbst$best_score > best_score) {
+            current_score_is_better <- TRUE
+          }
+          # cap current score to avoid very bad values
+          if (counter_num_comb > 1) {
+            if (cvbst$best_score < 100 * worst_score) {
+              cvbst$best_score <- 100 * worst_score
+            } 
+          }
+          # update worst_score
+          if (cvbst$best_score < worst_score || worst_score == worst_score_init) {
+            worst_score <<- cvbst$best_score 
+          }
+        } else {#!higher_better
+          if (cvbst$best_score < best_score) {
+            current_score_is_better <- TRUE
+          }
+          # cap current score to avoid very bad values
+          if (counter_num_comb > 1) {
+            if (cvbst$best_score > 100 * worst_score) {
+              cvbst$best_score <- 100 * worst_score
+            } 
+          }
+          # update worst_score
+          if (cvbst$best_score > worst_score || worst_score == worst_score_init) {
+            worst_score <<- cvbst$best_score
+          }
         }
       }
       if (current_score_is_better) {
@@ -256,6 +295,21 @@ tune.pars.bayesian.optimization <- function(search_space
   run = mbo(obj.fun, control = control, show.info = FALSE)
   best_params[["verbose"]] <- NULL
   
-  return(list(best_params=best_params, best_iter=best_iter, best_score=run$y)) 
+  return(list(best_params=best_params, best_iter=best_iter, best_score=run$y))
+  
+  # tried to use 'impute.y.fun' to solve crash problems, but it did not work (07.12.2024)
+  # if (higher_better) {
+  #   impute.y.fun = function(x, y, opt.path) {
+  #     ys <- getOptPathY(opt.path)
+  #     min(ys) - 0.2 * (max(ys) - min(ys))
+  #   }
+  # } else {
+  #   impute.y.fun = function(x, y, opt.path) {
+  #     ys <- getOptPathY(opt.path)
+  #     max(ys) + 0.2 * (max(ys) - min(ys))
+  #   }
+  # }
+  # impute.y.fun = function(x, y, opt.path) 1 
+  # control = makeMBOControl(impute.y.fun = impute.y.fun)
   
 }

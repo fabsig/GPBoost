@@ -542,6 +542,7 @@ gpb.cv <- function(params = list()
   env$model <- cv_booster
   env$begin_iteration <- begin_iteration
   env$end_iteration <- end_iteration
+  error_in_first_iteration <- FALSE
   
   # Start training model using number of iterations to start and end with
   for (i in seq.int(from = begin_iteration, to = end_iteration)) {
@@ -564,33 +565,42 @@ gpb.cv <- function(params = list()
         }
         return(out)
       })
+      
+      # Prepare collection of evaluation results
+      merged_msg <- gpb.merge.cv.result(
+        msg = msg
+        , showsd = showsd
+      )
+      
+      # Write evaluation result in environment
+      env$eval_list <- merged_msg$eval_list
+      
+      # Check for standard deviation requirement
+      if (showsd) {
+        env$eval_err_list <- merged_msg$eval_err_list
+      }
+      
+      # Loop through env
+      for (f in cb$post_iter) {
+        f(env)
+      }
+      
     },
     error = function(err) { 
       message(paste0("Error in boosting iteration ", i,":"))
       message(err)
       env$met_early_stop <- TRUE
+      if (env$iteration == 1) {
+        error_in_first_iteration <<- TRUE
+      }
+      
     })# end tryCatch
     
-    # Prepare collection of evaluation results
-    merged_msg <- gpb.merge.cv.result(
-      msg = msg
-      , showsd = showsd
-    )
-    
-    # Write evaluation result in environment
-    env$eval_list <- merged_msg$eval_list
-    
-    # Check for standard deviation requirement
-    if (showsd) {
-      env$eval_err_list <- merged_msg$eval_err_list
-    }
-    
-    # Loop through env
-    for (f in cb$post_iter) {
-      f(env)
-    }
-    
     # Check for early stopping and break if needed
+    if (error_in_first_iteration) {
+      cv_booster$best_score <- NA
+      return(cv_booster)
+    }
     if (env$met_early_stop) break
     
   }
@@ -1102,13 +1112,15 @@ gpb.grid.search.tune.parameters <- function(param_grid
                     , delete_boosters_folds = TRUE
                     , ...
     )
-    if (higher_better) {
-      if (cvbst$best_score > best_score) {
-        current_score_is_better <- TRUE
-      }
-    } else {
-      if (cvbst$best_score < best_score) {
-        current_score_is_better <- TRUE
+    if (!is.na(cvbst$best_score)) {
+      if (higher_better) {
+        if (cvbst$best_score > best_score) {
+          current_score_is_better <- TRUE
+        }
+      } else {
+        if (cvbst$best_score < best_score) {
+          current_score_is_better <- TRUE
+        }
       }
     }
     if (current_score_is_better) {
@@ -1129,6 +1141,9 @@ gpb.grid.search.tune.parameters <- function(param_grid
       all_combinations[[counter_num_comb]] <- list(params=param_comb, nrounds=cvbst$best_iter, score=cvbst$best_score)
     }
     counter_num_comb <- counter_num_comb + 1L
+  }
+  if (!current_score_is_better) {
+    warning("Found no parameter combination with a non-NA score ")
   }
   if (return_all_combinations) {
     return(list(best_params=best_params, best_iter=best_iter, best_score=best_score, all_combinations=all_combinations))
