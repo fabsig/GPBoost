@@ -130,6 +130,10 @@ tune.pars.bayesian.optimization <- function(search_space
     if (param %in% c('learning_rate', 'shrinkage_rate',
                      'min_gain_to_split', 'min_split_gain',
                      'min_sum_hessian_in_leaf', 'min_sum_hessian_per_leaf', 'min_sum_hessian', 'min_hessian', 'min_child_weight')) {
+      # log-transform values
+      if (search_space[[param]][1] <= 0 || search_space[[param]][2] <= 0) {
+        stop(sprintf("found non-positive values in search_space['%s'], need to use values > 0 ", param))
+      }
       par.set <- c(par.set, makeParamSet(makeNumericParam(paste0("log_",param), lower = log(search_space[[param]][1]), 
                                                           upper = log(search_space[[param]][2]))))# trafo = trafoLog(base=exp(1)) is not helpful
     } else if (param %in% c('lambda_l2', 'reg_lambda', 'lambda',
@@ -143,6 +147,10 @@ tune.pars.bayesian.optimization <- function(search_space
     } else if (param %in% c('num_leaves', 'num_leaf', 'max_leaves', 'max_leaf',
                             'min_data_in_leaf', 'min_data_per_leaf', 'min_data', 'min_child_samples',
                             'max_bin')) {
+      # log-transform values
+      if (search_space[[param]][1] <= 0 || search_space[[param]][2] <= 0) {
+        stop(sprintf("found non-positive values in search_space['%s'], need to use values > 0 ", param))
+      }
       par.set <- c(par.set, makeParamSet(makeNumericParam(paste0("log_",param), lower = log(search_space[[param]][1]), 
                                                           upper = log(search_space[[param]][2]))))
     } else if (param %in% c('max_depth')) {
