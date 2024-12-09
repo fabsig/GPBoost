@@ -159,6 +159,8 @@ tune.pars.bayesian.optimization <- function(search_space
   if (higher_better) best_score <- -1E99
   worst_score <- best_score
   worst_score_init <- worst_score
+  has_found_nonNA_score <- FALSE
+  has_found_two_nonNA_scores <- FALSE
   best_params <- list()
   best_iter <- nrounds
   counter_num_comb <- 1
@@ -217,50 +219,79 @@ tune.pars.bayesian.optimization <- function(search_space
                         ...)
       } ,
       error = function(err) {
-        cvbst <<- list(best_score = worst_score)
+        cvbst <<- list(best_score = worst_score_init)
       }
       ) #end tryCatch
       current_score_is_better <- FALSE
-      if (is.na(cvbst$best_score) || is.infinite(cvbst$best_score)) {
-        if (counter_num_comb > 1) {
-          # impute current score in case there are NA's Inf's
-          if (higher_better) {
-            cvbst$best_score <- worst_score - 0.2 * (best_score - worst_score)
-          } else {
-            cvbst$best_score <- worst_score + 0.2 * (worst_score - best_score)
+      if (is.na(cvbst$best_score) || is.infinite(cvbst$best_score) || cvbst$best_score == worst_score_init) {
+        # impute current score in case there are NA's or Inf's
+        if (higher_better) {
+          if (has_found_two_nonNA_scores) {
+            cvbst$best_score <- worst_score - 1 * (best_score - worst_score)
+          } else if (has_found_nonNA_score) {
+            cvbst$best_score <- worst_score - abs(worst_score)
+          }
+        } else {
+          if (has_found_two_nonNA_scores) {
+            cvbst$best_score <- worst_score + 1 * (worst_score - best_score)
+          } else if (has_found_nonNA_score) {
+            cvbst$best_score <- worst_score + 1 * abs(worst_score)
           }
         }
-      } else {
+        if (has_found_two_nonNA_scores || has_found_nonNA_score) {
+          warning(paste0("Found NA or Inf score in trial ", counter_num_comb, ". This was imputed with ", cvbst$best_score))
+        }
+      } else {# not NA and not Inf
+        score_capped <- FALSE
         if (higher_better) {
           if (cvbst$best_score > best_score) {
             current_score_is_better <- TRUE
           }
           # cap current score to avoid very bad values
-          if (counter_num_comb > 1) {
-            if (cvbst$best_score < 100 * worst_score) {
-              cvbst$best_score <- 100 * worst_score
-            } 
+          if (has_found_two_nonNA_scores) {
+            if (cvbst$best_score < (worst_score - 10 * (best_score - worst_score))) {
+              cvbst$best_score <- worst_score - 10 * (best_score - worst_score)
+              score_capped <- TRUE
+            }
+          } else if (has_found_nonNA_score) {
+            if (cvbst$best_score < (worst_score - 10 * abs(worst_score))) {
+              cvbst$best_score <- worst_score - 10 * abs(worst_score)
+              score_capped <- TRUE
+            }
           }
           # update worst_score
           if (cvbst$best_score < worst_score || worst_score == worst_score_init) {
             worst_score <<- cvbst$best_score 
           }
-        } else {#!higher_better
+        } else {# !higher_better
           if (cvbst$best_score < best_score) {
             current_score_is_better <- TRUE
           }
           # cap current score to avoid very bad values
-          if (counter_num_comb > 1) {
-            if (cvbst$best_score > 100 * worst_score) {
-              cvbst$best_score <- 100 * worst_score
-            } 
+          if (has_found_two_nonNA_scores) {
+            if (cvbst$best_score > (worst_score + 10 * (worst_score - best_score))) {
+              cvbst$best_score <- worst_score + 10 * (worst_score - best_score)
+              score_capped <- TRUE
+            }
+          } else if (has_found_nonNA_score) {
+            if (cvbst$best_score > (worst_score + 10 * abs(worst_score))) {
+              cvbst$best_score <- worst_score + 10 * abs(worst_score)
+              score_capped <- TRUE
+            }
           }
           # update worst_score
           if (cvbst$best_score > worst_score || worst_score == worst_score_init) {
             worst_score <<- cvbst$best_score
           }
+        }# end !higher_better
+        if (score_capped) {
+          warning(paste0("Found very bad score in trial ", counter_num_comb, ". This was replaced with ", cvbst$best_score))
         }
-      }
+        if (has_found_nonNA_score){
+          has_found_two_nonNA_scores <<- TRUE
+        }
+        has_found_nonNA_score <<- TRUE
+      }# end not NA and not Inf
       if (current_score_is_better) {
         best_score <<- cvbst$best_score
         best_iter <<- cvbst$best_iter
