@@ -338,13 +338,13 @@ gpb.GPModel <- R6::R6Class(
                           matrix_inversion_method = "cholesky",
                           seed = 0L,
                           cluster_ids = NULL,
+                          likelihood_additional_param = 1.,
                           free_raw_data = FALSE,
                           modelfile = NULL,
                           model_list = NULL,
                           vecchia_approx = NULL,
                           vecchia_pred_type = NULL,
-                          num_neighbors_pred = NULL,
-                          likelihood_additional_param = 1.) {
+                          num_neighbors_pred = NULL) {
       
       if (!is.null(vecchia_approx)) {
         stop("GPModel: The argument 'vecchia_approx' is discontinued. Use the argument 'gp_approx' instead")
@@ -2243,11 +2243,11 @@ GPModel <- function(likelihood = "gaussian",
                     matrix_inversion_method = "cholesky",
                     seed = 0L,
                     cluster_ids = NULL,
+                    likelihood_additional_param = 1.,
                     free_raw_data = FALSE,
                     vecchia_approx = NULL,
                     vecchia_pred_type = NULL,
-                    num_neighbors_pred = NULL,
-                    likelihood_additional_param = 1.) {
+                    num_neighbors_pred = NULL) {
   
   # Create new GPModel
   invisible(gpb.GPModel$new(likelihood = likelihood

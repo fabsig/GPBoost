@@ -4043,13 +4043,13 @@ class GPModel(object):
                  matrix_inversion_method="cholesky",
                  seed=0,
                  cluster_ids=None,
+                 likelihood_additional_param=1.,
                  free_raw_data=False,
                  model_file=None,
                  model_dict=None,
                  vecchia_approx=None,
                  vecchia_pred_type=None,
-                 num_neighbors_pred=None,
-                 likelihood_additional_param=1.):
+                 num_neighbors_pred=None):
         """Initialize a GPModel.
 
         Parameters
@@ -4247,6 +4247,11 @@ class GPModel(object):
             or None, optional (default=None)
                 The elements indicate independent realizations of  random effects / Gaussian processes
                 (same values = same process realization)
+            likelihood_additional_param : float, optional (default=1.)
+                 Additional parameter for the 'likelihood' which cannot be estimated for this 'likelihood' (e.g., degrees of freedom for 'likelihood="t"'). 
+                 This is not to be confused with any auxiliary parameters that can be estimated and 
+                 accessed through the function'get_aux_pars' after estimation.
+                 Note that this 'likelihood_additional_param' parameter is irrelevant for many likelihoods
             free_raw_data : bool, optional (default=False)
                 If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python
                 after initialization
@@ -4262,11 +4267,6 @@ class GPModel(object):
             num_neighbors_pred : integer or None, optional (default=None)
                 The number of neighbors for making predictions.
                 This is discontinued here. Use the function 'set_prediction_data' to specify this
-            likelihood_additional_param : float, optional (default=1.)
-                 Additional parameter for the 'likelihood' which cannot be estimated for this 'likelihood' (e.g., degrees of freedom for 'likelihood="t"'). 
-                 This is not to be confused with any auxiliary parameters that can be estimated and 
-                 accessed through the function'get_aux_pars' after estimation.
-                 Note that this 'likelihood_additional_param' parameter is irrelevant for many likelihoods.
 
         Example
         -------

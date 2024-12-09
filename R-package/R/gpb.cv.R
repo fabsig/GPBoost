@@ -484,14 +484,18 @@ gpb.cv <- function(params = list()
                                           , cov_function = gp_model$.__enclos_env__$private$cov_function
                                           , cov_fct_shape = gp_model$.__enclos_env__$private$cov_fct_shape
                                           , gp_approx = gp_model$.__enclos_env__$private$gp_approx
+                                          , num_parallel_threads = gp_model$.__enclos_env__$private$num_parallel_threads
                                           , cov_fct_taper_range = gp_model$.__enclos_env__$private$cov_fct_taper_range
                                           , cov_fct_taper_shape = gp_model$.__enclos_env__$private$cov_fct_taper_shape
                                           , num_neighbors = gp_model$.__enclos_env__$private$num_neighbors
                                           , vecchia_ordering = gp_model$.__enclos_env__$private$vecchia_ordering
+                                          , ind_points_selection = gp_model$.__enclos_env__$private$ind_points_selection
                                           , num_ind_points = gp_model$.__enclos_env__$private$num_ind_points
+                                          , cover_tree_radius = gp_model$.__enclos_env__$private$cover_tree_radius
                                           , matrix_inversion_method = gp_model$.__enclos_env__$private$matrix_inversion_method
                                           , seed = gp_model$.__enclos_env__$private$seed
                                           , cluster_ids = cluster_ids
+                                          , likelihood_additional_param = gp_model$.__enclos_env__$private$likelihood_additional_param
                                           , free_raw_data = TRUE)
         valid_set_gp <- NULL
         if (use_gp_model_for_validation) {
