@@ -203,7 +203,7 @@ tune.pars.bayesian.optimization <- function(search_space
         } else if (param_name %in% c('max_depth')) {
           params_loc[[param_name]] <- params_trial[[param]]
         } else if (param_name %in% c('line_search_step_length')) {
-          params_loc[[param_name]] <- params_trial[[param]]
+          params_loc[[param_name]] <- as.logical(params_trial[[param]])
         } else {
           stop(sprintf("Unknown parameter '%s'", param_name))
         }
