@@ -636,7 +636,7 @@ namespace GPBoost {
 			int num_data_pred,
 			const double* const rand_coef_data_pred,
 			const std::vector<re_group_t>& group_data_pred) const {
-			int num_data_pred = (int)group_data_pred.size();
+			CHECK(num_data_pred == (int)group_data_pred.size());
 			if (this->is_rand_coef_) {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < num_data_pred; ++i) {
