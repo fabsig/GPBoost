@@ -199,7 +199,7 @@ namespace GPBoost {
 					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 				}
-				Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
+				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				return;
 			}
 
@@ -297,7 +297,7 @@ namespace GPBoost {
 					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 				}
-				Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
+				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				return;
 			}
 

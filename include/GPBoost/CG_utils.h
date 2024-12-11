@@ -83,7 +83,24 @@ namespace GPBoost {
 		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
 		const den_mat_t& Sigma_L_k);
 
-
+	/*!
+	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate
+	*		 gradient descent algorithm is used to approximately solve for (W^(-1) + Sigma)^(-1) Sigma rhs.
+	*        P is the FITC preconditioner.
+	* \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
+	* \param D_inv_B_rm Row-major matrix that contains the product D^-1 B. Outsourced in order to reduce the overhead of the function.
+	* \param rhs Vector of dimension nx1 on the rhs
+	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param p Maximal number of conjugate gradient steps
+	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
+	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
+	* \param cross_cov Cross-covariance between inducing points and observations
+	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	*/
 	void CGVecchiaLaplaceVecWinvplusSigma_FITC_P(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& D_inv_B_rm,
@@ -173,6 +190,25 @@ namespace GPBoost {
 		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
 		const den_mat_t& Sigma_L_k);
 
+	/*!
+	* \brief Version of CGTridiagVecchiaLaplace() where A = (W^(-1) + Sigma).
+	*        P is the FITC preconditioner.
+	*  \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
+	* \param D_inv_B_rm Row-major matrix that contains the product D^-1 B. Outsourced in order to reduce the overhead of the function.
+	* \param rhs Matrix of dimension nxt that contains random vectors z_1, ..., z_t with Cov(z_i) = P
+	* \param[out] Tdiags The diagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
+	* \param[out] Tsubdiags The subdiagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
+	* \param[out] U Approximative solution of the linear system (solution written on input) (must have been declared with the correct nxt dimensions)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param num_data n-Dimension of the linear system
+	* \param t t-Dimension of the linear system
+	* \param p Maximal number of conjugate gradient steps
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
+	* \param cross_cov Cross-covariance between inducing points and observations
+	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	*/
 	void CGTridiagVecchiaLaplaceWinvplusSigma_FITC_P(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& D_inv_B_rm,
