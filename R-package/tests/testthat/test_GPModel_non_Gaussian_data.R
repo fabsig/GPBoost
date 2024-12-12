@@ -1038,7 +1038,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       if(inv_method == "iterative") {
         tolerance_loc_1 <- TOLERANCE_ITERATIVE
         tolerance_loc_2 <- TOLERANCE_ITERATIVE
-        loop_cg_PC = c("pivoted_cholesky", "vadu","predictive_process_plus_diagonal")
+        loop_cg_PC = c("pivoted_cholesky", "vadu","fitc")
       } else {
         tolerance_loc_1 <- TOLERANCE_STRICT
         tolerance_loc_2 <- TOLERANCE_MEDIUM
