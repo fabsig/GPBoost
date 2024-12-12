@@ -18,16 +18,16 @@ set_prediction_data(gp_model, vecchia_pred_type = NULL,
 Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
 Available options:
 \itemize{
-\item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are only observed training data points }
-\item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are selected among all points (training + prediction) }
-\item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
-ordered first and neighbors are only observed points}
-\item{"latent_order_obs_first_cond_all": Vecchia approximation 
-for the latent process and observed data is ordered first and neighbors are selected among all points }
-\item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
-ordered first for making predictions. This option is only available for Gaussian likelihoods }
+   \item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
+   ordered first and the neighbors are only observed training data points }
+   \item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
+   ordered first and the neighbors are selected among all points (training + prediction) }
+   \item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
+   ordered first and neighbors are only observed points}
+   \item{"latent_order_obs_first_cond_all": Vecchia approximation 
+   for the latent process and observed data is ordered first and neighbors are selected among all points }
+   \item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
+   ordered first for making predictions. This option is only available for Gaussian likelihoods }
 }}
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 

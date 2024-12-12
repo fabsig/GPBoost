@@ -92,6 +92,8 @@ modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024)
 \item{"full_scale_tapering": A full scale approximation combining an 
 inducing point / predictive process approximation with tapering on the residual process; 
 see Gyger, Furrer, and Sigrist (2024) for more details }
+\item{"vecchia_latent": similar as "vecchia" but a Vecchia approximation is applied to the latent Gaussian process 
+for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecchia_latent" are equivalent }
 }}
 
 \item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP. 
@@ -258,16 +260,19 @@ fixed effects linear regression term (if there is one)}
     \item{cg_preconditioner_type: \code{string}.
     Type of preconditioner used for conjugate gradient algorithms.
     \itemize{
-      \item Options for non-Gaussian likelihoods and gp_approx = "vecchia": 
+      \item Options for likelihood != "gaussian" and gp_approx == "vecchia" or
+      likelihood == "gaussian" and gp_approx == "vecchia_latent": 
         \itemize{
-          \item{"Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
+          \item{"vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
       where B^T * D^-1 * B approx= Sigma^-1 }
-          \item{"piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
+          \item{"pivoted_cholesky": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
       where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
+          \item{"incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of 
+          (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 }
         }
-      \item Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering": 
+      \item Options for likelihood == "gaussian" and gp_approx == "full_scale_tapering": 
         \itemize{
-          \item{"predictive_process_plus_diagonal" (= default): predictive process preconditiioner }
+          \item{"fitc" (= default): modified predictive process preconditioner }
           \item{"none": no preconditioner }
       }
     }

@@ -13,8 +13,9 @@ GPModel(likelihood = "gaussian", group_data = NULL,
   vecchia_ordering = "random", ind_points_selection = "kmeans++",
   num_ind_points = 500L, cover_tree_radius = 1,
   matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
-  free_raw_data = FALSE, vecchia_approx = NULL, vecchia_pred_type = NULL,
-  num_neighbors_pred = NULL, likelihood_additional_param = 1)
+  likelihood_additional_param = 1, free_raw_data = FALSE,
+  vecchia_approx = NULL, vecchia_pred_type = NULL,
+  num_neighbors_pred = NULL)
 }
 \arguments{
 \item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable. 
@@ -90,6 +91,8 @@ modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024)
 \item{"full_scale_tapering": A full scale approximation combining an 
 inducing point / predictive process approximation with tapering on the residual process; 
 see Gyger, Furrer, and Sigrist (2024) for more details }
+\item{"vecchia_latent": similar as "vecchia" but a Vecchia approximation is applied to the latent Gaussian process 
+for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecchia_latent" are equivalent }
 }}
 
 \item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP. 
@@ -155,6 +158,12 @@ This is currently only supported for the following cases:
 random effects / Gaussian processes (same values = same process realization).
 The elements of 'cluster_ids' can be integer, double, or character.}
 
+\item{likelihood_additional_param}{A \code{numeric} specifying an additional parameter for the \code{likelihood} 
+which cannot be estimated for this \code{likelihood} (e.g., degrees of freedom for \code{likelihood="t"}). 
+This is not to be confused with any auxiliary parameters that can be estimated and accessed through 
+the function \code{get_aux_pars} after estimation.
+Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.}
+
 \item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 is freed in R after initialization}
 
@@ -165,12 +174,6 @@ This is discontinued here. Use the function 'set_prediction_data' to specify thi
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for making predictions.
 This is discontinued here. Use the function 'set_prediction_data' to specify this}
-
-\item{likelihood_additional_param}{A \code{numeric} specifying an additional parameter for the \code{likelihood} 
-which cannot be estimated for this \code{likelihood} (e.g., degrees of freedom for \code{likelihood="t"}). 
-This is not to be confused with any auxiliary parameters that can be estimated and accessed through 
-the function \code{get_aux_pars} after estimation.
-Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.}
 }
 \value{
 A \code{GPModel} containing ontains a Gaussian process and / or mixed effects model with grouped random effects

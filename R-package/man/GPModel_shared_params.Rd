@@ -83,6 +83,8 @@ modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024)
 \item{"full_scale_tapering": A full scale approximation combining an 
 inducing point / predictive process approximation with tapering on the residual process; 
 see Gyger, Furrer, and Sigrist (2024) for more details }
+\item{"vecchia_latent": similar as "vecchia" but a Vecchia approximation is applied to the latent Gaussian process 
+for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecchia_latent" are equivalent }
 }}
 
 \item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP. 
@@ -148,16 +150,16 @@ This is currently only supported for the following cases:
 Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
 Available options:
 \itemize{
-\item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are only observed training data points }
-\item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
-ordered first and the neighbors are selected among all points (training + prediction) }
-\item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
-ordered first and neighbors are only observed points}
-\item{"latent_order_obs_first_cond_all": Vecchia approximation 
-for the latent process and observed data is ordered first and neighbors are selected among all points }
-\item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
-ordered first for making predictions. This option is only available for Gaussian likelihoods }
+   \item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
+   ordered first and the neighbors are only observed training data points }
+   \item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
+   ordered first and the neighbors are selected among all points (training + prediction) }
+   \item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
+   ordered first and neighbors are only observed points}
+   \item{"latent_order_obs_first_cond_all": Vecchia approximation 
+   for the latent process and observed data is ordered first and neighbors are selected among all points }
+   \item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
+   ordered first for making predictions. This option is only available for Gaussian likelihoods }
 }}
 
 \item{num_neighbors_pred}{an \code{integer} specifying the number of neighbors for the Vecchia approximation 
@@ -280,16 +282,19 @@ fixed effects linear regression term (if there is one)}
     \item{cg_preconditioner_type: \code{string}.
     Type of preconditioner used for conjugate gradient algorithms.
     \itemize{
-      \item Options for non-Gaussian likelihoods and gp_approx = "vecchia": 
+      \item Options for likelihood != "gaussian" and gp_approx == "vecchia" or
+      likelihood == "gaussian" and gp_approx == "vecchia_latent": 
         \itemize{
-          \item{"Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
+          \item{"vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
       where B^T * D^-1 * B approx= Sigma^-1 }
-          \item{"piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
+          \item{"pivoted_cholesky": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
       where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
+          \item{"incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of 
+          (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 }
         }
-      \item Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering": 
+      \item Options for likelihood == "gaussian" and gp_approx == "full_scale_tapering": 
         \itemize{
-          \item{"predictive_process_plus_diagonal" (= default): predictive process preconditiioner }
+          \item{"fitc" (= default): modified predictive process preconditioner }
           \item{"none": no preconditioner }
       }
     }

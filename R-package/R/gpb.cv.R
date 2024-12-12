@@ -484,14 +484,18 @@ gpb.cv <- function(params = list()
                                           , cov_function = gp_model$.__enclos_env__$private$cov_function
                                           , cov_fct_shape = gp_model$.__enclos_env__$private$cov_fct_shape
                                           , gp_approx = gp_model$.__enclos_env__$private$gp_approx
+                                          , num_parallel_threads = gp_model$.__enclos_env__$private$num_parallel_threads
                                           , cov_fct_taper_range = gp_model$.__enclos_env__$private$cov_fct_taper_range
                                           , cov_fct_taper_shape = gp_model$.__enclos_env__$private$cov_fct_taper_shape
                                           , num_neighbors = gp_model$.__enclos_env__$private$num_neighbors
                                           , vecchia_ordering = gp_model$.__enclos_env__$private$vecchia_ordering
+                                          , ind_points_selection = gp_model$.__enclos_env__$private$ind_points_selection
                                           , num_ind_points = gp_model$.__enclos_env__$private$num_ind_points
+                                          , cover_tree_radius = gp_model$.__enclos_env__$private$cover_tree_radius
                                           , matrix_inversion_method = gp_model$.__enclos_env__$private$matrix_inversion_method
                                           , seed = gp_model$.__enclos_env__$private$seed
                                           , cluster_ids = cluster_ids
+                                          , likelihood_additional_param = gp_model$.__enclos_env__$private$likelihood_additional_param
                                           , free_raw_data = TRUE)
         valid_set_gp <- NULL
         if (use_gp_model_for_validation) {
@@ -542,6 +546,7 @@ gpb.cv <- function(params = list()
   env$model <- cv_booster
   env$begin_iteration <- begin_iteration
   env$end_iteration <- end_iteration
+  error_in_first_iteration <- FALSE
   
   # Start training model using number of iterations to start and end with
   for (i in seq.int(from = begin_iteration, to = end_iteration)) {
@@ -564,33 +569,42 @@ gpb.cv <- function(params = list()
         }
         return(out)
       })
+      
+      # Prepare collection of evaluation results
+      merged_msg <- gpb.merge.cv.result(
+        msg = msg
+        , showsd = showsd
+      )
+      
+      # Write evaluation result in environment
+      env$eval_list <- merged_msg$eval_list
+      
+      # Check for standard deviation requirement
+      if (showsd) {
+        env$eval_err_list <- merged_msg$eval_err_list
+      }
+      
+      # Loop through env
+      for (f in cb$post_iter) {
+        f(env)
+      }
+      
     },
     error = function(err) { 
       message(paste0("Error in boosting iteration ", i,":"))
       message(err)
       env$met_early_stop <- TRUE
+      if (env$iteration == 1) {
+        error_in_first_iteration <<- TRUE
+      }
+      
     })# end tryCatch
     
-    # Prepare collection of evaluation results
-    merged_msg <- gpb.merge.cv.result(
-      msg = msg
-      , showsd = showsd
-    )
-    
-    # Write evaluation result in environment
-    env$eval_list <- merged_msg$eval_list
-    
-    # Check for standard deviation requirement
-    if (showsd) {
-      env$eval_err_list <- merged_msg$eval_err_list
-    }
-    
-    # Loop through env
-    for (f in cb$post_iter) {
-      f(env)
-    }
-    
     # Check for early stopping and break if needed
+    if (error_in_first_iteration) {
+      cv_booster$best_score <- NA
+      return(cv_booster)
+    }
     if (env$met_early_stop) break
     
   }
@@ -1059,6 +1073,7 @@ gpb.grid.search.tune.parameters <- function(param_grid
   best_params <- list()
   best_iter <- nrounds
   counter_num_comb <- 1
+  has_found_better_score <- FALSE
   for (param_comb_number in try_param_combs) {
     param_comb = get.param.combination(param_comb_number=param_comb_number,
                                        param_grid=param_grid)
@@ -1102,13 +1117,17 @@ gpb.grid.search.tune.parameters <- function(param_grid
                     , delete_boosters_folds = TRUE
                     , ...
     )
-    if (higher_better) {
-      if (cvbst$best_score > best_score) {
-        current_score_is_better <- TRUE
-      }
-    } else {
-      if (cvbst$best_score < best_score) {
-        current_score_is_better <- TRUE
+    if (!is.na(cvbst$best_score)) {
+      if (higher_better) {
+        if (cvbst$best_score > best_score) {
+          current_score_is_better <- TRUE
+          has_found_better_score <- TRUE
+        }
+      } else {
+        if (cvbst$best_score < best_score) {
+          current_score_is_better <- TRUE
+          has_found_better_score <- TRUE
+        }
       }
     }
     if (current_score_is_better) {
@@ -1129,6 +1148,9 @@ gpb.grid.search.tune.parameters <- function(param_grid
       all_combinations[[counter_num_comb]] <- list(params=param_comb, nrounds=cvbst$best_iter, score=cvbst$best_score)
     }
     counter_num_comb <- counter_num_comb + 1L
+  }
+  if (!has_found_better_score) {
+    warning("Found no parameter combination with a score that is not NA or Inf ")
   }
   if (return_all_combinations) {
     return(list(best_params=best_params, best_iter=best_iter, best_score=best_score, all_combinations=all_combinations))

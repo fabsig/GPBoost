@@ -623,7 +623,37 @@ namespace GPBoost {
 					}
 				}
 			}//end not is_rand_coef_
-		}
+		}//end CalcInsertZtilde
+
+		/*!
+		* \brief Calculate and add unconditional predictive variances only for new groups that do not appear in training data
+		* \param[out] pred_uncond_var Array of unconditional predictive variances to which the variance of this component is added
+		* \param num_data_pred Number of prediction points
+		* \param rand_coef_data_pred Covariate data for varying coefficients
+		* \param group_data_pred Group data for predictions
+		*/
+		void AddPredUncondVarNewGroups(double* pred_uncond_var,
+			int num_data_pred,
+			const double* const rand_coef_data_pred,
+			const std::vector<re_group_t>& group_data_pred) const {
+			CHECK(num_data_pred == (int)group_data_pred.size());
+			if (this->is_rand_coef_) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_data_pred; ++i) {
+					if (map_group_label_index_->find(group_data_pred[i]) == map_group_label_index_->end()) {//Group level 'group_data_pred[i]' does not exist in observed data
+						pred_uncond_var[i] += this->cov_pars_[0] * rand_coef_data_pred[i] * rand_coef_data_pred[i];
+					}
+				}
+			}//end is_rand_coef_
+			else {//not is_rand_coef_
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_data_pred; ++i) {
+					if (map_group_label_index_->find(group_data_pred[i]) == map_group_label_index_->end()) {//Group level 'group_data_pred[i]' does not exist in observed data
+						pred_uncond_var[i] += this->cov_pars_[0];
+					}
+				}
+			}//end not is_rand_coef_
+		}//end AddPredUncondVarNewGroups
 
 		data_size_t GetNumUniqueREs() const override {
 			return(num_group_);

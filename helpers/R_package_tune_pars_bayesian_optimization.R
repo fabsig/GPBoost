@@ -130,6 +130,10 @@ tune.pars.bayesian.optimization <- function(search_space
     if (param %in% c('learning_rate', 'shrinkage_rate',
                      'min_gain_to_split', 'min_split_gain',
                      'min_sum_hessian_in_leaf', 'min_sum_hessian_per_leaf', 'min_sum_hessian', 'min_hessian', 'min_child_weight')) {
+      # log-transform values
+      if (search_space[[param]][1] <= 0 || search_space[[param]][2] <= 0) {
+        stop(sprintf("found non-positive values in search_space['%s'], need to use values > 0 ", param))
+      }
       par.set <- c(par.set, makeParamSet(makeNumericParam(paste0("log_",param), lower = log(search_space[[param]][1]), 
                                                           upper = log(search_space[[param]][2]))))# trafo = trafoLog(base=exp(1)) is not helpful
     } else if (param %in% c('lambda_l2', 'reg_lambda', 'lambda',
@@ -143,6 +147,10 @@ tune.pars.bayesian.optimization <- function(search_space
     } else if (param %in% c('num_leaves', 'num_leaf', 'max_leaves', 'max_leaf',
                             'min_data_in_leaf', 'min_data_per_leaf', 'min_data', 'min_child_samples',
                             'max_bin')) {
+      # log-transform values
+      if (search_space[[param]][1] <= 0 || search_space[[param]][2] <= 0) {
+        stop(sprintf("found non-positive values in search_space['%s'], need to use values > 0 ", param))
+      }
       par.set <- c(par.set, makeParamSet(makeNumericParam(paste0("log_",param), lower = log(search_space[[param]][1]), 
                                                           upper = log(search_space[[param]][2]))))
     } else if (param %in% c('max_depth')) {
@@ -157,6 +165,10 @@ tune.pars.bayesian.optimization <- function(search_space
   
   best_score <- 1E99
   if (higher_better) best_score <- -1E99
+  worst_score <- best_score
+  worst_score_init <- worst_score
+  has_found_nonNA_score <- FALSE
+  has_found_two_nonNA_scores <- FALSE
   best_params <- list()
   best_iter <- nrounds
   counter_num_comb <- 1
@@ -191,7 +203,7 @@ tune.pars.bayesian.optimization <- function(search_space
         } else if (param_name %in% c('max_depth')) {
           params_loc[[param_name]] <- params_trial[[param]]
         } else if (param_name %in% c('line_search_step_length')) {
-          params_loc[[param_name]] <- params_trial[[param]]
+          params_loc[[param_name]] <- as.logical(params_trial[[param]])
         } else {
           stop(sprintf("Unknown parameter '%s'", param_name))
         }
@@ -207,21 +219,87 @@ tune.pars.bayesian.optimization <- function(search_space
       if (verbose_eval >= 1L) {
         message(paste0("Trial number ", counter_num_comb, " with the parameters: ", param_comb_str))
       }
-      cvbst <- gpb.cv(data = data, gp_model = gp_model,
-                      params = params_loc, nrounds = nrounds, early_stopping_rounds = early_stopping_rounds, 
-                      folds = folds, nfold = nfold, metric = metric,
-                      verbose = verbose_cv, use_gp_model_for_validation = use_gp_model_for_validation,
-                      ...)
-      current_score_is_better <- FALSE
-      if (higher_better) {
-        if (cvbst$best_score > best_score) {
-          current_score_is_better <- TRUE
-        }
-      } else {
-        if (cvbst$best_score < best_score) {
-          current_score_is_better <- TRUE
-        }
+      tryCatch({
+        cvbst <- gpb.cv(data = data, gp_model = gp_model,
+                        params = params_loc, nrounds = nrounds, early_stopping_rounds = early_stopping_rounds, 
+                        folds = folds, nfold = nfold, metric = metric,
+                        verbose = verbose_cv, use_gp_model_for_validation = use_gp_model_for_validation,
+                        ...)
+      } ,
+      error = function(err) {
+        cvbst <<- list(best_score = worst_score_init)
       }
+      ) #end tryCatch
+      current_score_is_better <- FALSE
+      if (is.na(cvbst$best_score) || is.infinite(cvbst$best_score) || cvbst$best_score == worst_score_init) {
+        # impute current score in case there are NA's or Inf's
+        if (higher_better) {
+          if (has_found_two_nonNA_scores) {
+            cvbst$best_score <- worst_score - 1 * (best_score - worst_score)
+          } else if (has_found_nonNA_score) {
+            cvbst$best_score <- worst_score - abs(worst_score)
+          }
+        } else {
+          if (has_found_two_nonNA_scores) {
+            cvbst$best_score <- worst_score + 1 * (worst_score - best_score)
+          } else if (has_found_nonNA_score) {
+            cvbst$best_score <- worst_score + 1 * abs(worst_score)
+          }
+        }
+        if (has_found_two_nonNA_scores || has_found_nonNA_score) {
+          warning(paste0("Found NA or Inf score in trial ", counter_num_comb, ". This was imputed with ", cvbst$best_score))
+        }
+      } else {# not NA and not Inf
+        score_capped <- FALSE
+        if (higher_better) {
+          if (cvbst$best_score > best_score) {
+            current_score_is_better <- TRUE
+          }
+          # cap current score to avoid very bad values
+          if (has_found_two_nonNA_scores) {
+            if (cvbst$best_score < (worst_score - 10 * (best_score - worst_score))) {
+              cvbst$best_score <- worst_score - 10 * (best_score - worst_score)
+              score_capped <- TRUE
+            }
+          } else if (has_found_nonNA_score) {
+            if (cvbst$best_score < (worst_score - 10 * abs(worst_score))) {
+              cvbst$best_score <- worst_score - 10 * abs(worst_score)
+              score_capped <- TRUE
+            }
+          }
+          # update worst_score
+          if (cvbst$best_score < worst_score || worst_score == worst_score_init) {
+            worst_score <<- cvbst$best_score 
+          }
+        } else {# !higher_better
+          if (cvbst$best_score < best_score) {
+            current_score_is_better <- TRUE
+          }
+          # cap current score to avoid very bad values
+          if (has_found_two_nonNA_scores) {
+            if (cvbst$best_score > (worst_score + 10 * (worst_score - best_score))) {
+              cvbst$best_score <- worst_score + 10 * (worst_score - best_score)
+              score_capped <- TRUE
+            }
+          } else if (has_found_nonNA_score) {
+            if (cvbst$best_score > (worst_score + 10 * abs(worst_score))) {
+              cvbst$best_score <- worst_score + 10 * abs(worst_score)
+              score_capped <- TRUE
+            }
+          }
+          # update worst_score
+          if (cvbst$best_score > worst_score || worst_score == worst_score_init) {
+            worst_score <<- cvbst$best_score
+          }
+        }# end !higher_better
+        if (score_capped) {
+          warning(paste0("Found very bad score in trial ", counter_num_comb, ". This was replaced with ", cvbst$best_score))
+        }
+        if (has_found_nonNA_score){
+          has_found_two_nonNA_scores <<- TRUE
+        }
+        has_found_nonNA_score <<- TRUE
+      }# end not NA and not Inf
       if (current_score_is_better) {
         best_score <<- cvbst$best_score
         best_iter <<- cvbst$best_iter
@@ -256,6 +334,21 @@ tune.pars.bayesian.optimization <- function(search_space
   run = mbo(obj.fun, control = control, show.info = FALSE)
   best_params[["verbose"]] <- NULL
   
-  return(list(best_params=best_params, best_iter=best_iter, best_score=run$y)) 
+  return(list(best_params=best_params, best_iter=best_iter, best_score=run$y))
+  
+  # tried to use 'impute.y.fun' to solve crash problems, but it did not work (07.12.2024)
+  # if (higher_better) {
+  #   impute.y.fun = function(x, y, opt.path) {
+  #     ys <- getOptPathY(opt.path)
+  #     min(ys) - 0.2 * (max(ys) - min(ys))
+  #   }
+  # } else {
+  #   impute.y.fun = function(x, y, opt.path) {
+  #     ys <- getOptPathY(opt.path)
+  #     max(ys) + 0.2 * (max(ys) - min(ys))
+  #   }
+  # }
+  # impute.y.fun = function(x, y, opt.path) 1 
+  # control = makeMBOControl(impute.y.fun = impute.y.fun)
   
 }

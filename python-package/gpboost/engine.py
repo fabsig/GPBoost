@@ -467,7 +467,8 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             if gp_model.cluster_ids is not None:
                 cluster_ids = gp_model.cluster_ids[train_idx]
                 cluster_ids_pred = gp_model.cluster_ids[test_idx]
-            gp_model_train = GPModel(group_data=group_data,
+            gp_model_train = GPModel(likelihood=gp_model._get_likelihood_name(),
+                                     group_data=group_data,
                                      group_rand_coef_data=group_rand_coef_data,
                                      ind_effect_group_rand_coef=gp_model.ind_effect_group_rand_coef,
                                      drop_intercept_group_rand_effect=gp_model.drop_intercept_group_rand_effect,
@@ -476,15 +477,18 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                      cov_function=gp_model.cov_function,
                                      cov_fct_shape=gp_model.cov_fct_shape,
                                      gp_approx=gp_model.gp_approx,
+                                     num_parallel_threads=gp_model.num_parallel_threads,
                                      cov_fct_taper_range=gp_model.cov_fct_taper_range,
                                      cov_fct_taper_shape=gp_model.cov_fct_taper_shape,
                                      num_neighbors=gp_model.num_neighbors,
                                      vecchia_ordering=gp_model.vecchia_ordering,
+                                     ind_points_selection=gp_model.ind_points_selection,
                                      num_ind_points=gp_model.num_ind_points,
+                                     cover_tree_radius=gp_model.cover_tree_radius,
                                      matrix_inversion_method=gp_model.matrix_inversion_method,
                                      seed=gp_model.seed,
                                      cluster_ids=cluster_ids,
-                                     likelihood=gp_model._get_likelihood_name(),
+                                     likelihood_additional_param=gp_model.likelihood_additional_param,
                                      free_raw_data=True)
             if use_gp_model_for_validation:
                 gp_model_train.set_prediction_data(group_data_pred=group_data_pred,
@@ -495,7 +499,8 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                                    vecchia_pred_type=gp_model.vecchia_pred_type,
                                                    num_neighbors_pred=gp_model.num_neighbors_pred,
                                                    cg_delta_conv_pred=gp_model.cg_delta_conv_pred,
-                                                   nsim_var_pred=gp_model.nsim_var_pred)
+                                                   nsim_var_pred=gp_model.nsim_var_pred,
+                                                   rank_pred_approx_matrix_lanczos=gp_model.rank_pred_approx_matrix_lanczos)
             cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
             gp_model._set_likelihood(
                 gp_model_train._get_likelihood_name())  # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods

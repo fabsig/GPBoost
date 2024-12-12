@@ -564,7 +564,7 @@ namespace GPBoost {
 						model_has_been_estimated_) {
 						Log::REFatal("Cannot change 'cg_preconditioner_type' after a model has been fitted ");
 					}
-					cg_preconditioner_type_ = std::string(cg_preconditioner_type);
+					cg_preconditioner_type_ = ParsePreconditionerAlias(std::string(cg_preconditioner_type));
 					CheckPreconditionerType();
 					cg_preconditioner_type_has_been_set_ = true;
 				}
@@ -5179,6 +5179,28 @@ namespace GPBoost {
 				}
 			}
 		}//end CheckPreconditionerType
+
+		static string_t ParsePreconditionerAlias(const string_t& type) {
+			if (type == string_t("VADU") || type == string_t("vadu") || type == string_t("vecchia_approximation_with_diagonal_update")) {
+				return "Sigma_inv_plus_BtWB";
+			}
+			else if (type == string_t("piv_chol") || type == string_t("pivoted_cholesky")) {
+				return "piv_chol_on_Sigma";
+			}
+			else if (type == string_t("ZIRC") || type == string_t("zirc") ||
+				type == string_t("ZIC") || type == string_t("zic") ||
+				type == string_t("incomplete_cholesky") ||
+				type == string_t("zero_fillin_incomplete_cholesky") || type == string_t("zero_fill_in_incomplete_cholesky") || 
+				type == string_t("zero_fill-in_incomplete_cholesky") || type == string_t("zero_infill_incomplete_cholesky") ||
+				type == string_t("zero_fillin_incomplete_reverse_cholesky") || type == string_t("zero_fill_in_incomplete_reverse_cholesky") || 
+				type == string_t("zero_fill-in_incomplete_reverse_cholesky") || type == string_t("zero_infill_incomplete_reverse_cholesky")) {
+				return "zero_infill_incomplete_cholesky";
+			}
+			else if (type == string_t("FITC") || type == string_t("fitc")) {
+				return "predictive_process_plus_diagonal";
+			}
+			return type;
+		}
 
 		/*! \brief Set matrix inversion properties and choices for iterative methods in likelihoods.h */
 		void SetMatrixInversionPropertiesLikelihood() {

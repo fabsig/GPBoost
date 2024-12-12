@@ -17,8 +17,15 @@
 
 #ifdef LGB_R_BUILD
 #define STRICT_R_HEADERS
+
+#ifndef R_NO_REMAP
 #define R_NO_REMAP
+#endif
+
+#ifndef R_USE_C99_IN_CXX
 #define R_USE_C99_IN_CXX
+#endif
+
 #include <R_ext/Error.h>
 #include <R_ext/Print.h>
 #endif

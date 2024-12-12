@@ -74,6 +74,8 @@
 #' \item{"full_scale_tapering": A full scale approximation combining an 
 #' inducing point / predictive process approximation with tapering on the residual process; 
 #' see Gyger, Furrer, and Sigrist (2024) for more details }
+#' \item{"vecchia_latent": similar as "vecchia" but a Vecchia approximation is applied to the latent Gaussian process 
+#' for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecchia_latent" are equivalent }
 #' }
 #' @param num_parallel_threads An \code{integer} specifying the number of parallel threads for OMP. 
 #' If num_parallel_threads = NULL, all available threads are used
@@ -128,16 +130,16 @@
 #' Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
 #' Available options:
 #' \itemize{
-#' \item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
-#' ordered first and the neighbors are only observed training data points }
-#' \item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
-#' ordered first and the neighbors are selected among all points (training + prediction) }
-#' \item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
-#' ordered first and neighbors are only observed points}
-#' \item{"latent_order_obs_first_cond_all": Vecchia approximation 
-#' for the latent process and observed data is ordered first and neighbors are selected among all points }
-#' \item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
-#' ordered first for making predictions. This option is only available for Gaussian likelihoods }
+#'    \item{"order_obs_first_cond_obs_only": Vecchia approximation for the observable process and observed training data is 
+#'    ordered first and the neighbors are only observed training data points }
+#'    \item{"order_obs_first_cond_all": Vecchia approximation for the observable process and observed training data is 
+#'    ordered first and the neighbors are selected among all points (training + prediction) }
+#'    \item{"latent_order_obs_first_cond_obs_only": Vecchia approximation for the latent process and observed data is 
+#'    ordered first and neighbors are only observed points}
+#'    \item{"latent_order_obs_first_cond_all": Vecchia approximation 
+#'    for the latent process and observed data is ordered first and neighbors are selected among all points }
+#'    \item{"order_pred_first": Vecchia approximation for the observable process and prediction data is 
+#'    ordered first for making predictions. This option is only available for Gaussian likelihoods }
 #' }
 #' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 #' for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors
@@ -251,16 +253,19 @@
 #'                \item{cg_preconditioner_type: \code{string}.
 #'                Type of preconditioner used for conjugate gradient algorithms.
 #'                \itemize{
-#'                  \item Options for non-Gaussian likelihoods and gp_approx = "vecchia": 
+#'                  \item Options for likelihood != "gaussian" and gp_approx == "vecchia" or
+#'                  likelihood == "gaussian" and gp_approx == "vecchia_latent": 
 #'                    \itemize{
-#'                      \item{"Sigma_inv_plus_BtWB" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
+#'                      \item{"vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
 #'                  where B^T * D^-1 * B approx= Sigma^-1 }
-#'                      \item{"piv_chol_on_Sigma": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
+#'                      \item{"pivoted_cholesky": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
 #'                  where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
+#'                      \item{"incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of 
+#'                      (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 }
 #'                    }
-#'                  \item Options for likelihood = "gaussian" and gp_approx = "full_scale_tapering": 
+#'                  \item Options for likelihood == "gaussian" and gp_approx == "full_scale_tapering": 
 #'                    \itemize{
-#'                      \item{"predictive_process_plus_diagonal" (= default): predictive process preconditiioner }
+#'                      \item{"fitc" (= default): modified predictive process preconditioner }
 #'                      \item{"none": no preconditioner }
 #'                  }
 #'                }
@@ -333,13 +338,13 @@ gpb.GPModel <- R6::R6Class(
                           matrix_inversion_method = "cholesky",
                           seed = 0L,
                           cluster_ids = NULL,
+                          likelihood_additional_param = 1.,
                           free_raw_data = FALSE,
                           modelfile = NULL,
                           model_list = NULL,
                           vecchia_approx = NULL,
                           vecchia_pred_type = NULL,
-                          num_neighbors_pred = NULL,
-                          likelihood_additional_param = 1.) {
+                          num_neighbors_pred = NULL) {
       
       if (!is.null(vecchia_approx)) {
         stop("GPModel: The argument 'vecchia_approx' is discontinued. Use the argument 'gp_approx' instead")
@@ -2238,11 +2243,11 @@ GPModel <- function(likelihood = "gaussian",
                     matrix_inversion_method = "cholesky",
                     seed = 0L,
                     cluster_ids = NULL,
+                    likelihood_additional_param = 1.,
                     free_raw_data = FALSE,
                     vecchia_approx = NULL,
                     vecchia_pred_type = NULL,
-                    num_neighbors_pred = NULL,
-                    likelihood_additional_param = 1.) {
+                    num_neighbors_pred = NULL) {
   
   # Create new GPModel
   invisible(gpb.GPModel$new(likelihood = likelihood

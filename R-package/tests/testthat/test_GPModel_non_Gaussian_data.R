@@ -950,7 +950,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
   test_that("Binary classification Gaussian process model with Vecchia approximation", {
     params_vecchia <- c(DEFAULT_OPTIM_PARAMS, cg_delta_conv = sqrt(1e-6), 
-                        num_rand_vec_trace = 500, cg_preconditioner_type = "piv_chol_on_Sigma")
+                        num_rand_vec_trace = 500, cg_preconditioner_type = "pivoted_cholesky")
     init_cov_pars = c(1,mean(dist(coords))/3)
     params_vecchia$init_cov_pars = init_cov_pars
     params = DEFAULT_OPTIM_PARAMS
@@ -1038,11 +1038,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       if(inv_method == "iterative") {
         tolerance_loc_1 <- TOLERANCE_ITERATIVE
         tolerance_loc_2 <- TOLERANCE_ITERATIVE
-        loop_cg_PC = c("piv_chol_on_Sigma", "Sigma_inv_plus_BtWB","predictive_process_plus_diagonal")
+        loop_cg_PC = c("pivoted_cholesky", "vadu","predictive_process_plus_diagonal")
       } else {
         tolerance_loc_1 <- TOLERANCE_STRICT
         tolerance_loc_2 <- TOLERANCE_MEDIUM
-        loop_cg_PC = c("Sigma_inv_plus_BtWB")
+        loop_cg_PC = c("vadu")
       }
       nsim_var_pred <- 10000
       for (cg_preconditioner_type in loop_cg_PC) {
@@ -1071,7 +1071,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
         expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
         expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),tolerance_loc_1)
-        if (inv_method != "iterative" || cg_preconditioner_type == "Sigma_inv_plus_BtWB") {
+        if (inv_method != "iterative" || cg_preconditioner_type == "vadu") {
           capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
                                           predict_response = TRUE, predict_var = TRUE, 
                                           cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
@@ -1082,16 +1082,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
         expect_lt(abs(nll-expected_nll),tolerance_loc_1)
         
-        if(inv_method == "iterative" && cg_preconditioner_type == "piv_chol_on_Sigma"){
+        if(inv_method == "iterative" && cg_preconditioner_type == "pivoted_cholesky"){
           ## Cannot change cg_preconditioner_type after a model has been fitted
           expect_error( capture.output( fit(gp_model, y = y, params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
                                                                            lr_cov = 0.1, use_nesterov_acc = FALSE,
                                                                            convergence_criterion = "relative_change_in_parameters",
                                                                            cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
-                                                                           cg_preconditioner_type = "Sigma_inv_plus_BtWB")), file='NUL'))
+                                                                           cg_preconditioner_type = "vadu")), file='NUL'))
         }
         
-        if (inv_method != "iterative" || cg_preconditioner_type == "Sigma_inv_plus_BtWB") {# some tests are only run for one preconditioner
+        if (inv_method != "iterative" || cg_preconditioner_type == "vadu") {# some tests are only run for one preconditioner
           ############################
           # Vecchia approximation with random ordering
           ############################
