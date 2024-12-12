@@ -559,7 +559,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						double y_min_FE = y_data[i] / std::exp(fixed_effects[i]);
+						double y_min_FE = y_data[i] - fixed_effects[i];
 						avg += y_min_FE;
 						sum_sq += y_min_FE * y_min_FE;
 					}
@@ -1815,7 +1815,7 @@ namespace GPBoost {
 							deriv_information_aux_par[i] = deriv_FI;
 						}
 					}
-				}
+				}//end "t"
 				else if (num_aux_pars_ > 0) {
 					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
