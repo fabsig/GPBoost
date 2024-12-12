@@ -374,7 +374,6 @@ namespace GPBoost {
 	*		 A = (C_s + C_nm*(C_m)^(-1)*C_mn) is a symmetric matrix of dimension nxn and a full-scale-approximation for Sigma
 	*		 P = diag(C_s) + C_nm*(C_m)^(-1)*C_mn is used as preconditioner.
 	* \param sigma_resid Residual Matrix C_s
-	* \param sigma_cross_cov Matrix C_mn in Predictive Process Part C_nm*(C_m)^(-1)*C_mn
 	* \param chol_ip_cross_cov Cholesky Factor of C_m, the inducing point matrix, times cross-covariance
 	* \param rhs Vector of dimension nx1 on the rhs
 	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
@@ -388,7 +387,6 @@ namespace GPBoost {
 	*/
 	template <class T_mat>
 	void CGFSA(const T_mat& sigma_resid,
-		const den_mat_t& sigma_cross_cov,
 		const den_mat_t& sigma_cross_cov_preconditioner,
 		const den_mat_t& chol_ip_cross_cov,
 		const vec_t& rhs,
@@ -507,7 +505,6 @@ namespace GPBoost {
 	*		 P = diag(C_s) + C_nm*(C_m)^(-1)*C_mn is used as preconditioner.
 	*		 The function returns t approximative tridiagonalizations T of the symmetric matrix A=QTQ' in vector form (diagonal + subdiagonal of T).
 	* \param sigma_resid Residual Matrix C_s
-	* \param sigma_cross_cov Matrix C_mn in Predictive Process Part C_nm*(C_m)^(-1)*C_mn
 	* \param chol_ip_cross_cov Cholesky Factor of C_m, the inducing point matrix, times cross-covariance
 	* \param rhs Matrix of dimension nxt that contains (column-)probe vectors z_1,...,z_t with Cov[z_i] = P
 	* \param[out] Tdiags The diagonals of the t approximative tridiagonalizations of A in vector form (solution written on input)
@@ -524,7 +521,6 @@ namespace GPBoost {
 	*/
 	template <class T_mat>
 	void CGTridiagFSA(const T_mat& sigma_resid,
-		const den_mat_t& sigma_cross_cov,
 		const den_mat_t& sigma_cross_cov_preconditioner,
 		const den_mat_t& chol_ip_cross_cov,
 		const den_mat_t& rhs,
