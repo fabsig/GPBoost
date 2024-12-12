@@ -1038,7 +1038,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       if(inv_method == "iterative") {
         tolerance_loc_1 <- TOLERANCE_ITERATIVE
         tolerance_loc_2 <- TOLERANCE_ITERATIVE
-        loop_cg_PC = c("pivoted_cholesky", "vadu")
+        loop_cg_PC = c("pivoted_cholesky", "vadu","predictive_process_plus_diagonal")
       } else {
         tolerance_loc_1 <- TOLERANCE_STRICT
         tolerance_loc_2 <- TOLERANCE_MEDIUM
@@ -1197,7 +1197,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                num_neighbors = 30, vecchia_ordering = "none",
                                                matrix_inversion_method = inv_method,
                                                y = y, params = params_vecchia), file='NUL')
-        training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+        training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = T)
         gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only")
         preds <- predict(gp_model, gp_coords_pred = coords, predict_response = FALSE, 
                          predict_var = TRUE)
@@ -1246,7 +1246,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y_multiple)
         expect_lt(abs(nll-nll_multiple),tolerance_loc_1)
         # Predict training data random effects
-        training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+        training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = T)
         gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only", 
                                      num_neighbors_pred = n/4, nsim_var_pred = nsim_var_pred)
         preds <- predict(gp_model, gp_coords_pred = coords_multiple, predict_response = FALSE, 

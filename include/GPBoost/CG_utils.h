@@ -84,6 +84,39 @@ namespace GPBoost {
 		const den_mat_t& Sigma_L_k);
 
 	/*!
+	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate
+	*		 gradient descent algorithm is used to approximately solve for (W^(-1) + Sigma)^(-1) Sigma rhs.
+	*        P is the FITC preconditioner.
+	* \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
+	* \param D_inv_B_rm Row-major matrix that contains the product D^-1 B. Outsourced in order to reduce the overhead of the function.
+	* \param rhs Vector of dimension nx1 on the rhs
+	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param p Maximal number of conjugate gradient steps
+	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
+	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
+	* \param cross_cov Cross-covariance between inducing points and observations
+	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	*/
+	void CGVecchiaLaplaceVecWinvplusSigma_FITC_P(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const int find_mode_it,
+		const double delta_conv,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
+		const den_mat_t cross_cov,
+		const vec_t& diagonal_approx_inv_preconditioner);
+
+
+	/*!
 	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
 	*		 A linear system A U = rhs is solved, where the rhs is a matrix of dimension nxt of t random column-vectors and 
 	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn. 
@@ -156,6 +189,41 @@ namespace GPBoost {
 		const double delta_conv,
 		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
 		const den_mat_t& Sigma_L_k);
+
+	/*!
+	* \brief Version of CGTridiagVecchiaLaplace() where A = (W^(-1) + Sigma).
+	*        P is the FITC preconditioner.
+	*  \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
+	* \param D_inv_B_rm Row-major matrix that contains the product D^-1 B. Outsourced in order to reduce the overhead of the function.
+	* \param rhs Matrix of dimension nxt that contains random vectors z_1, ..., z_t with Cov(z_i) = P
+	* \param[out] Tdiags The diagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
+	* \param[out] Tsubdiags The subdiagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
+	* \param[out] U Approximative solution of the linear system (solution written on input) (must have been declared with the correct nxt dimensions)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param num_data n-Dimension of the linear system
+	* \param t t-Dimension of the linear system
+	* \param p Maximal number of conjugate gradient steps
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
+	* \param cross_cov Cross-covariance between inducing points and observations
+	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	*/
+	void CGTridiagVecchiaLaplaceWinvplusSigma_FITC_P(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& D_inv_B_rm,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
+		const den_mat_t* cross_cov,
+		const vec_t& diagonal_approx_inv_preconditioner);
 
 	/*!
 	* \brief Fills a given matrix with standard normal RV's.
@@ -321,6 +389,7 @@ namespace GPBoost {
 	template <class T_mat>
 	void CGFSA(const T_mat& sigma_resid,
 		const den_mat_t& sigma_cross_cov,
+		const den_mat_t& sigma_cross_cov_preconditioner,
 		const den_mat_t& chol_ip_cross_cov,
 		const vec_t& rhs,
 		vec_t& u,
@@ -365,9 +434,9 @@ namespace GPBoost {
 			diag_sigma_resid_inv_r = diagonal_approx_inv_preconditioner.asDiagonal() * r; // ??? cwiseProd (TODO)
 
 			//Cmn*D^-1*r
-			sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov.transpose() * diag_sigma_resid_inv_r;
+			sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_r;
 			//P^-1*r using Woodbury Identity
-			z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
+			z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
 
 		}
 		else if (cg_preconditioner_type == "none") {
@@ -404,8 +473,8 @@ namespace GPBoost {
 			//z = P^(-1) r 
 			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
 				diag_sigma_resid_inv_r = diagonal_approx_inv_preconditioner.asDiagonal() * r; // ??? cwiseProd (TODO)
-				sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov.transpose() * diag_sigma_resid_inv_r;
-				z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
+				sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_r;
+				z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
 
 			}
 			else if (cg_preconditioner_type == "none") {
@@ -422,7 +491,7 @@ namespace GPBoost {
 
 			if (early_stop_alg) {
 
-				//Log::REInfo("CGFSA stop after %i CG-Iterations.", j + 1);
+				Log::REInfo("CGFSA stop after %i CG-Iterations.", j + 1);
 
 				return;
 			}
@@ -456,6 +525,7 @@ namespace GPBoost {
 	template <class T_mat>
 	void CGTridiagFSA(const T_mat& sigma_resid,
 		const den_mat_t& sigma_cross_cov,
+		const den_mat_t& sigma_cross_cov_preconditioner,
 		const den_mat_t& chol_ip_cross_cov,
 		const den_mat_t& rhs,
 		std::vector<vec_t>& Tdiags,
@@ -501,9 +571,9 @@ namespace GPBoost {
 			//D^-1*R
 			diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 			//Cmn*D^-1*R
-			sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+			sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
 			//P^-1*R using Woodbury Identity
-			Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+			Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
 
 		}
 		else if (cg_preconditioner_type == "none") {
@@ -543,9 +613,9 @@ namespace GPBoost {
 			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
 				diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 				//Cmn*D^-1*R
-				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
 				//P^-1*R using Woodbury Identity
-				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
 
 			}
 			else if (cg_preconditioner_type == "none") {
@@ -600,6 +670,7 @@ namespace GPBoost {
 	template <class T_mat>
 	void CGFSA_MULTI_RHS(const T_mat& sigma_resid,
 		const den_mat_t& sigma_cross_cov,
+		const den_mat_t& sigma_cross_cov_preconditioner,
 		const chol_den_mat_t& chol_fact_sigma_ip,
 		const den_mat_t& rhs,
 		den_mat_t& U,
@@ -643,9 +714,9 @@ namespace GPBoost {
 			//D^-1*R
 			diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 			//Cmn*D^-1*R
-			sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+			sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
 			//P^-1*R using Woodbury Identity
-			Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+			Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
 
 		}
 		else if (cg_preconditioner_type == "none") {
@@ -687,9 +758,9 @@ namespace GPBoost {
 			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
 				diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 				//Cmn*D^-1*R
-				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov.transpose() * diag_sigma_resid_inv_R;
+				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
 				//P^-1*R using Woodbury Identity
-				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
 
 			}
 			else if (cg_preconditioner_type == "none") {
