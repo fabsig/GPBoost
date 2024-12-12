@@ -4867,6 +4867,8 @@ class GPModel(object):
 
                             - "vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
 
+                            - "fitc": modified predictive process preconditioner for inverting (B^-1 * D * B^-T + W^-1)
+                            
                             - "pivoted_cholesky" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
 
                             - "incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 
@@ -5118,6 +5120,8 @@ class GPModel(object):
 
                             - "vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
 
+                            - "fitc": modified predictive process preconditioner for inverting (B^-1 * D * B^-T + W^-1)
+                            
                             - "pivoted_cholesky" (= default): (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma
 
                             - "incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 

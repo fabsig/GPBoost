@@ -112,6 +112,7 @@ fixed effects linear regression term (if there is one)}
         \itemize{
           \item{"vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
       where B^T * D^-1 * B approx= Sigma^-1 }
+          \item{"fitc": modified predictive process preconditioner for inverting (B^-1 * D * B^-T + W^-1)}
           \item{"pivoted_cholesky": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
       where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
           \item{"incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of 
