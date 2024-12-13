@@ -511,8 +511,8 @@ namespace GPBoost {
 	/*
 	This implementation of k-means uses [Lloyd's Algorithm](https://en.wikipedia.org/wiki/Lloyd%27s_algorithm)
 	with the [kmeans++](https://en.wikipedia.org/wiki/K-means%2B%2B) used for initializing the means.
-	* \param data data coordinates
-	* \param k Size of inducing points
+	* \param data Coordinates / input features
+	* \param k Number of cluster centers (usually = inducing points)
 	* \param gen RNG
 	* \param[out] means data cluster means that determine the inducing points
 	* \param[out] max_int maximal number of iterations

@@ -6834,22 +6834,28 @@ namespace GPBoost {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 					int num_ind_points = piv_chol_rank_;
-					if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
-						Log::REFatal("Need to have less inducing points than data points for '%s' approximation ", gp_approx_.c_str());
-					}
 					den_mat_t gp_coords_all_mat = re_comp_gp_clus0->GetCoords();
+					data_size_t num_data_vecchia = (data_size_t)gp_coords_all_mat.rows();
+					if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
+						Log::REFatal("Need to have less inducing points than data points for cg_preconditioner_type = '%s' ", cg_preconditioner_type_.c_str());
+					}
+					if (num_data_vecchia < num_data_per_cluster_[cluster_i]) {
+						if ((int)num_data_vecchia < num_ind_points) {
+							Log::REFatal("Cannot have more inducing points than unique coordinates for cg_preconditioner_type = '%s' ", cg_preconditioner_type_.c_str());
+						}
+					}
 					// Determine inducing points on unique locataions
 					den_mat_t gp_coords_all_unique;
 					std::vector<int> uniques;//unique points
 					std::vector<int> unique_idx;//not used
-					DetermineUniqueDuplicateCoordsFast(gp_coords_all_mat, num_data_per_cluster_[cluster_i], uniques, unique_idx);
-					if ((data_size_t)uniques.size() == num_data_per_cluster_[cluster_i]) {//no multiple observations at the same locations -> no incidence matrix needed
+					DetermineUniqueDuplicateCoordsFast(gp_coords_all_mat, num_data_vecchia, uniques, unique_idx);
+					if ((data_size_t)uniques.size() == num_data_vecchia) {//no multiple observations at the same locations -> no incidence matrix needed
 						gp_coords_all_unique = gp_coords_all_mat;
 					}
 					else {//there are multiple observations at the same locations
 						gp_coords_all_unique = gp_coords_all_mat(uniques, Eigen::all);
 						if ((int)gp_coords_all_unique.rows() < num_ind_points) {
-							Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
+							Log::REFatal("Cannot have more inducing points than unique coordinates for cg_preconditioner_type = '%s' ", cg_preconditioner_type_.c_str());
 						}
 					}
 					std::vector<int> indices;
@@ -6885,11 +6891,10 @@ namespace GPBoost {
 						Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
 					}
 					re_comps_ip_cluster_i.push_back(gp_ip);
-					only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;
+					bool only_one_GP_calculations_on_RE_scale_loc = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;
 					re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
 						gp_coords_all_mat, gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
-						false, false, only_one_GP_calculations_on_RE_scale_)));
-					has_duplicates_coords_ = only_one_GP_calculations_on_RE_scale_;
+						false, false, only_one_GP_calculations_on_RE_scale_loc)));
 					re_comps_ip_preconditioner_.insert({ cluster_i, re_comps_ip_cluster_i });
 					re_comps_cross_cov_preconditioner_.insert({ cluster_i, re_comps_cross_cov_cluster_i });
 					ind_points_determined_for_preconditioner_ = true;

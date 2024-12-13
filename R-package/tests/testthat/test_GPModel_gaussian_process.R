@@ -1157,9 +1157,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # "vecchia_latent" and matrix_inversion_method = "iterative" (FITC preconditioner)
     params_latent_FITC = params_latent
     params_latent_FITC$cg_preconditioner_type = "predictive_process_plus_diagonal"
+    params_latent_FITC$piv_chol_rank = 25
     capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential",
                                            gp_approx = "vecchia_latent", num_neighbors = n+2,
-                                           vecchia_ordering = "none", y = y,seed = 1,
+                                           vecchia_ordering = "none", y = y, seed = 1,
                                            params = params_latent_FITC, matrix_inversion_method = "iterative"), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(3,5)])),0.02)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars[1])),0.02)

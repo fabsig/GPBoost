@@ -130,6 +130,7 @@ namespace GPBoost {
 		RNG_t& gen,
 		den_mat_t& means,
 		int max_it) {
+		CHECK(k <= (int)data.rows());
 		// Initialization
 		random_plusplus(data, k, gen, means);
 		den_mat_t old_means(k, data.cols());
@@ -307,6 +308,7 @@ namespace GPBoost {
 		data_size_t num_data,
 		std::vector<int>& uniques,
 		std::vector<int>& unique_idx) {
+		CHECK((data_size_t)coords.rows() == num_data)
 		unique_idx = std::vector<int>(num_data);
 		double EPSILON_NUMBERS_SQUARE = EPSILON_NUMBERS * EPSILON_NUMBERS;
 		std::vector<double> coords_sum(num_data);
