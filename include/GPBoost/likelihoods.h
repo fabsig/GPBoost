@@ -135,10 +135,12 @@ namespace GPBoost {
 				if (approximation_type_ == "laplace") {
 					information_ll_can_be_negative_ = true;
 					information_ll_changes_during_mode_finding_ = true;
+					grad_information_wrt_mode_non_zero_ = true;
 				}
 				else if (approximation_type_ == "fisher_laplace") {
 					information_ll_can_be_negative_ = false;
 					information_ll_changes_during_mode_finding_ = false;
+					grad_information_wrt_mode_non_zero_ = false;
 				}
 			}
 			else if (likelihood_type_ == "gaussian") {
