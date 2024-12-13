@@ -7,11 +7,10 @@
 gpb.grid.search.tune.parameters(param_grid, num_try_random = NULL, data,
   gp_model = NULL, params = list(), nrounds = 1000L,
   early_stopping_rounds = NULL, folds = NULL, nfold = 5L, metric = NULL,
-  verbose_eval = 1L, cv_seed = NULL, line_search_step_length = FALSE,
-  use_gp_model_for_validation = TRUE, train_gp_model_cov_pars = TRUE,
-  label = NULL, weight = NULL, obj = NULL, eval = NULL,
-  stratified = TRUE, init_model = NULL, colnames = NULL,
-  categorical_feature = NULL, callbacks = list(),
+  verbose_eval = 1L, cv_seed = NULL, use_gp_model_for_validation = TRUE,
+  train_gp_model_cov_pars = TRUE, label = NULL, weight = NULL,
+  obj = NULL, eval = NULL, stratified = TRUE, init_model = NULL,
+  colnames = NULL, categorical_feature = NULL, callbacks = list(),
   return_all_combinations = FALSE, ...)
 }
 \arguments{
@@ -56,10 +55,6 @@ If = 1, summary progress information is displayed for every parameter combinatio
 If >= 2, detailed progress is displayed at every boosting stage for every parameter combination.}
 
 \item{cv_seed}{Seed for generating folds when doing \code{nfold} CV}
-
-\item{line_search_step_length}{Boolean. If TRUE, a line search is done to find the optimal step length for every boosting update 
-(see, e.g., Friedman 2001). This is then multiplied by the \code{learning_rate}. 
-Applies only to the GPBoost algorithm}
 
 \item{use_gp_model_for_validation}{Boolean. If TRUE, the \code{gp_model} 
 (Gaussian process and/or random effects) is also used (in addition to the tree model) for calculating 

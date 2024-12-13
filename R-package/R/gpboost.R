@@ -227,7 +227,6 @@ gpboost <- function(data,
                     params = list(),
                     nrounds = 100L,
                     gp_model = NULL,
-                    line_search_step_length = FALSE,
                     use_gp_model_for_validation = TRUE,
                     train_gp_model_cov_pars = TRUE,
                     valids = list(),
@@ -263,7 +262,6 @@ gpboost <- function(data,
     , "gp_model" = gp_model
     , "use_gp_model_for_validation" = use_gp_model_for_validation
     , "train_gp_model_cov_pars" = train_gp_model_cov_pars
-    , "line_search_step_length" = line_search_step_length
     , "valids" = valids
     , "obj" = obj
     , "eval" = eval

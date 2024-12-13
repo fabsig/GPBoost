@@ -6,13 +6,12 @@
 \usage{
 gpb.cv(params = list(), data, gp_model = NULL, nrounds = 1000L,
   early_stopping_rounds = NULL, folds = NULL, nfold = 5L, metric = NULL,
-  verbose = 1L, line_search_step_length = FALSE,
-  use_gp_model_for_validation = TRUE, fit_GP_cov_pars_OOS = FALSE,
-  train_gp_model_cov_pars = TRUE, label = NULL, weight = NULL,
-  obj = NULL, eval = NULL, record = TRUE, eval_freq = 1L,
-  showsd = FALSE, stratified = TRUE, init_model = NULL, colnames = NULL,
-  categorical_feature = NULL, callbacks = list(), reset_data = FALSE,
-  delete_boosters_folds = FALSE, ...)
+  verbose = 1L, use_gp_model_for_validation = TRUE,
+  fit_GP_cov_pars_OOS = FALSE, train_gp_model_cov_pars = TRUE,
+  label = NULL, weight = NULL, obj = NULL, eval = NULL, record = TRUE,
+  eval_freq = 1L, showsd = FALSE, stratified = TRUE, init_model = NULL,
+  colnames = NULL, categorical_feature = NULL, callbacks = list(),
+  reset_data = FALSE, delete_boosters_folds = FALSE, ...)
 }
 \arguments{
 \item{params}{list of "tuning" parameters. 
@@ -76,10 +75,6 @@ See \href{https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parame
 the "metric" section of the parameter documentation} for a complete list of valid metrics.}
 
 \item{verbose}{verbosity for output, if <= 0, also will disable the print of evaluation during training}
-
-\item{line_search_step_length}{Boolean. If TRUE, a line search is done to find the optimal step length for every boosting update 
-(see, e.g., Friedman 2001). This is then multiplied by the \code{learning_rate}. 
-Applies only to the GPBoost algorithm}
 
 \item{use_gp_model_for_validation}{Boolean. If TRUE, the \code{gp_model} 
 (Gaussian process and/or random effects) is also used (in addition to the tree model) for calculating 

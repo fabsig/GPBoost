@@ -5,12 +5,11 @@
 \title{Train a GPBoost model}
 \usage{
 gpboost(data, label = NULL, weight = NULL, params = list(),
-  nrounds = 100L, gp_model = NULL, line_search_step_length = FALSE,
-  use_gp_model_for_validation = TRUE, train_gp_model_cov_pars = TRUE,
-  valids = list(), obj = NULL, eval = NULL, verbose = 1L,
-  record = TRUE, eval_freq = 1L, early_stopping_rounds = NULL,
-  init_model = NULL, colnames = NULL, categorical_feature = NULL,
-  callbacks = list(), ...)
+  nrounds = 100L, gp_model = NULL, use_gp_model_for_validation = TRUE,
+  train_gp_model_cov_pars = TRUE, valids = list(), obj = NULL,
+  eval = NULL, verbose = 1L, record = TRUE, eval_freq = 1L,
+  early_stopping_rounds = NULL, init_model = NULL, colnames = NULL,
+  categorical_feature = NULL, callbacks = list(), ...)
 }
 \arguments{
 \item{data}{a \code{gpb.Dataset} object, used for training. Some functions, such as \code{\link{gpb.cv}},
@@ -55,10 +54,6 @@ A few key parameters:
 \item{nrounds}{number of boosting iterations (= number of trees). This is the most important tuning parameter for boosting}
 
 \item{gp_model}{A \code{GPModel} object that contains the random effects (Gaussian process and / or grouped random effects) model}
-
-\item{line_search_step_length}{Boolean. If TRUE, a line search is done to find the optimal step length for every boosting update 
-(see, e.g., Friedman 2001). This is then multiplied by the \code{learning_rate}. 
-Applies only to the GPBoost algorithm}
 
 \item{use_gp_model_for_validation}{Boolean. If TRUE, the \code{gp_model} 
 (Gaussian process and/or random effects) is also used (in addition to the tree model) for calculating 

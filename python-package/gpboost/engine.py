@@ -19,8 +19,7 @@ from .compat import SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFo
 
 
 def train(params, train_set, num_boost_round=100,
-          gp_model=None, line_search_step_length=False,
-          use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
+          gp_model=None, use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
           valid_sets=None, valid_names=None,
           fobj=None, feval=None, init_model=None,
           feature_name='auto', categorical_feature='auto',
@@ -40,10 +39,6 @@ def train(params, train_set, num_boost_round=100,
         Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
-    line_search_step_length : bool, optional (default=False)
-        If True, a line search is done to find the optimal step length for every boosting update
-        (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
-        Applies only to the GPBoost algorithm
     use_gp_model_for_validation : bool, optional (default=True)
         If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
         for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
@@ -254,7 +249,6 @@ def train(params, train_set, num_boost_round=100,
         # update gp_model related parameters
         params['use_gp_model_for_validation'] = use_gp_model_for_validation
         params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
-        params['line_search_step_length'] = line_search_step_length
         # Set the default metric to the (approximate marginal) negative log-likelihood if only the training loss should be calculated
         if is_valid_contain_train and len(reduced_valid_sets) == 0 and params.get('metric') is None:
             if gp_model._get_likelihood_name() == "gaussian":
@@ -531,7 +525,7 @@ def _agg_cv_result(raw_results, eval_train_metric=False):
 
 
 def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_rounds=None,
-       folds=None, nfold=5, metric=None, verbose_eval=None, line_search_step_length=False,
+       folds=None, nfold=5, metric=None, verbose_eval=None,
        use_gp_model_for_validation=True, fit_GP_cov_pars_OOS=False, train_gp_model_cov_pars=True,
        stratified=False, shuffle=True, fobj=None, feval=None, init_model=None,
        feature_name='auto', categorical_feature='auto', fpreproc=None, show_stdv=False, seed=0,
@@ -573,10 +567,6 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
         If None, progress will be displayed when np.ndarray is returned.
         If True, progress will be displayed at every boosting stage.
         If int, progress will be displayed at every given ``verbose_eval`` boosting stage.
-    line_search_step_length : bool, optional (default=False)
-        If True, a line search is done to find the optimal step length for every boosting update
-        (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
-        Applies only to the GPBoost algorithm
     use_gp_model_for_validation : bool, optional (default=True)
         If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
         for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
@@ -730,7 +720,6 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
         # update gp_model related parameters
         params['use_gp_model_for_validation'] = use_gp_model_for_validation
         params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
-        params['line_search_step_length'] = line_search_step_length
 
     if num_boost_round <= 0:
         raise ValueError("num_boost_round should be greater than zero.")
@@ -865,8 +854,7 @@ def _get_param_combination(param_comb_number, param_grid):
 
 def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_random=None, params=None,
                                 num_boost_round=1000, early_stopping_rounds=None, 
-                                folds=None, nfold=5, metric=None, 
-                                line_search_step_length=False,
+                                folds=None, nfold=5, metric=None,
                                 use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
                                 stratified=False, shuffle=True, fobj=None, feval=None, init_model=None,
                                 feature_name='auto', categorical_feature='auto', fpreproc=None,
@@ -907,10 +895,6 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         "auc", "average_precision", "binary_logloss", "binary_error"
         See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
         for a complete list of valid metrics.
-    line_search_step_length : bool, optional (default=False)
-        If True, a line search is done to find the optimal step length for every boosting update
-        (see, e.g., Friedman 2001). This is then multiplied by the 'learning_rate'.
-        Applies only to the GPBoost algorithm
     use_gp_model_for_validation : bool, optional (default=True)
         If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
         for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
@@ -1127,7 +1111,6 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         current_score_is_better = False
         try:
             cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round, gp_model=gp_model,
-                       line_search_step_length=line_search_step_length,
                        use_gp_model_for_validation=use_gp_model_for_validation,
                        train_gp_model_cov_pars=train_gp_model_cov_pars,
                        folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,
