@@ -568,6 +568,22 @@ gpb.cv <- function(params = list()
         return(out)
       })
       
+    },
+    error = function(err) { 
+      message(paste0("Error in boosting iteration ", i,":"))
+      message(err)
+      env$met_early_stop <- TRUE
+      if (env$iteration == 1) {
+        error_in_first_iteration <<- TRUE
+      }
+      
+    })# end tryCatch
+    
+    # Check for early stopping and break if needed
+    if (error_in_first_iteration) {
+      cv_booster$best_score <- NA
+      return(cv_booster)
+    } else {
       # Prepare collection of evaluation results
       merged_msg <- gpb.merge.cv.result(
         msg = msg
@@ -586,23 +602,8 @@ gpb.cv <- function(params = list()
       for (f in cb$post_iter) {
         f(env)
       }
-      
-    },
-    error = function(err) { 
-      message(paste0("Error in boosting iteration ", i,":"))
-      message(err)
-      env$met_early_stop <- TRUE
-      if (env$iteration == 1) {
-        error_in_first_iteration <<- TRUE
-      }
-      
-    })# end tryCatch
-    
-    # Check for early stopping and break if needed
-    if (error_in_first_iteration) {
-      cv_booster$best_score <- NA
-      return(cv_booster)
     }
+    
     if (env$met_early_stop) break
     
   }
@@ -1001,6 +1002,9 @@ gpb.grid.search.tune.parameters <- function(param_grid
                                             , ...
 ) {
   
+  if (!is.null(cv_seed)) {
+    set.seed(cv_seed)
+  }
   # Check format
   if (!is.list(param_grid)) {
     stop("gpb.grid.search.tune.parameters: param_grid needs to be a list")
