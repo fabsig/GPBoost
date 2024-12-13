@@ -1592,6 +1592,27 @@ namespace GPBoost {
 					grad_beta = (X_.transpose()) * grad_F;
 				}
 			}//end not gauss_likelihood_
+			// Check for NAs and Inf
+			if (calc_cov_aux_par_grad) {
+				for (int i = 0; i < (int)grad_cov_aux_par.size(); ++i) {
+					if (std::isnan(grad_cov_aux_par[i])) {
+						Log::REFatal("NaN occured in gradient wrt covariance / auxiliary parameter number %d ", i);
+					}
+					else if (std::isinf(grad_cov_aux_par[i])) {
+						Log::REFatal("Inf occured in gradient wrt covariance / auxiliary parameter number %d ", i);
+					}
+				}
+			}
+			if (calc_beta_grad) {
+				for (int i = 0; i < (int)grad_beta.size(); ++i) {
+					if (std::isnan(grad_beta[i])) {
+						Log::REFatal("NaN occured in gradient wrt regression coefficient number %d ", i);
+					}
+					else if (std::isinf(grad_beta[i])) {
+						Log::REFatal("Inf occured in gradient wrt regression coefficient number %d ", i);
+					}
+				}
+			}
 		//// For debugging
 		//for (int i = 0; i < (int)grad_cov_aux_par.size(); ++i) { Log::REDebug("grad_cov_aux_par[%d]: %g", i, grad_cov_aux_par[i]); }
 		}//end CalcGradPars
@@ -4185,10 +4206,10 @@ namespace GPBoost {
 		std::map<data_size_t, den_mat_t> solution_for_trace_;
 		/*! \brief Type of preconditioner used for conjugate gradient algorithms */
 		string_t cg_preconditioner_type_;
-		/*! \brief List of supported preconditioners for conjugate gradient algorithms for Gaussian likelihood */
-		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_{ "none", "predictive_process_plus_diagonal" };
-		/*! \brief List of supported preconditioners for conjugate gradient algorithms for non-Gaussian likelihoods */
-		const std::set<string_t> SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_{ "Sigma_inv_plus_BtWB", "piv_chol_on_Sigma","predictive_process_plus_diagonal", "zero_infill_incomplete_cholesky" };
+		/*! \brief List of supported preconditioners for conjugate gradient algorithms for Gaussian likelihoods and gp_approx = "full_scale_tapering" */
+		const std::set<string_t> SUPPORTED_PRECONDITIONERS_GAUSS_FSA_{ "none", "predictive_process_plus_diagonal" };
+		/*! \brief List of supported preconditioners for conjugate gradient algorithms for non-Gaussian likelihoods and gp_approx = "vecchia" */
+		const std::set<string_t> SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_{ "Sigma_inv_plus_BtWB", "piv_chol_on_Sigma","predictive_process_plus_diagonal", "zero_infill_incomplete_cholesky" };
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
 		bool cg_preconditioner_type_has_been_set_ = false;
 		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
@@ -4304,7 +4325,7 @@ namespace GPBoost {
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of Cholesky factor of inducing points matrix sigma_ip times cross-covariance */
 		std::map<data_size_t, den_mat_t> chol_ip_cross_cov_;
 		std::map<data_size_t, den_mat_t> chol_ip_cross_cov_preconditioner_;
-		bool ind_points_determined_for_preconditioner = false;
+		bool ind_points_determined_for_preconditioner_ = false;
 		std::map<data_size_t, den_mat_t> sigma_inv_sigma_grad_rand_vec_;
 		std::map<data_size_t, den_mat_t> sigma_grad_sigma_inv_rand_vec_;
 
@@ -5031,10 +5052,10 @@ namespace GPBoost {
 				}
 			}
 			if (!cg_preconditioner_type_has_been_set_) {
-				if (gauss_likelihood_) {
+				if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
 					cg_preconditioner_type_ = "predictive_process_plus_diagonal";
 				}
-				else {
+				else if (!gauss_likelihood_ && gp_approx_ == "vecchia") {
 					cg_preconditioner_type_ = "Sigma_inv_plus_BtWB";
 				}
 				CheckPreconditionerType();
@@ -5164,18 +5185,27 @@ namespace GPBoost {
 			if (gp_approx_ == "full_scale_tapering" && !gauss_likelihood_) {
 					Log::REFatal("Approximation '%s' is currently not supported for non-Gaussian likelihoods ", gp_approx_.c_str());
 			}
-		}//end CheckCompatibilitySpecialOptions
-
-		/*! \brief Check whether preconditioenr is supported */
-		void CheckPreconditionerType() const {
-			if (gauss_likelihood_) {
-				if (SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_.find(cg_preconditioner_type_) == SUPPORTED_CG_PRECONDITIONER_TYPE_GAUSS_.end()) {
-					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+			if (matrix_inversion_method_ == "iterative") {
+				bool can_use_iterative = (gp_approx_ == "vecchia" && !gauss_likelihood_) || (gp_approx_ == "full_scale_tapering" && gauss_likelihood_);
+				if (!can_use_iterative) {
+					Log::REFatal("Cannot use matrix_inversion_method = 'iterative' if gp_approx = '%s' and likelihood = '%s'. Use matrix_inversion_method = 'cholesky' instead ", 
+						gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
 				}
 			}
-			else {
-				if (SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_.find(cg_preconditioner_type_) == SUPPORTED_CG_PRECONDITIONER_TYPE_NONGAUSS_.end()) {
-					Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+		}//end CheckCompatibilitySpecialOptions
+
+		/*! \brief Check whether preconditioner is supported */
+		void CheckPreconditionerType() {
+			if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
+				if (SUPPORTED_PRECONDITIONERS_GAUSS_FSA_.find(cg_preconditioner_type_) == SUPPORTED_PRECONDITIONERS_GAUSS_FSA_.end()) {
+					Log::REFatal("Preconditioner type '%s' is not supported for gp_approx = '%s' and likelihood = '%s'",
+						cg_preconditioner_type_.c_str(), gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+				}
+			}
+			else if (!gauss_likelihood_ && gp_approx_ == "vecchia") {
+				if (SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_.find(cg_preconditioner_type_) == SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_.end()) {
+					Log::REFatal("Preconditioner type '%s' is not supported for gp_approx = '%s' and likelihood = '%s'",
+						cg_preconditioner_type_.c_str(), gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
 				}
 			}
 		}//end CheckPreconditionerType
@@ -5377,7 +5407,7 @@ namespace GPBoost {
 				if (gp_approx_ == "fitc" && gauss_likelihood_) {
 					Log::REWarning("There are duplicate coordinates. Currently, this is not well handled when 'gp_approx = fitc' and 'likelihood = gaussian'. "
 						"For this reason, 'gp_approx' is internally changed to 'full_scale_tapering' with a very small taper range. "
-						"Note that this is just a technical trick that results in an euquivalent model and you don't need to do something ");
+						"Note that this is just a technical trick that results in an equivalent model and you don't need to do something ");
 					gp_approx_ = "full_scale_tapering";
 					cov_fct_taper_range = 1e-8;
 				}
@@ -6731,91 +6761,8 @@ namespace GPBoost {
 			double nugget_var) {
 			if (gp_approx_ == "vecchia") {
 				CalcCovFactorVecchia(transf_scale, nugget_var);
-				if (cg_preconditioner_type_ == "predictive_process_plus_diagonal" && matrix_inversion_method_ == "iterative") {
-					for (const auto& cluster_i : unique_clusters_) {
-						std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = re_comps_vecchia_[cluster_i][0];
-						if (!ind_points_determined_for_preconditioner) {
-							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
-							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
-
-
-							int num_ind_points = piv_chol_rank_;
-							if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
-								Log::REFatal("Need to have less inducing points than data points for '%s' approximation ", gp_approx_.c_str());
-							}
-							den_mat_t gp_coords_all_mat = re_comp_gp_clus0->GetCoords();
-							// Determine inducing points on unique locataions
-							den_mat_t gp_coords_all_unique;
-							std::vector<int> uniques;//unique points
-							std::vector<int> unique_idx;//not used
-							DetermineUniqueDuplicateCoordsFast(gp_coords_all_mat, num_data_per_cluster_[cluster_i], uniques, unique_idx);
-							if ((data_size_t)uniques.size() == num_data_per_cluster_[cluster_i]) {//no multiple observations at the same locations -> no incidence matrix needed
-								gp_coords_all_unique = gp_coords_all_mat;
-							}
-							else {//there are multiple observations at the same locations
-								gp_coords_all_unique = gp_coords_all_mat(uniques, Eigen::all);
-								if ((int)gp_coords_all_unique.rows() < num_ind_points) {
-									Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
-								}
-							}
-							std::vector<int> indices;
-							den_mat_t gp_coords_ip_mat;
-							if (ind_points_selection_ == "cover_tree") {
-								Log::REInfo("Starting cover tree algorithm for determining inducing points ");
-								CoverTree(gp_coords_all_unique, cover_tree_radius_, rng_, gp_coords_ip_mat);
-								Log::REInfo("Inducing points have been determined ");
-								num_ind_points = (int)gp_coords_ip_mat.rows();
-							}
-							else if (ind_points_selection_ == "random") {
-								SampleIntNoReplaceSort((int)gp_coords_all_unique.rows(), num_ind_points, rng_, indices);
-								gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
-								for (int j = 0; j < num_ind_points; ++j) {
-									gp_coords_ip_mat.row(j) = gp_coords_all_unique.row(indices[j]);
-								}
-							}
-							else if (ind_points_selection_ == "kmeans++") {
-								gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
-								int max_it_kmeans = 1000;
-								Log::REInfo("Starting kmeans++ algorithm for determining inducing points ");
-								kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans);
-								Log::REInfo("Inducing points have been determined ");
-							}
-							else {
-								Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
-							}
-							gp_coords_all_unique.resize(0, 0);
-							std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
-								gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
-								false, false, true, false, false, true));
-							if (gp_ip->HasDuplicatedCoords()) {
-								Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
-							}
-							re_comps_ip_cluster_i.push_back(gp_ip);
-							only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;
-							re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
-								gp_coords_all_mat, gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
-								false, false, only_one_GP_calculations_on_RE_scale_)));
-							has_duplicates_coords_ = only_one_GP_calculations_on_RE_scale_;
-							re_comps_ip_preconditioner_.insert({ cluster_i, re_comps_ip_cluster_i });
-							re_comps_cross_cov_preconditioner_.insert({ cluster_i, re_comps_cross_cov_cluster_i });
-
-							ind_points_determined_for_preconditioner = true;
-						}
-						vec_t pars = re_comp_gp_clus0->CovPars();
-						for (int j = 0; j < num_comps_total_; ++j) {
-							re_comps_ip_preconditioner_[cluster_i][j]->SetCovPars(pars);
-							re_comps_cross_cov_preconditioner_[cluster_i][j]->SetCovPars(pars);
-							re_comps_ip_preconditioner_[cluster_i][j]->CalcSigma();
-							re_comps_cross_cov_preconditioner_[cluster_i][j]->CalcSigma();
-							den_mat_t sigma_ip_stable = *(re_comps_ip_preconditioner_[cluster_i][j]->GetZSigmaZt());
-							sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
-							chol_fact_sigma_ip_preconditioner_[cluster_i].compute(sigma_ip_stable);
-							const den_mat_t* cross_cov_p = re_comps_cross_cov_preconditioner_[cluster_i][j]->GetSigmaPtr();
-							chol_ip_cross_cov_preconditioner_[cluster_i] = (*cross_cov_p).transpose();
-							TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_preconditioner_[cluster_i],
-								chol_ip_cross_cov_preconditioner_[cluster_i], chol_ip_cross_cov_preconditioner_[cluster_i], false);
-						}
-					}
+				if (!gauss_likelihood_ && matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+					Calc_FITC_Preconditioner_Vecchia();
 				}
 			}
 			else {
@@ -6832,7 +6779,7 @@ namespace GPBoost {
 						}
 						CalcCovFactorFITC_FSA();
 					}
-					else {
+					else {// gp_approx_ != "vecchia" && gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering"
 						for (const auto& cluster_i : unique_clusters_) {
 							if (only_grouped_REs_use_woodbury_identity_) {//Use Woodburry matrix inversion formula: used only if there are only grouped REs
 								if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
@@ -6879,6 +6826,91 @@ namespace GPBoost {
 			}
 		}//end CalcCovFactorVecchia
 
+		void Calc_FITC_Preconditioner_Vecchia() {
+			CHECK(!gauss_likelihood_ && matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "predictive_process_plus_diagonal");
+			for (const auto& cluster_i : unique_clusters_) {
+				std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = re_comps_vecchia_[cluster_i][0];
+				if (!ind_points_determined_for_preconditioner_) {
+					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
+					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
+					int num_ind_points = piv_chol_rank_;
+					if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
+						Log::REFatal("Need to have less inducing points than data points for '%s' approximation ", gp_approx_.c_str());
+					}
+					den_mat_t gp_coords_all_mat = re_comp_gp_clus0->GetCoords();
+					// Determine inducing points on unique locataions
+					den_mat_t gp_coords_all_unique;
+					std::vector<int> uniques;//unique points
+					std::vector<int> unique_idx;//not used
+					DetermineUniqueDuplicateCoordsFast(gp_coords_all_mat, num_data_per_cluster_[cluster_i], uniques, unique_idx);
+					if ((data_size_t)uniques.size() == num_data_per_cluster_[cluster_i]) {//no multiple observations at the same locations -> no incidence matrix needed
+						gp_coords_all_unique = gp_coords_all_mat;
+					}
+					else {//there are multiple observations at the same locations
+						gp_coords_all_unique = gp_coords_all_mat(uniques, Eigen::all);
+						if ((int)gp_coords_all_unique.rows() < num_ind_points) {
+							Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
+						}
+					}
+					std::vector<int> indices;
+					den_mat_t gp_coords_ip_mat;
+					if (ind_points_selection_ == "cover_tree") {
+						Log::REInfo("Starting cover tree algorithm for determining inducing points ");
+						CoverTree(gp_coords_all_unique, cover_tree_radius_, rng_, gp_coords_ip_mat);
+						Log::REInfo("Inducing points have been determined ");
+						num_ind_points = (int)gp_coords_ip_mat.rows();
+					}
+					else if (ind_points_selection_ == "random") {
+						SampleIntNoReplaceSort((int)gp_coords_all_unique.rows(), num_ind_points, rng_, indices);
+						gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
+						for (int j = 0; j < num_ind_points; ++j) {
+							gp_coords_ip_mat.row(j) = gp_coords_all_unique.row(indices[j]);
+						}
+					}
+					else if (ind_points_selection_ == "kmeans++") {
+						gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
+						int max_it_kmeans = 1000;
+						Log::REInfo("Starting kmeans++ algorithm for determining inducing points ");
+						kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans);
+						Log::REInfo("Inducing points have been determined ");
+					}
+					else {
+						Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
+					}
+					gp_coords_all_unique.resize(0, 0);
+					std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
+						gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+						false, false, true, false, false, true));
+					if (gp_ip->HasDuplicatedCoords()) {
+						Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
+					}
+					re_comps_ip_cluster_i.push_back(gp_ip);
+					only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;
+					re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
+						gp_coords_all_mat, gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+						false, false, only_one_GP_calculations_on_RE_scale_)));
+					has_duplicates_coords_ = only_one_GP_calculations_on_RE_scale_;
+					re_comps_ip_preconditioner_.insert({ cluster_i, re_comps_ip_cluster_i });
+					re_comps_cross_cov_preconditioner_.insert({ cluster_i, re_comps_cross_cov_cluster_i });
+					ind_points_determined_for_preconditioner_ = true;
+				}
+				vec_t pars = re_comp_gp_clus0->CovPars();
+				for (int j = 0; j < num_comps_total_; ++j) {
+					re_comps_ip_preconditioner_[cluster_i][j]->SetCovPars(pars);
+					re_comps_cross_cov_preconditioner_[cluster_i][j]->SetCovPars(pars);
+					re_comps_ip_preconditioner_[cluster_i][j]->CalcSigma();
+					re_comps_cross_cov_preconditioner_[cluster_i][j]->CalcSigma();
+					den_mat_t sigma_ip_stable = *(re_comps_ip_preconditioner_[cluster_i][j]->GetZSigmaZt());
+					sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+					chol_fact_sigma_ip_preconditioner_[cluster_i].compute(sigma_ip_stable);
+					const den_mat_t* cross_cov_p = re_comps_cross_cov_preconditioner_[cluster_i][j]->GetSigmaPtr();
+					chol_ip_cross_cov_preconditioner_[cluster_i] = (*cross_cov_p).transpose();
+					TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_preconditioner_[cluster_i],
+						chol_ip_cross_cov_preconditioner_[cluster_i], chol_ip_cross_cov_preconditioner_[cluster_i], false);
+				}
+			}//end loop over unique_clusters_
+		}//end Calc_FITC_Preconditioner_Vecchia
+
 		/*!
 		* \brief Calculate gradients of matrices A and D_inv for Vecchia approximation
 		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale
@@ -6924,7 +6956,8 @@ namespace GPBoost {
 							chol_fact_woodbury_preconditioner_[cluster_i].compute(sigma_woodbury_preconditioner);
 						}
 						else if (cg_preconditioner_type_ != "none") {
-							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+							Log::REFatal("Preconditioner type '%s' is not supported for gp_approx = '%s' and likelihood = '%s'", 
+								cg_preconditioner_type_.c_str(), gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
 						}
 
 					}
