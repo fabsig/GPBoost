@@ -2472,12 +2472,12 @@ namespace GPBoost {
 				B_rm_ = sp_mat_rm_t(B);
 				D_inv_rm_ = sp_mat_rm_t(D_inv);
 				B_t_D_inv_rm_ = B_rm_.transpose() * D_inv_rm_;
-				if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+				if (cg_preconditioner_type_ == "pivoted_cholesky") {
 					//Store as class variable
 					Sigma_L_k_ = Sigma_L_k;
 					I_k_plus_Sigma_L_kt_W_Sigma_L_k.resize(Sigma_L_k_.cols(), Sigma_L_k_.cols());
 				} 
-				else if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+				else if (cg_preconditioner_type_ == "fitc") {
 					chol_fact_sigma_ip_ = chol_fact_sigma_ip;
 					chol_ip_cross_cov_ = chol_ip_cross_cov;
 					sigma_ip_stable = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
@@ -2485,7 +2485,7 @@ namespace GPBoost {
 				}
 			}
 			if(matrix_inversion_method_ != "iterative" || 
-				(matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "zero_infill_incomplete_cholesky")) {
+				(matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "incomplete_cholesky")) {
 				SigmaI = B.transpose() * D_inv * B;
 			}
 			// Start finding mode 
@@ -2537,7 +2537,7 @@ namespace GPBoost {
 					// Calculate Cholesky factor and update mode
 					rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
 					if (matrix_inversion_method_ == "iterative") {
-						if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+						if (cg_preconditioner_type_ == "pivoted_cholesky") {
 							if ((information_ll_.array() > 1e10).any()) {
 								has_NA_or_Inf = true;// the inversion of the preconditioner with the Woodbury identity can be numerically unstable when information_ll_ is very large
 							}
@@ -2551,7 +2551,7 @@ namespace GPBoost {
 									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 							}
 						}
-						else if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+						else if (cg_preconditioner_type_ == "fitc") {
 							if ((information_ll_.array() > 1e10).any()) {
 								has_NA_or_Inf = true;// the inversion of the preconditioner with the Woodbury identity can be numerically unstable when information_ll_ is very large
 							}
@@ -2574,9 +2574,9 @@ namespace GPBoost {
 									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_);
 							}
 						}
-						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+						else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 							if (it == 0 || grad_information_wrt_mode_non_zero_) {
-								if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+								if (cg_preconditioner_type_ == "vadu") {
 									D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + information_ll_).asDiagonal() * B_rm_;
 								}
 								else {
@@ -2589,7 +2589,7 @@ namespace GPBoost {
 								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
 						}
 						else {
-							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+							Log::REFatal("FindModePostRandEffCalcMLLVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 						}
 						if (has_NA_or_Inf) {
 							approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
@@ -2659,24 +2659,24 @@ namespace GPBoost {
 						//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
 						if (!saved_rand_vec_trace_) {
 							//Dependent on the preconditioner: Generate t (= num_rand_vec_trace_) or 2*t random vectors
-							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+							if (cg_preconditioner_type_ == "pivoted_cholesky") {
 								rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
 								rand_vec_trace_I2_.resize(std::min(piv_chol_rank_, dim_mode_), num_rand_vec_trace_);
 								GenRandVecNormal(cg_generator_, rand_vec_trace_I2_);
 								WI_plus_Sigma_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
-							else if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+							else if (cg_preconditioner_type_ == "fitc") {
 								rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
 								rand_vec_trace_I2_.resize(piv_chol_rank_, num_rand_vec_trace_);
 								GenRandVecNormal(cg_generator_, rand_vec_trace_I2_);
 								WI_plus_Sigma_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
-							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+							else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 								rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
 								SigmaI_plus_W_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
 							else {
-								Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+								Log::REFatal("FindModePostRandEffCalcMLLVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 							}
 							GenRandVecNormal(cg_generator_, rand_vec_trace_I_);
 							if (reuse_rand_vec_trace_) {
@@ -3391,21 +3391,21 @@ namespace GPBoost {
 				if (grad_information_wrt_mode_non_zero_) {
 					d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
 					SigmaI_plus_W_inv_d_mll_d_mode = vec_t(dim_mode_);
-					if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+					if (cg_preconditioner_type_ == "pivoted_cholesky") {
 						CGVecchiaLaplaceVecWinvplusSigma(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
 							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 					}
-					else if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+					else if (cg_preconditioner_type_ == "fitc") {
 						const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 						CGVecchiaLaplaceVecWinvplusSigma_FITC_P(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
 							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_);
 					}
-					else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+					else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 						CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
 							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
 					}
 					else {
-						Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+						Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 					}
 					if (has_NA_or_Inf) {
 						Log::REDebug(CG_NA_OR_INF_WARNING_);
@@ -4162,21 +4162,21 @@ namespace GPBoost {
 							vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 							//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 							bool has_NA_or_Inf = false;
-							if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+							if (cg_preconditioner_type_ == "pivoted_cholesky") {
 								CGVecchiaLaplaceVecWinvplusSigma(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
 									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 							}
-							else if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+							else if (cg_preconditioner_type_ == "fitc") {
 								const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 								CGVecchiaLaplaceVecWinvplusSigma_FITC_P(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
 									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_);
 							}
-							else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+							else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 								CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
 									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
 							}
 							else {
-								Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+								Log::REFatal("PredictLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 							}
 							if (has_NA_or_Inf) {
 								Log::REDebug(CG_NA_OR_INF_WARNING_);
@@ -4474,21 +4474,21 @@ namespace GPBoost {
 						vec_t rand_vec_pred_SigmaI_plus_W_inv(num_re_);
 						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 						bool has_NA_or_Inf = false;
-						if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+						if (cg_preconditioner_type_ == "pivoted_cholesky") {
 							CGVecchiaLaplaceVecWinvplusSigma(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
 								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
 						}
-						else if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+						else if (cg_preconditioner_type_ == "fitc") {
 							const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 							CGVecchiaLaplaceVecWinvplusSigma_FITC_P(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
 								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_);
 						}
-						else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+						else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 							CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
 								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
 						}
 						else {
-							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+							Log::REFatal("CalcVarLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 						}
 						if (has_NA_or_Inf) {
 							Log::REDebug(CG_NA_OR_INF_WARNING_);
@@ -4742,7 +4742,7 @@ namespace GPBoost {
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i) {
 			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
 			CHECK(rand_vec_trace_P_.cols() == num_rand_vec_trace_);
-			if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+			if (cg_preconditioner_type_ == "pivoted_cholesky") {
 				CHECK(rand_vec_trace_I2_.cols() == num_rand_vec_trace_);
 				CHECK(rand_vec_trace_I2_.rows() == Sigma_L_k_.cols());
 				std::vector<vec_t> Tdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
@@ -4769,7 +4769,7 @@ namespace GPBoost {
 						2 * ((den_mat_t)chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.matrixL()).diagonal().array().log().sum() - information_ll_.array().log().sum();
 				}
 			}
-			else if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+			else if (cg_preconditioner_type_ == "fitc") {
 				CHECK(rand_vec_trace_I2_.cols() == num_rand_vec_trace_);
 				CHECK(rand_vec_trace_I2_.rows() == chol_ip_cross_cov_.rows());
 				std::vector<vec_t> Tdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
@@ -4807,12 +4807,12 @@ namespace GPBoost {
 						diagonal_approx_inv_preconditioner_.array().log().sum();
 				}
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 				vec_t D_inv_plus_W_diag;
 				std::vector<vec_t> Tdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
 				std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 				//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
-				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+				if (cg_preconditioner_type_ == "vadu") {
 					//For P = B^T (D^(-1) + W) B: z_i = B^T (D^(-1) + W)^0.5 r_i, where r_i ~ N(0,I)
 					D_inv_plus_W_diag = D_inv_rm_.diagonal() + information_ll_;
 					sp_mat_rm_t B_t_D_inv_plus_W_sqrt_rm = B_rm_.transpose() * (D_inv_plus_W_diag).cwiseSqrt().asDiagonal();
@@ -4844,7 +4844,7 @@ namespace GPBoost {
 					LogDetStochTridiag(Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W, ldet_PI_SigmaI_plus_W, num_data, num_rand_vec_trace_);
 					//log|Sigma W + I| = log|P^(-1) (Sigma^(-1) + W)| + log|P| + log|Sigma|
 					log_det_Sigma_W_plus_I = ldet_PI_SigmaI_plus_W - D_inv_rm_.diagonal().array().log().sum();
-					if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+					if (cg_preconditioner_type_ == "vadu") {
 						//log|P| = log|B^T (D^(-1) + W) B| = log|(D^(-1) + W)|
 						log_det_Sigma_W_plus_I += D_inv_plus_W_diag.array().log().sum();
 					}
@@ -4855,7 +4855,7 @@ namespace GPBoost {
 				}
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+				Log::REFatal("CalcLogDetStoch: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 			}
 		}//end CalcLogDetStoch
 
@@ -4885,7 +4885,7 @@ namespace GPBoost {
 			if (grad_information_wrt_mode_non_zero_) {
 				W_deriv_rep = deriv_information_loc_par.replicate(1, num_rand_vec_trace_);
 			}
-			if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+			if (cg_preconditioner_type_ == "pivoted_cholesky") {
 				//P^(-1) = (W^(-1) + Sigma_L_k Sigma_L_k^T)^(-1)
 				//W^(-1) P^(-1) Z = Z - Sigma_L_k (I_k + Sigma_L_k^T W Sigma_L_k)^(-1) Sigma_L_k^T W Z
 				den_mat_t Sigma_Lkt_W_Z;
@@ -4919,7 +4919,7 @@ namespace GPBoost {
 					d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_W_deriv - tr_WI_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
 				}
 			}
-			else if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+			else if (cg_preconditioner_type_ == "fitc") {
 				//P^(-1) = (D + Sigma_nm Sigma_m^-1 Sigma_mn)^(-1)
 				//W^(-1) P^(-1) Z
 				const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
@@ -4954,9 +4954,9 @@ namespace GPBoost {
 					d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_WI_PI_WI_W_deriv- tr_WI_DI_WI_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
 				}
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 				//P^(-1) Z
-				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+				if (cg_preconditioner_type_ == "vadu") {
 					//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
 					den_mat_t B_invt_Z(num_data, num_rand_vec_trace_);
 					PI_Z.resize(num_data, num_rand_vec_trace_);
@@ -4992,7 +4992,7 @@ namespace GPBoost {
 					tr_SigmaI_plus_W_inv_W_deriv = Z_SigmaI_plus_W_inv_W_deriv_PI_Z.rowwise().mean();
 					d_log_det_Sigma_W_plus_I_d_mode = tr_SigmaI_plus_W_inv_W_deriv;
 				}
-				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+				if (cg_preconditioner_type_ == "vadu") {
 					//variance reduction
 					//deterministic tr((D^(-1) + W)^(-1) dW/db_i)
 					D_inv_plus_W_inv_diag = (D_inv_rm_.diagonal() + information_ll_).cwiseInverse();
@@ -5009,7 +5009,7 @@ namespace GPBoost {
 				}
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+				Log::REFatal("CalcLogDetStochDerivMode: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 			}
 		} //end CalcLogDetStochDerivMode
 
@@ -5036,7 +5036,7 @@ namespace GPBoost {
 			const den_mat_t& PI_Z,
 			const den_mat_t& WI_PI_Z,
 			double& d_log_det_Sigma_W_plus_I_d_cov_pars) const {
-			if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+			if (cg_preconditioner_type_ == "pivoted_cholesky") {
 				den_mat_t B_invt_WI_plus_Sigma_inv_Z(num_data, num_rand_vec_trace_), Sigma_WI_plus_Sigma_inv_Z(num_data, num_rand_vec_trace_);
 				den_mat_t B_invt_PI_Z(num_data, num_rand_vec_trace_), Sigma_PI_Z(num_data, num_rand_vec_trace_);
 				//Stochastic Trace: Calculate tr((Sigma + W^(-1))^(-1) dSigma/dtheta_j)
@@ -5060,7 +5060,7 @@ namespace GPBoost {
 				d_log_det_Sigma_W_plus_I_d_cov_pars = -1 * ((Sigma_WI_plus_Sigma_inv_Z.cwiseProduct(SigmaI_deriv_rm * Sigma_PI_Z)).colwise().sum()).mean();
 				//no variance reduction since dSigma_L_k/d_theta_j can't be solved analytically
 			}
-			else if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+			else if (cg_preconditioner_type_ == "fitc") {
 				den_mat_t B_invt_WI_plus_Sigma_inv_Z(num_data, num_rand_vec_trace_), Sigma_WI_plus_Sigma_inv_Z(num_data, num_rand_vec_trace_);
 				den_mat_t B_invt_PI_Z(num_data, num_rand_vec_trace_), Sigma_PI_Z(num_data, num_rand_vec_trace_);
 				//Stochastic Trace: Calculate tr((Sigma + W^(-1))^(-1) dSigma/dtheta_j)
@@ -5083,7 +5083,7 @@ namespace GPBoost {
 				}
 				d_log_det_Sigma_W_plus_I_d_cov_pars = -1 * ((Sigma_WI_plus_Sigma_inv_Z.cwiseProduct(SigmaI_deriv_rm * Sigma_PI_Z)).colwise().sum()).mean();
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 				//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dSigma^(-1)/dtheta_j)
 				vec_t zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(SigmaI_deriv_rm * PI_Z)).colwise().sum()).transpose();
 				double tr_SigmaI_plus_W_inv_SigmaI_deriv = zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z.mean();
@@ -5095,7 +5095,7 @@ namespace GPBoost {
 				else {
 					d_log_det_Sigma_W_plus_I_d_cov_pars += (D_inv_rm_.diagonal().array() * D_grad_j.diagonal().array()).sum();
 				}
-				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+				if (cg_preconditioner_type_ == "vadu") {
 					//variance reduction
 					double tr_D_inv_plus_W_inv_D_inv_deriv, tr_PI_P_deriv;
 					vec_t zt_PI_P_deriv_PI_z;
@@ -5123,7 +5123,7 @@ namespace GPBoost {
 				}
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+				Log::REFatal("CalcLogDetStochDerivCovPar: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 			}
 		} //end CalcLogDetStochDerivCovPar
 
@@ -5147,7 +5147,7 @@ namespace GPBoost {
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) const {
 			double tr_PI_P_deriv, c_opt;
 			vec_t zt_PI_P_deriv_PI_z;
-			if (cg_preconditioner_type_ == "piv_chol_on_Sigma") {
+			if (cg_preconditioner_type_ == "pivoted_cholesky") {
 				//tr(W^(-1) dW/daux) - do not cancel with deterministic part of variance reduction when using optimal c
 				double tr_WI_W_deriv = (diag_WI.cwiseProduct(deriv_information_aux_par)).sum();
 				//Stochastic Trace: Calculate tr((Sigma + W^(-1))^(-1) dW^(-1)/daux)
@@ -5165,7 +5165,7 @@ namespace GPBoost {
 				CalcOptimalC(zt_WI_plus_Sigma_inv_WI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv, c_opt);
 				d_detmll_d_aux_par += c_opt * (tr_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_L_kt_W_deriv_Sigma_L_k - tr_WI_W_deriv) - c_opt * tr_PI_P_deriv;
 			}
-			else if (cg_preconditioner_type_ == "predictive_process_plus_diagonal") {
+			else if (cg_preconditioner_type_ == "fitc") {
 				const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 				//tr(W^(-1) dW/daux) - do not cancel with deterministic part of variance reduction when using optimal c
 				vec_t tr_WI_W_deriv_vec = diag_WI.cwiseProduct(deriv_information_aux_par);
@@ -5189,12 +5189,12 @@ namespace GPBoost {
 				CalcOptimalC(zt_WI_plus_Sigma_inv_WI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv, c_opt);
 				d_detmll_d_aux_par += c_opt * (tr_WI_PI_WI_W_deriv - tr_WI_DI_WI_W_deriv) - c_opt * tr_PI_P_deriv;
 			}
-			else if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB" || cg_preconditioner_type_ == "zero_infill_incomplete_cholesky") {
+			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 				//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dW/daux)
 				vec_t zt_SigmaI_plus_W_inv_W_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(deriv_information_aux_par.asDiagonal() * PI_Z)).colwise().sum()).transpose();
 				double tr_SigmaI_plus_W_inv_W_deriv = zt_SigmaI_plus_W_inv_W_deriv_PI_z.mean();
 				d_detmll_d_aux_par = tr_SigmaI_plus_W_inv_W_deriv;
-				if (cg_preconditioner_type_ == "Sigma_inv_plus_BtWB") {
+				if (cg_preconditioner_type_ == "vadu") {
 					//variance reduction
 					//deterministic tr((D^(-1) + W)^(-1) dW/daux)
 					double tr_D_inv_plus_W_inv_W_deriv = (D_inv_plus_W_inv_diag.array() * deriv_information_aux_par.array()).sum();
@@ -5208,7 +5208,7 @@ namespace GPBoost {
 				}
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+				Log::REFatal("CalcLogDetStochDerivAuxPar: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 			}
 		} //end CalcLogDetStochDerivAuxPar
 
@@ -5422,7 +5422,7 @@ namespace GPBoost {
 		bool saved_rand_vec_trace_ = false;
 		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension num_data, and t = num_rand_vec_trace_ */
 		den_mat_t rand_vec_trace_I_;
-		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension piv_chol_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "piv_chol_on_Sigma" */
+		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension piv_chol_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "pivoted_cholesky" */
 		den_mat_t rand_vec_trace_I2_;
 		/*! Matrix Z of random vectors (z_1, ..., z_t) with Cov(z_i) = P (P being the preconditioner matrix), z_i is of dimension num_data, and t = num_rand_vec_trace_ */
 		den_mat_t rand_vec_trace_P_;

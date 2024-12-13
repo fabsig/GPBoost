@@ -56,18 +56,18 @@ namespace GPBoost {
 			r = rhs - ((B_t_D_inv_rm * (B_rm * u)) + diag_W.cwiseProduct(u));
 		}
 
-		if (cg_preconditioner_type == "Sigma_inv_plus_BtWB") {
+		if (cg_preconditioner_type == "vadu") {
 			//z = P^(-1) r, where P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
 			B_invt_r = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(r);
 			z = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_r);
 		}
-		else if (cg_preconditioner_type == "zero_infill_incomplete_cholesky") {
+		else if (cg_preconditioner_type == "incomplete_cholesky") {
 			//z = P^(-1) r, where P^(-1) = L^(-1) L^(-T)
 			L_invt_r = L_SigmaI_plus_W_rm.transpose().triangularView<Eigen::UpLoType::Upper>().solve(r);
 			z = L_SigmaI_plus_W_rm.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_r);
 		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGVecchiaLaplaceVec: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 		}
 
 		h = z;
@@ -96,18 +96,18 @@ namespace GPBoost {
 
 			z_old = z;
 
-			if (cg_preconditioner_type == "Sigma_inv_plus_BtWB") {
+			if (cg_preconditioner_type == "vadu") {
 				//z = P^(-1) r 
 				B_invt_r = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(r);
 				z = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_r);
 			}
-			else if (cg_preconditioner_type == "zero_infill_incomplete_cholesky") {
+			else if (cg_preconditioner_type == "incomplete_cholesky") {
 				//z = P^(-1) r, where P^(-1) = L^(-1) L^(-T)
 				L_invt_r = L_SigmaI_plus_W_rm.transpose().triangularView<Eigen::UpLoType::Upper>().solve(r);
 				z = L_SigmaI_plus_W_rm.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_r);
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGVecchiaLaplaceVec: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 
 			b = r.transpose() * z;
@@ -350,7 +350,7 @@ namespace GPBoost {
 		//R = rhs - (W^(-1) + Sigma) * U
 		R = rhs; //Since U is 0
 
-		if (cg_preconditioner_type == "Sigma_inv_plus_BtWB") {
+		if (cg_preconditioner_type == "vadu") {
 			//Z = P^(-1) R 		
 			//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
 #pragma omp parallel for schedule(static)   
@@ -362,7 +362,7 @@ namespace GPBoost {
 				Z.col(i) = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(P_sqrt_invt_R.col(i));
 			}
 		}
-		else if (cg_preconditioner_type == "zero_infill_incomplete_cholesky") {
+		else if (cg_preconditioner_type == "incomplete_cholesky") {
 			//Z = P^(-1) R 		
 			//P^(-1) = L^(-1) L^(-T)
 #pragma omp parallel for schedule(static)   
@@ -375,7 +375,7 @@ namespace GPBoost {
 			}
 		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGTridiagVecchiaLaplace: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 		}
 
 		H = Z;
@@ -408,7 +408,7 @@ namespace GPBoost {
 			Z_old = Z;
 
 			//Z = P^(-1) R
-			if (cg_preconditioner_type == "Sigma_inv_plus_BtWB") {
+			if (cg_preconditioner_type == "vadu") {
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
 					P_sqrt_invt_R.col(i) = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(R.col(i));
@@ -418,7 +418,7 @@ namespace GPBoost {
 					Z.col(i) = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(P_sqrt_invt_R.col(i));
 				}
 			}
-			else if (cg_preconditioner_type == "zero_infill_incomplete_cholesky") {
+			else if (cg_preconditioner_type == "incomplete_cholesky") {
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
 					P_sqrt_invt_R.col(i) = L_SigmaI_plus_W_rm.transpose().triangularView<Eigen::UpLoType::Upper>().solve(R.col(i));
@@ -429,7 +429,7 @@ namespace GPBoost {
 				}
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGTridiagVecchiaLaplace: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 
 			b_old = b;

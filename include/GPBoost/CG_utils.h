@@ -427,7 +427,7 @@ namespace GPBoost {
 		}
 
 		//z = P^(-1) r
-		if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+		if (cg_preconditioner_type == "fitc") {
 			//D^-1*r
 			diag_sigma_resid_inv_r = diagonal_approx_inv_preconditioner.asDiagonal() * r; // ??? cwiseProd (TODO)
 
@@ -441,7 +441,7 @@ namespace GPBoost {
 			z = r;
 		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGFSA: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 		}
 		h = z;
 
@@ -469,7 +469,7 @@ namespace GPBoost {
 			z_old = z;
 
 			//z = P^(-1) r 
-			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+			if (cg_preconditioner_type == "fitc") {
 				diag_sigma_resid_inv_r = diagonal_approx_inv_preconditioner.asDiagonal() * r; // ??? cwiseProd (TODO)
 				sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_r;
 				z = diag_sigma_resid_inv_r - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_r)));
@@ -479,7 +479,7 @@ namespace GPBoost {
 				z = r;
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGFSA: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 
 			b = r.transpose() * z;
@@ -563,7 +563,7 @@ namespace GPBoost {
 			}
 		}
 		//Z = P^(-1) R 
-		if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+		if (cg_preconditioner_type == "fitc") {
 			//D^-1*R
 			diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 			//Cmn*D^-1*R
@@ -576,7 +576,7 @@ namespace GPBoost {
 			Z = R;
 		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGTridiagFSA: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 		}
 
 		H = Z;
@@ -606,7 +606,7 @@ namespace GPBoost {
 
 			Z_old = Z;
 
-			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+			if (cg_preconditioner_type == "fitc") {
 				diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 				//Cmn*D^-1*R
 				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
@@ -618,7 +618,7 @@ namespace GPBoost {
 				Z = R;
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGTridiagFSA: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 
 			b_old = b;
@@ -706,7 +706,7 @@ namespace GPBoost {
 			}
 		}
 		//Z = P^(-1) R 
-		if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+		if (cg_preconditioner_type == "fitc") {
 			//D^-1*R
 			diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 			//Cmn*D^-1*R
@@ -719,7 +719,7 @@ namespace GPBoost {
 			Z = R;
 		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGFSA_MULTI_RHS: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 		}
 
 		H = Z;
@@ -751,7 +751,7 @@ namespace GPBoost {
 
 			Z_old = Z;
 
-			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+			if (cg_preconditioner_type == "fitc") {
 				diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 				//Cmn*D^-1*R
 				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
@@ -763,7 +763,7 @@ namespace GPBoost {
 				Z = R;
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGFSA_MULTI_RHS: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 
 			b_old = b;
@@ -834,7 +834,7 @@ namespace GPBoost {
 			}
 		}
 		//Z = P^(-1) R 
-		if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+		if (cg_preconditioner_type == "fitc") {
 			//D^-1*R
 			Z = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 
@@ -843,7 +843,7 @@ namespace GPBoost {
 			Z = R;
 		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGFSA_RESID: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 		}
 
 		H = Z;
@@ -875,7 +875,7 @@ namespace GPBoost {
 
 			Z_old = Z;
 
-			if (cg_preconditioner_type == "predictive_process_plus_diagonal") {
+			if (cg_preconditioner_type == "fitc") {
 				Z = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 
 			}
@@ -883,7 +883,7 @@ namespace GPBoost {
 				Z = R;
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGFSA_RESID: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 
 			b_old = b;
