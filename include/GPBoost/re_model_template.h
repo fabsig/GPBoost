@@ -6946,10 +6946,10 @@ namespace GPBoost {
 						Log::REFatal("'iterative' methods are not implemented for gp_approx = '%s'. Use 'cholesky' ", gp_approx_.c_str());
 					}
 					else if (gp_approx_ == "full_scale_tapering") {
-						const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0]->GetSigmaPtr();
-						den_mat_t sigma_ip_stable_preconditioner = *(re_comps_ip_preconditioner_[cluster_i][0]->GetZSigmaZt());
-						den_mat_t sigma_woodbury_preconditioner;// sigma_woodbury = sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov or for Preconditioner sigma_ip + cross_cov^T * D^-1 * cross_cov
 						if (cg_preconditioner_type_ == "fitc") {
+							const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0]->GetSigmaPtr();
+							den_mat_t sigma_ip_stable_preconditioner = *(re_comps_ip_preconditioner_[cluster_i][0]->GetZSigmaZt());
+							den_mat_t sigma_woodbury_preconditioner;// sigma_woodbury = sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov or for Preconditioner sigma_ip + cross_cov^T * D^-1 * cross_cov
 							std::shared_ptr<T_mat> sigma_resid;
 							sigma_resid = re_comps_resid_[cluster_i][0]->GetZSigmaZt();
 							diagonal_approx_preconditioner_[cluster_i] = (*sigma_resid).diagonal();
