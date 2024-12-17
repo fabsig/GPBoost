@@ -4798,12 +4798,12 @@ namespace GPBoost {
 							const den_mat_t* cross_cov_preconditioner;
 							if (cg_preconditioner_type_ == "fitc") {
 								cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0]->GetSigmaPtr();
-								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, (*cross_cov), (*cross_cov_preconditioner), chol_fact_sigma_ip_[cluster_i], X_cluster_i, psi_inv_X,
+								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, (*cross_cov_preconditioner), chol_ip_cross_cov_[cluster_i], X_cluster_i, psi_inv_X,
 									NaN_found, num_data_per_cluster_[cluster_i], (int)X_cluster_i.cols(), cg_max_num_it, cg_delta_conv_,
 									cg_preconditioner_type_, chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 							}
 							else {
-								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, (*cross_cov), (*cross_cov), chol_fact_sigma_ip_[cluster_i], X_cluster_i, psi_inv_X,
+								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, (*cross_cov), chol_ip_cross_cov_[cluster_i], X_cluster_i, psi_inv_X,
 									NaN_found, num_data_per_cluster_[cluster_i], (int)X_cluster_i.cols(), cg_max_num_it, cg_delta_conv_,
 									cg_preconditioner_type_, chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 							}
@@ -7513,12 +7513,12 @@ namespace GPBoost {
 								const den_mat_t* cross_cov_preconditioner;
 								if (cg_preconditioner_type_ == "fitc") {
 									cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0]->GetSigmaPtr();
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, *cross_cov_preconditioner, chol_fact_sigma_ip_[cluster_i], sigma_resid_grad_rand_vec, sigma_inv_sigma_grad_rand_vec_interim, NaN_found,
+									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov_preconditioner, chol_ip_cross_cov_[cluster_i], sigma_resid_grad_rand_vec, sigma_inv_sigma_grad_rand_vec_interim, NaN_found,
 										num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								}
 								else {
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, *cross_cov, chol_fact_sigma_ip_[cluster_i], sigma_resid_grad_rand_vec, sigma_inv_sigma_grad_rand_vec_interim, NaN_found,
+									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_ip_cross_cov_[cluster_i], sigma_resid_grad_rand_vec, sigma_inv_sigma_grad_rand_vec_interim, NaN_found,
 										num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								}
@@ -7535,12 +7535,12 @@ namespace GPBoost {
 								const den_mat_t* cross_cov_preconditioner;
 								if (cg_preconditioner_type_ == "fitc") {
 									cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0]->GetSigmaPtr();
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, *cross_cov_preconditioner, chol_fact_sigma_ip_[cluster_i], rand_vec_fisher_info_[cluster_i], sigma_inv_rand_vec, NaN_found,
+									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov_preconditioner, chol_ip_cross_cov_[cluster_i], rand_vec_fisher_info_[cluster_i], sigma_inv_rand_vec, NaN_found,
 										num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								}
 								else {
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, *cross_cov, chol_fact_sigma_ip_[cluster_i], rand_vec_fisher_info_[cluster_i], sigma_inv_rand_vec, NaN_found,
+									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_ip_cross_cov_[cluster_i], rand_vec_fisher_info_[cluster_i], sigma_inv_rand_vec, NaN_found,
 										num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								}
@@ -8667,12 +8667,12 @@ namespace GPBoost {
 								const den_mat_t* cross_cov_preconditioner;
 								if (cg_preconditioner_type_ == "fitc") {
 									cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0]->GetSigmaPtr();
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, *cross_cov_preconditioner, chol_fact_sigma_ip_[cluster_i], sigma_obs_pred_dense, sigma_inv_sigma_obs_pred, NaN_found,
+									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov_preconditioner, chol_ip_cross_cov_[cluster_i], sigma_obs_pred_dense, sigma_inv_sigma_obs_pred, NaN_found,
 										num_REs_obs, num_REs_pred, cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								}
 								else {
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, *cross_cov, chol_fact_sigma_ip_[cluster_i], sigma_obs_pred_dense, sigma_inv_sigma_obs_pred, NaN_found,
+									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_ip_cross_cov_[cluster_i], sigma_obs_pred_dense, sigma_inv_sigma_obs_pred, NaN_found,
 										num_REs_obs, num_REs_pred, cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								}
@@ -8684,55 +8684,112 @@ namespace GPBoost {
 							// Calculate remaining part of predictive variances
 							if (calc_pred_var) {
 								// Stochastic Diagonal
-								// Sample vectors
-								cg_generator_ = RNG_t(seed_rand_vec_trace_);
-								den_mat_t rand_vec_probe_init(num_REs_pred, nsim_var_pred);
-								GenRandVecRademacher(cg_generator_, rand_vec_probe_init);
-								den_mat_t rand_vec_probe_pred(num_REs_obs, nsim_var_pred);
-								rand_vec_probe_pred.setZero();
-								// sigma_resid_pred^T * rand_vec_probe_init
-#pragma omp parallel for schedule(static)   
-								for (int i = 0; i < rand_vec_probe_pred.cols(); ++i) {
-									rand_vec_probe_pred.col(i) += sigma_resid_pred_obs.transpose() * rand_vec_probe_init.col(i);
-								}
-								// sigma_resid^-1 * rand_vec_probe_pred
-								den_mat_t sigma_resid_inv_pv(num_REs_obs, rand_vec_probe_pred.cols());
-								CGFSA_RESID<T_mat>(*sigma_resid, rand_vec_probe_pred, sigma_resid_inv_pv, NaN_found, num_REs_obs, (int)rand_vec_probe_pred.cols(),
-									cg_max_num_it_tridiag_, cg_delta_conv_pred,
-									cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i]);
-								// sigma_resid_pred * sigma_resid_inv_pv
-								den_mat_t rand_vec_probe_final(num_REs_pred, sigma_resid_inv_pv.cols());
-								rand_vec_probe_final.setZero();
-#pragma omp parallel for schedule(static)   
-								for (int i = 0; i < rand_vec_probe_final.cols(); ++i) {
-									rand_vec_probe_final.col(i) += sigma_resid_pred_obs * sigma_resid_inv_pv.col(i);
-								}
-								den_mat_t sample_sigma = rand_vec_probe_final.cwiseProduct(rand_vec_probe_init);
-								vec_t stoch_diag = sample_sigma.rowwise().mean();
+								vec_t stoch_part_pred_var(num_REs_pred);
+								stoch_part_pred_var.setZero();
+								// Precondtioner
+								vec_t diag_P_stoch;
+								vec_t diag_P;
+								// To compute optimal c for variance reduction
+								vec_t c_var, c_p_z, c_p;
 								// Exact Diagonal (Preconditioner)
-								vec_t diag_P(num_REs_pred);
-								T_mat sigma_resid_pred_obs_pred_var = sigma_resid_pred_obs * (diagonal_approx_inv_preconditioner_[cluster_i].cwiseSqrt()).asDiagonal();
-								T_mat* R_ptr_2 = &sigma_resid_pred_obs_pred_var;
+								if (cg_preconditioner_type_ == "fitc") {
+									diag_P_stoch.resize(num_REs_pred);
+									diag_P_stoch.setZero();
+									diag_P.resize(num_REs_pred);
+									c_var.resize(num_REs_pred);
+									c_var.setZero();
+									c_p_z.resize(num_REs_pred);
+									c_p_z.setZero();
+									c_p.resize(num_REs_pred);
+									c_p.setZero();
+									T_mat sigma_resid_pred_obs_pred_var = sigma_resid_pred_obs * (diagonal_approx_inv_preconditioner_[cluster_i].cwiseSqrt()).asDiagonal();
+									T_mat* R_ptr_2 = &sigma_resid_pred_obs_pred_var;
 #pragma omp parallel for schedule(static)   
-								for (int i = 0; i < num_REs_pred; ++i) {
-									diag_P[i] = ((vec_t)(R_ptr_2->row(i))).array().square().sum();
+									for (int i = 0; i < num_REs_pred; ++i) {
+										diag_P[i] = ((vec_t)(R_ptr_2->row(i))).array().square().sum();
+									}
 								}
-								// Stochastic Diagonal (Preconditioner)
-								den_mat_t rand_vec_probe_cv(num_REs_pred, rand_vec_probe_init.cols());
-								rand_vec_probe_cv.setZero();
-								den_mat_t preconditioner_rand_vec_probe = diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * rand_vec_probe_pred;
+
+								int num_threads;
+#ifdef _OPENMP
+								num_threads = omp_get_max_threads();
+#else
+								num_threads = 1;
+#endif
+								std::uniform_int_distribution<> unif(0, 2147483646);
+								std::vector<RNG_t> parallel_rngs;
+								for (int ig = 0; ig < num_threads; ++ig) {
+									int seed_local = unif(cg_generator_);
+									parallel_rngs.push_back(RNG_t(seed_local));
+								}
+#pragma omp parallel
+								{
+#pragma omp for nowait
+									for (int i = 0; i < nsim_var_pred; ++i) {
+										//z_i ~ N(0,I)
+										int thread_nb;
+#ifdef _OPENMP
+										thread_nb = omp_get_thread_num();
+#else
+										thread_nb = 0;
+#endif
+										// Sample vector
+										std::uniform_real_distribution<double> udist(0.0, 1.0);
+										vec_t rand_vec_probe_init(num_REs_pred);
+										for (int j = 0; j < num_REs_pred; j++) {
+											// Map uniform [0,1) to Rademacher -1 or 1
+											rand_vec_probe_init(j) = (udist(parallel_rngs[thread_nb]) < 0.5) ? -1.0 : 1.0;
+										}
+										// sigma_resid_pred^T * rand_vec_probe_init
+										vec_t rand_vec_probe_pred = sigma_resid_pred_obs.transpose() * rand_vec_probe_init;
+
+										// sigma_resid^-1 * rand_vec_probe_pred
+										den_mat_t sigma_resid_inv_pv(num_REs_obs, 1);
+										CGFSA_RESID<T_mat>(*sigma_resid, rand_vec_probe_pred.matrix(), sigma_resid_inv_pv, NaN_found, num_REs_obs, 1,
+											cg_max_num_it_tridiag_, cg_delta_conv_pred,
+											cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i]);
+										// sigma_resid_pred * sigma_resid_inv_pv
+										den_mat_t rand_vec_probe_final = sigma_resid_pred_obs * sigma_resid_inv_pv;
+
+										vec_t sample_sigma = (rand_vec_probe_final.col(0)).cwiseProduct(rand_vec_probe_init);
+										// Stochastic Diagonal (Preconditioner)
+										if (cg_preconditioner_type_ == "fitc") {
+											vec_t preconditioner_rand_vec_probe = diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * rand_vec_probe_pred;
+											vec_t rand_vec_probe_cv = sigma_resid_pred_obs * preconditioner_rand_vec_probe;
+											vec_t sample_P = rand_vec_probe_cv.cwiseProduct(rand_vec_probe_init);
+#pragma omp critical
+											{
+												diag_P_stoch += sample_P;
+												c_var.array() += (sample_P - diag_P).array().square();
+												c_p_z += (sample_P - diag_P).cwiseProduct(sample_sigma);
+												c_p += (sample_P - diag_P);
+											}
+										}
+#pragma omp critical
+										{
+											stoch_part_pred_var += sample_sigma;
+										}
+									}
+								}
+								stoch_part_pred_var /= nsim_var_pred;
+								if (cg_preconditioner_type_ == "fitc") {
+									diag_P_stoch /= nsim_var_pred;
+									c_var /= nsim_var_pred;
+									c_p_z /= nsim_var_pred;
+									c_p /= nsim_var_pred;
+									vec_t c_cov = c_p_z - stoch_part_pred_var.cwiseProduct(c_p);
+									// Optimal c
+									vec_t c_opt = c_cov.array() / c_var.array();
+									// Correction if c_opt_i = inf
 #pragma omp parallel for schedule(static)   
-								for (int i = 0; i < preconditioner_rand_vec_probe.cols(); ++i) {
-									rand_vec_probe_cv.col(i) += sigma_resid_pred_obs * preconditioner_rand_vec_probe.col(i);
+									for (int i = 0; i < c_opt.size(); ++i) {
+										if (c_var.coeffRef(i) == 0) {
+											c_opt[i] = 1;
+										}
+									}
+									stoch_part_pred_var += c_opt.cwiseProduct(diag_P - diag_P_stoch);
 								}
-								den_mat_t sample_P = rand_vec_probe_cv.cwiseProduct(rand_vec_probe_init);
-								vec_t diag_P_stoch = sample_P.rowwise().mean();
-								// Variance Reduction
-								// Optimal c
-								vec_t c_opt;
-								CalcOptimalCVectorized(sample_sigma, sample_P, stoch_diag, diag_P, c_opt);
-								stoch_diag += c_opt.cwiseProduct(diag_P - diag_P_stoch);
-								pred_var -= stoch_diag;
+								pred_var -= stoch_part_pred_var;
 								// CG: sigma_resid^-1 * cross_cov
 								den_mat_t sigma_resid_inv_cross_cov(num_REs_obs, (*cross_cov).cols());
 								CGFSA_RESID<T_mat>(*sigma_resid, *cross_cov, sigma_resid_inv_cross_cov, NaN_found, num_REs_obs, (int)(*cross_cov).cols(),
@@ -8743,12 +8800,12 @@ namespace GPBoost {
 								const den_mat_t* cross_cov_preconditioner;
 								if (cg_preconditioner_type_ == "fitc") {
 									cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0]->GetSigmaPtr();
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, *cross_cov_preconditioner, chol_fact_sigma_ip_[cluster_i], *cross_cov, sigma_inv_cross_cov, NaN_found,
+									CGFSA_MULTI_RHS<T_mat>(*sigma_resid,*cross_cov_preconditioner, chol_ip_cross_cov_[cluster_i], *cross_cov, sigma_inv_cross_cov, NaN_found,
 										num_REs_obs, (int)(*cross_cov).cols(), cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								}
 								else {
-									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, *cross_cov, chol_fact_sigma_ip_[cluster_i], *cross_cov, sigma_inv_cross_cov, NaN_found,
+									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, chol_ip_cross_cov_[cluster_i], *cross_cov, sigma_inv_cross_cov, NaN_found,
 										num_REs_obs, (int)(*cross_cov).cols(), cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
 								}
