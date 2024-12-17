@@ -665,9 +665,8 @@ namespace GPBoost {
 	*/
 	template <class T_mat>
 	void CGFSA_MULTI_RHS(const T_mat& sigma_resid,
-		const den_mat_t& sigma_cross_cov,
 		const den_mat_t& sigma_cross_cov_preconditioner,
-		const chol_den_mat_t& chol_fact_sigma_ip,
+		const den_mat_t& chol_ip_cross_cov,
 		const den_mat_t& rhs,
 		den_mat_t& U,
 		bool& NaN_found,
@@ -699,7 +698,7 @@ namespace GPBoost {
 			R = rhs;
 		}
 		else {
-			R = rhs - (sigma_cross_cov * (chol_fact_sigma_ip.solve(sigma_cross_cov.transpose() * U)));
+			R = rhs - (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * U));
 #pragma omp parallel for schedule(static)   
 			for (int i = 0; i < t; ++i) {
 				R.col(i) -= sigma_resid * U.col(i); //parallelization in for loop is much faster
@@ -726,7 +725,7 @@ namespace GPBoost {
 
 		for (int j = 0; j < p; ++j) {
 
-			V = (sigma_cross_cov * (chol_fact_sigma_ip.solve(sigma_cross_cov.transpose() * H)));
+			V = (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H));
 
 #pragma omp parallel for schedule(static)   
 			for (int i = 0; i < t; ++i) {
