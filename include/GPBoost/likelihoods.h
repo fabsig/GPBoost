@@ -4591,23 +4591,29 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "t") {
-				if (aux_pars_[1] <= 1.) {
-					Log::REFatal("The response mean of a 't' distribution is only defined if the "
-						"'%s' parameter (=degrees of freedom) is larger than 1. Currently, it is %g. "
-						"You can set this parameter via the 'likelihood_additional_param' parameter ", names_aux_pars_[1].c_str(), aux_pars_[1]);
-				}
-				if (predict_var && aux_pars_[1] <= 2.) {
-					Log::REFatal("The response mean of a 't' distribution is only defined if the "
-						"'%s' parameter (=degrees of freedom) is larger than 2. Currently, it is %g. "
-						"You can set this parameter via the 'likelihood_additional_param' parameter ", names_aux_pars_[1].c_str(), aux_pars_[1]);
-				}
 				if (predict_var) {
-					double pred_var_const = aux_pars_[0] * aux_pars_[0] * aux_pars_[1] / (aux_pars_[1] - 2.);
-#pragma omp parallel for schedule(static)
-					for (int i = 0; i < (int)pred_mean.size(); ++i) {
-						pred_var[i] = pred_var[i] + pred_var_const;
-					}
+					pred_var.array() += aux_pars_[0] * aux_pars_[0];
+					Log::REWarning("Predicting the response variable for a 't' likelihood: note that we simply add the squared 'scale' parameter to the variances of the latent predictions, "
+						"and we do not assume that the 't' distribution is the true likelihood but rather an auxiliary tool for robust regression ");
 				}
+//				// code when assuming that t-distribution is the true likelihood
+//				if (aux_pars_[1] <= 1.) {
+//					Log::REFatal("The response mean of a 't' distribution is only defined if the "
+//						"'%s' parameter (=degrees of freedom) is larger than 1. Currently, it is %g. "
+//						"You can set this parameter via the 'likelihood_additional_param' parameter ", names_aux_pars_[1].c_str(), aux_pars_[1]);
+//				}
+//				if (predict_var && aux_pars_[1] <= 2.) {
+//					Log::REFatal("The response mean of a 't' distribution is only defined if the "
+//						"'%s' parameter (=degrees of freedom) is larger than 2. Currently, it is %g. "
+//						"You can set this parameter via the 'likelihood_additional_param' parameter ", names_aux_pars_[1].c_str(), aux_pars_[1]);
+//				}
+//				if (predict_var) {
+//					double pred_var_const = aux_pars_[0] * aux_pars_[0] * aux_pars_[1] / (aux_pars_[1] - 2.);
+//#pragma omp parallel for schedule(static)
+//					for (int i = 0; i < (int)pred_mean.size(); ++i) {
+//						pred_var[i] = pred_var[i] + pred_var_const;
+//					}
+//				}
 			}//end "t"
 			else if (likelihood_type_ == "gaussian") {
 				if (predict_var) {
