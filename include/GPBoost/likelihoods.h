@@ -99,6 +99,8 @@ namespace GPBoost {
 			num_aux_pars_estim_ = 0;
 			information_ll_can_be_negative_ = false;
 			grad_information_wrt_mode_non_zero_ = true;
+			force_laplace_approximation_ = false;
+			estimate_df_t_ = true;
 			string_t likelihood = type;
 			likelihood = ParseLikelihoodAliasGradientDescent(likelihood);
 			likelihood = ParseLikelihoodAliasFisherLaplace(likelihood);
@@ -121,6 +123,12 @@ namespace GPBoost {
 				num_aux_pars_estim_ = 1;
 			}
 			else if (likelihood_type_ == "t") {
+				if (force_laplace_approximation_) {
+					approximation_type_ = "laplace";
+				}
+				else {
+					approximation_type_ = "fisher_laplace";
+				}
 				CHECK(additional_param > 0.);
 				aux_pars_ = { 1., additional_param };
 				names_aux_pars_ = { "scale", "df"};
@@ -5247,6 +5255,12 @@ namespace GPBoost {
 					approximation_type_ = "fisher_laplace";
 					return likelihood.substr(0, likelihood.size() - 15);
 				}
+			} 
+			if (likelihood.size() > 8) {
+				if (likelihood.substr(likelihood.size() - 8) == string_t("_laplace")) {
+					force_laplace_approximation_ = true;
+					return likelihood.substr(0, likelihood.size() - 8);
+				}
 			}
 			return likelihood;
 		}
@@ -5258,10 +5272,10 @@ namespace GPBoost {
 					return likelihood.substr(0, likelihood.size() - 16);
 				}
 			}
-			else if (likelihood.size() > 12) {
-				if (likelihood.substr(likelihood.size() - 12) == string_t("_estimate_df")) {
-					estimate_df_t_ = true;
-					return likelihood.substr(0, likelihood.size() - 12);
+			if (likelihood.size() > 7) {
+				if (likelihood.substr(likelihood.size() - 7) == string_t("_fix_df")) {
+					estimate_df_t_ = false;
+					return likelihood.substr(0, likelihood.size() - 7);
 				}
 			}
 			return likelihood;
@@ -5365,6 +5379,8 @@ namespace GPBoost {
 		bool aux_pars_have_been_set_ = false;
 		/*! \brief Type of approximation for non-Gaussian likelihoods */
 		string_t approximation_type_ = "laplace";
+		/*! \brief If true, the Laplace approximation is used (for likelihoods where this is not recommended, instead of a Fisher-Laplace approximation) */
+		bool force_laplace_approximation_ = false;
 		/*! \brief List of supported approximations */
 		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace", "fisher_laplace" };
 		/*! \brief If true, 'information_ll_' could contain negative values */
@@ -5372,7 +5388,7 @@ namespace GPBoost {
 		/*! \brief If true, the derivative of the information wrt the mode is non-zero (it is zero, e.g., for a "gaussian" likelihood). Consequently, the (observed or expected) Fisher information ('information_ll_') changes in the mode finding algorithm (usually Newton's method) for the Laplace approximation */
 		bool grad_information_wrt_mode_non_zero_ = true;
 		/*! \brief If true, the degrees of freedom (df) are also estimated for the "t" likelihood */
-		bool estimate_df_t_ = false;
+		bool estimate_df_t_ = true;
 		/*! \brief If true, a Gaussian likelihood is estimated using this file */
 		bool use_likelihoods_file_for_gaussian_ = false;
 
