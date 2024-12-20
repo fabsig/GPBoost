@@ -1713,7 +1713,7 @@ ${CXX} ${CPPFLAGS} ${CXXFLAGS} -o conftest conftest.cpp 2>/dev/null && ./conftes
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: ${ac_mmprefetch}" >&5
 $as_echo "${ac_mmprefetch}" >&6; }
 if test "${ac_mmprefetch}" = yes; then
-    LGB_CPPFLAGS="${LGB_CPPFLAGS} -DMM_MALLOC=1"
+    LGB_CPPFLAGS="${LGB_CPPFLAGS} -DMM_PREFETCH=1"
 fi
 
 ############
