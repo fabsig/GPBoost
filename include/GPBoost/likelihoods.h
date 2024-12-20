@@ -129,8 +129,13 @@ namespace GPBoost {
 				else {
 					approximation_type_ = "fisher_laplace";
 				}
-				CHECK(additional_param > 0.);
-				aux_pars_ = { 1., additional_param };
+				if (TwoNumbersAreEqual<double>(additional_param, -999.)) {
+					aux_pars_ = { 1., 2. }; // internal default value for df
+				}
+				else {
+					CHECK(additional_param > 0.);
+					aux_pars_ = { 1., additional_param };
+				}
 				names_aux_pars_ = { "scale", "df"};
 				num_aux_pars_ = 2;
 				if (estimate_df_t_) {

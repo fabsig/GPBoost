@@ -16,7 +16,7 @@ fitGPModel(likelihood = "gaussian", group_data = NULL,
   free_raw_data = FALSE, y, X = NULL, params = list(),
   vecchia_approx = NULL, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL, offset = NULL, fixed_effects = NULL,
-  likelihood_additional_param = 1)
+  likelihood_additional_param = NULL)
 }
 \arguments{
 \item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable. 
@@ -295,10 +295,14 @@ The length of this vector needs to equal the number of training data points.}
 \item{fixed_effects}{This is discontinued. Use the renamed equivalent argument \code{offset} instead}
 
 \item{likelihood_additional_param}{A \code{numeric} specifying an additional parameter for the \code{likelihood} 
-which cannot be estimated for this \code{likelihood} (e.g., degrees of freedom for \code{likelihood="t"}). 
+which cannot be estimated for this \code{likelihood} (e.g., degrees of freedom for \code{likelihood = "t_fix_df"}). 
 This is not to be confused with any auxiliary parameters that can be estimated and accessed through 
 the function \code{get_aux_pars} after estimation.
-Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.}
+Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.
+If \code{likelihood_additional_param = NULL}, the following internal default values are used:
+\itemize{
+\item{ df = 2 for likelihood = "t_fix_df"}
+}}
 }
 \value{
 A fitted \code{GPModel}

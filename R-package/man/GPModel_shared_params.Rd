@@ -17,10 +17,14 @@ Available options:
 }}
 
 \item{likelihood_additional_param}{A \code{numeric} specifying an additional parameter for the \code{likelihood} 
-which cannot be estimated for this \code{likelihood} (e.g., degrees of freedom for \code{likelihood="t"}). 
+which cannot be estimated for this \code{likelihood} (e.g., degrees of freedom for \code{likelihood = "t_fix_df"}). 
 This is not to be confused with any auxiliary parameters that can be estimated and accessed through 
 the function \code{get_aux_pars} after estimation.
-Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.}
+Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.
+If \code{likelihood_additional_param = NULL}, the following internal default values are used:
+\itemize{
+\item{ df = 2 for likelihood = "t_fix_df"}
+}}
 
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 The elements being group levels defining grouped random effects.

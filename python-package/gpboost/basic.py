@@ -4043,7 +4043,7 @@ class GPModel(object):
                  matrix_inversion_method="cholesky",
                  seed=0,
                  cluster_ids=None,
-                 likelihood_additional_param=1.,
+                 likelihood_additional_param=None,
                  free_raw_data=False,
                  model_file=None,
                  model_dict=None,
@@ -4248,10 +4248,14 @@ class GPModel(object):
                 The elements indicate independent realizations of  random effects / Gaussian processes
                 (same values = same process realization)
             likelihood_additional_param : float, optional (default=1.)
-                 Additional parameter for the 'likelihood' which cannot be estimated for this 'likelihood' (e.g., degrees of freedom for 'likelihood="t"'). 
+                 Additional parameter for the 'likelihood' which cannot be estimated for this 'likelihood' (e.g., degrees of freedom for 'likelihood = "t_fix_df"'). 
                  This is not to be confused with any auxiliary parameters that can be estimated and 
                  accessed through the function'get_aux_pars' after estimation.
-                 Note that this 'likelihood_additional_param' parameter is irrelevant for many likelihoods
+                 Note that this 'likelihood_additional_param' parameter is irrelevant for many likelihoods.
+                 If 'likelihood_additional_param = None', the following internal default values are used:
+
+                    - df = 2 for 'likelihood = "t_fix_df"'
+
             free_raw_data : bool, optional (default=False)
                 If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python
                 after initialization
@@ -4287,7 +4291,7 @@ class GPModel(object):
                                "Use the function 'set_prediction_data' to specify this")
         # Initialize variables with default values
         self.handle = ctypes.c_void_p()
-        self.likelihood_additional_param = 1.
+        self.likelihood_additional_param = None
         self.num_data = None
         self.num_group_re = 0
         self.num_group_rand_coef = 0
@@ -4648,6 +4652,10 @@ class GPModel(object):
             cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
         self.__determine_num_cov_pars(likelihood=likelihood)
+        if self.likelihood_additional_param is None:
+            likelihood_additional_param_c = -999. # internal default values are used
+        else:
+            likelihood_additional_param_c = self.likelihood_additional_param
 
         _safe_call(_LIB.GPB_CreateREModel(
             ctypes.c_int(self.num_data),
@@ -4674,7 +4682,7 @@ class GPModel(object):
             ctypes.c_double(self.cover_tree_radius),
             c_str(self.ind_points_selection),
             c_str(likelihood),
-            ctypes.c_double(self.likelihood_additional_param),
+            ctypes.c_double(likelihood_additional_param_c),
             c_str(self.matrix_inversion_method),
             ctypes.c_int(self.seed),
             ctypes.c_int(self.num_parallel_threads),

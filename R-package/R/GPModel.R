@@ -17,10 +17,14 @@
 #' \item{ Note: other likelihoods could be implemented upon request }
 #' }
 #' @param likelihood_additional_param A \code{numeric} specifying an additional parameter for the \code{likelihood} 
-#' which cannot be estimated for this \code{likelihood} (e.g., degrees of freedom for \code{likelihood="t"}). 
+#' which cannot be estimated for this \code{likelihood} (e.g., degrees of freedom for \code{likelihood = "t_fix_df"}). 
 #' This is not to be confused with any auxiliary parameters that can be estimated and accessed through 
 #' the function \code{get_aux_pars} after estimation.
 #' Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.
+#' If \code{likelihood_additional_param = NULL}, the following internal default values are used:
+#' \itemize{
+#' \item{ df = 2 for likelihood = "t_fix_df"}
+#' }
 #' @param group_data A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 #' The elements being group levels defining grouped random effects.
 #' The elements of 'group_data' can be integer, double, or character.
@@ -339,7 +343,7 @@ gpb.GPModel <- R6::R6Class(
                           matrix_inversion_method = "cholesky",
                           seed = 0L,
                           cluster_ids = NULL,
-                          likelihood_additional_param = 1.,
+                          likelihood_additional_param = NULL,
                           free_raw_data = FALSE,
                           modelfile = NULL,
                           model_list = NULL,
@@ -450,7 +454,11 @@ gpb.GPModel <- R6::R6Class(
           private$num_parallel_threads <- as.integer(num_parallel_threads)
         }
       }
-      private$likelihood_additional_param <- as.numeric(likelihood_additional_param)
+      if (is.null(likelihood_additional_param)) {
+        private$likelihood_additional_param <- likelihood_additional_param
+      } else {
+        private$likelihood_additional_param <- as.numeric(likelihood_additional_param)
+      }
       # Set data for grouped random effects
       group_data_c_str <- NULL
       if (!is.null(group_data)) {
@@ -718,6 +726,12 @@ gpb.GPModel <- R6::R6Class(
         cluster_ids <- as.vector(cluster_ids)
       } # End set IDs for independent processes (cluster_ids)
       private$determine_num_cov_pars(likelihood)
+      if (is.null(private$likelihood_additional_param)) {
+        likelihood_additional_param_c <- -999 # internal default values are used
+      } else {
+        likelihood_additional_param_c <- private$likelihood_additional_param
+      }
+      
       # Create handle for the GPModel
       handle <- NULL
       # Create handle for the GPModel
@@ -747,7 +761,7 @@ gpb.GPModel <- R6::R6Class(
         , private$cover_tree_radius
         , private$ind_points_selection
         , likelihood
-        , private$likelihood_additional_param
+        , likelihood_additional_param_c
         , private$matrix_inversion_method
         , private$seed
         , private$num_parallel_threads
@@ -1988,7 +2002,7 @@ gpb.GPModel <- R6::R6Class(
   
   private = list(
     handle = NULL,
-    likelihood_additional_param = 1.,
+    likelihood_additional_param = NULL,
     num_data = NULL,
     num_group_re = 0L,
     num_group_rand_coef = 0L,
@@ -2244,7 +2258,7 @@ GPModel <- function(likelihood = "gaussian",
                     matrix_inversion_method = "cholesky",
                     seed = 0L,
                     cluster_ids = NULL,
-                    likelihood_additional_param = 1.,
+                    likelihood_additional_param = NULL,
                     free_raw_data = FALSE,
                     vecchia_approx = NULL,
                     vecchia_pred_type = NULL,
@@ -2461,7 +2475,7 @@ fitGPModel <- function(likelihood = "gaussian",
                        num_neighbors_pred = NULL,
                        offset = NULL,
                        fixed_effects = NULL,
-                       likelihood_additional_param = 1.) {
+                       likelihood_additional_param = NULL) {
   #Create model
   gpmodel <- gpb.GPModel$new(likelihood = likelihood
                              , group_data = group_data
