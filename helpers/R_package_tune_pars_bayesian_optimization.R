@@ -1,6 +1,12 @@
+
+# load required libraries
+library(mlrMBO)
+library(DiceKriging)
+library(rgenoud)
+
 #' @name tune.pars.bayesian.optimization
 #' @title Function for choosing tuning parameters using Bayesian optimization. This is essentially a wrapper of the 'mbo' function in the 'mlrMBO' package
-#' @description Function that allows for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
+#' @description Function that allows for choosing tuning parameters from a grid in a deterministic or random way using cross validation or validation data sets.
 #' @param search_space \code{list} with ranges for every parameter over which a search is done. 
 #' The format for every entry of the list must be "parameter_name" = c(lower, upper).
 #' See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part

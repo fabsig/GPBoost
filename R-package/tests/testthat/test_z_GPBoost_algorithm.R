@@ -264,11 +264,6 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(opt_params$best_score-1.224379), TOLERANCE)
       
       # Parameter tuning with 'tune.pars.bayesian.optimization'
-      suppressWarnings({
-        library(mlrMBO)
-        library(DiceKriging)
-        library(rgenoud)
-      })
       source("https://raw.githubusercontent.com/fabsig/GPBoost/master/helpers/R_package_tune_pars_bayesian_optimization.R")# Load required function
       other_params <- list(objective = "regression_l2", max_depth = 6, num_leaves = 2^10)
       search_space = list("learning_rate" = c(0.1,1))
