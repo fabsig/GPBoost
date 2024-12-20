@@ -3315,7 +3315,7 @@ class Booster:
                 fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
                                                        num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                        pred_contrib=False, data_has_header=False, is_reshape=False)
-                if self.gp_model._get_likelihood_name() and self.gp_model.gp_approx != "vecchia_latent":  # Gaussian data
+                if self.gp_model._get_likelihood_name() == "gaussian" and self.gp_model.gp_approx != "vecchia_latent":  # Gaussian data
                     residual = self.train_set.label - fixed_effect_train
                     save_data['residual'] = residual
                 else:
