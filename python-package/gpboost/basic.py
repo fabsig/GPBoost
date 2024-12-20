@@ -4078,6 +4078,14 @@ class GPModel(object):
                     - "negative_binomial":
 
                         Negative binomial distribution with a with log link function
+                    
+                    - "t":
+
+                        t-distribution (e.g., for robust regression)
+
+                    - "t_fix_df":
+
+                        t-distribution with the degrees-of-freedom (df) held fixed and not estimated. The df can be set via the 'likelihood_additional_param' parameter
 
                     - Note: other likelihoods could be implemented upon request
             

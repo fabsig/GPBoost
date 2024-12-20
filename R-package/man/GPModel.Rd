@@ -27,6 +27,9 @@ Available options:
 \item{ "gamma": gamma distribution with a with log link function }
 \item{ "poisson": Poisson distribution with a with log link function }
 \item{ "negative_binomial": negative binomial distribution with a with log link function }
+\item{ "t": t-distribution (e.g., for robust regression) }
+\item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated. 
+The df can be set via the \code{likelihood_additional_param} parameter }
 \item{ Note: other likelihoods could be implemented upon request }
 }}
 
