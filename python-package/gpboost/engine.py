@@ -1366,32 +1366,36 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
 
         # Train the model
         data_bst = Dataset(data=X, label=y)
-        cvbst = cv(params=params_loc, train_set=data_bst, gp_model=gp_model, 
-                   use_gp_model_for_validation=use_gp_model_for_validation,  
-                   train_gp_model_cov_pars=train_gp_model_cov_pars,
-                   num_boost_round=max_num_boost_round, 
-                   early_stopping_rounds=early_stopping_rounds,
-                   folds=folds, nfold=nfold, verbose_eval=verbose_eval_cv, show_stdv=False, 
-                   seed=cv_seed, metric=metric, feval=feval,
-                   categorical_feature=categorical_feature)
-        metric_name = list(cvbst.keys())[0]
-        best_score_trial = np.min(cvbst[metric_name])
-        best_iter_trial = np.argmin(cvbst[metric_name]) + 1
-        if metric_higher_better:
-            best_score_trial = np.max(cvbst[metric_name])
-            best_iter_trial = np.argmax(cvbst[metric_name]) + 1
+        best_score_trial = -float('inf') if metric_higher_better else float('inf')
+        try:
+            cvbst = cv(params=params_loc, train_set=data_bst, gp_model=gp_model, 
+                use_gp_model_for_validation=use_gp_model_for_validation,  
+                train_gp_model_cov_pars=train_gp_model_cov_pars,
+                num_boost_round=max_num_boost_round, 
+                early_stopping_rounds=early_stopping_rounds,
+                folds=folds, nfold=nfold, verbose_eval=verbose_eval_cv, show_stdv=False, 
+                seed=cv_seed, metric=metric, feval=feval,
+                categorical_feature=categorical_feature)
+            metric_name = list(cvbst.keys())[0]
+            best_score_trial = np.min(cvbst[metric_name])
+            best_iter_trial = np.argmin(cvbst[metric_name]) + 1
+            if metric_higher_better:
+                best_score_trial = np.max(cvbst[metric_name])
+                best_iter_trial = np.argmax(cvbst[metric_name]) + 1
 
-        # Save the best number of iterations
-        found_better_combination = False
-        if metric_higher_better:
-            if best_score_trial > best_score:
-                found_better_combination = True
-        else:
-            if best_score_trial < best_score:
-                found_better_combination = True
-        if found_better_combination:
-            best_score = best_score_trial
-            best_iter = best_iter_trial
+            # Save the best number of iterations
+            found_better_combination = False
+            if metric_higher_better:
+                if best_score_trial > best_score:
+                    found_better_combination = True
+            else:
+                if best_score_trial < best_score:
+                    found_better_combination = True
+            if found_better_combination:
+                best_score = best_score_trial
+                best_iter = best_iter_trial
+        except Exception:
+            pass
 
         return best_score_trial
     
