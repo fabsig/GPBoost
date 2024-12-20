@@ -1305,8 +1305,17 @@ namespace GPBoost {
 				pred_var = vec_t(num_data_pred_cli);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < num_data_pred_cli; ++i) {
-					pred_var[i] = (Z_p_B_inv_D.row(i)).dot(Z_p_B_inv.row(i)) - (M_aux.row(i)).dot(ZpSigmaZoT.row(i));
+					vec_t v1 = Z_p_B_inv_D.row(i);
+					vec_t v2 = Z_p_B_inv.row(i);
+					vec_t v3 = M_aux.row(i);
+					vec_t v4 = ZpSigmaZoT.row(i);
+					pred_var[i] = v1.dot(v2) - (v3.dot(v4));
 				}
+				// the following code does not run correctly on some compilers
+//#pragma omp parallel for schedule(static)
+				//for (int i = 0; i < num_data_pred_cli; ++i) {
+				//	pred_var[i] = (Z_p_B_inv_D.row(i)).dot(Z_p_B_inv.row(i)) - (M_aux.row(i)).dot(ZpSigmaZoT.row(i));
+				//}
 				if (predict_response) {
 					pred_var.array() += 1.;
 				}
