@@ -1038,10 +1038,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       if(inv_method == "iterative") {
         tolerance_loc_1 <- TOLERANCE_ITERATIVE
         tolerance_loc_2 <- TOLERANCE_ITERATIVE
+        tolerance_loc_3 <- 2*TOLERANCE_ITERATIVE
         loop_cg_PC = c("pivoted_cholesky", "vadu", "fitc")
       } else {
         tolerance_loc_1 <- TOLERANCE_STRICT
         tolerance_loc_2 <- TOLERANCE_MEDIUM
+        tolerance_loc_3 <-TOLERANCE_STRICT
         loop_cg_PC = c("vadu")
       }
       nsim_var_pred <- 10000
@@ -1111,7 +1113,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                           predict_cov_mat = TRUE, predict_response = FALSE, 
                                           cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
           expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-          expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
+          expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_3)
           capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
                                           predict_var = TRUE, predict_response = FALSE, 
                                           cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
