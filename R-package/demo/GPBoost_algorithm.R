@@ -46,6 +46,7 @@ simulate_response_variable <- function (lp, rand_eff, likelihood) {
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", "gamma", or "negative_binomial"
+# For a list of all currently supported likelihoods, see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood
 likelihood <- "gaussian"
 
 #################################

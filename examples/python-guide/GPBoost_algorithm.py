@@ -54,6 +54,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
 # Choose likelihood: either "gaussian" (=regression), 
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", "gamma", or "negative_binomial"
+# For a list of all currently supported likelihoods, see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood
 likelihood = "gaussian"
 
 """
@@ -224,7 +225,6 @@ opt_params = gpb.grid_search_tune_parameters(param_grid=param_grid, params=other
                                              num_try_random=100, folds=folds, 
                                              num_boost_round=1000, early_stopping_rounds=20,
                                              verbose_eval=1, metric=metric, seed=4)
-
 
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
