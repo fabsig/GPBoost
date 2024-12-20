@@ -1197,7 +1197,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                num_neighbors = 30, vecchia_ordering = "none",
                                                matrix_inversion_method = inv_method,
                                                y = y, params = params_vecchia), file='NUL')
-        training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = T)
+        training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
         gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only")
         preds <- predict(gp_model, gp_coords_pred = coords, predict_response = FALSE, 
                          predict_var = TRUE)
@@ -1246,7 +1246,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y_multiple)
         expect_lt(abs(nll-nll_multiple),tolerance_loc_1)
         # Predict training data random effects
-        training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = T)
+        training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
         gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only", 
                                      num_neighbors_pred = n/4, nsim_var_pred = nsim_var_pred)
         preds <- predict(gp_model, gp_coords_pred = coords_multiple, predict_response = FALSE, 
@@ -3132,7 +3132,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll_est <- 107.8345665
     expected_mu <- c(-0.046398775956, -0.003934498908, 0.789074244932)
     expected_cov <- c(0.5895448972540, 0.5224498197427, -0.0001390612641, 0.5224498197427, 0.5897209705595, -0.0001486534570, -0.0001390612641, -0.0001486534570, 0.4058804336013)
-    expected_var_resp <- expected_cov[c(1,5,9)] + aux_pars_pred_eval[1]
+    expected_var_resp <- c(3.589544897, 3.589720971, 3.405880434)
     # Estimation, prediction, and likelihood evaluation without Vecchia approximation
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "t", gp_approx = "none")
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y, aux_pars = aux_pars_pred_eval)
