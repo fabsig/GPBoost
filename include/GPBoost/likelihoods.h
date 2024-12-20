@@ -1526,7 +1526,7 @@ namespace GPBoost {
 		void CalcFirstDerivInformationLocPar(const double* y_data,
 			const int* y_data_int,
 			const double* location_par,
-			vec_t& deriv_information_loc_par) const {
+			vec_t& deriv_information_loc_par) {
 			if (approximation_type_ == "laplace") {
 				if (likelihood_type_ == "bernoulli_probit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -1626,6 +1626,7 @@ namespace GPBoost {
 			else {
 				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
 			}
+			first_deriv_information_loc_par_caluclated_ = true;
 		}//end CalcFirstDerivInformationLocPar
 
 		/*!
@@ -2941,6 +2942,7 @@ namespace GPBoost {
 				SigmaI_plus_W_inv_diag = (*Sigma).diagonal() - L_inv_Wsqrt_Sigma_sqr.transpose() * vec_t::Ones(L_inv_Wsqrt_Sigma_sqr.rows());// diagonal of (Sigma^-1 + ZtWZ) ^ -1 if use_Z_for_duplicates_ or of (ZSigmaZt^-1 + W)^-1 if !use_Z_for_duplicates_
 			}
 			if (grad_information_wrt_mode_non_zero_) {
+				CHECK(first_deriv_information_loc_par_caluclated_);
 				d_mll_d_mode = (0.5 * SigmaI_plus_W_inv_diag.array() * deriv_information_loc_par.array()).matrix();// gradient of approx. marginal likelihood wrt the mode
 			}
 			// Calculate gradient wrt covariance parameters
@@ -3164,6 +3166,7 @@ namespace GPBoost {
 			if (calc_F_grad) {
 				fixed_effect_grad = -first_deriv_ll_;
 				if (grad_information_wrt_mode_non_zero_) {
+					CHECK(first_deriv_information_loc_par_caluclated_);
 					vec_t d_detmll_d_F(num_data);
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data; ++i) {
@@ -3266,6 +3269,7 @@ namespace GPBoost {
 					0.5 * (diag_ZtWZ.array() / diag_SigmaI_plus_ZtWZ_.array()).sum();
 				cov_grad[0] = explicit_derivative;
 				if (grad_information_wrt_mode_non_zero_) {
+					CHECK(first_deriv_information_loc_par_caluclated_);
 					// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
 					vec_t d_mode_d_par;
 					CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, d_mode_d_par, true);
@@ -3462,6 +3466,7 @@ namespace GPBoost {
 					if (use_Z_for_duplicates_) {
 						fixed_effect_grad = -first_deriv_ll_data_scale_;
 						if (grad_information_wrt_mode_non_zero_) {
+							CHECK(first_deriv_information_loc_par_caluclated_);
 #pragma omp parallel for schedule(static)
 							for (data_size_t i = 0; i < num_data_; ++i) {
 								fixed_effect_grad[i] += 0.5 * deriv_information_loc_par_data_scale[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]] -
@@ -3548,6 +3553,7 @@ namespace GPBoost {
 							SigmaI_plus_W_inv = SigmaI_deriv;
 							CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv, true);
 							if (grad_information_wrt_mode_non_zero_) {
+								CHECK(first_deriv_information_loc_par_caluclated_);
 								d_mll_d_mode = 0.5 * (SigmaI_plus_W_inv.diagonal().array() * deriv_information_loc_par.array()).matrix();
 							}
 						}//end if j == 0
@@ -3730,6 +3736,7 @@ namespace GPBoost {
 				SigmaI_plus_W_inv_diag.array() -= (DW_plus_I_inv_diag.array() * WI.array());
 			}
 			if (grad_information_wrt_mode_non_zero_) {
+				CHECK(first_deriv_information_loc_par_caluclated_);
 				d_mll_d_mode = (0.5 * SigmaI_plus_W_inv_diag.array() * deriv_information_loc_par.array()).matrix();// gradient of approx. marginal likelihood wrt the mode
 			}
 			// Calculate gradient wrt covariance parameters
@@ -4918,6 +4925,7 @@ namespace GPBoost {
 				WI_PI_Z = rand_vec_trace_P_ - Sigma_L_k_ * chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.solve(Sigma_Lkt_W_Z);
 				WI_WI_plus_Sigma_inv_Z = diag_WI.asDiagonal() * WI_plus_Sigma_inv_Z_;
 				if (grad_information_wrt_mode_non_zero_) {
+					CHECK(first_deriv_information_loc_par_caluclated_);
 					//tr(W^(-1) dW/db_i) - do not cancel with deterministic part of variance reduction when using optimal c
 					vec_t tr_WI_W_deriv = diag_WI.cwiseProduct(deriv_information_loc_par);
 					den_mat_t Z_WI_plus_Sigma_inv_WI_deriv_PI_Z = -1 * (WI_WI_plus_Sigma_inv_Z.array() * W_deriv_rep.array() * WI_PI_Z.array()).matrix();
@@ -4949,6 +4957,7 @@ namespace GPBoost {
 						chol_fact_woodbury_preconditioner_.solve((*cross_cov).transpose() * D_rand_vec)));
 				WI_WI_plus_Sigma_inv_Z = diag_WI.asDiagonal() * WI_plus_Sigma_inv_Z_;
 				if (grad_information_wrt_mode_non_zero_) {
+					CHECK(first_deriv_information_loc_par_caluclated_);
 					//tr(W^(-1) dW/db_i) - do not cancel with deterministic part of variance reduction when using optimal c
 					vec_t tr_WI_W_deriv = diag_WI.cwiseProduct(deriv_information_loc_par);
 					den_mat_t Z_WI_plus_Sigma_inv_WI_deriv_PI_Z = -1 * (WI_WI_plus_Sigma_inv_Z.array() * W_deriv_rep.array() * WI_PI_Z.array()).matrix();
@@ -5006,6 +5015,7 @@ namespace GPBoost {
 				den_mat_t Z_SigmaI_plus_W_inv_W_deriv_PI_Z;
 				vec_t tr_SigmaI_plus_W_inv_W_deriv;
 				if (grad_information_wrt_mode_non_zero_) {
+					CHECK(first_deriv_information_loc_par_caluclated_);
 					//stochastic tr((Sigma^(-1) + W)^(-1) dW/db_i)
 					Z_SigmaI_plus_W_inv_W_deriv_PI_Z = (SigmaI_plus_W_inv_Z_.array() * W_deriv_rep.array() * PI_Z.array()).matrix();
 					tr_SigmaI_plus_W_inv_W_deriv = Z_SigmaI_plus_W_inv_W_deriv_PI_Z.rowwise().mean();
@@ -5402,6 +5412,8 @@ namespace GPBoost {
 		bool estimate_df_t_ = true;
 		/*! \brief If true, a Gaussian likelihood is estimated using this file */
 		bool use_likelihoods_file_for_gaussian_ = false;
+		/*! \brief If true, the function 'CalcFirstDerivInformationLocPar' has been called before */
+		bool first_deriv_information_loc_par_caluclated_ = false;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
