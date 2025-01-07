@@ -667,8 +667,8 @@ namespace GPBoost {
 			num_it = (int)settings.opt_iter;
 			neg_log_likelihood = settings.opt_fn_value;
 			if (profile_out_marginal_variance || profile_out_regression_coef) {
-				vec_t grad_dummy = pars_init;
-				EvalLLforOptimLib<T_mat, T_chol>(pars_init, &grad_dummy, &opt_data);//re-evaluate log-likelihood to make sure that the profiled-out variables are correct
+				vec_t* grad_dummy = nullptr;
+				EvalLLforOptimLib<T_mat, T_chol>(pars_init, grad_dummy, &opt_data);//re-evaluate log-likelihood to make sure that the profiled-out variables are correct
 			}
 		}
 		// Transform parameters back for export
