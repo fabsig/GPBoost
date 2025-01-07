@@ -1502,6 +1502,8 @@ namespace GPBoost {
 			else {//not gauss_likelihood_
 				vec_t grad_cov_aux_cluster_i, grad_F;
 				const double* fixed_effects_cluster_i_ptr = nullptr;
+				double* grad_cov_clus_i_ptr = nullptr;
+				double* grad_aux_clus_i_ptr = nullptr;
 				vec_t fixed_effects_cluster_i;
 				if(calc_cov_aux_par_grad) {
 					CHECK(!include_error_var);
@@ -1511,6 +1513,10 @@ namespace GPBoost {
 					}
 					grad_cov_aux_par = vec_t::Zero(length_cov_grad);
 					grad_cov_aux_cluster_i = vec_t(length_cov_grad);
+					grad_cov_clus_i_ptr = grad_cov_aux_cluster_i.data();
+					if (estimate_aux_pars_) {
+						grad_aux_clus_i_ptr = grad_cov_aux_cluster_i.data() + num_cov_par_;
+					}
 				}
 				if (calc_beta_grad) {
 					grad_F = vec_t(num_data_);
@@ -1537,8 +1543,8 @@ namespace GPBoost {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr, B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i],
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par, 
-							grad_cov_aux_cluster_i.data(), grad_F_cluster_i,
-							grad_cov_aux_cluster_i.data() + num_cov_par_, false, num_comps_total_, call_for_std_dev_coef, re_comps_ip_preconditioner_[cluster_i],
+							grad_cov_clus_i_ptr, grad_F_cluster_i,
+							grad_aux_clus_i_ptr, false, num_comps_total_, call_for_std_dev_coef, re_comps_ip_preconditioner_[cluster_i],
 							re_comps_cross_cov_preconditioner_[cluster_i], chol_ip_cross_cov_preconditioner_[cluster_i], chol_fact_sigma_ip_preconditioner_[cluster_i]);
 					}
 					else if (gp_approx_ == "fitc") {
@@ -1546,29 +1552,25 @@ namespace GPBoost {
 							fixed_effects_cluster_i_ptr, re_comps_ip_[cluster_i][0]->GetZSigmaZt(), chol_fact_sigma_ip_[cluster_i],
 							re_comps_cross_cov_[cluster_i][0]->GetSigmaPtr(), fitc_resid_diag_[cluster_i], re_comps_ip_[cluster_i], re_comps_cross_cov_[cluster_i],
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par,
-							grad_cov_aux_cluster_i.data(), grad_F_cluster_i,
-							grad_cov_aux_cluster_i.data() + num_cov_par_, false, call_for_std_dev_coef);
+							grad_cov_clus_i_ptr, grad_F_cluster_i, grad_aux_clus_i_ptr, false, call_for_std_dev_coef);
 					}
 					else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], cum_num_rand_eff_[cluster_i],
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par,
-							grad_cov_aux_cluster_i.data(), grad_F_cluster_i,
-							grad_cov_aux_cluster_i.data() + num_cov_par_, false, call_for_std_dev_coef);
+							grad_cov_clus_i_ptr, grad_F_cluster_i, grad_aux_clus_i_ptr, false, call_for_std_dev_coef);
 					}
 					else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(), y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], re_comps_[cluster_i][0]->cov_pars_[0], re_comps_[cluster_i][0]->random_effects_indices_of_data_.data(),
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par,
-							grad_cov_aux_cluster_i.data(), grad_F_cluster_i,
-							grad_cov_aux_cluster_i.data() + num_cov_par_, false, call_for_std_dev_coef);
+							grad_cov_clus_i_ptr, grad_F_cluster_i, grad_aux_clus_i_ptr, false, call_for_std_dev_coef);
 					}
 					else {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxStable(y_[cluster_i].data(), y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr, ZSigmaZt_[cluster_i], re_comps_[cluster_i],
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par,
-							grad_cov_aux_cluster_i.data(), grad_F_cluster_i,
-							grad_cov_aux_cluster_i.data() + num_cov_par_, false, call_for_std_dev_coef);
+							grad_cov_clus_i_ptr, grad_F_cluster_i, grad_aux_clus_i_ptr, false, call_for_std_dev_coef);
 					}
 					if(calc_cov_aux_par_grad) {
 						grad_cov_aux_par += grad_cov_aux_cluster_i;
