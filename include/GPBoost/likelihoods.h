@@ -4603,27 +4603,30 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "t") {
-				// Assume that t-distribution is the true likelihood
-				if (aux_pars_[1] <= 1.) {
-					Log::REFatal("The response mean of a 't' distribution is only defined if the "
-						"'%s' parameter (=degrees of freedom) is larger than 1. Currently, it is %g. "
-						"You can set this parameter via the 'likelihood_additional_param' parameter ", names_aux_pars_[1].c_str(), aux_pars_[1]);
-				}
-				if (predict_var && aux_pars_[1] <= 2.) {
-					Log::REFatal("The response mean of a 't' distribution is only defined if the "
-						"'%s' parameter (=degrees of freedom) is larger than 2. Currently, it is %g. "
-						"You can set this parameter via the 'likelihood_additional_param' parameter ", names_aux_pars_[1].c_str(), aux_pars_[1]);
-				}
-				if (predict_var) {
-					Log::REWarning("Predicting the response variable for a 't' likelihood: it is assumed that the t-distribution is the true likelihood, and  "
-						" predictive variance are calculated accordingly. If you use the 't' likelihood only as an auxiliary tool for robust regression, "
-						"consider predicting the latent variable (predict_response = false) (and maybe add the squared scale parameter assuming the true likelihood without contamination is gaussian) ");
-					double pred_var_const = aux_pars_[0] * aux_pars_[0] * aux_pars_[1] / (aux_pars_[1] - 2.);
-#pragma omp parallel for schedule(static)
-					for (int i = 0; i < (int)pred_mean.size(); ++i) {
-						pred_var[i] = pred_var[i] + pred_var_const;
-					}
-				}
+//				// Assume that t-distribution is the true likelihood
+//				if (aux_pars_[1] <= 1.) {
+//					Log::REFatal("The response mean of a 't' distribution is only defined if the "
+//						"'%s' parameter (=degrees of freedom) is larger than 1. Currently, it is %g. "
+//						"You can set this parameter via the 'likelihood_additional_param' parameter ", names_aux_pars_[1].c_str(), aux_pars_[1]);
+//				}
+//				if (predict_var && aux_pars_[1] <= 2.) {
+//					Log::REFatal("The response mean of a 't' distribution is only defined if the "
+//						"'%s' parameter (=degrees of freedom) is larger than 2. Currently, it is %g. "
+//						"You can set this parameter via the 'likelihood_additional_param' parameter ", names_aux_pars_[1].c_str(), aux_pars_[1]);
+//				}
+//				if (predict_var) {
+//					Log::REWarning("Predicting the response variable for a 't' likelihood: it is assumed that the t-distribution is the true likelihood, and  "
+//						" predictive variance are calculated accordingly. If you use the 't' likelihood only as an auxiliary tool for robust regression, "
+//						"consider predicting the latent variable (predict_response = false) (and maybe add the squared scale parameter assuming the true likelihood without contamination is gaussian) ");
+//					double pred_var_const = aux_pars_[0] * aux_pars_[0] * aux_pars_[1] / (aux_pars_[1] - 2.);
+//#pragma omp parallel for schedule(static)
+//					for (int i = 0; i < (int)pred_mean.size(); ++i) {
+//						pred_var[i] = pred_var[i] + pred_var_const;
+//					}
+//				}
+				pred_var.array() += aux_pars_[0] * aux_pars_[0];
+				Log::REDebug("Response prediction for a 't' likelihood: we simply add the squared 'scale' parameter to the variances of the latent predictions "
+					"and do not assume that the 't' distribution is the true likelihood but rather an auxiliary tool for robust regression ");
 			}//end "t"
 			else if (likelihood_type_ == "gaussian") {
 				if (predict_var) {
