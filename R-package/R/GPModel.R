@@ -1898,7 +1898,7 @@ gpb.GPModel <- R6::R6Class(
         model_list[["X"]] <- self$get_covariate_data()
       }
       # Additional likelihood parameters (e.g., shape parameter for a gamma or negative_binomial likelihood)
-      model_list[["params"]]["init_aux_pars"] <- self$get_aux_pars()
+      model_list[["params"]][["init_aux_pars"]] <- self$get_aux_pars()
       # Note: for simplicity, this is put into 'init_aux_pars'. When loading the model, 'init_aux_pars' are correctly set
       model_list[["model_fitted"]] <- private$model_fitted
       # Make sure that data is saved in correct format by RJSONIO::toJSON

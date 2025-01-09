@@ -2605,9 +2605,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.542) < probs)
     # Train model
     gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
-                           y = y, X=X, params = list(optimizer_cov = "gradient_descent",
-                                                     optimizer_coef = "gradient_descent",
-                                                     use_nesterov_acc = TRUE))
+                           y = y, X=X, params = OPTIM_PARAMS_BFGS)
     # Make predictions
     X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
     group_test <- c(1,3,3,9999)
@@ -2637,8 +2635,35 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     mu <- exp(Z1 %*% b_gr_1 + X%*%beta)
     y <- qgamma(sim_rand_unif(n=n, init_c=0.146), scale = mu, shape = 10)
     # Train model
-    gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
-                           y = y, X = X, params = DEFAULT_OPTIM_PARAMS)
+    gp_model <- fitGPModel(group_data = group, likelihood = "gamma", y = y, X = X, params = OPTIM_PARAMS_BFGS)
+    # Make predictions
+    X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
+    group_test <- c(1,3,3,9999)
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    # Predict response
+    pred_resp <- predict(gp_model, y=y, group_data_pred = group_test,
+                         X_pred = X_test, predict_var = TRUE, predict_response = TRUE)
+    # Save model to file
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    # Delete model
+    rm(gp_model)
+    # Load from file and make predictions again
+    gp_model_loaded <- loadGPModel(filename = filename)
+    pred_loaded <- predict(gp_model_loaded, group_data_pred = group_test,
+                           X_pred = X_test, predict_cov_mat = TRUE, predict_response = FALSE)
+    pred_resp_loaded <- predict(gp_model_loaded, y=y, group_data_pred = group_test,
+                                X_pred = X_test, predict_var = TRUE, predict_response = TRUE)
+    
+    expect_equal(pred$mu, pred_loaded$mu)
+    expect_equal(pred$cov, pred_loaded$cov)
+    expect_equal(pred_resp$mu, pred_resp_loaded$mu)
+    expect_equal(pred_resp$var, pred_resp_loaded$var)
+    
+    # t likelihood
+    # Train model
+    gp_model <- fitGPModel(group_data = group, likelihood = "t", y = y, X = X, params = OPTIM_PARAMS_BFGS)
     # Make predictions
     X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
     group_test <- c(1,3,3,9999)
