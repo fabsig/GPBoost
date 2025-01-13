@@ -25,6 +25,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                       num_rand_vec_trace = 1000, reuse_rand_vec_trace = TRUE,
                                       seed_rand_vec_trace = 1)
   DEFAULT_OPTIM_PARAMS_FISHER_STD <- c(DEFAULT_OPTIM_PARAMS_FISHER, list(std_dev = TRUE))
+  OPTIM_PARAMS_BFGS <- list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 1000)
+  OPTIM_PARAMS_BFGS_STD <- c(OPTIM_PARAMS_BFGS, list(std_dev = TRUE))
+  
   
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
@@ -353,6 +356,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_other <- c(0.33824439, 0.07955527, 0.75776861, 0.22661022, 0.14361521, 0.02589934)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 11)
+    # Matern with shape estimated
+    params = OPTIM_PARAMS_BFGS_STD
+    params$init_cov_pars <- c(init_cov_pars_15, 1.5)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern_estimate_shape",
+                                           cov_fct_shape = 1.5, y = y, params = params) , file='NUL')
+    cov_pars_other <- c(0.0001323589, 0.2018696019, 1.1022114804, 0.3153382101, 0.1187387358, 0.0512925409, 0.4181996520, 0.3579762498)
+    num_it_other <- 23
+    nll_opt_other <- 122.7099697
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_other)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
     
     ## Test default initial values
     params <- list(optimizer_cov = "gradient_descent", maxit = 0, optimizer_coef = "gradient_descent")

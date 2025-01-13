@@ -247,6 +247,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                       1.5000000000, 0.0000000000, 0.0003074858, 0.0000000000, 1.0761874845)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    
+    # Matern with shape estimated
+    params = OPTIM_PARAMS_BFGS_STD
+    params$init_cov_pars <- c(1,mean(dist(coords))/3,1.5)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern_estimate_shape",
+                                           cov_fct_shape = 1.5, y = y, params = params, likelihood = "bernoulli_probit") , file='NUL')
+    cov_pars_other <- c(0.8371154679, 0.1140158618, 134.4194357846)
+    num_it_other <- 13
+    nll_opt_other <- 64.89368249
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_other)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
   })
   
   test_that("Binary classification with Gaussian process model with multiple observations at the same location", {
