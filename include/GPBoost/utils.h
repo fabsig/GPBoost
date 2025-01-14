@@ -117,11 +117,11 @@ namespace GPBoost {
 		double median;
 		int pos_med = (int)(num_el / 2);
 		std::nth_element(vec.begin(), vec.begin() + pos_med, vec.end());
+		median = vec[pos_med];
 		if (num_el % 2 == 0) {
-			median = (vec[pos_med - 1] + vec[pos_med]) / 2.;
-		}
-		else {
-			median = vec[pos_med];
+			std::nth_element(vec.begin(), vec.begin() + pos_med - 1, vec.end());
+			median += vec[pos_med - 1];
+			median /= 2.;
 		}
 		return(median);
 	};
