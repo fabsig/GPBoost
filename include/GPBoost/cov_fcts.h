@@ -973,28 +973,43 @@ namespace GPBoost {
 				else if (cov_fct_type_ == "matern_ard" || cov_fct_type_ == "gaussian_ard") {
 					mean_dist_per_coord = std::vector<double>((int)coords.cols());
 					for (int ic = 0; ic < (int)coords.cols(); ++ic) {
-						double mean_dist_coord_i = 0.;
-						if (use_subsamples) {
-							for (int i = 0; i < (num_data_find_init - 1); ++i) {
-								for (int j = i + 1; j < num_data_find_init; ++j) {
-									mean_dist_coord_i += std::abs(coords.coeff(sample_ind[i], ic) - coords.coeff(sample_ind[j], ic));;
-								}
-							}
+						vec_t col_i = coords.col(ic);
+						int num_unique_values = GPBoost::NumberUniqueValues(col_i, 11);
+						bool feature_is_constant = false;
+						if (num_unique_values == 1) {
+							add_error_str = "";
+							feature_is_constant = true;
+						}
+						else if (num_unique_values <= 10) {
+							mean_dist_per_coord[ic] = (num_unique_values * num_unique_values - 1) / 3. / num_unique_values; // use average distance among two random points on {1,...,num_unique_values}
 						}
 						else {
-							for (int i = 0; i < (num_data_find_init - 1); ++i) {
-								for (int j = i + 1; j < num_data_find_init; ++j) {
-									mean_dist_coord_i += std::abs(coords.coeff(i, ic) - coords.coeff(j, ic));;
+							double mean_dist_coord_i = 0.;
+							if (use_subsamples) {
+								for (int i = 0; i < (num_data_find_init - 1); ++i) {
+									for (int j = i + 1; j < num_data_find_init; ++j) {
+										mean_dist_coord_i += std::abs(coords.coeff(sample_ind[i], ic) - coords.coeff(sample_ind[j], ic));;
+									}
 								}
 							}
+							else {
+								for (int i = 0; i < (num_data_find_init - 1); ++i) {
+									for (int j = i + 1; j < num_data_find_init; ++j) {
+										mean_dist_coord_i += std::abs(coords.coeff(i, ic) - coords.coeff(j, ic));;
+									}
+								}
+							}
+							mean_dist_coord_i /= (num_data_find_init * (num_data_find_init - 1) / 2.);
+							mean_dist_per_coord[ic] = mean_dist_coord_i;
+							if (mean_dist_coord_i < EPSILON_NUMBERS) {
+								feature_is_constant = true;
+							}
 						}
-						mean_dist_coord_i /= (num_data_find_init * (num_data_find_init - 1) / 2.);
-						mean_dist_per_coord[ic] = mean_dist_coord_i;
-						if (mean_dist_coord_i < EPSILON_NUMBERS) {
+						if (feature_is_constant) {
 							Log::REFatal(("Cannot find an initial value for the range parameter for the input feature number " + std::to_string(ic + 1) +
 								" (counting starts at 1) since this feature is constant " + add_error_str).c_str());
 						}
-					}
+					}// end loop over features
 				}//end cov_fct_type_ == "matern_ard" && cov_fct_type_ == "gaussian_ard"
 				// Set the range parameters such that the correlation is down to 0.05 at half the mean distance
 				if (cov_fct_type_ == "matern") {

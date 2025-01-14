@@ -13,6 +13,7 @@
 #include <GPBoost/type_defs.h>
 #include <algorithm>    // std::max, std::sort
 #include <numeric>      // std::iota
+#include <unordered_set>
 
 namespace GPBoost {
 
@@ -72,6 +73,37 @@ namespace GPBoost {
 			return -INFINITY;
 		}
 	};
+
+	/*! \brief Determines the number of unique values of a vector up to a certain number (max_unique_values) */
+	inline int NumberUniqueValues(const vec_t vec,
+		int max_unique_values) {
+		std::unordered_set<double> unique_values;
+		bool found_more_uniques_than_max = false;
+
+#pragma omp parallel
+		{
+			std::unordered_set<double> local_set;
+
+#pragma omp for
+			for (data_size_t i = 0; i < (data_size_t)vec.size(); ++i) {
+				if (found_more_uniques_than_max) break;
+				local_set.insert(vec[i]);
+				if (local_set.size() > max_unique_values) {
+#pragma omp critical
+					{
+						found_more_uniques_than_max = true;
+					}
+				}
+			}
+
+#pragma omp critical
+			{
+				unique_values.insert(local_set.begin(), local_set.end());
+			}
+		}
+
+		return (int)unique_values.size();
+	};//end NumberUniqueValues
 
 	/*!
 	* \brief Finds the sorting index of vector v and saves it in idx
