@@ -1170,7 +1170,7 @@ namespace GPBoost {
 					}
 				}
 				else if (cov_fct_type_ == "matern_estimate_shape") {
-					pars[1] = 2. * 4.7 * med_dist / std::sqrt(3.);//same as shape_ = 1.5
+					pars[1] = med_dist * std::sqrt(3.) / 2. / 4.7;//same as shape_ = 1.5
 					pars[2] = 1.5;
 				}
 				else if (cov_fct_type_ == "gaussian") {
