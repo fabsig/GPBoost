@@ -2,7 +2,7 @@
 * This file is part of GPBoost a C++ library for combining
 *	boosting with Gaussian process and mixed effects models
 *
-* Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
+* Copyright (c) 2020 - 2025 Fabio Sigrist. All rights reserved.
 *
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 *
@@ -403,9 +403,7 @@ namespace GPBoost {
 						y_v[i] = y_data[i] - fixed_effects[i];
 					}
 				}
-				int pos_med = (int)(num_data * 0.5);
-				std::nth_element(y_v.begin(), y_v.begin() + pos_med, y_v.end());
-				init_intercept = y_v[pos_med];
+				init_intercept = GPBoost::CalculateMedianPartiallySortInput(y_v);
 			}//end "t"
 			else if (likelihood_type_ == "gaussian") {
 				if (fixed_effects == nullptr) {
@@ -529,15 +527,12 @@ namespace GPBoost {
 						y_v[i] = y_data[i] - fixed_effects[i];
 					}
 				}
-				int pos_med = (int)(num_data * 0.5);
-				std::nth_element(y_v.begin(), y_v.begin() + pos_med, y_v.end());
-				double median = y_v[pos_med];
+				double median = GPBoost::CalculateMedianPartiallySortInput(y_v);
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data; ++i) {
 					y_v[i] = std::abs(y_v[i] - median);
 				}
-				std::nth_element(y_v.begin(), y_v.begin() + pos_med, y_v.end());
-				aux_pars_[0] = 1.4826 * y_v[pos_med];
+				aux_pars_[0] = 1.4826 * GPBoost::CalculateMedianPartiallySortInput(y_v);//MAD
 				if (aux_pars_[0] <= EPSILON_NUMBERS) {
 					// use IQR if MAD is zero
 					if (fixed_effects == nullptr) {
@@ -630,15 +625,12 @@ namespace GPBoost {
 						y_v[i] = y_data[i] - fixed_effects[i];
 					}
 				}
-				int pos_med = (int)(num_data * 0.5);
-				std::nth_element(y_v.begin(), y_v.begin() + pos_med, y_v.end());
-				C_mu = y_v[pos_med];
+				C_mu = GPBoost::CalculateMedianPartiallySortInput(y_v);
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data; ++i) {
 					y_v[i] = std::abs(y_v[i] - C_mu);
 				}
-				std::nth_element(y_v.begin(), y_v.begin() + pos_med, y_v.end());
-				C_sigma2 = 1.4826 * y_v[pos_med];//MAD
+				C_sigma2 = 1.4826 * GPBoost::CalculateMedianPartiallySortInput(y_v);//MAD
 				C_sigma2 = C_sigma2 * C_sigma2;
 				if (C_sigma2 <= EPSILON_NUMBERS) {
 					// use IQR if MAD is zero
