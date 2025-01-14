@@ -4603,7 +4603,10 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "t") {
-//				// Assume that t-distribution is the true likelihood
+				pred_var.array() += aux_pars_[0] * aux_pars_[0];
+				Log::REDebug("Response prediction for a 't' likelihood: we simply add the squared 'scale' parameter to the variances of the latent predictions "
+					"and do not assume that the 't' distribution is the true likelihood but rather an auxiliary tool for robust regression ");
+//				// Code when assuming that the t-distribution is the true likelihood
 //				if (aux_pars_[1] <= 1.) {
 //					Log::REFatal("The response mean of a 't' distribution is only defined if the "
 //						"'%s' parameter (=degrees of freedom) is larger than 1. Currently, it is %g. "
@@ -4624,9 +4627,6 @@ namespace GPBoost {
 //						pred_var[i] = pred_var[i] + pred_var_const;
 //					}
 //				}
-				pred_var.array() += aux_pars_[0] * aux_pars_[0];
-				Log::REDebug("Response prediction for a 't' likelihood: we simply add the squared 'scale' parameter to the variances of the latent predictions "
-					"and do not assume that the 't' distribution is the true likelihood but rather an auxiliary tool for robust regression ");
 			}//end "t"
 			else if (likelihood_type_ == "gaussian") {
 				if (predict_var) {

@@ -1647,7 +1647,7 @@ namespace GPBoost {
 #endif
 		}//end GradientRangeMaternGeneralShape
 
-		inline double GradientSmoothnessMaternEstimateShapesFiniteDifference(double cm,
+		inline double GradientSmoothnessMaternEstimateShapeFiniteDifference(double cm,
 			double cm_num_deriv,
 			double dist_ij,
 			double par_aux,
@@ -1661,11 +1661,26 @@ namespace GPBoost {
 			double z_up = dist_ij * par_aux_up;
 			double z_down = dist_ij * par_aux_down;
 			double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step_);
+
+			//// for debugging
+			//Log::REInfo("bessel_num_deriv = %g, cm_num_deriv = %g, std::pow(z, shape) = %g, rest = %g", 
+			//	bessel_num_deriv, cm_num_deriv, std::pow(z, shape), cm * std::cyl_bessel_k(shape, z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(shape)));
+			//std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			//// for debugging
+			//double grad = std::pow(z, shape) * (cm * std::cyl_bessel_k(shape, z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(shape)) + cm_num_deriv * bessel_num_deriv);
+			//// doing calculations on log-scale
+			//double grad_2 = std::exp(shape * std::log(z) + std::log(cm * std::cyl_bessel_k(shape, z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(shape)) + cm_num_deriv * bessel_num_deriv));
+			////double grad_2 = std::exp(shape * std::log(z) + std::log(std::exp(std::log(cm) + std::log(std::cyl_bessel_k(shape, z)) + std::log(std::log(z / 2.) + 0.5 - GPBoost::digamma(shape))) + std::exp(std::log(cm_num_deriv) + std::log(bessel_num_deriv))));
+			//// numerical gradient for entire covariance function
+			//double grad_3 = (std::pow(2., 1 - pars_2_up) / std::tgamma(pars_2_up) * std::pow(z_up, pars_2_up) * std::cyl_bessel_k(pars_2_up, z_up) -
+			//	std::pow(2., 1 - pars_2_down) / std::tgamma(pars_2_down) * std::pow(z_down, pars_2_down) * std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step_);
+			//Log::REInfo("grad = %g, grad_2 = %g, grad_3 = %g ", grad, grad_2, grad_3);//for debugging
+
 			return (std::pow(z, shape) * (cm * std::cyl_bessel_k(shape, z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(shape)) + cm_num_deriv * bessel_num_deriv));
 #else
 			return(1.);
 #endif
-		}//end GradientSmoothnessMaternEstimateShapesFiniteDifference
+		}//end GradientSmoothnessMaternEstimateShapeFiniteDifference
 
 		inline double GradientMaternEstimateShape(double cm,
 			double cm_num_deriv,
@@ -1681,7 +1696,7 @@ namespace GPBoost {
 				return(GradientRangeMaternGeneralShape(cm, dist_ij, par_aux, shape));
 			}
 			else if (ind_range == 1) {//gradient wrt smoothness parameter
-				return(GradientSmoothnessMaternEstimateShapesFiniteDifference(cm, cm_num_deriv, dist_ij, par_aux,
+				return(GradientSmoothnessMaternEstimateShapeFiniteDifference(cm, cm_num_deriv, dist_ij, par_aux,
 					par_aux_up, par_aux_down, pars_2_up, pars_2_down, shape));
 			}
 			return(1.);

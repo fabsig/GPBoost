@@ -3632,7 +3632,7 @@ namespace GPBoost {
 					}
 				}
 			}
-			else {//not gp_approx_ == "vecchia")
+			else {// not gp_approx_ == "vecchia" 
 				for (int j = 0; j < num_comps_total_; ++j) {
 					int num_par_j = ind_par_[j + 1] - ind_par_[j];
 					vec_t pars = vec_t(num_par_j);
