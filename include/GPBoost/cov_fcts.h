@@ -900,6 +900,7 @@ namespace GPBoost {
 				}
 				double mean_dist = 0., mean_dist_space = 0., mean_dist_time = 0.;
 				std::vector<double> mean_dist_per_coord;//for ard kernels
+				string_t add_error_str = use_subsamples ? "on a random sub-sample of size 1000 " : "";
 				if (cov_fct_type_ != "matern_space_time" && cov_fct_type_ != "matern_ard" && cov_fct_type_ != "gaussian_ard") {
 					if (use_distances) {
 						if (use_subsamples) {
@@ -934,7 +935,8 @@ namespace GPBoost {
 					}
 					mean_dist /= (num_data_find_init * (num_data_find_init - 1) / 2.);
 					if (mean_dist < EPSILON_NUMBERS) {
-						Log::REFatal("Cannot find an initial value for the range parameter since the average distance among coordinates is zero ");
+						Log::REFatal(("Cannot find an initial value for the range parameter "
+							"since the average distance among coordinates is zero " + add_error_str).c_str());
 					}
 				}//end cov_fct_type_ != "matern_space_time" && cov_fct_type_ != "matern_ard" && cov_fct_type_ != "gaussian_ard"
 				else if (cov_fct_type_ == "matern_space_time") {
@@ -960,10 +962,12 @@ namespace GPBoost {
 					mean_dist_space /= (num_data_find_init * (num_data_find_init - 1) / 2.);
 					mean_dist_time /= (num_data_find_init * (num_data_find_init - 1) / 2.);
 					if (mean_dist_space < EPSILON_NUMBERS) {
-						Log::REFatal("Cannot find an initial value for the spatial range parameter since the average distance among spatial coordinates is zero ");
+						Log::REFatal(("Cannot find an initial value for the spatial range parameter "
+							"since the average distance among spatial coordinates is zero " + add_error_str).c_str());
 					}
 					if (mean_dist_time < EPSILON_NUMBERS) {
-						Log::REFatal("Cannot find an initial value for the temporal range parameter since the average distance among time points is zero ");
+						Log::REFatal(("Cannot find an initial value for the temporal range parameter "
+							"since the average distance among time points is zero " + add_error_str).c_str());
 					}
 				}//end cov_fct_type_ == "matern_space_time"
 				else if (cov_fct_type_ == "matern_ard" || cov_fct_type_ == "gaussian_ard") {
@@ -987,7 +991,8 @@ namespace GPBoost {
 						mean_dist_coord_i /= (num_data_find_init * (num_data_find_init - 1) / 2.);
 						mean_dist_per_coord[ic] = mean_dist_coord_i;
 						if (mean_dist_coord_i < EPSILON_NUMBERS) {
-							Log::REFatal("Cannot find an initial value for the range parameter for the input feature number %d (counting starts at 1) since this feature is constant ", ic + 1);
+							Log::REFatal(("Cannot find an initial value for the range parameter for the input feature number " + std::to_string(ic + 1) +
+								" (counting starts at 1) since this feature is constant " + add_error_str).c_str());
 						}
 					}
 				}//end cov_fct_type_ == "matern_ard" && cov_fct_type_ == "gaussian_ard"
