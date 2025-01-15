@@ -374,27 +374,27 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            cov_fct_shape = 0.5, y = y, params = params) , file='NUL')
     expect_lt(abs(gp_model$get_cov_pars()[1] - var(y)/2),TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_cov_pars()[2] - var(y)/2),TOLERANCE_STRICT)
-    expect_lt(abs(gp_model$get_cov_pars()[3] - mean(dist(coords))/3/2),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_cov_pars()[3] - median(dist(coords))/3/2),TOLERANCE_STRICT)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
                                            cov_fct_shape = 1.5, y = y, params = params) , file='NUL')
     expect_lt(abs(gp_model$get_cov_pars()[1] - var(y)/2),TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_cov_pars()[2] - var(y)/2),TOLERANCE_STRICT)
-    expect_lt(abs(gp_model$get_cov_pars()[3] - mean(dist(coords))/4.7*sqrt(3)/2),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_cov_pars()[3] - median(dist(coords))/4.7*sqrt(3)/2),TOLERANCE_STRICT)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
                                            cov_fct_shape = 2.5, y = y, params = params) , file='NUL')
     expect_lt(abs(gp_model$get_cov_pars()[1] - var(y)/2),TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_cov_pars()[2] - var(y)/2),TOLERANCE_STRICT)
-    expect_lt(abs(gp_model$get_cov_pars()[3] - mean(dist(coords))/5.9*sqrt(5)/2),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_cov_pars()[3] - median(dist(coords))/5.9*sqrt(5)/2),TOLERANCE_STRICT)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "gaussian",
                                            y = y, params = params) , file='NUL')
     expect_lt(abs(gp_model$get_cov_pars()[1] - var(y)/2),TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_cov_pars()[2] - var(y)/2),TOLERANCE_STRICT)
-    expect_lt(abs(gp_model$get_cov_pars()[3] - sqrt((mean(dist(coords))/2)^2 / 3)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_cov_pars()[3] - sqrt((median(dist(coords))/2)^2 / 3)),TOLERANCE_STRICT)
     #non-Gaussian data
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", likelihood = "gamma",
                                            cov_fct_shape = 0.5, y = exp(y), params = params) , file='NUL')
     expect_lt(abs(gp_model$get_cov_pars()[1] - 1),TOLERANCE_STRICT)
-    expect_lt(abs(gp_model$get_cov_pars()[2] - mean(dist(coords))/3/2),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_cov_pars()[2] - median(dist(coords))/3/2),TOLERANCE_STRICT)
     
   })
   
