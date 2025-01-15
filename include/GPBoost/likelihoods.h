@@ -100,10 +100,11 @@ namespace GPBoost {
 			information_ll_can_be_negative_ = false;
 			grad_information_wrt_mode_non_zero_ = true;
 			force_laplace_approximation_ = false;
+			force_lls_approximation_ = false;
 			estimate_df_t_ = true;
 			string_t likelihood = type;
-			likelihood = ParseLikelihoodAliasGradientDescent(likelihood);
-			likelihood = ParseLikelihoodAliasFisherLaplace(likelihood);
+			likelihood = ParseLikelihoodAliasModeFindingMethod(likelihood);
+			likelihood = ParseLikelihoodAliasApproximationType(likelihood);
 			likelihood = ParseLikelihoodAliasEstimateAdditionalPars(likelihood);
 			likelihood = ParseLikelihoodAlias(likelihood);
 			if (SUPPORTED_LIKELIHOODS_.find(likelihood) == SUPPORTED_LIKELIHOODS_.end()) {
@@ -253,7 +254,7 @@ namespace GPBoost {
 		*/
 		void SetLikelihood(const string_t& type) {
 			string_t likelihood = ParseLikelihoodAlias(type);
-			likelihood = ParseLikelihoodAliasGradientDescent(likelihood);
+			likelihood = ParseLikelihoodAliasModeFindingMethod(likelihood);
 			if (SUPPORTED_LIKELIHOODS_.find(likelihood) == SUPPORTED_LIKELIHOODS_.end()) {
 				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
 			}
@@ -1395,6 +1396,16 @@ namespace GPBoost {
 					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, information_ll_data_scale_, information_ll_, true);
 				}//end use_Z_for_duplicates_
 			}//end approximation_type_ == "fisher_laplace"
+			else if (approximation_type_ == "lss_laplace") {
+				if (!use_Z_for_duplicates_) {
+					Log::REFatal("CalcDiagInformationLogLik: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+				}//end !use_Z_for_duplicates_
+				else {//use_Z_for_duplicates_
+					Log::REFatal("CalcDiagInformationLogLik: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+				}//end use_Z_for_duplicates_
+			}//end approximation_type_ == "lss_laplace"
 			else {
 				Log::REFatal("CalcDiagInformationLogLik: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
 			}
@@ -1456,6 +1467,11 @@ namespace GPBoost {
 					return(1.);
 				}
 			}//end approximation_type_ == "fisher_laplace"
+			else if (approximation_type_ == "lss_laplace") {
+				Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+					likelihood_type_.c_str(), approximation_type_.c_str());
+				return(1.);
+			}//end approximation_type_ == "lss_laplace"
 			else {
 				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
 				return(1.);
@@ -1615,8 +1631,12 @@ namespace GPBoost {
 						likelihood_type_.c_str(), approximation_type_.c_str());
 				}
 			}// end approximation_type_ == "fisher_laplace"
+			else if (approximation_type_ == "lss_laplace") {
+				Log::REFatal("CalcFirstDerivInformationLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+					likelihood_type_.c_str(), approximation_type_.c_str());
+			}//end approximation_type_ == "lss_laplace"
 			else {
-				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
+				Log::REFatal("CalcFirstDerivInformationLocPar: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
 			}
 			first_deriv_information_loc_par_caluclated_ = true;
 		}//end CalcFirstDerivInformationLocPar
@@ -1691,7 +1711,7 @@ namespace GPBoost {
 				neg_log_grad += 0.5 * num_data;
 				grad[0] = neg_log_grad;
 			}//end "gaussian"
-			else if (num_aux_pars_ > 0) {
+			else if (num_aux_pars_estim_ > 0) {
 				Log::REFatal("CalcGradNegLogLikAuxPars: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
 		}//end CalcGradNegLogLikAuxPars
@@ -1781,7 +1801,7 @@ namespace GPBoost {
 						deriv_information_aux_par[i] = -1. / aux_pars_[0];
 					}
 				}//end "gaussian"
-				else if (num_aux_pars_ > 0) {
+				else if (num_aux_pars_estim_ > 0) {
 					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
 				}
@@ -1820,13 +1840,19 @@ namespace GPBoost {
 						}
 					}
 				}//end "t"
-				else if (num_aux_pars_ > 0) {
+				else if (num_aux_pars_estim_ > 0) {
 					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
 				}
 			}// end approximation_type_ == "fisher_laplace"
+			else if (approximation_type_ == "lss_laplace") {
+				if (num_aux_pars_estim_ > 0) {
+					Log::REFatal("CalcSecondDerivLogLikFirstDerivInformationAuxPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+				}
+			}//end approximation_type_ == "lss_laplace"
 			else {
-				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
+				Log::REFatal("CalcSecondDerivLogLikFirstDerivInformationAuxPar: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
 			}
 		}//end CalcSecondDerivLogLikFirstDerivInformationAuxPar
 
@@ -5251,7 +5277,7 @@ namespace GPBoost {
 			return likelihood;
 		}
 
-		string_t ParseLikelihoodAliasGradientDescent(const string_t& likelihood) {
+		string_t ParseLikelihoodAliasModeFindingMethod(const string_t& likelihood) {
 			if (likelihood.size() > 13) {
 				if (likelihood.substr(likelihood.size() - 13) == string_t("_quasi-newton")) {
 					quasi_newton_for_mode_finding_ = true;
@@ -5262,7 +5288,7 @@ namespace GPBoost {
 			return likelihood;
 		}
 
-		string_t ParseLikelihoodAliasFisherLaplace(const string_t& likelihood) {
+		string_t ParseLikelihoodAliasApproximationType(const string_t& likelihood) {
 			if (likelihood.size() > 15) {
 				if (likelihood.substr(likelihood.size() - 15) == string_t("_fisher-laplace") ||
 					likelihood.substr(likelihood.size() - 15) == string_t("_fisher_laplace")) {
@@ -5274,6 +5300,12 @@ namespace GPBoost {
 				if (likelihood.substr(likelihood.size() - 8) == string_t("_laplace")) {
 					force_laplace_approximation_ = true;
 					return likelihood.substr(0, likelihood.size() - 8);
+				}
+			}
+			if (likelihood.size() > 12) {
+				if (likelihood.substr(likelihood.size() - 12) == string_t("_lls_laplace")) {
+					force_lls_approximation_ = true;
+					return likelihood.substr(0, likelihood.size() - 12);
 				}
 			}
 			return likelihood;
@@ -5395,8 +5427,9 @@ namespace GPBoost {
 		string_t approximation_type_ = "laplace";
 		/*! \brief If true, the Laplace approximation is used (for likelihoods where this is not recommended, instead of a Fisher-Laplace approximation) */
 		bool force_laplace_approximation_ = false;
+		bool force_lls_approximation_ = false;
 		/*! \brief List of supported approximations */
-		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace", "fisher_laplace" };
+		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace", "fisher_laplace", "lss_laplace"};
 		/*! \brief If true, 'information_ll_' could contain negative values */
 		bool information_ll_can_be_negative_ = false;
 		/*! \brief If true, the derivative of the information wrt the mode is non-zero (it is zero, e.g., for a "gaussian" likelihood). Consequently, the (observed or expected) Fisher information ('information_ll_') changes in the mode finding algorithm (usually Newton's method) for the Laplace approximation */
