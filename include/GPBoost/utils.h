@@ -85,19 +85,19 @@ namespace GPBoost {
 #pragma omp parallel
 		{
 			std::unordered_set<double> local_set;
-
 #pragma omp for
 			for (data_size_t i = 0; i < (data_size_t)vec.size(); ++i) {
-				if (found_more_uniques_than_max) break;
+				if (found_more_uniques_than_max) {
+					continue;
+				}
 				local_set.insert(vec[i]);
-				if (local_set.size() > max_unique_values) {
+				if ((int)local_set.size() > max_unique_values) {
 #pragma omp critical
 					{
 						found_more_uniques_than_max = true;
 					}
 				}
 			}
-
 #pragma omp critical
 			{
 				unique_values.insert(local_set.begin(), local_set.end());
