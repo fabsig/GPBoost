@@ -902,7 +902,7 @@ namespace GPBoost {
 				std::vector<double> med_dist_per_coord;//for ard kernels
 				string_t add_error_str = use_subsamples ? "on a random sub-sample of size 1000 " : "";
 				
-				int num_distances = num_data_find_init * (num_data_find_init - 1) / 2.;
+				int num_distances = (int)(num_data_find_init * (num_data_find_init - 1) / 2.);
 				std::vector<double> distances(num_distances);
 				if (cov_fct_type_ != "matern_space_time" && cov_fct_type_ != "matern_ard" && cov_fct_type_ != "gaussian_ard") {
 					if (use_distances) {
