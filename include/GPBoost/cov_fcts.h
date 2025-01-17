@@ -943,9 +943,9 @@ namespace GPBoost {
 							}
 						}//end not use_subsamples
 					}
-					med_dist = GPBoost::CalculateMedianPartiallySortInput(distances);
+					med_dist = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(distances);
 					if (med_dist < EPSILON_NUMBERS) {
-						med_dist = GPBoost::CalculateMean(distances);
+						med_dist = GPBoost::CalculateMean<std::vector<double>>(distances);
 					}
 					if (med_dist < EPSILON_NUMBERS) {
 						Log::REFatal(("Cannot find an initial value for the range parameter "
@@ -972,13 +972,13 @@ namespace GPBoost {
 							}
 						}
 					}//end not use_subsamples
-					med_dist_space = GPBoost::CalculateMedianPartiallySortInput(distances);
+					med_dist_space = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(distances);
 					if (med_dist_space < EPSILON_NUMBERS) {
-						med_dist_space = GPBoost::CalculateMean(distances);
+						med_dist_space = GPBoost::CalculateMean<std::vector<double>>(distances);
 					}
-					med_dist_time = GPBoost::CalculateMedianPartiallySortInput(distances_time);
+					med_dist_time = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(distances_time);
 					if (med_dist_time < EPSILON_NUMBERS) {
-						med_dist_time = GPBoost::CalculateMean(distances_time);
+						med_dist_time = GPBoost::CalculateMean<std::vector<double>>(distances_time);
 					}
 					if (med_dist_space < EPSILON_NUMBERS) {
 						Log::REFatal(("Cannot find an initial value for the spatial range parameter "
@@ -1018,9 +1018,9 @@ namespace GPBoost {
 									}
 								}
 							}//end not use_subsamples
-							med_dist_coord_i = GPBoost::CalculateMedianPartiallySortInput(distances);
+							med_dist_coord_i = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(distances);
 							if (med_dist_coord_i < EPSILON_NUMBERS) {
-								med_dist_coord_i = GPBoost::CalculateMean(distances);
+								med_dist_coord_i = GPBoost::CalculateMean<std::vector<double>>(distances);
 							}
 							med_dist_per_coord[ic] = med_dist_coord_i;
 							if (med_dist_coord_i < EPSILON_NUMBERS) {

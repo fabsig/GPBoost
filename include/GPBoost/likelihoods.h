@@ -404,7 +404,7 @@ namespace GPBoost {
 						y_v[i] = y_data[i] - fixed_effects[i];
 					}
 				}
-				init_intercept = GPBoost::CalculateMedianPartiallySortInput(y_v);
+				init_intercept = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
 			}//end "t"
 			else if (likelihood_type_ == "gaussian") {
 				if (fixed_effects == nullptr) {
@@ -528,12 +528,12 @@ namespace GPBoost {
 						y_v[i] = y_data[i] - fixed_effects[i];
 					}
 				}
-				double median = GPBoost::CalculateMedianPartiallySortInput(y_v);
+				double median = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data; ++i) {
 					y_v[i] = std::abs(y_v[i] - median);
 				}
-				aux_pars_[0] = 1.4826 * GPBoost::CalculateMedianPartiallySortInput(y_v);//MAD
+				aux_pars_[0] = 1.4826 * GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);//MAD
 				if (aux_pars_[0] <= EPSILON_NUMBERS) {
 					// use IQR if MAD is zero
 					if (fixed_effects == nullptr) {
@@ -626,12 +626,12 @@ namespace GPBoost {
 						y_v[i] = y_data[i] - fixed_effects[i];
 					}
 				}
-				C_mu = GPBoost::CalculateMedianPartiallySortInput(y_v);
+				C_mu = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data; ++i) {
 					y_v[i] = std::abs(y_v[i] - C_mu);
 				}
-				C_sigma2 = 1.4826 * GPBoost::CalculateMedianPartiallySortInput(y_v);//MAD
+				C_sigma2 = 1.4826 * GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);//MAD
 				C_sigma2 = C_sigma2 * C_sigma2;
 				if (C_sigma2 <= EPSILON_NUMBERS) {
 					// use IQR if MAD is zero

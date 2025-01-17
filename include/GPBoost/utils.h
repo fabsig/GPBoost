@@ -111,7 +111,8 @@ namespace GPBoost {
 	* \param[out] vec Vector with values (will be partially sorted)
 	* \return Median
 	*/
-	inline double CalculateMedianPartiallySortInput(std::vector<double>& vec) {
+	template <typename T>//T can be std::vector<double> or vec_t
+	inline double CalculateMedianPartiallySortInput(T& vec) {
 		CHECK(vec.size() > 0);
 		int num_el = (int)vec.size();
 		double median;
@@ -131,7 +132,8 @@ namespace GPBoost {
 	* \param[out] vec Vector with values 
 	* \return Mean
 	*/
-	inline double CalculateMean(const std::vector<double>& vec) {
+	template <typename T>//T can be std::vector<double> or vec_t
+	inline double CalculateMean(const T& vec) {
 		CHECK(vec.size() > 0);
 		int num_el = (int)vec.size();
 		double mean = 0.;
