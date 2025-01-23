@@ -704,19 +704,19 @@ namespace GPBoost {
 		void SetAuxPars(const double* aux_pars) {
 			if (likelihood_type_ == "t" && !estimate_df_t_ && !aux_pars_have_been_set_) {
 				if (!TwoNumbersAreEqual<double>(aux_pars[1], aux_pars_[1])) {
-					Log::REWarning("The '%s' parameter provided in 'init_aux_pars' and 'likelihood_additional_param' are not equal. "
-						"Will use the value provided in 'likelihood_additional_param' ", names_aux_pars_[1].c_str());
+					Log::REWarning("The '%s' parameter provided in 'init_aux_pars' (= %g) and 'likelihood_additional_param' (= %g) are not equal. "
+						"Will use the value provided in 'likelihood_additional_param' ", names_aux_pars_[1].c_str(), aux_pars[1], aux_pars_[1]);
 				}
 			}
 			if (likelihood_type_ == "gaussian" || likelihood_type_ == "gamma" || 
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "t") {
 				for (int i = 0; i < num_aux_pars_estim_; ++i) {
 					if (!(aux_pars[i] > 0)) {
-						Log::REFatal("The '%s' parameter is not > 0. This might be due to a problem when estimating the '%s' parameter (e.g., a numerical overflow). "
+						Log::REFatal("The '%s' parameter (= %g) is not > 0. This might be due to a problem when estimating the '%s' parameter (e.g., a numerical overflow). "
 							"You can try either (i) manually setting a different initial value using the 'init_aux_pars' parameter "
 							"or (ii) not estimating the '%s' parameter at all by setting 'estimate_aux_pars' to 'false'. "
 							"Both these options can be specified in the 'params' argument by calling, e.g., the 'set_optim_params()' function of a 'GPModel' ",
-							names_aux_pars_[i].c_str(), names_aux_pars_[i].c_str(), names_aux_pars_[i].c_str());
+							names_aux_pars_[i].c_str(), aux_pars[i], names_aux_pars_[i].c_str(), names_aux_pars_[i].c_str());
 					}
 					aux_pars_[i] = aux_pars[i];
 				}
