@@ -89,6 +89,7 @@ namespace GPBoost {
 			const data_size_t* random_effects_indices_of_data,
 			double additional_param) {
 			approximation_type_ = "laplace";
+			user_defined_approximation_type_ = "none";
 			estimate_df_t_ = false;
 			use_likelihoods_file_for_gaussian_ = false;
 			maxit_mode_newton_ = MAXIT_MODE_NEWTON_INIT_;
@@ -98,9 +99,8 @@ namespace GPBoost {
 			num_aux_pars_ = 0;
 			num_aux_pars_estim_ = 0;
 			information_ll_can_be_negative_ = false;
+			information_changes_during_mode_finding_ = true;
 			grad_information_wrt_mode_non_zero_ = true;
-			force_laplace_approximation_ = false;
-			force_lls_approximation_ = false;
 			estimate_df_t_ = true;
 			string_t likelihood = type;
 			likelihood = ParseLikelihoodAliasModeFindingMethod(likelihood);
@@ -124,11 +124,11 @@ namespace GPBoost {
 				num_aux_pars_estim_ = 1;
 			}
 			else if (likelihood_type_ == "t") {
-				if (force_laplace_approximation_) {
-					approximation_type_ = "laplace";
+				if (user_defined_approximation_type_ != "none") {
+					approximation_type_ = user_defined_approximation_type_;
 				}
 				else {
-					approximation_type_ = "fisher_laplace";
+					approximation_type_ = "fisher_laplace"; // default value
 				}
 				if (TwoNumbersAreEqual<double>(additional_param, -999.)) {
 					aux_pars_ = { 1., 2. }; // internal default value for df
@@ -147,11 +147,18 @@ namespace GPBoost {
 				}
 				if (approximation_type_ == "laplace") {
 					information_ll_can_be_negative_ = true;
+					information_changes_during_mode_finding_ = true;
 					grad_information_wrt_mode_non_zero_ = true;
 				}
 				else if (approximation_type_ == "fisher_laplace") {
 					information_ll_can_be_negative_ = false;
+					information_changes_during_mode_finding_ = false;
 					grad_information_wrt_mode_non_zero_ = false;
+				}
+				else if (approximation_type_ == "fisher_laplace_combined") {
+					information_ll_can_be_negative_ = true;
+					information_changes_during_mode_finding_ = false;
+					grad_information_wrt_mode_non_zero_ = true;
 				}
 			}
 			else if (likelihood_type_ == "gaussian") {
@@ -165,6 +172,7 @@ namespace GPBoost {
 					num_aux_pars_ = 0;
 					num_aux_pars_estim_ = 0;
 				}
+				information_changes_during_mode_finding_ = false;
 				grad_information_wrt_mode_non_zero_ = false;
 				maxit_mode_newton_ = 1;
 				max_number_lr_shrinkage_steps_newton_ = 1;
@@ -1232,11 +1240,25 @@ namespace GPBoost {
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param location_par Location parameter (random plus fixed effects)
+		* \param called_during_mode_finding Indicates whether this function is called during the mode finding algorithm or after the mode is found for the final approximation 
 		*/
 		void CalcDiagInformationLogLik(const double* y_data,
 			const int* y_data_int,
-			const double* location_par) {
-			if (approximation_type_ == "laplace") {
+			const double* location_par,
+			bool called_during_mode_finding) {
+			string_t approximation_type_local;
+			if (approximation_type_ == "fisher_laplace_combined") {
+				if (called_during_mode_finding) {
+					approximation_type_local = "fisher_laplace";
+				}
+				else {
+					approximation_type_local = "laplace";
+				}
+			}
+			else {
+				approximation_type_local = approximation_type_;
+			}
+			if (approximation_type_local == "laplace") {
 				if (!use_Z_for_duplicates_) {
 					if (likelihood_type_ == "bernoulli_probit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -1332,8 +1354,8 @@ namespace GPBoost {
 					}
 					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, information_ll_data_scale_, information_ll_, true);
 				}//end use_Z_for_duplicates_
-			}//end approximation_type_ == "laplace"
-			else if (approximation_type_ == "fisher_laplace") {
+			}//end approximation_type_local == "laplace"
+			else if (approximation_type_local == "fisher_laplace") {
 				if (!use_Z_for_duplicates_) {
 					if (likelihood_type_ == "bernoulli_logit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -1361,7 +1383,7 @@ namespace GPBoost {
 					}
 					else {
 						Log::REFatal("CalcDiagInformationLogLik: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-							likelihood_type_.c_str(), approximation_type_.c_str());
+							likelihood_type_.c_str(), approximation_type_local.c_str());
 					}
 				}//end !use_Z_for_duplicates_
 				else {//use_Z_for_duplicates_
@@ -1391,32 +1413,32 @@ namespace GPBoost {
 					}
 					else {
 						Log::REFatal("CalcDiagInformationLogLik: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-							likelihood_type_.c_str(), approximation_type_.c_str());
+							likelihood_type_.c_str(), approximation_type_local.c_str());
 					}
 					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, information_ll_data_scale_, information_ll_, true);
 				}//end use_Z_for_duplicates_
-			}//end approximation_type_ == "fisher_laplace"
-			else if (approximation_type_ == "lss_laplace") {
+			}//end approximation_type_local == "fisher_laplace"
+			else if (approximation_type_local == "lss_laplace") {
 				if (!use_Z_for_duplicates_) {
 					Log::REFatal("CalcDiagInformationLogLik: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
+						likelihood_type_.c_str(), approximation_type_local.c_str());
 				}//end !use_Z_for_duplicates_
 				else {//use_Z_for_duplicates_
 					Log::REFatal("CalcDiagInformationLogLik: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
+						likelihood_type_.c_str(), approximation_type_local.c_str());
 				}//end use_Z_for_duplicates_
-			}//end approximation_type_ == "lss_laplace"
+			}//end approximation_type_local == "lss_laplace"
 			else {
-				Log::REFatal("CalcDiagInformationLogLik: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
+				Log::REFatal("CalcDiagInformationLogLik: approximation_type '%s' is not supported ", approximation_type_local.c_str());
 			}
 			if (HasNegativeValueInformationLogLik()) {
-				Log::REDebug("Negative values found in the (diagonal) Fisher information for the Laplace approximation. "
+				Log::REDebug("Negative values found in the (diagonal) Hessian / Fisher information for the Laplace approximation. "
 					"This is not necessarily a problem, but it could lead to non-positive definite matrices ");
 			}
 		}// end CalcDiagInformationLogLik
 
 		/*!
-		* \brief * \brief Calculate the diagonal of the Fisher information (=usually the second derivative of the negative (!) log-likelihood with respect to the location parameter, i.e., the observed FI)
+		* \brief Calculate the diagonal of the Fisher information (=usually the second derivative of the negative (!) log-likelihood with respect to the location parameter, i.e., the observed FI)
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param location_par Location parameter (random plus fixed effects)
@@ -1424,7 +1446,14 @@ namespace GPBoost {
 		inline double CalcDiagInformationLogLikOneSample(const double y_data,
 			const int y_data_int,
 			const double location_par) const {
-			if (approximation_type_ == "laplace") {
+			string_t approximation_type_local;
+			if (approximation_type_ == "fisher_laplace_combined") {
+				approximation_type_local = "laplace";
+			}
+			else {
+				approximation_type_local = approximation_type_;
+			}
+			if (approximation_type_local == "laplace") {
 				if (likelihood_type_ == "bernoulli_probit") {
 					return(SecondDerivNegLogLikBernoulliProbit(y_data_int, location_par));
 				}
@@ -1447,8 +1476,8 @@ namespace GPBoost {
 					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 					return(1.);
 				}
-			}//end approximation_type_ == "laplace"
-			else if (approximation_type_ == "fisher_laplace") {
+			}//end approximation_type_local == "laplace"
+			else if (approximation_type_local == "fisher_laplace") {
 				if (likelihood_type_ == "bernoulli_logit") {
 					return(SecondDerivNegLogLikBernoulliLogit(location_par));
 				}
@@ -1463,17 +1492,17 @@ namespace GPBoost {
 				}
 				else {
 					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
+						likelihood_type_.c_str(), approximation_type_local.c_str());
 					return(1.);
 				}
-			}//end approximation_type_ == "fisher_laplace"
-			else if (approximation_type_ == "lss_laplace") {
+			}//end approximation_type_local == "fisher_laplace"
+			else if (approximation_type_local == "lss_laplace") {
 				Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-					likelihood_type_.c_str(), approximation_type_.c_str());
+					likelihood_type_.c_str(), approximation_type_local.c_str());
 				return(1.);
-			}//end approximation_type_ == "lss_laplace"
+			}//end approximation_type_local == "lss_laplace"
 			else {
-				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
+				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type '%s' is not supported ", approximation_type_local.c_str());
 				return(1.);
 			}
 		}// end CalcDiagInformationLogLikOneSample
@@ -1535,7 +1564,7 @@ namespace GPBoost {
 			const int* y_data_int,
 			const double* location_par,
 			vec_t& deriv_information_loc_par) {
-			if (approximation_type_ == "laplace") {
+			if (approximation_type_ == "laplace" || approximation_type_ == "fisher_laplace_combined") {
 				if (likelihood_type_ == "bernoulli_probit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -1599,7 +1628,7 @@ namespace GPBoost {
 				else {
 					Log::REFatal("CalcFirstDerivInformationLocPar: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				}
-			}//end approximation_type_ == "laplace"
+			}//end approximation_type_ == "laplace" || approximation_type_ == "fisher_laplace_combined"
 			else if (approximation_type_ == "fisher_laplace") {
 				if (likelihood_type_ == "bernoulli_logit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -1636,7 +1665,7 @@ namespace GPBoost {
 					likelihood_type_.c_str(), approximation_type_.c_str());
 			}//end approximation_type_ == "lss_laplace"
 			else {
-				Log::REFatal("CalcFirstDerivInformationLocPar: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
+				Log::REFatal("CalcFirstDerivInformationLocPar: approximation_type '%s' is not supported ", approximation_type_.c_str());
 			}
 			first_deriv_information_loc_par_caluclated_ = true;
 		}//end CalcFirstDerivInformationLocPar
@@ -1736,7 +1765,7 @@ namespace GPBoost {
 			int ind_aux_par,
 			double* second_deriv_loc_aux_par,
 			double* deriv_information_aux_par) const {
-			if (approximation_type_ == "laplace") {
+			if (approximation_type_ == "laplace" || approximation_type_ == "fisher_laplace_combined") {
 				if (likelihood_type_ == "gamma") {
 					//note: gradient wrt to aux_pars_[0] on the log-scale
 					CHECK(ind_aux_par == 0);
@@ -1805,7 +1834,7 @@ namespace GPBoost {
 					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
 				}
-			}//end approximation_type_ == "laplace"
+			}//end approximation_type_ == "laplace" || approximation_type_ == "fisher_laplace_combined"
 			else if (approximation_type_ == "fisher_laplace") {
 				if (likelihood_type_ == "t") {
 					CHECK(ind_aux_par == 0 || ind_aux_par == 1);
@@ -1852,7 +1881,7 @@ namespace GPBoost {
 				}
 			}//end approximation_type_ == "lss_laplace"
 			else {
-				Log::REFatal("CalcSecondDerivLogLikFirstDerivInformationAuxPar: approximation_type_ '%s' is not supported.", approximation_type_.c_str());
+				Log::REFatal("CalcSecondDerivLogLikFirstDerivInformationAuxPar: approximation_type '%s' is not supported ", approximation_type_.c_str());
 			}
 		}//end CalcSecondDerivLogLikFirstDerivInformationAuxPar
 
@@ -2189,8 +2218,8 @@ namespace GPBoost {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);
 				// Calculate Cholesky factor of matrix B = (Id + ZtWZsqrt * Sigma * ZtWZsqrt) if use_Z_for_duplicates_ or B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt) if !use_Z_for_duplicates_
-				if (it == 0 || grad_information_wrt_mode_non_zero_) {
-					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+				if (it == 0 || information_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, true);
 					diag_Wsqrt.array() = information_ll_.array().sqrt();
 					Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 					Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
@@ -2236,7 +2265,7 @@ namespace GPBoost {
 			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (grad_information_wrt_mode_non_zero_) {
-					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 					diag_Wsqrt.array() = information_ll_.array().sqrt();
 					Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 					Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
@@ -2301,8 +2330,8 @@ namespace GPBoost {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());
 				rhs = Zt * first_deriv_ll_ - SigmaI * mode_;//right hand side for updating mode
 				// Calculate Cholesky factor
-				if (it == 0 || grad_information_wrt_mode_non_zero_) {
-					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
+				if (it == 0 || information_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data(), true);
 					SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
 					SigmaI_plus_ZtWZ.makeCompressed();
 					if (!chol_fact_pattern_analyzed_) {
@@ -2342,7 +2371,7 @@ namespace GPBoost {
 			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (grad_information_wrt_mode_non_zero_) {
-					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data(), false);
 					SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
 					SigmaI_plus_ZtWZ.makeCompressed();
 					chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
@@ -2395,8 +2424,8 @@ namespace GPBoost {
 			for (it = 0; it < maxit_mode_newton_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());
-				if (it == 0 || grad_information_wrt_mode_non_zero_) {
-					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
+				if (it == 0 || information_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data(), true);
 					CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_, diag_SigmaI_plus_ZtWZ_, true);
 					diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
 				}
@@ -2427,7 +2456,7 @@ namespace GPBoost {
 			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (grad_information_wrt_mode_non_zero_) {
-					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data());
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data(), false);
 					CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_, diag_SigmaI_plus_ZtWZ_, true);
 					diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
 				}
@@ -2528,8 +2557,8 @@ namespace GPBoost {
 			for (it = 0; it < maxit_mode_newton_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);
-				if (it == 0 || grad_information_wrt_mode_non_zero_) {
-					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+				if (it == 0 || information_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, true);
 				}
 				if (quasi_newton_for_mode_finding_) {
 					vec_t grad = first_deriv_ll_ - B.transpose() * (D_inv * (B * mode_));
@@ -2574,7 +2603,7 @@ namespace GPBoost {
 								has_NA_or_Inf = true;// the inversion of the preconditioner with the Woodbury identity can be numerically unstable when information_ll_ is very large
 							}
 							else {
-								if (it == 0 || grad_information_wrt_mode_non_zero_) {
+								if (it == 0 || information_changes_during_mode_finding_) {
 									I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
 									I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * information_ll_.asDiagonal() * Sigma_L_k_;
 									chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
@@ -2589,7 +2618,7 @@ namespace GPBoost {
 							}
 							else {
 								const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
-								if (it == 0 || grad_information_wrt_mode_non_zero_) {
+								if (it == 0 || information_changes_during_mode_finding_) {
 									diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
 									diagonal_approx_preconditioner_.array() += sigma_ip_stable.coeffRef(0, 0);
 #pragma omp parallel for schedule(static)
@@ -2607,7 +2636,7 @@ namespace GPBoost {
 							}
 						}
 						else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
-							if (it == 0 || grad_information_wrt_mode_non_zero_) {
+							if (it == 0 || information_changes_during_mode_finding_) {
 								if (cg_preconditioner_type_ == "vadu") {
 									D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + information_ll_).asDiagonal() * B_rm_;
 								}
@@ -2630,7 +2659,7 @@ namespace GPBoost {
 						}
 					} //end iterative
 					else { // start Cholesky 
-						if (it == 0 || grad_information_wrt_mode_non_zero_) {
+						if (it == 0 || information_changes_during_mode_finding_) {
 							SigmaI_plus_W = SigmaI;
 							SigmaI_plus_W.diagonal().array() += information_ll_.array();
 							SigmaI_plus_W.makeCompressed();
@@ -2679,7 +2708,7 @@ namespace GPBoost {
 				na_or_inf_during_last_call_to_find_mode_ = false;
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (grad_information_wrt_mode_non_zero_) {
-					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 				}
 				if (matrix_inversion_method_ == "iterative") {
 					//Seed Generator
@@ -2798,8 +2827,8 @@ namespace GPBoost {
 			for (it = 0; it < maxit_mode_newton_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);
-				if (it == 0 || grad_information_wrt_mode_non_zero_) {
-					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+				if (it == 0 || information_changes_during_mode_finding_) {
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, true);
 					Wsqrt_diag.array() = information_ll_.array().sqrt();
 					DW_plus_I_inv_diag = (information_ll_.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
 					// Calculate Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
@@ -2860,7 +2889,7 @@ namespace GPBoost {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				vec_t fitc_diag_plus_WI_inv;
 				if (grad_information_wrt_mode_non_zero_) {
-					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr);
+					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 					fitc_diag_plus_WI_inv = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 					M_aux_Woodbury = *sigma_ip;
 					M_aux_Woodbury.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
@@ -5289,23 +5318,33 @@ namespace GPBoost {
 		}
 
 		string_t ParseLikelihoodAliasApproximationType(const string_t& likelihood) {
+			if (likelihood.size() > 24) {
+				if (likelihood.substr(likelihood.size() - 24) == string_t("_fisher_laplace_combined")) {
+					approximation_type_ = "fisher_laplace_combined";
+					user_defined_approximation_type_ = "fisher_laplace_combined";
+					return likelihood.substr(0, likelihood.size() - 24);
+				}
+			}
 			if (likelihood.size() > 15) {
 				if (likelihood.substr(likelihood.size() - 15) == string_t("_fisher-laplace") ||
 					likelihood.substr(likelihood.size() - 15) == string_t("_fisher_laplace")) {
 					approximation_type_ = "fisher_laplace";
+					user_defined_approximation_type_ = "fisher_laplace";
 					return likelihood.substr(0, likelihood.size() - 15);
-				}
-			} 
-			if (likelihood.size() > 8) {
-				if (likelihood.substr(likelihood.size() - 8) == string_t("_laplace")) {
-					force_laplace_approximation_ = true;
-					return likelihood.substr(0, likelihood.size() - 8);
 				}
 			}
 			if (likelihood.size() > 12) {
 				if (likelihood.substr(likelihood.size() - 12) == string_t("_lls_laplace")) {
-					force_lls_approximation_ = true;
+					approximation_type_ = "lss_laplace";
+					user_defined_approximation_type_ = "lss_laplace";
 					return likelihood.substr(0, likelihood.size() - 12);
+				}
+			}
+			if (likelihood.size() > 8) {
+				if (likelihood.substr(likelihood.size() - 8) == string_t("_laplace")) {
+					approximation_type_ = "laplace";
+					user_defined_approximation_type_ = "laplace";
+					return likelihood.substr(0, likelihood.size() - 8);
 				}
 			}
 			return likelihood;
@@ -5425,14 +5464,15 @@ namespace GPBoost {
 		bool aux_pars_have_been_set_ = false;
 		/*! \brief Type of approximation for non-Gaussian likelihoods */
 		string_t approximation_type_ = "laplace";
-		/*! \brief If true, the Laplace approximation is used (for likelihoods where this is not recommended, instead of a Fisher-Laplace approximation) */
-		bool force_laplace_approximation_ = false;
-		bool force_lls_approximation_ = false;
+		/*! \brief Type of approximation for non-Gaussian likelihoods defined by user */
+		string_t user_defined_approximation_type_ = "none";
 		/*! \brief List of supported approximations */
-		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace", "fisher_laplace", "lss_laplace"};
+		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace", "fisher_laplace", "fisher_laplace_combined", "lss_laplace"};
 		/*! \brief If true, 'information_ll_' could contain negative values */
 		bool information_ll_can_be_negative_ = false;
-		/*! \brief If true, the derivative of the information wrt the mode is non-zero (it is zero, e.g., for a "gaussian" likelihood). Consequently, the (observed or expected) Fisher information ('information_ll_') changes in the mode finding algorithm (usually Newton's method) for the Laplace approximation */
+		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes in the mode finding algorithm (usually Newton's method) for the Laplace approximation */
+		bool information_changes_during_mode_finding_ = true;
+		/*! \brief If true, the derivative of the information wrt the location parameter at mode is non-zero (it is zero, e.g., for a "gaussian" likelihood) */
 		bool grad_information_wrt_mode_non_zero_ = true;
 		/*! \brief If true, the degrees of freedom (df) are also estimated for the "t" likelihood */
 		bool estimate_df_t_ = true;
