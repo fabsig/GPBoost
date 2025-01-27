@@ -20,7 +20,7 @@ Approximations for Gaussian processes
 
    * For non-Gaussian likelihoods (e.g., classification), iterative methods (instead of the Cholesky decomposition) can additionally speed-up computations with a Vecchia approximation: ``GPModel(..., gp_approx = "vecchia", matrix_inversion_method = "iterative")``.
 
-   * Additional speed-up for ``matrix_inversion_method = "iterative"`` can sometimes be obtained by setting the ``cg_max_num_it`` to a lower value, say, 100 or 20 (default = 1000). This can be done by calling the ``set_optim_params`` function prior to running the GPBoost algorithm or by setting this in the ``params`` argument when training a GPModel. This option particularly recommended for the GPBoost algorithm.
+   * Additional speed-up for ``matrix_inversion_method = "iterative"`` can sometimes be obtained by setting the ``cg_max_num_it`` and ``cg_max_num_it_tridiag`` parameters to lower values, say, 100 or 20 (default = 1000). This can be done by calling the ``set_optim_params`` function prior to running the GPBoost algorithm or by setting this in the ``params`` argument when training a GPModel. This option particularly recommended for the GPBoost algorithm.
 
 * The GPBoost library also imports other GP approximations; see `here <https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#model-specification-parameters>`__ (``gp_approx``) for a list of currently supported approximations
 
