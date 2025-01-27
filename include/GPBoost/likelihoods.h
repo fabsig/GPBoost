@@ -111,24 +111,30 @@ namespace GPBoost {
 				Log::REFatal("Likelihood of type '%s' is not supported ", likelihood.c_str());
 			}
 			likelihood_type_ = likelihood;
+			if (user_defined_approximation_type_ != "none") {
+				approximation_type_ = user_defined_approximation_type_;
+			}
 			if (likelihood_type_ == "gamma") {
+				if (approximation_type_ != "laplace") {
+					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
+				}
 				aux_pars_ = { 1. };//shape parameter
 				names_aux_pars_ = { "shape" };
 				num_aux_pars_ = 1;
 				num_aux_pars_estim_ = 1;
 			}
 			else if (likelihood_type_ == "negative_binomial") {
+				if (approximation_type_ != "laplace") {
+					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
+				}
 				aux_pars_ = { 1. };//shape parameter (aka size, theta, or "number of successes")
 				names_aux_pars_ = { "shape" };
 				num_aux_pars_ = 1;
 				num_aux_pars_estim_ = 1;
 			}
 			else if (likelihood_type_ == "t") {
-				if (user_defined_approximation_type_ != "none") {
-					approximation_type_ = user_defined_approximation_type_;
-				}
-				else {
-					approximation_type_ = "fisher_laplace"; // default value
+				if (user_defined_approximation_type_ == "none") {
+					approximation_type_ = "fisher_laplace"; // default approximation
 				}
 				if (TwoNumbersAreEqual<double>(additional_param, -999.)) {
 					aux_pars_ = { 1., 2. }; // internal default value for df
@@ -160,8 +166,14 @@ namespace GPBoost {
 					information_changes_during_mode_finding_ = false;
 					grad_information_wrt_mode_non_zero_ = true;
 				}
+				else {
+					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
+				}
 			}
 			else if (likelihood_type_ == "gaussian") {
+				if (approximation_type_ != "laplace") {
+					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
+				}
 				aux_pars_ = { 1. };
 				names_aux_pars_ = { "error_variance" };
 				if (use_likelihoods_file_for_gaussian_) {
@@ -176,7 +188,12 @@ namespace GPBoost {
 				grad_information_wrt_mode_non_zero_ = false;
 				maxit_mode_newton_ = 1;
 				max_number_lr_shrinkage_steps_newton_ = 1;
-			} 
+			}
+			else {
+				if (approximation_type_ != "laplace") {
+					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
+				}
+			}
 			chol_fact_pattern_analyzed_ = false;
 			has_a_vec_ = has_a_vec;
 			use_Z_for_duplicates_ = use_Z_for_duplicates;
@@ -190,7 +207,7 @@ namespace GPBoost {
 			mode_is_zero_ = false;
 			DetermineWhetherToCapChangeModeNewton();
 			if (SUPPORTED_APPROX_TYPE_.find(approximation_type_) == SUPPORTED_APPROX_TYPE_.end()) {
-				Log::REFatal("'approximation_type' of type '%s' is not supported.", approximation_type_.c_str());
+				Log::REFatal("'approximation_type' = '%s' is not supported ", approximation_type_.c_str());
 			}
 		}
 
