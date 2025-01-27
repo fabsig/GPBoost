@@ -100,6 +100,7 @@ namespace GPBoost {
 			num_aux_pars_estim_ = 0;
 			information_ll_can_be_negative_ = false;
 			information_changes_during_mode_finding_ = true;
+			information_changes_after_mode_finding_ = true;
 			grad_information_wrt_mode_non_zero_ = true;
 			estimate_df_t_ = true;
 			string_t likelihood = type;
@@ -154,16 +155,19 @@ namespace GPBoost {
 				if (approximation_type_ == "laplace") {
 					information_ll_can_be_negative_ = true;
 					information_changes_during_mode_finding_ = true;
+					information_changes_after_mode_finding_ = true;
 					grad_information_wrt_mode_non_zero_ = true;
 				}
 				else if (approximation_type_ == "fisher_laplace") {
 					information_ll_can_be_negative_ = false;
 					information_changes_during_mode_finding_ = false;
+					information_changes_after_mode_finding_ = false;
 					grad_information_wrt_mode_non_zero_ = false;
 				}
 				else if (approximation_type_ == "fisher_laplace_combined") {
 					information_ll_can_be_negative_ = true;
 					information_changes_during_mode_finding_ = false;
+					information_changes_after_mode_finding_ = true;
 					grad_information_wrt_mode_non_zero_ = true;
 				}
 				else {
@@ -185,6 +189,7 @@ namespace GPBoost {
 					num_aux_pars_estim_ = 0;
 				}
 				information_changes_during_mode_finding_ = false;
+				information_changes_after_mode_finding_ = false;
 				grad_information_wrt_mode_non_zero_ = false;
 				maxit_mode_newton_ = 1;
 				max_number_lr_shrinkage_steps_newton_ = 1;
@@ -2281,7 +2286,7 @@ namespace GPBoost {
 			}
 			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				if (grad_information_wrt_mode_non_zero_) {
+				if (information_changes_after_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 					diag_Wsqrt.array() = information_ll_.array().sqrt();
 					Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
@@ -2387,7 +2392,7 @@ namespace GPBoost {
 			}//end mode finding algorithm
 			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				if (grad_information_wrt_mode_non_zero_) {
+				if (information_changes_after_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data(), false);
 					SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
 					SigmaI_plus_ZtWZ.makeCompressed();
@@ -2472,7 +2477,7 @@ namespace GPBoost {
 			}//end mode finding algorithm
 			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				if (grad_information_wrt_mode_non_zero_) {
+				if (information_changes_after_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par.data(), false);
 					CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_, diag_SigmaI_plus_ZtWZ_, true);
 					diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
@@ -2724,7 +2729,7 @@ namespace GPBoost {
 				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				if (grad_information_wrt_mode_non_zero_) {
+				if (information_changes_after_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 				}
 				if (matrix_inversion_method_ == "iterative") {
@@ -2775,7 +2780,7 @@ namespace GPBoost {
 					}//end calculate determinant term for approx_marginal_ll
 				}//end iterative
 				else {
-					if (grad_information_wrt_mode_non_zero_) {
+					if (information_changes_after_mode_finding_) {
 						SigmaI_plus_W = SigmaI;
 						SigmaI_plus_W.diagonal().array() += information_ll_.array();
 						SigmaI_plus_W.makeCompressed();
@@ -2905,7 +2910,7 @@ namespace GPBoost {
 				na_or_inf_during_last_call_to_find_mode_ = false;
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				vec_t fitc_diag_plus_WI_inv;
-				if (grad_information_wrt_mode_non_zero_) {
+				if (information_changes_after_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 					fitc_diag_plus_WI_inv = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 					M_aux_Woodbury = *sigma_ip;
@@ -5489,6 +5494,8 @@ namespace GPBoost {
 		bool information_ll_can_be_negative_ = false;
 		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes in the mode finding algorithm (usually Newton's method) for the Laplace approximation */
 		bool information_changes_during_mode_finding_ = true;
+		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes after the mode finding algorithm (e.g., if Fisher-Laplace is used for mode finding but Laplace for the final likelihood calculation) */
+		bool information_changes_after_mode_finding_ = true;
 		/*! \brief If true, the derivative of the information wrt the location parameter at mode is non-zero (it is zero, e.g., for a "gaussian" likelihood) */
 		bool grad_information_wrt_mode_non_zero_ = true;
 		/*! \brief If true, the degrees of freedom (df) are also estimated for the "t" likelihood */
