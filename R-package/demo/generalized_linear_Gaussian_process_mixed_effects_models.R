@@ -331,9 +331,8 @@ if (likelihood %in% c("binary_probit","binary_logit")) {
 }
 
 # Visualize predictions and compare to true values
-library(ggplot2)
-library(viridis)
-library(gridExtra)
+packakes_to_load <- c("ggplot2", "viridis", "gridExtra") # load required packages (non-standard way of loading to avoid CRAN warnings)
+for (package in packakes_to_load) do.call(require,list(package, character.only=TRUE))
 plot1 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=b_1_test),aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + 
   ggtitle("True latent GP and training locations") + 

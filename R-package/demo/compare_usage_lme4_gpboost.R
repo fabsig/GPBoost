@@ -9,8 +9,9 @@
 # Author: Fabio Sigrist
 #############################################################
 
-library(lme4)
 library(gpboost)
+package_to_load <- "lme4" # load required package (non-standard way of loading to avoid CRAN warnings)
+do.call(require,list(package_to_load, character.only=TRUE))
 
 #################################
 # Handling of categorical fixed effects variables

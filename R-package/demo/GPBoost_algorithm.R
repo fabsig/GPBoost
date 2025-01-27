@@ -129,9 +129,8 @@ plot(b1, pred$random_effect_mean, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 
 #--------------------Choosing tuning parameters using Bayesian optimization and the 'mlrMBO' R package ----------------
-library(mlrMBO)
-library(DiceKriging)
-library(rgenoud)
+packakes_to_load <- c("mlrMBO", "DiceKriging", "rgenoud") # load required packages (non-standard way of loading to avoid CRAN warnings)
+for (package in packakes_to_load) do.call(require,list(package, character.only=TRUE))
 source("https://raw.githubusercontent.com/fabsig/GPBoost/master/helpers/R_package_tune_pars_bayesian_optimization.R")# Load required function
 # Define search space
 # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
@@ -269,7 +268,8 @@ gpb.plot.partial.dependence(bst, X, variable = 1)
 # Interaction plot
 gpb.plot.part.dep.interact(bst, X, variables = c(1,2))
 # H-statistic for interactions
-library(flashlight)
+package_to_load <- "flashlight" # load required package (non-standard way of loading to avoid CRAN warnings)
+do.call(require,list(package_to_load, character.only=TRUE))
 cols <- paste0("Covariate_",1:p)
 fl <- flashlight(model = bst, data = data.frame(y, X), y = "y", label = "gpb",
                  predict_fun = function(m, X) predict(m, data.matrix(X[, cols]), 
@@ -278,17 +278,18 @@ fl <- flashlight(model = bst, data = data.frame(y, X), y = "y", label = "gpb",
 plot(imp <- light_interaction(fl, v = cols, pairwise = TRUE))
 
 # SHAP values and dependence plots
-library(SHAPforxgboost)
+package_to_load <- "SHAPforxgboost" # load required package (non-standard way of loading to avoid CRAN warnings)
+do.call(require,list(package_to_load, character.only=TRUE))
 shap.plot.summary.wrap1(bst, X = X)
 shap_long <- shap.prep(bst, X_train = X)
 shap.plot.dependence(data_long = shap_long, x = "Covariate_1",
                      color_feature = "Covariate_2", smooth = FALSE)
 # SHAP interaction values
 source("https://raw.githubusercontent.com/fabsig/GPBoost/master/helpers/R_package_unify_gpboost_treeshap.R")# Load required function
-library(treeshap)
-library(shapviz)
+packakes_to_load <- c("treeshap", "shapviz") # load required packages (non-standard way of loading to avoid CRAN warnings)
+for (package in packakes_to_load) do.call(require,list(package, character.only=TRUE))
 unified_bst <- gpboost_unify_treeshap(bst, X)
-interactions_bst <- treeshap::treeshap(unified_bst, X, interactions = T, verbose = 0)
+interactions_bst <- treeshap(unified_bst, X, interactions = T, verbose = 0)
 shap_bst <- shapviz(interactions_bst)
 top4 <- names(head(sv_importance(shap_bst, kind = "no"), 4))
 sv_interaction(shap_bst[1:1000, top4])
@@ -437,9 +438,8 @@ print(paste0("Test root mean square error for latent GP: ",
              sqrt(mean((pred$random_effect_mean - b_1_test)^2))))
 
 # Visualize predictions and compare to true values
-library(ggplot2)
-library(viridis)
-library(gridExtra)
+packakes_to_load <- c("ggplot2", "viridis", "gridExtra") # load required packages (non-standard way of loading to avoid CRAN warnings)
+for (package in packakes_to_load) do.call(require,list(package, character.only=TRUE))
 plot1 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=b_1_test),aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + ggtitle("True latent GP and training locations") + 
   geom_point(data = data.frame(s_1=coords_train[,1],s_2=coords_train[,2],y=y_train),aes(x=s_1,y=s_2),size=3, col="white", alpha=1, shape=43)
