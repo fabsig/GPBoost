@@ -88,22 +88,8 @@ namespace GPBoost {
 			bool use_Z_for_duplicates,
 			const data_size_t* random_effects_indices_of_data,
 			double additional_param) {
-			approximation_type_ = "laplace";
-			user_defined_approximation_type_ = "none";
-			estimate_df_t_ = false;
-			use_likelihoods_file_for_gaussian_ = false;
-			maxit_mode_newton_ = MAXIT_MODE_NEWTON_INIT_;
-			max_number_lr_shrinkage_steps_newton_ = MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_INIT_;
 			num_data_ = num_data;
 			num_re_ = num_re;
-			num_aux_pars_ = 0;
-			num_aux_pars_estim_ = 0;
-			information_ll_can_be_negative_ = false;
-			information_changes_during_mode_finding_ = true;
-			information_changes_after_mode_finding_ = true;
-			grad_information_wrt_mode_non_zero_ = true;
-			use_fisher_for_mode_finding_ = false;
-			estimate_df_t_ = true;
 			string_t likelihood = type;
 			likelihood = ParseLikelihoodAliasModeFindingMethod(likelihood);
 			likelihood = ParseLikelihoodAliasApproximationType(likelihood);
@@ -202,7 +188,6 @@ namespace GPBoost {
 					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
 				}
 			}
-			chol_fact_pattern_analyzed_ = false;
 			has_a_vec_ = has_a_vec;
 			use_Z_for_duplicates_ = use_Z_for_duplicates;
 			if (use_Z_for_duplicates_) {
@@ -212,7 +197,6 @@ namespace GPBoost {
 			else {
 				dim_mode_ = num_data_;
 			}
-			mode_is_zero_ = false;
 			DetermineWhetherToCapChangeModeNewton();
 			if (SUPPORTED_APPROX_TYPE_.find(approximation_type_) == SUPPORTED_APPROX_TYPE_.end()) {
 				Log::REFatal("'approximation_type' = '%s' is not supported ", approximation_type_.c_str());
@@ -2129,6 +2113,17 @@ namespace GPBoost {
 					terminate_optim = true;
 				}
 			}
+			if (terminate_optim && continue_mode_finding_after_fisher_) {
+				if (!mode_finding_fisher_has_been_continued_) {
+					terminate_optim = false;
+					use_fisher_for_mode_finding_ = false;
+					mode_finding_fisher_has_been_continued_ = true;
+				}
+				else {
+					use_fisher_for_mode_finding_ = true;//reset to initial values for next call
+					mode_finding_fisher_has_been_continued_ = false;
+				}
+			}
 			if (terminate_optim) {
 				if (approx_marginal_ll_new < approx_marginal_ll) {
 					Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
@@ -2139,6 +2134,10 @@ namespace GPBoost {
 			else {
 				if ((it + 1) == maxit_mode_newton_ && maxit_mode_newton_ > 1) {
 					Log::REDebug(NO_CONVERGENCE_WARNING_);
+					if (continue_mode_finding_after_fisher_ && mode_finding_fisher_has_been_continued_) {
+						use_fisher_for_mode_finding_ = true;//reset to initial values for next call
+						mode_finding_fisher_has_been_continued_ = false;
+					}
 				}
 				approx_marginal_ll = approx_marginal_ll_new;
 			}
@@ -2173,6 +2172,12 @@ namespace GPBoost {
 			}
 		}//end SetGradAuxParsNotEstimated
 
+		void ChecksBeforeModeFinding() const {
+			if (continue_mode_finding_after_fisher_) {
+				CHECK(use_fisher_for_mode_finding_ && !mode_finding_fisher_has_been_continued_);
+			}
+		}//end ChecksBeforeModeFinding
+
 		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood..
 		*		Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
@@ -2193,6 +2198,7 @@ namespace GPBoost {
 			const double* fixed_effects,
 			const std::shared_ptr<T_mat> Sigma,
 			double& approx_marginal_ll) {
+			ChecksBeforeModeFinding();
 			// Initialize variables
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
@@ -2204,7 +2210,7 @@ namespace GPBoost {
 				mode_ = (*Sigma) * a_vec_;//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since a_vec != Sigma^(-1)mode
 				// The alternative way of intializing a_vec_ = Sigma^(-1) mode_ requires an additional linear solve
 				//T_mat Sigma_stable = (*Sigma);
-				//Sigma_stable.diagonal().array() += EPSILON_ADD_COVARIANCE_STABLE;
+				//Sigma_stable.diagonal().array() *= (1. + JITTER_MUL);
 				//T_chol chol_fact_Sigma;
 				//CalcChol<T_mat>(chol_fact_Sigma, Sigma_stable);
 				//a_vec_ = chol_fact_Sigma.solve(mode_);
@@ -2308,6 +2314,7 @@ namespace GPBoost {
 			const sp_mat_t& SigmaI,
 			const sp_mat_t& Zt,
 			double& approx_marginal_ll) {
+			ChecksBeforeModeFinding();
 			// Initialize variables
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
@@ -2410,6 +2417,7 @@ namespace GPBoost {
 			const double sigma2,
 			const data_size_t* const random_effects_indices_of_data,
 			double& approx_marginal_ll) {
+			ChecksBeforeModeFinding();
 			// Initialize variables
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
@@ -2504,6 +2512,7 @@ namespace GPBoost {
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 			const den_mat_t chol_ip_cross_cov,
 			const chol_den_mat_t chol_fact_sigma_ip) {
+			ChecksBeforeModeFinding();
 			// Initialize variables
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
@@ -2802,6 +2811,7 @@ namespace GPBoost {
 			const den_mat_t* cross_cov,
 			const vec_t& fitc_resid_diag,
 			double& approx_marginal_ll) {
+			ChecksBeforeModeFinding();
 			int num_ip = (int)((*sigma_ip).rows());
 			CHECK((int)((*cross_cov).rows()) == dim_mode_);
 			CHECK((int)((*cross_cov).cols()) == num_ip);
@@ -3954,7 +3964,17 @@ namespace GPBoost {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			pred_mean = Cross_Cov * first_deriv_ll_;
+			if (can_use_first_deriv_log_like_for_pred_mean_) {
+				pred_mean = Cross_Cov * first_deriv_ll_;
+			}
+			else {
+				T_mat ZSigmaZt_stable = (*ZSigmaZt);
+				ZSigmaZt_stable.diagonal().array() *= (1. + JITTER_MUL);
+				T_chol chol_fact_ZSigmaZt;
+				CalcChol<T_mat>(chol_fact_ZSigmaZt, ZSigmaZt_stable);
+				vec_t SigmaI_mode = chol_fact_ZSigmaZt.solve(mode_);
+				pred_mean = Cross_Cov * SigmaI_mode;
+			}
 			if (calc_pred_cov || calc_pred_var) {
 				vec_t Wsqrt(dim_mode_);//diagonal of matrix sqrt(ZtWZ) if use_Z_for_duplicates_ or sqrt(W) if !use_Z_for_duplicates_
 				Wsqrt.array() = information_ll_.array().sqrt();
@@ -4015,7 +4035,8 @@ namespace GPBoost {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			pred_mean = Ztilde * (Sigma * (Zt * first_deriv_ll_));
+			pred_mean = Ztilde * mode_;
+			//pred_mean = Ztilde * (Sigma * (Zt * first_deriv_ll_));//equivalent version
 			if (calc_pred_cov || calc_pred_var) {
 				sp_mat_t SigmaI_plus_ZtWZ_I(Sigma.cols(), Sigma.cols());
 				SigmaI_plus_ZtWZ_I.setIdentity();
@@ -4093,9 +4114,15 @@ namespace GPBoost {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			vec_t ZtFirstDeriv;
-			CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, ZtFirstDeriv, true);
-			pred_mean = Cross_Cov * ZtFirstDeriv;
+			if (can_use_first_deriv_log_like_for_pred_mean_) {
+				vec_t ZtFirstDeriv;
+				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, ZtFirstDeriv, true);
+				pred_mean = Cross_Cov * ZtFirstDeriv;
+			}
+			else {
+				vec_t SigmaI_mode = mode_ / sigma2;
+				pred_mean = Cross_Cov * SigmaI_mode;
+			}
 			if (calc_pred_cov || calc_pred_var) {
 				vec_t diag_Sigma_plus_ZtWZI(num_re_);
 				diag_Sigma_plus_ZtWZI.array() = 1. / diag_SigmaI_plus_ZtWZ_.array();
@@ -4382,9 +4409,14 @@ namespace GPBoost {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			pred_mean = cross_cov_pred_ip * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * first_deriv_ll_));
-			if (has_fitc_correction) {
-				pred_mean += fitc_resid_pred_obs * first_deriv_ll_;
+			if (can_use_first_deriv_log_like_for_pred_mean_) {
+				pred_mean = cross_cov_pred_ip * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * first_deriv_ll_));
+				if (has_fitc_correction) {
+					pred_mean += fitc_resid_pred_obs * first_deriv_ll_;
+				}
+			}
+			else {
+				Log::REFatal("PredictLaplaceApproxFITC: prediction is not yet implemented for the 'fitc' approximation for the likelihood '%s' ", likelihood_type_.c_str());
 			}
 
 			if (calc_pred_cov || calc_pred_var) {
@@ -5315,6 +5347,13 @@ namespace GPBoost {
 		}
 
 		string_t ParseLikelihoodAliasModeFindingMethod(const string_t& likelihood) {
+			if (likelihood.size() > 29) {
+				if (likelihood.substr(likelihood.size() - 29) == string_t("_fisher_mode_finding_continue")) {
+					use_fisher_for_mode_finding_ = true;
+					continue_mode_finding_after_fisher_ = true;
+					return likelihood.substr(0, likelihood.size() - 29);
+				}
+			}
 			if (likelihood.size() > 20) {
 				if (likelihood.substr(likelihood.size() - 20) == string_t("_fisher_mode_finding")) {
 					use_fisher_for_mode_finding_ = true;
@@ -5451,14 +5490,10 @@ namespace GPBoost {
 			"poisson", "gamma", "negative_binomial", "t"};
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
 		int maxit_mode_newton_ = 1000;
-		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
-		const int MAXIT_MODE_NEWTON_INIT_ = 1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
 		double DELTA_REL_CONV_ = 1e-8;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
 		int max_number_lr_shrinkage_steps_newton_ = 20;
-		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
-		const int MAX_NUMBER_LR_SHRINKAGE_STEPS_NEWTON_INIT_ = 20;
 		/*! \brief If true, a quasi-Newton method instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
 		bool quasi_newton_for_mode_finding_ = false;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the quasi-Newton method for mode finding in Laplace approximation */
@@ -5468,9 +5503,9 @@ namespace GPBoost {
 		/*! \brief Maximally allowed change for mode in Newton's method for those likelihoods where a cap is enforced */
 		double MAX_CHANGE_MODE_NEWTON_ = std::log(100.);
 		/*! \brief Number of additional parameters for likelihoods */
-		int num_aux_pars_;
+		int num_aux_pars_ = 0;
 		/*! \brief Number of additional parameters for likelihoods that are estimated */
-		int num_aux_pars_estim_;
+		int num_aux_pars_estim_ = 0;
 		/*! \brief Additional parameters for likelihoods. For "gamma", aux_pars_[0] = shape parameter, for gaussian, aux_pars_[0] = 1 / sqrt(variance) */
 		std::vector<double> aux_pars_;
 		/*! \brief Names of additional parameters for likelihoods */
@@ -5493,6 +5528,12 @@ namespace GPBoost {
 		bool grad_information_wrt_mode_non_zero_ = true;
 		/*! \brief If true, the (expected) Fisher information is used for the mode finding */
 		bool use_fisher_for_mode_finding_ = false;
+		/*! \brief If true, the mode finding is continued with an (approximae) Hessian after convergence has been achieved with the Fisher information  */
+		bool continue_mode_finding_after_fisher_ = false;
+		/*! \brief True, if the mode finding has been continued with an (approximae) Hessian after convergence has been achieved with the Fisher information  */
+		bool mode_finding_fisher_has_been_continued_ = false;
+		/*! \brief If true, the relationship "D log_lik(b) - Sigma^-1 b = 0" at the mode is used for calculating predictive means */
+		bool can_use_first_deriv_log_like_for_pred_mean_ = true;
 		/*! \brief If true, the degrees of freedom (df) are also estimated for the "t" likelihood */
 		bool estimate_df_t_ = true;
 		/*! \brief If true, a Gaussian likelihood is estimated using this file */

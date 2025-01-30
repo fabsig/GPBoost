@@ -26,10 +26,10 @@ namespace GPBoost {
 	/*! \brief Tolerance level when comparing two vectors for equality */
 	const double EPSILON_VECTORS = 1e-10;
 
-	/*! \brief Small number that is added in some cases to covariance matrices to make inversion numerically stable */
-	const double EPSILON_ADD_COVARIANCE_STABLE = 1e-10;
+	/*! \brief Small numbers by which the diagonals of some matrices are multiplied to make inversion numerically stable */
+	const double JITTER_MUL = 1e-10;
 
-	/*! \brief Small numbers by which the diagonals of covariance matrtices are multiplied with when calculating Vecchia approximations without a nugget effect to make inversions numerically stable */
+	/*! \brief Small number by which the diagonals of covariance matrices are multiplied with when calculating Vecchia approximations without a nugget effect to make inversions numerically stable */
 	const double JITTER_MULT_VECCHIA= 1 + 1e-10;
 
 	/*! \brief Small number by which the diagonal of inducing points matrix in the FITC & full scales approximations is multiplied with (increased) to make inversions numerically stable */
