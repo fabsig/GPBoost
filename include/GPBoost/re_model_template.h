@@ -949,7 +949,7 @@ namespace GPBoost {
 				SetCovParsComps(cov_aux_pars.segment(0, num_cov_par_));
 				RedetermineNearestNeighborsVecchia(true);//called only if gp_approx_ == "vecchia" and neighbors are selected based on correlations and not distances
 			}
-			if (optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright") {
+			if (optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright" || max_iter_ == 0) {
 				CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);
 				// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
 				string_t ll_str;
@@ -985,27 +985,29 @@ namespace GPBoost {
 			bool na_or_inf_occurred = false;
 			bool profile_out_coef_optim_external = optimizer_coef_ == "wls" && gauss_likelihood_ && has_covariates_;
 			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
-				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
-					delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
-					optimizer_cov_pars_, profile_out_marginal_variance_, profile_out_coef_optim_external,
-					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call);
-				// Check for NA or Inf
-				if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
-					if (learn_covariance_parameters) {
-						for (int i = 0; i < (int)cov_aux_pars.size(); ++i) {
-							if (std::isnan(cov_aux_pars[i]) || std::isinf(cov_aux_pars[i])) {
-								na_or_inf_occurred = true;
+				if (max_iter_ > 0) {
+					OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
+						delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
+						optimizer_cov_pars_, profile_out_marginal_variance_, profile_out_coef_optim_external,
+						neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call);
+					// Check for NA or Inf
+					if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
+						if (learn_covariance_parameters) {
+							for (int i = 0; i < (int)cov_aux_pars.size(); ++i) {
+								if (std::isnan(cov_aux_pars[i]) || std::isinf(cov_aux_pars[i])) {
+									na_or_inf_occurred = true;
+								}
 							}
 						}
-					}
-					if (has_covariates_ && !na_or_inf_occurred) {
-						for (int i = 0; i < (int)beta_.size(); ++i) {
-							if (std::isnan(beta_[i]) || std::isinf(beta_[i])) {
-								na_or_inf_occurred = true;
+						if (has_covariates_ && !na_or_inf_occurred) {
+							for (int i = 0; i < (int)beta_.size(); ++i) {
+								if (std::isnan(beta_[i]) || std::isinf(beta_[i])) {
+									na_or_inf_occurred = true;
+								}
 							}
 						}
-					}
-				} // end check for NA or Inf
+					} // end check for NA or Inf
+				}
 			} // end use of external optimizer
 			else {
 				// Start optimization with "gradient_descent" or "fisher_scoring"
