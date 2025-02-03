@@ -213,7 +213,7 @@ namespace LightGBM {
 			if (has_gp_model_) {
 				// Note: this is needed for calculation/evaluation of metrics
 				// This is done directly here and not via the re_model_ and its likelihood to avoid overhead
-				if (likelihood_type_ == std::string("gaussian")) {
+				if (likelihood_type_ == std::string("gaussian") || likelihood_type_ == std::string("t")) {
 					output[0] = input[0];
 				}
 				else if (likelihood_type_ == std::string("bernoulli_probit")) {
