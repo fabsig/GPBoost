@@ -4254,20 +4254,29 @@ namespace GPBoost {
 					}
 #pragma omp parallel
 					{
+						int thread_nb;
+#ifdef _OPENMP
+						thread_nb = omp_get_thread_num();
+#else
+						thread_nb = 0;
+#endif
+						RNG_t rng_local = parallel_rngs[thread_nb];
+						den_mat_t pred_cov_private;
+						if (calc_pred_cov) {
+							pred_cov_private = den_mat_t::Zero(num_pred, num_pred);
+						}
+						vec_t pred_var_private;
+						if (calc_pred_var) {
+							pred_var_private = vec_t::Zero(num_pred);
+						}
 #pragma omp for
 						for (int i = 0; i < nsim_var_pred_; ++i) {
 							//z_i ~ N(0,I)
-							int thread_nb;
-#ifdef _OPENMP
-							thread_nb = omp_get_thread_num();
-#else
-							thread_nb = 0;
-#endif
 							std::normal_distribution<double> ndist(0.0, 1.0);
 							vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_);
 							for (int j = 0; j < dim_mode_; j++) {
-								rand_vec_pred_I_1(j) = ndist(parallel_rngs[thread_nb]);
-								rand_vec_pred_I_2(j) = ndist(parallel_rngs[thread_nb]);
+								rand_vec_pred_I_1(j) = ndist(rng_local);
+								rand_vec_pred_I_2(j) = ndist(rng_local);
 							}
 							//z_i ~ N(0,(Sigma^{-1} + W))
 							vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
@@ -4296,22 +4305,22 @@ namespace GPBoost {
 							//z_i ~ N(0, Bp^{-1} Bpo (Sigma^{-1} + W)^{-1} Bpo^T Bp^{-1})
 							vec_t rand_vec_pred = Bp_inv_Bpo_rm * rand_vec_pred_SigmaI_plus_W_inv;
 							if (calc_pred_cov) {
-								den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
-#pragma omp critical
-								{
-									pred_cov += pred_cov_private;
-								}
+								pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
 							}
 							if (calc_pred_var) {
-								vec_t pred_var_private = rand_vec_pred.cwiseProduct(rand_vec_pred);
+								pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
+							}
+						}//end for loop
 #pragma omp critical
-								{
-									pred_var += pred_var_private;
-								}
+						{
+							if (calc_pred_cov) {
+								pred_cov += pred_cov_private;
+							}
+							if (calc_pred_var) {
+								pred_var += pred_var_private;
 							}
 						}
-
-					}
+					} // end #pragma omp parallel
 					if (calc_pred_cov) {
 						pred_cov /= nsim_var_pred_;
 						if (CondObsOnly) {
@@ -4571,20 +4580,22 @@ namespace GPBoost {
 				}
 #pragma omp parallel
 				{
+					int thread_nb;
+#ifdef _OPENMP
+					thread_nb = omp_get_thread_num();
+#else
+					thread_nb = 0;
+#endif
+					RNG_t rng_local = parallel_rngs[thread_nb];
+					vec_t pred_var_private = vec_t::Zero(num_re_);
 #pragma omp for
 					for (int i = 0; i < nsim_var_pred_; ++i) {
 						//z_i ~ N(0,I)
-						int thread_nb;
-#ifdef _OPENMP
-						thread_nb = omp_get_thread_num();
-#else
-						thread_nb = 0;
-#endif
 						std::normal_distribution<double> ndist(0.0, 1.0);
 						vec_t rand_vec_pred_I_1(num_re_), rand_vec_pred_I_2(num_re_);
 						for (int j = 0; j < num_re_; j++) {
-							rand_vec_pred_I_1(j) = ndist(parallel_rngs[thread_nb]);
-							rand_vec_pred_I_2(j) = ndist(parallel_rngs[thread_nb]);
+							rand_vec_pred_I_1(j) = ndist(rng_local);
+							rand_vec_pred_I_2(j) = ndist(rng_local);
 						}
 						//z_i ~ N(0,(Sigma^{-1} + W))
 						vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
@@ -4610,13 +4621,13 @@ namespace GPBoost {
 						if (has_NA_or_Inf) {
 							Log::REDebug(CG_NA_OR_INF_WARNING_);
 						}
-						vec_t pred_var_private = rand_vec_pred_SigmaI_plus_W_inv.cwiseProduct(rand_vec_pred_SigmaI_plus_W_inv);
+						pred_var_private += rand_vec_pred_SigmaI_plus_W_inv.cwiseProduct(rand_vec_pred_SigmaI_plus_W_inv);
+					}// end for loop
 #pragma omp critical
-						{
-							pred_var += pred_var_private;
-						}
+					{
+						pred_var += pred_var_private;
 					}
-				}
+				}// end #pragma omp parallel
 				pred_var /= nsim_var_pred_;
 			} //end Version Simulation
 			else {
