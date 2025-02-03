@@ -949,7 +949,7 @@ namespace GPBoost {
 				SetCovParsComps(cov_aux_pars.segment(0, num_cov_par_));
 				RedetermineNearestNeighborsVecchia(true);//called only if gp_approx_ == "vecchia" and neighbors are selected based on correlations and not distances
 			}
-			if (optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright" || max_iter_ == 0) {
+			if ((optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright") || max_iter_ == 0) {
 				CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);
 				// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
 				string_t ll_str;
@@ -2687,6 +2687,7 @@ namespace GPBoost {
 				}
 				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false);
 			}
+			bool predict_var_or_response = predict_var || (!gauss_likelihood_ && predict_response && likelihood_[unique_clusters_[0]]->NeedPredLatentVarForResponseMean()); //variance needs to be available for response prediction for most non-Gaussian likelihoods
 			// Loop over different clusters to calculate predictions
 			for (const auto& cluster_i : unique_clusters_pred) {
 
@@ -2847,8 +2848,7 @@ namespace GPBoost {
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 							mean_pred_id[i] += mu[data_indices_per_cluster_pred[cluster_i][i]];
 						}
-					}
-					bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);
+					}					
 					vec_t var_pred_id;
 					if (predict_var_or_response) {
 						var_pred_id = psi.diagonal();
@@ -2974,7 +2974,6 @@ namespace GPBoost {
 					sp_mat_t Bpo, Bp; // used only if gp_approx_ == "vecchia" && !gauss_likelihood_
 					vec_t Dp;
 					
-					bool predict_var_or_response = predict_var || (predict_response && !gauss_likelihood_);//variance needs to be available for response prediction for non-Gaussian likelihoods
 					// Calculate predictions
 					if (gp_approx_ == "vecchia") {
 						den_mat_t cov_mat_pred_vecchia_id;

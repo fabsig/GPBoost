@@ -144,6 +144,7 @@ namespace GPBoost {
 				else {
 					num_aux_pars_estim_ = 1;
 				}
+				need_pred_latent_var_for_response_mean_ = false;
 				if (approximation_type_ == "laplace") {
 					information_ll_can_be_negative_ = true;
 					information_changes_during_mode_finding_ = true;
@@ -177,6 +178,7 @@ namespace GPBoost {
 					num_aux_pars_ = 0;
 					num_aux_pars_estim_ = 0;
 				}
+				need_pred_latent_var_for_response_mean_ = false;
 				information_changes_during_mode_finding_ = false;
 				information_changes_after_mode_finding_ = false;
 				grad_information_wrt_mode_non_zero_ = false;
@@ -279,6 +281,14 @@ namespace GPBoost {
 			chol_fact_pattern_analyzed_ = false;
 			DetermineWhetherToCapChangeModeNewton();
 		}
+
+		/*!
+		* \brief True if this likelihood requires latent predictive variances for predicting response means 
+		* \return need_pred_latent_var_for_response_mean_
+		*/
+		bool NeedPredLatentVarForResponseMean() const {
+			return(need_pred_latent_var_for_response_mean_);
+		}		
 
 		/*!
 		* \brief Set chol_fact_pattern_analyzed_ to false
@@ -4244,7 +4254,7 @@ namespace GPBoost {
 					}
 #pragma omp parallel
 					{
-#pragma omp for nowait
+#pragma omp for
 						for (int i = 0; i < nsim_var_pred_; ++i) {
 							//z_i ~ N(0,I)
 							int thread_nb;
@@ -4561,7 +4571,7 @@ namespace GPBoost {
 				}
 #pragma omp parallel
 				{
-#pragma omp for nowait
+#pragma omp for
 					for (int i = 0; i < nsim_var_pred_; ++i) {
 						//z_i ~ N(0,I)
 						int thread_nb;
@@ -5540,6 +5550,8 @@ namespace GPBoost {
 		bool use_likelihoods_file_for_gaussian_ = false;
 		/*! \brief If true, the function 'CalcFirstDerivInformationLocPar' has been called before */
 		bool first_deriv_information_loc_par_caluclated_ = false;
+		/*! \brief If true, this likelihood requires latent predictive variances for predicting response means */
+		bool need_pred_latent_var_for_response_mean_ = true;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
