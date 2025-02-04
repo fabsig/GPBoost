@@ -5678,6 +5678,8 @@ class GPModel(object):
                 cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
             # Set data for linear fixed-effects
+            if X_pred is not None and not self.has_covariates:
+                raise ValueError("Covariate data provided in 'X_pred' but model has no linear predictor")
             if self.has_covariates:
                 if X_pred is None:
                     raise ValueError("No covariate data is provided in 'X_pred' but model has linear predictor")
@@ -5944,9 +5946,9 @@ class GPModel(object):
             cluster_ids_pred = cluster_ids_pred.astype(np.int32)
             cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
         # Set data for linear fixed-effects
-        if self.has_covariates:
-            if X_pred is None:
-                raise ValueError("No covariate data is provided in 'X_pred' but model has linear predictor")
+        if X_pred is not None:
+            if not self.has_covariates:
+                raise ValueError("Covariate data provided in 'X_pred' but model has no linear predictor")
             X_pred, not_used = _format_check_data(data=X_pred,
                                                   get_variable_names=False,
                                                   data_name="X_pred",

@@ -1526,6 +1526,11 @@ gpb.GPModel <- R6::R6Class(
           }
         } # End set data for GP random coefficients
         # Set data for linear fixed-effects
+        if (!is.null(X_pred)) {
+          if(!private$has_covariates){
+            stop("set_prediction_data: Covariate data provided in ", sQuote("X_pred"), " but model has no linear predictor")
+          }
+        }
         if(private$has_covariates){
           if(is.null(X_pred)){
             stop("predict.GPModel: No covariate data is provided in ", sQuote("X_pred"), " but model has linear predictor")
