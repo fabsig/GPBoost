@@ -826,6 +826,10 @@ class GPBoostModel(_GPBoostModelBase):
             raise GPBoostNotFittedError('No feature_name found. Need to call fit beforehand.')
         return self._Booster.feature_name()
 
+    def __sklearn_tags__(self):
+        tags = super().__sklearn_tags__()
+        return tags
+
 
 class GPBoostRegressor(GPBoostModel, _GPBoostRegressorBase):
     """GPBoost regressor."""
