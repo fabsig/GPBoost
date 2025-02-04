@@ -30,7 +30,8 @@ namespace GPBoost {
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
-		const sp_mat_rm_t& L_SigmaI_plus_W_rm) {
+		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
+		bool run_in_parallel_do_not_report_non_convergence) {
 
 		p = std::min(p, (int)B_rm.cols());
 
@@ -115,8 +116,10 @@ namespace GPBoost {
 
 			h = z + b * h;
 		}
-		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-			"This could happen if the initial learning rate is too large in a line search phase. Otherwise increase 'cg_max_num_it'.", p);
+		if (!run_in_parallel_do_not_report_non_convergence) {
+			Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+				"This could happen if the initial learning rate is too large in a line search phase. Otherwise you might increase 'cg_max_num_it' ", p);
+		}
 	} // end CGVecchiaLaplaceVec
 
 	void CGVecchiaLaplaceVecWinvplusSigma(const vec_t& diag_W,
@@ -130,7 +133,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
-		const den_mat_t& Sigma_L_k) {
+		const den_mat_t& Sigma_L_k,
+		bool run_in_parallel_do_not_report_non_convergence) {
 
 		p = std::min(p, (int)B_rm.cols());
 
@@ -196,8 +200,10 @@ namespace GPBoost {
 				//u = W^(-1) u
 				u = diag_W_inv.cwiseProduct(u);
 				if ((j + 1) == p) {
-					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
+					if (!run_in_parallel_do_not_report_non_convergence) {
+						Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+							"This could happen if the initial learning rate is too large in a line search phase. Otherwise you might increase 'cg_max_num_it' ", p);
+					}
 				}
 				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				return;
@@ -230,7 +236,8 @@ namespace GPBoost {
 		const double THRESHOLD_ZERO_RHS_CG,
 		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
 		const den_mat_t cross_cov,
-		const vec_t& diagonal_approx_inv_preconditioner) {
+		const vec_t& diagonal_approx_inv_preconditioner,
+		bool run_in_parallel_do_not_report_non_convergence) {
 
 		p = std::min(p, (int)B_rm.cols());
 
@@ -294,8 +301,10 @@ namespace GPBoost {
 				//u = W^(-1) u
 				u = diag_W_inv.cwiseProduct(u);
 				if ((j + 1) == p) {
-					Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-						"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
+					if (!run_in_parallel_do_not_report_non_convergence) {
+						Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+							"This could happen if the initial learning rate is too large in a line search phase. Otherwise you might increase 'cg_max_num_it' ", p);
+					}
 				}
 				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				return;
@@ -454,7 +463,7 @@ namespace GPBoost {
 			}
 		}
 		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagVecchiaLaplace
 
 	void CGTridiagVecchiaLaplaceWinvplusSigma(const vec_t& diag_W,
@@ -567,7 +576,7 @@ namespace GPBoost {
 			}
 		}
 		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagVecchiaLaplaceSigmaplusWinv
 
 
@@ -672,7 +681,7 @@ namespace GPBoost {
 			}
 		}
 		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagVecchiaLaplaceWinvplusSigma_FITC_P
 
 	void simProbeVect(RNG_t& generator, den_mat_t& Z, const bool rademacher) {

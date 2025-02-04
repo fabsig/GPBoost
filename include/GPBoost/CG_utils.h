@@ -37,6 +37,7 @@ namespace GPBoost {
 	* \param cg_preconditioner_type Type of preconditioner used.
 	* \param D_inv_plus_W_B_rm Row-major matrix that contains the product (D^(-1) + W) B used for the preconditioner "Sigma_inv_plus_BtWB".
 	* \param L_SigmaI_plus_W_rm Row-major matrix that contains sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W used for the preconditioner "zero_infill_incomplete_cholesky". 
+	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
 	*/
 	void CGVecchiaLaplaceVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -50,7 +51,8 @@ namespace GPBoost {
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
-		const sp_mat_rm_t& L_SigmaI_plus_W_rm);
+		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
+		bool run_in_parallel_do_not_report_non_convergence);
 
 	/*!
 	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate 
@@ -69,6 +71,7 @@ namespace GPBoost {
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia Cholesky factor E of matrix EE^T = (I_k + Sigma_L_k^T W^(-1) Sigma_L_k)
 	* \param Sigma_L_k Matrix of dimension nxk: Pivoted Cholseky decomposition of the nonapproximated covariance matrix, generated in re_model_template.h
+	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
 	*/
 	void CGVecchiaLaplaceVecWinvplusSigma(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -81,7 +84,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
-		const den_mat_t& Sigma_L_k);
+		const den_mat_t& Sigma_L_k,
+		bool run_in_parallel_do_not_report_non_convergence);
 
 	/*!
 	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate
@@ -100,6 +104,7 @@ namespace GPBoost {
 	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
 	* \param cross_cov Cross-covariance between inducing points and observations
 	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
 	*/
 	void CGVecchiaLaplaceVecWinvplusSigma_FITC_P(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -113,7 +118,8 @@ namespace GPBoost {
 		const double THRESHOLD_ZERO_RHS_CG,
 		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
 		const den_mat_t cross_cov,
-		const vec_t& diagonal_approx_inv_preconditioner);
+		const vec_t& diagonal_approx_inv_preconditioner,
+		bool run_in_parallel_do_not_report_non_convergence);
 
 
 	/*!

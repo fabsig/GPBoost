@@ -2636,7 +2636,7 @@ namespace GPBoost {
 									chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
 								}
 								CGVecchiaLaplaceVecWinvplusSigma(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, mode_update, has_NA_or_Inf,
-									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
+									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_, false);
 							}
 						}
 						else if (cg_preconditioner_type_ == "fitc") {
@@ -2659,7 +2659,7 @@ namespace GPBoost {
 									chol_fact_woodbury_preconditioner_.compute(sigma_woodbury);
 								}
 								CGVecchiaLaplaceVecWinvplusSigma_FITC_P(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, mode_update, has_NA_or_Inf,
-									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_);
+									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_, false);
 							}
 						}
 						else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
@@ -2674,7 +2674,7 @@ namespace GPBoost {
 								}
 							}
 							CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rhs, mode_update, has_NA_or_Inf,
-								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
+								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false);
 						}
 						else {
 							Log::REFatal("FindModePostRandEffCalcMLLVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
@@ -3485,16 +3485,16 @@ namespace GPBoost {
 					SigmaI_plus_W_inv_d_mll_d_mode = vec_t(dim_mode_);
 					if (cg_preconditioner_type_ == "pivoted_cholesky") {
 						CGVecchiaLaplaceVecWinvplusSigma(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
-							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
+							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_, false);
 					}
 					else if (cg_preconditioner_type_ == "fitc") {
 						const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 						CGVecchiaLaplaceVecWinvplusSigma_FITC_P(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
-							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_);
+							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_, false);
 					}
 					else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 						CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
-							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
+							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false);
 					}
 					else {
 						Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
@@ -4285,16 +4285,16 @@ namespace GPBoost {
 							bool has_NA_or_Inf = false;
 							if (cg_preconditioner_type_ == "pivoted_cholesky") {
 								CGVecchiaLaplaceVecWinvplusSigma(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
+									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_, true);
 							}
 							else if (cg_preconditioner_type_ == "fitc") {
 								const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 								CGVecchiaLaplaceVecWinvplusSigma_FITC_P(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_);
+									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_, true);
 							}
 							else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 								CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
+									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, true);
 							}
 							else {
 								Log::REFatal("PredictLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
@@ -4604,16 +4604,16 @@ namespace GPBoost {
 						bool has_NA_or_Inf = false;
 						if (cg_preconditioner_type_ == "pivoted_cholesky") {
 							CGVecchiaLaplaceVecWinvplusSigma(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_);
+								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_, true);
 						}
 						else if (cg_preconditioner_type_ == "fitc") {
 							const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 							CGVecchiaLaplaceVecWinvplusSigma_FITC_P(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_);
+								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, chol_fact_woodbury_preconditioner_, (*cross_cov), diagonal_approx_inv_preconditioner_, true);
 						}
 						else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 							CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
+								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, true);
 						}
 						else {
 							Log::REFatal("CalcVarLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
