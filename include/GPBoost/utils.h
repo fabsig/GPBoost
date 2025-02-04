@@ -27,10 +27,10 @@ namespace GPBoost {
 	const double EPSILON_VECTORS = 1e-10;
 
 	/*! \brief Small numbers by which the diagonals of some matrices are multiplied to make inversion numerically stable */
-	const double JITTER_MUL = 1e-10;
+	const double JITTER_MUL = 1. + 1e-10;
 
 	/*! \brief Small number by which the diagonals of covariance matrices are multiplied with when calculating Vecchia approximations without a nugget effect to make inversions numerically stable */
-	const double JITTER_MULT_VECCHIA= 1 + 1e-10;
+	const double JITTER_MULT_VECCHIA= 1. + 1e-10;
 
 	/*! \brief Small number by which the diagonal of inducing points matrix in the FITC & full scales approximations is multiplied with (increased) to make inversions numerically stable */
 	const double JITTER_MULT_IP_FITC_FSA = 1. + 1e-6;

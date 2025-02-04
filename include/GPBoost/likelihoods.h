@@ -2220,7 +2220,7 @@ namespace GPBoost {
 				mode_ = (*Sigma) * a_vec_;//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since a_vec != Sigma^(-1)mode
 				// The alternative way of intializing a_vec_ = Sigma^(-1) mode_ requires an additional linear solve
 				//T_mat Sigma_stable = (*Sigma);
-				//Sigma_stable.diagonal().array() *= (1. + JITTER_MUL);
+				//Sigma_stable.diagonal().array() *= JITTER_MUL;
 				//T_chol chol_fact_Sigma;
 				//CalcChol<T_mat>(chol_fact_Sigma, Sigma_stable);
 				//a_vec_ = chol_fact_Sigma.solve(mode_);
@@ -3979,7 +3979,7 @@ namespace GPBoost {
 			}
 			else {
 				T_mat ZSigmaZt_stable = (*ZSigmaZt);
-				ZSigmaZt_stable.diagonal().array() *= (1. + JITTER_MUL);
+				ZSigmaZt_stable.diagonal().array() *= JITTER_MUL;
 				T_chol chol_fact_ZSigmaZt;
 				CalcChol<T_mat>(chol_fact_ZSigmaZt, ZSigmaZt_stable);
 				vec_t SigmaI_mode = chol_fact_ZSigmaZt.solve(mode_);

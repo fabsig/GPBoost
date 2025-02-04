@@ -876,6 +876,9 @@ namespace GPBoost {
 				//	(ii) otherwise we would have to add it only for the neighbors in the observed training data if predict_response == false
 				//	If predict_response == false, the nugget variance is simply subtracted from the predictive covariance matrix later again.
 			}
+			else {
+				cov_mat_between_neighbors.diagonal().array() *= JITTER_MULT_VECCHIA;//Avoid numerical problems when there is no nugget effect
+			}
 			den_mat_t A_i(1, num_nn);//dim = 1 x nn
 			A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors)).transpose();
 			for (int inn = 0; inn < num_nn; ++inn) {
@@ -1268,6 +1271,7 @@ namespace GPBoost {
 			//2. remaining terms
 			if (i > 0) {
 				den_mat_t A_i(1, num_nn);//dim = 1 x nn
+				cov_mat_between_neighbors.diagonal().array() *= JITTER_MULT_VECCHIA;//Avoid numerical problems when there is no nugget effect
 				A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors)).transpose();
 				for (int inn = 0; inn < num_nn; ++inn) {
 					B.coeffRef(i, nearest_neighbors_cluster_i[i][inn]) -= A_i(0, inn);
