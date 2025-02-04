@@ -500,8 +500,8 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
+		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it' ", p);
 	}// end CGFSA
 
 	/*!
@@ -647,8 +647,8 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagFSA
 
 	/*!
@@ -781,8 +781,8 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGFSA_MULTI_RHS
 
 	/*!
@@ -901,8 +901,8 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REInfo("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
-			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
+		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGFSA_RESID
 
 }
