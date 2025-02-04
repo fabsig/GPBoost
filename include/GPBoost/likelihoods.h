@@ -4239,7 +4239,7 @@ namespace GPBoost {
 						pred_var = vec_t::Zero(num_pred);
 					}
 					vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
-					sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * D_inv_rm_.cwiseSqrt();
+					sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * (D_inv_rm_.cwiseSqrt());
 					int num_threads;
 #ifdef _OPENMP
 					num_threads = omp_get_max_threads();
@@ -4565,7 +4565,7 @@ namespace GPBoost {
 			if (matrix_inversion_method_ == "iterative") {
 				pred_var = vec_t::Zero(num_re_);
 				vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
-				sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * D_inv_rm_.cwiseSqrt();
+				sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * (D_inv_rm_.cwiseSqrt());
 				int num_threads;
 #ifdef _OPENMP
 				num_threads = omp_get_max_threads();
@@ -4651,6 +4651,7 @@ namespace GPBoost {
 			vec_t& pred_var,
 			bool predict_var) {
 			if (likelihood_type_ == "bernoulli_probit") {
+				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
 					pred_mean[i] = normalCDF(pred_mean[i] / std::sqrt(1. + pred_var[i]));
@@ -4663,6 +4664,7 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "bernoulli_logit") {
+				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
 					pred_mean[i] = RespMeanAdaptiveGHQuadrature(pred_mean[i], pred_var[i]);
@@ -4675,6 +4677,7 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "poisson") {
+				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
 					double pm = std::exp(pred_mean[i] + 0.5 * pred_var[i]);
@@ -4688,6 +4691,7 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "gamma") {
+				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
 					double pm = std::exp(pred_mean[i] + 0.5 * pred_var[i]);
@@ -4701,6 +4705,7 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "negative_binomial") {
+				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
 					double pm = std::exp(pred_mean[i] + 0.5 * pred_var[i]);
@@ -4711,9 +4716,12 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "t") {
-				pred_var.array() += aux_pars_[0] * aux_pars_[0];
-				Log::REDebug("Response prediction for a 't' likelihood: we simply add the squared 'scale' parameter to the variances of the latent predictions "
-					"and do not assume that the 't' distribution is the true likelihood but rather an auxiliary tool for robust regression ");
+				CHECK(!need_pred_latent_var_for_response_mean_);
+				if (predict_var) {
+					pred_var.array() += aux_pars_[0] * aux_pars_[0];
+					Log::REDebug("Response prediction for a 't' likelihood: we simply add the squared 'scale' parameter to the variances of the latent predictions "
+						"and do not assume that the 't' distribution is the true likelihood but rather an auxiliary tool for robust regression ");
+				}
 //				// Code when assuming that the t-distribution is the true likelihood
 //				if (aux_pars_[1] <= 1.) {
 //					Log::REFatal("The response mean of a 't' distribution is only defined if the "
