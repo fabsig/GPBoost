@@ -2244,6 +2244,10 @@ namespace GPBoost {
 				// Calculate Cholesky factor of matrix B = (Id + ZtWZsqrt * Sigma * ZtWZsqrt) if use_Z_for_duplicates_ or B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt) if !use_Z_for_duplicates_
 				if (it == 0 || information_changes_during_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, true);
+					if (HasNegativeValueInformationLogLik()) {
+						Log::REFatal("FindModePostRandEffCalcMLLStable: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+							"Cannot have negative values when using the numerically stable version of Rasmussen and Williams (2006) for mode finding ");
+					}
 					diag_Wsqrt.array() = information_ll_.array().sqrt();
 					Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 					Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
@@ -2290,6 +2294,10 @@ namespace GPBoost {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (information_changes_after_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, false);
+					if (HasNegativeValueInformationLogLik()) {
+						Log::REFatal("FindModePostRandEffCalcMLLStable: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+							"Cannot have negative values when using the numerically stable version of Rasmussen and Williams (2006) for mode finding ");
+					}
 					diag_Wsqrt.array() = information_ll_.array().sqrt();
 					Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 					Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
@@ -2857,6 +2865,10 @@ namespace GPBoost {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);
 				if (it == 0 || information_changes_during_mode_finding_) {
 					CalcDiagInformationLogLik(y_data, y_data_int, location_par_ptr, true);
+					if (HasNegativeValueInformationLogLik()) {
+						Log::REFatal("FindModePostRandEffCalcMLLFITC: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+							"Cannot have negative values when using the numerically stable version of Rasmussen and Williams (2006) for mode finding ");
+					}
 					Wsqrt_diag.array() = information_ll_.array().sqrt();
 					DW_plus_I_inv_diag = (information_ll_.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
 					// Calculate Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
@@ -3464,7 +3476,6 @@ namespace GPBoost {
 					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_loc_par_data_scale, deriv_information_loc_par, true);
 				}
 				else {
-					//L_inv_Wsqrt.diagonal().array() = information_ll_.array().sqrt();
 					CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_loc_par);
 				}
 			}
@@ -3987,6 +3998,10 @@ namespace GPBoost {
 			}
 			if (calc_pred_cov || calc_pred_var) {
 				vec_t Wsqrt(dim_mode_);//diagonal of matrix sqrt(ZtWZ) if use_Z_for_duplicates_ or sqrt(W) if !use_Z_for_duplicates_
+				if (HasNegativeValueInformationLogLik()) {
+					Log::REFatal("PredictLaplaceApproxStable: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+						"Cannot have negative values when using the numerically stable version of Rasmussen and Williams (2006) for mode finding ");
+				}
 				Wsqrt.array() = information_ll_.array().sqrt();
 				T_mat Maux = Wsqrt.asDiagonal() * Cross_Cov.transpose();
 				TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Maux, Maux, false);//Maux = L\(ZtWZsqrt * Cross_Cov^T)
@@ -4237,6 +4252,10 @@ namespace GPBoost {
 					}
 					if (calc_pred_var) {
 						pred_var = vec_t::Zero(num_pred);
+					}
+					if (HasNegativeValueInformationLogLik()) {
+						Log::REFatal("PredictLaplaceApproxVecchia: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+							"Cannot have negative values when using 'iterative' methods for predictive variances in Vecchia-Laplace approximations ");
 					}
 					vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
 					sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * (D_inv_rm_.cwiseSqrt());
@@ -4509,6 +4528,10 @@ namespace GPBoost {
 			CHECK(mode_has_been_calculated_);
 			pred_var = vec_t(num_re_);
 			vec_t diag_ZtWZ_sqrt(information_ll_.size());
+			if (HasNegativeValueInformationLogLik()) {
+				Log::REFatal("CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+					"Cannot have negative values when using the numerically stable version of Rasmussen and Williams (2006) for mode finding ");
+			}
 			diag_ZtWZ_sqrt.array() = information_ll_.array().sqrt();
 			T_mat L_inv_ZtWZ_sqrt_Sigma = diag_ZtWZ_sqrt.asDiagonal() * (*Sigma);
 			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZ_sqrt_Sigma, L_inv_ZtWZ_sqrt_Sigma, false);
@@ -4564,6 +4587,10 @@ namespace GPBoost {
 			//Version Simulation
 			if (matrix_inversion_method_ == "iterative") {
 				pred_var = vec_t::Zero(num_re_);
+				if (HasNegativeValueInformationLogLik()) {
+					Log::REFatal("CalcVarLaplaceApproxVecchia: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+						"Cannot have negative values when using 'iterative' methods for predictive variances in Vecchia-Laplace approximations ");
+				}
 				vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
 				sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * (D_inv_rm_.cwiseSqrt());
 				int num_threads;
