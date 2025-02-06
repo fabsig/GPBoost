@@ -572,10 +572,10 @@ gpb.cv <- function(params = list()
       
     },
     error = function(err) { 
-      message(paste0("Error in boosting iteration ", i,":"))
+      message(paste0("Error in boosting iteration ", i))
       message(err)
       env$met_early_stop <- TRUE
-      if (env$iteration == 1) {
+      if (env$iteration == begin_iteration) {
         error_in_first_iteration <<- TRUE
       }
       
@@ -611,7 +611,16 @@ gpb.cv <- function(params = list()
       },
       error = function(err) {
         env$met_early_stop <- TRUE
+        if (env$iteration == begin_iteration) {
+          error_in_first_iteration <<- TRUE
+        }
+        message(paste0("Error in boosting iteration ", i))
       })# end tryCatch
+      
+      if (error_in_first_iteration) {
+        cv_booster$best_score <- NA
+        return(cv_booster)
+      }
       
     }
     
