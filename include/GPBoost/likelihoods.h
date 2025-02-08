@@ -4109,7 +4109,9 @@ namespace GPBoost {
 		* \param num_data Number of data points
 		* \param sigma2 Variance of random effects
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
-		* \param Cross_Cov Cross covariance matrix between predicted and observed random effects ("=Cov(y_p,y)")
+		* \param random_effects_indices_of_pred Indices that indicate to which training data random effect every prediction point is related. -1 means to none in the training data
+		* \param num_data_pred Number of prediction points
+		* \param Cross_Cov Cross covariance matrix between predicted and observed random effects ("=Cov(y_p,y)", = Ztilde * Sigma)
 		* \param pred_mean[out] Predictive mean
 		* \param pred_cov[out] Predictive covariance matrix
 		* \param pred_var[out] Predictive variances
@@ -4123,6 +4125,8 @@ namespace GPBoost {
 			const data_size_t num_data,
 			const double sigma2,
 			const data_size_t* const random_effects_indices_of_data,
+			const data_size_t* const random_effects_indices_of_pred,
+			const data_size_t num_data_pred,
 			const T_mat& Cross_Cov,
 			vec_t& pred_mean,
 			T_mat& pred_cov,
@@ -4139,31 +4143,30 @@ namespace GPBoost {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			if (can_use_first_deriv_log_like_for_pred_mean_) {
-				vec_t ZtFirstDeriv;
-				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_, ZtFirstDeriv, true);
-				pred_mean = Cross_Cov * ZtFirstDeriv;
-			}
-			else {
-				vec_t SigmaI_mode = mode_ / sigma2;
-				pred_mean = Cross_Cov * SigmaI_mode;
+			pred_mean = vec_t::Zero(num_data_pred);
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < (int)pred_mean.size(); ++i) {
+				if (random_effects_indices_of_pred[i] >= 0) {
+					pred_mean[i] = mode_[random_effects_indices_of_pred[i]];
+				}
 			}
 			if (calc_pred_cov || calc_pred_var) {
-				vec_t diag_Sigma_plus_ZtWZI(num_re_);
-				diag_Sigma_plus_ZtWZI.array() = 1. / diag_SigmaI_plus_ZtWZ_.array();
-				diag_Sigma_plus_ZtWZI.array() /= sigma2;
-				diag_Sigma_plus_ZtWZI.array() -= 1.;
-				diag_Sigma_plus_ZtWZI.array() /= sigma2;
+				vec_t minus_diag_Sigma_plus_ZtWZI_inv(num_re_);
+				minus_diag_Sigma_plus_ZtWZI_inv.array() = 1. / diag_SigmaI_plus_ZtWZ_.array();
+				minus_diag_Sigma_plus_ZtWZI_inv.array() /= sigma2;
+				minus_diag_Sigma_plus_ZtWZI_inv.array() -= 1.;
+				minus_diag_Sigma_plus_ZtWZI_inv.array() /= sigma2;
 				if (calc_pred_cov) {
-					T_mat Maux = Cross_Cov * diag_Sigma_plus_ZtWZI.asDiagonal() * Cross_Cov.transpose();
+					T_mat Maux = Cross_Cov * minus_diag_Sigma_plus_ZtWZI_inv.asDiagonal() * Cross_Cov.transpose();
 					pred_cov += Maux;
 				}
 				if (calc_pred_var) {
-					T_mat Maux = Cross_Cov * diag_Sigma_plus_ZtWZI.asDiagonal();
-					T_mat Maux2 = Cross_Cov.cwiseProduct(Maux);
+					double sigma4 = sigma2 * sigma2;
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < (int)pred_mean.size(); ++i) {
-						pred_var[i] += Maux2.row(i).sum();
+						if (random_effects_indices_of_pred[i] >= 0) {							
+							pred_var[i] += sigma4 * minus_diag_Sigma_plus_ZtWZI_inv[random_effects_indices_of_pred[i]];
+						}
 					}
 				}
 			}

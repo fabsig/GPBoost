@@ -587,7 +587,7 @@ namespace GPBoost {
 			else {
 				Log::REFatal("Need to have either 'Z_' or enable 'data_duplicates_dropped_for_prediction' for calling 'AddPredCovMatrices'");
 			}
-		}
+		}// end AddPredCovMatrices
 
 		/*!
 		* \brief Calculate matrix Ztilde which relates existing random effects to prediction samples and insert it into the corresponding matrix for all components
@@ -624,6 +624,26 @@ namespace GPBoost {
 				}
 			}//end not is_rand_coef_
 		}//end CalcInsertZtilde
+
+		/*!
+		* \brief Calculate matrix Ztilde which relates existing random effects to prediction samples and insert it into the corresponding matrix for all components
+		* \param group_data_pred Group data for predictions
+		* \param[out] random_effects_indices_of_pred Indices that indicate to which training data random effect every prediction point is related. -1 means to none in the training data
+		*/
+		void RandomEffectsIndicesPred(const std::vector<re_group_t>& group_data_pred,
+			data_size_t* random_effects_indices_of_pred) const {
+			int num_data_pred = (int)group_data_pred.size();
+			CHECK(!this->is_rand_coef_);
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < num_data_pred; ++i) {
+				if (map_group_label_index_->find(group_data_pred[i]) != map_group_label_index_->end()) {//Group level 'group_data_pred[i]' exists in observed data
+					random_effects_indices_of_pred[i] = (*map_group_label_index_)[group_data_pred[i]];
+				}
+				else {
+					random_effects_indices_of_pred[i] = -1;
+				}
+			}
+		}//end RandomEffectsIndicesPred
 
 		/*!
 		* \brief Calculate and add unconditional predictive variances only for new groups that do not appear in training data
