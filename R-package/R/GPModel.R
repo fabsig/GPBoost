@@ -617,6 +617,12 @@ gpb.GPModel <- R6::R6Class(
           private$cov_par_names <- c(private$cov_par_names,"GP_var")
         } else if (private$cov_function == "matern_estimate_shape") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range", "GP_smoothness")
+        } else if (private$cov_function == "matern_ard_estimate_shape") {
+          if (is.null(colnames(gp_coords))) {
+            private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",1:private$dim_coords), "GP_smoothness")
+          } else {
+            private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",colnames(gp_coords)), "GP_smoothness")
+          }
         } else {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range")
         }
@@ -664,6 +670,16 @@ gpb.GPModel <- R6::R6Class(
                                            paste0("GP_rand_coef_nb_", ii,"_var"),
                                            paste0("GP_rand_coef_nb_", ii,"_range"),
                                            paste0("GP_rand_coef_nb_", ii,"_smoothness"))
+              } else if (private$cov_function == "matern_ard_estimate_shape") {
+                if (is.null(colnames(gp_coords))) {
+                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
+                                             paste0(paste0("GP_rand_coef_nb_", ii,"_var"),1:private$dim_coords),
+                                             paste0("GP_rand_coef_nb_", ii,"_smoothness"))
+                } else {
+                  private$cov_par_names <- c(private$cov_par_names,"GP_var", 
+                                             paste0(paste0("GP_rand_coef_nb_", ii,"_range"),colnames(gp_coords)),
+                                             paste0("GP_rand_coef_nb_", ii,"_smoothness"))
+                }
               } else {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_nb_", ii,"_var"),
@@ -692,6 +708,16 @@ gpb.GPModel <- R6::R6Class(
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"),
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range"),
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_smoothness"))
+              } else if (private$cov_function == "matern_ard_estimate_shape") {
+                if (is.null(colnames(gp_coords))) {
+                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
+                                             paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_var"),1:private$dim_coords),
+                                             paste0("GP_rand_coef_nb_", ii,"_smoothness"))
+                } else {
+                  private$cov_par_names <- c(private$cov_par_names,"GP_var", 
+                                             paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_range"),colnames(gp_coords)),
+                                             paste0("GP_rand_coef_nb_", ii,"_smoothness"))
+                }
               } else {
                 private$cov_par_names <- c(private$cov_par_names,
                                            paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"),
@@ -2086,6 +2112,8 @@ gpb.GPModel <- R6::R6Class(
         num_par_per_GP <- 3L
       } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | private$cov_function == "exponential_ard") {
         num_par_per_GP <- 1L + private$dim_coords
+      } else if (private$cov_function == "matern_ard_estimate_shape") {
+        num_par_per_GP <- 2L + private$dim_coords
       } else if (private$cov_function == "wendland") {
         num_par_per_GP <- 1L
       } else {
