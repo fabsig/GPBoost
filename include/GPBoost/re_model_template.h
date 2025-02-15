@@ -1600,25 +1600,27 @@ namespace GPBoost {
 			if (calc_cov_aux_par_grad) {
 				for (int i = 0; i < (int)grad_cov_aux_par.size(); ++i) {
 					if (std::isnan(grad_cov_aux_par[i])) {
-						Log::REFatal("NaN occured in gradient wrt covariance / auxiliary parameter number %d (counting starts at 1) ", i + 1);
+						Log::REFatal("NaN occured in gradient wrt covariance / auxiliary parameter number %d (counting starts at 1, total nb. par. = %d) ", i + 1, grad_cov_aux_par.size());
 					}
 					else if (std::isinf(grad_cov_aux_par[i])) {
-						Log::REFatal("Inf occured in gradient wrt covariance / auxiliary parameter number %d (counting starts at 1) ", i + 1);
+						Log::REFatal("Inf occured in gradient wrt covariance / auxiliary parameter number %d (counting starts at 1, total nb. par. = %d) ", i + 1, grad_cov_aux_par.size());
 					}
 				}
 			}
 			if (calc_beta_grad) {
 				for (int i = 0; i < (int)grad_beta.size(); ++i) {
 					if (std::isnan(grad_beta[i])) {
-						Log::REFatal("NaN occured in gradient wrt regression coefficient number %d (counting starts at 1) ", i + 1);
+						Log::REFatal("NaN occured in gradient wrt regression coefficient number %d (counting starts at 1, total nb. par. = %d) ", i + 1, grad_beta.size());
 					}
 					else if (std::isinf(grad_beta[i])) {
-						Log::REFatal("Inf occured in gradient wrt regression coefficient number %d (counting starts at 1) ", i + 1);
+						Log::REFatal("Inf occured in gradient wrt regression coefficient number %d (counting starts at 1, total nb. par. = %d) ", i + 1, grad_beta.size());
 					}
 				}
 			}
 		//// For debugging
-		//for (int i = 0; i < (int)grad_cov_aux_par.size(); ++i) { Log::REDebug("grad_cov_aux_par[%d]: %g", i, grad_cov_aux_par[i]); }
+		//for (int i = 0; i < (int)grad_cov_aux_par.size(); ++i) { 
+		//	Log::REDebug("grad_cov_aux_par[%d]: %g", i, grad_cov_aux_par[i]); 
+		//}
 		}//end CalcGradPars
 
 		/*!
