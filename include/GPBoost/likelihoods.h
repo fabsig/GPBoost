@@ -5675,10 +5675,21 @@ namespace GPBoost {
 		den_mat_t chol_ip_cross_cov_;
 		chol_den_mat_t chol_fact_sigma_ip_;
 		
-		/*! \brief Order of the Gauss-Hermite quadrature */
+		/*! \brief Order of the (adaptive) Gauss-Hermite quadrature */
 		int order_GH_ = 30;
-		/*! \brief Nodes and weights for the Gauss-Hermite quadrature */
-		// Source: https://keisan.casio.com/exec/system/1281195844
+		/*! 
+		\brief Nodes and weights for the Gauss-Hermite quadrature 
+		Source: https://keisan.casio.com/exec/system/1281195844
+
+		Can also be computed using the following Python code:
+		import numpy as np
+		from scipy.special import roots_hermite
+
+		N = 30  # Number of quadrature points
+		nodes, weights = roots_hermite(N)
+		adaptive_weights = weights * np.exp(nodes**2)
+
+		*/
 		const std::vector<double> GH_nodes_ = { -6.863345293529891581061,
 										-6.138279220123934620395,
 										-5.533147151567495725118,
