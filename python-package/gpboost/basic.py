@@ -4613,7 +4613,7 @@ class GPModel(object):
                                 ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
                                  "GP_rand_coef_nb_" + str(ii + 1) + "_range",
                                  "GP_rand_coef_nb_" + str(ii + 1) + "_smoothness"])
-                         elif self.cov_function == "matern_ard_estimate_shape":
+                        elif self.cov_function == "matern_ard_estimate_shape":
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_nb_" + str(ii + 1) + "_var"] +
                                  ["GP_rand_coef_nb_" + str(ii + 1) + str(i+1) for i in range(0,self.dim_coords)] + 
