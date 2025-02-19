@@ -5473,7 +5473,7 @@ class GPModel(object):
 
         Parameters
         ----------
-            predict_response : bool (default=False)
+            predict_response : bool (default=True)
                 If True, the response variable (label) is predicted, otherwise the latent random effects
             predict_var : bool (default=False)
                 If True, the (posterior) predictive variances are calculated
