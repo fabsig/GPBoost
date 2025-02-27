@@ -369,7 +369,9 @@ gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern_ard", co
 summary(gp_model)
 
 #--------------------Gaussian process model spatio-temporal covariance function----------------
-gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern_space_time", cov_fct_shape = 1.5,
+time <- rep(1:10, ntrain/10) # define time variable
+coords_time_space <- cbind(time, coords_train) # the time variables needs to be the first column in the 'gp_coords' argument
+gp_model <- fitGPModel(gp_coords = coords_time_space, cov_function = "matern_space_time", cov_fct_shape = 1.5,
                        y = y_train, likelihood = likelihood)
 summary(gp_model)
 

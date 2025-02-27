@@ -371,7 +371,9 @@ gp_model.fit(y=y_train)
 gp_model.summary()
 
 #--------------------Gaussian process model spatio-temporal covariance function----------------
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern_space_time",
+time = np.array(np.tile(np.arange(1, 11), int(600 / 10))[:coords_train.shape[0]]).reshape(-1, 1) # define time 
+coords_time_space = np.hstack((time, coords_train)) # the time variable needs to be the first column in the 'gp_coords' argument
+gp_model = gpb.GPModel(gp_coords=coords_time_space, cov_function="matern_space_time",
                        cov_fct_shape = 1.5, likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
