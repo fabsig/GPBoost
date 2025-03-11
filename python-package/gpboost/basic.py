@@ -4127,6 +4127,10 @@ class GPModel(object):
                     Matern covariance function with the smoothness specified by the 'cov_fct_shape' parameter
                     (using the parametrization of Rasmussen and Williams, 2006)
 
+                - "matern_estimate_shape":
+
+                    Same as "matern" but the smoothness parameter is also estimated
+
                 - "powered_exponential":
 
                     Powered exponential covariance function with the exponent specified by 'cov_fct_shape' parameter
@@ -4146,6 +4150,10 @@ class GPModel(object):
                     Anisotropic Matern covariance function with Automatic Relevance Determination (ARD), i.e., with a
                     different range parameter for every coordinate dimension / column of 'gp_coords'
 
+                - "matern_ard_estimate_shape":
+
+                    Same as "matern_ard" but the smoothness parameter is also estimated
+
                 - "gaussian_ard":
 
                     Anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance
@@ -4153,7 +4161,7 @@ class GPModel(object):
                     column of 'gp_coords'
 
             cov_fct_shape : float, optional (default=0.)
-                Shape parameter of the covariance function (=smoothness parameter for Matern and Wendland covariance).
+                Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance).
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
             gp_approx : string, optional (default="none")
                 Specifies the use of a large data approximation for Gaussian processes. Available options:

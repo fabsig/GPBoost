@@ -185,6 +185,8 @@ Model specification parameters
 
       - ``matern`` : Matern covariance function with the smoothness specified by the ``cov_fct_shape`` parameter (using the parametrization of Rasmussen and Williams, 2006)
 
+      - ``matern_estimate shape`` : same as ``matern`` but the smoothness parameter is also estimated
+
       - ``powered_exponential`` : Powered exponential covariance function with the exponent specified by ``cov_fct_shape`` parameter (using the parametrization of Diggle and Ribeiro, 2007)
 
       - ``wendland`` : Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
@@ -195,11 +197,13 @@ Model specification parameters
 
       - ``matern_ard``: Anisotropic Matern covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate dimension / column of ``gp_coords``
 
+      - ``matern_ard_estimate_shape`` : same as ``matern_ard`` but the smoothness parameter is also estimated
+
       - ``gaussian_ard``: Anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate dimension / column of ``gp_coords``
 
 -  ``cov_fct_shape`` : double, (default = 1.5)
 
-   -  Shape parameter of the covariance function (=smoothness parameter for Matern covariance). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
+   -  Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
 
 -  ``gp_approx`` : string, (default = ``none``)
 
