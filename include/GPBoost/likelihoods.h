@@ -5573,7 +5573,7 @@ namespace GPBoost {
 		double aux_log_normalizing_constant_;
 		/*! \brief If true, the function 'CalculateAuxQuantLogNormalizingConstant' has been called */
 		bool aux_normalizing_constant_has_been_calculated_ = false;
-		/*! \brief If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (only for Gaussian processes) */
+		/*! \brief If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (used, e.g., for Vecchia) */
 		bool use_Z_for_duplicates_ = false;
 		/*! \brief Indices that indicate to which random effect every data point is related */
 		const data_size_t* random_effects_indices_of_data_;
