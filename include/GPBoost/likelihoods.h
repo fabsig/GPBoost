@@ -3547,6 +3547,14 @@ namespace GPBoost {
 					//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 					SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
 					SigmaI_plus_W_inv_diag.array() /= deriv_information_loc_par.array();
+					if (grad_information_wrt_mode_can_be_zero_for_some_points_) {
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < (int)SigmaI_plus_W_inv_diag.size(); ++i) {
+							if (IsZero<double>(deriv_information_loc_par[i])) {
+								SigmaI_plus_W_inv_diag[i] = 0.;//set to 0 for safety, but this is actually not needed
+							}
+						}
+					}//end grad_information_wrt_mode_can_be_zero_for_some_points_
 				}
 				if (calc_F_grad) {
 					if (use_Z_for_duplicates_) {
@@ -3579,18 +3587,46 @@ namespace GPBoost {
 						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, num_data_, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 						if (grad_information_wrt_mode_non_zero_) {
-							if (use_Z_for_duplicates_) {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-								for (data_size_t i = 0; i < num_data_; ++i) {
-									d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-									implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
+							bool deriv_information_loc_par_has_zero = false;
+							if (grad_information_wrt_mode_can_be_zero_for_some_points_) {
+								deriv_information_loc_par_has_zero = GPBoost::VectorContainsZero(deriv_information_loc_par);
+							}
+							if (deriv_information_loc_par_has_zero) {//deriv_information_loc_par has some zeros
+								if (use_Z_for_duplicates_) {
+									vec_t Zt_deriv_information_aux_par;
+									CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_aux_par, Zt_deriv_information_aux_par, true);
+									CalcLogDetStochDerivAuxPar(Zt_deriv_information_aux_par, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, d_detmll_d_aux_par, re_comps_cross_cov_cluster_i);
+								}
+								else {
+									CalcLogDetStochDerivAuxPar(deriv_information_aux_par, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, d_detmll_d_aux_par, re_comps_cross_cov_cluster_i);
+								}
+								if (use_Z_for_duplicates_) {
+#pragma omp parallel for schedule(static) reduction(+:implicit_derivative)
+									for (data_size_t i = 0; i < num_data_; ++i) {
+										implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
+									}
+								}
+								else {
+#pragma omp parallel for schedule(static) reduction(+:implicit_derivative)
+									for (data_size_t i = 0; i < num_data_; ++i) {
+										implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
+									}
 								}
 							}
-							else {
+							else {//deriv_information_loc_par is non-zero everywhere (!deriv_information_loc_par_has_zero )
+								if (use_Z_for_duplicates_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-								for (data_size_t i = 0; i < num_data_; ++i) {
-									d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
-									implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
+									for (data_size_t i = 0; i < num_data_; ++i) {
+										d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
+										implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
+									}
+								}
+								else {
+#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
+									for (data_size_t i = 0; i < num_data_; ++i) {
+										d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
+										implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
+									}
 								}
 							}
 						}//end if grad_information_wrt_mode_non_zero_
@@ -5583,8 +5619,10 @@ namespace GPBoost {
 		bool information_changes_during_mode_finding_ = true;
 		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes after the mode finding algorithm (e.g., if Fisher-Laplace is used for mode finding but Laplace for the final likelihood calculation) */
 		bool information_changes_after_mode_finding_ = true;
-		/*! \brief If true, the derivative of the information wrt the location parameter at mode is non-zero (it is zero, e.g., for a "gaussian" likelihood) */
+		/*! \brief If true, the derivative of the information wrt the mode is non-zero (it is zero, e.g., for a "gaussian" likelihood) */
 		bool grad_information_wrt_mode_non_zero_ = true;
+		/*! \brief True, if the derivative of the information wrt the mode can be zero for some points even though it is non-zero generally */
+		bool grad_information_wrt_mode_can_be_zero_for_some_points_ = false;
 		/*! \brief If true, the (expected) Fisher information is used for the mode finding */
 		bool use_fisher_for_mode_finding_ = false;
 		/*! \brief If true, the mode finding is continued with an (approximae) Hessian after convergence has been achieved with the Fisher information  */

@@ -50,6 +50,31 @@ namespace GPBoost {
 		return std::abs(a - b) < EPSILON_NUMBERS * std::max<T>({ 1.0, std::abs(a), std::abs(b) });
 	}
 
+	/*! \brief Checking whether a number is zero */
+	template <typename T>//T can be double or float
+	inline bool IsZero(const T a) {
+		return std::abs(a) < EPSILON_NUMBERS;
+	}
+
+	/*! \brief Checking whether a vector contains a zero */
+	inline bool VectorContainsZero(const vec_t& v) {
+		bool has_zero;
+#pragma omp parallel for schedule(static) shared(has_zero)
+		for (int i = 0; i < (int)v.size(); ++i) {
+			if (has_zero) {
+				continue;
+			}
+			if (IsZero<double>(v[i])) {
+#pragma omp critical
+				{
+					has_zero = true;
+				}
+			}
+		}
+		return has_zero;
+	}//end VectorContainsZero
+
+
 	/*! \brief Checking whether a number 'a' is smaller than another number 'b' */
 	template <typename T>//T can be double or float
 	inline bool NumberIsSmallerThan(const T a, const T b) {
