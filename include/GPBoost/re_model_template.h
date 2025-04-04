@@ -3020,7 +3020,9 @@ namespace GPBoost {
 					}
 					T_mat cov_mat_pred_id;
 					if (predict_cov_mat) {
-						CHECK(num_sets_re_ == 1);
+						if (num_sets_re_ > 1) {
+							Log::REFatal("Predictive covariance matrices are not supported");
+						}
 					}
 					std::map<int, vec_t> var_pred_id;//var_pred_id[1] = predictive variance for variance parameter in heteroscedastic models
 					std::map<int, sp_mat_t> Bpo, Bp; // used only if gp_approx_ == "vecchia" && !gauss_likelihood_

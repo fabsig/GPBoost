@@ -4118,14 +4118,6 @@ class GPModel(object):
             cov_function : string, optional (default="exponential")
                 Covariance function for the Gaussian process. Available options:
 
-                - "exponential":
-
-                    Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007)
-
-                - "gaussian":
-
-                    Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
-
                 - "matern":
 
                     Matern covariance function with the smoothness specified by the 'cov_fct_shape' parameter
@@ -4134,15 +4126,6 @@ class GPModel(object):
                 - "matern_estimate_shape":
 
                     Same as "matern" but the smoothness parameter is also estimated
-
-                - "powered_exponential":
-
-                    Powered exponential covariance function with the exponent specified by 'cov_fct_shape' parameter
-                    (using the parametrization of Diggle and Ribeiro, 2007)
-
-                - "wendland":
-
-                    Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
 
                 - "matern_space_time":
 
@@ -4158,11 +4141,28 @@ class GPModel(object):
 
                     Same as "matern_ard" but the smoothness parameter is also estimated
 
+                - "exponential":
+
+                    Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007)
+
+                - "gaussian":
+
+                    Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
+
                 - "gaussian_ard":
 
                     Anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance
                     Determination (ARD), i.e., with a different range parameter for every coordinate dimension /
                     column of 'gp_coords'
+
+                - "powered_exponential":
+
+                    Powered exponential covariance function with the exponent specified by 'cov_fct_shape' parameter
+                    (using the parametrization of Diggle and Ribeiro, 2007)
+
+                - "wendland":
+
+                    Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
 
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance).

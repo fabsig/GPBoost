@@ -181,17 +181,9 @@ Model specification parameters
 
    -  Covariance function for the Gaussian process. Available options: 
 
-      - ``exponential`` : Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007)
-
-      - ``gaussian`` : Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
-
       - ``matern`` : Matern covariance function with the smoothness specified by the ``cov_fct_shape`` parameter (using the parametrization of Rasmussen and Williams, 2006)
 
-      - ``matern_estimate shape`` : same as ``matern`` but the smoothness parameter is also estimated
-
-      - ``powered_exponential`` : Powered exponential covariance function with the exponent specified by ``cov_fct_shape`` parameter (using the parametrization of Diggle and Ribeiro, 2007)
-
-      - ``wendland`` : Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
+      - ``matern_estimate_shape`` : same as ``matern`` but the smoothness parameter is also estimated
 
       - ``matern_space_time`` : Spatio-temporal Matern covariance function with different range parameters for space and time
 
@@ -201,7 +193,15 @@ Model specification parameters
 
       - ``matern_ard_estimate_shape`` : same as ``matern_ard`` but the smoothness parameter is also estimated
 
+      - ``exponential`` : Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007)
+
+      - ``gaussian`` : Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
+
       - ``gaussian_ard``: Anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate dimension / column of ``gp_coords``
+
+      - ``powered_exponential`` : Powered exponential covariance function with the exponent specified by ``cov_fct_shape`` parameter (using the parametrization of Diggle and Ribeiro, 2007)
+
+      - ``wendland`` : Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
 
 -  ``cov_fct_shape`` : double, (default = 1.5)
 

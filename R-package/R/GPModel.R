@@ -54,21 +54,21 @@
 #' @param cov_function A \code{string} specifying the covariance function for the Gaussian process. 
 #' Available options:
 #' \itemize{
-#' \item{"exponential": Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
-#' \item{"gaussian": Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
 #' \item{ "matern": Matern covariance function with the smoothness specified by 
 #' the \code{cov_fct_shape} parameter (using the parametrization of Rasmussen and Williams, 2006) }
 #' \item{ "matern_estimate_shape": same as "matern" but the smoothness parameter is also estimated }
-#' \item{"powered_exponential": powered exponential covariance function with the exponent specified by 
-#' the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribeiro, 2007) }
-#' \item{ "wendland": Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS) }
 #' \item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time. 
 #' Note that the first column in \code{gp_coords} must correspond to the time dimension }
 #' \item{ "matern_ard": anisotropic Matern covariance function with Automatic Relevance Determination (ARD), 
 #' i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
 #' \item{ "matern_ard_estimate_shape": same as "matern_ard" but the smoothness parameter is also estimated }
+#' \item{"exponential": Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
+#' \item{"gaussian": Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
 #' \item{ "gaussian_ard": anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance Determination (ARD), 
 #' i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
+#' \item{"powered_exponential": powered exponential covariance function with the exponent specified by 
+#' the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribeiro, 2007) }
+#' \item{ "wendland": Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS) }
 #' }
 #' @param cov_fct_shape A \code{numeric} specifying the shape parameter of the covariance function 
 #' (e.g., smoothness parameter for Matern and Wendland covariance)  
