@@ -103,6 +103,16 @@ namespace LightGBM {
 	*/
 	class RegressionL2loss : public ObjectiveFunction {
 	public:
+
+		int NumModelPerIteration() const override { 
+			if (has_gp_model_) {
+				return(num_sets_re_);
+			}
+			else {
+				return 1;
+			}		
+		}
+
 		explicit RegressionL2loss(const Config& config)
 			: deterministic_(config.deterministic) {
 			sqrt_ = config.reg_sqrt;
@@ -161,7 +171,7 @@ namespace LightGBM {
 					}//end Gaussian data
 					else {//non-Gaussian data
 #pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
+						for (data_size_t i = 0; i < num_data_ * num_sets_re_; ++i) {
 							hessians[i] = 1.0f;
 						}
 						if (train_gp_model_cov_pars_) {//also train covariance parameters
@@ -259,7 +269,13 @@ namespace LightGBM {
 			}
 		}
 
-		double BoostFromScore(int) const override {
+		void FindInitScoreGP() const override {
+			if (has_gp_model_ && likelihood_type_ != std::string("gaussian")) {
+				re_model_->FindInitialValueBoosting();
+			}
+		}
+
+		double BoostFromScore(int num_tree) const override {
 			double suml = 0.0f;
 			double sumw = 0.0f;
 			double initscore = 0.0f;
@@ -282,7 +298,7 @@ namespace LightGBM {
 						initscore = suml / sumw;
 					}
 					else {
-						re_model_->FindInitialValueBoosting(&initscore);
+						initscore = re_model_->GetInitialValueBoosting(num_tree);
 					}
 					Log::Info("[GPBoost with %s likelihood]: initscore=%f",
 						likelihood_type_.c_str(), initscore);

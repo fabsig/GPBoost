@@ -473,9 +473,55 @@ namespace GPBoost {
 	void CalcZtVGivenIndices(const data_size_t num_data,
 		const data_size_t num_re,
 		const data_size_t* const random_effects_indices_of_data,
-		const vec_t& v,
-		vec_t& ZtV,
+		const double* const v,
+		double* ZtV,
 		bool initialize_zero);
+
+	/*!
+	* \brief Create a sparse block diagonal matrix given two block matrices
+	* \param A Square matrix A
+	* \param B Square matrix B
+	* \param BD[out] Sparse block diagonal matrix
+	*/
+	//T_mat needs to be a sp_mat_t or sp_mat_rm_t
+	template <class T_mat>
+	void CreatSparseBlockDiagonalMartix(const T_mat& A, const T_mat& B, T_mat& BD) {
+		data_size_t nrow_A = (data_size_t)A.rows();
+		data_size_t ncol_A = (data_size_t)A.cols();
+		data_size_t nrow_BD = nrow_A + (data_size_t)B.rows();
+		data_size_t ncol_BD = ncol_A + (data_size_t)B.cols();
+		int numThreads = omp_get_max_threads();
+		std::vector<std::vector<Triplet_t>> threadTriplets(numThreads);
+#pragma omp parallel
+		{
+			int tid = omp_get_thread_num();
+			auto& localTriplets = threadTriplets[tid];
+
+#pragma omp for
+			for (int k = 0; k < A.outerSize(); ++k) {
+				for (typename T_mat::InnerIterator it(A, k); it; ++it) {
+					localTriplets.emplace_back(it.row(), it.col(), it.value());
+				}
+			}
+#pragma omp for
+			for (int k = 0; k < B.outerSize(); ++k) {
+				for (typename T_mat::InnerIterator it(B, k); it; ++it) {
+					localTriplets.emplace_back(it.row() + nrow_A, it.col() + ncol_A, it.value());
+				}
+			}
+		}
+		std::vector<Triplet_t> triplets;
+		for (const auto& local : threadTriplets) {
+			triplets.insert(triplets.end(), local.begin(), local.end());
+		}
+		BD = T_mat(nrow_BD, ncol_BD);
+		BD.setFromTriplets(triplets.begin(), triplets.end());
+	}//end CreatSparseBlockDiagonalMartix (sparse)
+
+	/*!
+	* \brief Scalar product of columns i and j of the matrix M
+	*/
+	double InnerProductTwoColumns(const sp_mat_t& M, int i, int j);
 
 }  // namespace GPBoost
 

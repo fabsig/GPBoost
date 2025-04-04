@@ -292,11 +292,14 @@ namespace GPBoost {
 	void CalcZtVGivenIndices(const data_size_t num_data,
 		const data_size_t num_re,
 		const data_size_t* const random_effects_indices_of_data,
-		const vec_t& v,
-		vec_t& ZtV,
+		const double* const v,
+		double* ZtV,
 		bool initialize_zero) {
 		if (initialize_zero) {
-			ZtV = vec_t::Zero(num_re);
+#pragma omp parallel for schedule(static)
+			for (data_size_t i = 0; i < num_re; ++i) {
+				ZtV[i] = 0.;
+			}
 		}
 #pragma omp parallel
 		{
@@ -316,6 +319,26 @@ namespace GPBoost {
 		//for (data_size_t i = 0; i < num_data; ++i) {
 		//	ZtV[random_effects_indices_of_data[i]] += v[i];
 		//}
+	}
+
+	double InnerProductTwoColumns(const sp_mat_t& M, int i, int j) {
+		double scalar_prod = 0.0;
+		sp_mat_t::InnerIterator it_i(M, i);
+		sp_mat_t::InnerIterator it_j(M, j);
+		while (it_i && it_j) {
+			if (it_i.row() == it_j.row()) {
+				scalar_prod += it_i.value() * it_j.value();
+				++it_i;
+				++it_j;
+			}
+			else if (it_i.row() < it_j.row()) {
+				++it_i;
+			}
+			else {
+				++it_j;
+			}
+		}
+		return(scalar_prod);
 	}
 
 }  // namespace GPBoost

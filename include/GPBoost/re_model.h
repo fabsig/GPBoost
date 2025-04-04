@@ -214,10 +214,15 @@ namespace GPBoost {
 			const double* fixed_effects);
 
 		/*!
-		* \brief Find constant initial value of ensenmble for boosting (used only for non-Gaussian data). 
-		* \param[out] init_score Initial value for boosting ensemble (=initial score in LightGBM)
+		* \brief Find constant initial value of ensenmble for boosting (used only for non-Gaussian likelihoods)
 		*/
-		void FindInitialValueBoosting(double* init_score);
+		void FindInitialValueBoosting();
+
+		/*!
+		* \brief Find constant initial value of ensenmble for boosting (used only for non-Gaussian likelihoods)
+		* \return init_score Initial value for boosting ensemble (=initial score in LightGBM)
+		*/
+		double GetInitialValueBoosting(int num_set_re);
 
 		/*!
 		* \brief Does a line search as, e.g., in Friedman (2001) to find the optimal step length for every boosting update (only used when has_gp_model_ == true)
@@ -394,6 +399,8 @@ namespace GPBoost {
 
 		int GetNumIt() const;
 
+		int GetNumSetsRE() const;
+
 		int GetNumData() const;
 
 		/*!
@@ -471,6 +478,8 @@ namespace GPBoost {
 		bool cov_pars_have_been_provided_for_prediction_ = false; //This is true if Predict() has been called once with cov_pars_pred != nullptr (saved in order to determine whether covariance matrix needs to be factorized again or not)
 		vec_t std_dev_cov_pars_;
 		int num_cov_pars_;
+		/*! \brief Number of sets of random effects / GPs for different parameters with REs / GPs. This is larger than 1, e.g., heteroscedastic models */
+		int num_sets_re_ = 1;
 		// Linear regression coefficients related variables
 		vec_t coef_;//linear regression coefficients for fixed effects (in case there are any)
 		bool has_covariates_ = false;
@@ -481,6 +490,8 @@ namespace GPBoost {
 		vec_t init_aux_pars_; // Additional parameters for non-Gaussian likelihoods
 		bool init_aux_pars_given_ = false;
 		bool model_has_been_estimated_ = false;
+		std::vector<double> init_score_boosting_;
+		bool init_score_boosting_calculated_ = false;
 	};
 
 }  // namespace GPBoost

@@ -82,7 +82,7 @@ namespace GPBoost {
 		}
 		bool calc_likelihood = !should_redetermine_neighbors_vecchia && !should_print_trace;
 		// Determine number of covariance and linear regression coefficient parameters
-		int num_cov_pars_optim = 0, num_covariates = 0, num_aux_pars = 0;
+		int num_cov_pars_optim = 0, num_coef = 0, num_aux_pars = 0;
 		if (objfn_data->learn_cov_aux_pars_) {
 			num_cov_pars_optim = re_model_templ_->GetNumCovPar();
 			if (objfn_data->profile_out_marginal_variance_) {
@@ -93,9 +93,9 @@ namespace GPBoost {
 			}
 		}
 		if (has_covariates) {
-			num_covariates = re_model_templ_->GetNumCoef();
+			num_coef = re_model_templ_->GetNumCoef();
 		}
-		CHECK((int)pars.size() == num_cov_pars_optim + num_covariates + num_aux_pars);
+		CHECK((int)pars.size() == num_cov_pars_optim + num_coef + num_aux_pars);
 		// Extract covariance parameters, regression coefficients, and additional likelihood parameters from pars vector
 		vec_t cov_pars, beta, fixed_effects_vec, aux_pars;
 		const double* aux_pars_ptr = nullptr;
@@ -110,7 +110,7 @@ namespace GPBoost {
 				cov_pars = pars.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
 			}
 			if (re_model_templ_->EstimateAuxPars()) {
-				aux_pars = pars.segment(num_cov_pars_optim + num_covariates, num_aux_pars).array().exp().matrix();
+				aux_pars = pars.segment(num_cov_pars_optim + num_coef, num_aux_pars).array().exp().matrix();
 				aux_pars_ptr = aux_pars.data();
 			}
 		}
@@ -122,7 +122,7 @@ namespace GPBoost {
 		}
 		if (has_covariates) {
 			if (should_print_trace || calc_likelihood) {
-				beta = pars.segment(num_cov_pars_optim, num_covariates);
+				beta = pars.segment(num_cov_pars_optim, num_coef);
 			}
 		}
 		if (should_print_trace) {//print trace information
@@ -184,11 +184,11 @@ namespace GPBoost {
 				if (objfn_data->learn_cov_aux_pars_) {
 					(*gradient).segment(0, num_cov_pars_optim) = grad_cov.segment(0, num_cov_pars_optim);
 					if (re_model_templ_->EstimateAuxPars()) {
-						(*gradient).segment(num_cov_pars_optim + num_covariates, num_aux_pars) = grad_cov.segment(num_cov_pars_optim, num_aux_pars);
+						(*gradient).segment(num_cov_pars_optim + num_coef, num_aux_pars) = grad_cov.segment(num_cov_pars_optim, num_aux_pars);
 					}
 				}
 				if (has_covariates) {
-					(*gradient).segment(num_cov_pars_optim, num_covariates) = grad_beta;
+					(*gradient).segment(num_cov_pars_optim, num_coef) = grad_beta;
 				}
 			}
 			if (calc_likelihood || gradient) {
@@ -251,7 +251,7 @@ namespace GPBoost {
 			bool estimate_coef_using_bfgs = re_model_templ_->HasCovariates() && !profile_out_regression_coef_;
 			bool estimate_coef_using_wls = re_model_templ_->HasCovariates() && profile_out_regression_coef_;
 			// Determine number of covariance and linear regression coefficient parameters
-			int num_cov_pars_optim = 0, num_covariates = 0, num_aux_pars = 0;
+			int num_cov_pars_optim = 0, num_coef = 0, num_aux_pars = 0;
 			if (learn_cov_aux_pars_) {
 				num_cov_pars_optim = re_model_templ_->GetNumCovPar();
 				if (profile_out_marginal_variance_) {
@@ -262,9 +262,9 @@ namespace GPBoost {
 				}
 			}
 			if (estimate_coef_using_bfgs) {
-				num_covariates = re_model_templ_->GetNumCoef();
+				num_coef = re_model_templ_->GetNumCoef();
 			}
-			CHECK((int)pars.size() == num_cov_pars_optim + num_covariates + num_aux_pars);
+			CHECK((int)pars.size() == num_cov_pars_optim + num_coef + num_aux_pars);
 			// Extract covariance parameters, regression coefficients, and additional likelihood parameters from pars vector
 			if (learn_cov_aux_pars_) {
 				if (profile_out_marginal_variance_) {
@@ -276,7 +276,7 @@ namespace GPBoost {
 					cov_pars = pars.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
 				}
 				if (re_model_templ_->EstimateAuxPars()) {
-					aux_pars = pars.segment(num_cov_pars_optim + num_covariates, num_aux_pars).array().exp().matrix();
+					aux_pars = pars.segment(num_cov_pars_optim + num_coef, num_aux_pars).array().exp().matrix();
 					re_model_templ_->SetAuxPars(aux_pars.data());
 				}
 			}
@@ -287,7 +287,7 @@ namespace GPBoost {
 				fixed_effects_ptr = fixed_effects_;
 			}			
 			else if (estimate_coef_using_bfgs) {
-				beta = pars.segment(num_cov_pars_optim, num_covariates);
+				beta = pars.segment(num_cov_pars_optim, num_coef);
 				re_model_templ_->UpdateFixedEffects(beta, fixed_effects_, fixed_effects_vec); // set y_ to resid = y - X * beta - fixed_effcts for Gaussian likelihood or fixed_effects_vec = fixed_effects_ + X * beta for non-Gaussian likelihoods
 				fixed_effects_ptr = fixed_effects_vec.data();
 			}
@@ -340,10 +340,10 @@ namespace GPBoost {
 					gradient.segment(0, num_cov_pars_optim) = grad_cov.segment(0, num_cov_pars_optim);
 				}
 				if (estimate_coef_using_bfgs) {
-					gradient.segment(num_cov_pars_optim, num_covariates) = grad_beta;
+					gradient.segment(num_cov_pars_optim, num_coef) = grad_beta;
 				}
 				if (re_model_templ_->EstimateAuxPars()) {
-					gradient.segment(num_cov_pars_optim + num_covariates, num_aux_pars) = grad_cov.segment(num_cov_pars_optim, num_aux_pars);
+					gradient.segment(num_cov_pars_optim + num_coef, num_aux_pars) = grad_cov.segment(num_cov_pars_optim, num_aux_pars);
 				}
 			}//end calc_gradient
 			// Check for NA or Inf
@@ -428,7 +428,7 @@ namespace GPBoost {
 			bool estimate_coef_using_bfgs = re_model_templ_->HasCovariates() && !profile_out_regression_coef_;
 			bool estimate_coef_using_wls = re_model_templ_->HasCovariates() && profile_out_regression_coef_;
 			// Determine number of covariance and linear regression coefficient parameters
-			int num_cov_pars_optim = 0, num_covariates = 0, num_aux_pars = 0;
+			int num_cov_pars_optim = 0, num_coef = 0, num_aux_pars = 0;
 			if (learn_cov_aux_pars_) {
 				num_cov_pars_optim = re_model_templ_->GetNumCovPar();
 				if (profile_out_marginal_variance_) {
@@ -439,9 +439,9 @@ namespace GPBoost {
 				}
 			}
 			if (estimate_coef_using_bfgs) {
-				num_covariates = re_model_templ_->GetNumCoef();
+				num_coef = re_model_templ_->GetNumCoef();
 			}
-			CHECK((int)pars.size() == num_cov_pars_optim + num_covariates + num_aux_pars);
+			CHECK((int)pars.size() == num_cov_pars_optim + num_coef + num_aux_pars);
 			// Extract covariance parameters, regression coefficients, and additional likelihood parameters from pars vector
 			if (learn_cov_aux_pars_) {
 				if (profile_out_marginal_variance_) {
@@ -453,7 +453,7 @@ namespace GPBoost {
 					cov_pars = pars.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
 				}
 				if (re_model_templ_->EstimateAuxPars()) {
-					aux_pars = pars.segment(num_cov_pars_optim + num_covariates, num_aux_pars).array().exp().matrix();
+					aux_pars = pars.segment(num_cov_pars_optim + num_coef, num_aux_pars).array().exp().matrix();
 					aux_pars_ptr = aux_pars.data();
 				}
 			}
@@ -462,7 +462,7 @@ namespace GPBoost {
 				aux_pars_ptr = re_model_templ_->GetAuxPars();
 			}
 			if (estimate_coef_using_bfgs) {
-				beta = pars.segment(num_cov_pars_optim, num_covariates);
+				beta = pars.segment(num_cov_pars_optim, num_coef);
 			}
 			else if(estimate_coef_using_wls){
 				re_model_templ_->GetBeta(beta);
@@ -486,7 +486,7 @@ namespace GPBoost {
 			vec_t& neg_step_dir) const {
 			bool estimate_coef_using_bfgs = re_model_templ_->HasCovariates() && !profile_out_regression_coef_;
 			// Determine number of covariance and linear regression coefficient parameters
-			int num_cov_pars_optim = 0, num_covariates = 0, num_aux_pars = 0;
+			int num_cov_pars_optim = 0, num_coef = 0, num_aux_pars = 0;
 			if (learn_cov_aux_pars_) {
 				num_cov_pars_optim = re_model_templ_->GetNumCovPar();
 				if (profile_out_marginal_variance_) {
@@ -497,22 +497,22 @@ namespace GPBoost {
 				}
 			}
 			if (estimate_coef_using_bfgs) {
-				num_covariates = re_model_templ_->GetNumCoef();
+				num_coef = re_model_templ_->GetNumCoef();
 			}
-			CHECK((int)pars.size() == num_cov_pars_optim + num_covariates + num_aux_pars);
-			CHECK((int)neg_step_dir.size() == num_cov_pars_optim + num_covariates + num_aux_pars);
+			CHECK((int)pars.size() == num_cov_pars_optim + num_coef + num_aux_pars);
+			CHECK((int)neg_step_dir.size() == num_cov_pars_optim + num_coef + num_aux_pars);
 			double max_lr = 1e99;
 			if (learn_cov_aux_pars_) {
 				vec_t neg_step_dir_cov_aux_pars(num_cov_pars_optim + num_aux_pars);
 				neg_step_dir_cov_aux_pars.segment(0, num_cov_pars_optim) = neg_step_dir.segment(0, num_cov_pars_optim);
 				if (re_model_templ_->EstimateAuxPars()) {
-					neg_step_dir_cov_aux_pars.segment(num_cov_pars_optim, num_aux_pars) = neg_step_dir.segment(num_cov_pars_optim + num_covariates, num_aux_pars);
+					neg_step_dir_cov_aux_pars.segment(num_cov_pars_optim, num_aux_pars) = neg_step_dir.segment(num_cov_pars_optim + num_coef, num_aux_pars);
 				}
 				max_lr = re_model_templ_->MaximalLearningRateCovAuxPars(neg_step_dir_cov_aux_pars);
 			}
 			if (estimate_coef_using_bfgs) {
-				vec_t beta = pars.segment(num_cov_pars_optim, num_covariates);
-				vec_t neg_step_dir_beta = neg_step_dir.segment(num_cov_pars_optim, num_covariates);
+				vec_t beta = pars.segment(num_cov_pars_optim, num_coef);
+				vec_t neg_step_dir_beta = neg_step_dir.segment(num_cov_pars_optim, num_coef);
 				double max_lr_beta = re_model_templ_->MaximalLearningRateCoef(beta, neg_step_dir_beta);
 				if (max_lr_beta < max_lr) {
 					max_lr = max_lr_beta;
@@ -579,7 +579,7 @@ namespace GPBoost {
 		//	CHECK(beta.size() == X_.cols());
 		//}
 		// Determine number of covariance and linear regression coefficient parameters
-		int num_cov_pars_optim = 0, num_covariates = 0, num_aux_pars = 0;
+		int num_cov_pars_optim = 0, num_coef = 0, num_aux_pars = 0;
 		if (learn_cov_aux_pars) {
 			num_cov_pars_optim = num_cov_par;
 			if (profile_out_marginal_variance) {
@@ -590,10 +590,10 @@ namespace GPBoost {
 			}
 		}
 		if (has_covariates && !profile_out_regression_coef) {
-			num_covariates = (int)beta.size();
+			num_coef = (int)beta.size();
 		}
 		// Initialization of parameters
-		vec_t pars_init(num_cov_pars_optim + num_covariates + num_aux_pars);//order of parameters: 1. cov_pars, 2. coefs, 3. aux_pars
+		vec_t pars_init(num_cov_pars_optim + num_coef + num_aux_pars);//order of parameters: 1. cov_pars, 2. coefs, 3. aux_pars
 		if (learn_cov_aux_pars) {
 			if (profile_out_marginal_variance) {
 				pars_init.segment(0, num_cov_pars_optim) = cov_pars.segment(1, num_cov_pars_optim).array().log().matrix();//exclude nugget and transform to log-scale
@@ -603,12 +603,12 @@ namespace GPBoost {
 			}
 			if (re_model_templ->EstimateAuxPars()) {
 				for (int i = 0; i < num_aux_pars; ++i) {
-					pars_init[num_cov_pars_optim + num_covariates + i] = std::log(aux_pars[i]);//transform to log-scale
+					pars_init[num_cov_pars_optim + num_coef + i] = std::log(aux_pars[i]);//transform to log-scale
 				}
 			}
 		}
 		if (has_covariates && !profile_out_regression_coef) {
-			pars_init.segment(num_cov_pars_optim, num_covariates) = beta;//regresion coefficients
+			pars_init.segment(num_cov_pars_optim, num_coef) = beta;//regresion coefficients
 		}
 		//Do optimization
 		optim::algo_settings_t settings;
@@ -682,12 +682,12 @@ namespace GPBoost {
 			}
 			if (re_model_templ->EstimateAuxPars()) {
 				for (int i = 0; i < num_aux_pars; ++i) {
-					cov_pars[num_cov_par + i] = std::exp(pars_init[num_cov_pars_optim + num_covariates + i]);//back-transform to original scale
+					cov_pars[num_cov_par + i] = std::exp(pars_init[num_cov_pars_optim + num_coef + i]);//back-transform to original scale
 				}
 			}
 		}
 		if (has_covariates && !profile_out_regression_coef) {
-			beta = pars_init.segment(num_cov_pars_optim, num_covariates);
+			beta = pars_init.segment(num_cov_pars_optim, num_coef);
 		}
 	}//end OptimExternal
 

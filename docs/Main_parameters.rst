@@ -153,6 +153,8 @@ Model specification parameters
 
       -  ``t_fix_df`` : t-distribution with the degrees-of-freedom (df) held fixed and not estimated. The df can be set via the ``likelihood_additional_param`` parameter 
 
+      - ``gaussian_heteroscedastic`` :  Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a ``vecchia`` approximation
+
       - Note: other likelihoods could be implemented upon request
 
 -  ``group_data`` : two dimensional array / matrix of doubles or strings, optional (default = None)

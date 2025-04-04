@@ -17,6 +17,8 @@
 #' \item{ "t": t-distribution (e.g., for robust regression) }
 #' \item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated. 
 #' The df can be set via the \code{likelihood_additional_param} parameter }
+#' \item{ "gaussian_heteroscedastic": Gaussian likelihood where both the mean and the variance 
+#' are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation }
 #' \item{ Note: other likelihoods could be implemented upon request }
 #' }
 #' @param likelihood_additional_param A \code{numeric} specifying an additional parameter for the \code{likelihood} 
@@ -429,28 +431,37 @@ gpb.GPModel <- R6::R6Class(
         if (!is.null(model_list[["y"]])) {
           private$y_loaded_from_file = model_list[["y"]]
         }
+        private$num_sets_re = model_list[["num_sets_re"]]
         private$has_covariates = model_list[["has_covariates"]]
         if (model_list[["has_covariates"]]) {
           private$coefs_loaded_from_file = model_list[["coefs"]]
           private$num_coef = model_list[["num_coef"]]
+          private$num_covariates = model_list[["num_covariates"]]
+          if (private$num_coef != private$num_covariates * private$num_sets_re) stop("incorrect 'num_coef'")
           private$X_loaded_from_file = model_list[["X"]]
           if (is.null(colnames(private$X_loaded_from_file))) {
-            private$coef_names <- c(private$coef_names,paste0("Covariate_",1:private$num_coef))
+            private$coef_names <- c(private$coef_names,paste0("Covariate_",1:private$num_covariates))
           } else {
             private$coef_names <- c(private$coef_names,colnames(private$X_loaded_from_file))
+          }
+          if (private$num_sets_re == 2) {
+            private$coef_names <- c(private$coef_names, paste0(private$coef_names,"_scale"))
           }
         }
         private$model_fitted = model_list[["model_fitted"]]
       }# end !is.null(modelfile) | !is.null(model_list)
       
-      if(likelihood == "gaussian" & gp_approx != "vecchia_latent"){
-        private$cov_par_names <- c("Error_term")
-      }else{
-        private$cov_par_names <- c()
-      }
       if (is.null(group_data) & is.null(gp_coords)) {
         stop("GPModel: Both ", sQuote("group_data"), " and " , sQuote("gp_coords"),
              " are NULL. Provide at least one of them.")
+      }
+      if (likelihood == "gaussian_heteroscedastic") {
+        private$num_sets_re = 2
+      }
+      if (likelihood == "gaussian" & gp_approx != "vecchia_latent") {
+        private$cov_par_names <- c("Error_term")
+      } else {
+        private$cov_par_names <- c()
       }
       private$matrix_inversion_method <- as.character(matrix_inversion_method)
       private$seed <- as.integer(seed)
@@ -730,6 +741,11 @@ gpb.GPModel <- R6::R6Class(
           }
         } # End set data for GP random coefficients
       } # End set data for Gaussian process part
+      
+      if (private$num_sets_re == 2) {
+        private$cov_par_names <- c(private$cov_par_names, paste0(private$cov_par_names,"_scale"))
+        private$re_comp_names <- c(private$re_comp_names, paste0(private$re_comp_names,"_scale"))
+      }
       # Set IDs for independent processes (cluster_ids)
       if (!is.null(cluster_ids)) {
         if (is.vector(cluster_ids)) {
@@ -887,11 +903,15 @@ gpb.GPModel <- R6::R6Class(
           stop("fit.GPModel: Number of data points in ", sQuote("X"), " does not match number of data points of initialized model")
         }
         private$has_covariates <- TRUE
-        private$num_coef <- as.integer(dim(X)[2])
+        private$num_covariates <- as.integer(dim(X)[2])
+        private$num_coef <- private$num_covariates * private$num_sets_re
         if (is.null(colnames(X))) {
-          private$coef_names <- c(private$coef_names,paste0("Covariate_",1:private$num_coef))
+          private$coef_names <- c(private$coef_names,paste0("Covariate_",1:private$num_covariates))
         } else {
           private$coef_names <- c(private$coef_names,colnames(X))
+        }
+        if (private$num_sets_re == 2) {
+          private$coef_names <- c(private$coef_names, paste0(private$coef_names,"_scale"))
         }
         X <- as.vector(matrix(X))#matrix() is needed in order that all values are contiguous in memory (when colnames is not NULL)
       } else {
@@ -912,7 +932,7 @@ gpb.GPModel <- R6::R6Class(
           , private$handle
           , y
           , X
-          , private$num_coef
+          , private$num_covariates
           , offset
         )
       }
@@ -974,8 +994,8 @@ gpb.GPModel <- R6::R6Class(
         } else {
           stop("GPModel.neg_log_likelihood: Can only use ", sQuote("vector"), " as ", sQuote("fixed_effects"))
         }
-        if (length(fixed_effects) != private$num_data) {
-          stop("GPModel.neg_log_likelihood: Length of ", sQuote("fixed_effects"), " does not match number of observed data points")
+        if (length(fixed_effects) != private$num_data * private$num_sets_re) {
+          stop("GPModel.neg_log_likelihood: Length of ", sQuote("fixed_effects"), " is not correct ")
         }
       }# end fixed_effects
       if (!is.null(aux_pars)) {
@@ -1128,7 +1148,7 @@ gpb.GPModel <- R6::R6Class(
       if (private$model_has_been_loaded_from_saved_file) {
         coef <- private$coefs_loaded_from_file
       } else {
-        if (is.null(private$num_coef)) {
+        if (is.null(private$num_covariates)) {
           stop("GPModel: ", sQuote("fit"), " has not been called")
         }
         if (private$params[["std_dev"]]) {
@@ -1289,7 +1309,7 @@ gpb.GPModel <- R6::R6Class(
         if (dim(X_pred)[1] != num_data_pred) {
           stop("set_prediction_data: Number of data points in ", sQuote("X_pred"), " is not correct")
         }
-        if (dim(X_pred)[2] != private$num_coef) {
+        if (dim(X_pred)[2] != private$num_covariates) {
           stop("set_prediction_data: Number of covariates in ", sQuote("X_pred"), " is not correct")
         }
         X_pred <- as.vector(matrix(X_pred))
@@ -1576,7 +1596,7 @@ gpb.GPModel <- R6::R6Class(
           if (dim(X_pred)[1] != num_data_pred) {
             stop("predict.GPModel: Number of data points in ", sQuote("X_pred"), " is not correct")
           }
-          if (dim(X_pred)[2] != private$num_coef) {
+          if (dim(X_pred)[2] != private$num_covariates) {
             stop("predict.GPModel: Number of covariates in ", sQuote("X_pred"), " is not correct")
           }
           if (private$model_has_been_loaded_from_saved_file) {
@@ -1728,8 +1748,8 @@ gpb.GPModel <- R6::R6Class(
         stop("GPModel: 'predict_training_data_random_effects' is currently not 
         implemented for models that have been loaded from a saved file")
       }
-      num_re_comps = private$num_group_re + private$num_group_rand_coef + 
-        private$num_gp + private$num_gp_rand_coef
+      num_re_comps = (private$num_group_re + private$num_group_rand_coef + 
+        private$num_gp + private$num_gp_rand_coef) * private$num_sets_re
       if (!is.null(private$drop_intercept_group_rand_effect)) {
         num_re_comps <- num_re_comps - sum(private$drop_intercept_group_rand_effect)
       }
@@ -1817,13 +1837,13 @@ gpb.GPModel <- R6::R6Class(
       if (!private$has_covariates) {
         stop("GPModel: Model has no covariate data for linear predictor")
       }
-      covariate_data <- numeric(private$num_data * private$num_coef)
+      covariate_data <- numeric(private$num_data * private$num_covariates)
       .Call(
         GPB_GetCovariateData_R
         , private$handle
         , covariate_data
       )
-      covariate_data <- matrix(covariate_data,ncol=private$num_coef)
+      covariate_data <- matrix(covariate_data,ncol=private$num_covariates)
       return(covariate_data)
     },
     
@@ -1923,10 +1943,12 @@ gpb.GPModel <- R6::R6Class(
       model_list[["matrix_inversion_method"]] <- private$matrix_inversion_method
       model_list[["seed"]] <- private$seed
       model_list[["num_parallel_threads"]] <- private$num_parallel_threads
+      model_list[["num_sets_re"]] <- private$num_sets_re
       # Covariate data
       model_list[["has_covariates"]] <- private$has_covariates
       if (private$has_covariates) {
         model_list[["coefs"]] <- self$get_coef()
+        model_list[["num_covariates"]] <- private$num_covariates
         model_list[["num_coef"]] <- private$num_coef
         model_list[["X"]] <- self$get_covariate_data()
       }
@@ -2048,6 +2070,7 @@ gpb.GPModel <- R6::R6Class(
     num_gp_rand_coef = 0L,
     has_covariates = FALSE,
     has_offset = FALSE,
+    num_covariates = 0,
     num_coef = 0,
     group_data = NULL,
     nb_groups = NULL,
@@ -2108,6 +2131,7 @@ gpb.GPModel <- R6::R6Class(
                   seed_rand_vec_trace = 1L,
                   piv_chol_rank = 50L,
                   estimate_aux_pars = TRUE),
+    num_sets_re = 1,
     
     determine_num_cov_pars = function(likelihood) {
       if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time" | private$cov_function == "matern_estimate_shape") {
@@ -2128,6 +2152,9 @@ gpb.GPModel <- R6::R6Class(
       }
       if (likelihood == "gaussian" & private$gp_approx != "vecchia_latent"){
         private$num_cov_pars <- private$num_cov_pars + 1L
+      }
+      if (private$num_sets_re > 1) {
+        private$num_cov_pars <- private$num_cov_pars * private$num_sets_re
       }
       storage.mode(private$num_cov_pars) <- "integer"
     },
@@ -2164,9 +2191,10 @@ gpb.GPModel <- R6::R6Class(
             storage.mode(params[["init_coef"]]) <- "double"
           }
           params[["init_coef"]] <- as.vector(params[["init_coef"]])
-          num_coef <- as.integer(length(params[["init_coef"]]))
-          if (is.null(private$num_coef) | private$num_coef==0) {
-            private$num_coef <- num_coef
+          num_covariates <- as.integer(length(params[["init_coef"]]))
+          if (is.null(private$num_covariates) | private$num_covariates==0) {
+            private$num_covariates <- num_covariates
+            private$num_coef <- private$num_covariates * private$num_sets_re
           }
         } else {
           stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("init_coef"))

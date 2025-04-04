@@ -88,7 +88,12 @@ namespace LightGBM {
 		objective_function_ = objective_function;
 		num_tree_per_iteration_ = num_class_;
 		if (objective_function_ != nullptr) {
-			num_tree_per_iteration_ = objective_function_->NumModelPerIteration();
+			if (objective_function_->HasGPModel()) {
+				num_tree_per_iteration_ = objective_function_->GetNumSetsRE_GPModel();
+			}
+			else {
+				num_tree_per_iteration_ = objective_function_->NumModelPerIteration();
+			}
 			if (objective_function_->IsRenewTreeOutput() && !config->monotone_constraints.empty()) {
 				Log::Fatal("Cannot use ``monotone_constraints`` in %s objective, please disable it.", objective_function_->GetName());
 			}
@@ -351,6 +356,9 @@ namespace LightGBM {
 	double ObtainAutomaticInitialScore(const ObjectiveFunction* fobj, int class_id) {
 		double init_score = 0.0;
 		if (fobj != nullptr) {
+			if (class_id == 0) {
+				fobj->FindInitScoreGP();
+			}
 			init_score = fobj->BoostFromScore(class_id);
 		}
 		if (Network::num_machines() > 1) {
@@ -480,6 +488,9 @@ namespace LightGBM {
 					double output = 0.0;
 					if (!class_need_train_[cur_tree_id]) {
 						if (objective_function_ != nullptr) {
+							if (cur_tree_id == 0) {
+								objective_function_->FindInitScoreGP();
+							}
 							output = objective_function_->BoostFromScore(cur_tree_id);
 						}
 					}

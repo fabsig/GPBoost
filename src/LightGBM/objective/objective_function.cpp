@@ -116,10 +116,16 @@ void ObjectiveFunction::InitGPModel(REModel* re_model,
         re_model_->InitializeCovParsIfNotDefined(nullptr, nullptr);
         likelihood_type_ = re_model_->GetLikelihood();
     }
+    num_sets_re_ = re_model_->GetNumSetsRE();
 }
 
 bool ObjectiveFunction::HasGPModel() const {
     return(has_gp_model_);
+}
+
+int ObjectiveFunction::GetNumSetsRE_GPModel() const {
+    CHECK(has_gp_model_);
+    return(num_sets_re_);
 }
 
 bool ObjectiveFunction::UseGPModelForValidation() const {

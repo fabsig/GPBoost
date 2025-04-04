@@ -16,6 +16,8 @@ Available options:
 \item{ "t": t-distribution (e.g., for robust regression) }
 \item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated. 
 The df can be set via the \code{likelihood_additional_param} parameter }
+\item{ "gaussian_heteroscedastic": gaussian likelihood where both the mean and the variance 
+are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation }
 \item{ Note: other likelihoods could be implemented upon request }
 }}
 

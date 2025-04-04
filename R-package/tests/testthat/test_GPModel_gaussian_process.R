@@ -1062,7 +1062,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # "vecchia_latent"
     params_latent <- params
     params_latent$std_dev = FALSE
-    params_latent$init_cov_pars <- NULL
+    params_latent$init_cov_pars <- init_cov_pars[2:3]
+    params_latent$init_aux_pars <- init_cov_pars[1]
     params_latent$optimizer_cov <- "lbfgs"
     params_latent$optimizer_coef <- "lbfgs"
     params_latent$cg_preconditioner_type <- NULL
@@ -1148,7 +1149,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # "vecchia_latent"
     params_latent <- params
     params_latent$std_dev = FALSE
-    params_latent$init_cov_pars <- NULL
+    params_latent$init_cov_pars <- init_cov_pars[2:3]
+    params_latent$init_aux_pars <- init_cov_pars[1]
     params_latent$optimizer_cov <- "lbfgs"
     params_latent$optimizer_coef <- "lbfgs"
     params_latent$cg_preconditioner_type <- NULL

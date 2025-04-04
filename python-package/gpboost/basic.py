@@ -4087,6 +4087,10 @@ class GPModel(object):
 
                         t-distribution with the degrees-of-freedom (df) held fixed and not estimated. The df can be set via the 'likelihood_additional_param' parameter
 
+                    - "gaussian_heteroscedastic":
+
+                        Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation
+
                     - Note: other likelihoods could be implemented upon request
             
             group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
@@ -4317,6 +4321,7 @@ class GPModel(object):
         self.num_gp_rand_coef = 0
         self.has_covariates = False
         self.has_offset = False
+        self.num_covariates = 0
         self.num_coef = 0
         self.group_data = None
         self.nb_groups = None
@@ -4346,10 +4351,7 @@ class GPModel(object):
         self.cluster_ids = None
         self.cluster_ids_map_to_int = None
         self.free_raw_data = False
-        if likelihood == "gaussian" and gp_approx != "vecchia_latent":
-            self.cov_par_names = ["Error_term"]
-        else:
-            self.cov_par_names = []
+        self.cov_par_names = []
         self.re_comp_names = []
         self.coef_names = None
         self.num_data_pred = 0
@@ -4382,6 +4384,7 @@ class GPModel(object):
                        "piv_chol_rank": 50,
                        "estimate_aux_pars": True
                        }
+        self.num_sets_re = 1
 
         if (model_file is not None) or (model_dict is not None):
             if model_file is not None:
@@ -4425,26 +4428,38 @@ class GPModel(object):
                 self.cov_pars_loaded_from_file = np.array(model_dict.get("cov_pars"))
             if model_dict.get("y") is not None:
                 self.y_loaded_from_file = np.array(model_dict.get("y"))
+            self.num_sets_re = model_dict.get("num_sets_re")
             self.has_covariates = model_dict.get("has_covariates")
             if model_dict.get("has_covariates"):
                 if model_dict.get("coefs") is not None:
                     self.coefs_loaded_from_file = np.array(model_dict.get("coefs"))
+                self.num_covariates = model_dict.get("num_covariates")
                 self.num_coef = model_dict.get("num_coef")
+                if self.num_coef != self.num_covariates * self.num_sets_re:
+                    raise ValueError("incorrect 'num_coef'")
                 if model_dict.get("X") is not None:
                     self.X_loaded_from_file = np.array(model_dict.get("X"))
                     _, X_names = _format_check_data(data=self.X_loaded_from_file, get_variable_names=True, data_name="X",
                                                     check_data_type=True,
                                                     convert_to_type=np.float64)
                     self.coef_names = []
-                    for ii in range(self.num_coef):
+                    for ii in range(self.num_covariates):
                         if X_names is None:
                             self.coef_names.append("Covariate_" + str(ii + 1))
                         else:
                             self.coef_names.append(X_names[ii])
+                    if self.num_sets_re == 2:
+                        self.coef_names = self.coef_names + [name + "_scale" for name in self.coef_names]
             self.model_fitted = model_dict.get("model_fitted")
 
         if group_data is None and gp_coords is None:
             raise ValueError("Both group_data and gp_coords are None. Provide at least one of them")
+        if likelihood == "gaussian_heteroscedastic":
+            self.num_sets_re = 2
+        if likelihood == "gaussian" and gp_approx != "vecchia_latent":
+            self.cov_par_names = ["Error_term"]
+        else:
+            self.cov_par_names = []
 
         self.matrix_inversion_method = matrix_inversion_method
         self.seed = seed
@@ -4659,6 +4674,9 @@ class GPModel(object):
                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
                                  "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range"])
                         self.re_comp_names.append("GP_rand_coef_" + gp_rand_coef_data_names[ii])
+        if self.num_sets_re == 2:
+            self.cov_par_names = self.cov_par_names + [name + "_scale" for name in self.cov_par_names] 
+            self.re_comp_names = self.re_comp_names + [name + "_scale" for name in self.re_comp_names]  
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids is not None:
             cluster_ids = _format_check_1D_data(cluster_ids, data_name="cluster_ids", check_data_type=False,
@@ -4751,6 +4769,8 @@ class GPModel(object):
             self.num_cov_pars = self.num_cov_pars - self.drop_intercept_group_rand_effect.sum()
         if likelihood == "gaussian" and self.gp_approx != "vecchia_latent":
             self.num_cov_pars = self.num_cov_pars + 1
+        if self.num_sets_re > 1:
+            self.num_cov_pars = self.num_cov_pars * self.num_sets_re
 
     def __update_params(self, params):
         if params is not None:
@@ -4770,8 +4790,9 @@ class GPModel(object):
                         params[param] = _format_check_1D_data(params[param], data_name="params['init_coef']",
                                                               check_data_type=True, check_must_be_int=False,
                                                               convert_to_type=np.float64)
-                        if self.num_coef is None or self.num_coef == 0:
-                            self.num_coef = params["init_coef"].shape[0]
+                        if self.num_covariates is None or self.num_covariates == 0:
+                            self.num_covariates = params["init_coef"].shape[0]
+                            self.num_coef = self.num_covariates * self.num_sets_re
                         if params["init_coef"].shape[0] != self.num_coef:
                             raise ValueError("params['init_coef'] does not contain the correct number of parameters")
                 if param == "init_aux_pars":
@@ -4964,14 +4985,17 @@ class GPModel(object):
             if X.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in X")
             self.has_covariates = True
-            self.num_coef = X.shape[1]
+            self.num_covariates = X.shape[1]
+            self.num_coef = self.num_covariates * self.num_sets_re
             X_c, _, _ = c_float_array(X.flatten(order='F'))
             self.coef_names = []
-            for ii in range(self.num_coef):
+            for ii in range(self.num_covariates):
                 if X_names is None:
                     self.coef_names.append("Covariate_" + str(ii + 1))
                 else:
                     self.coef_names.append(X_names[ii])
+            if self.num_sets_re == 2:
+                self.coef_names = self.coef_names + [name + "_scale" for name in self.coef_names]
         else:
             self.has_covariates = False
         # Set parameters for optimizer
@@ -4987,7 +5011,7 @@ class GPModel(object):
                 self.handle,
                 y_c,
                 X_c,
-                ctypes.c_int(self.num_coef),
+                ctypes.c_int(self.num_covariates),
                 offset_c))
         if self.params["trace"]:
             num_it = self._get_num_optim_iter()
@@ -5039,11 +5063,11 @@ class GPModel(object):
         fixed_effects_c = ctypes.c_void_p()
         if fixed_effects is not None:
             if not isinstance(fixed_effects, np.ndarray):
-                raise ValueError("fixed_effects needs to be a numpy.ndarray")
+                raise ValueError("'fixed_effects' needs to be a numpy.ndarray ")
             if len(fixed_effects.shape) != 1:
-                raise ValueError("fixed_effects needs to be a vector / one-dimensional numpy.ndarray ")
-            if fixed_effects.shape[0] != self.num_data:
-                raise ValueError("Incorrect number of data points in fixed_effects")
+                raise ValueError("'fixed_effects' needs to be a vector / one-dimensional numpy.ndarray ")
+            if fixed_effects.shape[0] != self.num_data * self.num_sets_re:
+                raise ValueError("Length of 'fixed_effects' is not correct ")
             fixed_effects_c = fixed_effects.astype(np.float64)
             fixed_effects_c = fixed_effects_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         if aux_pars is not None:
@@ -5338,7 +5362,7 @@ class GPModel(object):
         if self.model_has_been_loaded_from_saved_file:
             coef = self.coefs_loaded_from_file
         else:
-            if self.num_coef is None:
+            if self.num_covariates is None:
                 raise ValueError("'fit' has not been called")
             if self.params["std_dev"]:
                 optim_pars = np.zeros(2 * self.num_coef, dtype=np.float64)
@@ -5712,7 +5736,7 @@ class GPModel(object):
                                                       convert_to_type=np.float64)
                 if X_pred.shape[0] != num_data_pred:
                     raise ValueError("Incorrect number of data points in X_pred")
-                if X_pred.shape[1] != self.num_coef:
+                if X_pred.shape[1] != self.num_covariates:
                     raise ValueError("Incorrect number of covariates in X_pred")
                 if self.model_has_been_loaded_from_saved_file:
                     if len(self.coefs_loaded_from_file.shape) == 2:
@@ -5978,7 +6002,7 @@ class GPModel(object):
                                                   convert_to_type=np.float64)
             if X_pred.shape[0] != num_data_pred:
                 raise ValueError("Incorrect number of data points in X_pred")
-            if X_pred.shape[1] != self.num_coef:
+            if X_pred.shape[1] != self.num_covariates:
                 raise ValueError("Incorrect number of covariates in X_pred")
             X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
         self.num_data_pred = num_data_pred
@@ -6034,7 +6058,7 @@ class GPModel(object):
         if self.model_has_been_loaded_from_saved_file:
             raise ValueError("'predict_training_data_random_effects' is currently not implemented for models that have "
                              "been loaded from a saved file")
-        num_re_comps = self.num_group_re + self.num_group_rand_coef + self.num_gp + self.num_gp_rand_coef
+        num_re_comps = (self.num_group_re + self.num_group_rand_coef + self.num_gp + self.num_gp_rand_coef) * self.num_sets_re
         if self.drop_intercept_group_rand_effect is not None:
             num_re_comps = num_re_comps - self.drop_intercept_group_rand_effect.sum()
         if predict_var:
@@ -6079,11 +6103,11 @@ class GPModel(object):
 
         if not self.has_covariates:
             raise ValueError("Model has no covariate data for linear predictor")
-        covariate_data = np.zeros(self.num_data * self.num_coef, dtype=np.float64)
+        covariate_data = np.zeros(self.num_data * self.num_covariates, dtype=np.float64)
         _safe_call(_LIB.GPB_GetCovariateData(
             self.handle,
             covariate_data.ctypes.data_as(ctypes.POINTER(ctypes.c_double))))
-        covariate_data = covariate_data.reshape((self.num_data, self.num_coef), order='F')
+        covariate_data = covariate_data.reshape((self.num_data, self.num_covariates), order='F')
         return covariate_data
 
     def model_to_dict(self, include_response_data=True):
@@ -6138,11 +6162,13 @@ class GPModel(object):
         model_dict["matrix_inversion_method"] = self.matrix_inversion_method
         model_dict["seed"] = self.seed
         model_dict["num_parallel_threads"] = self.num_parallel_threads
+        model_dict["num_sets_re"] = self.num_sets_re
         # Covariate data
         model_dict["has_covariates"] = self.has_covariates
         if self.has_covariates:
             model_dict["coefs"] = self.get_coef(format_pandas=False)
             model_dict["num_coef"] = self.num_coef
+            model_dict["num_covariates"] = self.num_covariates
             model_dict["X"] = self._get_covariate_data()
         # Additional likelihood parameters (e.g., shape parameter for a a gamma or negative binomial likelihood)
         model_dict["params"]["init_aux_pars"] = self.get_aux_pars(format_pandas=False)

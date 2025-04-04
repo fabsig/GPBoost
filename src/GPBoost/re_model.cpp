@@ -103,6 +103,7 @@ namespace GPBoost {
 				seed,
 				num_parallel_threads));
 			num_cov_pars_ = re_model_sp_->num_cov_par_;
+			num_sets_re_ = re_model_sp_->num_sets_re_;
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_ = std::unique_ptr<REModelTemplate<sp_mat_rm_t, chol_sp_mat_rm_t>>(new REModelTemplate<sp_mat_rm_t, chol_sp_mat_rm_t>(
@@ -135,6 +136,7 @@ namespace GPBoost {
 				seed,
 				num_parallel_threads));
 			num_cov_pars_ = re_model_sp_rm_->num_cov_par_;
+			num_sets_re_ = re_model_sp_rm_->num_sets_re_;
 		}
 		else {
 			re_model_den_ = std::unique_ptr <REModelTemplate< den_mat_t, chol_den_mat_t>>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
@@ -167,6 +169,7 @@ namespace GPBoost {
 				seed,
 				num_parallel_threads));
 			num_cov_pars_ = re_model_den_->num_cov_par_;
+			num_sets_re_ = re_model_den_->num_sets_re_;
 		}
 	}
 
@@ -301,7 +304,7 @@ namespace GPBoost {
 		}
 		// Initial linear regression coefficients
 		if (init_coef != nullptr) {
-			coef_ = Eigen::Map<const vec_t>(init_coef, num_covariates);
+			coef_ = Eigen::Map<const vec_t>(init_coef, num_sets_re_ * num_covariates);
 			init_coef_given_ = true;
 			coef_given_or_estimated_ = true;
 		}
@@ -440,14 +443,14 @@ namespace GPBoost {
 		}
 		else {
 			coef_ptr = nullptr;
-			coef_ = vec_t(num_covariates);
+			coef_ = vec_t(num_sets_re_ * num_covariates);
 		}
 		double* std_dev_cov_par;
 		double* std_dev_coef;
 		if (calc_std_dev_) {
 			std_dev_cov_pars_ = vec_t(num_cov_pars_);
 			std_dev_cov_par = std_dev_cov_pars_.data();
-			std_dev_coef_ = vec_t(num_covariates);
+			std_dev_coef_ = vec_t(num_sets_re_ * num_covariates);
 			std_dev_coef = std_dev_coef_.data();
 		}
 		else {
@@ -517,20 +520,23 @@ namespace GPBoost {
 		model_has_been_estimated_ = true;
 	}//end OptimLinRegrCoefCovPar
 
-	void REModel::FindInitialValueBoosting(double* init_score) {
+	void REModel::FindInitialValueBoosting() {
 		CHECK(cov_pars_initialized_);
 		vec_t covariate_data(GetNumData());
 		covariate_data.setOnes();
-		init_score[0] = 0.;
+		init_score_boosting_ = std::vector<double>(num_sets_re_);
+		for (int igp = 0; igp < num_sets_re_; ++igp) {
+			init_score_boosting_[igp] = 0.;
+		}
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->OptimLinRegrCoefCovPar(nullptr,
 				covariate_data.data(),
 				1,
 				cov_pars_.data(),
-				init_score,
+				init_score_boosting_.data(),
 				num_it_,
 				cov_pars_.data(),
-				init_score,
+				init_score_boosting_.data(),
 				nullptr,
 				nullptr,
 				false,
@@ -546,10 +552,10 @@ namespace GPBoost {
 				covariate_data.data(),
 				1,
 				cov_pars_.data(),
-				init_score,
+				init_score_boosting_.data(),
 				num_it_,
 				cov_pars_.data(),
-				init_score,
+				init_score_boosting_.data(),
 				nullptr,
 				nullptr,
 				false,
@@ -565,10 +571,10 @@ namespace GPBoost {
 				covariate_data.data(),
 				1,
 				cov_pars_.data(),
-				init_score,
+				init_score_boosting_.data(),
 				num_it_,
 				cov_pars_.data(),
-				init_score,
+				init_score_boosting_.data(),
 				nullptr,
 				nullptr,
 				false,
@@ -580,6 +586,11 @@ namespace GPBoost {
 				false);
 		}
 	}//end FindInitialValueBoosting
+
+	double REModel::GetInitialValueBoosting(int num_set_re) {
+		CHECK(num_set_re <= num_sets_re_);
+		return(init_score_boosting_[num_set_re]);
+	}
 
 	void REModel::LineSearchLearningRate(const double* score,
 		const double* new_score,
@@ -1083,6 +1094,10 @@ namespace GPBoost {
 
 	int REModel::GetNumIt() const {
 		return(num_it_);
+	}
+
+	int REModel::GetNumSetsRE() const {
+		return(num_sets_re_);
 	}
 
 	int REModel::GetNumData() const {
