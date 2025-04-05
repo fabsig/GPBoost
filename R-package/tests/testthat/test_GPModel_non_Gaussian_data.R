@@ -3162,7 +3162,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params_vecchia <- c(params, cg_delta_conv = sqrt(1e-6), 
                         num_rand_vec_trace = 50, cg_preconditioner_type = "pivoted_cholesky")
     params_vecchia$init_cov_pars = init_cov_pars
-
+    
     # Simulate data and define expected values
     y <- L %*% b_1 + qnorm(sim_rand_unif(n=n, init_c=0.1)) / 5
     X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
@@ -3328,12 +3328,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
                                      num_neighbors_pred = n+2, nsim_var_pred = nsim_var_pred)
         capture.output( pred <- predict(gp_model, y=y_multiple, gp_coords_pred = coord_test_multiple, predict_var = TRUE, 
-                        predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
+                                        predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
         expect_lt(sum(abs(pred$mu-expected_mu_multiple)),tolerance_loc_2)
         expect_lt(sum(abs(as.vector(pred$var)-expected_var_multiple)),tolerance_loc_1)
         
         if (inv_method != "iterative" || cg_preconditioner_type == "vadu") {# some tests are only run for one preconditioner
-
+          
           #######################
           ## Less neighbors than observations
           #######################
@@ -3381,6 +3381,164 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }# end loop cg_preconditioner_type in loop_cg_PC
     }# end loop inv_method in c("cholesky", "iterative")
   }) #end t-likelihood
+  
+  test_that("gaussian_heteroscedastic likelihood", {
+    params = OPTIM_PARAMS_BFGS
+    init_cov_pars = c(1,mean(dist(coords))/3,0.1,mean(dist(coords))/3)
+    params$init_cov_pars = init_cov_pars
+    params_vecchia <- c(params, cg_delta_conv = sqrt(1e-6), 
+                        num_rand_vec_trace = 50, cg_preconditioner_type = "pivoted_cholesky")
+    params_vecchia$init_cov_pars = init_cov_pars
+    likelihood <- "gaussian_heteroscedastic"
+    
+    # Simulate data and define expected values
+    Sigma2 <- 0.1 * exp(-D/0.2) + diag(1E-20,n)
+    L2 <- t(chol(Sigma))
+    b_2 <- qnorm(sim_rand_unif(n=n, init_c=0.834))
+    y <- L %*% b_1 + qnorm(sim_rand_unif(n=n, init_c=0.1234)) * exp(0.5 * L2 %*% b_2)
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
+    coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+    cov_pars_pred_eval = c(1,0.2,0.1,0.2)
+    coefs_pred = c(c(0.5,0.1),c(0.5,0.1))
+    expected_nll <- 199.6831947
+    cov_pars <- c(0.29257505689, 0.16019690150, 0.20398810623, 0.02123292904)
+    coefs <- c(0.2573774906, -0.1120390282, 0.6360477105, 0.2961457581)
+    num_it <- 15
+    nll_est <- 191.2306375
+    expected_mu <- c(0.06126291, 0.07337373, 0.30807230)
+    expected_var <- c(0.5994207, 0.6014515, 0.3936357)
+    expected_var_resp <- c(2.147623, 2.268682, 2.010216)
+    
+    #  # Estimation, prediction, and likelihood evaluation without Vecchia approximation
+    # gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = likelihood , gp_approx = "none")
+    # nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y, aux_pars = aux_pars_pred_eval)
+    # expect_lt(abs(nll-expected_nll),TOLERANCE_STRICT)
+    # # Estimation
+    # capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+    #                                        likelihood = "t_fix_df", gp_approx = "none",
+    #                                        y = y, X = X, params = params, likelihood_additional_param=likelihood_additional_param), file='NUL')
+    # expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_fix_df)),TOLERANCE_STRICT)
+    # expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_fix_df)),TOLERANCE_STRICT)
+    # expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_fix_df)),TOLERANCE_STRICT)
+    # expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est_fix_df),TOLERANCE_STRICT)
+    # expect_equal(gp_model$get_num_optim_iter(), num_it_fix_df)
+    # capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+    #                                        likelihood = likelihood , gp_approx = "none",
+    #                                        y = y, X = X, params = params, likelihood_additional_param=likelihood_additional_param), file='NUL')
+    # expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_MEDIUM)
+    # expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_LOOSE)
+    # expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_LOOSE)
+    # expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est),TOLERANCE_MEDIUM)
+    # # Prediction
+    # gp_model$set_optim_params(params = list(init_aux_pars = aux_pars_pred_eval, init_coef = coefs_pred))
+    # pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
+    #                 predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test)
+    # expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    # expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
+    # pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, 
+    #                 predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test)
+    # expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    # expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_MEDIUM)
+    # capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE, 
+    #                                 predict_var = TRUE, cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
+    # expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    # expect_lt(sum(abs(pred$var-expected_var_resp)),TOLERANCE_MEDIUM)
+    for(inv_method in c("cholesky")){#, "iterative"
+      if(inv_method == "iterative") {
+        tolerance_loc_1 <- TOLERANCE_ITERATIVE
+        tolerance_loc_2 <- TOLERANCE_ITERATIVE
+        tolerance_loc_3 <- 0.5
+        loop_cg_PC = c("pivoted_cholesky", "vadu", "fitc")
+      } else {
+        tolerance_loc_1 <- TOLERANCE_MEDIUM
+        tolerance_loc_2 <- TOLERANCE_LOOSE
+        tolerance_loc_3 <- TOLERANCE_LOOSE
+        loop_cg_PC = c("vadu")
+      }
+      nsim_var_pred <- 10000
+      for (cg_preconditioner_type in loop_cg_PC) {
+        params_vecchia$cg_preconditioner_type <- cg_preconditioner_type
+        
+        # Likelihood evaluation
+        capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                            likelihood = likelihood , gp_approx = "vecchia", 
+                                            num_neighbors = n-1, vecchia_ordering = "none",
+                                            matrix_inversion_method = inv_method), file='NUL')
+        gp_model$set_optim_params(params = params_vecchia)
+        capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y), file='NUL')
+        expect_lt(abs(nll-expected_nll),tolerance_loc_3)
+        # Estimation
+        capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                            likelihood = likelihood , gp_approx = "vecchia", 
+                                            num_neighbors = n-1, vecchia_ordering = "none",
+                                            matrix_inversion_method = inv_method), file='NUL')
+        capture.output( fit(gp_model, y = y, X = X, params = params_vecchia) , file='NUL')
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_ITERATIVE)
+        expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_ITERATIVE)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est),tolerance_loc_3)
+        if (inv_method != "iterative") {
+          expect_equal(gp_model$get_num_optim_iter(), num_it)
+        }
+        # Prediction
+        gp_model$set_optim_params(params = list(init_coef = coefs_pred))
+        gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
+                                     num_neighbors_pred = n+2, nsim_var_pred = nsim_var_pred)
+        capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                        predict_var = TRUE, predict_response = FALSE, 
+                                        cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
+        expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_2)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),tolerance_loc_1)
+        if (inv_method != "iterative" || cg_preconditioner_type == "vadu") {
+          capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                          predict_response = TRUE, predict_var = TRUE, 
+                                          cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
+          expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_2)
+          expect_lt(sum(abs(pred$var-expected_var_resp)),tolerance_loc_1)
+        }
+        
+        if (inv_method != "iterative" || cg_preconditioner_type == "vadu") {# some tests are only run for one preconditioner
+          
+          #######################
+          ## Less neighbors than observations
+          #######################
+          capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                              likelihood = likelihood , gp_approx = "vecchia", 
+                                              num_neighbors = 20, vecchia_ordering = "none",
+                                              matrix_inversion_method = inv_method), file='NUL')
+          gp_model$set_optim_params(params = params_vecchia)
+          capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y), file='NUL')
+          expected_nll_less_nn <- 199.6932499
+          expect_lt(abs(nll-expected_nll_less_nn),tolerance_loc_3)
+          # Estimation
+          capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                              likelihood = likelihood , gp_approx = "vecchia", 
+                                              num_neighbors = 30, vecchia_ordering = "none",
+                                              matrix_inversion_method = inv_method), file='NUL')
+          capture.output( fit(gp_model, y = y, X = X, params = params_vecchia) , file='NUL')
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_2)
+          expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_ITERATIVE)
+          nll_est_less_nn <- 191.2393688
+          expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est_less_nn),tolerance_loc_3)
+          # Prediction
+          gp_model$set_optim_params(params = list(init_coef = coefs_pred))
+          gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", nsim_var_pred = nsim_var_pred)
+          capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                          predict_var = TRUE, predict_response = FALSE, 
+                                          cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
+          expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_2)
+          expect_lt(sum(abs(as.vector(pred$var)-expected_var)),tolerance_loc_2)
+          if (inv_method != "iterative" || cg_preconditioner_type == "vadu") {
+            capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                            predict_response = TRUE, predict_var = TRUE, 
+                                            cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
+            expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_2)
+            expect_lt(sum(abs(pred$var-expected_var_resp)),tolerance_loc_2)
+          }
+        }
+        
+      }# end loop cg_preconditioner_type in loop_cg_PC
+    }# end loop inv_method in c("cholesky", "iterative")
+  }) #end gaussian_heteroscedastic likelihood
   
 }
 
