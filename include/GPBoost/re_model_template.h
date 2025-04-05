@@ -8083,11 +8083,14 @@ namespace GPBoost {
 			}//end if gauss_likelihood_
 			else {//if not gauss_likelihood_
 				if (has_covariates_) {
-					fixed_effects_vec = X_ * coef;
+					fixed_effects_vec = vec_t(num_data_ * num_sets_re_);
+					for (int igp = 0; igp < num_sets_re_; ++igp) {
+						fixed_effects_vec.segment(num_data_ * igp, num_data_) = X_ * (coef.segment(num_covariates_ * igp, num_covariates_));
+					}
 					//add external fixed effects to linear predictor
 					if (fixed_effects != nullptr) {
 #pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data_; ++i) {
+						for (int i = 0; i < num_data_ * num_sets_re_; ++i) {
 							fixed_effects_vec[i] += fixed_effects[i];
 						}
 					}
