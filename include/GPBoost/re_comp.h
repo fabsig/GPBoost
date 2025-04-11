@@ -774,7 +774,8 @@ namespace GPBoost {
 
 		/*! \brief Copy constructor */
 		RECompGP(const RECompGP& other)
-			: coords_(other.coords_),
+			: RECompBase<T_mat>(other),  // copy base members
+			coords_(other.coords_),
 			coords_ind_point_(other.coords_ind_point_),
 			dist_(other.dist_ ? std::make_shared<T_mat>(*other.dist_) : nullptr),
 			dist_saved_(other.dist_saved_),
@@ -787,8 +788,7 @@ namespace GPBoost {
 			apply_tapering_(other.apply_tapering_),
 			apply_tapering_manually_(other.apply_tapering_manually_),
 			tapering_has_been_applied_(other.tapering_has_been_applied_),
-			has_compact_cov_fct_(other.has_compact_cov_fct_),
-			RECompBase<T_mat>(other) // copy base members
+			has_compact_cov_fct_(other.has_compact_cov_fct_)
 		{
 		}
 
