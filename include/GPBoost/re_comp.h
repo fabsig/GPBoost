@@ -225,8 +225,8 @@ namespace GPBoost {
 			// No need to copy members of base class manually; base class copy constructor handles that.
 		}
 
-		std::shared_ptr<RECompBase> clone() const override {
-			return std::make_shared<RECompGroup>(*this);
+		std::shared_ptr<RECompBase<T_mat>> clone() const override {
+			return std::make_shared<RECompGroup<T_mat>>(*this);
 		}
 
 		/*!
@@ -804,8 +804,8 @@ namespace GPBoost {
 			// Copy other RECompBase stuff like random_effects_indices_of_data_ is done by base class
 		}
 
-		std::shared_ptr<RECompBase> clone() const override {
-			return std::make_shared<RECompGP>(*this);
+		std::shared_ptr<RECompBase<T_mat>> clone() const override {
+			return std::make_shared<RECompGP<T_mat>>(*this);
 		}
 
 		/*!
