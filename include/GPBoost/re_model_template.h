@@ -884,7 +884,7 @@ namespace GPBoost {
 				beta_after_grad_aux = beta_;
 				beta_after_grad_aux_lag1 = beta_;
 				beta_init = beta_;
-				UpdateFixedEffectsInternal(fixed_effects, fixed_effects_vec);
+				UpdateFixedEffects(beta_, fixed_effects, fixed_effects_vec);
 				if (!gauss_likelihood_) {
 					fixed_effects_ptr = fixed_effects_vec.data();
 				}
@@ -1610,7 +1610,7 @@ namespace GPBoost {
 					grad_beta = vec_t(num_sets_re_ * num_covariates_);
 					for (int igp = 0; igp < num_sets_re_; ++igp) {
 						grad_beta.segment(igp * num_covariates_, num_covariates_) = (X_.transpose()) * (grad_F.segment(igp * num_data_, num_data_));
-					}					
+					}
 				}
 			}//end not gauss_likelihood_
 			// Check for NAs and Inf
@@ -1924,7 +1924,7 @@ namespace GPBoost {
 			}
 			CalcYAux(1.);
 			UpdateCoefGLS();
-			UpdateFixedEffectsInternal(fixed_effects, fixed_effects_vec);// Set y_ to resid = y - X*beta for updating covariance parameters
+			UpdateFixedEffects(beta_, fixed_effects, fixed_effects_vec);// Set y_ to resid = y - X*beta for updating covariance parameters
 		}
 
 		/*!
@@ -2099,45 +2099,12 @@ namespace GPBoost {
 				}
 				if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
 #pragma omp parallel for schedule(static)
-					for (int i = 0; i < num_data_; ++i) {
-						fixed_effects_vec[i] += fixed_effects[i];
-					}
-				}
-			}
-		}//end UpdateFixedEffects
-
-		/*!
-		* \brief Update fixed effects with member variable linear regression coefficients beta_
-		* \param fixed_effects Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
-		* \param fixed_effects_vec[out] Vector of fixed effects (used only for non-Gaussian likelihoods)
-		*/
-		void UpdateFixedEffectsInternal(const double* fixed_effects,
-			vec_t& fixed_effects_vec) {
-			if (gauss_likelihood_) {
-				vec_t resid = y_vec_ - (X_ * beta_);
-				if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
-#pragma omp parallel for schedule(static)
-					for (int i = 0; i < num_data_; ++i) {
-						resid[i] -= fixed_effects[i];
-					}
-				}
-				SetY(resid.data());
-			}
-			else {
-				fixed_effects_vec = vec_t(num_data_ * num_sets_re_);
-				fixed_effects_vec.segment(0, num_data_) = X_ * (beta_.segment(0, num_covariates_));
-				if (num_sets_re_ > 1) {
-					CHECK(num_sets_re_ == 2);
-					fixed_effects_vec.segment(num_data_, num_data_) = X_ * (beta_.segment(num_covariates_, num_covariates_));
-				}
-				if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
-#pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_ * num_sets_re_; ++i) {
 						fixed_effects_vec[i] += fixed_effects[i];
 					}
 				}
 			}
-		}//end UpdateFixedEffectsInternal
+		}//end UpdateFixedEffects
 
 		/*!
 		* \brief Calculate the value of the negative log-likelihood for a "gaussian" likelihood
@@ -3929,11 +3896,17 @@ namespace GPBoost {
 		*/
 		double MaximalLearningRateCoef(const vec_t& beta,
 			const vec_t& neg_step_dir) const {
-			vec_t lp_change = X_ * neg_step_dir;
-			vec_t lp_lag1 = X_ * beta;
+			vec_t lp_change = vec_t(num_data_ * num_sets_re_);
+			for (int igp = 0; igp < num_sets_re_; ++igp) {
+				lp_change.segment(igp * num_data_, num_data_) = X_ * (neg_step_dir.segment(num_covariates_ * igp, num_covariates_));
+			}
+			vec_t lp_lag1 = vec_t(num_data_ * num_sets_re_);
+			for (int igp = 0; igp < num_sets_re_; ++igp) {
+				lp_lag1.segment(igp * num_data_, num_data_) = X_ * (beta.segment(num_covariates_ * igp, num_covariates_));
+			}
 			double mean_lp_change = 0., mean_lp_lag1 = 0., var_lp_change = 0, cov_lp_lag1_lp_change = 0;
 #pragma omp parallel for schedule(static) reduction(+:mean_lp_change, mean_lp_lag1, var_lp_change, cov_lp_lag1_lp_change)
-			for (data_size_t i = 0; i < num_data_; ++i) {
+			for (data_size_t i = 0; i < num_data_ * num_sets_re_; ++i) {
 				mean_lp_change += lp_change[i];
 				mean_lp_lag1 += lp_lag1[i];
 				var_lp_change += lp_change[i] * lp_change[i];

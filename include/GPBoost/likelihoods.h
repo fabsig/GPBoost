@@ -3897,6 +3897,7 @@ namespace GPBoost {
                             if (likelihood_type_ == "gaussian_heteroscedastic") {
                                 d_mll_d_mode = vec_t::Zero(dim_mode_);
                                 d_mll_d_mode.segment(dim_mode_per_set_re_, dim_mode_per_set_re_) = (0.5 * SigmaI_plus_W_inv_diag.segment(0, dim_mode_per_set_re_).array() * deriv_information_diag_loc_par.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
+                                // note: deriv_information_diag_loc_par is of length dim_mode_per_set_re_ here since only the non-zero derivatives are saved
                             }
                             else {
                                 d_mll_d_mode = (0.5 * SigmaI_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
