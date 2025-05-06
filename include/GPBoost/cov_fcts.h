@@ -45,6 +45,26 @@ namespace GPBoost {
 		/*! \brief Constructor */
 		CovFunction();
 
+		/*! \brief Copy constructor */
+		CovFunction(const CovFunction& other)
+			: cov_fct_type_(other.cov_fct_type_),
+			shape_(other.shape_),
+			const_(other.const_),
+			taper_range_(other.taper_range_),
+			taper_shape_(other.taper_shape_),
+			taper_mu_(other.taper_mu_),
+			apply_tapering_(other.apply_tapering_),
+			num_cov_par_(other.num_cov_par_),
+			is_isotropic_(other.is_isotropic_),
+			use_precomputed_dist_for_calc_cov_(other.use_precomputed_dist_for_calc_cov_)
+		{
+			// re-initialize the function pointers
+			InitializeCovFct();
+			InitializeCovFctGrad();
+			InitializeGetDistanceForCovFct();
+			InitializeGetDistanceForGradientCovFct();
+		}
+
 		/*!
 		* \brief Constructor
 		* \param cov_fct_type Type of covariance function

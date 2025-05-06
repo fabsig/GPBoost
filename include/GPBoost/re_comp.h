@@ -215,6 +215,7 @@ namespace GPBoost {
 		/*! \brief Constructor */
 		RECompGroup();
 
+		/*! \brief Copy constructor */
 		RECompGroup(const RECompGroup& other)
 			: RECompBase<T_mat>(other), // copy base class
 			num_group_(other.num_group_),
@@ -225,8 +226,8 @@ namespace GPBoost {
 			// No need to copy members of base class manually; base class copy constructor handles that.
 		}
 
-		std::shared_ptr<RECompBase> clone() const override {
-			return std::make_shared<RECompGroup>(*this);
+		std::shared_ptr<RECompBase<T_mat>> clone() const override {
+			return std::make_shared<RECompGroup<T_mat>>(*this);
 		}
 
 		/*!
@@ -771,41 +772,28 @@ namespace GPBoost {
 		/*! \brief Constructor */
 		RECompGP();
 
+		/*! \brief Copy constructor */
 		RECompGP(const RECompGP& other)
 			: RECompBase<T_mat>(other),  // copy base members
-			sigma_(other.sigma_),
-			dist_saved_(other.dist_saved_),
-			coord_saved_(other.coord_saved_),
-			sigma_defined_(other.sigma_defined_),
-			tapering_has_been_applied_(other.tapering_has_been_applied_),
-			apply_tapering_(other.apply_tapering_),
-			apply_tapering_manually_(other.apply_tapering_manually_),
-			is_cross_covariance_IP_(other.is_cross_covariance_IP_),
-			has_compact_cov_fct_(other.has_compact_cov_fct_),
 			coords_(other.coords_),
 			coords_ind_point_(other.coords_ind_point_),
-			num_random_effects_(other.num_random_effects_)
+			dist_(other.dist_ ? std::make_shared<T_mat>(*other.dist_) : nullptr),
+			dist_saved_(other.dist_saved_),
+			coord_saved_(other.coord_saved_),
+			cov_function_(other.cov_function_ ? std::make_shared<CovFunction<T_mat>>(*other.cov_function_) : nullptr),
+			sigma_(other.sigma_),
+			sigma_defined_(other.sigma_defined_),
+			is_cross_covariance_IP_(other.is_cross_covariance_IP_),
+			num_random_effects_(other.num_random_effects_),
+			apply_tapering_(other.apply_tapering_),
+			apply_tapering_manually_(other.apply_tapering_manually_),
+			tapering_has_been_applied_(other.tapering_has_been_applied_),
+			has_compact_cov_fct_(other.has_compact_cov_fct_)
 		{
-			// Deep copy of dist_ if it's defined
-			if (other.dist_) {
-				dist_ = std::make_shared<T_mat>(*other.dist_);
-			}
-
-			// Deep copy of cov_function_
-			if (other.cov_function_) {
-				cov_function_ = std::make_shared<CovFunction<T_mat>>(*other.cov_function_);
-			}
-
-			// Copy Z_ if it was defined
-			if (other.has_Z_) {
-				this->Z_ = other.Z_;
-			}
-
-			// Copy other RECompBase stuff like random_effects_indices_of_data_ is done by base class
 		}
 
-		std::shared_ptr<RECompBase> clone() const override {
-			return std::make_shared<RECompGP>(*this);
+		std::shared_ptr<RECompBase<T_mat>> clone() const override {
+			return std::make_shared<RECompGP<T_mat>>(*this);
 		}
 
 		/*!

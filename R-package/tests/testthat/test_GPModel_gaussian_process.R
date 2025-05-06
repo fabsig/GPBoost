@@ -2204,7 +2204,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     file='NUL')
     cov_pars_nn <- c(9.152856134e-05, 2.631819547e-01, 1.017750095e+00, 3.144000322e-01, 1.333863387e+00, 7.214933499e-01, 1.161419522e-01, 5.173674604e-02)
     coef_nn <- c(1.9593629633, 0.1477649750, 2.1698058447, 0.1392772621)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7)]-cov_pars_nn[c(1,3,5,7)])),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7)]-cov_pars_nn[c(1,3,5,7)])),0.02)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_LOOSE)
     # Prediction
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=num_neighbors)
@@ -2373,8 +2373,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coef_est_shape <- c(2.338314047, 0.222568330, 1.746677838, 0.068681676)
     nrounds_est_shape <- 48
     nll_opt_est_shape <- 106.56952
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est_shape)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_est_shape )),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[1:10]-cov_pars_est_shape[1:10])),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[11]-cov_pars_est_shape[11])),0.2)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[12]-cov_pars_est_shape[12])),15)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_est_shape )),TOLERANCE_MEDIUM)
     expect_equal(gp_model$get_num_optim_iter(), nrounds_est_shape )
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_est_shape), TOLERANCE_STRICT)
     

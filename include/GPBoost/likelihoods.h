@@ -232,11 +232,15 @@ namespace GPBoost {
         */
         void InitializeModeAvec() {
             if (!mode_is_zero_) {
-                mode_ = vec_t::Zero(dim_mode_);
-                mode_previous_value_ = vec_t::Zero(dim_mode_);
+                // Do not use dim_mode_ for initializing mode_
+                // This is a hack since grouped random effects models use use_Z_for_duplicates_ == false, and thus dim_mode_ == num_data_ for those
+                // For the other models:    either use_Z_for_duplicates_ == true => dim_mode_ == num_re_ * num_sets_re_ anyway
+                //                          or use_Z_for_duplicates_ == false and num_re_ == num_data_ => dim_mode_ == num_re_ * num_sets_re_
+                mode_ = vec_t::Zero(num_re_ * num_sets_re_);
+                mode_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
                 if (has_a_vec_) {
-                    a_vec_ = vec_t::Zero(dim_mode_);
-                    a_vec_previous_value_ = vec_t::Zero(dim_mode_);
+                    a_vec_ = vec_t::Zero(num_re_ * num_sets_re_);
+                    a_vec_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
                 }
                 mode_initialized_ = true;
                 first_deriv_ll_ = vec_t(dim_mode_);
@@ -2135,6 +2139,7 @@ namespace GPBoost {
             const double* fixed_effects,
             const data_size_t* const random_effects_indices_of_data,
             vec_t& location_par) {
+            CHECK(num_sets_re_ == 1);// not yet implemented otherwise
             if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static)
                 for (data_size_t i = 0; i < num_data_; ++i) {
@@ -4175,6 +4180,7 @@ namespace GPBoost {
                             if (likelihood_type_ == "gaussian_heteroscedastic") {
                                 d_mll_d_mode = vec_t::Zero(dim_mode_);
                                 d_mll_d_mode.segment(dim_mode_per_set_re_, dim_mode_per_set_re_) = (0.5 * SigmaI_plus_W_inv_diag.segment(0, dim_mode_per_set_re_).array() * deriv_information_diag_loc_par.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
+                                // note: deriv_information_diag_loc_par is of length dim_mode_per_set_re_ here since only the non-zero derivatives are saved
                             }
                             else {
                                 d_mll_d_mode = (0.5 * SigmaI_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
