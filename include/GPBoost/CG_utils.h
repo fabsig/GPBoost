@@ -905,5 +905,125 @@ namespace GPBoost {
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGFSA_RESID
 
+	/*!
+	* \brief Random Effects: Preconditioned conjugate gradient descent to solve A u = rhs, where rhs is a vector and
+	*		 A = (Sigma^(-1) + Z^T W Z) is a symmetric matrix. For Gaussian likelihoods: W = (1/sigma^2) I.
+	* \param SigmaI_plus_ZtWZ Matrix A = Sigma^(-1) + Z^T Z
+	* \param rhs Vector on the right-hand side
+	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param p Maximal number of conjugate gradient steps
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
+	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes.
+	* \param cg_preconditioner_type Type of preconditioner used.
+	* \param L_SigmaI_plus_ZtWZ_rm ZIC preconditioner: sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T W Z)
+	* \param P_SSOR_L_D_sqrt_inv SSOR preconditioner: lower.triangular(Sigma^-1 + Z^T W Z) times diag(Sigma^-1 + Z^T W Z)^(-0.5)
+	* \param cum_num_rand_eff Cumulative number of random effects for components (used when K=2)
+	* \param num_re_group_total Total number of grouped random effects components (used when K=2)
+	* \param P_SSOR_D1_inv SSOR preconditioner for K=2: diag(Sigma^-1 + Z^T W Z)^(-1)[1:n_1]
+	* \param P_SSOR_D2_inv SSOR preconditioner for K=2: diag(Sigma^-1 + Z^T W Z)^(-1)[(n_1+1):n_2]
+	* \param P_SSOR_B_rm SSOR preconditioner for K=2: (Sigma^-1 + Z^T W Z)[(n_1+1):n_2,1:n_1]
+	*/
+	void CGRandomEffectsVec(const sp_mat_rm_t& SigmaI_plus_ZtWZ_rm,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const double delta_conv,
+		const int find_mode_it,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const bool run_in_parallel_do_not_report_non_convergence,
+		const string_t cg_preconditioner_type,
+		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
+		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm
+		//const std::vector<data_size_t>& cum_num_rand_eff,
+		//const data_size_t& num_re_group_total,
+		//const vec_t& P_SSOR_D1_inv,
+		//const vec_t& P_SSOR_D2_inv,
+		//const sp_mat_rm_t& P_SSOR_B_rm
+	);
+
+	/*!
+	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm for random effects.
+	*		 A linear system A U = rhs is solved, where the rhs is a matrix of dimension nxt of t random column-vectors and
+	*		 A = (Sigma^(-1) + Z^T W Z) is a symmetric matrix. For Gaussian likelihoods: W = (1/sigma^2) I.
+	*		 The function returns t approximative tridiagonalizations T of the symmetric matrix P^(-0.5) A P^(-0.5) = QTQ'
+	*		 in vector form (diagonal + subdiagonal of T) and an approximative solution of the linear system.
+	* \param SigmaI_plus_ZtWZ Matrix A = Sigma^(-1) + Z^T W Z
+	* \param rhs Matrix of dimension [num_REs]x[t] that contains random vectors z_1, ..., z_t with Cov(z_i) = P
+	* \param[out] Tdiags The diagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
+	* \param[out] Tsubdiags The subdiagonals of the t approximative tridiagonalizations of P^(-0.5) A P^(-0.5) in vector form (solution written on input)
+	* \param[out] U Approximative solution of the linear system (solution written on input) (must have been declared with the correct [num_REs]x[t] dimensions)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param num_REs Number of rows of the linear system
+	* \param t t-Dimension of the linear system
+	* \param p Maximal number of conjugate gradient steps
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param cg_preconditioner_type Type of preconditioner used.
+	* \param L_SigmaI_plus_ZtWZ_rm ZIC preconditioner: sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T W Z)
+	* \param P_SSOR_L_D_sqrt_inv SSOR preconditioner: lower.triangular(Sigma^-1 + Z^T W Z) times diag(Sigma^-1 + Z^T W Z)^(-0.5)
+	* \param cum_num_rand_eff Cumulative number of random effects for components (used when K=2)
+	* \param num_re_group_total Total number of grouped random effects components (used when K=2)
+	* \param P_SSOR_D1_inv SSOR preconditioner for K=2: diag(Sigma^-1 + Z^T Z)^(-1)[1:n_1]
+	* \param P_SSOR_D2_inv SSOR preconditioner for K=2: diag(Sigma^-1 + Z^T Z)^(-1)[(n_1+1):n_2]
+	* \param P_SSOR_B_rm SSOR preconditioner for K=2: (Sigma^-1 + Z^T Z)[(n_1+1):n_2,1:n_1]
+	*/
+	void CGTridiagRandomEffects(const sp_mat_rm_t& SigmaI_plus_ZtWZ_rm,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_REs,
+		const int t,
+		int p,
+		const double delta_conv,
+		const string_t cg_preconditioner_type,
+		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
+		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm
+		//const std::vector<data_size_t>& cum_num_rand_eff,
+		//const data_size_t& num_re_group_total,
+		//const vec_t& P_SSOR_D1_inv,
+		//const vec_t& P_SSOR_D2_inv,
+		//const sp_mat_rm_t& P_SSOR_B_rm
+	);
+
+	/*!
+	* \brief Random Effects: Preconditioned conjugate gradient descent to solve A u = rhs, where rhs is a matrix and
+	*		 A = (Sigma^(-1) + Z^T W Z) is a symmetric matrix. For Gaussian likelihoods: W = (1/sigma^2) I.
+	* \param SigmaI_plus_ZtZ Matrix A = Sigma^(-1) + Z^T W Z
+	* \param rhs Matrix of dimension [num_REs]x[t] on the right-hand side
+	* \param[out] U Approximative solution of the linear system (solution written on input) (must have been declared with the correct [num_REs]x[t] dimensions)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param num_REs Number of rows of the linear system
+	* \param t t-Dimension of the linear system
+	* \param p Maximal number of conjugate gradient steps
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param cg_preconditioner_type Type of preconditioner used.
+	* \param L_SigmaI_plus_ZtZ_rm ZIC preconditioner: sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T W Z)
+	* \param P_SSOR_L_D_sqrt_inv SSOR preconditioner: lower.triangular(Sigma^-1 + Z^T W Z) times diag(Sigma^-1 + Z^T W Z)^(-0.5)
+	*/
+	void CGRandomEffectsMat(const sp_mat_rm_t& SigmaI_plus_ZtWZ_rm,
+		const den_mat_t& rhs,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_REs,
+		const int t,
+		int p,
+		const double delta_conv,
+		const string_t cg_preconditioner_type,
+		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
+		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm);
+
+	/*!
+	* \brief Zero fill-in incomplete Cholesky factorization L L^T = A under the constrain that L has the same sparcity pattern as A.
+	* \param A Matrix to factorize.
+	* \param L[out] Matrix containing the sparse lower triangular factor L.
+	*/
+	void ZeroFillInIncompleteCholeskyFactorization(sp_mat_rm_t& A,
+		sp_mat_rm_t& L);
+
 }
 #endif   // GPB_CG_UTILS_

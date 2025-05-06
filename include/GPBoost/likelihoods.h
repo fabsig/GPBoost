@@ -2395,6 +2395,8 @@ namespace GPBoost {
         * \param num_data Number of data points
         * \param SigmaI Inverse covariance matrix of latent random effect. Currently, this needs to be a diagonal matrix
         * \param Zt Transpose Z^T of random effect design matrix that relates latent random effects to observations/likelihoods
+        * \param first_update If true, the covariance parameters or linear regression coefficients are updated for the first time and the max. number of iterations for the CG should be decreased
+        * \param calc_mll If true the marginal log-likelihood is also calculated (only relevant for matrix_inversion_method_ == "iterative")
         * \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
         */
         void FindModePostRandEffCalcMLLGroupedRE(const double* y_data,
@@ -2403,6 +2405,8 @@ namespace GPBoost {
             const data_size_t num_data,
             const sp_mat_t& SigmaI,
             const sp_mat_t& Zt,
+            const bool first_update,
+            bool calc_mll,
             double& approx_marginal_ll) {
             ChecksBeforeModeFinding();
             // Initialize variables
@@ -2425,7 +2429,15 @@ namespace GPBoost {
             approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
             double approx_marginal_ll_new = approx_marginal_ll;
             sp_mat_t SigmaI_plus_ZtWZ;
-            vec_t rhs, mode_update, mode_new;
+            vec_t rhs, mode_update(num_re_), mode_new;
+            // Variables when using iterative methods
+            int cg_max_num_it = cg_max_num_it_;
+            int cg_max_num_it_tridiag = cg_max_num_it_tridiag_;
+            //Reduce max. number of iterations for the CG in first update
+            if (matrix_inversion_method_ == "iterative" && first_update && reduce_cg_max_num_it_first_optim_step_) {
+                cg_max_num_it = (int)round(cg_max_num_it_ / 3);
+                cg_max_num_it_tridiag = (int)round(cg_max_num_it_tridiag_ / 3);
+            }
             // Start finding mode 
             int it;
             bool terminate_optim = false;
@@ -2434,19 +2446,44 @@ namespace GPBoost {
                 // Calculate first and second derivative of log-likelihood
                 CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());
                 rhs = Zt * first_deriv_ll_ - SigmaI * mode_;//right hand side for updating mode
-                // Calculate Cholesky factor
-                if (it == 0 || information_changes_during_mode_finding_) {
-                    CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
-                    SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
-                    SigmaI_plus_ZtWZ.makeCompressed();
-                    if (!chol_fact_pattern_analyzed_) {
-                        chol_fact_SigmaI_plus_ZtWZ_grouped_.analyzePattern(SigmaI_plus_ZtWZ);
-                        chol_fact_pattern_analyzed_ = true;
+                if (matrix_inversion_method_ == "iterative") {
+                    if (it == 0 || information_changes_after_mode_finding_) {
+                        CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
+                        SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t(SigmaI + Zt * information_ll_.asDiagonal() * Z);
+                        if (cg_preconditioner_type_ == "incomplete_cholesky") {
+                            ZeroFillInIncompleteCholeskyFactorization(SigmaI_plus_ZtWZ_rm_, L_SigmaI_plus_ZtWZ_rm_);
+                        }
+                        else if (cg_preconditioner_type_ == "ssor") {
+                            P_SSOR_D_inv_ = SigmaI_plus_ZtWZ_rm_.diagonal().cwiseInverse();
+                            vec_t P_SSOR_D_inv_sqrt = P_SSOR_D_inv_.cwiseSqrt(); //need to store this, otherwise slow!
+                            sp_mat_rm_t P_SSOR_L_rm = SigmaI_plus_ZtWZ_rm_.triangularView<Eigen::Lower>();
+                            P_SSOR_L_D_sqrt_inv_rm_ = P_SSOR_L_rm * P_SSOR_D_inv_sqrt.asDiagonal();
+                        }
                     }
-                    chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
-                }
-                // Update mode and do backtracking line search
-                mode_update = chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(rhs);
+                    CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rhs, mode_update, has_NA_or_Inf,
+                        cg_max_num_it, cg_delta_conv_, it, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
+                        L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                    if (has_NA_or_Inf) {
+                        approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
+                        Log::REDebug(NA_OR_INF_WARNING_);
+                        break;
+                    }
+                } //end iterative
+                else { // start Cholesky 
+                    // Calculate Cholesky factor
+                    if (it == 0 || information_changes_during_mode_finding_) {
+                        CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
+                        SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
+                        SigmaI_plus_ZtWZ.makeCompressed();
+                        if (!chol_fact_pattern_analyzed_) {
+                            chol_fact_SigmaI_plus_ZtWZ_grouped_.analyzePattern(SigmaI_plus_ZtWZ);
+                            chol_fact_pattern_analyzed_ = true;
+                        }
+                        chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
+                    }
+                    // Update mode and do backtracking line search
+                    mode_update = chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(rhs);
+                } // end Cholesky
                 double lr_mode = 1.;
                 for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
                     mode_new = mode_ + lr_mode * mode_update;
@@ -2475,13 +2512,94 @@ namespace GPBoost {
             }//end mode finding algorithm
             if (!has_NA_or_Inf) {//calculate determinant
                 CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-                if (information_changes_after_mode_finding_) {
-                    CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
-                    SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
-                    SigmaI_plus_ZtWZ.makeCompressed();
-                    chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
-                }
-                approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
+                if (matrix_inversion_method_ == "iterative") {
+                    //Seed Generator
+                    if (!cg_generator_seeded_) {
+                        cg_generator_ = RNG_t(seed_rand_vec_trace_);
+                        cg_generator_seeded_ = true;
+                    }
+                    if (calc_mll) {//calculate determinant term for approx_marginal_ll
+                        //Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
+                        if (!saved_rand_vec_trace_) {
+                            //Generate t (= num_rand_vec_trace_) random vectors
+                            rand_vec_trace_I_.resize(num_re_, num_rand_vec_trace_);
+                            GenRandVecNormal(cg_generator_, rand_vec_trace_I_);
+                            if (reuse_rand_vec_trace_) {
+                                saved_rand_vec_trace_ = true;
+                            }
+                            rand_vec_trace_P_.resize(num_re_, num_rand_vec_trace_);
+                            SigmaI_plus_ZtWZ_inv_RV_.resize(num_re_, num_rand_vec_trace_);
+                        }
+                        double log_det_SigmaI_plus_ZtWZ;
+                        //Stochastic Lanczos quadrature
+                        CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
+                        CHECK(rand_vec_trace_P_.cols() == num_rand_vec_trace_);
+                        CHECK(rand_vec_trace_I_.rows() == num_re_);
+                        CHECK(rand_vec_trace_P_.rows() == num_re_);
+                        if (information_changes_after_mode_finding_) {
+                            //upadate with latest W
+                            CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
+                            SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t(SigmaI + Zt * information_ll_.asDiagonal() * Z);
+                            if (cg_preconditioner_type_ == "incomplete_cholesky") {
+                                ZeroFillInIncompleteCholeskyFactorization(SigmaI_plus_ZtWZ_rm_, L_SigmaI_plus_ZtWZ_rm_);
+                            }
+                            else if (cg_preconditioner_type_ == "ssor") {
+                                P_SSOR_D_inv_ = SigmaI_plus_ZtWZ_rm_.diagonal().cwiseInverse();
+                                vec_t P_SSOR_D_inv_sqrt = P_SSOR_D_inv_.cwiseSqrt(); //need to store this, otherwise slow!
+                                sp_mat_rm_t P_SSOR_L_rm = SigmaI_plus_ZtWZ_rm_.triangularView<Eigen::Lower>();
+                                P_SSOR_L_D_sqrt_inv_rm_ = P_SSOR_L_rm * P_SSOR_D_inv_sqrt.asDiagonal();
+                            }
+                        }
+                        //Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
+                        if (cg_preconditioner_type_ == "incomplete_cholesky") {
+#pragma omp parallel for schedule(static)   
+                            for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                                rand_vec_trace_P_.col(i) = L_SigmaI_plus_ZtWZ_rm_ * rand_vec_trace_I_.col(i);
+                            }
+                        }
+                        else if (cg_preconditioner_type_ == "ssor") {
+#pragma omp parallel for schedule(static)   
+                            for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                                rand_vec_trace_P_.col(i) = P_SSOR_L_D_sqrt_inv_rm_ * rand_vec_trace_I_.col(i);
+                            }
+                        }
+                        else {
+                            Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+                        }
+                        std::vector<vec_t> Tdiags_PI_SigmaI_plus_ZtWZ(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
+                        std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_ZtWZ(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
+                        CGTridiagRandomEffects(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ,
+                            SigmaI_plus_ZtWZ_inv_RV_, has_NA_or_Inf, num_re_, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
+                            L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                        if (!has_NA_or_Inf) {
+                            LogDetStochTridiag(Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ, log_det_SigmaI_plus_ZtWZ, num_re_, num_rand_vec_trace_);
+                            approx_marginal_ll += 0.5 * (SigmaI.diagonal().array().log().sum() - log_det_SigmaI_plus_ZtWZ);
+                            // Correction for preconditioner
+                            if (cg_preconditioner_type_ == "incomplete_cholesky") {
+                                //log|P| = log|L| + log|L^T|
+                                approx_marginal_ll -= L_SigmaI_plus_ZtWZ_rm_.diagonal().array().log().sum();
+                            }
+                            else if (cg_preconditioner_type_ == "ssor") {
+                                //log|P| = log|L| + log|D^-1| + log|L^T|
+                                approx_marginal_ll -= P_SSOR_L_D_sqrt_inv_rm_.diagonal().array().log().sum();
+                            }
+                        }
+                        else {
+                            approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
+                            Log::REDebug(NA_OR_INF_WARNING_);
+                            na_or_inf_during_last_call_to_find_mode_ = true;
+                        }
+                    }//end calculate determinant term for approx_marginal_ll               
+                }//end iterative
+                else {
+                    if (information_changes_after_mode_finding_) {
+                        CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
+                        SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
+                        SigmaI_plus_ZtWZ.makeCompressed();
+                        chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
+                    }
+                    approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
+                }//end cholesky	
                 mode_has_been_calculated_ = true;
                 na_or_inf_during_last_call_to_find_mode_ = false;
             }
@@ -3295,7 +3413,7 @@ namespace GPBoost {
             int num_comps = (int)cum_num_rand_eff_cluster_i.size() - 1;//number of different random effect components
             if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
                 double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-                FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, num_data, SigmaI, Zt, mll);
+                FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, num_data, SigmaI, Zt, false, true, mll);
             }
             if (na_or_inf_during_last_call_to_find_mode_) {
                 if (call_for_std_dev_coef) {
@@ -3315,108 +3433,273 @@ namespace GPBoost {
                     location_par[i] += fixed_effects[i];
                 }
             }
-            // Calculate (Sigma^-1 + Zt*W*Z)^-1
-            sp_mat_t L_inv(num_REs, num_REs);
-            L_inv.setIdentity();
-            if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
-                L_inv = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * L_inv;
-            }
-            sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL();
-            TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(L, L_inv, L_inv, false);
-            L.resize(0, 0);
-            sp_mat_t SigmaI_plus_ZtWZ_inv;
-            // calculate gradient of approx. marginal likelihood wrt the mode
-            vec_t deriv_information_diag_loc_par;//usually vector of negative third derivatives of log-likelihood
-            vec_t d_mll_d_mode;
-            if (grad_information_wrt_mode_non_zero_) {
-                deriv_information_diag_loc_par = vec_t(num_data);
-                CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par.data(), deriv_information_diag_loc_par);
-                d_mll_d_mode = vec_t(num_REs);
-                sp_mat_t Zt_deriv_information_loc_par = Zt * deriv_information_diag_loc_par.asDiagonal();//every column of Z multiplied elementwise by deriv_information_diag_loc_par
-#pragma omp parallel for schedule(static)
-                for (int ire = 0; ire < num_REs; ++ire) {
-                    //calculate Z^T * diag(diag_d_W_d_mode_i) * Z = Z^T * diag(Z.col(i) * deriv_information_diag_loc_par) * Z
-                    d_mll_d_mode[ire] = 0.;
-                    double entry_ij;
-                    for (data_size_t i = 0; i < num_data; ++i) {
-                        entry_ij = Zt_deriv_information_loc_par.coeff(ire, i);
-                        if (std::abs(entry_ij) > EPSILON_NUMBERS) {
-                            vec_t L_inv_Zt_col_i = L_inv * Zt.col(i);
-                            d_mll_d_mode[ire] += entry_ij * (L_inv_Zt_col_i.squaredNorm());
+            if (matrix_inversion_method_ == "iterative") {
+                // calculate P^(-1) RV
+                den_mat_t PI_RV(num_REs, num_rand_vec_trace_), L_inv_Z, DI_L_plus_D_t_PI_RV;
+                if (cg_preconditioner_type_ == "incomplete_cholesky") {
+                    L_inv_Z.resize(num_REs, num_rand_vec_trace_);
+#pragma omp parallel for schedule(static)   
+                    for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                        L_inv_Z.col(i) = L_SigmaI_plus_ZtWZ_rm_.triangularView<Eigen::Lower>().solve(rand_vec_trace_P_.col(i));
+                    }
+#pragma omp parallel for schedule(static)   
+                    for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                        PI_RV.col(i) = L_SigmaI_plus_ZtWZ_rm_.transpose().triangularView<Eigen::Upper>().solve(L_inv_Z.col(i));
+                    }
+                }
+                else if (cg_preconditioner_type_ == "ssor") {
+                    L_inv_Z.resize(num_REs, num_rand_vec_trace_);
+#pragma omp parallel for schedule(static)   
+                    for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                        L_inv_Z.col(i) = P_SSOR_L_D_sqrt_inv_rm_.triangularView<Eigen::Lower>().solve(rand_vec_trace_P_.col(i));
+                    }
+#pragma omp parallel for schedule(static)   
+                    for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                        PI_RV.col(i) = P_SSOR_L_D_sqrt_inv_rm_.transpose().triangularView<Eigen::Upper>().solve(L_inv_Z.col(i));
+                    }
+                    //For variance reduction
+                    DI_L_plus_D_t_PI_RV.resize(num_REs, num_rand_vec_trace_);
+                    den_mat_t L_plus_D_t_PI_RV(num_REs, num_rand_vec_trace_);
+#pragma omp parallel for schedule(static)   
+                    for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                        L_plus_D_t_PI_RV.col(i) = SigmaI_plus_ZtWZ_rm_.triangularView<Eigen::Upper>() * PI_RV.col(i);
+                    }
+#pragma omp parallel for schedule(static)   
+                    for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                        DI_L_plus_D_t_PI_RV.col(i) = P_SSOR_D_inv_.asDiagonal() * L_plus_D_t_PI_RV.col(i);
+                    }
+                }
+                else {
+                    Log::REFatal("Preconditioner type '%s' is not supported for gradients.", cg_preconditioner_type_.c_str());
+                }
+                // calculate Z P^(-1) z_i
+                den_mat_t Z_PI_RV(num_data, num_rand_vec_trace_);
+#pragma omp parallel for schedule(static)   
+                for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                    Z_PI_RV.col(i) = Z * PI_RV.col(i);
+                }
+                // calculate Z P^(-1) z_i
+                den_mat_t Z_SigmaI_plus_ZtWZ_inv_RV(num_data, num_rand_vec_trace_);
+#pragma omp parallel for schedule(static)   
+                for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                    Z_SigmaI_plus_ZtWZ_inv_RV.col(i) = Z * SigmaI_plus_ZtWZ_inv_RV_.col(i);
+                }
+                //calculate gradient of approx. marginal likelihood wrt the mode
+                vec_t trace_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z;
+                vec_t Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode;
+                vec_t SigmaI_plus_ZtWZ_inv_d_mll_d_mode;
+                if (grad_information_wrt_mode_non_zero_) {
+                    vec_t deriv_information_diag_loc_par(num_data);//usually vector of negative third derivatives of log-likelihood
+                    CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par.data(), deriv_information_diag_loc_par);
+                    //Stochastic trace: tr((Sigma^(-1) + Z^T W Z)^(-1) Z^T dW/dloc_par Z)
+                    den_mat_t W_deriv_loc_par_rep = deriv_information_diag_loc_par.replicate(1, num_rand_vec_trace_);
+                    den_mat_t RVt_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z_PI_RV = (Z_SigmaI_plus_ZtWZ_inv_RV.array() * W_deriv_loc_par_rep.array() * Z_PI_RV.array()).matrix();
+                    trace_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z = RVt_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z_PI_RV.rowwise().mean();
+                    //Stochastic trace: tr((Sigma^(-1) + Z^T W Z)^(-1) Z^T dW/db_j Z)
+                    vec_t d_mll_d_mode = Zt * trace_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z;
+                    d_mll_d_mode *= 0.5;
+                    //For implicit derivatives: calculate (Sigma^(-1) + Z^T W Z)^(-1) d_mll_d_mode
+                    bool has_NA_or_Inf = false;
+                    SigmaI_plus_ZtWZ_inv_d_mll_d_mode = vec_t(num_re_);
+                    CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, d_mll_d_mode, SigmaI_plus_ZtWZ_inv_d_mll_d_mode, has_NA_or_Inf,
+                        cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
+                        L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                    if (has_NA_or_Inf) {
+                        Log::REDebug(CG_NA_OR_INF_WARNING_);
+                    }
+                    if (calc_F_grad || calc_aux_par_grad) {
+                        Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode = Z * SigmaI_plus_ZtWZ_inv_d_mll_d_mode;
+                    }
+                }
+                // calculate gradient wrt covariance parameters
+                if (calc_cov_grad) {
+                    vec_t SigmaI_mode = SigmaI * mode_;
+                    double explicit_derivative;
+                    sp_mat_t I_j(num_REs, num_REs);
+                    for (int j = 0; j < num_comps; ++j) {
+                        // calculate explicit derivative of approx. mariginal log-likelihood
+                        std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);
+                        explicit_derivative = 0.;
+#pragma omp parallel for schedule(static) reduction(+:explicit_derivative)
+                        for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
+                            triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
+                            explicit_derivative += SigmaI_mode[i] * mode_[i];
+                        }
+                        explicit_derivative *= -0.5;
+                        I_j.setFromTriplets(triplets.begin(), triplets.end());
+                        double cov_par_inv = SigmaI.coeff(cum_num_rand_eff_cluster_i[j], cum_num_rand_eff_cluster_i[j]);
+                        //Stochastic trace: tr((Sigma^(-1) + Z^T W Z)^(-1) dSigma^(-1)/dtheta_j)
+                        vec_t RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV = -cov_par_inv * ((SigmaI_plus_ZtWZ_inv_RV_.cwiseProduct(I_j * PI_RV)).colwise().sum()).transpose(); //old: -1. * ((SigmaI_plus_ZtWZ_inv_RV_.cwiseProduct((I_j * SigmaI.coeff(cum_num_rand_eff_cluster_i[j], cum_num_rand_eff_cluster_i[j])) * PI_RV)).colwise().sum()).transpose();
+                        double trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv = RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV.mean();
+                        if (cg_preconditioner_type_ == "ssor") {
+                            //Variance reduction
+                            //deterministic tr(D^(-1) dSigma^(-1)/dtheta_j)
+                            double tr_D_inv_SigmaI_deriv = -cov_par_inv * (P_SSOR_D_inv_.cwiseProduct(I_j.diagonal())).sum();
+                            //stochastic tr(P^(-1) dP/dtheta_j)
+                            den_mat_t neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV = cov_par_inv * (I_j * DI_L_plus_D_t_PI_RV);
+                            vec_t RVt_PI_P_deriv_PI_RV = -2. * ((PI_RV.cwiseProduct(neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV)).colwise().sum()).transpose();
+                            RVt_PI_P_deriv_PI_RV += ((DI_L_plus_D_t_PI_RV.cwiseProduct(neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV)).colwise().sum()).transpose();
+                            double tr_PI_P_deriv = RVt_PI_P_deriv_PI_RV.mean();
+                            //optimal c
+                            double c_opt;
+                            CalcOptimalC(RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV, RVt_PI_P_deriv_PI_RV, trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv, tr_PI_P_deriv, c_opt);
+                            trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv += c_opt * (tr_D_inv_SigmaI_deriv - tr_PI_P_deriv);
+                        }
+                        explicit_derivative += 0.5 * (trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv + cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);
+                        cov_grad[j] = explicit_derivative;
+                        if (grad_information_wrt_mode_non_zero_) {
+                            // calculate implicit derivative (through mode) of approx. mariginal log-likelihood
+                            cov_grad[j] += SigmaI_plus_ZtWZ_inv_d_mll_d_mode.dot(I_j * (Zt * first_deriv_ll_));
                         }
                     }
-                    d_mll_d_mode[ire] *= 0.5;
-                }
-            }
-            // calculate gradient wrt covariance parameters
-            if (calc_cov_grad) {
-                sp_mat_t ZtWZ = Zt * information_ll_.asDiagonal() * Z;
-                vec_t d_mode_d_par;//derivative of mode wrt to a covariance parameter
-                vec_t v_aux;//auxiliary variable for caclulating d_mode_d_par
-                vec_t SigmaI_mode = SigmaI * mode_;
-                double explicit_derivative;
-                sp_mat_t I_j(num_REs, num_REs);//Diagonal matrix with 1 on the diagonal for all random effects of component j and 0's otherwise
-                sp_mat_t I_j_ZtWZ;
-                for (int j = 0; j < num_comps; ++j) {
-                    // calculate explicit derivative of approx. mariginal log-likelihood
-                    std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);//for constructing I_j
-                    explicit_derivative = 0.;
-#pragma omp parallel for schedule(static) reduction(+:explicit_derivative)
-                    for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
-                        triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
-                        explicit_derivative += SigmaI_mode[i] * mode_[i];
-                    }
-                    explicit_derivative *= -0.5;
-                    I_j.setFromTriplets(triplets.begin(), triplets.end());
-                    I_j_ZtWZ = I_j * ZtWZ;
-                    SigmaI_plus_ZtWZ_inv = I_j_ZtWZ;
-                    CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
-                    explicit_derivative += 0.5 * (SigmaI_plus_ZtWZ_inv.cwiseProduct(I_j_ZtWZ)).sum();
-                    cov_grad[j] = explicit_derivative;
+                }//end calc_cov_grad
+                // calculate gradient wrt fixed effects
+                if (calc_F_grad) {
+                    fixed_effect_grad = -first_deriv_ll_;
                     if (grad_information_wrt_mode_non_zero_) {
-                        // calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-                        d_mode_d_par = L_inv.transpose() * (L_inv * (I_j * (Zt * first_deriv_ll_)));
-                        cov_grad[j] += d_mll_d_mode.dot(d_mode_d_par);
+                        fixed_effect_grad += 0.5 * trace_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z - Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode.cwiseProduct(information_ll_);
                     }
+                }//end calc_F_grad
+                // calculate gradient wrt additional likelihood parameters
+                if (calc_aux_par_grad) {
+                    vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
+                    vec_t second_deriv_loc_aux_par(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
+                    vec_t deriv_information_aux_par(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
+                    vec_t d_mode_d_aux_par;
+                    CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), num_data, neg_likelihood_deriv.data());
+                    for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
+                        CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), num_data, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+                        //stochastic tr((Sigma^(-1) + Z^T W Z)^(-1) Z^T dW/daux Z)
+                        vec_t RVt_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_aux_Z_PI_RV = ((Z_SigmaI_plus_ZtWZ_inv_RV.cwiseProduct(deriv_information_aux_par.asDiagonal() * Z_PI_RV)).colwise().sum()).transpose();
+                        double tr_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_aux_Z = RVt_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_aux_Z_PI_RV.mean();
+                        double d_detmll_d_aux_par = tr_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_aux_Z;
+                        if (cg_preconditioner_type_ == "ssor") {
+                            //Variance reduction
+                            sp_mat_t ZtdWZ = Zt * deriv_information_aux_par.asDiagonal() * Z;
+                            //deterministic tr(D^(-1) diag(Z^T dW/daux Z))
+                            double tr_D_inv_diag_Zt_W_deriv_aux_Z = (P_SSOR_D_inv_.cwiseProduct(ZtdWZ.diagonal())).sum();
+                            //stochastic tr(P^(-1) dP/daux)
+                            den_mat_t Ltriang_Zt_W_deriv_aux_Z_DI_L_plus_D_t_PI_RV = ZtdWZ.triangularView<Eigen::Lower>() * DI_L_plus_D_t_PI_RV;
+                            vec_t RVt_PI_P_deriv_PI_RV = 2. * ((PI_RV.cwiseProduct(Ltriang_Zt_W_deriv_aux_Z_DI_L_plus_D_t_PI_RV)).colwise().sum()).transpose();
+                            RVt_PI_P_deriv_PI_RV -= ((DI_L_plus_D_t_PI_RV.cwiseProduct(Ltriang_Zt_W_deriv_aux_Z_DI_L_plus_D_t_PI_RV)).colwise().sum()).transpose();
+                            double tr_PI_P_deriv = RVt_PI_P_deriv_PI_RV.mean();
+                            //optimal c
+                            double c_opt;
+                            CalcOptimalC(RVt_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_aux_Z_PI_RV, RVt_PI_P_deriv_PI_RV, tr_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_aux_Z, tr_PI_P_deriv, c_opt);
+                            d_detmll_d_aux_par += c_opt * (tr_D_inv_diag_Zt_W_deriv_aux_Z - tr_PI_P_deriv);
+                        }
+                        aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par;
+                        if (grad_information_wrt_mode_non_zero_) {
+                            aux_par_grad[ind_ap] += Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode.dot(second_deriv_loc_aux_par);
+                        }
+                    }
+                    SetGradAuxParsNotEstimated(aux_par_grad);
+                }//end calc_aux_par_grad
+            }//end iterative
+            else {//Cholesky decomposition
+                // Calculate (Sigma^-1 + Zt*W*Z)^-1
+                sp_mat_t L_inv(num_REs, num_REs);
+                L_inv.setIdentity();
+                if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
+                    L_inv = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * L_inv;
                 }
-            }//end calc_cov_grad
-            // calculate gradient wrt fixed effects
-            if (calc_F_grad) {
-                fixed_effect_grad = -first_deriv_ll_;
+                sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL();
+                TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(L, L_inv, L_inv, false);
+                L.resize(0, 0);
+                sp_mat_t SigmaI_plus_ZtWZ_inv;
+                // calculate gradient of approx. marginal likelihood wrt the mode
+                vec_t deriv_information_diag_loc_par;//usually vector of negative third derivatives of log-likelihood
+                vec_t d_mll_d_mode;
                 if (grad_information_wrt_mode_non_zero_) {
-                    CHECK(first_deriv_information_loc_par_caluclated_);
-                    vec_t d_detmll_d_F(num_data);
-#pragma omp parallel for schedule(static)
-                    for (int i = 0; i < num_data; ++i) {
-                        vec_t L_inv_Zt_col_i = L_inv * Zt.col(i);
-                        d_detmll_d_F[i] = 0.5 * deriv_information_diag_loc_par[i] * (L_inv_Zt_col_i.squaredNorm());
-
-                    }
-                    vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = (((d_mll_d_mode.transpose() * L_inv.transpose()) * L_inv) * Zt) * information_ll_.asDiagonal();
-                    fixed_effect_grad += d_detmll_d_F - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
-                }//end grad_information_wrt_mode_non_zero_
-            }//end calc_F_grad
-            // calculate gradient wrt additional likelihood parameters
-            if (calc_aux_par_grad) {
-                vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
-                vec_t second_deriv_loc_aux_par(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
-                vec_t deriv_information_aux_par(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
-                vec_t d_mode_d_aux_par;
-                CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), num_data, neg_likelihood_deriv.data());
-                for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-                    CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), num_data, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
-                    sp_mat_t ZtdWZ = Zt * deriv_information_aux_par.asDiagonal() * Z;
-                    SigmaI_plus_ZtWZ_inv = ZtdWZ;
-                    CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
-                    double d_detmll_d_aux_par = (SigmaI_plus_ZtWZ_inv.cwiseProduct(ZtdWZ)).sum();
-                    aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par;
-                    if (grad_information_wrt_mode_non_zero_) {
-                        d_mode_d_aux_par = L_inv.transpose() * (L_inv * (Zt * second_deriv_loc_aux_par));
-                        aux_par_grad[ind_ap] += d_mll_d_mode.dot(d_mode_d_aux_par);
+                    deriv_information_diag_loc_par = vec_t(num_data);
+                    CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par.data(), deriv_information_diag_loc_par);
+                    d_mll_d_mode = vec_t(num_REs);
+                    sp_mat_t Zt_deriv_information_loc_par = Zt * deriv_information_diag_loc_par.asDiagonal();//every column of Z multiplied elementwise by deriv_information_diag_loc_par
+    #pragma omp parallel for schedule(static)
+                    for (int ire = 0; ire < num_REs; ++ire) {
+                        //calculate Z^T * diag(diag_d_W_d_mode_i) * Z = Z^T * diag(Z.col(i) * deriv_information_diag_loc_par) * Z
+                        d_mll_d_mode[ire] = 0.;
+                        double entry_ij;
+                        for (data_size_t i = 0; i < num_data; ++i) {
+                            entry_ij = Zt_deriv_information_loc_par.coeff(ire, i);
+                            if (std::abs(entry_ij) > EPSILON_NUMBERS) {
+                                vec_t L_inv_Zt_col_i = L_inv * Zt.col(i);
+                                d_mll_d_mode[ire] += entry_ij * (L_inv_Zt_col_i.squaredNorm());
+                            }
+                        }
+                        d_mll_d_mode[ire] *= 0.5;
                     }
                 }
-                SetGradAuxParsNotEstimated(aux_par_grad);
-            }//end calc_aux_par_grad
+                // calculate gradient wrt covariance parameters
+                if (calc_cov_grad) {
+                    sp_mat_t ZtWZ = Zt * information_ll_.asDiagonal() * Z;
+                    vec_t d_mode_d_par;//derivative of mode wrt to a covariance parameter
+                    vec_t v_aux;//auxiliary variable for caclulating d_mode_d_par
+                    vec_t SigmaI_mode = SigmaI * mode_;
+                    double explicit_derivative;
+                    sp_mat_t I_j(num_REs, num_REs);//Diagonal matrix with 1 on the diagonal for all random effects of component j and 0's otherwise
+                    sp_mat_t I_j_ZtWZ;
+                    for (int j = 0; j < num_comps; ++j) {
+                        // calculate explicit derivative of approx. mariginal log-likelihood
+                        std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);//for constructing I_j
+                        explicit_derivative = 0.;
+    #pragma omp parallel for schedule(static) reduction(+:explicit_derivative)
+                        for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
+                            triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
+                            explicit_derivative += SigmaI_mode[i] * mode_[i];
+                        }
+                        explicit_derivative *= -0.5;
+                        I_j.setFromTriplets(triplets.begin(), triplets.end());
+                        I_j_ZtWZ = I_j * ZtWZ;
+                        SigmaI_plus_ZtWZ_inv = I_j_ZtWZ;
+                        CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
+                        explicit_derivative += 0.5 * (SigmaI_plus_ZtWZ_inv.cwiseProduct(I_j_ZtWZ)).sum();
+                        cov_grad[j] = explicit_derivative;
+                        if (grad_information_wrt_mode_non_zero_) {
+                            // calculate implicit derivative (through mode) of approx. mariginal log-likelihood
+                            d_mode_d_par = L_inv.transpose() * (L_inv * (I_j * (Zt * first_deriv_ll_)));
+                            cov_grad[j] += d_mll_d_mode.dot(d_mode_d_par);
+                        }
+                    }
+                }//end calc_cov_grad
+                // calculate gradient wrt fixed effects
+                if (calc_F_grad) {
+                    fixed_effect_grad = -first_deriv_ll_;
+                    if (grad_information_wrt_mode_non_zero_) {
+                        CHECK(first_deriv_information_loc_par_caluclated_);
+                        vec_t d_detmll_d_F(num_data);
+    #pragma omp parallel for schedule(static)
+                        for (int i = 0; i < num_data; ++i) {
+                            vec_t L_inv_Zt_col_i = L_inv * Zt.col(i);
+                            d_detmll_d_F[i] = 0.5 * deriv_information_diag_loc_par[i] * (L_inv_Zt_col_i.squaredNorm());
+
+                        }
+                        vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = (((d_mll_d_mode.transpose() * L_inv.transpose()) * L_inv) * Zt) * information_ll_.asDiagonal();
+                        fixed_effect_grad += d_detmll_d_F - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
+                    }//end grad_information_wrt_mode_non_zero_
+                }//end calc_F_grad
+                // calculate gradient wrt additional likelihood parameters
+                if (calc_aux_par_grad) {
+                    vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
+                    vec_t second_deriv_loc_aux_par(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
+                    vec_t deriv_information_aux_par(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
+                    vec_t d_mode_d_aux_par;
+                    CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), num_data, neg_likelihood_deriv.data());
+                    for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
+                        CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), num_data, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+                        sp_mat_t ZtdWZ = Zt * deriv_information_aux_par.asDiagonal() * Z;
+                        SigmaI_plus_ZtWZ_inv = ZtdWZ;
+                        CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
+                        double d_detmll_d_aux_par = (SigmaI_plus_ZtWZ_inv.cwiseProduct(ZtdWZ)).sum();
+                        aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par;
+                        if (grad_information_wrt_mode_non_zero_) {
+                            d_mode_d_aux_par = L_inv.transpose() * (L_inv * (Zt * second_deriv_loc_aux_par));
+                            aux_par_grad[ind_ap] += d_mll_d_mode.dot(d_mode_d_aux_par);
+                        }
+                    }
+                    SetGradAuxParsNotEstimated(aux_par_grad);
+                }//end calc_aux_par_grad
+            }//end Cholesky decomposition
         }//end CalcGradNegMargLikelihoodLaplaceApproxGroupedRE
 
         /*!
@@ -4289,7 +4572,7 @@ namespace GPBoost {
             bool calc_mode) {
             if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
                 double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-                FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, num_data, SigmaI, Zt, mll);
+                FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, num_data, SigmaI, Zt, false, false, mll);
             }
             if (na_or_inf_during_last_call_to_find_mode_) {
                 Log::REFatal(NA_OR_INF_ERROR_);
@@ -4298,39 +4581,234 @@ namespace GPBoost {
             pred_mean = Ztilde * mode_;
             //pred_mean = Ztilde * (Sigma * (Zt * first_deriv_ll_));//equivalent version
             if (calc_pred_cov || calc_pred_var) {
-                sp_mat_t SigmaI_plus_ZtWZ_I(Sigma.cols(), Sigma.cols());
-                SigmaI_plus_ZtWZ_I.setIdentity();
-                TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, false);
-                TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, true);
-                sp_mat_t Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I = (Sigma * (Zt * information_ll_.asDiagonal() * Zt.transpose())) * SigmaI_plus_ZtWZ_I;
-                if (calc_pred_cov) {
-                    pred_cov -= (T_mat)(Ztilde * Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I * Ztilde.transpose());
-                }
-                if (calc_pred_var) {
-                    sp_mat_t Maux = Ztilde;
-                    CalcAtimesBGivenSparsityPattern<sp_mat_t>(Ztilde, Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I, Maux);
-#pragma omp parallel for schedule(static)
-                    for (int i = 0; i < (int)pred_mean.size(); ++i) {
-                        pred_var[i] -= (Ztilde.row(i)).dot(Maux.row(i));
+                if (calc_pred_var && matrix_inversion_method_ == "iterative") {
+                    int n_pred = (int)pred_mean.size();
+                    vec_t pred_var_global = vec_t::Zero(n_pred);
+                    //Variance reduction
+                    sp_mat_rm_t Ztilde_P_sqrt_invt;
+                    vec_t varred_global, c_cov, c_var;
+                    if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+                        varred_global = vec_t::Zero(n_pred);
+                        c_cov = vec_t::Zero(n_pred);
+                        c_var = vec_t::Zero(n_pred);
+                        //Calculate P^(-0.5) explicitly
+                        sp_mat_rm_t Identity(num_re_, num_re_);
+                        Identity.setIdentity();
+                        sp_mat_rm_t P_sqrt_invt;
+                        if (cg_preconditioner_type_ == "incomplete_cholesky") {
+                            TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtWZ_rm_, Identity, P_sqrt_invt, true);
+                        }
+                        else {
+                            TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_, Identity, P_sqrt_invt, true);
+                        }
+                        //Z_po P^(-T/2)
+                        Ztilde_P_sqrt_invt = Ztilde * P_sqrt_invt;
                     }
-                }
-                //Old code (not used anymore)
-//              // calculate Maux = L\(Z^T * information_ll_.asDiagonal() * Cross_Cov^T)
-//              sp_mat_t Cross_Cov = Ztilde * Sigma * Zt;
-//              sp_mat_t Maux = Zt * information_ll_.asDiagonal() * Cross_Cov.transpose();
-//              TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux, Maux, false);
-//              if (calc_pred_cov) {
-//                  pred_cov += (T_mat)(Maux.transpose() * Maux);
-//                  pred_cov -= (T_mat)(Cross_Cov * information_ll_.asDiagonal() * Cross_Cov.transpose());
-//              }
-//              if (calc_pred_var) {
-//                  sp_mat_t Maux3 = Cross_Cov.cwiseProduct(Cross_Cov * information_ll_.asDiagonal());
-//                  Maux = Maux.cwiseProduct(Maux);
-//#pragma omp parallel for schedule(static)
-//                  for (int i = 0; i < (int)pred_mean.size(); ++i) {
-//                      pred_var[i] += Maux.col(i).sum() - Maux3.row(i).sum();
-//                  }
-//              }
+                    int num_threads;
+#ifdef _OPENMP
+                    num_threads = omp_get_max_threads();
+#else
+                    num_threads = 1;
+#endif
+                    std::uniform_int_distribution<> unif(0, 2147483646);
+                    std::vector<RNG_t> parallel_rngs;
+                    for (int ig = 0; ig < num_threads; ++ig) {
+                        int seed_local = unif(cg_generator_);
+                        parallel_rngs.push_back(RNG_t(seed_local));
+                    }
+#pragma omp parallel
+                    {
+                        int thread_nb;
+#ifdef _OPENMP
+                        thread_nb = omp_get_thread_num();
+#else
+                        thread_nb = 0;
+#endif
+                        RNG_t rng_local = parallel_rngs[thread_nb];
+                        vec_t pred_var_private = vec_t::Zero(n_pred);
+                        vec_t varred_private;
+                        vec_t c_cov_private;
+                        vec_t c_var_private;
+                        //Variance reduction
+                        if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+                            varred_private = vec_t::Zero(n_pred);
+                            c_cov_private = vec_t::Zero(n_pred);
+                            c_var_private = vec_t::Zero(n_pred);
+                        }
+#pragma omp for
+                        for (int i = 0; i < nsim_var_pred_; ++i) {
+                            //RV - Rademacher
+                            std::uniform_real_distribution<double> udist(0.0, 1.0);
+                            vec_t rand_vec_init(n_pred);
+                            double u;
+                            for (int j = 0; j < n_pred; j++) {
+                                u = udist(rng_local);
+                                if (u > 0.5) {
+                                    rand_vec_init(j) = 1.;
+                                }
+                                else {
+                                    rand_vec_init(j) = -1.;
+                                }
+                            }
+                            //Z_po^T RV
+                            vec_t Z_tilde_t_RV = Ztilde.transpose() * rand_vec_init;
+                            //Part 2: (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
+                            vec_t MInv_Ztilde_t_RV(num_re_);
+                            bool has_NA_or_Inf = false;
+                            CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, Z_tilde_t_RV, MInv_Ztilde_t_RV, has_NA_or_Inf,
+                                cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
+                                L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                            if (has_NA_or_Inf) {
+                                Log::REDebug(CG_NA_OR_INF_WARNING_);
+                            }
+                            //Part 2: Z_po (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
+                            vec_t rand_vec_final = Ztilde * MInv_Ztilde_t_RV;
+                            pred_var_private += rand_vec_final.cwiseProduct(rand_vec_init);
+                            //Variance reduction
+                            if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+                                //Stochastic: Z_po P^(-0.5T) P^(-0.5) Z_po^T RV
+                                vec_t P_sqrt_inv_Ztilde_t_RV = Ztilde_P_sqrt_invt.transpose() * rand_vec_init;
+                                vec_t rand_vec_varred = Ztilde_P_sqrt_invt * P_sqrt_inv_Ztilde_t_RV;
+                                varred_private += rand_vec_varred.cwiseProduct(rand_vec_init);
+                                c_cov_private += varred_private.cwiseProduct(pred_var_private);
+                                c_var_private += varred_private.cwiseProduct(varred_private);
+                            }
+                        } //end for loop
+#pragma omp critical
+                        {
+                            pred_var_global += pred_var_private;
+                            //Variance reduction
+                            if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+                                varred_global += varred_private;
+                                c_cov += c_cov_private;
+                                c_var += c_var_private;
+                            }
+                        }
+                    } //end #pragma omp parallel
+                    pred_var_global /= nsim_var_pred_;
+                    pred_var += pred_var_global;
+                    //Variance reduction
+                    if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+                        varred_global /= nsim_var_pred_;
+                        c_cov /= nsim_var_pred_;
+                        c_var /= nsim_var_pred_;
+                        //Deterministic: diag(Z_po P^(-0.5T) P^(-0.5) Z_po^T)
+                        vec_t varred_determ = Ztilde_P_sqrt_invt.cwiseProduct(Ztilde_P_sqrt_invt) * vec_t::Ones(n_pred);
+                        //optimal c
+                        c_cov -= varred_global.cwiseProduct(pred_var_global);
+                        c_var -= varred_global.cwiseProduct(varred_global);
+                        vec_t c_opt = c_cov.array() / c_var.array();
+#pragma omp parallel for schedule(static)   
+                        for (int i = 0; i < c_opt.size(); ++i) {
+                            if (c_var.coeffRef(i) == 0) {
+                                c_opt[i] = 1;
+                            }
+                        }
+                        pred_var += c_opt.cwiseProduct(varred_determ - varred_global);
+                    }
+                } //end calc_pred_var
+                else if (calc_pred_cov && matrix_inversion_method_ == "iterative") {
+                    int n_pred = (int)pred_mean.size();
+                    den_mat_t pred_cov_global = den_mat_t::Zero(n_pred, n_pred);
+                    vec_t SigmaI_diag_sqrt = SigmaI.diagonal().cwiseSqrt();
+                    sp_mat_rm_t Zt_W_sqrt = sp_mat_rm_t(Zt * information_ll_.cwiseSqrt().asDiagonal());
+                    if (!cg_generator_seeded_) {
+                        cg_generator_ = RNG_t(seed_rand_vec_trace_);
+                        cg_generator_seeded_ = true;
+                    }
+                    int num_threads;
+#ifdef _OPENMP
+                    num_threads = omp_get_max_threads();
+#else
+                    num_threads = 1;
+#endif
+                    std::uniform_int_distribution<> unif(0, 2147483646);
+                    std::vector<RNG_t> parallel_rngs;
+                    for (int ig = 0; ig < num_threads; ++ig) {
+                        int seed_local = unif(cg_generator_);
+                        parallel_rngs.push_back(RNG_t(seed_local));
+                    }
+#pragma omp parallel
+                    {
+                        int thread_nb;
+#ifdef _OPENMP
+                        thread_nb = omp_get_thread_num();
+#else
+                        thread_nb = 0;
+#endif
+                        RNG_t rng_local = parallel_rngs[thread_nb];
+                        den_mat_t pred_cov_private = den_mat_t::Zero(n_pred, n_pred);
+#pragma omp for
+                        for (int i = 0; i < nsim_var_pred_; ++i) {
+                            //z_i ~ N(0,I)
+                            std::normal_distribution<double> ndist(0.0, 1.0);
+                            vec_t rand_vec_pred_I_1(num_re_), rand_vec_pred_I_2(n_pred);
+                            for (int j = 0; j < num_re_; j++) {
+                                rand_vec_pred_I_1(j) = ndist(rng_local);
+                            }
+                            for (int j = 0; j < n_pred; j++) {
+                                rand_vec_pred_I_2(j) = ndist(rng_local);
+                            }
+                            //z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
+                            vec_t rand_vec_pred_SigmaI_plus_ZtWZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_W_sqrt * rand_vec_pred_I_2;
+                            vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv(num_re_);
+                            //z_i ~ N(0,(Sigma^(-1) + Z^T W Z)^(-1))
+                            bool has_NA_or_Inf = false;
+                            CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
+                                0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                            if (has_NA_or_Inf) {
+                                Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
+                            }
+                            //z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
+                            vec_t rand_vec_pred = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+                            pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
+                        } //end for loop
+#pragma omp critical
+                        {
+                            pred_cov_global += pred_cov_private;
+                        }
+                    } //end #pragma omp parallel
+                    pred_cov_global /= nsim_var_pred_;
+                    T_mat pred_cov_T_mat;
+                    ConvertTo_T_mat_FromDense<T_mat>(pred_cov_global, pred_cov_T_mat);
+                    pred_cov -= (T_mat)(Ztilde * Sigma * Ztilde.transpose()); //TODO: create and call AddPredCovMatrices only for new groups and remove this line.
+                    pred_cov += pred_cov_T_mat;
+                } //end calc_pred_cov
+                else { //begin cholesky
+                    sp_mat_t SigmaI_plus_ZtWZ_I(Sigma.cols(), Sigma.cols());
+                    SigmaI_plus_ZtWZ_I.setIdentity();
+                    TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, false);
+                    TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, true);
+                    sp_mat_t Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I = (Sigma * (Zt * information_ll_.asDiagonal() * Zt.transpose())) * SigmaI_plus_ZtWZ_I;
+                    if (calc_pred_cov) {
+                        pred_cov -= (T_mat)(Ztilde * Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I * Ztilde.transpose());
+                    }
+                    if (calc_pred_var) {
+                        sp_mat_t Maux = Ztilde;
+                        CalcAtimesBGivenSparsityPattern<sp_mat_t>(Ztilde, Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I, Maux);
+    #pragma omp parallel for schedule(static)
+                        for (int i = 0; i < (int)pred_mean.size(); ++i) {
+                            pred_var[i] -= (Ztilde.row(i)).dot(Maux.row(i));
+                        }
+                    }
+                    //Old code (not used anymore)
+    //              // calculate Maux = L\(Z^T * information_ll_.asDiagonal() * Cross_Cov^T)
+    //              sp_mat_t Cross_Cov = Ztilde * Sigma * Zt;
+    //              sp_mat_t Maux = Zt * information_ll_.asDiagonal() * Cross_Cov.transpose();
+    //              TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux, Maux, false);
+    //              if (calc_pred_cov) {
+    //                  pred_cov += (T_mat)(Maux.transpose() * Maux);
+    //                  pred_cov -= (T_mat)(Cross_Cov * information_ll_.asDiagonal() * Cross_Cov.transpose());
+    //              }
+    //              if (calc_pred_var) {
+    //                  sp_mat_t Maux3 = Cross_Cov.cwiseProduct(Cross_Cov * information_ll_.asDiagonal());
+    //                  Maux = Maux.cwiseProduct(Maux);
+    //#pragma omp parallel for schedule(static)
+    //                  for (int i = 0; i < (int)pred_mean.size(); ++i) {
+    //                      pred_var[i] += Maux.col(i).sum() - Maux3.row(i).sum();
+    //                  }
+    //              }
+                } //end cholesky
             }
         }//end PredictLaplaceApproxGroupedRE
 
@@ -4816,13 +5294,133 @@ namespace GPBoost {
             }
             CHECK(mode_has_been_calculated_);
             pred_var = vec_t(num_re_);
-            sp_mat_t L_inv(num_re_, num_re_);
-            L_inv.setIdentity();
-            TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, L_inv, L_inv, false);
+            if (matrix_inversion_method_ == "iterative") {
+                pred_var = vec_t::Zero(num_re_);
+                //Variance reduction
+                sp_mat_rm_t P_sqrt_invt;
+                vec_t varred_global, c_cov, c_var;
+                if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+                    varred_global = vec_t::Zero(num_re_);
+                    c_cov = vec_t::Zero(num_re_);
+                    c_var = vec_t::Zero(num_re_);
+                    //Calculate P^(-0.5) explicitly
+                    sp_mat_rm_t Identity(num_re_, num_re_);
+                    Identity.setIdentity();
+                    if (cg_preconditioner_type_ == "incomplete_cholesky") {
+                        TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtWZ_rm_, Identity, P_sqrt_invt, true);
+                    }
+                    else {
+                        TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_, Identity, P_sqrt_invt, true);
+                    }
+                }
+                int num_threads;
+#ifdef _OPENMP
+                num_threads = omp_get_max_threads();
+#else
+                num_threads = 1;
+#endif
+                std::uniform_int_distribution<> unif(0, 2147483646);
+                std::vector<RNG_t> parallel_rngs;
+                for (int ig = 0; ig < num_threads; ++ig) {
+                    int seed_local = unif(cg_generator_);
+                    parallel_rngs.push_back(RNG_t(seed_local));
+                }
+#pragma omp parallel
+                {
+                    int thread_nb;
+#ifdef _OPENMP
+                    thread_nb = omp_get_thread_num();
+#else
+                    thread_nb = 0;
+#endif
+                    RNG_t rng_local = parallel_rngs[thread_nb];
+                    vec_t pred_var_private = vec_t::Zero(num_re_);
+                    vec_t varred_private;
+                    vec_t c_cov_private;
+                    vec_t c_var_private;
+                    //Variance reduction
+                    if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+                        varred_private = vec_t::Zero(num_re_);
+                        c_cov_private = vec_t::Zero(num_re_);
+                        c_var_private = vec_t::Zero(num_re_);
+                    }
+#pragma omp for
+                    for (int i = 0; i < nsim_var_pred_; ++i) {
+                        //RV - Rademacher
+                        std::uniform_real_distribution<double> udist(0.0, 1.0);
+                        vec_t rand_vec_init(num_re_);
+                        double u;
+                        for (int j = 0; j < num_re_; j++) {
+                            u = udist(rng_local);
+                            if (u > 0.5) {
+                                rand_vec_init(j) = 1.;
+                            }
+                            else {
+                                rand_vec_init(j) = -1.;
+                            }
+                        }
+                        //Part 2: (Sigma^(-1) + Z^T W Z)^(-1) RV
+                        vec_t MInv_RV(num_re_);
+                        bool has_NA_or_Inf = false;
+                        CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_init, MInv_RV, has_NA_or_Inf,
+                            cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
+                            L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                        if (has_NA_or_Inf) {
+                            Log::REDebug(CG_NA_OR_INF_WARNING_);
+                        }
+                        //Part 2: RV o (Sigma^(-1) + Z^T W Z)^(-1) RV
+                        pred_var_private += MInv_RV.cwiseProduct(rand_vec_init);
+                        //Variance reduction
+                        if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+                            //Stochastic: P^(-0.5T) P^(-0.5) RV
+                            vec_t P_sqrt_inv_RV = P_sqrt_invt.transpose() * rand_vec_init;
+                            vec_t rand_vec_varred = P_sqrt_invt * P_sqrt_inv_RV;
+                            varred_private += rand_vec_varred.cwiseProduct(rand_vec_init);
+                            c_cov_private += varred_private.cwiseProduct(pred_var_private);
+                            c_var_private += varred_private.cwiseProduct(varred_private);
+                        }
+                    } //end for loop
+#pragma omp critical
+                    {
+                        pred_var += pred_var_private;
+                        //Variance reduction
+                        if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+                            varred_global += varred_private;
+                            c_cov += c_cov_private;
+                            c_var += c_var_private;
+                        }
+                    }
+                } //end #pragma omp parallel
+                pred_var /= nsim_var_pred_;
+                //Variance reduction
+                if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+                    varred_global /= nsim_var_pred_;
+                    c_cov /= nsim_var_pred_;
+                    c_var /= nsim_var_pred_;
+                    //Deterministic: diag(P^(-0.5T) P^(-0.5))
+                    vec_t varred_determ = P_sqrt_invt.cwiseProduct(P_sqrt_invt) * vec_t::Ones(num_re_);
+                    //optimal c
+                    c_cov -= varred_global.cwiseProduct(pred_var);
+                    c_var -= varred_global.cwiseProduct(varred_global);
+                    vec_t c_opt = c_cov.array() / c_var.array();
+#pragma omp parallel for schedule(static)   
+                    for (int i = 0; i < c_opt.size(); ++i) {
+                        if (c_var.coeffRef(i) == 0) {
+                            c_opt[i] = 1;
+                        }
+                    }
+                    pred_var += c_opt.cwiseProduct(varred_determ - varred_global);
+                }
+            } //end iterative
+            else { //begin Cholesky
+                sp_mat_t L_inv(num_re_, num_re_);
+                L_inv.setIdentity();
+                TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, L_inv, L_inv, false);
 #pragma omp parallel for schedule(static)
-            for (int i = 0; i < num_re_; ++i) {
-                pred_var[i] = L_inv.col(i).squaredNorm();
-            }
+                for (int i = 0; i < num_re_; ++i) {
+                    pred_var[i] = L_inv.col(i).squaredNorm();
+                }
+            } //end Cholesky
         }//end CalcVarLaplaceApproxGroupedRE
 
         /*!
@@ -5926,6 +6524,18 @@ namespace GPBoost {
         sp_mat_rm_t D_inv_rm_;
         /*! \brief Row-major matrix of B^T D^(-1)*/
         sp_mat_rm_t B_t_D_inv_rm_;
+
+        //ITERATIVE MATRIX INVERSION + RANDOM EFFECTS
+        /*! \brief Row-major version of Inverse covariance matrix of latent random effect. */
+        sp_mat_rm_t SigmaI_plus_ZtWZ_rm_;
+        /*! Matrix to store (Sigma^(-1) + Z^T W Z)^(-1) (z_1, ..., z_t) calculated in CGTridiagRandomEffects() for later use in the stochastic trace approximation when calculating the gradient*/
+        den_mat_t SigmaI_plus_ZtWZ_inv_RV_;
+        /*! \brief For SSOR preconditioner - lower.triangular(Sigma^-1 + Z^T W Z) times diag(Sigma^-1 + Z^T W Z)^(-0.5)*/
+        sp_mat_rm_t P_SSOR_L_D_sqrt_inv_rm_;
+        /*! \brief For SSOR preconditioner - diag(Sigma^-1 + Z^T W Z)^(-1)*/
+        vec_t P_SSOR_D_inv_;
+        /*! \brief For ZIC preconditioner - sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T W Z)*/
+        sp_mat_rm_t L_SigmaI_plus_ZtWZ_rm_;
 
         //B) RANDOM VECTOR VARIABLES
         /*! Random number generator used to generate rand_vec_trace_I_*/

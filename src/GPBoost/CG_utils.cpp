@@ -852,4 +852,460 @@ namespace GPBoost {
 
 		L_rm = sp_mat_rm_t(L); //Convert to row-major
 	} // end ReverseIncompleteCholeskyFactorization
+
+	void CGRandomEffectsVec(const sp_mat_rm_t& SigmaI_plus_ZtWZ_rm,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const double delta_conv,
+		const int find_mode_it,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const bool run_in_parallel_do_not_report_non_convergence,
+		const string_t cg_preconditioner_type,
+		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
+		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm
+		//const std::vector<data_size_t>& cum_num_rand_eff,
+		//const data_size_t& num_re_group_total,
+		//const vec_t& P_SSOR_D1_inv,
+		//const vec_t& P_SSOR_D2_inv,
+		//const sp_mat_rm_t& P_SSOR_B_rm
+		){
+
+		p = std::min(p, (int)rhs.size());
+
+		vec_t r, r_old;
+		vec_t z, z_old;
+		vec_t h, v;
+		vec_t L_inv_r, Sigma_r, L_kt_Sigma_r;
+		vec_t r_1, r_2, z_1, z_2;
+		double a, b, r_norm;
+
+		//Avoid numerical instabilites when rhs is de facto 0
+		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+			u.setZero();
+			return;
+		}
+
+		if (find_mode_it == 0) {
+			//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
+			u.setZero();
+			r = rhs; //r = rhs - A * u
+		}
+		else if (u.isZero(0)) {
+			r = rhs; //r = rhs - A * u
+		}
+		else {
+			//r = rhs - A * u
+			r = rhs - SigmaI_plus_ZtWZ_rm * u;
+		}
+
+		//z = P^(-1) r
+		if (cg_preconditioner_type == "incomplete_cholesky") {
+			//P^(-1) = L^(-T) L^(-1)
+			L_inv_r = L_SigmaI_plus_ZtWZ_rm.triangularView<Eigen::Lower>().solve(r);
+			z = L_SigmaI_plus_ZtWZ_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_r);
+		}
+		else if (cg_preconditioner_type == "ssor") {
+			////K=2: avoid triangular-solve
+			//if (num_re_group_total == 2.) {
+			//	r_1 = r.head(cum_num_rand_eff[1]);
+			//	r_2 = r.tail(cum_num_rand_eff[2] - cum_num_rand_eff[1]);
+			//	z_2 = P_SSOR_D2_inv.cwiseProduct(r_2 - P_SSOR_B_rm * (P_SSOR_D1_inv.cwiseProduct(r_1)));
+			//	z_1 = P_SSOR_D1_inv.cwiseProduct(r_1 - P_SSOR_B_rm.transpose() * z_2);
+			//	z.resize(cum_num_rand_eff[num_re_group_total]);
+			//	z << z_1, z_2;
+			//}
+			//else {
+				//P^(-1) = L^(-T) D L^(-1) = (L D^(-0.5))^(-T) (L D^(-0.5))^(-1)
+				L_inv_r = P_SSOR_L_D_sqrt_inv_rm.triangularView<Eigen::Lower>().solve(r);
+				z = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_r);
+			//}
+		}
+		else {
+			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+		}
+
+		h = z;
+
+		for (int j = 0; j < p; ++j) {
+
+			v = SigmaI_plus_ZtWZ_rm * h;
+
+			a = r.transpose() * z;
+			a /= h.transpose() * v;
+
+			u += a * h;
+			r_old = r;
+			r -= a * v;
+
+			r_norm = r.norm();
+			if (std::isnan(r_norm) || std::isinf(r_norm)) {
+				NA_or_Inf_found = true;
+				return;
+			}
+			if (r_norm < delta_conv) {
+				//Log::REInfo("Number CG iterations: %i", j + 1);
+				return;
+			}
+
+			z_old = z;
+
+			if (cg_preconditioner_type == "incomplete_cholesky") {
+				//P^(-1) = L^(-T) L^(-1)
+				L_inv_r = L_SigmaI_plus_ZtWZ_rm.triangularView<Eigen::Lower>().solve(r);
+				z = L_SigmaI_plus_ZtWZ_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_r);
+			}
+			else if (cg_preconditioner_type == "ssor") {
+				////K=2: avoid triangular-solve
+				//if (num_re_group_total == 2.) {
+				//	r_1 = r.head(cum_num_rand_eff[1]);
+				//	r_2 = r.tail(cum_num_rand_eff[2] - cum_num_rand_eff[1]);
+				//	z_2 = P_SSOR_D2_inv.cwiseProduct(r_2 - P_SSOR_B_rm * (P_SSOR_D1_inv.cwiseProduct(r_1)));
+				//	z_1 = P_SSOR_D1_inv.cwiseProduct(r_1 - P_SSOR_B_rm.transpose() * z_2);
+				//	z << z_1, z_2;
+				//}
+				//else {
+					//P^(-1) = L^(-T) D L^(-1) = (L D^(-0.5))^(-T) (L D^(-0.5))^(-1)
+					L_inv_r = P_SSOR_L_D_sqrt_inv_rm.triangularView<Eigen::Lower>().solve(r);
+					z = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_r);
+				//}
+			}
+			else {
+				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			}
+
+			b = r.transpose() * z;
+			b /= r_old.transpose() * z_old;
+
+			h = z + b * h;
+		}
+		if (!run_in_parallel_do_not_report_non_convergence) {
+			Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+				"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it' ", p);
+		}
+	} // end CGRandomEffectsVec
+
+	void CGTridiagRandomEffects(const sp_mat_rm_t& SigmaI_plus_ZtWZ_rm,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_REs,
+		const int t,
+		int p,
+		const double delta_conv,
+		const string_t cg_preconditioner_type,
+		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
+		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm
+		//const std::vector<data_size_t>& cum_num_rand_eff,
+		//const data_size_t& num_re_group_total,
+		//const vec_t& P_SSOR_D1_inv,
+		//const vec_t& P_SSOR_D2_inv,
+		//const sp_mat_rm_t& P_SSOR_B_rm
+		) {
+
+		p = std::min(p, (int)num_REs);
+
+		den_mat_t R(num_REs, t), R_old, Z(num_REs, t), Z_old, H, V(num_REs, t);
+		den_mat_t L_inv_R(num_REs, t), Sigma_R(num_REs, t), L_kt_Sigma_R;
+		vec_t v1(num_REs);
+		vec_t a(t), a_old(t);
+		vec_t b(t), b_old(t);
+		bool early_stop_alg = false;
+		double mean_R_norm;
+
+		U.setZero();
+		v1.setOnes();
+		a.setOnes();
+		b.setZero();
+
+		//R = rhs - A * U
+		R = rhs; //Since U is 0
+
+		//Z = P^(-1) R 	
+		if (cg_preconditioner_type == "incomplete_cholesky") {
+			//P^(-1) = L^(-T) L^(-1)
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				L_inv_R.col(i) = L_SigmaI_plus_ZtWZ_rm.triangularView<Eigen::Lower>().solve(R.col(i));
+			}
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				Z.col(i) = L_SigmaI_plus_ZtWZ_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
+			}
+		}
+		else if (cg_preconditioner_type == "ssor") {
+//			if (num_re_group_total == 2.) {
+//				//K=2: avoid triangular-solve
+//#pragma omp parallel for schedule(static)   
+//				for (int i = 0; i < t; ++i) {
+//					vec_t r_1 = R.col(i).head(cum_num_rand_eff[1]);
+//					vec_t r_2 = R.col(i).tail(cum_num_rand_eff[2] - cum_num_rand_eff[1]);
+//					vec_t z_2 = P_SSOR_D2_inv.cwiseProduct(r_2 - P_SSOR_B_rm * (P_SSOR_D1_inv.cwiseProduct(r_1)));
+//					vec_t z_1 = P_SSOR_D1_inv.cwiseProduct(r_1 - P_SSOR_B_rm.transpose() * z_2);
+//					Z.col(i) << z_1, z_2;
+//				}
+//			}
+//			else {
+				//P^(-1) = L^(-T) D L^(-1) = (L D^(-0.5))^(-T) (L D^(-0.5))^(-1)
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					L_inv_R.col(i) = P_SSOR_L_D_sqrt_inv_rm.triangularView<Eigen::Lower>().solve(R.col(i));
+				}
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					Z.col(i) = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
+				}
+//			}
+		}
+		else {
+			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+		}
+
+		H = Z;
+
+		for (int j = 0; j < p; ++j) {
+
+			//V = (Sigma^(-1) + Z^T Z) H
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				V.col(i) = SigmaI_plus_ZtWZ_rm * H.col(i);
+			}
+
+			a_old = a;
+			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
+
+			U += H * a.asDiagonal();
+			R_old = R;
+			R -= V * a.asDiagonal();
+
+			mean_R_norm = R.colwise().norm().mean();
+
+			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
+				NA_or_Inf_found = true;
+				return;
+			}
+			if (mean_R_norm < delta_conv) {
+				early_stop_alg = true;
+				//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
+			}
+
+			Z_old = Z;
+
+			//Z = P^(-1) R
+			if (cg_preconditioner_type == "incomplete_cholesky") {
+				//P^(-1) = L^(-T) L^(-1)
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					L_inv_R.col(i) = L_SigmaI_plus_ZtWZ_rm.triangularView<Eigen::Lower>().solve(R.col(i));
+				}
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					Z.col(i) = L_SigmaI_plus_ZtWZ_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
+				}
+			}
+			else if (cg_preconditioner_type == "ssor") {
+//				if (num_re_group_total == 2.) {
+//					//K=2: avoid triangular-solve
+//#pragma omp parallel for schedule(static)   
+//					for (int i = 0; i < t; ++i) {
+//						vec_t r_1 = R.col(i).head(cum_num_rand_eff[1]);
+//						vec_t r_2 = R.col(i).tail(cum_num_rand_eff[2] - cum_num_rand_eff[1]);
+//						vec_t z_2 = P_SSOR_D2_inv.cwiseProduct(r_2 - P_SSOR_B_rm * (P_SSOR_D1_inv.cwiseProduct(r_1)));
+//						vec_t z_1 = P_SSOR_D1_inv.cwiseProduct(r_1 - P_SSOR_B_rm.transpose() * z_2);
+//						Z.col(i) << z_1, z_2;
+//					}
+//				}
+//				else {
+					//P^(-1) = L^(-T) D L^(-1) = (L D^(-0.5))^(-T) (L D^(-0.5))^(-1)
+#pragma omp parallel for schedule(static)   
+					for (int i = 0; i < t; ++i) {
+						L_inv_R.col(i) = P_SSOR_L_D_sqrt_inv_rm.triangularView<Eigen::Lower>().solve(R.col(i));
+					}
+#pragma omp parallel for schedule(static)   
+					for (int i = 0; i < t; ++i) {
+						Z.col(i) = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
+					}
+				//}
+			}
+			else {
+				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			}
+
+			b_old = b;
+			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+
+			H = Z + H * b.asDiagonal();
+
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < t; ++i) {
+				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
+				if (j > 0) {
+					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
+				}
+			}
+
+			if (early_stop_alg) {
+				for (int i = 0; i < t; ++i) {
+					Tdiags[i].conservativeResize(j + 1, 1);
+					Tsubdiags[i].conservativeResize(j, 1);
+				}
+				return;
+			}
+		}
+		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
+	} // end CGTridiagRandomEffects
+
+	void CGRandomEffectsMat(const sp_mat_rm_t& SigmaI_plus_ZtWZ_rm,
+		const den_mat_t& rhs,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_REs,
+		const int t,
+		int p,
+		const double delta_conv,
+		const string_t cg_preconditioner_type,
+		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
+		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm) {
+
+		p = std::min(p, (int)num_REs);
+
+		den_mat_t R(num_REs, t), R_old, Z(num_REs, t), Z_old, H, V(num_REs, t);
+		den_mat_t L_inv_R(num_REs, t);
+		vec_t v1(num_REs);
+		vec_t a(t), a_old(t);
+		vec_t b(t), b_old(t);
+		double mean_R_norm;
+
+		U.setZero();
+		v1.setOnes();
+		a.setOnes();
+		b.setZero();
+
+		//R = rhs - A * U
+		R = rhs; //Since U is 0
+
+		//Z = P^(-1) R 	
+		if (cg_preconditioner_type == "incomplete_cholesky") {
+			//P^(-1) = L^(-T) L^(-1)
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				L_inv_R.col(i) = L_SigmaI_plus_ZtWZ_rm.triangularView<Eigen::Lower>().solve(R.col(i));
+			}
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				Z.col(i) = L_SigmaI_plus_ZtWZ_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
+			}
+		}
+		else if (cg_preconditioner_type == "ssor") {
+			//P^(-1) = L^(-T) D L^(-1) = (L D^(-0.5))^(-T) (L D^(-0.5))^(-1)
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				L_inv_R.col(i) = P_SSOR_L_D_sqrt_inv_rm.triangularView<Eigen::Lower>().solve(R.col(i));
+			}
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				Z.col(i) = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
+			}
+		}
+		else {
+			Log::REFatal("Preconditioner type '%s' is not supported in CGRandomEffectsMat().", cg_preconditioner_type.c_str());
+		}
+
+		H = Z;
+
+		for (int j = 0; j < p; ++j) {
+
+			//V = (Sigma^(-1) + Z^T Z) H
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				V.col(i) = SigmaI_plus_ZtWZ_rm * H.col(i);
+			}
+
+			a_old = a;
+			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
+
+			U += H * a.asDiagonal();
+			R_old = R;
+			R -= V * a.asDiagonal();
+
+			mean_R_norm = R.colwise().norm().mean();
+
+			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
+				NA_or_Inf_found = true;
+				return;
+			}
+			if (mean_R_norm < delta_conv) {
+				//Log::REInfo("Number CGRandomEffectsMat iterations: %i", j + 1);
+				return;
+			}
+
+			Z_old = Z;
+
+			//Z = P^(-1) R
+			if (cg_preconditioner_type == "incomplete_cholesky") {
+				//P^(-1) = L^(-T) L^(-1)
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					L_inv_R.col(i) = L_SigmaI_plus_ZtWZ_rm.triangularView<Eigen::Lower>().solve(R.col(i));
+				}
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					Z.col(i) = L_SigmaI_plus_ZtWZ_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
+				}
+			}
+			else if (cg_preconditioner_type == "ssor") {
+				//P^(-1) = L^(-T) D L^(-1) = (L D^(-0.5))^(-T) (L D^(-0.5))^(-1)
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					L_inv_R.col(i) = P_SSOR_L_D_sqrt_inv_rm.triangularView<Eigen::Lower>().solve(R.col(i));
+				}
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					Z.col(i) = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
+				}
+			}
+			else {
+				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			}
+
+			b_old = b;
+			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+
+			H = Z + H * b.asDiagonal();
+		}
+		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it' ", p);
+	} // end CGRandomEffectsMat
+
+	void ZeroFillInIncompleteCholeskyFactorization(sp_mat_rm_t& A,
+		sp_mat_rm_t& L) {
+
+		//Defining sparsity pattern 
+		L = A.triangularView<Eigen::Lower>();
+		L *= 0.0;
+
+		for (int i = 0; i < L.outerSize(); ++i) {
+			for (sp_mat_rm_t::InnerIterator it(L, i); it; ++it) {
+				int r = (int)it.row(); //equal to i
+				int c = (int)it.col();
+				double s = (L.row(r)).dot(L.row(c));
+				if (r == c) {
+					it.valueRef() = std::sqrt(A.coeffRef(r, c) - s + 1e-10);
+				}
+				else if (r > c) {
+					it.valueRef() = (A.coeffRef(r, c) - s) / L.coeffRef(c, c);
+				}
+				if (std::isnan(it.value()) || std::isinf(it.value())) {
+					//Log::REInfo("column i = %d, row j = %d (%d), value = %g", c, r, i, it.value());
+					//Log::REInfo("s = %g", s);
+					//Log::REInfo("A(%d, %d): %g", r, c, A.coeffRef(r, c));
+					Log::REFatal("nan or inf occured in ZeroFillInIncompleteCholeskyFactorization()");
+				}
+			}
+		}
+	} // end ZeroFillInIncompleteCholeskyFactorization
 }

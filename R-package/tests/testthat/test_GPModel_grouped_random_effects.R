@@ -357,68 +357,99 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
   test_that("Multiple grouped random effects ", {
     
-    ## Two crossed random effects
-    y <- Z1%*%b1 + Z2%*%b2 + xi
-    # Fisher scoring
-    gp_model <- fitGPModel(group_data = cbind(group,group2), y = y, 
-                           params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE))
-    expected_values <- c(0.49792062, 0.02408196, 1.21972166, 0.18357646, 1.06962710, 0.22567292)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE_MEDIUM)
-    expect_equal(gp_model$get_num_optim_iter(), 4)
-    
-    # Predict training data random effects
-    cov_pars <- gp_model$get_cov_pars()[1,]
-    all_training_data_random_effects <- predict_training_data_random_effects(gp_model, 
-                                                                             predict_var = TRUE)
-    first_occurences_1 <- match(unique(group), group)
-    first_occurences_2 <- match(unique(group2), group2)
-    pred_random_effects <- all_training_data_random_effects[first_occurences_1,c(1,3)]
-    pred_random_effects_crossed <- all_training_data_random_effects[first_occurences_2,c(2,4)] 
-    group_unique <- unique(group)
-    group_data_pred = cbind(group_unique,rep(-1,length(group_unique)))
-    preds <- predict(gp_model, group_data_pred=group_data_pred,
-                     predict_var = TRUE, predict_response = FALSE)
-    expect_lt(sum(abs(pred_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(pred_random_effects[,2] - (preds$var - cov_pars[3]))),TOLERANCE_STRICT)
-    # Check whether crossed random effects are correct
-    group_unique <- unique(group2)
-    group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
-    preds <- predict(gp_model, group_data_pred=group_data_pred,
-                     predict_var = TRUE, predict_response = FALSE)
-    expect_lt(sum(abs(pred_random_effects_crossed[,1] - preds$mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(pred_random_effects_crossed[,2] - (preds$var - cov_pars[2]))),TOLERANCE_STRICT)
-    # Prediction after training
-    group_data_pred = cbind(c(1,1,m+1),c(2,1,length(group2)+1))
-    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, predict_var = TRUE)
-    expected_mu <- c(0.7509175, -0.4208015, 0.0000000)
-    expected_var <- c(0.5677178, 0.5677178, 2.7872694)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),1E-4)
-    # Prediction without training and parameters given
-    gp_model <- GPModel(group_data = cbind(group,group2))
-    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred,
-                             cov_pars = c(0.1,1,2), predict_cov_mat = TRUE)
-    expected_mu <- c(0.7631462, -0.4328551, 0.000000000)
-    expected_cov <- c(0.114393721, 0.009406189, 0.0000000, 0.009406189,
-                      0.114393721 , 0.0000000, 0.0000000, 0.0000000, 3.100000000)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
-    # Prediction for only existing random effects
-    group_data_pred_in = cbind(c(1,1),c(2,1))
-    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred_in,
-                             cov_pars = c(0.1,1,2), predict_cov_mat = TRUE)
-    expected_mu <- c(0.7631462, -0.4328551)
-    expected_cov <- c(0.114393721, 0.009406189, 0.009406189, 0.114393721)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
-    # Prediction for only new random effects
-    group_data_pred_out = cbind(c(m+1,m+1,m+1),c(length(group2)+1,length(group2)+2,length(group2)+1))
-    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred_out,
-                             cov_pars = c(0.1,1,2), predict_cov_mat = TRUE)
-    expected_mu <- c(rep(0,3))
-    expected_cov <- c(3.1, 1.0, 3.0, 1.0, 3.1, 1.0, 3.0, 1.0, 3.1)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
+    vec_chol_or_iterative <- c("cholesky","iterative")
+    for (inv_method in vec_chol_or_iterative) {
+      if(inv_method == "iterative") {
+        tolerance_loc_1 <- TOLERANCE_LOOSE
+        tolerance_loc_2 <- 1E-4
+        tolerance_loc_3 <- 1E-2
+        loop_cg_PC = c("ssor", "zic")
+      } else {
+        tolerance_loc_1 <- TOLERANCE_MEDIUM
+        tolerance_loc_2 <- TOLERANCE_STRICT
+        tolerance_loc_3 <- 1E-4
+        loop_cg_PC = c("ssor")
+      }
+      for (cg_preconditioner_type in loop_cg_PC) {
+        
+        ## Two crossed random effects
+        y <- Z1%*%b1 + Z2%*%b2 + xi
+        
+        # Fisher scoring
+        gp_model <- fitGPModel(group_data = cbind(group,group2), y = y, matrix_inversion_method = inv_method,
+                               params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE, 
+                                             cg_preconditioner_type=cg_preconditioner_type, num_rand_vec_trace=100))
+        expected_values <- c(0.49792062, 0.02408196, 1.21972166, 0.18357646, 1.06962710, 0.22567292)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),tolerance_loc_1)
+        if(inv_method == "iterative"){
+          if(cg_preconditioner_type=="ssor"){
+            opt_it <- 6
+          } else{
+            opt_it <- 5
+          }
+        } else{
+          opt_it <- 4
+        }
+        expect_equal(gp_model$get_num_optim_iter(), opt_it)
+        
+        # Predict training data random effects
+        if(inv_method == "cholesky"){
+          cov_pars <- gp_model$get_cov_pars()[1,]
+          all_training_data_random_effects <- predict_training_data_random_effects(gp_model, 
+                                                                                   predict_var = TRUE)
+          first_occurences_1 <- match(unique(group), group)
+          first_occurences_2 <- match(unique(group2), group2)
+          pred_random_effects <- all_training_data_random_effects[first_occurences_1,c(1,3)]
+          pred_random_effects_crossed <- all_training_data_random_effects[first_occurences_2,c(2,4)] 
+          group_unique <- unique(group)
+          group_data_pred = cbind(group_unique,rep(-1,length(group_unique)))
+          preds <- predict(gp_model, group_data_pred=group_data_pred,
+                           predict_var = TRUE, predict_response = FALSE)
+          expect_lt(sum(abs(pred_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
+          expect_lt(sum(abs(pred_random_effects[,2] - (preds$var - cov_pars[3]))),TOLERANCE_STRICT)
+          # Check whether crossed random effects are correct
+          group_unique <- unique(group2)
+          group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
+          preds <- predict(gp_model, group_data_pred=group_data_pred,
+                           predict_var = TRUE, predict_response = FALSE)
+          expect_lt(sum(abs(pred_random_effects_crossed[,1] - preds$mu)),TOLERANCE_STRICT)
+          expect_lt(sum(abs(pred_random_effects_crossed[,2] - (preds$var - cov_pars[2]))),TOLERANCE_STRICT)
+        }
+        # Prediction after training
+        group_data_pred = cbind(c(1,1,m+1),c(2,1,length(group2)+1))
+        pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, predict_var = TRUE)
+        expected_mu <- c(0.7509175, -0.4208015, 0.0000000)
+        expected_var <- c(0.5677178, 0.5677178, 2.7872694)
+        expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_2)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),tolerance_loc_3) 
+        # Prediction without training and parameters given
+        gp_model <- GPModel(group_data = cbind(group,group2), matrix_inversion_method = inv_method)
+        gp_model$set_optim_params(params = list(cg_preconditioner_type=cg_preconditioner_type))
+        pred <- gp_model$predict(y = y, group_data_pred=group_data_pred,
+                                 cov_pars = c(0.1,1,2), predict_cov_mat = TRUE)
+        expected_mu <- c(0.7631462, -0.4328551, 0.000000000)
+        expected_cov <- c(0.114393721, 0.009406189, 0.0000000, 0.009406189,
+                          0.114393721 , 0.0000000, 0.0000000, 0.0000000, 3.100000000)
+        expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
+        # Prediction for only existing random effects
+        group_data_pred_in = cbind(c(1,1),c(2,1))
+        pred <- gp_model$predict(y = y, group_data_pred=group_data_pred_in,
+                                 cov_pars = c(0.1,1,2), predict_cov_mat = TRUE)
+        expected_mu <- c(0.7631462, -0.4328551)
+        expected_cov <- c(0.114393721, 0.009406189, 0.009406189, 0.114393721)
+        expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
+        # Prediction for only new random effects
+        group_data_pred_out = cbind(c(m+1,m+1,m+1),c(length(group2)+1,length(group2)+2,length(group2)+1))
+        pred <- gp_model$predict(y = y, group_data_pred=group_data_pred_out,
+                                 cov_pars = c(0.1,1,2), predict_cov_mat = TRUE)
+        expected_mu <- c(rep(0,3))
+        expected_cov <- c(3.1, 1.0, 3.0, 1.0, 3.1, 1.0, 3.0, 1.0, 3.1)
+        expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
+      }
+    }
     
     ## Two crossed random effects and a random slope
     y <- Z1%*%b1 + Z2%*%b2 + Z3%*%b3 + xi
@@ -430,7 +461,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_values <- c(0.49554952, 0.02546769, 1.24880860, 0.18983953, 1.05505134, 0.22337199, 1.13840014, 0.17950490)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE_MEDIUM)
     expect_equal(gp_model$get_num_optim_iter(), 5)
-    
+  
     # Predict training data random effects
     cov_pars <- gp_model$get_cov_pars()[1,]
     all_training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
@@ -459,7 +490,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred_random_effects_crossed[,1] - preds$mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(pred_random_effects_crossed[,2] - (preds$var - cov_pars[2]))),TOLERANCE_STRICT)
-    
+  
     # Prediction
     gp_model <- GPModel(group_data = cbind(group,group2),
                         group_rand_coef_data = x, ind_effect_group_rand_coef = 1)
