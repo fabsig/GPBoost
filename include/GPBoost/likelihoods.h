@@ -2464,10 +2464,13 @@ namespace GPBoost {
                             sp_mat_rm_t P_SSOR_L_rm = SigmaI_plus_ZtWZ_rm_.triangularView<Eigen::Lower>();
                             P_SSOR_L_D_sqrt_inv_rm_ = P_SSOR_L_rm * P_SSOR_D_inv_sqrt.asDiagonal();
                         }
+                        else if (cg_preconditioner_type_ == "diagonal") {
+                            SigmaI_plus_ZtWZ_inv_diag_ = SigmaI_plus_ZtWZ_rm_.diagonal().cwiseInverse();
+                        }
                     }
                     CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rhs, mode_update, has_NA_or_Inf,
                         cg_max_num_it, cg_delta_conv_, it, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
-                        L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                        L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
                     if (has_NA_or_Inf) {
                         approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
                         Log::REDebug(NA_OR_INF_WARNING_);
@@ -2554,6 +2557,9 @@ namespace GPBoost {
                                 sp_mat_rm_t P_SSOR_L_rm = SigmaI_plus_ZtWZ_rm_.triangularView<Eigen::Lower>();
                                 P_SSOR_L_D_sqrt_inv_rm_ = P_SSOR_L_rm * P_SSOR_D_inv_sqrt.asDiagonal();
                             }
+                            else if (cg_preconditioner_type_ == "diagonal") {
+                                SigmaI_plus_ZtWZ_inv_diag_ = SigmaI_plus_ZtWZ_rm_.diagonal().cwiseInverse();
+                            }
                         }
                         //Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
                         if (cg_preconditioner_type_ == "incomplete_cholesky") {
@@ -2568,6 +2574,12 @@ namespace GPBoost {
                                 rand_vec_trace_P_.col(i) = P_SSOR_L_D_sqrt_inv_rm_ * rand_vec_trace_I_.col(i);
                             }
                         }
+                        else if (cg_preconditioner_type_ == "diagonal") {
+#pragma omp parallel for schedule(static)   
+                            for (int i = 0; i < num_rand_vec_trace_; ++i) {
+                                rand_vec_trace_P_.col(i) = SigmaI_plus_ZtWZ_inv_diag_.cwiseInverse().cwiseSqrt().asDiagonal() * rand_vec_trace_I_.col(i);
+                            }
+                        }
                         else {
                             Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
                         }
@@ -2575,7 +2587,7 @@ namespace GPBoost {
                         std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_ZtWZ(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
                         CGTridiagRandomEffects(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ,
                             SigmaI_plus_ZtWZ_inv_RV_, has_NA_or_Inf, num_re_, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
-                            L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                            L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
                         if (!has_NA_or_Inf) {
                             LogDetStochTridiag(Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ, log_det_SigmaI_plus_ZtWZ, num_re_, num_rand_vec_trace_);
                             approx_marginal_ll += 0.5 * (SigmaI.diagonal().array().log().sum() - log_det_SigmaI_plus_ZtWZ);
@@ -2587,6 +2599,10 @@ namespace GPBoost {
                             else if (cg_preconditioner_type_ == "ssor") {
                                 //log|P| = log|L| + log|D^-1| + log|L^T|
                                 approx_marginal_ll -= P_SSOR_L_D_sqrt_inv_rm_.diagonal().array().log().sum();
+                            }
+                            else if (cg_preconditioner_type_ == "diagonal") {
+                                //log|P| = - log|diag(Sigma^-1 + Z^T W Z)^(-1)|
+                                approx_marginal_ll += 0.5 * SigmaI_plus_ZtWZ_inv_diag_.array().log().sum();
                             }
                         }
                         else {
@@ -3508,7 +3524,7 @@ namespace GPBoost {
                     SigmaI_plus_ZtWZ_inv_d_mll_d_mode = vec_t(num_re_);
                     CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, d_mll_d_mode, SigmaI_plus_ZtWZ_inv_d_mll_d_mode, has_NA_or_Inf,
                         cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
-                        L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                        L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
                     if (has_NA_or_Inf) {
                         Log::REDebug(CG_NA_OR_INF_WARNING_);
                     }
@@ -4663,7 +4679,7 @@ namespace GPBoost {
                             bool has_NA_or_Inf = false;
                             CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, Z_tilde_t_RV, MInv_Ztilde_t_RV, has_NA_or_Inf,
                                 cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
-                                L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                                L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
                             if (has_NA_or_Inf) {
                                 Log::REDebug(CG_NA_OR_INF_WARNING_);
                             }
@@ -4761,7 +4777,7 @@ namespace GPBoost {
                             //z_i ~ N(0,(Sigma^(-1) + Z^T W Z)^(-1))
                             bool has_NA_or_Inf = false;
                             CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
-                                0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                                0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
                             if (has_NA_or_Inf) {
                                 Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
                             }
@@ -5370,7 +5386,7 @@ namespace GPBoost {
                         bool has_NA_or_Inf = false;
                         CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_init, MInv_RV, has_NA_or_Inf,
                             cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
-                            L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+                            L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
                         if (has_NA_or_Inf) {
                             Log::REDebug(CG_NA_OR_INF_WARNING_);
                         }
@@ -6542,6 +6558,8 @@ namespace GPBoost {
         vec_t P_SSOR_D_inv_;
         /*! \brief For ZIC preconditioner - sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T W Z)*/
         sp_mat_rm_t L_SigmaI_plus_ZtWZ_rm_;
+        /*! \brief For diagonal preconditioner - diag(Sigma^-1 + Z^T W Z)^(-1)*/
+        vec_t SigmaI_plus_ZtWZ_inv_diag_;
 
         //B) RANDOM VECTOR VARIABLES
         /*! Random number generator used to generate rand_vec_trace_I_*/

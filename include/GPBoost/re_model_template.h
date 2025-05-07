@@ -2373,6 +2373,13 @@ namespace GPBoost {
 											rand_vec_probe_P_[cluster_i].col(i) = P_SSOR_L_D_sqrt_inv_rm_[cluster_i] * rand_vec_probe_[cluster_i].col(i);
 										}
 									}
+									else if (cg_preconditioner_type_ == "diagonal") {
+										//P = diag(Sigma^-1 + Z^T Z): ui = diag(Sigma^-1 + Z^T Z)^0.5 r_i, where r_i ~ N(0,I)
+#pragma omp parallel for schedule(static)   
+										for (int i = 0; i < num_rand_vec_trace_; ++i) {
+											rand_vec_probe_P_[cluster_i].col(i) = SigmaI_plus_ZtZ_inv_diag_[cluster_i].cwiseInverse().cwiseSqrt().asDiagonal() * rand_vec_probe_[cluster_i].col(i);
+										}
+									}
 									else {
 										Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
 									}
@@ -2390,7 +2397,7 @@ namespace GPBoost {
 									CGTridiagRandomEffects(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_probe_P_[cluster_i],
 										Tdiags_, Tsubdiags_, solution_for_trace_[cluster_i], NaN_found, cum_num_rand_eff_[cluster_i][num_re_group_total_],
 										num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
-										L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i]
+										L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
 										//cum_num_rand_eff_[cluster_i], num_re_group_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 									);
 									if (NaN_found) {
@@ -2406,6 +2413,10 @@ namespace GPBoost {
 									else if (cg_preconditioner_type_ == "ssor") {
 										//log|P| = log|L| + log|D^-1| + log|L^T|
 										log_det_Psi_ += 2 * (P_SSOR_L_D_sqrt_inv_rm_[cluster_i].diagonal().array().log().sum());
+									}
+									else if (cg_preconditioner_type_ == "diagonal") {
+										//log|P| = - log|diag(Sigma^-1 + Z^T Z)^(-1)|
+										log_det_Psi_ -= SigmaI_plus_ZtZ_inv_diag_[cluster_i].array().log().sum();
 									}
 									else {
 										Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
@@ -4461,9 +4472,9 @@ namespace GPBoost {
 		/*! \brief Type of preconditioner used for conjugate gradient algorithms */
 		string_t cg_preconditioner_type_;
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for Gaussian likelihoods and gp_approx = "full_scale_tapering" */
-		const std::set<string_t> SUPPORTED_PRECONDITIONERS_GAUSS_FSA_{ "none", "fitc", "incomplete_cholesky", "ssor" };
+		const std::set<string_t> SUPPORTED_PRECONDITIONERS_GAUSS_FSA_{ "none", "fitc", "incomplete_cholesky", "ssor", "diagonal" };
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for non-Gaussian likelihoods and gp_approx = "vecchia" */
-		const std::set<string_t> SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_{ "vadu", "pivoted_cholesky", "fitc", "incomplete_cholesky", "ssor" };
+		const std::set<string_t> SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_{ "vadu", "pivoted_cholesky", "fitc", "incomplete_cholesky", "ssor", "diagonal" };
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
 		bool cg_preconditioner_type_has_been_set_ = false;
 		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
@@ -4516,6 +4527,8 @@ namespace GPBoost {
 		std::map<data_size_t, sp_mat_rm_t> P_SSOR_B_rm_;
 		/*! \brief  Key: labels of independent realizations of REs/GPs, values: For ZIC preconditioner - sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T Z)*/
 		std::map<data_size_t, sp_mat_rm_t> L_SigmaI_plus_ZtZ_rm_;
+		/*! \brief  Key: labels of independent realizations of REs/GPs, values: For diagonal preconditioner - diag(Sigma^-1 + Z^T Z)^(-1)*/
+		std::map<data_size_t, vec_t> SigmaI_plus_ZtZ_inv_diag_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: P^(-1) z_i, where z_i ~ N(0, P), for later reuse in the calculation of the Fisher Information (only saved when Fisher scoring is done)*/
 		std::map<data_size_t, den_mat_t> PI_RV_;
 
@@ -5603,6 +5616,9 @@ namespace GPBoost {
 			}
 			else if (type == "FITC" || type == "fitc" || type == "predictive_process_plus_diagonal") {
 				return "fitc";
+			}
+			else if (type == "diagonal" || type == "diag" || type == "Diagonal" || type == "Diag") {
+				return "diagonal";
 			}
 			return type;
 		}
@@ -7214,6 +7230,9 @@ namespace GPBoost {
 												P_SSOR_L_D_sqrt_inv_rm_[cluster_i] = P_SSOR_L_rm * P_SSOR_D_inv_sqrt.asDiagonal();
 											//}
 										}
+										else if (cg_preconditioner_type_ == "diagonal") {
+											SigmaI_plus_ZtZ_inv_diag_[cluster_i] = SigmaI_plus_ZtZ_rm_[cluster_i].diagonal().cwiseInverse();
+										}
 										else {
 											Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
 										}
@@ -7537,7 +7556,7 @@ namespace GPBoost {
 								cg_max_num_it = (int)round(cg_max_num_it_ / 3);
 							}
 							CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Zty_[cluster_i], MInvZty, NaN_found, cg_max_num_it, cg_delta_conv_, 1, THRESHOLD_ZERO_RHS_CG_, false, cg_preconditioner_type_,
-								L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i]
+								L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
 								//cum_num_rand_eff_[cluster_i], num_re_group_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 							);
 							last_MInvZty_[cluster_i] = MInvZty;
@@ -8830,7 +8849,7 @@ namespace GPBoost {
 										vec_t rand_vec_pred_SigmaI_plus_ZtZ_inv(cum_num_rand_eff_[cluster_i][num_re_group_total_]);
 										//z_i ~ N(0,(Sigma^(-1) + Z^T Z)^(-1))
 										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_pred_SigmaI_plus_ZtZ, rand_vec_pred_SigmaI_plus_ZtZ_inv, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, 0, THRESHOLD_ZERO_RHS_CG_,
-											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i]
+											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
 											//cum_num_rand_eff_[cluster_i], num_re_group_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 										);
 										if (NaN_found) {
@@ -8957,7 +8976,7 @@ namespace GPBoost {
 										//Part 2: (Sigma^(-1) + Z^T Z)^(-1) Z_po^T RV
 										vec_t MInv_Ztilde_t_RV(cum_num_rand_eff_[cluster_i][num_re_group_total_]);
 										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Z_tilde_t_RV, MInv_Ztilde_t_RV, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, 0, THRESHOLD_ZERO_RHS_CG_,
-											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i]
+											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
 											//cum_num_rand_eff_[cluster_i], num_re_group_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 										);
 										if (NaN_found) {

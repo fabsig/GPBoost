@@ -864,7 +864,8 @@ namespace GPBoost {
 		const bool run_in_parallel_do_not_report_non_convergence,
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
-		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm
+		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm,
+		const vec_t& SigmaI_plus_ZtWZ_inv_diag
 		//const std::vector<data_size_t>& cum_num_rand_eff,
 		//const data_size_t& num_re_group_total,
 		//const vec_t& P_SSOR_D1_inv,
@@ -922,6 +923,10 @@ namespace GPBoost {
 				z = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_r);
 			//}
 		}
+		else if (cg_preconditioner_type == "diagonal") {
+			//P^(-1) = diag(Sigma^-1 + Z^T W Z)^(-1)
+			z = SigmaI_plus_ZtWZ_inv_diag.asDiagonal() * r;
+		}
 		else {
 			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 		}
@@ -971,6 +976,10 @@ namespace GPBoost {
 					z = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_r);
 				//}
 			}
+			else if (cg_preconditioner_type == "diagonal") {
+				//P^(-1) = diag(Sigma^-1 + Z^T W Z)^(-1)
+				z = SigmaI_plus_ZtWZ_inv_diag.asDiagonal() * r;
+			}
 			else {
 				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 			}
@@ -998,7 +1007,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
-		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm
+		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm,
+		const vec_t& SigmaI_plus_ZtWZ_inv_diag
 		//const std::vector<data_size_t>& cum_num_rand_eff,
 		//const data_size_t& num_re_group_total,
 		//const vec_t& P_SSOR_D1_inv,
@@ -1059,6 +1069,13 @@ namespace GPBoost {
 					Z.col(i) = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
 				}
 //			}
+		}
+		else if (cg_preconditioner_type == "diagonal") {
+			//P^(-1) = diag(Sigma^-1 + Z^T W Z)^(-1)
+#pragma omp parallel for schedule(static)   
+			for (int i = 0; i < t; ++i) {
+				Z.col(i) = SigmaI_plus_ZtWZ_inv_diag.asDiagonal() * R.col(i);
+			}
 		}
 		else {
 			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
@@ -1129,6 +1146,13 @@ namespace GPBoost {
 						Z.col(i) = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
 					}
 				//}
+			}
+			else if (cg_preconditioner_type == "diagonal") {
+				//P^(-1) = diag(Sigma^-1 + Z^T W Z)^(-1)
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < t; ++i) {
+					Z.col(i) = SigmaI_plus_ZtWZ_inv_diag.asDiagonal() * R.col(i);
+				}
 			}
 			else {
 				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
