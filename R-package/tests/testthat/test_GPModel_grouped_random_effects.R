@@ -431,7 +431,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         expected_cov <- c(0.114393721, 0.009406189, 0.0000000, 0.009406189,
                           0.114393721 , 0.0000000, 0.0000000, 0.0000000, 3.100000000)
         expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
+        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_3)
         # Prediction for only existing random effects
         group_data_pred_in = cbind(c(1,1),c(2,1))
         pred <- gp_model$predict(y = y, group_data_pred=group_data_pred_in,
