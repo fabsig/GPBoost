@@ -8902,24 +8902,24 @@ namespace GPBoost {
 							if (matrix_inversion_method_ == "iterative") {
 								vec_t pred_var_global = vec_t::Zero(num_REs_pred);
 								//Variance reduction
-								sp_mat_rm_t Ztilde_P_sqrt_invt;
+								sp_mat_rm_t Ztilde_P_sqrt_invt_rm;
 								vec_t varred_global, c_cov, c_var;
 								if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
 									varred_global = vec_t::Zero(num_REs_pred);
 									c_cov = vec_t::Zero(num_REs_pred);
 									c_var = vec_t::Zero(num_REs_pred);
 									//Calculate P^(-0.5) explicitly
-									sp_mat_rm_t Identity(cum_num_rand_eff_[cluster_i][num_re_group_total_], cum_num_rand_eff_[cluster_i][num_re_group_total_]);
-									Identity.setIdentity();
-									sp_mat_rm_t P_sqrt_invt;
+									sp_mat_rm_t Identity_rm(cum_num_rand_eff_[cluster_i][num_re_group_total_], cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+									Identity_rm.setIdentity();
+									sp_mat_rm_t P_sqrt_invt_rm;
 									if (cg_preconditioner_type_ == "incomplete_cholesky") {
-										TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtZ_rm_[cluster_i], Identity, P_sqrt_invt, true);
+										TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtZ_rm_[cluster_i], Identity_rm, P_sqrt_invt_rm, true);
 									}
 									else {
-										TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_[cluster_i], Identity, P_sqrt_invt, true);
+										TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_[cluster_i], Identity_rm, P_sqrt_invt_rm, true);
 									}
 									//Z_po P^(-T/2)
-									Ztilde_P_sqrt_invt = Ztilde * P_sqrt_invt;
+									Ztilde_P_sqrt_invt_rm = Ztilde * P_sqrt_invt_rm;
 								}
 								if (!cg_generator_seeded_) {
 									cg_generator_ = RNG_t(seed_rand_vec_trace_);
@@ -8988,8 +8988,8 @@ namespace GPBoost {
 										//Variance reduction
 										if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
 											//Stochastic: Z_po P^(-0.5T) P^(-0.5) Z_po^T RV
-											vec_t P_sqrt_inv_Ztilde_t_RV = Ztilde_P_sqrt_invt.transpose() * rand_vec_init;
-											vec_t rand_vec_varred = Ztilde_P_sqrt_invt * P_sqrt_inv_Ztilde_t_RV;
+											vec_t P_sqrt_inv_Ztilde_t_RV = Ztilde_P_sqrt_invt_rm.transpose() * rand_vec_init;
+											vec_t rand_vec_varred = Ztilde_P_sqrt_invt_rm * P_sqrt_inv_Ztilde_t_RV;
 											varred_private += rand_vec_varred.cwiseProduct(rand_vec_init);
 											c_cov_private += varred_private.cwiseProduct(pred_var_private);
 											c_var_private += varred_private.cwiseProduct(varred_private);
@@ -9015,7 +9015,7 @@ namespace GPBoost {
 									c_cov /= nsim_var_pred_;
 									c_var /= nsim_var_pred_;
 									//Deterministic: diag(Z_po P^(-0.5T) P^(-0.5) Z_po^T)
-									vec_t varred_determ = Ztilde_P_sqrt_invt.cwiseProduct(Ztilde_P_sqrt_invt) * vec_t::Ones(cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+									vec_t varred_determ = Ztilde_P_sqrt_invt_rm.cwiseProduct(Ztilde_P_sqrt_invt_rm) * vec_t::Ones(cum_num_rand_eff_[cluster_i][num_re_group_total_]);
 									//optimal c
 									c_cov -= varred_global.cwiseProduct(pred_var_global);
 									c_var -= varred_global.cwiseProduct(varred_global);
