@@ -621,96 +621,133 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
   test_that("Binary classification with multiple grouped random effects ", {
     
-    probs <- pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
-    y <- as.numeric(sim_rand_unif(n=n, init_c=0.57341) < probs)
-    init_cov_pars <- rep(1,3)
-    
-    capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
-                                           y = y, likelihood = "bernoulli_probit",
-                                           params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
-                                                         lr_cov = 0.2, use_nesterov_acc = FALSE, maxit=100))
-                    , file='NUL')
-    expected_values <- c(0.3060671, 0.9328884, 0.3146682)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 37)
-    
-    # Predict training data random effects
-    cov_pars <- gp_model$get_cov_pars()
-    all_training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
-    first_occurences_1 <- match(unique(group), group)
-    first_occurences_2 <- match(unique(group2), group2)
-    pred_random_effects <- all_training_data_random_effects[first_occurences_1,c(1,4)]
-    pred_random_slopes <- all_training_data_random_effects[first_occurences_1,c(3,6)]
-    pred_random_effects_crossed <- all_training_data_random_effects[first_occurences_2,c(2,5)] 
-    group_unique <- unique(group)
-    group_data_pred = cbind(group_unique,rep(-1,length(group_unique)))
-    x_pr = rep(0,length(group_unique))
-    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
-                     predict_response = FALSE, predict_var = TRUE)
-    expect_lt(sum(abs(pred_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(pred_random_effects[,2] - (preds$var-cov_pars[2]))),TOLERANCE_STRICT)
-    # Check whether random slopes are correct
-    x_pr = rep(1,length(group_unique))
-    preds2 <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
-                      predict_response = FALSE)
-    expect_lt(sum(abs(pred_random_slopes[,1] - (preds2$mu-preds$mu))),TOLERANCE_STRICT)
-    # Check whether crossed random effects are correct
-    group_unique <- unique(group2)
-    group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
-    x_pr = rep(0,length(group_unique))
-    preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
-                     predict_response = FALSE, predict_var = TRUE)
-    expect_lt(sum(abs(pred_random_effects_crossed[,1] - preds$mu)),TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(pred_random_effects_crossed[,2] - (preds$var-cov_pars[1]))),TOLERANCE_STRICT)
-    
-    # Prediction
-    gp_model <- GPModel(likelihood = "bernoulli_probit", group_data = cbind(group,group2),
-                        group_rand_coef_data = x, ind_effect_group_rand_coef = 1)
-    group_data_pred = cbind(c(1,1,77),c(2,1,98))
-    group_rand_coef_data_pred = c(0,0.1,0.3)
-    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
-                             cov_pars = c(0.9,0.8,1.2), predict_cov_mat = TRUE, predict_response = FALSE)
-    expected_mu <- c(0.5195889, -0.6411954, 0.0000000)
-    expected_cov <- c(0.3422367, 0.1554011, 0.0000000, 0.1554011,
-                      0.3457334, 0.0000000, 0.0000000, 0.0000000, 1.8080000)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
-    # Predict variances
-    pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
-                             cov_pars = c(0.9,0.8,1.2), predict_var = TRUE, predict_response = FALSE)
-    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
-    # Multiple random effects: training with Nelder-Mead
-    capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
-                                           y = y, likelihood = "bernoulli_probit",
-                                           params = list(optimizer_cov = "nelder_mead", delta_rel_conv=1e-6, init_cov_pars=init_cov_pars))
-                    , file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3055487, 0.9300562, 0.3048811))),TOLERANCE_STRICT)
-    # Multiple random effects: training with BFGS
-    capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
-                                           y = y, likelihood = "bernoulli_probit",
-                                           params = list(optimizer_cov = "lbfgs", init_cov_pars=init_cov_pars)), file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3030687897, 0.9292636103, 0.3037924600))),TOLERANCE_STRICT)
-    # Evaluate negative log-likelihood
-    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.8,1.2),y=y)
-    expect_lt(abs(nll-60.6422359),TOLERANCE_MEDIUM)
-    
-    ## Two crossed random effects
-    probs_2 <- pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2)
-    y_2 <- as.numeric(sim_rand_unif(n=n, init_c=0.156) < probs_2)
-    params = DEFAULT_OPTIM_PARAMS
-    params$init_cov_pars <- rep(1,2)
-    capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), 
-                                           y = y_2, likelihood = "bernoulli_probit", params = params)
-                    , file='NUL')
-    expected_values <- c(0.1950790008, 0.5496159992)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 20)
-    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-64.37229209),TOLERANCE_STRICT)
-    # summary(gp_model)
-    # # Compare to lme4
-    # library(lme4)
-    # mod <- glmer(y ~ -1 + (1|group) + (1|group2), data=data.frame(y=y_2,group,group2),family=binomial(link="probit"))
-    # summary(mod)
+    vec_chol_or_iterative <- c("cholesky","iterative")
+    for (inv_method in vec_chol_or_iterative) {
+      if(inv_method == "iterative") {
+        tolerance_loc_1 <- TOLERANCE_ITERATIVE
+        tolerance_loc_2 <- TOLERANCE_LOOSE
+        loop_cg_PC = c("ssor", "zic")
+      } else {
+        tolerance_loc_1 <- TOLERANCE_STRICT
+        tolerance_loc_2 <- TOLERANCE_STRICT
+        loop_cg_PC = c("ssor")
+      }
+      for (cg_preconditioner_type in loop_cg_PC) {
+        probs <- pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
+        y <- as.numeric(sim_rand_unif(n=n, init_c=0.57341) < probs)
+        init_cov_pars <- rep(1,3)
+        
+        capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                                               y = y, likelihood = "bernoulli_probit", matrix_inversion_method = inv_method,
+                                               params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars,
+                                                             lr_cov = 0.2, use_nesterov_acc = FALSE, cg_preconditioner_type=cg_preconditioner_type,
+                                                             num_rand_vec_trace=100))
+                        , file='NUL')
+        expected_values <- c(0.3060671, 0.9328884, 0.3146682)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),tolerance_loc_1)
+        if(inv_method=="iterative"){
+          if(cg_preconditioner_type=="ssor"){
+            opt_it <- 32 
+          } else{
+            opt_it <- 22  
+          }
+        } else{
+          opt_it <- 37
+        }
+        expect_equal(gp_model$get_num_optim_iter(), opt_it)
+  
+        # Predict training data random effects
+        cov_pars <- gp_model$get_cov_pars()
+        all_training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+        first_occurences_1 <- match(unique(group), group)
+        first_occurences_2 <- match(unique(group2), group2)
+        pred_random_effects <- all_training_data_random_effects[first_occurences_1,c(1,4)]
+        pred_random_slopes <- all_training_data_random_effects[first_occurences_1,c(3,6)]
+        pred_random_effects_crossed <- all_training_data_random_effects[first_occurences_2,c(2,5)] 
+        group_unique <- unique(group)
+        group_data_pred = cbind(group_unique,rep(-1,length(group_unique)))
+        x_pr = rep(0,length(group_unique))
+        preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
+                         predict_response = FALSE, predict_var = TRUE)
+        expect_lt(sum(abs(pred_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
+        expect_lt(sum(abs(pred_random_effects[,2] - (preds$var-cov_pars[2]))),tolerance_loc_1)
+        # Check whether random slopes are correct
+        x_pr = rep(1,length(group_unique))
+        preds2 <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
+                          predict_response = FALSE)
+        expect_lt(sum(abs(pred_random_slopes[,1] - (preds2$mu-preds$mu))),TOLERANCE_STRICT)
+        # Check whether crossed random effects are correct
+        group_unique <- unique(group2)
+        group_data_pred = cbind(rep(-1,length(group_unique)),group_unique)
+        x_pr = rep(0,length(group_unique))
+        preds <- predict(gp_model, group_data_pred=group_data_pred, group_rand_coef_data_pred=x_pr, 
+                         predict_response = FALSE, predict_var = TRUE)
+        expect_lt(sum(abs(pred_random_effects_crossed[,1] - preds$mu)),TOLERANCE_MEDIUM)
+        expect_lt(sum(abs(pred_random_effects_crossed[,2] - (preds$var-cov_pars[1]))),tolerance_loc_1)
+          
+        # Prediction
+        group_data_pred = cbind(c(1,1,77),c(2,1,98))
+        group_rand_coef_data_pred = c(0,0.1,0.3)
+        if(inv_method=="cholesky"){
+          gp_model <- GPModel(likelihood = "bernoulli_probit", group_data = cbind(group,group2),
+                              group_rand_coef_data = x, ind_effect_group_rand_coef = 1)
+          pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
+                                   cov_pars = c(0.9,0.8,1.2), predict_cov_mat = TRUE, predict_response = FALSE)
+          expected_mu <- c(0.5195889, -0.6411954, 0.0000000)
+          expected_cov <- c(0.3422367, 0.1554011, 0.0000000, 0.1554011,
+                            0.3457334, 0.0000000, 0.0000000, 0.0000000, 1.8080000)
+          expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+          expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+          # Predict variances
+          pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
+                                   cov_pars = c(0.9,0.8,1.2), predict_var = TRUE, predict_response = FALSE)
+          expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
+          # Multiple random effects: training with Nelder-Mead
+          capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                                                 y = y, likelihood = "bernoulli_probit",
+                                                 params = list(optimizer_cov = "nelder_mead", delta_rel_conv=1e-6, init_cov_pars=init_cov_pars))
+                          , file='NUL')
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3055487, 0.9300562, 0.3048811))),TOLERANCE_STRICT)
+          # Multiple random effects: training with BFGS
+          capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                                                 y = y, likelihood = "bernoulli_probit",
+                                                 params = list(optimizer_cov = "lbfgs", init_cov_pars=init_cov_pars)), file='NUL')
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.3030687897, 0.9292636103, 0.3037924600))),TOLERANCE_STRICT)
+          # Evaluate negative log-likelihood
+          nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.8,1.2),y=y)
+          expect_lt(abs(nll-60.6422359),TOLERANCE_MEDIUM)
+        }
+        
+        ## Two crossed random effects
+        probs_2 <- pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2)
+        y_2 <- as.numeric(sim_rand_unif(n=n, init_c=0.156) < probs_2)
+        params = DEFAULT_OPTIM_PARAMS
+        params$init_cov_pars <- rep(1,2)
+        params$cg_preconditioner_type=cg_preconditioner_type
+        params$num_rand_vec_trace=100
+        capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), matrix_inversion_method = inv_method,
+                                               y = y_2, likelihood = "bernoulli_probit", params = params)
+                        , file='NUL')
+        expected_values <- c(0.1950790008, 0.5496159992)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),tolerance_loc_2)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-64.37229209),tolerance_loc_2)
+        if(inv_method=="iterative"){
+          if(cg_preconditioner_type=="ssor"){
+            opt_it <- 19
+          } else{
+            opt_it <- 14
+          }
+        } else{
+          opt_it <- 20
+        }
+        expect_equal(gp_model$get_num_optim_iter(), opt_it)
+        # summary(gp_model)
+        # # Compare to lme4
+        # library(lme4)
+        # mod <- glmer(y ~ -1 + (1|group) + (1|group2), data=data.frame(y=y_2,group,group2),family=binomial(link="probit"))
+        # summary(mod)
+      }
+    }  
     
     # Multiple cluster_ids
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
