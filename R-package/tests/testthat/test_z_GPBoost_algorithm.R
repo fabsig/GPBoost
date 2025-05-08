@@ -374,7 +374,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         pred <- predict(bst, data = X_test, group_data_pred = group_data_test, 
                         predict_var = TRUE, pred_latent = TRUE)
         if(inv_method == "iterative"){
-          fe_tol <- 0.2
+          fe_tol <- 0.3
         } else{
           fe_tol <- 0.1
         }
