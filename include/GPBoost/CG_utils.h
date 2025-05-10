@@ -36,7 +36,7 @@ namespace GPBoost {
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
 	* \param D_inv_plus_W_B_rm Row-major matrix that contains the product (D^(-1) + W) B used for the preconditioner "Sigma_inv_plus_BtWB".
-	* \param L_SigmaI_plus_W_rm Row-major matrix that contains sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W used for the preconditioner "zero_infill_incomplete_cholesky". 
+	* \param L_SigmaI_plus_W_rm Row-major matrix that contains sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W used for the preconditioner "zero_infill_incomplete_cholesky".
 	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
 	*/
 	void CGVecchiaLaplaceVec(const vec_t& diag_W,
@@ -55,8 +55,8 @@ namespace GPBoost {
 		bool run_in_parallel_do_not_report_non_convergence);
 
 	/*!
-	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate 
-	*		 gradient descent algorithm is used to approximately solve for (W^(-1) + Sigma)^(-1) Sigma rhs. 
+	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate
+	*		 gradient descent algorithm is used to approximately solve for (W^(-1) + Sigma)^(-1) Sigma rhs.
 	*        P = (W^(-1) + Sigma_L_k Sigma_L_k^T) is used as preconditioner where Sigma_L_k results from a rank(Sigma_L_k) = k (k << n)
 	*		 pivoted Cholseky decomposition of the nonapproximated covariance matrix.
 	* \param diag_W Diagonal of matrix W
@@ -85,6 +85,156 @@ namespace GPBoost {
 		const double THRESHOLD_ZERO_RHS_CG,
 		const chol_den_mat_t& chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia,
 		const den_mat_t& Sigma_L_k,
+		bool run_in_parallel_do_not_report_non_convergence);
+
+	/*!
+	* \brief Preconditioned conjugate gradient descent to solve A u = rhs when rhs is a vector
+	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn, a Full-scale-Vecchia approximation for Sigma^-1,
+	*		 Sigma^-1, is given, and W is a diagonal matrix.
+	* \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^(-1) B ("=" Cholesky factor)
+	* \param B_t_D_inv_rm Row-major matrix that contains the product B^T D^-1. Outsourced in order to reduce the overhead of the function.
+	* \param chol_fact_sigma_woodbury Cholesky factor of 'sigma_ip + sigma_cross_cov_T * sigma_residual^-1 * sigma_cross_cov'
+	* \param cross_cov Cross-covariance matrix between inducing points and all data points
+	* \param chol_fact_sigma_woodbury_woodbury Cholesky factor of 'sigma_ip - sigma_cross_cov_T * B_t * D_inv * B * (W + D_inv)^-1 * B * D_inv * B * sigma_cross_cov'
+	* \param rhs Vector of dimension nx1 on the rhs
+	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param p Maximal number of conjugate gradient steps
+	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
+	* \param cg_preconditioner_type Type of preconditioner used.
+	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
+	*/
+	void CGFSVALowRankLaplaceVec(const vec_t& diag_W_inv,
+		const sp_mat_rm_t& D_inv_B_rm_,
+		const sp_mat_rm_t& B_rm,
+		const chol_den_mat_t& chol_fact_sigma_woodbury_preconditioner,
+		const den_mat_t& chol_ip_cross_cov,
+		const den_mat_t* cross_cov_preconditioner,
+		const vec_t& FITC_W_inv,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const int find_mode_it,
+		const double delta_conv,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const string_t cg_preconditioner_type,
+		bool run_in_parallel_do_not_report_non_convergence);
+
+	/*!
+	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
+	*		 A linear system A U = rhs is solved, where the rhs is a matrix of dimension nxt of t random column-vectors and
+	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn, a Full-scale-Vecchia approximation for Sigma^-1,
+	*		 Sigma^-1, is given, and W is a diagonal matrix.
+	* \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^(-1) B ("=" Cholesky factor)
+	* \param B_t_D_inv_rm Row-major matrix that contains the product B^T D^-1. Outsourced in order to reduce the overhead of the function.
+	* \param chol_fact_sigma_woodbury Cholesky factor of 'sigma_ip + sigma_cross_cov_T * sigma_residual^-1 * sigma_cross_cov'
+	* \param cross_cov Cross-covariance matrix between inducing points and all data points
+	* \param chol_fact_sigma_woodbury_woodbury Cholesky factor of 'sigma_ip - sigma_cross_cov_T * B_t * D_inv * B * (W + D_inv)^-1 * B * D_inv * B * sigma_cross_cov'
+	* \param rhs Vector of dimension nx1 on the rhs
+	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param p Maximal number of conjugate gradient steps
+	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
+	* \param cg_preconditioner_type Type of preconditioner used.
+	*/
+	void CGTridiagFSVALaplace(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& B_t_D_inv_rm,
+		const chol_den_mat_t& chol_fact_sigma_woodbury,
+		const den_mat_t* cross_cov,
+		const vec_t& W_D_inv_inv,
+		const chol_den_mat_t& chol_fact_sigma_woodbury_woodbury,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const string_t cg_preconditioner_type);
+
+	/*!
+	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
+	*		 A linear system A U = rhs is solved, where the rhs is a matrix of dimension nxt of t random column-vectors and
+	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn, a Full-scale-Vecchia approximation for Sigma^-1,
+	*		 Sigma^-1, is given, and W is a diagonal matrix.
+	* \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^(-1) B ("=" Cholesky factor)
+	* \param B_t_D_inv_rm Row-major matrix that contains the product B^T D^-1. Outsourced in order to reduce the overhead of the function.
+	* \param chol_fact_sigma_woodbury Cholesky factor of 'sigma_ip + sigma_cross_cov_T * sigma_residual^-1 * sigma_cross_cov'
+	* \param cross_cov Cross-covariance matrix between inducing points and all data points
+	* \param chol_fact_sigma_woodbury_woodbury Cholesky factor of 'sigma_ip - sigma_cross_cov_T * B_t * D_inv * B * (W + D_inv)^-1 * B * D_inv * B * sigma_cross_cov'
+	* \param rhs Vector of dimension nx1 on the rhs
+	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param p Maximal number of conjugate gradient steps
+	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
+	* \param cg_preconditioner_type Type of preconditioner used.
+	*/
+	void CGTridiagFSVALowRankLaplace(const vec_t& diag_W_inv,
+		const sp_mat_rm_t& D_inv_B_rm_,
+		const sp_mat_rm_t& B_rm,
+		const chol_den_mat_t& chol_fact_sigma_woodbury_preconditioner,
+		const den_mat_t& chol_ip_cross_cov,
+		const den_mat_t* cross_cov_preconditioner,
+		const vec_t& FITC_W_inv,
+		const den_mat_t& rhs,
+		std::vector<vec_t>& Tdiags,
+		std::vector<vec_t>& Tsubdiags,
+		den_mat_t& U,
+		bool& NA_or_Inf_found,
+		const data_size_t num_data,
+		const int t,
+		int p,
+		const double delta_conv,
+		const string_t cg_preconditioner_type);
+
+	/*!
+	* \brief Preconditioned conjugate gradient descent to solve A u = rhs when rhs is a vector
+	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn, a Full-scale-Vecchia approximation for Sigma^-1,
+	*		 Sigma^-1, is given, and W is a diagonal matrix.
+	* \param diag_W Diagonal of matrix W
+	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^(-1) B ("=" Cholesky factor)
+	* \param B_t_D_inv_rm Row-major matrix that contains the product B^T D^-1. Outsourced in order to reduce the overhead of the function.
+	* \param chol_fact_sigma_woodbury Cholesky factor of 'sigma_ip + sigma_cross_cov_T * sigma_residual^-1 * sigma_cross_cov'
+	* \param cross_cov Cross-covariance matrix between inducing points and all data points
+	* \param chol_fact_sigma_woodbury_woodbury Cholesky factor of 'sigma_ip - sigma_cross_cov_T * B_t * D_inv * B * (W + D_inv)^-1 * B * D_inv * B * sigma_cross_cov'
+	* \param rhs Vector of dimension nx1 on the rhs
+	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
+	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
+	* \param p Maximal number of conjugate gradient steps
+	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param delta_conv Tolerance for checking convergence of the algorithm
+	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
+	* \param cg_preconditioner_type Type of preconditioner used.
+	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
+	*/
+	void CGFSVALaplaceVec(const vec_t& diag_W,
+		const sp_mat_rm_t& B_rm,
+		const sp_mat_rm_t& B_t_D_inv_rm,
+		const chol_den_mat_t& chol_fact_sigma_woodbury,
+		const den_mat_t* cross_cov,
+		const vec_t& W_D_inv_inv,
+		const chol_den_mat_t& chol_fact_sigma_woodbury_woodbury,
+		const vec_t& rhs,
+		vec_t& u,
+		bool& NA_or_Inf_found,
+		int p,
+		const int find_mode_it,
+		const double delta_conv,
+		const double THRESHOLD_ZERO_RHS_CG,
+		const string_t cg_preconditioner_type,
 		bool run_in_parallel_do_not_report_non_convergence);
 
 	/*!
@@ -124,8 +274,8 @@ namespace GPBoost {
 
 	/*!
 	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
-	*		 A linear system A U = rhs is solved, where the rhs is a matrix of dimension nxt of t random column-vectors and 
-	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn. 
+	*		 A linear system A U = rhs is solved, where the rhs is a matrix of dimension nxt of t random column-vectors and
+	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn.
 	*		 "Sigma_inv_plus_BtWB" (P = B^T (D^-1 + W) B)  or "zero_infill_incomplete_cholesky" (P = L^T L) is used as preconditioner.
 	*		 Further, a Vecchia approximation for Sigma^-1 = B^T D^-1 B is given, and W is a diagonal matrix.
 	*		 The function returns t approximative tridiagonalizations T of the symmetric matrix P^(-0.5) A P^(-0.5) = Q T Q^T in vector form (diagonal + subdiagonal of T)
@@ -238,7 +388,7 @@ namespace GPBoost {
 	*/
 	void GenRandVecNormal(RNG_t& generator,
 		den_mat_t& R);
-	
+
 	/*!
 	* \brief Fills a given matrix with Rademacher RV's.
 	* \param generator Random number generator
@@ -296,10 +446,10 @@ namespace GPBoost {
 	* \brief Reverse incomplete Cholesky factorization L^T L = A under the constrain that L has the same sparcity pattern as A or B.
 	* \param A Column-major matrix to factorize.
 	* \param B Column-major matrix providing the sparcity pattern.
-	* \param L_rm[out] Row-major matrix containing the sparse lower triangular factor L. 
+	* \param L_rm[out] Row-major matrix containing the sparse lower triangular factor L.
 	*/
 	void ReverseIncompleteCholeskyFactorization(sp_mat_t& A,
-		const sp_mat_t& B, 
+		const sp_mat_t& B,
 		sp_mat_rm_t& L_rm);
 
 	/*!
@@ -544,7 +694,7 @@ namespace GPBoost {
 		p = std::min(p, (int)num_data);
 
 		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t), diag_sigma_resid_inv_R, sigma_cross_cov_diag_sigma_resid_inv_R,
-			mean_diag_sigma_resid_inv_R, sigma_cross_cov_mean_diag_sigma_resid_inv_R; 
+			mean_diag_sigma_resid_inv_R, sigma_cross_cov_mean_diag_sigma_resid_inv_R;
 		vec_t v1(num_data);
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
