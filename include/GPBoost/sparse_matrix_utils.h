@@ -490,11 +490,21 @@ namespace GPBoost {
 		data_size_t ncol_A = (data_size_t)A.cols();
 		data_size_t nrow_BD = nrow_A + (data_size_t)B.rows();
 		data_size_t ncol_BD = ncol_A + (data_size_t)B.cols();
-		int numThreads = omp_get_max_threads();
+		int num_threads;
+#ifdef _OPENMP
+		num_threads = omp_get_max_threads();
+#else
+		num_threads = 1;
+#endif
 		std::vector<std::vector<Triplet_t>> threadTriplets(numThreads);
 #pragma omp parallel
 		{
-			int tid = omp_get_thread_num();
+			int tid;
+#ifdef _OPENMP
+			tid = omp_get_thread_num();
+#else
+			tid = 1;
+#endif
 			auto& localTriplets = threadTriplets[tid];
 
 #pragma omp for
