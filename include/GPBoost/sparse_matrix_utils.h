@@ -496,7 +496,7 @@ namespace GPBoost {
 #else
 		num_threads = 1;
 #endif
-		std::vector<std::vector<Triplet_t>> threadTriplets(numThreads);
+		std::vector<std::vector<Triplet_t>> threadTriplets(num_threads);
 #pragma omp parallel
 		{
 			int tid;
