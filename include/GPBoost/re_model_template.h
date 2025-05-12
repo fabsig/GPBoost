@@ -2362,9 +2362,8 @@ namespace GPBoost {
 							std::vector<vec_t> Tdiags_(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
 							std::vector<vec_t> Tsubdiags_(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 							// Conjuagte Gradient with Lanczos
-							const den_mat_t* cross_cov_preconditioner;
 							if (cg_preconditioner_type_ == "fitc") {
-								cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
+								const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
 								CGTridiagFSA<T_mat>(*sigma_resid, *cross_cov_preconditioner, chol_ip_cross_cov_[cluster_i][0], rand_vec_probe_[cluster_i],
 									Tdiags_, Tsubdiags_, solution_for_trace_[cluster_i], NaN_found, num_data_per_cluster_[cluster_i],
 									num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
@@ -5643,9 +5642,8 @@ namespace GPBoost {
 								cg_max_num_it = (int)round(cg_max_num_it_ / 3);
 							}
 							std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0][0]->GetZSigmaZt();
-							const den_mat_t* cross_cov_preconditioner;
 							if (cg_preconditioner_type_ == "fitc") {
-								cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
+								const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
 								CGFSA_MULTI_RHS<T_mat>(*sigma_resid, (*cross_cov_preconditioner), chol_ip_cross_cov_[cluster_i][0], X_cluster_i, psi_inv_X,
 									NaN_found, num_data_per_cluster_[cluster_i], (int)X_cluster_i.cols(), cg_max_num_it, cg_delta_conv_,
 									cg_preconditioner_type_, chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
@@ -8187,9 +8185,8 @@ namespace GPBoost {
 							cg_max_num_it = (int)round(cg_max_num_it_ / 3);
 						}
 						std::shared_ptr<T_mat> sigma_resid = re_comps_resid_[cluster_i][0][0]->GetZSigmaZt();
-						const den_mat_t* cross_cov_preconditioner;
 						if (cg_preconditioner_type_ == "fitc") {
-							cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
+							const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
 							CGFSA<T_mat>(*sigma_resid, *cross_cov_preconditioner, chol_ip_cross_cov_[cluster_i][0], y_[cluster_i], y_aux_[cluster_i],
 								NaN_found, cg_max_num_it, cg_delta_conv_, THRESHOLD_ZERO_RHS_CG_, cg_preconditioner_type_,
 								chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
@@ -8684,9 +8681,8 @@ namespace GPBoost {
 								sigma_inv_sigma_grad_rand_vec_[deriv_par_nb] = Sigma_inv_Grad_rand_vec - Sigma_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * Sigma_inv_Grad_rand_vec));
 							}
 							else if (matrix_inversion_method_ == "iterative") {
-								const den_mat_t* cross_cov_preconditioner;
 								if (cg_preconditioner_type_ == "fitc") {
-									cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
+									const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
 									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov_preconditioner, chol_ip_cross_cov_[cluster_i][0], sigma_resid_grad_rand_vec, sigma_inv_sigma_grad_rand_vec_interim, NaN_found,
 										num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
@@ -8706,9 +8702,8 @@ namespace GPBoost {
 								sigma_inv_rand_vec_nugget = sigma_inv_rand_vec;
 							}
 							else if (matrix_inversion_method_ == "iterative") {
-								const den_mat_t* cross_cov_preconditioner;
 								if (cg_preconditioner_type_ == "fitc") {
-									cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
+									const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
 									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov_preconditioner, chol_ip_cross_cov_[cluster_i][0], rand_vec_fisher_info_[cluster_i], sigma_inv_rand_vec, NaN_found,
 										num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
@@ -10170,9 +10165,8 @@ namespace GPBoost {
 								den_mat_t sigma_obs_pred_dense = (*cross_cov) * chol_fact_sigma_ip_[cluster_i][0].solve(cross_cov_pred_ip.transpose());
 								sigma_obs_pred_dense += sigma_resid_pred_obs.transpose();
 								den_mat_t sigma_inv_sigma_obs_pred;
-								const den_mat_t* cross_cov_preconditioner;
 								if (cg_preconditioner_type_ == "fitc") {
-									cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
+									const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
 									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov_preconditioner, chol_ip_cross_cov_[cluster_i][0], sigma_obs_pred_dense, sigma_inv_sigma_obs_pred, NaN_found,
 										num_REs_obs, num_REs_pred, cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);
@@ -10303,9 +10297,8 @@ namespace GPBoost {
 									cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i]);
 								// CG: sigma^-1 * cross_cov
 								den_mat_t sigma_inv_cross_cov(num_REs_obs, (*cross_cov).cols());
-								const den_mat_t* cross_cov_preconditioner;
 								if (cg_preconditioner_type_ == "fitc") {
-									cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
+									const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_[cluster_i][0][0]->GetSigmaPtr();
 									CGFSA_MULTI_RHS<T_mat>(*sigma_resid,*cross_cov_preconditioner, chol_ip_cross_cov_[cluster_i][0], *cross_cov, sigma_inv_cross_cov, NaN_found,
 										num_REs_obs, (int)(*cross_cov).cols(), cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i]);

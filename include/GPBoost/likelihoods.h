@@ -6334,6 +6334,9 @@ namespace GPBoost {
 					if (cg_preconditioner_type_ == "fitc") {
 						cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
 					}
+					else {
+						cross_cov_preconditioner = nullptr;
+					}
 					vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
 					sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * D_inv_rm_.cwiseSqrt();
 					if (CondObsOnly) {
