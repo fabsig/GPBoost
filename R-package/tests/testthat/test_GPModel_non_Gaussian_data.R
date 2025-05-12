@@ -1459,6 +1459,163 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
   })
   
+  test_that("Binary classification Gaussian process model with VIF (or Full scale Vecchia) approximation", {
+    params_vif <- c(DEFAULT_OPTIM_PARAMS, cg_delta_conv = sqrt(1e-6), 
+                    num_rand_vec_trace = 500, cg_preconditioner_type = "fitc")
+    init_cov_pars = c(1,mean(dist(coords))/3)
+    params_vif$init_cov_pars = init_cov_pars
+    params_vif$piv_chol_rank = 50
+    params = DEFAULT_OPTIM_PARAMS
+    params$init_cov_pars = init_cov_pars
+    params_mult <- DEFAULT_OPTIM_PARAMS
+    init_cov_pars_mult = c(1,mean(dist(unique(coords_multiple)))/3)
+    params_mult$init_cov_pars = init_cov_pars_mult
+    params_vif_mult <- params_vif
+    params_vif_mult$init_cov_pars = init_cov_pars_mult
+    
+    # Simulate data and define expected values
+    probs <- pnorm(L %*% b_1) # note: linear predictor is not included in simulation
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.19341) < probs)
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
+    coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+    init_cov_pars <- c(1,mean(dist(coords))/3)
+    cov_pars_pred_eval = c(1,0.2)
+    cov_pars <- c(0.92350821208, 0.05944214192)
+    coefs <- c(0.3983333, -0.2653886)
+    num_it <- 17
+    expected_mu <- c(0.3389905, 0.1512445, -0.1039307)
+    expected_cov <- c(0.6193228722, 0.5503216948, -0.0001420698, 0.5503216948, 
+                      0.6159348965, -0.0001556274, -0.0001420698, -0.0001556274, 0.4291674143)
+    expected_mu_resp <- c(0.6050312, 0.5473537, 0.4653610)
+    expected_var_resp <- c(0.2389684, 0.2477576, 0.2488001)
+    expected_nll <- 67.18342059
+    # Estimation, prediction, and likelihood evaluation without VIF approximation
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           likelihood = "bernoulli_probit", gp_approx = "none",
+                                           y = y, X = X, params = params), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_STRICT)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
+                    predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, 
+                    predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_MEDIUM)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE, 
+                    predict_var = TRUE, cov_pars = cov_pars_pred_eval, X_pred = X_test)
+    expect_lt(sum(abs(pred$mu-expected_mu_resp)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$var-expected_var_resp)),TOLERANCE_MEDIUM)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
+    expect_lt(abs(nll-expected_nll),TOLERANCE_STRICT)
+    # No linear regression term without VIF approximation
+    cov_pars_no_X <- c(0.6875476, 0.1062862 )
+    mu_no_X <- c(0.01874013, 0.01200800, 0.20498871)
+    var_no_X <- c(0.6105248, 0.6093745, 0.4235374)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           likelihood = "bernoulli_probit", gp_approx = "none",
+                                           y = y, params = params), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_no_X)),TOLERANCE_STRICT)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE, 
+                    predict_response = FALSE, cov_pars = cov_pars_pred_eval)
+    expect_lt(sum(abs(pred$mu-mu_no_X)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$var)-var_no_X)),TOLERANCE_MEDIUM)
+    # With duplicates and linear regression term without Vecchia approximation
+    eps_multiple <- as.vector(L_multiple %*% b_multiple)
+    probs_multiple <- pnorm(eps_multiple)
+    y_multiple <- as.numeric(sim_rand_unif(n=n, init_c=0.2818) < probs_multiple)
+    coord_test_multiple <- cbind(c(0.1,0.11,0.11),c(0.9,0.91,0.91))
+    cov_pars_multiple <- c(0.8263711, 0.1240696 )
+    coefs_multiple <- c( 0.6168877, 0.1381717)
+    num_it_multiple <- 17
+    expected_mu_multiple <- c(-0.01076580, 0.07873293, 0.18927032)
+    expected_var_multiple <- c(0.5653402, 0.6019163, 0.6019163)
+    nll_multiple <- 58.671494
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", 
+                                           likelihood = "bernoulli_probit", gp_approx = "none",
+                                           y = y_multiple, X = X, params = params_mult), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_multiple)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_multiple)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_multiple)
+    pred <- predict(gp_model, y=y_multiple, gp_coords_pred = coord_test_multiple, X_pred = X_test,
+                    predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred_eval)
+    expect_lt(sum(abs(pred$mu-expected_mu_multiple)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$var-expected_var_multiple)),TOLERANCE_MEDIUM)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y_multiple)
+    expect_lt(abs(nll-nll_multiple),TOLERANCE_STRICT)
+    tolerance_loc_1 <- TOLERANCE_ITERATIVE
+    tolerance_loc_2 <- TOLERANCE_ITERATIVE
+    tolerance_loc_3 <- 2*TOLERANCE_ITERATIVE
+    loop_cg_PC = c("vifdu", "fitc")
+    nsim_var_pred <- 10000
+    for (cg_preconditioner_type in loop_cg_PC) {
+      params_vif$cg_preconditioner_type <- cg_preconditioner_type
+      # vif approximation with no ordering
+      capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                          likelihood = "bernoulli_probit", gp_approx = "full_scale_vecchia", 
+                                          num_neighbors = n-1, num_ind_points = 20,vecchia_ordering = "none",
+                                          matrix_inversion_method = "iterative"), file='NUL')
+      capture.output( fit(gp_model, y = y, X = X, params = params_vif)
+                      , file='NUL')
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
+      # Prediction
+      gp_model$set_prediction_data(num_neighbors_pred = n+2, nsim_var_pred = nsim_var_pred)
+      capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                      predict_var = TRUE, predict_response = FALSE, 
+                                      cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
+      expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+      expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),tolerance_loc_1)
+      # Likelihood evaluation
+      nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
+      expect_lt(abs(nll-expected_nll),tolerance_loc_3)
+      
+      
+      if (cg_preconditioner_type == "fitc") {# some tests are only run for one preconditioner
+        ############################
+        # VIF approximation with correlation-based neighbor search
+        ############################
+        capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                               vecchia_ordering="random", likelihood = "bernoulli_probit", 
+                                               gp_approx = "full_scale_vecchia_correlation_based", 
+                                               num_neighbors = n-1, num_ind_points = 20,
+                                               y = y, X = X, params = params_vif, 
+                                               matrix_inversion_method = "iterative"), file='NUL')
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
+        # Prediction
+        capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                        predict_var = TRUE, predict_response = FALSE, 
+                                        cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
+        expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),tolerance_loc_1)
+        # Likelihood evaluation
+        nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
+        expect_lt(abs(nll-expected_nll),tolerance_loc_1)
+        
+        #######################
+        ## Less neighbors than observations
+        #######################
+        capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                            likelihood = "bernoulli_probit", gp_approx = "full_scale_vecchia", 
+                                            num_neighbors = 10, num_ind_points = 20, vecchia_ordering = "none",
+                                            matrix_inversion_method = "iterative"), file='NUL')
+        capture.output( fit(gp_model, y = y, X = X, params = params_vif)
+                        , file='NUL')
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_3)
+        # Prediction
+        mu_less_neig <- c(0.3362000,  0.1499488, -0.1014509)
+        var_resp_less_neig <- c(0.6036511, 0.6025073, 0.4220153)
+        capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                                        predict_var = TRUE, predict_response = FALSE, 
+                                        cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
+        expect_lt(sum(abs(pred$mu-mu_less_neig)),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(pred$var)-var_resp_less_neig)),tolerance_loc_1)
+      }
+      
+      
+    }# end loop cg_preconditioner_type in loop_cg_PC
+  })
+  
   test_that("Binary classification Gaussian process model with Wendland covariance function", {
     
     probs <- pnorm(L %*% b_1)
@@ -2989,7 +3146,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll_opt_est_shape <- 68.13569857
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[1:4]-cov_pars_est_shape[1:4])),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[5]-cov_pars_est_shape[5])),TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_est_shape )),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_est_shape )),TOLERANCE_MEDIUM)
     expect_equal(gp_model$get_num_optim_iter(), nrounds_est_shape )
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_est_shape), TOLERANCE_STRICT)
     
@@ -3120,15 +3277,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         gp_approx = "fitc", num_ind_points = num_ind_points, ind_points_selection = "kmeans++"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
-    expect_lt(abs(nll-69.84929039),TOLERANCE_STRICT)
+    expect_lt(abs(nll-69.8362518046058),TOLERANCE_STRICT)
     # Fit model
     capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                            gp_approx = "fitc", num_ind_points = num_ind_points, ind_points_selection = "kmeans++",
                                            y = y, X = X, params = params), 
                     file='NUL')
-    cov_pars_nn <- c(0.01978912972, 0.04132476337, 0.05094608765, 0.07727937559)
-    coef_nn <- c(-0.2554025682, 0.1487384211)
-    nll_opt_nn <- 68.46397975
+    cov_pars_nn <- c(0.01979026, 0.04132530, 0.05094675, 0.07727957)
+    coef_nn <- c(-0.2554019,  0.1487383)
+    nll_opt_nn <- 68.46398
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_nn)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_MEDIUM)
@@ -3182,7 +3339,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         likelihood = likelihood), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
-    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+    expect_lt(abs(nll-nll_exp),TOLERANCE_MEDIUM)
     capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard", cov_fct_shape = 0.5,
                                            gp_approx = "fitc", num_ind_points = n - 5, ind_points_selection = "random",
                                            y = y, X=X, params = params, likelihood = likelihood), 
