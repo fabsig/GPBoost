@@ -77,12 +77,14 @@
 #' for Gaussian processes. Available options: 
 #' \itemize{
 #' \item{"none": No approximation }
-#' \item{"vecchia": A Vecchia approximation; see Sigrist (2022, JMLR) for more details }
+#' \item{"vecchia": Vecchia approximation; see Sigrist (2022, JMLR) for more details }
+#' \item{"full_scale_vecchia": Vecchia-inducing points full-scale (VIF) approximation; 
+#' see Gyger, Furrer, and Sigrist (2025) for more details }
 #' \item{"tapering": The covariance function is multiplied by 
 #' a compactly supported Wendland correlation function }
 #' \item{"fitc": Fully Independent Training Conditional approximation aka 
 #' modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024) for more details }
-#' \item{"full_scale_tapering": A full scale approximation combining an 
+#' \item{"full_scale_tapering": Full-scale approximation combining an 
 #' inducing point / predictive process approximation with tapering on the residual process; 
 #' see Gyger, Furrer, and Sigrist (2024) for more details }
 #' \item{"vecchia_latent": similar as "vecchia" but a Vecchia approximation is applied to the latent Gaussian process 
@@ -97,7 +99,12 @@
 #' of the Wendland covariance function and Wendland correlation taper function. 
 #' We follow the notation of Bevilacqua et al. (2019, AOS)
 #' @param num_neighbors An \code{integer} specifying the number of neighbors for 
-#' the Vecchia approximation. Note: for prediction, the number of neighbors can 
+#' the Vecchia and VIF approximations. Internal default values if NULL: 
+#' \itemize{
+#'    \item{ 20 for gp_approx = "vecchia" }
+#'    \item{ 30 for gp_approx = "full_scale_vecchia" }
+#'    }
+#' Note: for prediction, the number of neighbors can 
 #' be set through the 'num_neighbors_pred' parameter in the 'set_prediction_data'
 #' function. By default, num_neighbors_pred = 2 * num_neighbors. Further, 
 #' the type of Vecchia approximation used for making predictions is set through  
@@ -119,18 +126,24 @@
 #' \item{"random": random selection from data points }
 #' }
 #' @param num_ind_points An \code{integer} specifying the number of inducing 
-#' points / knots for, e.g., a predictive process approximation
+#' points / knots for FITC, full_scale_tapering, and VIF approximations. Internal default values if NULL: 
+#' \itemize{
+#'    \item{ 500 for gp_approx = "FITC" and gp_approx = "full_scale_tapering" }
+#'    \item{ 200 for gp_approx = "full_scale_vecchia" }
+#'    }
 #' @param cover_tree_radius A \code{numeric} specifying the radius (= "spatial resolution") 
 #' for the cover tree algorithm
 #' @param matrix_inversion_method A \code{string} specifying the method used for inverting covariance matrices. 
 #' Available options:
 #' \itemize{
 #' \item{"cholesky": Cholesky factorization }
-#' \item{"iterative": iterative methods. A combination of conjugate gradient, Lanczos algorithm, and other methods. 
+#' \item{"iterative": iterative methods. A combination of the conjugate gradient, the Lanczos algorithm, and other methods. 
 #' 
 #' This is currently only supported for the following cases: 
 #' \itemize{
+#' \item{ grouped random effects with more than one level }
 #' \item{likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation) }
+#' \item{likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIFapproximation) }
 #' \item{likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation) }
 #' }
 #' }
@@ -159,7 +172,12 @@
 #' Default value if NULL: 1e-3
 #' @param nsim_var_pred an \code{integer} specifying the number of samples when simulation 
 #' is used for calculating predictive variances
-#' Default value if NULL: 1000
+#' Internal default values if NULL: 
+#' \itemize{
+#'    \item{ 500 for grouped random effects }
+#'    \item{ 1000 for gp_approx = "vecchia" and gp_approx = "full_scale_tapering" }
+#'    \item{ 100 for gp_approx = "full_scale_vecchia" }
+#'    }
 #' @param rank_pred_approx_matrix_lanczos an \code{integer} specifying the rank 
 #' of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
 #' Default value if NULL: 1000
@@ -258,22 +276,29 @@
 #'                Otherwise they are sampled every time a trace is calculated }
 #'                \item{seed_rand_vec_trace: \code{integer} (default = 1). 
 #'                Seed number to generate random vectors (e.g., Rademacher) }
-#'                \item{piv_chol_rank: \code{integer} (default = 50). 
-#'                Rank of the pivoted Cholesky decomposition used as 
-#'                preconditioner in conjugate gradient algorithms }
-#'                \item{cg_preconditioner_type: \code{string}.
+#'                \item{cg_preconditioner_type (\code{string}):
 #'                Type of preconditioner used for conjugate gradient algorithms.
 #'                \itemize{
+#'                  \item Options for grouped random effects: 
+#'                  \itemize{
+#'                      \item "ssor" (= default): SSOR preconditioner
+#'                      \item "incomplete_cholesky": zero fill-in incomplete Cholesky factorization
+#'                      }
 #'                  \item Options for likelihood != "gaussian" and gp_approx == "vecchia" or
 #'                  likelihood == "gaussian" and gp_approx == "vecchia_latent": 
 #'                    \itemize{
 #'                      \item{"vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
 #'                  where B^T * D^-1 * B approx= Sigma^-1 }
-#'                      \item{"fitc": modified predictive process preconditioner for inverting (B^-1 * D * B^-T + W^-1)}
+#'                      \item{"fitc": FITC / modified predictive process preconditioner for inverting (B^-1 * D * B^-T + W^-1)}
 #'                      \item{"pivoted_cholesky": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
 #'                  where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
 #'                      \item{"incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of 
 #'                      (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 }
+#'                    }
+#'                  \item Options for likelihood != "gaussian" and gp_approx == "full_scale_vecchia": 
+#'                    \itemize{
+#'                      \item{"fitc" ( = default): FITC / modified predictive process preconditioner }
+#'                      \item{"vifdu": VIF with diagonal update preconditioner }
 #'                    }
 #'                  \item Options for likelihood == "gaussian" and gp_approx == "full_scale_tapering": 
 #'                    \itemize{
@@ -282,6 +307,16 @@
 #'                  }
 #'                }
 #'                }
+#'                \item{fitc_piv_chol_preconditioner_rank (\code{integer} ): 
+#'                Rank of the FITC and pivoted Cholesky decomposition preconditioners for 
+#'                iterative methods for Vecchia and VIF approximations 
+#'                (for full_scale_tapering, the same inducing points as in the approximation as used).
+#'                Internal default values if NULL or < 0: 
+#'                \itemize{
+#'                      \item{ 200 for the FITC preconditioner }
+#'                      \item{ 50 for the pivoted Cholesky decomposition preconditioner }
+#'                      }
+#'                  }
 #'            }
 #' @param offset A \code{numeric} \code{vector} with 
 #' additional fixed effects contributions that are added to the linear predictor (= offset). 
@@ -342,10 +377,10 @@ gpb.GPModel <- R6::R6Class(
                           num_parallel_threads = NULL,
                           cov_fct_taper_range = 1.,
                           cov_fct_taper_shape = 1.,
-                          num_neighbors = 20L,
+                          num_neighbors = NULL,
                           vecchia_ordering = "random",
                           ind_points_selection = "kmeans++",
-                          num_ind_points = 500L,
+                          num_ind_points = NULL,
                           cover_tree_radius = 1.,
                           matrix_inversion_method = "cholesky",
                           seed = 0L,
@@ -612,9 +647,17 @@ gpb.GPModel <- R6::R6Class(
         private$gp_approx <- as.character(gp_approx)
         private$cov_fct_taper_range <- as.numeric(cov_fct_taper_range)
         private$cov_fct_taper_shape <- as.numeric(cov_fct_taper_shape)
-        private$num_neighbors <- as.integer(num_neighbors)
+        if (!is.null(num_neighbors)) {
+          if (num_neighbors > 0) {
+            private$num_neighbors <- as.integer(num_neighbors)
+          }
+        }
         private$vecchia_ordering <- as.character(vecchia_ordering)
-        private$num_ind_points <- as.integer(num_ind_points)
+        if (!is.null(num_ind_points)) {
+          if (num_ind_points > 0) {
+            private$num_ind_points <- as.integer(num_ind_points)
+          }
+        }
         private$cover_tree_radius <- as.numeric(cover_tree_radius)
         private$ind_points_selection <- as.character(ind_points_selection)
         if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
@@ -1067,7 +1110,7 @@ gpb.GPModel <- R6::R6Class(
         , private$params[["reuse_rand_vec_trace"]]
         , cg_preconditioner_type_c_str
         , private$params[["seed_rand_vec_trace"]]
-        , private$params[["piv_chol_rank"]]
+        , private$params[["fitc_piv_chol_preconditioner_rank"]]
         , init_aux_pars
         , private$params[["estimate_aux_pars"]]
       )
@@ -2085,14 +2128,14 @@ gpb.GPModel <- R6::R6Class(
     num_parallel_threads = -1L,
     cov_fct_taper_range = 1.,
     cov_fct_taper_shape = 1.,
-    num_neighbors = 20L,
+    num_neighbors = -1L, # default is set in C++
     vecchia_ordering = "random",
     vecchia_pred_type = NULL,
     num_neighbors_pred = -1,
     cg_delta_conv_pred = -1,
     nsim_var_pred = -1,
     rank_pred_approx_matrix_lanczos = -1,
-    num_ind_points = 500L,
+    num_ind_points = -1L, # default is set in C++
     cover_tree_radius = 1.,
     ind_points_selection = "kmeans++",
     matrix_inversion_method = "cholesky",
@@ -2129,7 +2172,7 @@ gpb.GPModel <- R6::R6Class(
                   num_rand_vec_trace = 50L,
                   reuse_rand_vec_trace = TRUE,
                   seed_rand_vec_trace = 1L,
-                  piv_chol_rank = 50L,
+                  fitc_piv_chol_preconditioner_rank = -1L, # default value is set in C++
                   estimate_aux_pars = TRUE),
     num_sets_re = 1,
     
@@ -2160,13 +2203,16 @@ gpb.GPModel <- R6::R6Class(
     },
     
     update_params = function(params) {
+      if (!is.null(params[["piv_chol_rank"]])) {
+        stop("GPModel: The argument 'piv_chol_rank' is discontinued. Use the argument 'fitc_piv_chol_preconditioner_rank' instead ")
+      }
       ## Check format of parameters
       numeric_params <- c("lr_cov", "acc_rate_cov", "delta_rel_conv",
                           "lr_coef", "acc_rate_coef", "cg_delta_conv")
       integer_params <- c("maxit", "nesterov_schedule_version",
                           "momentum_offset", "cg_max_num_it", "cg_max_num_it_tridiag",
                           "num_rand_vec_trace", "seed_rand_vec_trace",
-                          "piv_chol_rank")
+                          "fitc_piv_chol_preconditioner_rank")
       character_params <- c("optimizer_cov", "convergence_criterion",
                             "optimizer_coef", "cg_preconditioner_type")
       logical_params <- c("use_nesterov_acc", "trace", "std_dev", 
@@ -2316,10 +2362,10 @@ GPModel <- function(likelihood = "gaussian",
                     num_parallel_threads = NULL,
                     cov_fct_taper_range = 1.,
                     cov_fct_taper_shape = 1.,
-                    num_neighbors = 20L,
+                    num_neighbors = NULL,
                     vecchia_ordering = "random",
                     ind_points_selection = "kmeans++",
-                    num_ind_points = 500L,
+                    num_ind_points = NULL,
                     cover_tree_radius = 1.,
                     matrix_inversion_method = "cholesky",
                     seed = 0L,
@@ -2524,10 +2570,10 @@ fitGPModel <- function(likelihood = "gaussian",
                        num_parallel_threads = NULL,
                        cov_fct_taper_range = 1.,
                        cov_fct_taper_shape = 1.,
-                       num_neighbors = 20L,
+                       num_neighbors = NULL,
                        vecchia_ordering = "random",
                        ind_points_selection = "kmeans++",
-                       num_ind_points = 500L,
+                       num_ind_points = NULL,
                        cover_tree_radius = 1.,
                        matrix_inversion_method = "cholesky",
                        seed = 0L,

@@ -919,7 +919,7 @@ namespace GPBoost {
 		string_t& gp_approx) {
 		int ind_intercept_gp = (int)re_comps_vecchia_cluster_i.size();
 		if ((vecchia_ordering == "random" || vecchia_ordering == "time_random_space") && gp_approx != "full_scale_vecchia") {
-			std::shuffle(data_indices_per_cluster[cluster_i].begin(), data_indices_per_cluster[cluster_i].end(), rng);
+			std::shuffle(data_indices_per_cluster[cluster_i].begin(), data_indices_per_cluster[cluster_i].end(), rng);//Note: shuffling has been already done if gp_approx == "full_scale_vecchia"
 		}
 		std::vector<double> gp_coords;
 		for (int j = 0; j < dim_gp_coords; ++j) {

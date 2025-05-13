@@ -4035,10 +4035,10 @@ class GPModel(object):
                  num_parallel_threads=None,
                  cov_fct_taper_range=1.,
                  cov_fct_taper_shape=1.,
-                 num_neighbors=20,
+                 num_neighbors=None,
                  vecchia_ordering="random",
                  ind_points_selection="kmeans++",
-                 num_ind_points=500,
+                 num_ind_points=None,
                  cover_tree_radius=1.,
                  matrix_inversion_method="cholesky",
                  seed=0,
@@ -4176,8 +4176,12 @@ class GPModel(object):
 
                     - "vecchia":
 
-                        A Vecchia approximation; see Sigrist (2022, JMLR) for more details
+                        Vecchia approximation; see Sigrist (2022, JMLR) for more details
 
+                    - "full_scale_vecchia": 
+                    
+                        Vecchia-inducing points full-scale (VIF) approximation; see Gyger, Furrer, and Sigrist (2025) for more details 
+                    
                     - "tapering":
 
                         The covariance function is multiplied by a compactly supported Wendland correlation function
@@ -4189,7 +4193,7 @@ class GPModel(object):
 
                     - "full_scale_tapering":
 
-                        A full scale approximation combining an inducing point / predictive process approximation with
+                        Full-scale approximation combining an inducing point / predictive process approximation with
                         tapering on the residual process; see Gyger, Furrer, and Sigrist (2024) for more details
 
                     - "vecchia_latent":
@@ -4205,8 +4209,14 @@ class GPModel(object):
             cov_fct_taper_shape : float, optional (default=0.)
                 Shape (=smoothness) parameter of the Wendland covariance function and Wendland correlation taper function.
                 We follow the notation of Bevilacqua et al. (2019, AOS)
-            num_neighbors : integer, optional (default=20)
-                Number of neighbors for the Vecchia approximation. Note: for prediction, the number of neighbors can
+            num_neighbors : integer, optional 
+                Number of neighbors for the Vecchia approximation. Internal default values if None: 
+                
+                    - 20 for gp_approx = "vecchia"
+
+                    - 30 for gp_approx = "full_scale_vecchia"
+                
+                Note: for prediction, the number of neighbors can
                 be set through the 'num_neighbors_pred' parameter in the 'set_prediction_data' function. By default,
                 num_neighbors_pred = 2 * num_neighbors. Further, the type of Vecchia approximation used for making
                 predictions is set through the 'vecchia_pred_type' parameter in the 'set_prediction_data' function
@@ -4240,8 +4250,13 @@ class GPModel(object):
 
                         Random selection from data points
 
-            num_ind_points : integer, optional (default=500)
-                Number of inducing points / knots for, e.g., a predictive process approximation
+            num_ind_points : integer, optional
+                Number of inducing points / knots for FITC, full_scale_tapering, and VIF approximations. Internal default values if None: 
+                
+                    - 500 for gp_approx = "FITC" and gp_approx = "full_scale_tapering" 
+
+                    - 200 for gp_approx = "full_scale_vecchia"
+
             cover_tree_radius : float, optional (default=1.)
                 The radius (= "spatial resolution") for the cover tree algorithm
             matrix_inversion_method : string, optional (default="cholesky")
@@ -4253,11 +4268,15 @@ class GPModel(object):
 
                     - "iterative":
 
-                        Iterative methods: A combination of conjugate gradient, Lanczos algorithm, and other methods.
+                        Iterative methods: A combination of the conjugate gradient, Lanczos algorithm, and other methods.
 
                         This is currently only supported for the following cases:
 
+                        - grouped random effects with more than one level 
+                        
                         - likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation)
+
+                        - likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIF approximation)
 
                         - likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation)
 
@@ -4336,7 +4355,7 @@ class GPModel(object):
         self.num_parallel_threads = -1
         self.cov_fct_taper_range = 1.
         self.cov_fct_taper_shape = 1.
-        self.num_neighbors = 20
+        self.num_neighbors = -1
         self.vecchia_ordering = "random"
         self.vecchia_pred_type = None
         self.num_neighbors_pred = -1
@@ -4344,7 +4363,7 @@ class GPModel(object):
         self.nsim_var_pred = -1
         self.rank_pred_approx_matrix_lanczos = -1
         self.ind_points_selection = "kmeans++"
-        self.num_ind_points = 500
+        self.num_ind_points = -1
         self.cover_tree_radius = 1.
         self.matrix_inversion_method = "cholesky"
         self.seed = 0
@@ -4381,7 +4400,7 @@ class GPModel(object):
                        "num_rand_vec_trace": 50,
                        "reuse_rand_vec_trace": True,
                        "seed_rand_vec_trace": 1,
-                       "piv_chol_rank": 50,
+                       "fitc_piv_chol_preconditioner_rank": -1, # default value is set in C++
                        "estimate_aux_pars": True
                        }
         self.num_sets_re = 1
@@ -4586,9 +4605,13 @@ class GPModel(object):
             self.cov_fct_taper_shape = cov_fct_taper_shape
             self.vecchia_approx = vecchia_approx
             self.vecchia_ordering = vecchia_ordering
-            self.num_neighbors = num_neighbors
+            if num_neighbors is not None:
+                if num_neighbors > 0:
+                    self.num_neighbors = num_neighbors
             self.ind_points_selection = ind_points_selection
-            self.num_ind_points = num_ind_points
+            if num_ind_points is not None:
+                if num_ind_points > 0:
+                    self.num_ind_points = num_ind_points
             self.cover_tree_radius = cover_tree_radius
             if self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
                 self.cov_par_names.extend(["GP_var", "GP_range_time", "GP_range_space"])
@@ -4776,6 +4799,8 @@ class GPModel(object):
         if params is not None:
             if not isinstance(params, dict):
                 raise ValueError("params needs to be a dict")
+            if 'piv_chol_rank' in params:
+                raise GPBoostError("The argument 'piv_chol_rank' is discontinued. Use the argument 'fitc_piv_chol_preconditioner_rank' instead ")
             for param in params:
                 if param == "init_cov_pars":
                     if params[param] is not None:
@@ -4917,11 +4942,15 @@ class GPModel(object):
                     every time a trace is calculated.
                 - seed_rand_vec_trace: integer, optional (default = 1)
                     Seed number to generate random vectors (e.g., Rademacher).
-                - piv_chol_rank: integer, optional (default = 50)
-                    Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms.
                 - cg_preconditioner_type: string, optional
                     Type of preconditioner used for conjugate gradient algorithms.
 
+                        - Options for grouped random effects: 
+
+                            - "ssor" (= default): SSOR preconditioner
+
+                            - "incomplete_cholesky": zero fill-in incomplete Cholesky factorization
+                        
                         - Options for likelihood != "gaussian" and gp_approx == "vecchia" or likelihood == "gaussian" and gp_approx == "vecchia_latent":
 
                             - "vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
@@ -4932,11 +4961,24 @@ class GPModel(object):
 
                             - "incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 
 
+                        - Options for likelihood != "gaussian" and gp_approx == "full_scale_vecchia"
+
+                            - "fitc" ( = default): FITC / modified predictive process preconditioner
+
+                            - "vifdu": VIF with diagonal update preconditioner 
+                        
                         - Options for likelihood == "gaussian" and gp_approx == "full_scale_tapering":
 
                             - "fitc" (= default): modified predictive process preconditioner
 
                             - "none": no preconditioner
+
+                - fitc_piv_chol_preconditioner_rank: integer, optional 
+                    Rank of the FITC and pivoted Cholesky decomposition preconditioners for iterative methods for Vecchia and VIF approximations (for full_scale_tapering, the same inducing points as in the approximation as used). Internal default values if None or < 0: 
+                
+                    - 200 for the FITC preconditioner 
+
+                    - 50 for the pivoted Cholesky decomposition preconditioner
 
         offset : numpy 1-D array or None, optional (default=None)
             Additional fixed effects contributions that are added to the linear predictor (= offset).
@@ -5173,11 +5215,17 @@ class GPModel(object):
                     every time a trace is calculated.
                 - seed_rand_vec_trace: integer, optional (default = 1)
                     Seed number to generate random vectors (e.g., Rademacher).
-                - piv_chol_rank: integer, optional (default = 50)
+                - fitc_piv_chol_preconditioner_rank: integer, optional (default = 50)
                     Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms.
                 - cg_preconditioner_type: string, optional
                     Type of preconditioner used for conjugate gradient algorithms.
 
+                        - Options for grouped random effects: 
+
+                            - "ssor" (= default): SSOR preconditioner
+
+                            - "incomplete_cholesky": zero fill-in incomplete Cholesky factorization
+                        
                         - Options for likelihood != "gaussian" and gp_approx == "vecchia" or likelihood == "gaussian" and gp_approx == "vecchia_latent":
 
                             - "vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), where B^T * D^-1 * B approx= Sigma^-1
@@ -5188,6 +5236,12 @@ class GPModel(object):
 
                             - "incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 
 
+                        - Options for likelihood != "gaussian" and gp_approx == "full_scale_vecchia"
+
+                            - "fitc" ( = default): FITC / modified predictive process preconditioner
+
+                            - "vifdu": VIF with diagonal update preconditioner 
+                        
                         - Options for likelihood == "gaussian" and gp_approx == "full_scale_tapering":
 
                             - "fitc" (= default): modified predictive process preconditioner
@@ -5254,7 +5308,7 @@ class GPModel(object):
             ctypes.c_bool(self.params["reuse_rand_vec_trace"]),
             cg_preconditioner_type_c,
             ctypes.c_int(self.params["seed_rand_vec_trace"]),
-            ctypes.c_int(self.params["piv_chol_rank"]),
+            ctypes.c_int(self.params["fitc_piv_chol_preconditioner_rank"]),
             init_aux_pars_c,
             ctypes.c_bool(self.params["estimate_aux_pars"])))
         return self
@@ -5875,7 +5929,14 @@ class GPModel(object):
             nsim_var_pred : integer or None, optional (default=None)
                 The number of samples when simulation is used for calculating predictive variances
 
-                Default value if None: 1000
+                Internal default values if None: 
+                
+                    - 500 for grouped random effects
+                    
+                    - 1000 for gp_approx = "vecchia" and gp_approx = "full_scale_tapering"
+
+                    - 100 for gp_approx = "full_scale_vecchia"
+
             rank_pred_approx_matrix_lanczos : integer or None, optional (default=None)
                 The rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
 

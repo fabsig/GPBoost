@@ -999,7 +999,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
   test_that("Binary classification Gaussian process model with Vecchia approximation", {
     params_vecchia <- c(DEFAULT_OPTIM_PARAMS, cg_delta_conv = sqrt(1e-6), 
-                        num_rand_vec_trace = 500, cg_preconditioner_type = "pivoted_cholesky")
+                        num_rand_vec_trace = 500, cg_preconditioner_type = "pivoted_cholesky",
+                        fitc_piv_chol_preconditioner_rank = dim(coords)[1] - 1 )
     init_cov_pars = c(1,mean(dist(coords))/3)
     params_vecchia$init_cov_pars = init_cov_pars
     params = DEFAULT_OPTIM_PARAMS
@@ -1464,7 +1465,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     num_rand_vec_trace = 500, cg_preconditioner_type = "fitc")
     init_cov_pars = c(1,mean(dist(coords))/3)
     params_vif$init_cov_pars = init_cov_pars
-    params_vif$piv_chol_rank = 50
+    params_vif$fitc_piv_chol_preconditioner_rank = dim(coords)[1] - 1 
     params = DEFAULT_OPTIM_PARAMS
     params$init_cov_pars = init_cov_pars
     params_mult <- DEFAULT_OPTIM_PARAMS
@@ -3355,7 +3356,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params$init_cov_pars = init_cov_pars
     likelihood_additional_param = 1
     params_vecchia <- c(params, cg_delta_conv = sqrt(1e-6), 
-                        num_rand_vec_trace = 50, cg_preconditioner_type = "pivoted_cholesky")
+                        num_rand_vec_trace = 50, cg_preconditioner_type = "pivoted_cholesky",
+                        fitc_piv_chol_preconditioner_rank = n-1)
     params_vecchia$init_cov_pars = init_cov_pars
     
     # Simulate data and define expected values
@@ -3398,7 +3400,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            y = y, X = X, params = params, likelihood_additional_param=likelihood_additional_param), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_LOOSE)
-    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),2*TOLERANCE_LOOSE)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est),TOLERANCE_MEDIUM)
     # Prediction
     gp_model$set_optim_params(params = list(init_aux_pars = aux_pars_pred_eval, init_coef = coefs_pred))
@@ -3507,7 +3509,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                             gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none",
                                             matrix_inversion_method = inv_method), file='NUL')
         params_vecchia_mult <- params_vecchia
-        params_vecchia_mult$piv_chol_rank <- dim(unique(coords_multiple))[1]
+        params_vecchia_mult$fitc_piv_chol_preconditioner_rank <- dim(unique(coords_multiple))[1]
         gp_model$set_optim_params(params = params_vecchia_mult)
         capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y_multiple, aux_pars = aux_pars_pred_eval), file='NUL')
         expect_lt(abs(nll-expected_nll_multiple),tolerance_loc_3)

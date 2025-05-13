@@ -39,7 +39,12 @@ Default value if NULL: 1e-3}
 
 \item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
 is used for calculating predictive variances
-Default value if NULL: 1000}
+Internal default values if NULL: 
+\itemize{
+   \item{ 500 for grouped random effects }
+   \item{ 1000 for gp_approx = "vecchia" and gp_approx = "full_scale_tapering" }
+   \item{ 100 for gp_approx = "full_scale_vecchia" }
+   }}
 
 \item{rank_pred_approx_matrix_lanczos}{an \code{integer} specifying the rank 
 of the matrix for approximating predictive covariances obtained using the Lanczos algorithm

@@ -9,9 +9,9 @@ fitGPModel(likelihood = "gaussian", group_data = NULL,
   drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
   gp_rand_coef_data = NULL, cov_function = "matern", cov_fct_shape = 1.5,
   gp_approx = "none", num_parallel_threads = NULL,
-  cov_fct_taper_range = 1, cov_fct_taper_shape = 1, num_neighbors = 20L,
+  cov_fct_taper_range = 1, cov_fct_taper_shape = 1, num_neighbors = NULL,
   vecchia_ordering = "random", ind_points_selection = "kmeans++",
-  num_ind_points = 500L, cover_tree_radius = 1,
+  num_ind_points = NULL, cover_tree_radius = 1,
   matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
   free_raw_data = FALSE, y, X = NULL, params = list(),
   vecchia_approx = NULL, vecchia_pred_type = NULL,
@@ -91,12 +91,14 @@ This parameter is irrelevant for some covariance functions such as the exponenti
 for Gaussian processes. Available options: 
 \itemize{
 \item{"none": No approximation }
-\item{"vecchia": A Vecchia approximation; see Sigrist (2022, JMLR) for more details }
+\item{"vecchia": Vecchia approximation; see Sigrist (2022, JMLR) for more details }
+\item{"full_scale_vecchia": Vecchia-inducing points full-scale (VIF) approximation; 
+see Gyger, Furrer, and Sigrist (2025) for more details }
 \item{"tapering": The covariance function is multiplied by 
 a compactly supported Wendland correlation function }
 \item{"fitc": Fully Independent Training Conditional approximation aka 
 modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024) for more details }
-\item{"full_scale_tapering": A full scale approximation combining an 
+\item{"full_scale_tapering": Full-scale approximation combining an 
 inducing point / predictive process approximation with tapering on the residual process; 
 see Gyger, Furrer, and Sigrist (2024) for more details }
 \item{"vecchia_latent": similar as "vecchia" but a Vecchia approximation is applied to the latent Gaussian process 
@@ -115,7 +117,12 @@ of the Wendland covariance function and Wendland correlation taper function.
 We follow the notation of Bevilacqua et al. (2019, AOS)}
 
 \item{num_neighbors}{An \code{integer} specifying the number of neighbors for 
-the Vecchia approximation. Note: for prediction, the number of neighbors can 
+the Vecchia and VIF approximations. Internal default values if NULL: 
+\itemize{
+   \item{ 20 for gp_approx = "vecchia" }
+   \item{ 30 for gp_approx = "full_scale_vecchia" }
+   }
+Note: for prediction, the number of neighbors can 
 be set through the 'num_neighbors_pred' parameter in the 'set_prediction_data'
 function. By default, num_neighbors_pred = 2 * num_neighbors. Further, 
 the type of Vecchia approximation used for making predictions is set through  
@@ -140,7 +147,11 @@ Available options:
 }}
 
 \item{num_ind_points}{An \code{integer} specifying the number of inducing 
-points / knots for, e.g., a predictive process approximation}
+points / knots for FITC, full_scale_tapering, and VIF approximations. Internal default values if NULL: 
+\itemize{
+   \item{ 500 for gp_approx = "FITC" and gp_approx = "full_scale_tapering" }
+   \item{ 200 for gp_approx = "full_scale_vecchia" }
+   }}
 
 \item{cover_tree_radius}{A \code{numeric} specifying the radius (= "spatial resolution") 
 for the cover tree algorithm}
@@ -149,11 +160,13 @@ for the cover tree algorithm}
 Available options:
 \itemize{
 \item{"cholesky": Cholesky factorization }
-\item{"iterative": iterative methods. A combination of conjugate gradient, Lanczos algorithm, and other methods. 
+\item{"iterative": iterative methods. A combination of the conjugate gradient, the Lanczos algorithm, and other methods. 
 
 This is currently only supported for the following cases: 
 \itemize{
+\item{ grouped random effects with more than one level }
 \item{likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation) }
+\item{likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIFapproximation) }
 \item{likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation) }
 }
 }
@@ -261,22 +274,29 @@ fixed effects linear regression term (if there is one)}
     Otherwise they are sampled every time a trace is calculated }
     \item{seed_rand_vec_trace: \code{integer} (default = 1). 
     Seed number to generate random vectors (e.g., Rademacher) }
-    \item{piv_chol_rank: \code{integer} (default = 50). 
-    Rank of the pivoted Cholesky decomposition used as 
-    preconditioner in conjugate gradient algorithms }
-    \item{cg_preconditioner_type: \code{string}.
+    \item{cg_preconditioner_type (\code{string}):
     Type of preconditioner used for conjugate gradient algorithms.
     \itemize{
+      \item Options for grouped random effects: 
+      \itemize{
+          \item "ssor" (= default): SSOR preconditioner
+          \item "incomplete_cholesky": zero fill-in incomplete Cholesky factorization
+          }
       \item Options for likelihood != "gaussian" and gp_approx == "vecchia" or
       likelihood == "gaussian" and gp_approx == "vecchia_latent": 
         \itemize{
           \item{"vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
       where B^T * D^-1 * B approx= Sigma^-1 }
-          \item{"fitc": modified predictive process preconditioner for inverting (B^-1 * D * B^-T + W^-1)}
+          \item{"fitc": FITC / modified predictive process preconditioner for inverting (B^-1 * D * B^-T + W^-1)}
           \item{"pivoted_cholesky": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
       where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
           \item{"incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of 
           (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 }
+        }
+      \item Options for likelihood != "gaussian" and gp_approx == "full_scale_vecchia": 
+        \itemize{
+          \item{"fitc" ( = default): FITC / modified predictive process preconditioner }
+          \item{"vifdu": VIF with diagonal update preconditioner }
         }
       \item Options for likelihood == "gaussian" and gp_approx == "full_scale_tapering": 
         \itemize{
@@ -285,6 +305,16 @@ fixed effects linear regression term (if there is one)}
       }
     }
     }
+    \item{fitc_piv_chol_preconditioner_rank (\code{integer} ): 
+    Rank of the FITC and pivoted Cholesky decomposition preconditioners for 
+    iterative methods for Vecchia and VIF approximations 
+    (for full_scale_tapering, the same inducing points as in the approximation as used).
+    Internal default values if NULL or < 0: 
+    \itemize{
+          \item{ 200 for the FITC preconditioner }
+          \item{ 50 for the pivoted Cholesky decomposition preconditioner }
+          }
+      }
 }}
 
 \item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}

@@ -676,7 +676,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
                                         vecchia_ordering = "none", matrix_inversion_method = "iterative"), file='NUL')
-    gp_model$set_optim_params(params=list(num_rand_vec_trace = 1000, cg_preconditioner_type = "predictive_process_plus_diagonal"))
+    gp_model$set_optim_params(params=list(num_rand_vec_trace = 1000, cg_preconditioner_type = "predictive_process_plus_diagonal",
+                                          fitc_piv_chol_preconditioner_rank=99))
     capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1]), file='NUL')
     expect_lt(abs(nll-exp_nll), 0.2)
     
@@ -710,7 +711,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
                                         vecchia_ordering = "none", matrix_inversion_method = "iterative"), file='NUL')
-    gp_model$set_optim_params(params=list(num_rand_vec_trace = 1000, cg_preconditioner_type = "predictive_process_plus_diagonal"))
+    gp_model$set_optim_params(params=list(num_rand_vec_trace = 1000, cg_preconditioner_type = "predictive_process_plus_diagonal",
+                                          fitc_piv_chol_preconditioner_rank = n-1))
     capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1]), file='NUL')
     expect_lt(abs(nll-exp_nll_less_nn_lat), 0.2)
     
@@ -752,6 +754,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
                                         vecchia_ordering = "none", matrix_inversion_method = "iterative"), file='NUL')
     params_latent$cg_preconditioner_type = "predictive_process_plus_diagonal"
+    params_latent$fitc_piv_chol_preconditioner_rank = n - 1
     capture.output( fit(gp_model, y = y, params = params_latent), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(3,5)])),0.02)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars[1])),0.02)
@@ -1086,7 +1089,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # "vecchia_latent" and iterative methods (FITC preconditioner)
     params_latent_FITC = params_latent
     params_latent_FITC$cg_preconditioner_type = "predictive_process_plus_diagonal"
-    params_latent_FITC$piv_chol_rank = 70
+    params_latent_FITC$fitc_piv_chol_preconditioner_rank = 70
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            gp_approx = "vecchia_latent", num_neighbors = n+2,
                                            vecchia_ordering = "none", y = y, X = X,seed = 1,
@@ -1173,7 +1176,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # "vecchia_latent" and matrix_inversion_method = "iterative" (FITC preconditioner)
     params_latent_FITC = params_latent
     params_latent_FITC$cg_preconditioner_type = "predictive_process_plus_diagonal"
-    params_latent_FITC$piv_chol_rank = 25
+    params_latent_FITC$fitc_piv_chol_preconditioner_rank = 25
     capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential",
                                            gp_approx = "vecchia_latent", num_neighbors = n+2,
                                            vecchia_ordering = "none", y = y, seed = 1,
@@ -2713,7 +2716,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_LOOSE)
     
-    
     #### n-1 inducing points
     ### Euclidean-based Neighbor search
     capture.output( gp_model <- GPModel(gp_coords = coords_ARD, cov_function = "matern_ard", cov_fct_shape = 0.5,
@@ -2788,9 +2790,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_LOOSE)
-    
-    
-    
+
     ### Less neighbors and inducing points
     ## Euclidean-based Neighbor search
     # Evaluate negative log-likelihood
@@ -3014,13 +3014,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     ## With fitc approximation
     # Evaluate negative log-likelihood
     capture.output( gp_model <- GPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard", cov_fct_shape = 0.5,
-                                        gp_approx = "fitc", num_ind_points = dim(unique(coords_ARD_mult)), ind_points_selection = "random"), 
+                                        gp_approx = "fitc", num_ind_points = dim(unique(coords_ARD_mult))[1], ind_points_selection = "random"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
     capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD_mult, cov_function = "matern_ard", cov_fct_shape = 0.5,
-                                           gp_approx = "fitc", num_ind_points = dim(unique(coords_ARD_mult)), ind_points_selection = "random",
+                                           gp_approx = "fitc", num_ind_points = dim(unique(coords_ARD_mult))[1], ind_points_selection = "random",
                                            y = y, X = X, params = params_ARD_mult), 
                     file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7,9)]-cov_pars[c(1,3,5,7,9)])),TOLERANCE_STRICT)

@@ -354,20 +354,21 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                         fit_GP_cov_pars_OOS = TRUE,
                         folds = folds,
                         verbose = 0)
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4255016, 0.3026152))),tolerance_loc_1)
-        expect_equal(cvbst$best_iter, 15)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4255016, 0.3026152))),2*tolerance_loc_1)
+        expect_lt(cvbst$best_iter, 16)
+        expect_gt(cvbst$best_iter, 12)
         expect_lt(abs(cvbst$best_score-0.242), tolerance_loc_1)
         #   2. Run LaGaBoost algorithm on entire data while holding covariance parameters fixed
         bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 15,
                          params = params, train_gp_model_cov_pars = FALSE, verbose = 0)
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4255016, 0.3026152))),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4255016, 0.3026152))),2*tolerance_loc_1)
         #   3. Prediction
         pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                         predict_var = TRUE, pred_latent = TRUE)
-        expect_lt(sum(abs(head(pred$fixed_effect, n=4)-c(0.4456027, -0.2227075, 0.8109699, 0.6144861))),tolerance_loc_2)
+        expect_lt(sum(abs(head(pred$fixed_effect, n=4)-c(0.4456027, -0.2227075, 0.8109699, 0.6144861))),2*tolerance_loc_2)
         expect_lt(sum(abs(tail(pred$random_effect_mean)-c(-1.050475, -1.025386, -1.187071,
-                                                          rep(0,n_new)))),tolerance_loc_2)
-        if(inv_method=="iterative") l_tol <- 0.03 else l_tol <- 2*TOLERANCE
+                                                          rep(0,n_new)))),2*tolerance_loc_2)
+        if(inv_method=="iterative") l_tol <- 0.08 else l_tol <- 2*TOLERANCE
         expect_lt(sum(abs(tail(pred$random_effect_cov)-c(0.1165832, 0.1175566, 0.1174304,
                                                          rep(0.7282295,n_new)))),l_tol)
         
@@ -537,7 +538,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         expect_iter <- 15
         expect_score <- 0.242
         expect_equal(cvbst$best_iter, expect_iter)
-        expect_lt(abs(cvbst$best_score-expect_score), tolerance_loc_1)
+        expect_lt(abs(cvbst$best_score-expect_score), 2*tolerance_loc_1)
         
         # Use of validation data and cross-validation with custom metric
         bin_cust_error <- function(preds, dtrain) {

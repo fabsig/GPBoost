@@ -102,22 +102,29 @@ fixed effects linear regression term (if there is one)}
     Otherwise they are sampled every time a trace is calculated }
     \item{seed_rand_vec_trace: \code{integer} (default = 1). 
     Seed number to generate random vectors (e.g., Rademacher) }
-    \item{piv_chol_rank: \code{integer} (default = 50). 
-    Rank of the pivoted Cholesky decomposition used as 
-    preconditioner in conjugate gradient algorithms }
-    \item{cg_preconditioner_type: \code{string}.
+    \item{cg_preconditioner_type (\code{string}):
     Type of preconditioner used for conjugate gradient algorithms.
     \itemize{
+      \item Options for grouped random effects: 
+      \itemize{
+          \item "ssor" (= default): SSOR preconditioner
+          \item "incomplete_cholesky": zero fill-in incomplete Cholesky factorization
+          }
       \item Options for likelihood != "gaussian" and gp_approx == "vecchia" or
       likelihood == "gaussian" and gp_approx == "vecchia_latent": 
         \itemize{
           \item{"vadu" (= default): (B^T * (D^-1 + W) * B) as preconditioner for inverting (B^T * D^-1 * B + W), 
       where B^T * D^-1 * B approx= Sigma^-1 }
-          \item{"fitc": modified predictive process preconditioner for inverting (B^-1 * D * B^-T + W^-1)}
+          \item{"fitc": FITC / modified predictive process preconditioner for inverting (B^-1 * D * B^-T + W^-1)}
           \item{"pivoted_cholesky": (Lk * Lk^T + W^-1) as preconditioner for inverting (B^-1 * D * B^-T + W^-1), 
       where Lk is a low-rank pivoted Cholesky approximation for Sigma and B^-1 * D * B^-T approx= Sigma }
           \item{"incomplete_cholesky": zero fill-in incomplete (reverse) Cholesky factorization of 
           (B^T * D^-1 * B + W) using the sparsity pattern of B^T * D^-1 * B approx= Sigma^-1 }
+        }
+      \item Options for likelihood != "gaussian" and gp_approx == "full_scale_vecchia": 
+        \itemize{
+          \item{"fitc" ( = default): FITC / modified predictive process preconditioner }
+          \item{"vifdu": VIF with diagonal update preconditioner }
         }
       \item Options for likelihood == "gaussian" and gp_approx == "full_scale_tapering": 
         \itemize{
@@ -126,6 +133,16 @@ fixed effects linear regression term (if there is one)}
       }
     }
     }
+    \item{fitc_piv_chol_preconditioner_rank (\code{integer} ): 
+    Rank of the FITC and pivoted Cholesky decomposition preconditioners for 
+    iterative methods for Vecchia and VIF approximations 
+    (for full_scale_tapering, the same inducing points as in the approximation as used).
+    Internal default values if NULL or < 0: 
+    \itemize{
+          \item{ 200 for the FITC preconditioner }
+          \item{ 50 for the pivoted Cholesky decomposition preconditioner }
+          }
+      }
 }}
 
 \item{offset}{A \code{numeric} \code{vector} with 

@@ -2729,7 +2729,7 @@ namespace GPBoost {
 		* \param B Matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
 		* \param D_inv Diagonal matrix D^-1 in Vecchia approximation Sigma^-1 = B^T D^-1 B
 		* \param first_update If true, the covariance parameters or linear regression coefficients are updated for the first time and the max. number of iterations for the CG should be decreased
-		* \param Sigma_L_k Pivoted Cholseky decomposition of Sigma - Version Habrecht: matrix of dimension nxk with rank(Sigma_L_k_) <= piv_chol_rank generated in re_model_template.h
+		* \param Sigma_L_k Pivoted Cholseky decomposition of Sigma - Version Habrecht: matrix of dimension nxk with rank(Sigma_L_k_) <= fitc_piv_chol_preconditioner_rank generated in re_model_template.h
 		* \param calc_mll If true the marginal log-likelihood is also calculated (only relevant for matrix_inversion_method_ == "iterative")
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
@@ -3023,7 +3023,6 @@ namespace GPBoost {
 			} // end loop for mode finding
 			if (!has_NA_or_Inf) {//calculate determinant
 				mode_has_been_calculated_ = true;
-				mode_is_zero_ = false;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (information_changes_after_mode_finding_) {
@@ -3133,6 +3132,7 @@ namespace GPBoost {
 					approx_marginal_ll -= ((den_mat_t)chol_fact_sigma_woodbury_woodbury_.matrixL()).diagonal().array().log().sum();
 				}
 			}
+			mode_is_zero_ = false;
 			//Log::REInfo("FindModePostRandEffCalcMLLFSVA: finished after %d iterations, mode_[0:2] = %g, %g, %g ", it, mode_[0], mode_[1], mode_[2]);//for debugging
 		}//end FindModePostRandEffCalcMLLFSVA
 
@@ -3148,9 +3148,12 @@ namespace GPBoost {
 		* \param B Matrix B in Vecchia approximation Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
 		* \param D_inv Diagonal matrix D^-1 in Vecchia approximation Sigma^-1 = B^T D^-1 B
 		* \param first_update If true, the covariance parameters or linear regression coefficients are updated for the first time and the max. number of iterations for the CG should be decreased
-		* \param Sigma_L_k Pivoted Cholseky decomposition of Sigma - Version Habrecht: matrix of dimension nxk with rank(Sigma_L_k_) <= piv_chol_rank generated in re_model_template.h
+		* \param Sigma_L_k Pivoted Cholseky decomposition of Sigma - Version Habrecht: matrix of dimension nxk with rank(Sigma_L_k_) <= fitc_piv_chol_preconditioner_rank generated in re_model_template.h
 		* \param calc_mll If true the marginal log-likelihood is also calculated (only relevant for matrix_inversion_method_ == "iterative")
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
+		* \param re_comps_ip_cluster_i IP component for FITC preconditioner
+		* \paramre_comps_cross_cov_cluster_i cross-coariance component for FITC preconditioner
+		* \param chol_fact_sigma_ip Cholesky factor of IP component for FITC preconditioner
 		*/
 		void FindModePostRandEffCalcMLLVecchia(const double* y_data,
 			const int* y_data_int,
@@ -3448,13 +3451,13 @@ namespace GPBoost {
 							//Dependent on the preconditioner: Generate t (= num_rand_vec_trace_) or 2*t random vectors
 							if (cg_preconditioner_type_ == "pivoted_cholesky") {
 								rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
-								rand_vec_trace_I2_.resize(std::min(piv_chol_rank_, dim_mode_), num_rand_vec_trace_);
+								rand_vec_trace_I2_.resize(std::min(fitc_piv_chol_preconditioner_rank_, dim_mode_), num_rand_vec_trace_);
 								GenRandVecNormal(cg_generator_, rand_vec_trace_I2_);
 								WI_plus_Sigma_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
 							else if (cg_preconditioner_type_ == "fitc") {
 								rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
-								rand_vec_trace_I2_.resize(piv_chol_rank_, num_rand_vec_trace_);
+								rand_vec_trace_I2_.resize(fitc_piv_chol_preconditioner_rank_, num_rand_vec_trace_);
 								GenRandVecNormal(cg_generator_, rand_vec_trace_I2_);
 								WI_plus_Sigma_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
@@ -6711,7 +6714,6 @@ namespace GPBoost {
 			}//end calc_pred_cov || calc_pred_var
 		}//end PredictLaplaceApproxFSVA
 
-
 		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
 		*       Calculations are done by factorizing ("inverting) (Sigma^-1 + W) where it is assumed that an approximate Cholesky factor
@@ -7572,7 +7574,7 @@ namespace GPBoost {
 			bool reuse_rand_vec_trace,
 			int seed_rand_vec_trace,
 			const string_t& cg_preconditioner_type,
-			int piv_chol_rank,
+			int fitc_piv_chol_preconditioner_rank,
 			int rank_pred_approx_matrix_lanczos,
 			int nsim_var_pred) {
 			matrix_inversion_method_ = matrix_inversion_method;
@@ -7584,7 +7586,7 @@ namespace GPBoost {
 			reuse_rand_vec_trace_ = reuse_rand_vec_trace;
 			seed_rand_vec_trace_ = seed_rand_vec_trace;
 			cg_preconditioner_type_ = cg_preconditioner_type;
-			piv_chol_rank_ = piv_chol_rank;
+			fitc_piv_chol_preconditioner_rank_ = fitc_piv_chol_preconditioner_rank;
 			rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
 			nsim_var_pred_ = nsim_var_pred;
 		}//end SetMatrixInversionProperties
@@ -8392,8 +8394,8 @@ namespace GPBoost {
 		int seed_rand_vec_trace_;
 		/*! \brief Type of preconditioner used for conjugate gradient algorithms */
 		string_t cg_preconditioner_type_;
-		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
-		int piv_chol_rank_;
+		/*! \brief Rank of the FITC and pivoted Cholesky preconditioners in conjugate gradient algorithms */
+		int fitc_piv_chol_preconditioner_rank_;
 		/*! \brief Rank of the matrix for approximating predictive covariance matrices obtained using the Lanczos algorithm */
 		int rank_pred_approx_matrix_lanczos_;
 		/*! \brief Number of samples when simulation is used for calculating predictive variances */
@@ -8433,9 +8435,9 @@ namespace GPBoost {
 		bool saved_rand_vec_trace_ = false;
 		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension num_data, and t = num_rand_vec_trace_ */
 		den_mat_t rand_vec_trace_I_;
-		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension piv_chol_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "pivoted_cholesky" */
+		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension fitc_piv_chol_preconditioner_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "pivoted_cholesky" */
 		den_mat_t rand_vec_trace_I2_;
-		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension piv_chol_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "pivoted_cholesky" */
+		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension fitc_piv_chol_preconditioner_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "pivoted_cholesky" */
 		den_mat_t rand_vec_trace_I3_;
 		/*! Matrix Z of random vectors (z_1, ..., z_t) with Cov(z_i) = P (P being the preconditioner matrix), z_i is of dimension num_data, and t = num_rand_vec_trace_ */
 		den_mat_t rand_vec_trace_P_;
@@ -8445,7 +8447,7 @@ namespace GPBoost {
 		den_mat_t WI_plus_Sigma_inv_Z_;
 
 		//C) PRECONDITIONER VARIABLES
-		/*! \brief piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= piv_chol_rank generated in re_model_template.h*/
+		/*! \brief piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= fitc_piv_chol_preconditioner_rank generated in re_model_template.h*/
 		den_mat_t Sigma_L_k_;
 		/*! \brief piv_chol_on_Sigma: Factor E of matrix EE^T = (I_k + Sigma_L_k_^T W Sigma_L_k_)*/
 		chol_den_mat_t chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_;

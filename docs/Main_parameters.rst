@@ -213,13 +213,15 @@ Model specification parameters
 
       - ``none`` : No approximation
 
-      - ``vecchia`` : A Vecchia approximation; see Sigrist (2022, JMLR for more details)
+      - ``vecchia`` : Vecchia approximation; see Sigrist (2022, JMLR for more details)
+
+      - ``full_scale_vecchia`` : Vecchia-inducing points full-scale (VIF) approximation; see Gyger, Furrer, and Sigrist (2025) for more details 
 
       - ``tapering`` : The covariance function is multiplied by a compactly supported Wendland correlation function
 
       - ``fitc``: Fully Independent Training Conditional approximation aka modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024) for more details
 
-      - ``full_scale_tapering``: A full scale approximation combining an inducing point / predictive process approximation with tapering on the residual process; see Gyger, Furrer, and Sigrist (2024) for more details
+      - ``full_scale_tapering``: Full-scale approximation combining an inducing point / predictive process approximation with tapering on the residual process; see Gyger, Furrer, and Sigrist (2024) for more details
 
 -  ``cov_fct_taper_range`` : double, (default = 1.)
 
@@ -229,9 +231,15 @@ Model specification parameters
 
    -  Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 
--  ``num_neighbors`` : integer, (default = 20)
+-  ``num_neighbors`` : integer
 
    -  Number of neighbors for the Vecchia approximation
+
+   - Internal default values if None: 
+                
+      - 20 for gp_approx = ``vecchia``
+
+      - 30 for gp_approx = ``full_scale_vecchia``
 
 -  ``vecchia_ordering`` : string, (default = ``random``)
 
@@ -269,9 +277,15 @@ Model specification parameters
 
    - Default value if ``num_neighbors_pred`` = Null: ``num_neighbors_pred`` = 2 * ``num_neighbors``
 
--  ``num_ind_points`` : integer, (default = 500)
+-  ``num_ind_points`` : integer
 
-   -  Number of inducing points / knots for, e.g., a predictive process approximation
+   -  Number of inducing points / knots for FITC, full_scale_tapering, and VIF approximations.
+
+   - Internal default values if None: 
+                
+      - 500 for gp_approx = ``FITC`` and gp_approx = ``full_scale_tapering`` 
+
+      - 200 for gp_approx = ``full_scale_vecchia``
 
 -  ``matrix_inversion_method`` : string, (default = ``cholesky``)
 
@@ -279,11 +293,15 @@ Model specification parameters
 
       -  ``cholesky`` : Cholesky factorization
 
-      -  ``iterative`` : iterative methods. A combination of conjugate gradient, Lanczos algorithm, and other methods. 
+      -  ``iterative`` : iterative methods. A combination of the conjugate gradient, Lanczos algorithm, and other methods. 
 
          This is currently only supported for the following cases:
 
+         - grouped random effects with more than one level 
+
          - ``likelihood`` != ``gaussian`` and ``gp_approx`` == ``vecchia`` (non-Gaussian likelihoods with a Vecchia-Laplace approximation)
+
+         - ``likelihood`` != ``gaussian`` and ``gp_approx`` == ``full_scale_vecchia`` (non-Gaussian likelihoods with a VIF approximation)
 
          - ``likelihood`` == ``gaussian`` and ``gp_approx`` == ``full_scale_tapering`` (Gaussian likelihood with a full-scale tapering approximation)
 
@@ -301,7 +319,7 @@ Optimization parameters
 
 The following list shows options for the optimization of the variance and covariance parameters of ``gp_model`` objects which contain Gaussian process and/or grouped random effects models. These parameters are passed to either the ``fit`` function of a ``gp_model`` object in Python and R or to the ``set_optim_params`` function prior to running the GPBoost algorithm.
 
--  ``optimizer_cov`` : string, optional (default = "lbfgs" for linear mixed effects models and "gradient_descent" for the GPBoost algorithm)
+-  ``optimizer_cov`` : string, optional (default = ``lbfgs`` for linear mixed effects models and ``gradient_descent`` for the GPBoost algorithm)
 
    -  Optimizer used for estimating covariance parameters
 
@@ -331,7 +349,7 @@ The following list shows options for the optimization of the variance and covari
 
 -  ``init_cov_pars`` : numeric vector / array of doubles, optional (default = Null)
 
-   -  Initial values for covariance parameters of Gaussian process and random effects (can be Null). The order it the same as the order of the parameters in the summary function: first is the error variance (only for "gaussian" likelihood), next follow the variances of the grouped random effects (if there are any, in the order provided in 'group_data'), and then follow the marginal variance and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances and ranges follow alternatingly.  If 'init_cov_pars = Null', an internatl choice is used that depends on the likelihood and the random effects type and covariance function. If you select the option 'trace = true' in the 'params' argument, you will see the first initial covariance parameters in iteration 0.
+   -  Initial values for covariance parameters of Gaussian process and random effects (can be Null). The order it the same as the order of the parameters in the summary function: first is the error variance (only for ``gaussian`` likelihood), next follow the variances of the grouped random effects (if there are any, in the order provided in 'group_data'), and then follow the marginal variance and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances and ranges follow alternatingly.  If 'init_cov_pars = Null', an internatl choice is used that depends on the likelihood and the random effects type and covariance function. If you select the option 'trace = true' in the 'params' argument, you will see the first initial covariance parameters in iteration 0.
 
 -  ``init_coef`` : numeric vector / array of doubles, optional (default = Null)
 

@@ -161,9 +161,16 @@ namespace GPBoost {
 					}
 					gp_approx_ = "full_scale_tapering";
 				}
-				if (gp_approx_ == "full_scale_vecchia_correlation_based") {
+				if (gp_approx_ == "full_scale_tapering" && !gauss_likelihood_) {
+					Log::REFatal("Approximation '%s' is currently not supported for non-Gaussian likelihoods ", gp_approx_.c_str());
+				}
+				if (gp_approx_ == "full_scale_vecchia_correlation_based" || 
+					gp_approx_ == "vif_correlation_based" || gp_approx_ == "VIF_correlation_based") {
 					gp_approx_ = "full_scale_vecchia";
 					vecchia_neighbor_selection_ = "residual_correlation";
+				}
+				if (gp_approx_ == "vif" || gp_approx_ == "VIF") {
+					gp_approx_ = "full_scale_vecchia";
 				}
 				vecchia_latent_approx_gaussian_ = false;
 				if (gp_approx_ == "vecchia_latent") {
@@ -232,8 +239,17 @@ namespace GPBoost {
 				CHECK(cov_fct != nullptr);
 				dim_gp_coords_ = dim_gp_coords;
 				if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
-					CHECK(num_neighbors > 0);
-					num_neighbors_ = num_neighbors;
+					if (num_neighbors > 0) {
+						num_neighbors_ = num_neighbors;
+					}
+					else {
+						if (gp_approx_ == "vecchia") {
+							num_neighbors_ = 20;
+						}
+						else {
+							num_neighbors_ = 30;// gp_approx_ == "full_scale_vecchia"
+						}
+					}
 					num_neighbors_pred_ = 2 * num_neighbors_;
 					if (vecchia_ordering == nullptr) {
 						vecchia_ordering_ = "none";
@@ -255,8 +271,17 @@ namespace GPBoost {
 					}
 				}//end if gp_approx_ == "vecchia"
 				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
-					CHECK(num_ind_points > 0);
-					num_ind_points_ = num_ind_points;
+					if (num_ind_points > 0) {
+						num_ind_points_ = num_ind_points;
+					}
+					else {
+						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
+							num_ind_points_ = 500;
+						}
+						else {
+							num_ind_points_ = 200;// gp_approx_ == "full_scale_vecchia"
+						}
+					}
 					CHECK(cover_tree_radius > 0);
 					cover_tree_radius_ = cover_tree_radius;
 					ind_points_selection_ = std::string(ind_points_selection);
@@ -478,7 +503,7 @@ namespace GPBoost {
 		* \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
 		* \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 		* \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
-		* \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
+		* \param fitc_piv_chol_preconditioner_rank Rank of the FITC and pivoted Cholesky preconditioners of the conjugate gradient algorithm
 		* \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 		*/
 		void SetOptimConfig(double lr,
@@ -500,7 +525,7 @@ namespace GPBoost {
 			bool reuse_rand_vec_trace,
 			const char* cg_preconditioner_type,
 			int seed_rand_vec_trace,
-			int piv_chol_rank,
+			int fitc_piv_chol_preconditioner_rank,
 			bool estimate_aux_pars) {
 			lr_cov_init_ = lr;
 			lr_cov_after_first_iteration_ = lr;
@@ -572,7 +597,6 @@ namespace GPBoost {
 				cg_max_num_it_ = cg_max_num_it;
 				cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
 				cg_delta_conv_ = cg_delta_conv;
-				piv_chol_rank_ = piv_chol_rank;
 				if (cg_preconditioner_type != nullptr) {
 					if (cg_preconditioner_type_ != std::string(cg_preconditioner_type) &&
 						model_has_been_estimated_) {
@@ -581,6 +605,18 @@ namespace GPBoost {
 					cg_preconditioner_type_ = ParsePreconditionerAlias(std::string(cg_preconditioner_type));
 					CheckPreconditionerType();
 					cg_preconditioner_type_has_been_set_ = true;
+				}
+				if (fitc_piv_chol_preconditioner_rank > 0) {
+					fitc_piv_chol_preconditioner_rank_ = fitc_piv_chol_preconditioner_rank;
+					fitc_piv_chol_preconditioner_rank_has_been_set_ = true;
+				}
+				else {
+					if (cg_preconditioner_type_ == "fitc") {
+						fitc_piv_chol_preconditioner_rank_ = default_fitc_preconditioner_rank_;
+					}
+					else if (cg_preconditioner_type_ == "pivoted_cholesky") {
+						fitc_piv_chol_preconditioner_rank_ = default_piv_chol_preconditioner_rank_;
+					}
 				}
 				SetMatrixInversionPropertiesLikelihood();
 			}
@@ -2719,6 +2755,7 @@ namespace GPBoost {
 			}
 			if (nsim_var_pred > 0) {
 				nsim_var_pred_ = nsim_var_pred;
+				nsim_var_pred_has_been_set_ = true;
 			}
 			if (matrix_inversion_method_ == "iterative") {
 				if (cg_delta_conv_pred > 0) {
@@ -4371,8 +4408,8 @@ namespace GPBoost {
 						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_[cluster_i][0],
 							(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), chol_ip_cross_cov_[cluster_i][0], false);
 						if (gp_approx_ == "full_scale_vecchia") {
-							if (piv_chol_rank_ == num_ind_points_) {
-								piv_chol_rank_ = num_ind_points;
+							if (fitc_piv_chol_preconditioner_rank_ == num_ind_points_) {
+								fitc_piv_chol_preconditioner_rank_ = num_ind_points;
 							}
 						}
 						num_ind_points_ = num_ind_points;
@@ -4406,8 +4443,8 @@ namespace GPBoost {
 				if (gp_approx_ == "fitc" || ((gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") && (gauss_likelihood_ && !vecchia_latent_approx_gaussian_))) {
 					Log::REFatal("'iterative' methods are not implemented for gp_approx = '%s'. Use 'cholesky' ", gp_approx_.c_str());
 				}
-				int num_ind_points = piv_chol_rank_;
-				if (gp_approx_ == "full_scale_tapering" || (piv_chol_rank_ == num_ind_points_ && gp_approx_ != "vecchia")) {
+				int num_ind_points = fitc_piv_chol_preconditioner_rank_;
+				if (gp_approx_ == "full_scale_tapering" || (fitc_piv_chol_preconditioner_rank_ == num_ind_points_ && gp_approx_ != "vecchia")) {
 					for (const auto& cluster_i : unique_clusters_) {
 						re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_[cluster_i][0];
 						re_comps_cross_cov_preconditioner_[cluster_i][0] = re_comps_cross_cov_[cluster_i][0];
@@ -4536,7 +4573,7 @@ namespace GPBoost {
 						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_preconditioner_[cluster_i][0],
 							(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), chol_ip_cross_cov_preconditioner_[cluster_i][0], false);
 					}
-					piv_chol_rank_ = num_ind_points;
+					fitc_piv_chol_preconditioner_rank_ = num_ind_points;
 				}
 				if (num_ll_evaluations_ > 0) {
 					Log::REDebug("Inducing points for preconditioner redetermined after iteration number %d ", num_iter_ + 1);
@@ -4961,13 +4998,23 @@ namespace GPBoost {
 		/*! \brief Type of preconditioner used for conjugate gradient algorithms */
 		string_t cg_preconditioner_type_;
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for Gaussian likelihoods and gp_approx = "full_scale_tapering" */
-		const std::set<string_t> SUPPORTED_PRECONDITIONERS_GAUSS_FSA_{ "none", "fitc", "incomplete_cholesky", "ssor", "diagonal" };
+		const std::set<string_t> SUPPORTED_PRECONDITIONERS_GAUSS_FSA_{  "fitc", "none"};
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for non-Gaussian likelihoods and gp_approx = "vecchia" */
-		const std::set<string_t> SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_{ "vadu", "pivoted_cholesky", "fitc", "incomplete_cholesky", "ssor", "diagonal", "vifdu" };
+		const std::set<string_t> SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_{ "vadu", "pivoted_cholesky", "fitc", "incomplete_cholesky"};
+		/*! \brief List of supported preconditioners for conjugate gradient algorithms for grouped random effects */
+		const std::set<string_t> SUPPORTED_PRECONDITIONERS_GROUPED_RE_{ "ssor", "incomplete_cholesky", "diagonal" };
+		/*! \brief List of supported preconditioners for conjugate gradient algorithms for non-Gaussian likelihoods and gp_approx = "full_scale_vecchia" */
+		const std::set<string_t> SUPPORTED_PRECONDITIONERS_NONGAUSS_VIF_{ "fitc", "vifdu", "none" };
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
 		bool cg_preconditioner_type_has_been_set_ = false;
-		/*! \brief Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms */
-		int piv_chol_rank_ = 50;
+		/*! \brief true if 'fitc_piv_chol_preconditioner_rank_' has been set */
+		bool fitc_piv_chol_preconditioner_rank_has_been_set_ = false;		
+		/*! \brief true if 'nsim_var_pred_' has been set */
+		bool nsim_var_pred_has_been_set_ = false;
+		/*! \brief Rank of the FITC and pivoted Cholesky decomposition preconditioners for iterative methods for Vecchia and VIF approximations */
+		int fitc_piv_chol_preconditioner_rank_ = 200;
+		int default_fitc_preconditioner_rank_ = 200;
+		int default_piv_chol_preconditioner_rank_ = 50;
 		/*! \brief Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm */
 		int rank_pred_approx_matrix_lanczos_ = 1000;
 
@@ -5976,7 +6023,10 @@ namespace GPBoost {
 				}
 			}
 			if (!cg_preconditioner_type_has_been_set_) {
-				if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
+				if (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ > 1) {
+					cg_preconditioner_type_ = "ssor";
+				}
+				else if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
 					cg_preconditioner_type_ = "fitc";
 				}
 				else if (!gauss_likelihood_ && gp_approx_ == "vecchia") {
@@ -5986,6 +6036,27 @@ namespace GPBoost {
 					cg_preconditioner_type_ = "fitc";
 				}
 				CheckPreconditionerType();
+			}
+			if (!fitc_piv_chol_preconditioner_rank_has_been_set_) {
+				if (cg_preconditioner_type_ == "fitc") {
+					fitc_piv_chol_preconditioner_rank_ = default_fitc_preconditioner_rank_;
+				} else if (cg_preconditioner_type_ == "pivoted_cholesky") {
+					fitc_piv_chol_preconditioner_rank_ = default_piv_chol_preconditioner_rank_;
+				}
+			}
+			if (!nsim_var_pred_has_been_set_) {
+				if (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ > 1) {
+					nsim_var_pred_ = 500;
+				}
+				else if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
+					nsim_var_pred_ = 1000;
+				}
+				else if (!gauss_likelihood_ && gp_approx_ == "vecchia") {
+					nsim_var_pred_ = 1000;
+				}
+				else if (!gauss_likelihood_ && gp_approx_ == "full_scale_vecchia") {
+					nsim_var_pred_ = 100;
+				}
 			}
 		}//end InitializeDefaultSettings
 
@@ -6061,6 +6132,12 @@ namespace GPBoost {
 		* \brief Function that checks the compatibility of the chosen special options for estimation and prediction for certain special cases of random effects models
 		*/
 		void CheckCompatibilitySpecialOptions() {
+			if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
+				CHECK(num_ind_points_ > 0);
+			}
+			if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
+				CHECK(num_neighbors_ > 0);
+			}
 			//Some checks
 			if (only_one_GP_calculations_on_RE_scale_ && only_grouped_REs_use_woodbury_identity_) {
 				Log::REFatal("Cannot set both 'only_one_GP_calculations_on_RE_scale_' and 'only_grouped_REs_use_woodbury_identity_' to 'true'");
@@ -6113,26 +6190,47 @@ namespace GPBoost {
 				Log::REFatal("Approximation '%s' is currently not supported for non-Gaussian likelihoods ", gp_approx_.c_str());
 			}
 			if (matrix_inversion_method_ == "iterative") {
-				bool can_use_iterative = (gp_approx_ == "full_scale_vecchia" && !gauss_likelihood_) || (gp_approx_ == "vecchia" && !gauss_likelihood_) || (gp_approx_ == "full_scale_tapering" && gauss_likelihood_) || only_grouped_REs_use_woodbury_identity_;
+				bool can_use_iterative = ((gp_approx_ == "full_scale_vecchia" || gp_approx_ == "vecchia") && !gauss_likelihood_) || 
+					(gp_approx_ == "full_scale_tapering" && gauss_likelihood_) || (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ > 1);
 				if (!can_use_iterative) {
-					Log::REFatal("Cannot use matrix_inversion_method = 'iterative' if gp_approx = '%s' and likelihood = '%s'. Use matrix_inversion_method = 'cholesky' instead ",
-						gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+					if (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ == 1) {
+						Log::REFatal("Cannot use matrix_inversion_method = 'iterative' if there is only a single-level grouped random effects. " 
+							"Use matrix_inversion_method = 'cholesky' instead (this is very fast). Iterative methods are for multiple grouped random effects ");
+					}
+					else {
+						Log::REFatal("Cannot use matrix_inversion_method = 'iterative' if gp_approx = '%s' and likelihood = '%s'. Use matrix_inversion_method = 'cholesky' instead ",
+							gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+					}
 				}
 			}
 		}//end CheckCompatibilitySpecialOptions
 
 		/*! \brief Check whether preconditioner is supported */
 		void CheckPreconditionerType() {
-			if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
-				if (SUPPORTED_PRECONDITIONERS_GAUSS_FSA_.find(cg_preconditioner_type_) == SUPPORTED_PRECONDITIONERS_GAUSS_FSA_.end()) {
-					Log::REFatal("Preconditioner type '%s' is not supported for gp_approx = '%s' and likelihood = '%s'",
-						cg_preconditioner_type_.c_str(), gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+			if (matrix_inversion_method_ == "iterative") {
+				if (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ > 1) {
+					if (SUPPORTED_PRECONDITIONERS_GROUPED_RE_.find(cg_preconditioner_type_) == SUPPORTED_PRECONDITIONERS_GROUPED_RE_.end()) {
+						Log::REFatal("Preconditioner type '%s' is not supported for grouped random effects ",
+							cg_preconditioner_type_.c_str(), gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+					}
 				}
-			}
-			else if (!gauss_likelihood_ && gp_approx_ == "vecchia") {
-				if (SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_.find(cg_preconditioner_type_) == SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_.end()) {
-					Log::REFatal("Preconditioner type '%s' is not supported for gp_approx = '%s' and likelihood = '%s'",
-						cg_preconditioner_type_.c_str(), gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+				else if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
+					if (SUPPORTED_PRECONDITIONERS_GAUSS_FSA_.find(cg_preconditioner_type_) == SUPPORTED_PRECONDITIONERS_GAUSS_FSA_.end()) {
+						Log::REFatal("Preconditioner type '%s' is not supported for gp_approx = '%s' and likelihood = '%s' ",
+							cg_preconditioner_type_.c_str(), gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+					}
+				}
+				else if (!gauss_likelihood_ && gp_approx_ == "vecchia") {
+					if (SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_.find(cg_preconditioner_type_) == SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_.end()) {
+						Log::REFatal("Preconditioner type '%s' is not supported for gp_approx = '%s' and likelihood = '%s' ",
+							cg_preconditioner_type_.c_str(), gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+					}
+				}
+				else if (!gauss_likelihood_ && gp_approx_ == "full_scale_vecchia") {
+					if (SUPPORTED_PRECONDITIONERS_NONGAUSS_VIF_.find(cg_preconditioner_type_) == SUPPORTED_PRECONDITIONERS_NONGAUSS_VIF_.end()) {
+						Log::REFatal("Preconditioner type '%s' is not supported for gp_approx = '%s' (VIF approximation) and likelihood = '%s' ",
+							cg_preconditioner_type_.c_str(), gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+					}
 				}
 			}
 		}//end CheckPreconditionerType
@@ -6174,7 +6272,7 @@ namespace GPBoost {
 					likelihood_[cluster_i]->SetMatrixInversionProperties(matrix_inversion_method_,
 						cg_max_num_it_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_delta_conv_pred_,
 						num_rand_vec_trace_, reuse_rand_vec_trace_, seed_rand_vec_trace_,
-						cg_preconditioner_type_, piv_chol_rank_, rank_pred_approx_matrix_lanczos_, nsim_var_pred_);
+						cg_preconditioner_type_, fitc_piv_chol_preconditioner_rank_, rank_pred_approx_matrix_lanczos_, nsim_var_pred_);
 				}
 			}
 		}//end SetMatrixInversionPropertiesLikelihood
@@ -6319,7 +6417,8 @@ namespace GPBoost {
 			}
 			else if (gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 				if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
-					Log::REFatal("Need to have less inducing points than data points for '%s' approximation ", gp_approx_.c_str());
+					Log::REFatal("Need to have less inducing points ('num_ind_points = %d') than data points (%d) for '%s' approximation ", 
+						num_ind_points, num_data_per_cluster_[cluster_i], gp_approx_.c_str());
 				}
 			}
 			CHECK(num_gp_ > 0);
@@ -6398,7 +6497,7 @@ namespace GPBoost {
 					std::vector<int> diff;
 					std::set_difference(ind_all.begin(), ind_all.end(), ind_coin.begin(), ind_coin.end(),
 						std::inserter(diff, diff.begin()));
-					Log::REWarning("%i inducing points are removed since they coincide with data points. If this is a problem, please use less inducing points or a different method for selecting the inducing points", count);
+					Log::REWarning("%d inducing points are removed since they coincide with data points. If this is a problem, please use less inducing points or a different method ('ind_points_selection') for selecting the inducing points ", count);
 					gp_coords_ip_mat_interim = gp_coords_ip_mat(diff, Eigen::all);
 					gp_coords_ip_mat.resize(gp_coords_ip_mat_interim.rows(), gp_coords_ip_mat_interim.cols());
 					gp_coords_ip_mat = gp_coords_ip_mat_interim;
@@ -7725,7 +7824,7 @@ namespace GPBoost {
 					if (matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "pivoted_cholesky") {
 						//Do pivoted Cholesky decomposition for Sigma
 						//TODO: only after cov-pars step, not after fixed-effect step
-						PivotedCholsekyFactorizationSigma(re_comps_vecchia_[cluster_i][0][ind_intercept_gp_].get(), Sigma_L_k, piv_chol_rank_, PIV_CHOL_STOP_TOL);
+						PivotedCholsekyFactorizationSigma(re_comps_vecchia_[cluster_i][0][ind_intercept_gp_].get(), Sigma_L_k, fitc_piv_chol_preconditioner_rank_, PIV_CHOL_STOP_TOL);
 					}
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, B_[cluster_i], D_inv_[cluster_i],
@@ -7796,7 +7895,7 @@ namespace GPBoost {
 				if (gauss_likelihood_) {
 					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 						if (cg_preconditioner_type_ == "fitc" && matrix_inversion_method_ == "iterative") {
-							if (gp_approx_ == "full_scale_tapering" || piv_chol_rank_ == num_ind_points_) {
+							if (gp_approx_ == "full_scale_tapering" || fitc_piv_chol_preconditioner_rank_ == num_ind_points_) {
 								for (const auto& cluster_i : unique_clusters_) {
 									re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_[cluster_i][0];
 									re_comps_cross_cov_preconditioner_[cluster_i][0] = re_comps_cross_cov_[cluster_i][0];
@@ -7904,7 +8003,7 @@ namespace GPBoost {
 				if (!ind_points_determined_for_preconditioner_) {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
-					int num_ind_points = piv_chol_rank_;
+					int num_ind_points = fitc_piv_chol_preconditioner_rank_;
 					den_mat_t gp_coords_all_mat = re_comp_gp_clus0->GetCoords();
 					data_size_t num_data_vecchia = (data_size_t)gp_coords_all_mat.rows();
 					if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
