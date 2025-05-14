@@ -2857,14 +2857,14 @@ namespace GPBoost {
 							B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_sqrt.asDiagonal() * D_inv_B_cross_cov_;
 							sigma_woodbury_woodbury = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose() * B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov;
 							chol_fact_sigma_woodbury_woodbury.compute(sigma_woodbury_woodbury);
-							vec_t grad_aux = W_D_inv_inv.cwiseProduct(B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(grad));
+							vec_t grad_aux = W_D_inv_inv.cwiseProduct((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(grad));
 							//grad_aux.array() /= (D_inv.diagonal().array() + information_ll_.array());
 							grad = B_rm_.triangularView<Eigen::UpLoType::UnitLower>().solve(grad_aux +
 								W_D_inv_inv.cwiseProduct(D_inv_B_cross_cov_ * chol_fact_sigma_woodbury_woodbury.solve(D_inv_B_cross_cov_.transpose() * grad_aux)));
 						}
 						else if (cg_preconditioner_type_ == "fitc") {
 							const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
-							rhs_part1 = B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(grad);
+							rhs_part1 = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(grad);
 							rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
 							rhs_part2 = (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * grad));
 							grad = rhs_part + rhs_part2;
@@ -2959,7 +2959,7 @@ namespace GPBoost {
 								sigma_woodbury_preconditioner += (sigma_ip_preconditioner);
 								chol_fact_woodbury_preconditioner_.compute(sigma_woodbury_preconditioner);
 							}
-							rhs_part1 = B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rhs);
+							rhs_part1 = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rhs);
 							rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
 							rhs_part2 = (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * rhs));
 							rhs = rhs_part + rhs_part2;
@@ -3279,7 +3279,7 @@ namespace GPBoost {
 					grad.array() /= (information_ll_.array() + SigmaI_diag.array());
 					//// Alternative way approximating W + Sigma^-1 with Bt * (W + D^-1) * B. 
 					//// Note: seems to work worse compared to above diagonal approach. Also, better to comment out "nesterov_acc_rate *= 0.5;"
-					//vec_t grad_aux = B.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(grad);
+					//vec_t grad_aux = (B.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(grad);
 					//grad_aux.array() /= (D_inv.diagonal().array() + information_ll_.array());
 					//grad = B.triangularView<Eigen::UpLoType::UnitLower>().solve(grad_aux);
 					// Backtracking line search
@@ -3892,7 +3892,7 @@ namespace GPBoost {
                     }
 #pragma omp parallel for schedule(static)   
                     for (int i = 0; i < num_rand_vec_trace_; ++i) {
-                        PI_RV.col(i) = L_SigmaI_plus_ZtWZ_rm_.transpose().triangularView<Eigen::Upper>().solve(L_inv_Z.col(i));
+                        PI_RV.col(i) = (L_SigmaI_plus_ZtWZ_rm_.transpose().template triangularView<Eigen::Upper>()).solve(L_inv_Z.col(i));
                     }
                 }
                 else if (cg_preconditioner_type_ == "ssor") {
@@ -3903,7 +3903,7 @@ namespace GPBoost {
                     }
 #pragma omp parallel for schedule(static)   
                     for (int i = 0; i < num_rand_vec_trace_; ++i) {
-                        PI_RV.col(i) = P_SSOR_L_D_sqrt_inv_rm_.transpose().triangularView<Eigen::Upper>().solve(L_inv_Z.col(i));
+                        PI_RV.col(i) = (P_SSOR_L_D_sqrt_inv_rm_.transpose().template triangularView<Eigen::Upper>()).solve(L_inv_Z.col(i));
                     }
                     //For variance reduction
                     DI_L_plus_D_t_PI_RV.resize(num_REs, num_rand_vec_trace_);
@@ -4411,7 +4411,7 @@ namespace GPBoost {
 					bool has_NA_or_Inf = false;
 					if (grad_information_wrt_mode_non_zero_) {
 						d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
-						vec_t Sigma_d_mll_d_mode = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(d_mll_d_mode)) +
+						vec_t Sigma_d_mll_d_mode = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(d_mll_d_mode)) +
 							(*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * d_mll_d_mode));
 						vec_t W_SigmaI_plus_W_inv_d_mll_d_mode(dim_mode_);
 						CGFSVALowRankLaplaceVec(information_ll_.cwiseInverse(), D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
@@ -4469,7 +4469,7 @@ namespace GPBoost {
 								den_mat_t SigmaI_deriv_sample_vec = PP_deriv_sample_vec;
 #pragma omp parallel for schedule(static)  
 								for (int ii = 0; ii < num_rand_vec_trace_; ii++) {
-									SigmaI_deriv_sample_vec.col(ii) -= D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(SigmaI_deriv_rm * D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(PI_Z.col(ii)))));
+									SigmaI_deriv_sample_vec.col(ii) -= D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(SigmaI_deriv_rm * D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(PI_Z.col(ii)))));
 								}
 								vec_t sample_Sigma = (SigmaI_plus_W_inv_Z_.cwiseProduct(SigmaI_deriv_sample_vec)).colwise().sum();
 								double stoch_tr = sample_Sigma.mean();
@@ -4631,7 +4631,7 @@ namespace GPBoost {
 						den_mat_t W_D_inv_inv_B_invt_rand_vec_trace_I(dim_mode_, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 						for (int i = 0; i < num_rand_vec_trace_; ++i) {
-							W_D_inv_inv_B_invt_rand_vec_trace_I.col(i) = W_D_inv_inv.cwiseProduct(B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rand_vec_trace_I_.col(i)));
+							W_D_inv_inv_B_invt_rand_vec_trace_I.col(i) = W_D_inv_inv.cwiseProduct((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_trace_I_.col(i)));
 						}
 						den_mat_t sigma_woodbury_woodbury_cross_cov_B_t_D_inv_W_D_inv_inv_B_invt_rand_vec_trace_I = (chol_fact_sigma_woodbury_woodbury_.solve(D_inv_B_cross_cov.transpose() * W_D_inv_inv_B_invt_rand_vec_trace_I));
 						den_mat_t vecchia_cross_cov_sigma_woodbury_woodbury_inv_cross_cov_vecchia(dim_mode_, num_rand_vec_trace_);
@@ -4995,7 +4995,7 @@ namespace GPBoost {
 								SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv.diagonal().array() + SigmaI_plus_W_inv_diag_part.array()).matrix();
 								if (grad_information_wrt_mode_non_zero_) {
 									d_mll_d_mode = 0.5 * (SigmaI_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array()).matrix();
-									vec_t Sigma_d_mll_d_mode_part = B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(d_mll_d_mode);
+									vec_t Sigma_d_mll_d_mode_part = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(d_mll_d_mode);
 									vec_t Sigma_d_mll_d_mode_part1 = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(Sigma_d_mll_d_mode_part);
 									vec_t Sigma_d_mll_d_mode = Sigma_d_mll_d_mode_part1 + (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * d_mll_d_mode));
 									vec_t W_Sigma_d_mll_d_mode = information_ll_.asDiagonal() * Sigma_d_mll_d_mode;
@@ -5065,7 +5065,7 @@ namespace GPBoost {
 							chol_den_mat_t chol_fact_sigma_woodbury_2;
 							chol_fact_sigma_woodbury_2.compute(sigma_woodbury_2);
 
-							vec_t Sigma_d_mll_d_mode_part = B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(d_mll_d_mode);
+							vec_t Sigma_d_mll_d_mode_part = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(d_mll_d_mode);
 							vec_t Sigma_d_mll_d_mode_part1 = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(Sigma_d_mll_d_mode_part);
 							vec_t Sigma_d_mll_d_mode = Sigma_d_mll_d_mode_part1 + (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * d_mll_d_mode));
 							vec_t W_Sigma_d_mll_d_mode = information_ll_.asDiagonal() * Sigma_d_mll_d_mode;
@@ -6482,7 +6482,7 @@ namespace GPBoost {
 							else if (cg_preconditioner_type_ == "fitc") {
 								vec_t rand_vec_pred_SigmaI_plus_W_inv_interim(dim_mode_);
 								vec_t rhs_part, rhs_part1, rhs_part2;
-								rhs_part1 = B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rand_vec_pred_SigmaI_plus_W);
+								rhs_part1 = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_pred_SigmaI_plus_W);
 								rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
 								rhs_part2 = (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * rand_vec_pred_SigmaI_plus_W));
 								rand_vec_pred_SigmaI_plus_W = rhs_part + rhs_part2;
@@ -6544,7 +6544,7 @@ namespace GPBoost {
 //								CGFSVALowRankLaplaceVec(information_ll_inv, D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
 //									chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, WI_rand_vec_pred_interim, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
 //									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true);
-//								vec_t rhs_part1 = B_rm_.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rand_vec_pred_SigmaI_plus_W_inv);
+//								vec_t rhs_part1 = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_pred_SigmaI_plus_W_inv);
 //								vec_t rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
 //								rand_vec_pred = cross_cov_pred_ip * chol_fact_sigma_ip.solve((*cross_cov).transpose() * rand_vec_pred_SigmaI_plus_W_inv) - Bp_inv_Bpo_rm * rhs_part;
 //							}
@@ -7894,7 +7894,7 @@ namespace GPBoost {
 					PI_Z.resize(num_data, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)  
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						B_invt_Z.col(i) = B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>().solve(rand_vec_trace_P_.col(i));
+						B_invt_Z.col(i) = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_trace_P_.col(i));
 					}
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
@@ -7909,7 +7909,7 @@ namespace GPBoost {
 					PI_Z.resize(num_data, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						L_invt_Z.col(i) = L_SigmaI_plus_W_rm_.transpose().template triangularView<Eigen::UpLoType::Upper>().solve(rand_vec_trace_P_.col(i));
+						L_invt_Z.col(i) = (L_SigmaI_plus_W_rm_.transpose().template triangularView<Eigen::UpLoType::Upper>()).solve(rand_vec_trace_P_.col(i));
 					}
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
@@ -7975,20 +7975,20 @@ namespace GPBoost {
 				//Stochastic Trace: Calculate tr((Sigma + W^(-1))^(-1) dSigma/dtheta_j)
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					B_invt_WI_plus_Sigma_inv_Z.col(i) = B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>().solve(WI_plus_Sigma_inv_Z_.col(i));
+					B_invt_WI_plus_Sigma_inv_Z.col(i) = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(WI_plus_Sigma_inv_Z_.col(i));
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					Sigma_WI_plus_Sigma_inv_Z.col(i) = B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>().solve(B_invt_WI_plus_Sigma_inv_Z.col(i));
+					Sigma_WI_plus_Sigma_inv_Z.col(i) = (B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>()).solve(B_invt_WI_plus_Sigma_inv_Z.col(i));
 				}
 				den_mat_t PI_Z_local = information_ll_.asDiagonal() * WI_PI_Z;
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					B_invt_PI_Z.col(i) = B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>().solve(PI_Z_local.col(i));
+					B_invt_PI_Z.col(i) = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(PI_Z_local.col(i));
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					Sigma_PI_Z.col(i) = B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>().solve(B_invt_PI_Z.col(i));
+					Sigma_PI_Z.col(i) = (B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>()).solve(B_invt_PI_Z.col(i));
 				}
 				d_log_det_Sigma_W_plus_I_d_cov_pars = -1 * ((Sigma_WI_plus_Sigma_inv_Z.cwiseProduct(SigmaI_deriv_rm * Sigma_PI_Z)).colwise().sum()).mean();
 				//no variance reduction since dSigma_L_k/d_theta_j can't be solved analytically
@@ -7999,20 +7999,20 @@ namespace GPBoost {
 				//Stochastic Trace: Calculate tr((Sigma + W^(-1))^(-1) dSigma/dtheta_j)
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					B_invt_WI_plus_Sigma_inv_Z.col(i) = B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>().solve(WI_plus_Sigma_inv_Z_.col(i));
+					B_invt_WI_plus_Sigma_inv_Z.col(i) = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(WI_plus_Sigma_inv_Z_.col(i));
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					Sigma_WI_plus_Sigma_inv_Z.col(i) = B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>().solve(B_invt_WI_plus_Sigma_inv_Z.col(i));
+					Sigma_WI_plus_Sigma_inv_Z.col(i) = (B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>()).solve(B_invt_WI_plus_Sigma_inv_Z.col(i));
 				}
 				den_mat_t PI_Z_local = information_ll_.asDiagonal() * WI_PI_Z;
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					B_invt_PI_Z.col(i) = B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>().solve(PI_Z_local.col(i));
+					B_invt_PI_Z.col(i) = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(PI_Z_local.col(i));
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					Sigma_PI_Z.col(i) = B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>().solve(B_invt_PI_Z.col(i));
+					Sigma_PI_Z.col(i) = (B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>()).solve(B_invt_PI_Z.col(i));
 				}
 				d_log_det_Sigma_W_plus_I_d_cov_pars = -1 * ((Sigma_WI_plus_Sigma_inv_Z.cwiseProduct(SigmaI_deriv_rm * Sigma_PI_Z)).colwise().sum()).mean();
 			}

@@ -1977,11 +1977,11 @@ namespace GPBoost {
 					L_inv_RV.resize(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						L_inv_RV.col(i) = L_SigmaI_plus_ZtZ_rm_[cluster_i].triangularView<Eigen::Lower>().solve(rand_vec_probe_P_[cluster_i].col(i));
+						L_inv_RV.col(i) = (L_SigmaI_plus_ZtZ_rm_[cluster_i].template triangularView<Eigen::Lower>()).solve(rand_vec_probe_P_[cluster_i].col(i));
 					}
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						PI_RV.col(i) = L_SigmaI_plus_ZtZ_rm_[cluster_i].transpose().triangularView<Eigen::Upper>().solve(L_inv_RV.col(i));
+						PI_RV.col(i) = (L_SigmaI_plus_ZtZ_rm_[cluster_i].transpose().template triangularView<Eigen::Upper>()).solve(L_inv_RV.col(i));
 					}
 				}
 				else if (cg_preconditioner_type_ == "ssor") {
@@ -1989,17 +1989,17 @@ namespace GPBoost {
 					L_inv_RV.resize(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						L_inv_RV.col(i) = P_SSOR_L_D_sqrt_inv_rm_[cluster_i].triangularView<Eigen::Lower>().solve(rand_vec_probe_P_[cluster_i].col(i));
+						L_inv_RV.col(i) = (P_SSOR_L_D_sqrt_inv_rm_[cluster_i].template triangularView<Eigen::Lower>()).solve(rand_vec_probe_P_[cluster_i].col(i));
 					}
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						PI_RV.col(i) = P_SSOR_L_D_sqrt_inv_rm_[cluster_i].transpose().triangularView<Eigen::Upper>().solve(L_inv_RV.col(i));
+						PI_RV.col(i) = (P_SSOR_L_D_sqrt_inv_rm_[cluster_i].transpose().template triangularView<Eigen::Upper>()).solve(L_inv_RV.col(i));
 					}
 					//For variance reduction
 					den_mat_t L_plus_D_t_PI_RV(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						L_plus_D_t_PI_RV.col(i) = SigmaI_plus_ZtZ_rm_[cluster_i].triangularView<Eigen::Upper>() * PI_RV.col(i);
+						L_plus_D_t_PI_RV.col(i) = (SigmaI_plus_ZtZ_rm_[cluster_i].template triangularView<Eigen::Upper>()) * PI_RV.col(i);
 					}
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
@@ -6417,7 +6417,7 @@ namespace GPBoost {
 			}
 			else if (gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 				if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
-					Log::REFatal("Need to have less inducing points ('num_ind_points = %d') than data points (%d) for '%s' approximation ", 
+					Log::REFatal("Need to have less inducing points (currently num_ind_points = %d) than data points (%d) if gp_approx = '%s' ", 
 						num_ind_points, num_data_per_cluster_[cluster_i], gp_approx_.c_str());
 				}
 			}
@@ -7937,7 +7937,7 @@ namespace GPBoost {
 											//}
 											//else {
 												vec_t P_SSOR_D_inv_sqrt = P_SSOR_D_inv_[cluster_i].cwiseSqrt(); //need to store this, otherwise slow!
-												sp_mat_rm_t P_SSOR_L_rm = SigmaI_plus_ZtZ_rm_[cluster_i].triangularView<Eigen::Lower>();
+												sp_mat_rm_t P_SSOR_L_rm = SigmaI_plus_ZtZ_rm_[cluster_i].template triangularView<Eigen::Lower>();
 												P_SSOR_L_D_sqrt_inv_rm_[cluster_i] = P_SSOR_L_rm * P_SSOR_D_inv_sqrt.asDiagonal();
 											//}
 										}
@@ -8007,7 +8007,8 @@ namespace GPBoost {
 					den_mat_t gp_coords_all_mat = re_comp_gp_clus0->GetCoords();
 					data_size_t num_data_vecchia = (data_size_t)gp_coords_all_mat.rows();
 					if (num_data_per_cluster_[cluster_i] <= num_ind_points) {
-						Log::REFatal("Need to have less inducing points than data points for cg_preconditioner_type = '%s' ", cg_preconditioner_type_.c_str());
+						Log::REFatal("Need to have less inducing points (currently fitc_piv_chol_preconditioner_rank = %d) than data points (%d) for cg_preconditioner_type = '%s' ", 
+							num_ind_points, num_data_per_cluster_[cluster_i], cg_preconditioner_type_.c_str());
 					}
 					if (num_data_vecchia < num_data_per_cluster_[cluster_i]) {
 						if ((int)num_data_vecchia < num_ind_points) {
