@@ -6,16 +6,6 @@ Dataset <- R6::R6Class(
   cloneable = FALSE,
   public = list(
 
-    # Finalize will free up the handles
-    finalize = function() {
-      .Call(
-        LGBM_DatasetFree_R
-        , private$handle
-      )
-      private$handle <- NULL
-      return(invisible(NULL))
-    },
-
     # Initialize will create a starter dataset
     initialize = function(data,
                           params = list(),
@@ -665,7 +655,17 @@ Dataset <- R6::R6Class(
     used_indices = NULL,
     info = NULL,
     version = 0L,
-
+    
+    # Finalize will free up the handles
+    finalize = function() {
+      .Call(
+        LGBM_DatasetFree_R
+        , private$handle
+      )
+      private$handle <- NULL
+      return(invisible(NULL))
+    },
+    
     # Get handle
     get_handle = function() {
 

@@ -353,16 +353,6 @@ gpb.GPModel <- R6::R6Class(
   cloneable = FALSE,
   public = list(
     
-    # Finalize will free up the handles
-    finalize = function() {
-      .Call(
-        GPB_REModelFree_R
-        , private$handle
-      )
-      private$handle <- NULL
-      return(invisible(NULL))
-    },
-    
     # Initialize will create a GPModel
     initialize = function(likelihood = "gaussian",
                           group_data = NULL,
@@ -2175,6 +2165,16 @@ gpb.GPModel <- R6::R6Class(
                   fitc_piv_chol_preconditioner_rank = -1L, # default value is set in C++
                   estimate_aux_pars = TRUE),
     num_sets_re = 1,
+
+    # Finalize will free up the handles
+    finalize = function() {
+      .Call(
+        GPB_REModelFree_R
+        , private$handle
+      )
+      private$handle <- NULL
+      return(invisible(NULL))
+    },
     
     determine_num_cov_pars = function(likelihood) {
       if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time" | private$cov_function == "matern_estimate_shape") {
