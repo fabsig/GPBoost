@@ -169,7 +169,7 @@ namespace LightGBM {
 		valid_metrics_.emplace_back();
 		for (const auto& metric : valid_metrics) {
 			valid_metrics_.back().push_back(metric);
-			if (metric->GetName()[0] == std::string("test_neg_log_likelihood") && 
+			if ((metric->GetName()[0] == std::string("test_neg_log_likelihood") || metric->GetName()[0] == std::string("crps_gaussian")) &&
 				!(objective_function_->UseGPModelForValidation())) {
 				calculate_residual_variance_ = true;
 			}

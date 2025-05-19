@@ -69,7 +69,7 @@ the \code{nfold} and \code{stratified} parameters are ignored.}
 \item{metric}{Evaluation metric to be monitored when doing CV and parameter tuning. 
 Can be a \code{character} string or vector of \code{character} strings.
 If not NULL, the metric in \code{params} will be overridden.
-Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", 
+Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian",
 "auc", "average_precision", "binary_logloss", "binary_error". 
 See \href{https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters}{
 the "metric" section of the parameter documentation} for a complete list of valid metrics.}

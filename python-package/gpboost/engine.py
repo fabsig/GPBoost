@@ -558,7 +558,7 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
     metric : string, list of strings or None, optional (default=None)
         Evaluation metric to be monitored when doing CV and parameter tuning.
         If not None, the metric in ``params`` will be overridden.
-        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
+        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian", 
         "auc", "average_precision", "binary_logloss", "binary_error"
         See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
         for a complete list of valid metrics.
@@ -891,7 +891,7 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     metric : string, list of strings or None, optional (default=None)
         Evaluation metric to be monitored when doing parameter tuning.
         If not None, the metric in ``params`` will be overridden.
-        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
+        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian",
         "auc", "average_precision", "binary_logloss", "binary_error"
         See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
         for a complete list of valid metrics.
@@ -1193,7 +1193,7 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     metric : string, list of strings or None, optional (default=None)
         Evaluation metric to be monitored when doing parameter tuning.
         If not None, the metric in ``params`` will be overridden.
-        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae",
+        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian",
         "auc", "average_precision", "binary_logloss", "binary_error"
         See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
         for a complete list of valid metrics.

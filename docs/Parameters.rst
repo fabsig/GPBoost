@@ -1050,13 +1050,15 @@ Metric Parameters
 
       -  ``test_neg_log_likelihood``, (univariate) test negative log-likelihood, adaptive Gauss-Hermite quadrature is used to calculated this for non-Gaussian likelihoods
 
-      -  ``l1``, absolute loss, aliases: ``mean_absolute_error``, ``mae``, ``regression_l1``
+      -  ``mse``, mean square error: ``mean_squared_error``, ``l2``, ``regression_l2``, ``regression``
 
-      -  ``l2``, square loss, aliases: ``mean_squared_error``, ``mse``, ``regression_l2``, ``regression``
+      -  ``mae``, mean absolute error, aliases: ``mean_absolute_error``, ``l1``, ``regression_l1``
 
-      -  ``rmse``, root square loss, aliases: ``root_mean_squared_error``, ``l2_root``
+      -  ``rmse``, root mean square error, aliases: ``root_mean_squared_error``, ``l2_root``
 
-      -  ``quantile``, `Quantile regression <https://en.wikipedia.org/wiki/Quantile_regression>`__
+      -  ``crps_gaussian``, continuous ranked probability score (CRPS) for a gaussian predictive distribution
+
+      -  ``quantile``, `Quantile loss <https://en.wikipedia.org/wiki/Quantile_regression>`__
 
       -  ``mape``, `MAPE loss <https://en.wikipedia.org/wiki/Mean_absolute_percentage_error>`__, aliases: ``mean_absolute_percentage_error``
 

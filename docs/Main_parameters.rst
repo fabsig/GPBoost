@@ -21,9 +21,9 @@ The ``metric`` parameter (e.g., for the ``gpb.train``, ``gpboost``, and ``gpb.gr
 
 -  For the GPBoost algorithm, i.e., if there is a gp_model, ``test_neg_log_likelihood`` is the default metric. 
 
-- Other supported metrics include: ``mse``, ``mae``,  ``binary_logloss``, ``binary_error``, and ``auc``. 
+- Other supported metrics include: ``mse``, ``rmse``, ``mae``, ``crps_gaussian``, ``binary_logloss``, ``binary_error``, and ``auc``. 
 
-- If another metric besides ``test_neg_log_likelihood`` is used for the GPBoost algorithm, it is calculated as follows. First, the predictive mean of the response variable is calculated. Second, the corresponding metric is evaluated using this predictive mean as point prediction. See `here <https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric>`_ for a list of all supported metrics. 
+- If another metric besides ``test_neg_log_likelihood`` is used for the GPBoost algorithm, it is calculated as follows. First, the predictive mean of the response variable is calculated. Second, the corresponding metric is evaluated using this predictive mean as point prediction. See `here for a list of all supported metrics <https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric>`_. 
 
 
 .. _tunepars:

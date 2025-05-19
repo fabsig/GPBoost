@@ -1081,10 +1081,10 @@ namespace GPBoost {
 
 		inline double LogLikBernoulliProbit(const int y, const double location_par) const {
 			if (y == 0) {
-				return std::log(1 - normalCDF(location_par));
+				return std::log(1 - GPBoost::normalCDF(location_par));
 			}
 			else {
-				return std::log(normalCDF(location_par));
+				return std::log(GPBoost::normalCDF(location_par));
 			}
 		}
 
@@ -1288,10 +1288,10 @@ namespace GPBoost {
 
 		inline double FirstDerivLogLikBernoulliProbit(const int y, const double location_par) const {
 			if (y == 0) {
-				return (-normalPDF(location_par) / (1 - normalCDF(location_par)));
+				return (-GPBoost::normalPDF(location_par) / (1 - GPBoost::normalCDF(location_par)));
 			}
 			else {
-				return (normalPDF(location_par) / normalCDF(location_par));
+				return (GPBoost::normalPDF(location_par) / GPBoost::normalCDF(location_par));
 			}
 		}
 
@@ -1561,8 +1561,8 @@ namespace GPBoost {
 		}// end CalcDiagInformationLogLikOneSample
 
 		inline double SecondDerivNegLogLikBernoulliProbit(const int y, const double location_par) const {
-			double dnorm = normalPDF(location_par);
-			double pnorm = normalCDF(location_par);
+			double dnorm = GPBoost::normalPDF(location_par);
+			double pnorm = GPBoost::normalCDF(location_par);
 			if (y == 0) {
 				double dnorm_frac_one_min_pnorm = dnorm / (1. - pnorm);
 				return (-dnorm_frac_one_min_pnorm * (location_par - dnorm_frac_one_min_pnorm));
@@ -1660,8 +1660,8 @@ namespace GPBoost {
 				if (likelihood_type_ == "bernoulli_probit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
-						double dnorm = normalPDF(location_par[i]);
-						double pnorm = normalCDF(location_par[i]);
+						double dnorm = GPBoost::normalPDF(location_par[i]);
+						double pnorm = GPBoost::normalCDF(location_par[i]);
 						if (y_data_int[i] == 0) {
 							double dnorm_frac_one_min_pnorm = dnorm / (1. - pnorm);
 							deriv_information_diag_loc_par[i] = -dnorm_frac_one_min_pnorm * (1 - location_par[i] * location_par[i] +
@@ -1992,7 +1992,7 @@ namespace GPBoost {
 				return value;
 			}
 			else if (likelihood_type_ == "bernoulli_probit") {
-				return normalCDF(value);
+				return GPBoost::normalCDF(value);
 			}
 			else if (likelihood_type_ == "bernoulli_logit") {
 				return 1. / (1. + std::exp(-value));
@@ -7377,7 +7377,7 @@ namespace GPBoost {
 				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
-					pred_mean[i] = normalCDF(pred_mean[i] / std::sqrt(1. + pred_var[i]));
+					pred_mean[i] = GPBoost::normalCDF(pred_mean[i] / std::sqrt(1. + pred_var[i]));
 				}
 				if (predict_var) {
 #pragma omp parallel for schedule(static)
@@ -7510,7 +7510,7 @@ namespace GPBoost {
 			double mean_resp = 0.;
 			for (int j = 0; j < order_GH_; ++j) {
 				x_val = sqrt2_sigma_hat * GH_nodes_[j] + mode_integrand;
-				mean_resp += adaptive_GH_weights_[j] * CondMeanLikelihood(x_val) * normalPDF(sqrt_sigma2_inv * (x_val - latent_mean));
+				mean_resp += adaptive_GH_weights_[j] * CondMeanLikelihood(x_val) * GPBoost::normalPDF(sqrt_sigma2_inv * (x_val - latent_mean));
 			}
 			mean_resp *= sqrt2_sigma_hat * sqrt_sigma2_inv;
 			return mean_resp;
@@ -7556,7 +7556,7 @@ namespace GPBoost {
 				double likelihood = 0.;
 				for (int j = 0; j < order_GH_; ++j) {
 					x_val = sqrt2_sigma_hat * GH_nodes_[j] + mode_integrand;
-					likelihood += adaptive_GH_weights_[j] * std::exp(LogLikelihoodOneSample(y_test_d, y_test_int, x_val)) * normalPDF(sqrt_sigma2_inv * (x_val - pred_mean[i]));
+					likelihood += adaptive_GH_weights_[j] * std::exp(LogLikelihoodOneSample(y_test_d, y_test_int, x_val)) * GPBoost::normalPDF(sqrt_sigma2_inv * (x_val - pred_mean[i]));
 				}
 				likelihood *= sqrt2_sigma_hat * sqrt_sigma2_inv;
 				ll += std::log(likelihood);

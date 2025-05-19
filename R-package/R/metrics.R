@@ -33,6 +33,7 @@
             , "cross_entropy_lambda" = FALSE
             , "kullback_leibler" = FALSE
             , "test_neg_log_likelihood" = FALSE
+            , "crps_gaussian" = FALSE
         )
     )
 }

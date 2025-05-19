@@ -71,6 +71,8 @@ Metric* Metric::CreateMetric(const std::string& type, const Config& config) {
           "Please use the equivalent metric 'test_neg_log_likelihood' instead ");
   } else if (type == std::string("test_neg_log_likelihood")) {
       return new TestNegLogLikelihood(config);
+  } else if (type == std::string("crps_gaussian")) {
+      return new CRPSGaussian(config);
   }
   return nullptr;
 }

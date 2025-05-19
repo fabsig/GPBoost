@@ -204,7 +204,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         
         # Training with "wrong" likelihood
         gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit",
-                            , matrix_inversion_method = inv_method)
+                            matrix_inversion_method = inv_method)
         expect_error({ 
           bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                          nrounds = 62, learning_rate = 0.01, max_depth = 6,
@@ -288,6 +288,16 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         expect_equal(opt_params$best_params$min_data_in_leaf, 10)
         expect_equal(opt_params$best_iter, 7)
         expect_lt(abs(opt_params$best_score-1.224379), TOLERANCE)
+        # Using 'crps_gaussian' as metric
+        opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = other_params,
+                                                      folds = folds, data = dtrain, gp_model = gp_model,
+                                                      use_gp_model_for_validation=TRUE, verbose_eval = 0,
+                                                      nrounds = 1000, early_stopping_rounds = 10,
+                                                      metric = "crps_gaussian")
+        expect_equal(opt_params$best_params$learning_rate, 0.1)
+        expect_equal(opt_params$best_params$min_data_in_leaf, 10)
+        expect_equal(opt_params$best_iter, 7)
+        expect_lt(abs(opt_params$best_score-0.4622949), TOLERANCE)
         
         # Parameter tuning with 'tune.pars.bayesian.optimization'
         if(inv_method=="cholesky"){
@@ -586,6 +596,34 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         pred <- predict(bst, data = X_test, pred_latent = TRUE)
         nll <- 0.5 * mean((y_test - pred)^2 / var_est + log(var_est * 2 * pi))
         expect_lt(abs(bst$best_score - nll),TOLERANCE)
+        
+        # Use of validation data and crps_gaussian as metric
+        gp_model <- GPModel(group_data = group_data_train, matrix_inversion_method = inv_method)
+        set_prediction_data(gp_model, group_data_pred = group_data_test)
+        set_optim_params(gp_model, params=params_gp)
+        bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 10,
+                         learning_rate = 0.01, max_depth = 6, min_data_in_leaf = 5,
+                         objective = "regression_l2", verbose = 0,
+                         valids = valids, early_stopping_rounds = 5,
+                         use_gp_model_for_validation = TRUE, metric = "crps_gaussian")
+        expect_equal(bst$best_iter, 10)
+        pred <- predict(bst, data = X_test, group_data_pred = group_data_test, 
+                        pred_latent = FALSE, predict_var = TRUE)
+        resid <- (y_test - pred[['response_mean']]) / sqrt(pred[['response_var']])
+        crps <- mean(sqrt(pred[['response_var']]) * (-1/sqrt(pi) + 2 * dnorm(resid) + resid * (2 * pnorm(resid) - 1)))
+        expect_lt(abs(bst$best_score - crps),TOLERANCE)
+        # Use of validation data and crps_gaussian as metric without a GPModel
+        bst <- gpb.train(data = dtrain, nrounds = 10, learning_rate = 0.01, max_depth = 6, min_data_in_leaf = 5,
+                         objective = "regression_l2", verbose = 0,
+                         valids = valids, early_stopping_rounds = 5,
+                         metric = "crps_gaussian")
+        expect_equal(bst$best_iter, 10)
+        predtrain <- predict(bst, data = X_train, pred_latent = TRUE)
+        var_est <- var(y_train - predtrain)
+        pred <- predict(bst, data = X_test, pred_latent = TRUE)
+        resid <- (y_test - pred) / sqrt(var_est)
+        crps <- mean(sqrt(var_est) * (-1/sqrt(pi) + 2 * dnorm(resid) + resid * (2 * pnorm(resid) - 1)))
+        expect_lt(abs(bst$best_score - crps),TOLERANCE)
         
         ## Cannot have NA's in response variable
         expect_error({
