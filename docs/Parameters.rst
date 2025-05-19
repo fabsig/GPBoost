@@ -1058,7 +1058,7 @@ Metric Parameters
 
       -  ``crps_gaussian``, continuous ranked probability score (CRPS) for a gaussian predictive distribution
 
-      -  ``quantile``, `Quantile loss <https://en.wikipedia.org/wiki/Quantile_regression>`__
+      -  ``quantile``, `quantile regression loss <https://en.wikipedia.org/wiki/Quantile_regression>`__
 
       -  ``mape``, `MAPE loss <https://en.wikipedia.org/wiki/Mean_absolute_percentage_error>`__, aliases: ``mean_absolute_percentage_error``
 

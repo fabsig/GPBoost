@@ -386,6 +386,69 @@ NULL
 #' @usage data(GPBoost_data)
 NULL
 
+#' @name y
+#' @title Response variable data for example data for the GPBoost package
+#' @description Response variable for the example data of the GPBoost package
+#'
+#' @docType data
+#' @keywords datasets
+#' @usage data(GPBoost_data)
+NULL
+
+#' @name X
+#' @title Predictor variable data for example data for the GPBoost package
+#' @description A matrix with covariate data for the example data of the GPBoost package
+#'
+#' @docType data
+#' @keywords datasets
+#' @usage data(GPBoost_data)
+NULL
+
+#' @name group_data
+#' @title Gouping data for example data for the GPBoost package
+#' @description A matrix with categorical grouping variables for the example data of the GPBoost package
+#'
+#' @docType data
+#' @keywords datasets
+#' @usage data(GPBoost_data)
+NULL
+
+#' @name coords
+#' @title Coordinates for example data for the GPBoost package
+#' @description A matrix with spatial coordinates for the example data of the GPBoost package
+#'
+#' @docType data
+#' @keywords datasets
+#' @usage data(GPBoost_data)
+NULL
+
+#' @name X_test
+#' @title Test predictor variable data for example data for the GPBoost package
+#' @description A matrix with covariate information for the predictions for the example data of the GPBoost package
+#'
+#' @docType data
+#' @keywords datasets
+#' @usage data(GPBoost_data)
+NULL
+
+#' @name group_data_test
+#' @title Test grouping data for example data for the GPBoost package
+#' @description A matrix with categorical grouping variables for predictions for the example data of the GPBoost package
+#'
+#' @docType data
+#' @keywords datasets
+#' @usage data(GPBoost_data)
+NULL
+
+#' @name coords_test
+#' @title Test coordinates for example data for the GPBoost package
+#' @description A matrix with spatial coordinates for predictions for the example data of the GPBoost package
+#'
+#' @docType data
+#' @keywords datasets
+#' @usage data(GPBoost_data)
+NULL
+
 # Various imports
 #' @import methods
 #' @importFrom Matrix Matrix

@@ -925,7 +925,7 @@ namespace LightGBM {
 		// descl2 = ``mae``, mean absolute error, aliases: ``mean_absolute_error``, ``l1``, ``regression_l1``
 		// descl2 = ``rmse``, root mean square error, aliases: ``root_mean_squared_error``, ``l2_root``
 		// descl2 = ``crps_gaussian``, continuous ranked probability score (CRPS) for a gaussian predictive distribution
-		// descl2 = ``quantile``, `Quantile loss <https://en.wikipedia.org/wiki/Quantile_regression>`__
+		// descl2 = ``quantile``, `quantile regression loss <https://en.wikipedia.org/wiki/Quantile_regression>`__
 		// descl2 = ``mape``, `MAPE loss <https://en.wikipedia.org/wiki/Mean_absolute_percentage_error>`__, aliases: ``mean_absolute_percentage_error``
 		// descl2 = ``huber``, `Huber loss <https://en.wikipedia.org/wiki/Huber_loss>`__
 		// descl2 = ``fair``, `Fair loss <https://www.kaggle.com/c/allstate-claims-severity/discussion/24520>`__
