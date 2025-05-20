@@ -474,6 +474,9 @@ gpb.GPModel <- R6::R6Class(
           }
         }
         private$model_fitted = model_list[["model_fitted"]]
+        if (private$model_fitted) {
+          private$current_neg_log_likelihood_loaded_from_file <- model_list[["current_neg_log_likelihood"]]
+        }
       }# end !is.null(modelfile) | !is.null(model_list)
       
       if (is.null(group_data) & is.null(gp_coords)) {
@@ -1152,7 +1155,7 @@ gpb.GPModel <- R6::R6Class(
     
     get_cov_pars = function() {
       if (private$model_has_been_loaded_from_saved_file) {
-        cov_pars <- private$cov_pars_loaded_from_file
+        optim_pars <- as.vector(t(private$cov_pars_loaded_from_file))
       } else {
         private$update_cov_par_names(self$get_likelihood_name())
         if (private$params[["std_dev"]]) {
@@ -1166,12 +1169,12 @@ gpb.GPModel <- R6::R6Class(
           , private$params[["std_dev"]]
           , optim_pars
         )
-        cov_pars <- optim_pars[1:private$num_cov_pars]
       }
+      cov_pars <- optim_pars[1:private$num_cov_pars]
       names(cov_pars) <- private$cov_par_names
       if (private$params[["std_dev"]] & self$get_likelihood_name() == "gaussian" & private$gp_approx != "vecchia_latent") {
-        cov_pars_std_dev <- optim_pars[1:private$num_cov_pars+private$num_cov_pars]
-        cov_pars <- rbind(cov_pars,cov_pars_std_dev)
+        cov_pars_std_dev <- optim_pars[1:private$num_cov_pars + private$num_cov_pars]
+        cov_pars <- rbind(cov_pars, cov_pars_std_dev)
         rownames(cov_pars) <- c("Param.", "Std. dev.")
       }
       return(cov_pars)
@@ -1179,7 +1182,7 @@ gpb.GPModel <- R6::R6Class(
     
     get_coef = function() {
       if (private$model_has_been_loaded_from_saved_file) {
-        coef <- private$coefs_loaded_from_file
+        optim_pars <- as.vector(t(private$coefs_loaded_from_file))
       } else {
         if (is.null(private$num_covariates)) {
           stop("GPModel: ", sQuote("fit"), " has not been called")
@@ -1195,12 +1198,12 @@ gpb.GPModel <- R6::R6Class(
           , private$params[["std_dev"]]
           , optim_pars
         )
-        coef <- optim_pars[1:private$num_coef]
       }
+      coef <- optim_pars[1:private$num_coef]
       names(coef) <- private$coef_names
       if (private$params[["std_dev"]]) {
         coef_std_dev <- optim_pars[1:private$num_coef+private$num_coef]
-        coef <- rbind(coef,coef_std_dev)
+        coef <- rbind(coef, coef_std_dev)
         rownames(coef) <- c("Param.", "Std. dev.")
       }
       return(coef)
@@ -1905,12 +1908,16 @@ gpb.GPModel <- R6::R6Class(
     },
     
     get_current_neg_log_likelihood = function() {
-      negll <- 0.
-      .Call(
-        GPB_GetCurrentNegLogLikelihood_R
-        , private$handle
-        , negll
-      )
+      if (private$model_has_been_loaded_from_saved_file) {
+        negll <- private$current_neg_log_likelihood_loaded_from_file
+      } else {
+        negll <- 0.
+        .Call(
+          GPB_GetCurrentNegLogLikelihood_R
+          , private$handle
+          , negll
+        )
+      }
       return(negll + 0.) # add 0. to avoid undesired copy override issues
     },
     
@@ -1989,6 +1996,9 @@ gpb.GPModel <- R6::R6Class(
       model_list[["params"]][["init_aux_pars"]] <- self$get_aux_pars()
       # Note: for simplicity, this is put into 'init_aux_pars'. When loading the model, 'init_aux_pars' are correctly set
       model_list[["model_fitted"]] <- private$model_fitted
+      if (private$model_fitted) {
+        model_list[["current_neg_log_likelihood"]] <- self$get_current_neg_log_likelihood()
+      }
       # Make sure that data is saved in correct format by RJSONIO::toJSON
       MAYBE_CONVERT_TO_VECTOR <- c("cov_pars","group_data", "group_rand_coef_data",
                                    "gp_coords", "gp_rand_coef_data",
@@ -2026,8 +2036,21 @@ gpb.GPModel <- R6::R6Class(
     summary = function() {
       cov_pars <- self$get_cov_pars()
       cat("=====================================================\n")
-      if (private$model_fitted && !private$model_has_been_loaded_from_saved_file) {
-        cat("Model summary:\n")
+      cat("Model summary:\n")
+      cat(paste0("Nb. observations: ", self$get_num_data(),"\n"))
+      if ((private$num_group_re + private$num_group_rand_coef) > 0) {
+        outstr <- "Nb. groups: "
+        for (i in 1:private$num_group_re) {
+          if (i > 1) {
+            outstr <- paste0(outstr,", ")
+          }
+          outstr <- paste0(outstr,private$nb_groups[i]," (",
+                           private$re_comp_names[i],")")
+        }
+        outstr <- paste0(outstr,"\n")
+        cat(outstr)
+      }
+      if (private$model_fitted) {
         ll <- -self$get_current_neg_log_likelihood()
         npar <- private$num_cov_pars
         if (private$has_covariates) {
@@ -2036,19 +2059,6 @@ gpb.GPModel <- R6::R6Class(
         aic <- 2*npar - 2*ll
         bic <- npar*log(self$get_num_data()) - 2*ll
         print(round(c("Log-lik"=ll, "AIC"=aic, "BIC"=bic),digits=2))
-        cat(paste0("Nb. observations: ", self$get_num_data(),"\n"))
-        if ((private$num_group_re + private$num_group_rand_coef) > 0) {
-          outstr <- "Nb. groups: "
-          for (i in 1:private$num_group_re) {
-            if (i > 1) {
-              outstr <- paste0(outstr,", ")
-            }
-            outstr <- paste0(outstr,private$nb_groups[i]," (",
-                             private$re_comp_names[i],")")
-          }
-          outstr <- paste0(outstr,"\n")
-          cat(outstr)
-        }
         cat("-----------------------------------------------------\n")
       }
       cat("Covariance parameters (random effects):\n")
@@ -2143,6 +2153,7 @@ gpb.GPModel <- R6::R6Class(
     coefs_loaded_from_file = NULL,
     X_loaded_from_file = NULL,
     model_fitted = FALSE,
+    current_neg_log_likelihood_loaded_from_file = NULL,
     params = list(maxit = 1000L,
                   delta_rel_conv = -1., # default value is set in C++
                   init_coef = NULL,

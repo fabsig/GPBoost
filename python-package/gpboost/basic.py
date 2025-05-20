@@ -4381,6 +4381,7 @@ class GPModel(object):
         self.coefs_loaded_from_file = None
         self.X_loaded_from_file = None
         self.model_fitted = False
+        self.current_neg_log_likelihood_loaded_from_file = None
         self.params = {"maxit": 1000,
                        "delta_rel_conv": -1,  # default value is set in C++
                        "init_coef": None,
@@ -4470,6 +4471,8 @@ class GPModel(object):
                     if self.num_sets_re == 2:
                         self.coef_names = self.coef_names + [name + "_scale" for name in self.coef_names]
             self.model_fitted = model_dict.get("model_fitted")
+            if self.model_fitted:
+                self.current_neg_log_likelihood_loaded_from_file = model_dict.get("current_neg_log_likelihood")
 
         if group_data is None and gp_coords is None:
             raise ValueError("Both group_data and gp_coords are None. Provide at least one of them")
@@ -5489,19 +5492,9 @@ class GPModel(object):
         """
         cov_pars = self.get_cov_pars(format_pandas=True)
         print("=====================================================")
-        if self.model_fitted and not self.model_has_been_loaded_from_saved_file:
-            print("Model summary:")
-            ll = -self.get_current_neg_log_likelihood()
-            npar = self.num_cov_pars
-            if self.has_covariates:
-                npar = npar + self.num_coef
-            aic = 2 * npar - 2 * ll
-            bic = npar * np.log(self.num_data) - 2 * ll
-            printout = pd.DataFrame([round(ll, 2), round(aic, 2), round(bic, 2)]).transpose()
-            printout.columns = ["Log-lik", "AIC", "BIC"]
-            print(printout.to_string(index=False))
-            print("Nb. observations: " + str(self.num_data))
-            if (self.num_group_re + self.num_group_rand_coef) > 0:
+        print("Model summary:")
+        print("Nb. observations: " + str(self.num_data))
+        if (self.num_group_re + self.num_group_rand_coef) > 0:
                 outstr = pd.DataFrame(self.nb_groups.reshape((1, -1)),
                                       columns=self.re_comp_names[0:self.num_group_re]).to_string(index=False)
                 outstr = "Nb. groups: "
@@ -5510,6 +5503,16 @@ class GPModel(object):
                         outstr = outstr + ", "
                     outstr = outstr + str(self.nb_groups[i]) + " (" + self.re_comp_names[i] + ")"
                 print(outstr)
+        if self.model_fitted:            
+            ll = -self.get_current_neg_log_likelihood()
+            npar = self.num_cov_pars
+            if self.has_covariates:
+                npar = npar + self.num_coef
+            aic = 2 * npar - 2 * ll
+            bic = npar * np.log(self.num_data) - 2 * ll
+            printout = pd.DataFrame([round(ll, 2), round(aic, 2), round(bic, 2)]).transpose()
+            printout.columns = ["Log-lik", "AIC", "BIC"]
+            print(printout.to_string(index=False))            
             print("-----------------------------------------------------")
         print("Covariance parameters (random effects):")
         print(round(cov_pars.transpose(), 4))
@@ -6235,6 +6238,8 @@ class GPModel(object):
         model_dict["params"]["init_aux_pars"] = self.get_aux_pars(format_pandas=False)
         # Note: for simplicity, this is put into 'init_aux_pars'. When loading the model, 'init_aux_pars' are correctly set
         model_dict["model_fitted"] = self.model_fitted
+        if self.model_fitted:
+            model_dict["current_neg_log_likelihood"] = self.get_current_neg_log_likelihood()
         return model_dict
 
     def save_model(self, filename):
@@ -6310,9 +6315,12 @@ class GPModel(object):
         >>> gp_model.get_current_neg_log_likelihood()
         """
 
-        negll = ctypes.c_double(0)
-        _safe_call(_LIB.GPB_GetCurrentNegLogLikelihood(
-            self.handle,
-            ctypes.byref(negll)))
+        if self.model_has_been_loaded_from_saved_file:
+            return self.current_neg_log_likelihood_loaded_from_file
+        else:        
+            negll = ctypes.c_double(0)
+            _safe_call(_LIB.GPB_GetCurrentNegLogLikelihood(
+                self.handle,
+                ctypes.byref(negll)))
 
-        return negll.value
+            return negll.value
