@@ -3,7 +3,7 @@ context("Predictor")
 # Avoid that long tests get executed on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
-  test_that("Predictor$finalize() should not fail", {
+  test_that("Predictor's finalizer should not fail", {
     X <- as.matrix(as.integer(iris[, "Species"]), ncol = 1L)
     y <- iris[["Sepal.Length"]]
     dtrain <- gpb.Dataset(X, label = y)
@@ -19,11 +19,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     expect_false(gpboost:::gpb.is.null.handle(predictor$.__enclos_env__$private$handle))
     
-    predictor$finalize()
+    predictor$.__enclos_env__$private$finalize()
     expect_true(gpboost:::gpb.is.null.handle(predictor$.__enclos_env__$private$handle))
     
     # calling finalize() a second time shouldn't cause any issues
-    predictor$finalize()
+    predictor$.__enclos_env__$private$finalize()
     expect_true(gpboost:::gpb.is.null.handle(predictor$.__enclos_env__$private$handle))
   })
   

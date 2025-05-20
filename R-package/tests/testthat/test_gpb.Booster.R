@@ -17,11 +17,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     expect_false(gpboost:::gpb.is.null.handle(bst$.__enclos_env__$private$handle))
     
-    bst$finalize()
+    bst$.__enclos_env__$private$finalize()
     expect_true(gpboost:::gpb.is.null.handle(bst$.__enclos_env__$private$handle))
     
     # calling finalize() a second time shouldn't cause any issues
-    bst$finalize()
+    bst$.__enclos_env__$private$finalize()
     expect_true(gpboost:::gpb.is.null.handle(bst$.__enclos_env__$private$handle))
   })
   
@@ -186,7 +186,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gpb.save(bst, model_file)
     
     # finalize the booster and destroy it so you know we aren't cheating
-    bst$finalize()
+    bst$.__enclos_env__$private$finalize()
     expect_null(bst$.__enclos_env__$private$handle)
     rm(bst)
     
@@ -225,7 +225,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     preds <- predict(bst, X)
     model_file <- tempfile(fileext = ".model")
     gpb.save(bst, model_file)
-    bst$finalize()
+    bst$.__enclos_env__$private$finalize()
     expect_null(bst$.__enclos_env__$private$handle)
     rm(bst)
     
@@ -259,7 +259,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     model_string <- bst$save_model_to_string()
     
     # finalize the booster and destroy it so you know we aren't cheating
-    bst$finalize()
+    bst$.__enclos_env__$private$finalize()
     expect_null(bst$.__enclos_env__$private$handle)
     rm(bst)
     
@@ -292,7 +292,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gpb.save(bst, model_file)
     
     # finalize the booster and destroy it so you know we aren't cheating
-    bst$finalize()
+    bst$.__enclos_env__$private$finalize()
     expect_null(bst$.__enclos_env__$private$handle)
     rm(bst)
     
@@ -843,7 +843,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     preds <- predict(bst, X)
     model_file <- tempfile(fileext = ".rds")
     saveRDS.gpb.Booster(bst, file = model_file)
-    bst$finalize()
+    bst$.__enclos_env__$private$finalize()
     expect_null(bst$.__enclos_env__$private$handle)
     rm(bst)
     
