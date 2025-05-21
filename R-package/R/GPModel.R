@@ -456,7 +456,11 @@ gpb.GPModel <- R6::R6Class(
         if (!is.null(model_list[["y"]])) {
           private$y_loaded_from_file = model_list[["y"]]
         }
-        private$num_sets_re = model_list[["num_sets_re"]]
+        if (is.null(model_list[["num_sets_re"]])) {
+          private$num_sets_re = 1 # for backwards compatibility
+        } else {
+          private$num_sets_re = model_list[["num_sets_re"]]
+        }
         private$has_covariates = model_list[["has_covariates"]]
         if (model_list[["has_covariates"]]) {
           private$coefs_loaded_from_file = model_list[["coefs"]]

@@ -4448,7 +4448,10 @@ class GPModel(object):
                 self.cov_pars_loaded_from_file = np.array(model_dict.get("cov_pars"))
             if model_dict.get("y") is not None:
                 self.y_loaded_from_file = np.array(model_dict.get("y"))
-            self.num_sets_re = model_dict.get("num_sets_re")
+            if model_dict.get("num_sets_re") is None:
+                self.num_sets_re = 1 # for backwards compatibility
+            else:
+                self.num_sets_re = model_dict.get("num_sets_re")
             self.has_covariates = model_dict.get("has_covariates")
             if model_dict.get("has_covariates"):
                 if model_dict.get("coefs") is not None:
