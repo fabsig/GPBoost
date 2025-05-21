@@ -695,7 +695,7 @@ gpb.cv <- function(params = list()
   }
   if (delete_boosters_folds) {
     lapply(cv_booster$boosters, function(fd) {
-      fd$booster$finalize()
+      fd$booster$.__enclos_env__$private$finalize()
     })
     cv_booster$boosters = NULL
   }
