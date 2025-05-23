@@ -3076,7 +3076,6 @@ namespace GPBoost {
 							for (int i = 0; i < num_rand_vec_trace_; ++i) {
 								Bt_D_inv_Sigma_sqrt_rand_vec.col(i) = B_t_D_inv_rm_ * B_rm_ * Sigma_sqrt_rand_vec.col(i);
 							}
-
 							den_mat_t Sigma_inv_Sigma_sqrt_rand_vec = Bt_D_inv_Sigma_sqrt_rand_vec - Bt_D_inv_B_cross_cov * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * Bt_D_inv_Sigma_sqrt_rand_vec);
 							Bt_D_inv_Sigma_sqrt_rand_vec.resize(0, 0);
 							// P^1/2 * rand_vec
@@ -3090,13 +3089,15 @@ namespace GPBoost {
 						else {
 							rand_vec_trace_I_ = rand_vec_trace_I2_;
 						}
-						W_D_inv = (information_ll_ + D_inv_rm_.diagonal());
-						W_D_inv_inv = W_D_inv.cwiseInverse();
-						W_D_inv_sqrt = W_D_inv_inv.cwiseSqrt();
-						if (cg_preconditioner_type_ == "vifdu") {
-							B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_sqrt.asDiagonal() * D_inv_B_cross_cov_;
-							sigma_woodbury_woodbury_ = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose() * B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov;
-							chol_fact_sigma_woodbury_woodbury_.compute(sigma_woodbury_woodbury_);
+						if (information_changes_after_mode_finding_) {
+							W_D_inv = (information_ll_ + D_inv_rm_.diagonal());
+							W_D_inv_inv = W_D_inv.cwiseInverse();
+							W_D_inv_sqrt = W_D_inv_inv.cwiseSqrt();
+							if (cg_preconditioner_type_ == "vifdu") {
+								B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_sqrt.asDiagonal() * D_inv_B_cross_cov_;
+								sigma_woodbury_woodbury_ = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose() * B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov;
+								chol_fact_sigma_woodbury_woodbury_.compute(sigma_woodbury_woodbury_);
+							}
 						}
 						double log_det_Sigma_W_plus_I;
 						CalcLogDetStochFSVA(dim_mode_, cg_max_num_it_tridiag, chol_fact_sigma_woodbury, chol_ip_cross_cov, chol_fact_sigma_ip, chol_fact_sigma_ip_preconditioner,
@@ -7683,7 +7684,7 @@ namespace GPBoost {
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
 					rand_vec_trace_P_.col(i) = Sigma_L_k_ * rand_vec_trace_I2_.col(i) + ((information_ll_.cwiseInverse().cwiseSqrt()).array() * rand_vec_trace_I_.col(i).array()).matrix();
 				}
-				if (grad_information_wrt_mode_non_zero_) {
+				if (information_changes_after_mode_finding_) {
 					I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
 					I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * information_ll_.asDiagonal() * Sigma_L_k_;
 					chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
@@ -7707,7 +7708,7 @@ namespace GPBoost {
 				const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 				//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
 				//For P = W^(-1) + chol_ip_cross_cov^T chol_ip_cross_cov: z_i = W^(-1/2) r_j + chol_ip_cross_cov^T r_i, where r_i, r_j ~ N(0,I)
-				if (grad_information_wrt_mode_non_zero_) {
+				if (information_changes_after_mode_finding_) {
 					den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
 					sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 					diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
@@ -7753,9 +7754,9 @@ namespace GPBoost {
 					//rand_vec_trace_P_ = B_rm_.transpose() * ((D_inv_rm_.diagonal() + information_ll_).cwiseSqrt().asDiagonal() * rand_vec_trace_I_);
 					D_inv_plus_W_B_rm_ = (D_inv_plus_W_diag).asDiagonal() * B_rm_;
 				}
-				else {
+				else if (cg_preconditioner_type_ == "incomplete_cholesky") {
 					//Update P with latest W
-					if (grad_information_wrt_mode_non_zero_) {
+					if (information_changes_after_mode_finding_) {
 						SigmaI_plus_W = SigmaI;
 						SigmaI_plus_W.diagonal().array() += information_ll_.array();
 						ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
