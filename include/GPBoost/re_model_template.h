@@ -1606,7 +1606,8 @@ namespace GPBoost {
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par,
 							grad_cov_clus_i_ptr, grad_F_cluster_i,
 							grad_aux_clus_i_ptr, false, num_comps_total_, call_for_std_dev_coef, re_comps_ip_preconditioner_[cluster_i][0],
-							re_comps_cross_cov_preconditioner_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0]);
+							re_comps_cross_cov_preconditioner_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0],
+							cluster_i, this);
 					}
 					else if (gp_approx_ == "fitc") {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxFITC(y_[cluster_i].data(), y_int_[cluster_i].data(),
@@ -3019,7 +3020,8 @@ namespace GPBoost {
 								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i,
 								B_cluster_i, D_inv_cluster_i, B_grad_cluster_i, D_grad_cluster_i, sigma_ip_inv_cross_cov_T_[cluster_i][0],
 								sigma_ip_grad_sigma_ip_inv_cross_cov_T_[cluster_i][0],
-								true, 1., false, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_);
+								true, 1., false, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
+								nullptr);
 							//Calculate Psi
 							sp_mat_t D_sqrt(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
 							D_sqrt.setIdentity();
@@ -3145,7 +3147,8 @@ namespace GPBoost {
 								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i,
 								B_cluster_i, D_inv_cluster_i, B_grad_cluster_i, D_grad_cluster_i, sigma_ip_inv_cross_cov_T_[cluster_i][0],
 								sigma_ip_grad_sigma_ip_inv_cross_cov_T_[cluster_i][0],
-								true, 1., false, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_);
+								true, 1., false, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
+								nullptr);
 
 							//Calculate Psi
 							sp_mat_t D_sqrt(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
@@ -3505,7 +3508,7 @@ namespace GPBoost {
 											mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
 											predict_cov_mat, predict_var_or_response, false, true, re_comps_ip_preconditioner_[cluster_i][0],
 											re_comps_cross_cov_preconditioner_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0],
-											igp);
+											igp, cluster_i, this);
 									}
 									else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 										CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred,
@@ -3518,7 +3521,8 @@ namespace GPBoost {
 											B_[cluster_i], D_inv_[cluster_i], Bpo[igp], Bp[igp], Dp[igp],
 											mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
 											predict_cov_mat, predict_var_or_response, false, false, re_comps_ip_preconditioner_[cluster_i][0],
-											re_comps_cross_cov_preconditioner_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0], igp);
+											re_comps_cross_cov_preconditioner_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0], 
+											igp, cluster_i, this);
 									}
 									else {
 										Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
@@ -4631,6 +4635,36 @@ namespace GPBoost {
 			return(std::min({ max_lr_mu , max_lr_var }));
 		}//end MaximalLearningRateCoef
 
+		/*!
+		* \brief Calculate a Vecchia approximation for an observable variable where the error variance is given by 'add_diagonal'
+		* \param cluster_i Cluster index 
+		* \param[out] B_vecchia Matrix A = I - B (= Cholesky factor of inverse covariance) for Vecchia approximation
+		* \param[out] D_inv_vecchia Diagonal matrices D^-1 for Vecchia approximation
+		* \param add_diagonal Vector of (additional) observation specific nugget / error variance added to the diagonal
+		*/
+		void CalcVecchiaApproxLatentAddDiagonal(data_size_t cluster_i,
+			sp_mat_t& B_vecchia,
+			sp_mat_t& D_inv_vecchia,
+			const double* add_diagonal) {
+			if (num_sets_re_ > 1) {
+				Log::REFatal("CalcVecchiaApproxLatentAddDiagonal: not implemented if num_sets_re_ > 1");
+			}
+			CHECK(!gauss_likelihood_);
+			int igp = 0;
+			data_size_t num_re_cluster_i = re_comps_vecchia_[cluster_i][igp][ind_intercept_gp_]->GetNumUniqueREs();
+			std::vector<sp_mat_t> B_grad_cluster_i;//not used, but needs to be passed to function
+			std::vector<sp_mat_t> D_grad_cluster_i;//not used, but needs to be passed to function
+			CalcCovFactorGradientVecchia(num_re_cluster_i, true, false, re_comps_vecchia_[cluster_i][igp],
+				re_comps_cross_cov_[cluster_i][0], re_comps_ip_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_ip_cross_cov_[cluster_i][0], nearest_neighbors_[cluster_i][igp],
+				dist_obs_neighbors_[cluster_i][igp], dist_between_neighbors_[cluster_i][igp],
+				entries_init_B_[cluster_i][igp], z_outer_z_obs_neighbors_[cluster_i][igp],
+				B_vecchia, D_inv_vecchia, B_grad_cluster_i, D_grad_cluster_i, 
+				sigma_ip_inv_cross_cov_T_[cluster_i][0], sigma_ip_grad_sigma_ip_inv_cross_cov_T_[cluster_i][0], true, 1.,
+				true, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
+				add_diagonal);
+		}//end CalcVecchiaApproxLatentAddDiagonal
+
+
 	private:
 
 		// RESPONSE DATA
@@ -5000,7 +5034,7 @@ namespace GPBoost {
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for Gaussian likelihoods and gp_approx = "full_scale_tapering" */
 		const std::set<string_t> SUPPORTED_PRECONDITIONERS_GAUSS_FSA_{  "fitc", "none"};
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for non-Gaussian likelihoods and gp_approx = "vecchia" */
-		const std::set<string_t> SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_{ "vadu", "pivoted_cholesky", "fitc", "incomplete_cholesky"};
+		const std::set<string_t> SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_{ "vadu", "pivoted_cholesky", "fitc", "incomplete_cholesky", "vecchia_response"};
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for grouped random effects */
 		const std::set<string_t> SUPPORTED_PRECONDITIONERS_GROUPED_RE_{ "ssor", "incomplete_cholesky", "diagonal" };
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for non-Gaussian likelihoods and gp_approx = "full_scale_vecchia" */
@@ -6236,31 +6270,34 @@ namespace GPBoost {
 		}//end CheckPreconditionerType
 
 		static string_t ParsePreconditionerAlias(const string_t& type) {
-			if (type == "VADU" || type == "vadu" || type == "vecchia_approximation_with_diagonal_update" || type == "Sigma_inv_plus_BtWB") {
+			if (type == "VADU" || type == "vecchia_approximation_with_diagonal_update" || type == "Sigma_inv_plus_BtWB") {
 				return "vadu";
 			}
-			else if (type == "VIFDU" || type == "vifdu" || type == "Bt_Sigma_inv_plus_W_B") {
+			else if (type == "VIFDU" || type == "Bt_Sigma_inv_plus_W_B") {
 				return "vifdu";
 			}
-			else if (type == "piv_chol" || type == "pivoted_cholesky" || type == "piv_chol_on_Sigma") {
+			else if (type == "piv_chol" || type == "piv_chol_on_Sigma") {
 				return "pivoted_cholesky";
 			}
 			else if (type == "ZIRC" || type == "zirc" || type == "ZIC" || type == "zic" ||
-				type == "incomplete_cholesky" || type == "zero_infill_incomplete_cholesky" ||
+				type == "zero_infill_incomplete_cholesky" ||
 				type == "zero_fillin_incomplete_cholesky" || type == "zero_fill_in_incomplete_cholesky" ||
 				type == "zero_fill-in_incomplete_cholesky" || type == "zero_infill_incomplete_cholesky" ||
 				type == "zero_fillin_incomplete_reverse_cholesky" || type == "zero_fill_in_incomplete_reverse_cholesky" ||
 				type == "zero_fill-in_incomplete_reverse_cholesky" || type == "zero_infill_incomplete_reverse_cholesky") {
 				return "incomplete_cholesky";
 			}
-			else if (type == "SSOR" || type == "ssor" || type == "symmetric_successive_over_relaxation") {
+			else if (type == "SSOR"|| type == "symmetric_successive_over_relaxation") {
 				return "ssor";
 			}
-			else if (type == "FITC" || type == "fitc" || type == "predictive_process_plus_diagonal") {
+			else if (type == "FITC" || type == "predictive_process_plus_diagonal") {
 				return "fitc";
 			}
 			else if (type == "diagonal" || type == "diag" || type == "Diagonal" || type == "Diag") {
 				return "diagonal";
+			}
+			else if (type == "vecchia_observable" || type == "vecchia") {
+				return "vecchia_response";
 			}
 			return type;
 		}
@@ -7135,7 +7172,8 @@ namespace GPBoost {
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, B_[cluster_i], D_inv_[cluster_i], B_grad_[cluster_i], D_grad_[cluster_i],
 						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, num_comps_total_, false, re_comps_ip_preconditioner_[cluster_i][0],
-						re_comps_cross_cov_preconditioner_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0]);
+						re_comps_cross_cov_preconditioner_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0],
+						cluster_i, this);
 				}
 				else if (gp_approx_ == "fitc") {
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxFITC(y_[cluster_i].data(), y_int_[cluster_i].data(),
@@ -7829,7 +7867,8 @@ namespace GPBoost {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, B_[cluster_i], D_inv_[cluster_i],
 						first_update_, Sigma_L_k, calc_mll, mll_cluster_i, re_comps_ip_preconditioner_[cluster_i][0],
-						re_comps_cross_cov_preconditioner_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0]);
+						re_comps_cross_cov_preconditioner_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0],
+						cluster_i, this);
 				}
 				else if (gp_approx_ == "full_scale_vecchia") {
 					if (num_comps_total_ > 1) {
@@ -7985,7 +8024,8 @@ namespace GPBoost {
 						entries_init_B_[cluster_i][igp], z_outer_z_obs_neighbors_[cluster_i][igp],
 						B_[cluster_i][igp], D_inv_[cluster_i][igp], B_grad_[cluster_i][igp], D_grad_[cluster_i][igp], sigma_ip_inv_cross_cov_T_[cluster_i][0],
 						sigma_ip_grad_sigma_ip_inv_cross_cov_T_[cluster_i][0], transf_scale, nugget_var,
-						gauss_likelihood_, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_);
+						gauss_likelihood_, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
+						nullptr);
 					if (gp_approx_ == "full_scale_vecchia") {
 						//Convert to row-major for parallelization
 						B_rm_[cluster_i][0] = sp_mat_rm_t(B_[cluster_i][0]);
@@ -8106,7 +8146,8 @@ namespace GPBoost {
 						entries_init_B_[cluster_i][igp], z_outer_z_obs_neighbors_[cluster_i][igp],
 						B_[cluster_i][igp], D_inv_[cluster_i][igp], B_grad_[cluster_i][igp], D_grad_[cluster_i][igp], sigma_ip_inv_cross_cov_T_[cluster_i][0],
 						sigma_ip_grad_sigma_ip_inv_cross_cov_T_[cluster_i][0], transf_scale, nugget_var,
-						calc_gradient_nugget, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_);
+						calc_gradient_nugget, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
+						nullptr);
 				}
 			}
 		}//end CalcGradientVecchia
@@ -8430,13 +8471,13 @@ namespace GPBoost {
 				}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
 				else if (only_grouped_REs_use_woodbury_identity_) {
 					if (matrix_inversion_method_ == "cholesky") {
-					if (!CalcYtilde_already_done) {
-						CalcYtilde(false);//y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
-					}
-					else if ((int)y_tilde_[cluster_i].size() != cum_num_rand_eff_[cluster_i][num_re_group_total_]) {
-						Log::REFatal("y_tilde = L^-1 * Z^T * y has not the correct number of data points. Call 'CalcYtilde' first.");
-					}
-					yTPsiInvy += (y_[cluster_i].transpose() * y_[cluster_i])(0, 0) - (y_tilde_[cluster_i].transpose() * y_tilde_[cluster_i])(0, 0);
+						if (!CalcYtilde_already_done) {
+							CalcYtilde(false);//y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
+						}
+						else if ((int)y_tilde_[cluster_i].size() != cum_num_rand_eff_[cluster_i][num_re_group_total_]) {
+							Log::REFatal("y_tilde = L^-1 * Z^T * y has not the correct number of data points. Call 'CalcYtilde' first.");
+						}
+						yTPsiInvy += (y_[cluster_i].transpose() * y_[cluster_i])(0, 0) - (y_tilde_[cluster_i].transpose() * y_tilde_[cluster_i])(0, 0);
 					}//end cholesky
 					else if (matrix_inversion_method_ == "iterative") {
 						if (!CalcYAux_already_done) {

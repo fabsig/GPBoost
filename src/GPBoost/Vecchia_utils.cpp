@@ -1148,7 +1148,8 @@ namespace GPBoost {
 		int ind_intercept_gp,
 		bool gauss_likelihood,
 		bool save_distances_isotropic_cov_fct,
-		string_t& gp_approx) {
+		string_t& gp_approx,
+		const double* add_diagonal) {
 		int num_par_comp = re_comps_vecchia_cluster_i[ind_intercept_gp]->NumCovPar();
 		int num_par_gp = num_par_comp * num_gp_total + calc_gradient_nugget;
 		//Initialize matrices B = I - A and D^-1 as well as their derivatives (in order that the code below can be run in parallel)
@@ -1162,6 +1163,15 @@ namespace GPBoost {
 			}
 			if (!gauss_likelihood) {
 				D_inv_cluster_i.diagonal().array() = 0.;
+			}
+			if (add_diagonal != nullptr) {
+				if (calc_gradient) {
+					Log::REFatal("CalcCovFactorGradientVecchia: 'add_diagonal' can currently not be used when 'calc_gradient' is true ");
+				}
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_re_cluster_i; ++i) {
+					D_inv_cluster_i.coeffRef(i, i) += add_diagonal[i];
+				}
 			}
 		}
 		bool exclude_marg_var_grad = !gauss_likelihood && (re_comps_vecchia_cluster_i.size() == 1) && !(gp_approx == "full_scale_vecchia");//gradient is not needed if there is only one GP for non-Gaussian likelihoods
@@ -1226,10 +1236,8 @@ namespace GPBoost {
 							calc_gradient, transf_scale, nugget_var, true);
 						if (gp_approx == "full_scale_vecchia") {
 							vec_t sigma_ip_Ihalf_sigma_cross_covT_obs = chol_ip_cross_cov_cluster_i.col(i);
-#pragma omp parallel for schedule(static)
 							for (int ii = 0; ii < num_nn; ++ii) {
 								cov_mat_obs_neighbors.coeffRef(ii, 0) -= chol_ip_cross_cov_cluster_i.col(nearest_neighbors_cluster_i[i][ii]).dot(sigma_ip_Ihalf_sigma_cross_covT_obs);
-#pragma omp parallel for schedule(static)
 								for (int jj = ii; jj < num_nn; ++jj) {
 									if (ii == jj) {
 										cov_mat_between_neighbors.coeffRef(ii, jj) -= chol_ip_cross_cov_cluster_i.col(nearest_neighbors_cluster_i[i][ii]).array().square().sum();
@@ -1243,15 +1251,12 @@ namespace GPBoost {
 							// Gradient
 							if (calc_gradient) {
 								vec_t sigma_ip_I_sigma_cross_covT_obs = sigma_ip_inv_cross_cov_T_cluster_i.col(i);
-#pragma omp parallel for schedule(static)
 								for (int ipar = 0; ipar < (int)num_par_comp; ++ipar) {
 									vec_t sigma_cross_cov_gradT_obs = sigma_cross_cov_gradT[ipar].col(i);
 									vec_t sigma_ip_grad_sigma_ip_inv_cross_cov_T_obs = sigma_ip_grad_sigma_ip_inv_cross_cov_T_cluster_i[ipar].col(i);
-#pragma omp parallel for schedule(static)
 									for (int ii = 0; ii < num_nn; ++ii) {
 										cov_grad_mats_obs_neighbors[ind_first_par + ipar].coeffRef(ii, 0) -= (sigma_cross_cov_gradT[ipar]).col(nearest_neighbors_cluster_i[i][ii]).dot(sigma_ip_I_sigma_cross_covT_obs) +
 											sigma_ip_inv_cross_cov_T_cluster_i.col(nearest_neighbors_cluster_i[i][ii]).dot(sigma_cross_cov_gradT_obs - sigma_ip_grad_sigma_ip_inv_cross_cov_T_obs);
-#pragma omp parallel for schedule(static)
 										for (int jj = ii; jj < num_nn; ++jj) {
 											cov_grad_mats_between_neighbors[ind_first_par + ipar].coeffRef(ii, jj) -= (sigma_cross_cov_gradT[ipar]).col(nearest_neighbors_cluster_i[i][ii]).dot(sigma_ip_inv_cross_cov_T_cluster_i.col(nearest_neighbors_cluster_i[i][jj])) +
 												sigma_ip_inv_cross_cov_T_cluster_i.col(nearest_neighbors_cluster_i[i][ii]).dot((sigma_cross_cov_gradT[ipar]).col(nearest_neighbors_cluster_i[i][jj]) -
@@ -1293,7 +1298,7 @@ namespace GPBoost {
 			for (int j = 0; j < num_gp_total; ++j) {
 				double d_comp_j = re_comps_vecchia_cluster_i[ind_intercept_gp + j]->CovPars()[0];
 				if (!transf_scale && gauss_likelihood) {
-					d_comp_j *= nugget_var;
+					d_comp_j *= nugget_var;//back-transform
 				}
 				if (j > 0) {//random coefficient
 					d_comp_j *= z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
@@ -1327,11 +1332,16 @@ namespace GPBoost {
 						cov_mat_between_neighbors.diagonal().array() += 1.;//add nugget effect
 					}
 					else {
-						cov_mat_between_neighbors.diagonal().array() += nugget_var;
+						cov_mat_between_neighbors.diagonal().array() += nugget_var;//back-transform
 					}
 				}
 				else {
 					cov_mat_between_neighbors.diagonal().array() *= JITTER_MULT_VECCHIA;//Avoid numerical problems when there is no nugget effect
+				}
+				if (add_diagonal != nullptr) {
+					for (int ii = 0; ii < (int)cov_mat_between_neighbors.rows(); ++ii) {
+						cov_mat_between_neighbors(ii, ii) += add_diagonal[ii];
+					}
 				}
 				den_mat_t A_i(1, num_nn);
 				den_mat_t A_i_grad_sigma2;
@@ -1384,7 +1394,6 @@ namespace GPBoost {
 				if (gp_approx == "full_scale_vecchia") {
 					for (int j = 0; j < num_gp_total; ++j) {
 						int ind_first_par = j * num_par_comp;
-#pragma omp parallel for schedule(static)
 						for (int ipar = 0; ipar < num_par_comp; ++ipar) {
 							if (!(exclude_marg_var_grad && ipar == 0)) {
 								D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) -= sigma_ip_inv_cross_cov_T_cluster_i.col(i).dot(2 * sigma_cross_cov_gradT[ipar].col(i) -
