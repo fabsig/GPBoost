@@ -1340,7 +1340,7 @@ namespace GPBoost {
 				}
 				if (add_diagonal != nullptr) {
 					for (int ii = 0; ii < (int)cov_mat_between_neighbors.rows(); ++ii) {
-						cov_mat_between_neighbors(ii, ii) += add_diagonal[ii];
+						cov_mat_between_neighbors(ii, ii) += add_diagonal[nearest_neighbors_cluster_i[i][ii]];
 					}
 				}
 				den_mat_t A_i(1, num_nn);
