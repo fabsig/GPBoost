@@ -93,7 +93,8 @@ namespace GPBoost {
 			}
 			use_precomputed_dist_for_calc_cov_ = use_precomputed_dist_for_calc_cov;
 			if (cov_fct_type == "matern_space_time" || cov_fct_type == "matern_ard" ||
-				cov_fct_type == "matern_ard_estimate_shape" || cov_fct_type == "gaussian_ard") {
+				cov_fct_type == "matern_ard_estimate_shape" || cov_fct_type == "gaussian_ard" || 
+				cov_fct_type == "space_time_gneiting") {
 				is_isotropic_ = false;
 				use_precomputed_dist_for_calc_cov_ = false;
 			}
@@ -114,6 +115,9 @@ namespace GPBoost {
 			}
 			else if (cov_fct_type == "matern_estimate_shape") {
 				num_cov_par_ = 3;
+			}
+			else if (cov_fct_type == "space_time_gneiting") {
+				num_cov_par_ = 7;
 			}
 			else {
 				num_cov_par_ = 2;
@@ -185,19 +189,6 @@ namespace GPBoost {
 
 		bool IsSpaceTimeModel() const {
 			return(cov_fct_type_ == "matern_space_time");
-		}
-
-		bool IsARDModel() const {
-			return(cov_fct_type_ == "matern_ard" || cov_fct_type_ == "matern_ard_estimate_shape" || cov_fct_type_ == "gaussian_ard");
-		}
-
-		/*! \brief Dimension of spatial coordinates in for space-time models */
-		int GetDimSpace(const den_mat_t& coords) const {
-			int dim_space = (int)coords.cols();
-			if (cov_fct_type_ == "matern_space_time") {
-				dim_space = (int)coords.cols() - 1;
-			}
-			return(dim_space);
 		}
 
 		/*!
@@ -459,6 +450,26 @@ namespace GPBoost {
 				}
 				MultiplyWendlandCorrelationTaper<T_mat>(dist, sigma, is_symmmetric);
 			}// end cov_fct_type_ == "wendland"
+			else if (cov_fct_type_ == "space_time_gneiting") {
+				if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_rows; ++i) {
+						sigma(i, i) = pars[0];
+						for (int j = i + 1; j < num_cols; ++j) {
+							sigma(i, j) = SpaceTimeGneitingCovariance(i, j, coords, coords, pars);
+							sigma(j, i) = sigma(i, j);
+						}// end loop cols
+					}// end loop rows
+				}// end is_symmmetric
+				else {// !is_symmmetric
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_rows; ++i) {
+						for (int j = 0; j < num_cols; ++j) {
+							sigma(i, j) = SpaceTimeGneitingCovariance(i, j, coords, coords_pred, pars);
+						}// end loop cols
+					}// end loop rows
+				}// end !is_symmmetric
+			}//end space_time_gneiting
 			else {// cov_fct_type_ != "wendland"
 				den_mat_t coords_scaled, coords_pred_scaled;
 				const den_mat_t* coords_ptr = nullptr;
@@ -528,6 +539,34 @@ namespace GPBoost {
 				sigma.coeffs() = pars[0];
 				MultiplyWendlandCorrelationTaper<T_mat>(dist, sigma, is_symmmetric);
 			}
+			else if (cov_fct_type_ == "space_time_gneiting") {
+				if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+					for (int k = 0; k < sigma.outerSize(); ++k) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
+							int i = (int)it.row();
+							int j = (int)it.col();
+							if (i == j) {
+								it.valueRef() = pars[0];
+							}
+							else if (i < j) {
+								it.valueRef() = SpaceTimeGneitingCovariance(i, j, coords, coords, pars);
+								sigma.coeffRef(j, i) = it.value();
+							}
+						}
+					}
+				}// end is_symmmetric
+				else {// !is_symmmetric
+#pragma omp parallel for schedule(static)
+					for (int k = 0; k < sigma.outerSize(); ++k) {
+						for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
+							int i = (int)it.row();
+							int j = (int)it.col();
+							it.valueRef() = SpaceTimeGneitingCovariance(i, j, coords, coords_pred, pars);
+						}
+					}
+				}// end !is_symmmetric
+			}//end space_time_gneiting
 			else {// cov_fct_type_ != "wendland"
 				den_mat_t coords_scaled, coords_pred_scaled;
 				const den_mat_t* coords_ptr = nullptr;
@@ -574,6 +613,26 @@ namespace GPBoost {
 
 		/*!
 		* \brief Covariance function for one distance value
+		* \param coords Coordinates
+		* \param coords_pred Coordinates
+		* \param pars Vector with covariance parameters
+		* \param[out] sigma Covariance at dist
+		*/
+		void CalculateCovMat(const vec_t& coords,
+			const vec_t& coords_pred,
+			const vec_t& pars,
+			double& sigma) const {
+			CHECK(pars.size() == num_cov_par_);
+			if (cov_fct_type_ == "space_time_gneiting") {
+				sigma = SpaceTimeGneitingCovariance(coords, coords_pred, pars);
+			}
+			else {
+				Log::REFatal("'CalculateCovMat()' is not implemented for one distance when cov_fct_type_ == '%s' ", cov_fct_type_.c_str());
+			}
+		}//end CalculateCovMat (one single entry)
+
+		/*!
+		* \brief Covariance function for one entry
 		* \param dist Distance
 		* \param pars Vector with covariance parameters
 		* \param[out] sigma Covariance at dist
@@ -736,7 +795,7 @@ namespace GPBoost {
 		* \param[out] sigma_grad Derivative of covariance matrix with respect to the range parameter
 		* \param transf_scale If true, the derivative is taken on the transformed and logarithmic scale otherwise with respect to the original range parameter (the parameters values pars are always given on the transformed scale, but not logarithmized). Optimiziation is done using transf_scale=true. transf_scale=false is needed, for instance, for calcualting the Fisher information on the original scale.
 		* \param nugget_var Nugget / error variance parameters sigma^2 (used only if transf_scale = false to transform back for gaussian likelihoods since then the nugget is factored out)
-		* \param ind_range Which range parameter (if there are multiple)
+		* \param ind_range Which parameter (if there are multiple)
 		* \param is_symmmetric Set to true if dist and sigma are symmetric (e.g., for training data)
 		*/
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
@@ -764,10 +823,7 @@ namespace GPBoost {
 					CHECK(sigma.rows() == coords_pred.rows());
 					CHECK(sigma.cols() == coords.rows());
 				}
-			}
-			double cm, cm_num_deriv, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape;//constants and auxiliary parameters
-			DetermineConstantsForGradient(pars, (int)coords.cols(), transf_scale, nugget_var, ind_range,
-				cm, cm_num_deriv, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape);
+			}			
 			// define num_rows, num_cols, and sigma
 			int num_rows, num_cols;
 			if (use_precomputed_dist_for_calc_cov_) {
@@ -784,37 +840,62 @@ namespace GPBoost {
 				}
 			}
 			sigma_grad = T_mat(sigma.rows(), sigma.cols());
-			den_mat_t coords_scaled, coords_pred_scaled;
-			const den_mat_t* coords_ptr = nullptr;
-			const den_mat_t* coords_pred_ptr = nullptr;
-			if (!use_precomputed_dist_for_calc_cov_) {
-				DefineCoordsPtrScaleCoords(pars, coords, coords_pred, is_symmmetric, coords_scaled, coords_pred_scaled, &coords_ptr, &coords_pred_ptr);
-			}
-			// calculate gradients
-			if (is_symmmetric) {
+			if (cov_fct_type_ == "space_time_gneiting") {
+				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_rows; ++i) {
-					sigma_grad(i, i) = 0.;
-					for (int j = i + 1; j < num_cols; ++j) {
-						double dist_ij = 0.;
-						GetDistanceForGradientCovFct_(i, j, dist, coords_ptr, coords_pred_ptr, dist_ij);
-						sigma_grad(i, j) = GradientCovFct_(cm, cm_num_deriv, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
-							ind_range, i, j, dist_ij, sigma, coords_ptr, coords_pred_ptr);
-						sigma_grad(j, i) = sigma_grad(i, j);
-					}// end loop over cols
-				}// end loop over rows
-			}// end is_symmmetric
-			else {// !is_symmmetric
+					for (int i = 0; i < num_rows; ++i) {
+						sigma_grad(i, i) = 0.;
+						for (int j = i + 1; j < num_cols; ++j) {
+							sigma_grad(i, j) = GradientSpaceTimeGneitingCovariance(i, j, coords, coords_pred, pars, ind_range, transf_scale, nugget_var);
+							sigma_grad(j, i) = sigma_grad(i, j);
+						}// end loop over cols
+					}// end loop over rows
+				}// end is_symmmetric
+				else {// !is_symmmetric
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_rows; ++i) {
-					for (int j = 0; j < num_cols; ++j) {
-						double dist_ij = 0.;
-						GetDistanceForGradientCovFct_(i, j, dist, coords_ptr, coords_pred_ptr, dist_ij);
-						sigma_grad(i, j) = GradientCovFct_(cm, cm_num_deriv, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
-							ind_range, i, j, dist_ij, sigma, coords_ptr, coords_pred_ptr);
-					}// end loop over cols
-				}// end loop over rows
-			}// end !is_symmmetric
+					for (int i = 0; i < num_rows; ++i) {
+						for (int j = 0; j < num_cols; ++j) {
+							sigma_grad(i, j) = GradientSpaceTimeGneitingCovariance(i, j, coords, coords_pred, pars, ind_range, transf_scale, nugget_var);
+						}// end loop over cols
+					}// end loop over rows
+				}// end !is_symmmetric
+			}//end "space_time_gneiting"
+			else {// not "space_time_gneiting"
+				double cm, cm_num_deriv, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape;//constants and auxiliary parameters
+				DetermineConstantsForGradient(pars, (int)coords.cols(), transf_scale, nugget_var, ind_range,
+					cm, cm_num_deriv, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape);
+				den_mat_t coords_scaled, coords_pred_scaled;
+				const den_mat_t* coords_ptr = nullptr;
+				const den_mat_t* coords_pred_ptr = nullptr;
+				if (!use_precomputed_dist_for_calc_cov_) {
+					DefineCoordsPtrScaleCoords(pars, coords, coords_pred, is_symmmetric, coords_scaled, coords_pred_scaled, &coords_ptr, &coords_pred_ptr);
+				}
+				// calculate gradients
+				if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_rows; ++i) {
+						sigma_grad(i, i) = 0.;
+						for (int j = i + 1; j < num_cols; ++j) {
+							double dist_ij = 0.;
+							GetDistanceForGradientCovFct_(i, j, dist, coords_ptr, coords_pred_ptr, dist_ij);
+							sigma_grad(i, j) = GradientCovFct_(cm, cm_num_deriv, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
+								ind_range, i, j, dist_ij, sigma, coords_ptr, coords_pred_ptr);
+							sigma_grad(j, i) = sigma_grad(i, j);
+						}// end loop over cols
+					}// end loop over rows
+				}// end is_symmmetric
+				else {// !is_symmmetric
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_rows; ++i) {
+						for (int j = 0; j < num_cols; ++j) {
+							double dist_ij = 0.;
+							GetDistanceForGradientCovFct_(i, j, dist, coords_ptr, coords_pred_ptr, dist_ij);
+							sigma_grad(i, j) = GradientCovFct_(cm, cm_num_deriv, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
+								ind_range, i, j, dist_ij, sigma, coords_ptr, coords_pred_ptr);
+						}// end loop over cols
+					}// end loop over rows
+				}// end !is_symmmetric
+			}// end not "space_time_gneiting"
 		}//end CalculateGradientCovMat (dense)
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
 		void CalculateGradientCovMat(const T_mat& dist,
@@ -843,10 +924,10 @@ namespace GPBoost {
 					CHECK(sigma.cols() == coords.rows());
 				}
 			}
+			sigma_grad = sigma;
 			double cm, cm_num_deriv, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape;//constants and auxiliary parameters
 			DetermineConstantsForGradient(pars, (int)coords.cols(), transf_scale, nugget_var, ind_range,
-				cm, cm_num_deriv, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape);
-			sigma_grad = T_mat(sigma.rows(), sigma.cols());
+				cm, cm_num_deriv, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape);			
 			den_mat_t coords_scaled, coords_pred_scaled;
 			const den_mat_t* coords_ptr = nullptr;
 			const den_mat_t* coords_pred_ptr = nullptr;
@@ -854,39 +935,68 @@ namespace GPBoost {
 				DefineCoordsPtrScaleCoords(pars, coords, coords_pred, is_symmmetric, coords_scaled, coords_pred_scaled, &coords_ptr, &coords_pred_ptr);
 			}
 			// calculate gradients
-			sigma_grad = sigma;
-			if (is_symmmetric) {
+			if (cov_fct_type_ == "space_time_gneiting") {
+				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
-				for (int k = 0; k < sigma_grad.outerSize(); ++k) {
-					for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
-						int i = (int)it.row();
-						int j = (int)it.col();
-						if (i == j) {
-							it.valueRef() = 0.;
-						}
-						else if (i < j) {
+					for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+						for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+							int i = (int)it.row();
+							int j = (int)it.col();
+							if (i == j) {
+								it.valueRef() = 0.;
+							}
+							else if (i < j) {
+								it.valueRef() = GradientSpaceTimeGneitingCovariance(i, j, coords, coords_pred, pars, ind_range, transf_scale, nugget_var);
+								sigma_grad.coeffRef(j, i) = it.value();
+							}
+						}// end loop over cols
+					}// end loop over rows
+				}// end is_symmmetric
+				else {// !is_symmmetric
+#pragma omp parallel for schedule(static)
+					for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+						for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+							int i = (int)it.row();
+							int j = (int)it.col();
+							it.valueRef() = GradientSpaceTimeGneitingCovariance(i, j, coords, coords_pred, pars, ind_range, transf_scale, nugget_var);
+						}// end loop over cols
+					}// end loop over rows
+				}// end !is_symmmetric
+			}//end "space_time_gneiting"
+			else {// not "space_time_gneiting"
+				if (is_symmmetric) {
+#pragma omp parallel for schedule(static)
+					for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+						for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+							int i = (int)it.row();
+							int j = (int)it.col();
+							if (i == j) {
+								it.valueRef() = 0.;
+							}
+							else if (i < j) {
+								double dist_ij = 0.;
+								GetDistanceForGradientCovFct_(i, j, dist, coords_ptr, coords_pred_ptr, dist_ij);
+								it.valueRef() = GradientCovFct_(cm, cm_num_deriv, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
+									ind_range, i, j, dist_ij, sigma, coords_ptr, coords_pred_ptr);
+								sigma_grad.coeffRef(j, i) = it.value();
+							}
+						}// end loop over cols
+					}// end loop over rows
+				}// end is_symmmetric
+				else {// !is_symmmetric
+#pragma omp parallel for schedule(static)
+					for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+						for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+							int i = (int)it.row();
+							int j = (int)it.col();
 							double dist_ij = 0.;
 							GetDistanceForGradientCovFct_(i, j, dist, coords_ptr, coords_pred_ptr, dist_ij);
 							it.valueRef() = GradientCovFct_(cm, cm_num_deriv, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
 								ind_range, i, j, dist_ij, sigma, coords_ptr, coords_pred_ptr);
-							sigma_grad.coeffRef(j, i) = it.value();
-						}
-					}// end loop over cols
-				}// end loop over rows
-			}// end is_symmmetric
-			else {// !is_symmmetric
-#pragma omp parallel for schedule(static)
-				for (int k = 0; k < sigma_grad.outerSize(); ++k) {
-					for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
-						int i = (int)it.row();
-						int j = (int)it.col();
-						double dist_ij = 0.;
-						GetDistanceForGradientCovFct_(i, j, dist, coords_ptr, coords_pred_ptr, dist_ij);
-						it.valueRef() = GradientCovFct_(cm, cm_num_deriv, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
-							ind_range, i, j, dist_ij, sigma, coords_ptr, coords_pred_ptr);
-					}// end loop over cols
-				}// end loop over rows
-			}// end !is_symmmetric
+						}// end loop over cols
+					}// end loop over rows
+				}// end !is_symmmetric
+			}// end not "space_time_gneiting"
 		}//end CalculateGradientCovMat (sparse)
 
 		/*!
@@ -1282,7 +1392,8 @@ namespace GPBoost {
 			"matern_ard",
 			"gaussian_ard",
 			"matern_estimate_shape",
-			"matern_ard_estimate_shape" };
+			"matern_ard_estimate_shape",
+			"space_time_gneiting" };
 
 		/*!
 		* \brief Calculates Wendland correlation function if taper_shape == 0
@@ -1396,7 +1507,7 @@ namespace GPBoost {
 					return CovariancePoweredExponential(dist_ij, var, range);
 					};
 			}
-			else if (cov_fct_type_ != "wendland") {
+			else if (cov_fct_type_ != "wendland" && cov_fct_type_ != "space_time_gneiting") {
 				Log::REFatal("InitializeCovFct: covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
 		}//end InitializeCovFct
@@ -1774,7 +1885,7 @@ namespace GPBoost {
 						return GradientRangeGaussianARD(cm, sigma, ind_range, i, j, coords_ptr, coords_pred_ptr);
 					};
 			}
-			else if (cov_fct_type_ != "wendland" && cov_fct_type_ != "powered_exponential" && cov_fct_type_ != "gaussian") {
+			else if (cov_fct_type_ != "wendland" && cov_fct_type_ != "powered_exponential" && cov_fct_type_ != "gaussian" && cov_fct_type_ != "space_time_gneiting") {
 				Log::REFatal("InitializeCovFctGrad: covariance of type '%s' is not supported.", cov_fct_type_.c_str());
 			}
 		}//end InitializeCovFctGrad
@@ -2076,6 +2187,171 @@ namespace GPBoost {
 				return(cm * dist_sq_ij_coord * sigma.coeff(i, j));
 			}
 		}//end GradientRangeGaussianARD
+
+
+		/*!
+		* \brief Calculate space-time covariance function in Eq. (16) of Gneiting (2002)
+		* \param i Location for coords_ptr
+		* \param j Location for coords_pred_ptr
+		* \param coords Coordinates
+		* \param coords_pred Coordinates
+		* \param pars Parameter in the following order: sigma2, a, c, alpha, nu, beta, delta
+		* \return covariance
+		*/
+		inline double SpaceTimeGneitingCovariance(const int i,
+			const int j,
+			const den_mat_t& coords,
+			const den_mat_t& coords_pred,
+			const vec_t& pars) const {
+			int dim_space = (int)coords.cols() - 1;
+			double dist_time = std::abs(coords_pred.coeff(i, 0) - coords.coeff(j, 0));
+			double dist_space = (coords_pred.row(i).tail(dim_space) - coords.row(j).tail(dim_space)).norm();
+			double d_aux_time = pars[1] * std::pow(dist_time, 2 * pars[3]) + 1.;
+			double d_aux = pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2.));
+			double d_aux2 = pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));
+			if (TwoNumbersAreEqual<double>(pars[4], 0.5)) {
+				return(d_aux2 * std::exp(-d_aux));
+			}
+			else if (TwoNumbersAreEqual<double>(pars[4], 1.5)) {
+				return(d_aux2 * (1. + d_aux) * std::exp(-d_aux));
+			}
+			else if (TwoNumbersAreEqual<double>(pars[4], 2.5)) {
+				return(d_aux2 * (1. + d_aux + d_aux * d_aux / 3.) * std::exp(-d_aux));
+			}
+			else {
+				return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
+			}
+		}// end SpaceTimeGneitingCovariance
+		inline double SpaceTimeGneitingCovariance(const vec_t& coords,
+			const vec_t& coords_pred,
+			const vec_t& pars) const {
+			int dim_space = (int)coords.size() - 1;
+			double dist_time = std::abs(coords_pred[0] - coords[0]);
+			double dist_space = (coords_pred.tail(dim_space) - coords.tail(dim_space)).norm();
+			double d_aux_time = pars[1] * std::pow(dist_time, 2 * pars[3]) + 1.;
+			double d_aux = pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2.));
+			double d_aux2 = pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));
+			if (TwoNumbersAreEqual<double>(pars[4], 0.5)) {
+				return(d_aux2 * std::exp(-d_aux));
+			}
+			else if (TwoNumbersAreEqual<double>(pars[4], 1.5)) {
+				return(d_aux2 * (1. + d_aux) * std::exp(-d_aux));
+			}
+			else if (TwoNumbersAreEqual<double>(pars[4], 2.5)) {
+				return(d_aux2 * (1. + d_aux + d_aux * d_aux / 3.) * std::exp(-d_aux));
+			}
+			else {
+#if MSVC_OR_GCC_COMPILER
+				return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
+#else
+				Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", pars[4], cov_fct_type.c_str());
+				return(0.);
+#endif
+			}
+		}// end SpaceTimeGneitingCovariance
+
+		/*!
+		* \brief Calculate gradient of space-time covariance function in Eq. (16) of Gneiting (2002)
+		* \param i Location for coords_ptr
+		* \param j Location for coords_pred_ptr
+		* \param coords Coordinates
+		* \param coords_pred Coordinates
+		* \param pars Parameter in the following order: sigma2, a, c, alpha, nu, beta, delta
+		* \param ind_par Parameter number
+		* \param transf_scale On transformed  scale or not 
+		* \param nugget_var Nugget variance
+		* \return Gradient of covariance
+		*/
+		inline double GradientSpaceTimeGneitingCovariance(const int i,
+			const int j,
+			const den_mat_t& coords,
+			const den_mat_t& coords_pred,
+			const vec_t& pars,
+			const int ind_par,
+			bool transf_scale,
+			double nugget_var) const {
+			int dim_space = (int)coords.cols() - 1;
+			double dist_time = std::abs(coords_pred.coeff(i, 0) - coords.coeff(j, 0));
+			double dist_space = (coords_pred.row(i).tail(dim_space) - coords.row(j).tail(dim_space)).norm();
+			double grad = transf_scale ? 1. : 0.;
+			double d_aux_time = pars[1] * std::pow(dist_time, 2 * pars[3]) + 1.;// = a*u^(2*alpha) + 1
+			double d_aux = pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2.));// = c * |h| / ( (a*u^(2*alpha) + 1)^(beta/2) )
+			double d_aux2 = pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));// = sigma2 / ( (a*u^(2*alpha) + 1)^(delta + beta*d/2) )
+			double cm = transf_scale ? pars[ind_par] : nugget_var;// multiplicative constant to get gradient on log-scale or backtransform with nugget variance
+			if (ind_par == 0) {//sigma2 (usually not called)
+				cm = transf_scale ? 1 : nugget_var / pars[0];
+				d_aux2 *= cm;
+				if (TwoNumbersAreEqual<double>(pars[4], 0.5)) {
+					grad = d_aux2 * std::exp(-d_aux);
+				}
+				else if (TwoNumbersAreEqual<double>(pars[4], 1.5)) {
+					grad = d_aux2 * (1. + d_aux) * std::exp(-d_aux);
+				}
+				else if (TwoNumbersAreEqual<double>(pars[4], 2.5)) {
+					grad = d_aux2 * (1. + d_aux + d_aux * d_aux / 3.) * std::exp(-d_aux);
+				}
+				else {
+#if MSVC_OR_GCC_COMPILER
+					grad = d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux);
+#else
+					grad = 0.;
+#endif
+				}
+			}
+			else if (ind_par == 1) {//a
+				double d_aux_grad = -pars[5] / 2. * pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2. + 1)) * std::pow(dist_time, 2 * pars[3]);
+				double d_aux2_grad = -(pars[6] + pars[5] * dim_space / 2.) * pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2. + 1)) * std::pow(dist_time, 2 * pars[3]);
+				if (TwoNumbersAreEqual<double>(pars[4], 0.5)) {
+					grad = (d_aux2_grad - d_aux2 * d_aux_grad) * std::exp(-d_aux);
+				}
+				else if (TwoNumbersAreEqual<double>(pars[4], 1.5)) {
+					grad = (d_aux2_grad * (1. + d_aux) + d_aux2 * d_aux_grad - d_aux2 * (1. + d_aux) * d_aux_grad) * std::exp(-d_aux);
+				}
+				else if (TwoNumbersAreEqual<double>(pars[4], 2.5)) {
+					grad = (d_aux2_grad * (1. + d_aux + d_aux * d_aux / 3.) + 
+						d_aux2 * (d_aux_grad + d_aux * 2. / 3. * d_aux_grad) - 
+						d_aux2 * (1. + d_aux + d_aux * d_aux / 3.) * d_aux_grad) * std::exp(-d_aux);
+				}
+				else {
+#if MSVC_OR_GCC_COMPILER
+					double bessel = std::cyl_bessel_k(pars[4], d_aux);
+					double grad_bessel = pars[4] / d_aux * bessel - std::cyl_bessel_k(pars[4] + 1., d_aux); // d/dz K_nu(z) = nu / z * K_nu(z) - K_(nu+1)(z)
+					grad = d_aux2_grad * std::pow(d_aux, pars[4]) * bessel +
+						d_aux2 * pars[4] * std::pow(d_aux, pars[4] - 1.) * d_aux_grad * bessel +
+						d_aux2 * std::pow(d_aux, pars[4]) * grad_bessel;
+					grad *= std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]);
+#else
+					grad = 0.;
+#endif
+				}
+			}
+			else if (ind_par == 4) {//nu
+#if MSVC_OR_GCC_COMPILER
+				double nu_up, nu_down;
+				if (transf_scale) {
+					nu_up = std::exp(std::log(pars[4]) + delta_step_);//gradient on log-scale
+					nu_down = std::exp(std::log(pars[4]) - delta_step_);
+				}
+				else {
+					nu_up = pars[4] + delta_step_;
+					nu_down = pars[4] - delta_step_;
+					CHECK(nu_down > 0.);
+				}
+				double bessel_num_deriv = (std::cyl_bessel_k(nu_up, d_aux) - std::cyl_bessel_k(nu_down, d_aux)) / (2. * delta_step_);
+				double bessel = std::cyl_bessel_k(pars[4], d_aux);
+				grad = std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * d_aux2 * 
+					(std::pow(d_aux, pars[4]) * bessel * (-std::log(2.) - GPBoost::digamma(pars[4])) + // (i) d/dnu 2^{1-v} = -log(2)*2^{1-v} and (ii) d/dnu 1/Gamma(nu) = -digamm(nu) / Gamma(nu)
+					pars[4] * std::pow(d_aux, pars[4] - 1.) * bessel + std::pow(d_aux, pars[4]) * bessel_num_deriv);
+#else
+				grad = 0.;
+#endif
+			}
+			else {
+				Log::REFatal("GradientSpaceTimeGneitingCovariance: not yet implemented for ind_par = %d ", ind_par);
+			}
+			grad *= cm;
+			return(grad);
+		}// end GradientSpaceTimeGneitingCovariance
 
 		inline void ParseCovFunctionAlias(string_t & likelihood,
 			double& shape) const {
