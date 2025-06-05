@@ -3,7 +3,7 @@
 Wrapper for C API of GPBoost.
 
 Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
-Modified work Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
+Modified work Copyright (c) 2020 - 2025 Fabio Sigrist. All rights reserved.
 Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 """
 import ctypes
@@ -4402,7 +4402,8 @@ class GPModel(object):
                        "reuse_rand_vec_trace": True,
                        "seed_rand_vec_trace": 1,
                        "fitc_piv_chol_preconditioner_rank": -1, # default value is set in C++
-                       "estimate_aux_pars": True
+                       "estimate_aux_pars": True,
+                       "estimate_cov_par_index": np.array([-1], dtype=np.int32)
                        }
         self.num_sets_re = 1
 
@@ -4835,7 +4836,16 @@ class GPModel(object):
                             raise ValueError("params['init_aux_pars'] does not contain the correct number "
                                              "of parameters")
                 if param in self.params:
-                    self.params[param] = params[param]
+                    if param == "estimate_cov_par_index":
+                        params["estimate_cov_par_index"] = _format_check_1D_data(params["estimate_cov_par_index"],
+                                                                        data_name="estimate_cov_par_index",
+                                                                        check_data_type=True, check_must_be_int=True,
+                                                                        convert_to_type=np.dtype(np.int32))
+                        if params["estimate_cov_par_index"][0] >= 0 and params["estimate_cov_par_index"].shape[0] != self.num_cov_pars:
+                            raise ValueError(f"params['estimate_cov_par_index'] is not equal to the number of covariance parameters ({self.num_cov_pars})")
+                        self.params["estimate_cov_par_index"] = deepcopy(params["estimate_cov_par_index"])                        
+                    else:
+                        self.params[param] = params[param]
                 elif param not in ["optimizer_cov", "optimizer_coef", "cg_preconditioner_type",
                                    "init_cov_pars", "init_aux_pars"]:
                     raise ValueError("Unknown parameter: %s" % param)
@@ -4931,6 +4941,10 @@ class GPModel(object):
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated
                     (e.g., shape parameter of a gamma or negative binomial likelihood).
+                - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1)
+                    If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, 
+                    estimate_cov_par_index[i] is then bool and indicates which ones are estimated.
+                    For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not. 
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms.
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
@@ -5141,7 +5155,7 @@ class GPModel(object):
 
                 - optimizer_cov : string, optional (default = "lbfgs")
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "newton", "nelder_mead".
+                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "newton" ,"nelder_mead".
                     If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
                 - optimizer_coef : string, optional (default = "wls" for Gaussian data and "lbfgs" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
@@ -5155,7 +5169,7 @@ class GPModel(object):
                     Maximal number of iterations for optimization algorithm.
                 - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
-                    log-likelihood or the parameters is below this value.
+                    log-likelihood or the parameters is below this value. 
                     If < 0, internal default values are used.
                     Default = 1e-6 except for "nelder_mead" for which the default is 1e-8.
                 - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
@@ -5204,6 +5218,10 @@ class GPModel(object):
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated
                     (e.g., shape parameter of a gamma or negative binomial likelihood).
+                - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1)
+                    If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, 
+                    estimate_cov_par_index[i] is then bool and indicates which ones are estimated. 
+                    For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not.
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms.
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
@@ -5221,8 +5239,6 @@ class GPModel(object):
                     every time a trace is calculated.
                 - seed_rand_vec_trace: integer, optional (default = 1)
                     Seed number to generate random vectors (e.g., Rademacher).
-                - fitc_piv_chol_preconditioner_rank: integer, optional (default = 50)
-                    Rank of the pivoted Cholesky decomposition used as preconditioner in conjugate gradient algorithms.
                 - cg_preconditioner_type: string, optional
                     Type of preconditioner used for conjugate gradient algorithms.
 
@@ -5253,6 +5269,13 @@ class GPModel(object):
                             - "fitc" (= default): modified predictive process preconditioner
 
                             - "none": no preconditioner
+
+                - fitc_piv_chol_preconditioner_rank: integer, optional 
+                    Rank of the FITC and pivoted Cholesky decomposition preconditioners for iterative methods for Vecchia and VIF approximations (for full_scale_tapering, the same inducing points as in the approximation as used). Internal default values if None or < 0: 
+                
+                    - 200 for the FITC preconditioner 
+
+                    - 50 for the pivoted Cholesky decomposition preconditioner
 
         Example
         -------
@@ -5316,7 +5339,8 @@ class GPModel(object):
             ctypes.c_int(self.params["seed_rand_vec_trace"]),
             ctypes.c_int(self.params["fitc_piv_chol_preconditioner_rank"]),
             init_aux_pars_c,
-            ctypes.c_bool(self.params["estimate_aux_pars"])))
+            ctypes.c_bool(self.params["estimate_aux_pars"]),
+            self.params["estimate_cov_par_index"].ctypes.data_as(ctypes.POINTER(ctypes.c_int32))))
         return self
 
     def _get_optim_params(self):

@@ -720,6 +720,7 @@ GPBOOST_C_EXPORT SEXP GPB_REModelFree_R(
 * \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
 * \param init_aux_pars Initial values for values for aux_pars_ (e.g., shape parameter of gamma likelihood)
 * \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
+* \param estimate_cov_par_index If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, estimate_cov_par_index[i] is then bool and indicates which ones are estimated
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
@@ -750,7 +751,8 @@ GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
 	SEXP seed_rand_vec_trace,
 	SEXP piv_chol_rank,
 	SEXP init_aux_pars,
-	SEXP estimate_aux_pars
+	SEXP estimate_aux_pars,
+	SEXP estimate_cov_par_index
 );
 
 /*!

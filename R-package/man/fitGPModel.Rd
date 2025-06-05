@@ -44,7 +44,7 @@ The number of columns corresponds to the number of grouped (intercept) random ef
 \item{group_rand_coef_data}{A \code{vector} or \code{matrix} with numeric covariate data 
 for grouped random coefficients}
 
-\item{ind_effect_group_rand_coef}{A \code{vector} with integer indices that 
+\item{ind_effect_group_rand_coef}{A \code{vector} with \code{integer} indices that 
 indicate the corresponding categorical grouping variable (=columns) in 'group_data' for 
 every covariate in 'group_rand_coef_data'. Counting starts at 1.
 The length of this index vector must equal the number of covariates in 'group_rand_coef_data'.
@@ -257,6 +257,9 @@ fixed effects linear regression term (if there is one)}
     \item{estimate_aux_pars: \code{boolean} (default = TRUE). 
     If TRUE, additional parameters for non-Gaussian likelihoods 
     are also estimated (e.g., shape parameter of a gamma or negative_binomial likelihood) }
+    \item{estimate_cov_par_index: \code{vector} with \code{integer} (default = -1). 
+    If estimate_cov_par_index[1] >= 0, some covariance parameters might not be estimated, 
+    estimate_cov_par_index[i] is then bool and indicates which ones are estimated }            
     \item{cg_max_num_it: \code{integer} (default = 1000). 
     Maximal number of iterations for conjugate gradient algorithms }
     \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 

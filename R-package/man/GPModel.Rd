@@ -43,7 +43,7 @@ The number of columns corresponds to the number of grouped (intercept) random ef
 \item{group_rand_coef_data}{A \code{vector} or \code{matrix} with numeric covariate data 
 for grouped random coefficients}
 
-\item{ind_effect_group_rand_coef}{A \code{vector} with integer indices that 
+\item{ind_effect_group_rand_coef}{A \code{vector} with \code{integer} indices that 
 indicate the corresponding categorical grouping variable (=columns) in 'group_data' for 
 every covariate in 'group_rand_coef_data'. Counting starts at 1.
 The length of this index vector must equal the number of covariates in 'group_rand_coef_data'.

@@ -1089,12 +1089,6 @@ namespace GPBoost {
 			return((int)coords_.cols());
 		}
 
-		/*! \brief Dimension of spatial coordinates in for space-time models*/
-		int GetDimSpace() const {
-			CHECK(coord_saved_);
-			return(cov_function_->GetDimSpace(coords_));
-		}
-
 		/*!
 		* \brief Scale / transform coordinates for anisotropic covariance functions
 		* \param pars Vector with covariance parameters
@@ -1125,10 +1119,6 @@ namespace GPBoost {
 
 		bool IsSpaceTimeModel() const {
 			return(cov_function_->IsSpaceTimeModel());
-		}
-
-		bool IsARDModel() const {
-			return(cov_function_->IsARDModel());
 		}
 
 		/*!
@@ -1404,6 +1394,7 @@ namespace GPBoost {
 		* \param transf_scale If true, the derivative are calculated on the transformed scale otherwise on the original scale. Default = true
 		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale = false to transform back)
 		* \param is_symmmetric Set to true if dist and cov_mat are symmetric
+		* \param calc_grad_index Indicates for which parameters gradients are calculated (>0) and which not (<= 0)
 		*/
 		void CalcSigmaAndSigmaGradVecchia(const T_mat& dist,
 			const den_mat_t& coords,
@@ -1413,23 +1404,29 @@ namespace GPBoost {
 			bool calc_gradient,
 			bool transf_scale,
 			double nugget_var,
-			bool is_symmmetric) const {
+			bool is_symmmetric,
+			const std::vector<int>& calc_grad_index) const {
 			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
 			(*cov_function_).template CalculateCovMat<T_mat>(dist, coords, coords_pred, this->cov_pars_, cov_mat, is_symmmetric);
 			if (apply_tapering_ && !apply_tapering_manually_) {
 				(*cov_function_).template MultiplyWendlandCorrelationTaper<T_mat>(dist, cov_mat, is_symmmetric);
 			}
 			if (calc_gradient) {
-				//gradient wrt to variance parameter
-				cov_grad[0] = cov_mat;
-				if (!transf_scale) {
-					cov_grad[0] /= this->cov_pars_[0];
+				CHECK(calc_grad_index.size() == this->num_cov_par_);
+				if (calc_grad_index[0]) {
+					//gradient wrt to variance parameter
+					cov_grad[0] = cov_mat;
+					if (!transf_scale) {
+						cov_grad[0] /= this->cov_pars_[0];
+					}
 				}
 				if (cov_function_->cov_fct_type_ != "wendland") {
 					//gradient wrt to range parameters
 					for (int ipar = 1; ipar < this->num_cov_par_; ++ipar) {
-						(*cov_function_).template CalculateGradientCovMat<T_mat>(dist, coords, coords_pred, cov_mat, this->cov_pars_,
-							cov_grad[ipar], transf_scale, nugget_var, ipar - 1, is_symmmetric);
+						if (calc_grad_index[ipar]) {
+							(*cov_function_).template CalculateGradientCovMat<T_mat>(dist, coords, coords_pred, cov_mat, this->cov_pars_,
+								cov_grad[ipar], transf_scale, nugget_var, ipar - 1, is_symmmetric);
+						}
 					}
 				}
 			}

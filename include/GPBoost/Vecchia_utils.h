@@ -303,6 +303,7 @@ namespace GPBoost {
 	* \param save_distances_isotropic_cov_fct If true, distances among points and neighbors are saved for Vecchia approximations for isotropic covariance functions
 	* \param gp_approx Gaussian process approximation
 	* \param add_diagonal Vector of (additional) observation specific nugget / error variance added to the diagonal
+	* \param estimate_cov_par_index Indicates which parameters are estimated (>0) and which not (<= 0)
 	*/
 	void CalcCovFactorGradientVecchia(data_size_t num_re_cluster_i,
 		bool calc_cov_factor,
@@ -331,7 +332,8 @@ namespace GPBoost {
 		bool gauss_likelihood,
 		bool save_distances_isotropic_cov_fct,
 		string_t& gp_approx,
-		const double* add_diagonal);
+		const double* add_diagonal,
+		const std::vector<int>& estimate_cov_par_index);
 
 	/*!
 	* \brief Calculate predictions (conditional mean and covariance matrix) using the Vecchia approximation for the covariance matrix of the observable process when observed locations appear first in the ordering

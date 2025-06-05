@@ -30,14 +30,14 @@ namespace GPBoost {
 			const double* fixed_effects,
 			bool learn_cov_aux_pars,
 			const vec_t& cov_pars,
-			bool profile_out_marginal_variance,
+			bool profile_out_error_variance,
 			optim::algo_settings_t* settings,
 			string_t optimizer) {
 			re_model_templ_ = re_model_templ;
 			fixed_effects_ = fixed_effects;
 			learn_cov_aux_pars_ = learn_cov_aux_pars;
 			cov_pars_ = cov_pars;
-			profile_out_marginal_variance_ = profile_out_marginal_variance;
+			profile_out_error_variance_ = profile_out_error_variance;
 			settings_ = settings;
 			optimizer_ = optimizer;
 		}
@@ -45,7 +45,7 @@ namespace GPBoost {
 		const double* fixed_effects_;//Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
 		bool learn_cov_aux_pars_;//Indicates whether covariance parameters are optimized or not
 		vec_t cov_pars_;//vector of covariance parameters (only used in case the covariance parameters are not estimated)
-		bool profile_out_marginal_variance_;// If true, the error variance sigma is profiled out(= use closed - form expression for error / nugget variance)
+		bool profile_out_error_variance_;// If true, the error variance sigma is profiled out(= use closed - form expression for error / nugget variance)
 		optim::algo_settings_t* settings_;
 		string_t optimizer_;//optimizer name
 
@@ -64,11 +64,11 @@ namespace GPBoost {
 		OptDataOptimLib<T_mat, T_chol>* objfn_data = reinterpret_cast<OptDataOptimLib<T_mat, T_chol>*>(opt_data);
 		REModelTemplate<T_mat, T_chol>* re_model_templ_ = objfn_data->re_model_templ_;
 		double neg_log_likelihood = 9999999999;
-		bool gradient_contains_error_var = re_model_templ_->IsGaussLikelihood() && !(objfn_data->profile_out_marginal_variance_);//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
+		bool gradient_contains_error_var = re_model_templ_->IsGaussLikelihood() && !(objfn_data->profile_out_error_variance_);//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
 		bool has_covariates = re_model_templ_->HasCovariates();
 		bool should_print_trace = false;
 		bool should_redetermine_neighbors_vecchia = false;
-		if (gradient != nullptr) {//"hack" for printing nice logging information and redermininig neighbors for the Vecchia approximation
+		if (gradient != nullptr) {//"hack" for printing nice logging information and redetermining neighbors for the Vecchia approximation
 			if ((*gradient).size() == 3 || (*gradient).size() == 2) {
 				if ((*gradient)[0] >= -1.00000000002e30 && (*gradient)[0] <= -1e30 && (*gradient)[1] >= 1e30 && (*gradient)[1] <= 1.00000000002e30) {
 					should_print_trace = true;
@@ -85,7 +85,7 @@ namespace GPBoost {
 		int num_cov_pars_optim = 0, num_coef = 0, num_aux_pars = 0;
 		if (objfn_data->learn_cov_aux_pars_) {
 			num_cov_pars_optim = re_model_templ_->GetNumCovPar();
-			if (objfn_data->profile_out_marginal_variance_) {
+			if (objfn_data->profile_out_error_variance_) {
 				num_cov_pars_optim -= 1;
 			}
 			if (re_model_templ_->EstimateAuxPars()) {
@@ -101,7 +101,7 @@ namespace GPBoost {
 		const double* aux_pars_ptr = nullptr;
 		const double* fixed_effects_ptr = nullptr;
 		if (objfn_data->learn_cov_aux_pars_) {
-			if (objfn_data->profile_out_marginal_variance_) {
+			if (objfn_data->profile_out_error_variance_) {
 				cov_pars = vec_t(num_cov_pars_optim + 1);
 				cov_pars[0] = re_model_templ_->Sigma2();//nugget effect
 				cov_pars.segment(1, num_cov_pars_optim) = pars.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
@@ -161,7 +161,7 @@ namespace GPBoost {
 					re_model_templ_->SetAuxPars(aux_pars_ptr);
 				}
 				// Calculate objective function
-				if (objfn_data->profile_out_marginal_variance_) {
+				if (objfn_data->profile_out_error_variance_) {
 					if (objfn_data->learn_cov_aux_pars_) {
 						re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
 						cov_pars[0] = re_model_templ_->ProfileOutSigma2();
@@ -218,22 +218,22 @@ namespace GPBoost {
 		const double* fixed_effects_;//Externally provided fixed effects component of location parameter (only used for non-Gaussian likelihoods)
 		bool learn_cov_aux_pars_;//Indicates whether covariance and auxiliary parameters are optimized or not
 		vec_t cov_pars_;//vector of covariance parameters (only used in case the covariance parameters are not estimated)
-		bool profile_out_marginal_variance_;// If true, the error variance sigma is profiled out (= use closed-form expression for error / nugget variance)
+		bool profile_out_error_variance_;// If true, the error variance sigma is profiled out (= use closed-form expression for error / nugget variance)
 		bool profile_out_regression_coef_;// If true, the linear regression coefficients are profiled out (= use closed-form WLS expression)
 
 		EvalLLforLBFGSpp(REModelTemplate<T_mat, T_chol>* re_model_templ,
 			const double* fixed_effects,
 			bool learn_cov_aux_pars,
 			const vec_t& cov_pars,
-			bool profile_out_marginal_variance,
+			bool profile_out_error_variance,
 			bool profile_out_regression_coef) {
 			re_model_templ_ = re_model_templ;
 			fixed_effects_ = fixed_effects;
 			learn_cov_aux_pars_ = learn_cov_aux_pars;
 			cov_pars_ = cov_pars;
-			profile_out_marginal_variance_ = profile_out_marginal_variance;
+			profile_out_error_variance_ = profile_out_error_variance;
 			profile_out_regression_coef_ = profile_out_regression_coef;
-			if (profile_out_marginal_variance_) {
+			if (profile_out_error_variance_) {
 				CHECK(re_model_templ_->IsGaussLikelihood());
 			}
 			if (profile_out_regression_coef_) {
@@ -247,14 +247,14 @@ namespace GPBoost {
 			double neg_log_likelihood = 1e99;
 			vec_t cov_pars, beta, fixed_effects_vec, aux_pars;
 			const double* fixed_effects_ptr = nullptr;
-			bool gradient_contains_error_var = re_model_templ_->IsGaussLikelihood() && !profile_out_marginal_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
+			bool gradient_contains_error_var = re_model_templ_->IsGaussLikelihood() && !profile_out_error_variance_;//If true, the error variance parameter (=nugget effect) is also included in the gradient, otherwise not
 			bool estimate_coef_using_bfgs = re_model_templ_->HasCovariates() && !profile_out_regression_coef_;
 			bool estimate_coef_using_wls = re_model_templ_->HasCovariates() && profile_out_regression_coef_;
 			// Determine number of covariance and linear regression coefficient parameters
 			int num_cov_pars_optim = 0, num_coef = 0, num_aux_pars = 0;
 			if (learn_cov_aux_pars_) {
 				num_cov_pars_optim = re_model_templ_->GetNumCovPar();
-				if (profile_out_marginal_variance_) {
+				if (profile_out_error_variance_) {
 					num_cov_pars_optim -= 1;
 				}
 				if (re_model_templ_->EstimateAuxPars()) {
@@ -267,7 +267,7 @@ namespace GPBoost {
 			CHECK((int)pars.size() == num_cov_pars_optim + num_coef + num_aux_pars);
 			// Extract covariance parameters, regression coefficients, and additional likelihood parameters from pars vector
 			if (learn_cov_aux_pars_) {
-				if (profile_out_marginal_variance_) {
+				if (profile_out_error_variance_) {
 					cov_pars = vec_t(num_cov_pars_optim + 1);
 					cov_pars[0] = re_model_templ_->Sigma2();//nugget effect
 					cov_pars.segment(1, num_cov_pars_optim) = pars.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
@@ -300,7 +300,7 @@ namespace GPBoost {
 						fixed_effects_ptr = fixed_effects_vec.data();
 					}
 					if(learn_cov_aux_pars_) {
-						if (profile_out_marginal_variance_) {
+						if (profile_out_error_variance_) {
 							//calculate yTPsiInvy for profiling out the nugget variance below. Note that the nugget variance used here is irrelvant. The 'neg_log_likelihood' is recalculated below with the correct sigma2
 							if (estimate_coef_using_wls) {
 								re_model_templ_->EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_pars[0], neg_log_likelihood);
@@ -310,8 +310,8 @@ namespace GPBoost {
 							}
 							cov_pars[0] = re_model_templ_->ProfileOutSigma2();
 							re_model_templ_->EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_pars[0], neg_log_likelihood);
-						}//end profile_out_marginal_variance_
-						else {//!profile_out_marginal_variance_
+						}//end profile_out_error_variance_
+						else {//!profile_out_error_variance_
 							if (estimate_coef_using_wls) {
 								re_model_templ_->EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_pars[0], neg_log_likelihood);
 							}
@@ -379,14 +379,14 @@ namespace GPBoost {
 		* \brief Write the current values of profiled-out variables (if there are any such as nugget effects, regression coefficients) to their lag1 variables
 		*/
 		void SetLag1ProfiledOutVariables() {
-			re_model_templ_->SetLag1ProfiledOutVariables(profile_out_marginal_variance_, profile_out_regression_coef_);
+			re_model_templ_->SetLag1ProfiledOutVariables(profile_out_error_variance_, profile_out_regression_coef_);
 		}
 
 		/*!
 		* \brief Reset the profiled-out variables (if there are any such as nugget effects, regression coefficients) to their lag1 variables
 		*/
 		void ResetProfiledOutVariablesToLag1() {
-			re_model_templ_->ResetProfiledOutVariablesToLag1(profile_out_marginal_variance_, profile_out_regression_coef_);
+			re_model_templ_->ResetProfiledOutVariablesToLag1(profile_out_error_variance_, profile_out_regression_coef_);
 		}
 
 		/*!
@@ -414,6 +414,18 @@ namespace GPBoost {
 			return(learn_cov_aux_pars_);
 		}
 
+		bool IsGaussLikelihood() {
+			return(re_model_templ_->IsGaussLikelihood());
+		}
+
+		bool ProfileOutRegreCoef() {
+			return(re_model_templ_->IsGaussLikelihood() && re_model_templ_->HasCovariates() && profile_out_regression_coef_);
+		}
+
+		bool ProfileOutErrorVariance() {
+			return(re_model_templ_->IsGaussLikelihood() && profile_out_error_variance_);
+		}		
+
 		/*!
 		* \brief Print out trace information
 		* \param pars Current parameters
@@ -431,7 +443,7 @@ namespace GPBoost {
 			int num_cov_pars_optim = 0, num_coef = 0, num_aux_pars = 0;
 			if (learn_cov_aux_pars_) {
 				num_cov_pars_optim = re_model_templ_->GetNumCovPar();
-				if (profile_out_marginal_variance_) {
+				if (profile_out_error_variance_) {
 					num_cov_pars_optim -= 1;
 				}
 				if (re_model_templ_->EstimateAuxPars()) {
@@ -444,7 +456,7 @@ namespace GPBoost {
 			CHECK((int)pars.size() == num_cov_pars_optim + num_coef + num_aux_pars);
 			// Extract covariance parameters, regression coefficients, and additional likelihood parameters from pars vector
 			if (learn_cov_aux_pars_) {
-				if (profile_out_marginal_variance_) {
+				if (profile_out_error_variance_) {
 					cov_pars = vec_t(num_cov_pars_optim + 1);
 					cov_pars[0] = re_model_templ_->Sigma2();//nugget effect
 					cov_pars.segment(1, num_cov_pars_optim) = pars.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
@@ -489,7 +501,7 @@ namespace GPBoost {
 			int num_cov_pars_optim = 0, num_coef = 0, num_aux_pars = 0;
 			if (learn_cov_aux_pars_) {
 				num_cov_pars_optim = re_model_templ_->GetNumCovPar();
-				if (profile_out_marginal_variance_) {
+				if (profile_out_error_variance_) {
 					num_cov_pars_optim -= 1;
 				}
 				if (re_model_templ_->EstimateAuxPars()) {
@@ -535,7 +547,7 @@ namespace GPBoost {
 	* \param num_it[out] Number of iterations
 	* \param learn_cov_aux_pars If true, covariance parameters and additional likelihood parameters (aux_pars) are estimated, otherwise not
 	* \param optimizer Optimizer
-	* \param profile_out_marginal_variance If true, the error variance sigma is profiled out (=use closed-form expression for error / nugget variance)
+	* \param profile_out_error_variance If true, the error variance sigma is profiled out (=use closed-form expression for error / nugget variance)
 	* \param profile_out_regression_coef If true, the linear regression coefficients are profiled out (= use closed-form WLS expression). Applies only to lbfgs and Gaussian likelihood
 	* \param[out] neg_log_likelihood Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian likelihoods
 	* \param num_cov_par Number of covariance parameters
@@ -556,7 +568,7 @@ namespace GPBoost {
 		int& num_it,
 		bool learn_cov_aux_pars,
 		string_t optimizer,
-		bool profile_out_marginal_variance,
+		bool profile_out_error_variance,
 		bool profile_out_regression_coef,
 		double& neg_log_likelihood,
 		int num_cov_par,
@@ -582,7 +594,7 @@ namespace GPBoost {
 		int num_cov_pars_optim = 0, num_coef = 0, num_aux_pars = 0;
 		if (learn_cov_aux_pars) {
 			num_cov_pars_optim = num_cov_par;
-			if (profile_out_marginal_variance) {
+			if (profile_out_error_variance) {
 				num_cov_pars_optim = num_cov_par - 1;
 			}
 			if (re_model_templ->EstimateAuxPars()) {
@@ -595,7 +607,7 @@ namespace GPBoost {
 		// Initialization of parameters
 		vec_t pars_init(num_cov_pars_optim + num_coef + num_aux_pars);//order of parameters: 1. cov_pars, 2. coefs, 3. aux_pars
 		if (learn_cov_aux_pars) {
-			if (profile_out_marginal_variance) {
+			if (profile_out_error_variance) {
 				pars_init.segment(0, num_cov_pars_optim) = cov_pars.segment(1, num_cov_pars_optim).array().log().matrix();//exclude nugget and transform to log-scale
 			}
 			else {
@@ -614,7 +626,7 @@ namespace GPBoost {
 		optim::algo_settings_t settings;
 		settings.iter_max = max_iter;
 		OptDataOptimLib<T_mat, T_chol> opt_data = OptDataOptimLib<T_mat, T_chol>(re_model_templ, fixed_effects, learn_cov_aux_pars,
-			cov_pars.segment(0, num_cov_par), profile_out_marginal_variance, &settings, optimizer);
+			cov_pars.segment(0, num_cov_par), profile_out_error_variance, &settings, optimizer);
 		if (convergence_criterion == "relative_change_in_parameters") {
 			settings.rel_sol_change_tol = delta_rel_conv;
 			settings.rel_objfn_change_tol = 1e-20;
@@ -647,7 +659,7 @@ namespace GPBoost {
 			param_LBFGSpp.m = 6;
 			param_LBFGSpp.initial_step_factor = initial_step_factor;
 			EvalLLforLBFGSpp<T_mat, T_chol> ll_fun(re_model_templ, fixed_effects, learn_cov_aux_pars,
-				cov_pars.segment(0, num_cov_par), profile_out_marginal_variance, profile_out_regression_coef);
+				cov_pars.segment(0, num_cov_par), profile_out_error_variance, profile_out_regression_coef);
 			if (optimizer == "lbfgs") {
 				param_LBFGSpp.linesearch = 1;//LBFGS_LINESEARCH_BACKTRACKING_ARMIJO
 				LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(param_LBFGSpp);
@@ -666,14 +678,14 @@ namespace GPBoost {
 		if (optimizer != "lbfgs" && optimizer != "lbfgs_linesearch_nocedal_wright") {//only for optimizers from OptimLib
 			num_it = (int)settings.opt_iter;
 			neg_log_likelihood = settings.opt_fn_value;
-			if (profile_out_marginal_variance || profile_out_regression_coef) {
+			if (profile_out_error_variance || profile_out_regression_coef) {
 				vec_t* grad_dummy = nullptr;
 				EvalLLforOptimLib<T_mat, T_chol>(pars_init, grad_dummy, &opt_data);//re-evaluate log-likelihood to make sure that the profiled-out variables are correct
 			}
 		}
 		// Transform parameters back for export
 		if (learn_cov_aux_pars) {
-			if (profile_out_marginal_variance) {
+			if (profile_out_error_variance) {
 				cov_pars[0] = re_model_templ->Sigma2();
 				cov_pars.segment(1, num_cov_par - 1) = pars_init.segment(0, num_cov_pars_optim).array().exp().matrix();//back-transform to original scale
 			}

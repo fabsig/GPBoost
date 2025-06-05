@@ -1,4 +1,4 @@
-# Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
+# Copyright (c) 2020 - 2025 Fabio Sigrist. All rights reserved.
 # 
 # Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 
@@ -36,7 +36,7 @@
 #' The number of columns corresponds to the number of grouped (intercept) random effects
 #' @param group_rand_coef_data A \code{vector} or \code{matrix} with numeric covariate data 
 #' for grouped random coefficients
-#' @param ind_effect_group_rand_coef A \code{vector} with integer indices that 
+#' @param ind_effect_group_rand_coef A \code{vector} with \code{integer} indices that 
 #' indicate the corresponding categorical grouping variable (=columns) in 'group_data' for 
 #' every covariate in 'group_rand_coef_data'. Counting starts at 1.
 #' The length of this index vector must equal the number of covariates in 'group_rand_coef_data'.
@@ -259,6 +259,9 @@
 #'                \item{estimate_aux_pars: \code{boolean} (default = TRUE). 
 #'                If TRUE, additional parameters for non-Gaussian likelihoods 
 #'                are also estimated (e.g., shape parameter of a gamma or negative_binomial likelihood) }
+#'                \item{estimate_cov_par_index: \code{vector} with \code{integer} (default = -1). 
+#'                If estimate_cov_par_index[1] >= 0, some covariance parameters might not be estimated, 
+#'                estimate_cov_par_index[i] is then bool and indicates which ones are estimated }            
 #'                \item{cg_max_num_it: \code{integer} (default = 1000). 
 #'                Maximal number of iterations for conjugate gradient algorithms }
 #'                \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 
@@ -1110,6 +1113,7 @@ gpb.GPModel <- R6::R6Class(
         , private$params[["fitc_piv_chol_preconditioner_rank"]]
         , init_aux_pars
         , private$params[["estimate_aux_pars"]]
+        , private$params[["estimate_cov_par_index"]]
       )
       return(invisible(self))
     },
@@ -2178,7 +2182,8 @@ gpb.GPModel <- R6::R6Class(
                   reuse_rand_vec_trace = TRUE,
                   seed_rand_vec_trace = 1L,
                   fitc_piv_chol_preconditioner_rank = -1L, # default value is set in C++
-                  estimate_aux_pars = TRUE),
+                  estimate_aux_pars = TRUE,
+                  estimate_cov_par_index = -1L),
     num_sets_re = 1,
 
     # Finalize will free up the handles
@@ -2227,7 +2232,7 @@ gpb.GPModel <- R6::R6Class(
       integer_params <- c("maxit", "nesterov_schedule_version",
                           "momentum_offset", "cg_max_num_it", "cg_max_num_it_tridiag",
                           "num_rand_vec_trace", "seed_rand_vec_trace",
-                          "fitc_piv_chol_preconditioner_rank")
+                          "fitc_piv_chol_preconditioner_rank", "estimate_cov_par_index")
       character_params <- c("optimizer_cov", "convergence_criterion",
                             "optimizer_coef", "cg_preconditioner_type")
       logical_params <- c("use_nesterov_acc", "trace", "std_dev", 
@@ -2281,6 +2286,12 @@ gpb.GPModel <- R6::R6Class(
       }
       ## Update private$params
       for (param in names(params)) {
+        if (param == "estimate_cov_par_index") {
+          if (params[["estimate_cov_par_index"]][[1]] >= 0 & 
+              length(params[["estimate_cov_par_index"]]) != private$num_cov_pars) {
+            stop(paste0("GPModel: params['estimate_cov_par_index'] is no equal to the number of covariance parameters (", private$num_cov_pars,")"))
+          }
+        }
         if (param %in% numeric_params & !is.null(params[[param]])) {
           params[[param]] <- as.numeric(params[[param]])
         }

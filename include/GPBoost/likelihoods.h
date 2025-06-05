@@ -2,7 +2,7 @@
 * This file is part of GPBoost a C++ library for combining
 *   boosting with Gaussian process and mixed effects models
 *
-* Copyright (c) 2020 - 2025 Fabio Sigrist. All rights reserved.
+* Copyright (c) 2020 - 2025 Fabio Sigrist, Tim Gyger, and Pascal Kuendig. All rights reserved.
 *
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 *
@@ -3691,7 +3691,8 @@ namespace GPBoost {
 			vec_t& fixed_effect_grad,
 			double* aux_par_grad,
 			bool calc_mode,
-			bool call_for_std_dev_coef) {
+			bool call_for_std_dev_coef,
+			const std::vector<int>& estimate_cov_par_index) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * Sigma * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLStable(y_data, y_data_int, fixed_effects, Sigma, mll);
@@ -3735,30 +3736,36 @@ namespace GPBoost {
 				d_mll_d_mode = (0.5 * SigmaI_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array()).matrix();// gradient of approx. marginal likelihood wrt the mode
 			}
 			// Calculate gradient wrt covariance parameters
-			if (calc_cov_grad) {
+			bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
+			if (calc_cov_grad && some_cov_par_estimated) {
 				T_mat WI_plus_Sigma_inv;//WI_plus_Sigma_inv = ZtWZsqrt * L^T\(L\ZtWZsqrt) = ((ZtWZ)^-1 + Sigma)^-1 if use_Z_for_duplicates_ or Wsqrt * L^T\(L\Wsqrt) = (W^-1 + ZSigmaZt)^-1 if !use_Z_for_duplicates_
 				vec_t d_mode_d_par, SigmaDeriv_first_deriv_ll; //auxiliary variable for caclulating d_mode_d_par
 				int par_count = 0;
 				double explicit_derivative;
 				for (int j = 0; j < (int)re_comps_cluster_i.size(); ++j) {
 					for (int ipar = 0; ipar < re_comps_cluster_i[j]->NumCovPar(); ++ipar) {
-						std::shared_ptr<T_mat> SigmaDeriv = re_comps_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 1.);
+						std::shared_ptr<T_mat> SigmaDeriv;
+						if (estimate_cov_par_index[par_count] > 0 || ipar == 0) {
+							SigmaDeriv = re_comps_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 1.);
+						}
 						if (ipar == 0) {
 							WI_plus_Sigma_inv = *SigmaDeriv;
 							CalcLtLGivenSparsityPattern<T_mat>(L_inv_Wsqrt, WI_plus_Sigma_inv, true);
 							//TODO (low-prio): calculate WI_plus_Sigma_inv only once for all relevant non-zero entries as in Gaussian case (see 'CalcPsiInv')
 							//                  This is only relevant for multiple random effects and/or GPs
 						}
-						// Calculate explicit derivative of approx. mariginal log-likelihood
-						explicit_derivative = -0.5 * (double)(a_vec_.transpose() * (*SigmaDeriv) * a_vec_) +
-							0.5 * (WI_plus_Sigma_inv.cwiseProduct(*SigmaDeriv)).sum();
-						cov_grad[par_count] = explicit_derivative;
-						if (grad_information_wrt_mode_non_zero_) {
-							// Calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-							SigmaDeriv_first_deriv_ll = (*SigmaDeriv) * first_deriv_ll_;
-							d_mode_d_par = SigmaDeriv_first_deriv_ll;//derivative of mode wrt to a covariance parameter
-							d_mode_d_par -= ((*Sigma) * (L_inv_Wsqrt.transpose() * (L_inv_Wsqrt * SigmaDeriv_first_deriv_ll)));
-							cov_grad[par_count] += d_mll_d_mode.dot(d_mode_d_par);
+						if (estimate_cov_par_index[par_count] > 0) {
+							// Calculate explicit derivative of approx. mariginal log-likelihood
+							explicit_derivative = -0.5 * (double)(a_vec_.transpose() * (*SigmaDeriv) * a_vec_) +
+								0.5 * (WI_plus_Sigma_inv.cwiseProduct(*SigmaDeriv)).sum();
+							cov_grad[par_count] = explicit_derivative;
+							if (grad_information_wrt_mode_non_zero_) {
+								// Calculate implicit derivative (through mode) of approx. mariginal log-likelihood
+								SigmaDeriv_first_deriv_ll = (*SigmaDeriv) * first_deriv_ll_;
+								d_mode_d_par = SigmaDeriv_first_deriv_ll;//derivative of mode wrt to a covariance parameter
+								d_mode_d_par -= ((*Sigma) * (L_inv_Wsqrt.transpose() * (L_inv_Wsqrt * SigmaDeriv_first_deriv_ll)));
+								cov_grad[par_count] += d_mll_d_mode.dot(d_mode_d_par);
+							}
 						}
 						par_count++;
 					}
@@ -3861,7 +3868,8 @@ namespace GPBoost {
 			vec_t& fixed_effect_grad,
 			double* aux_par_grad,
 			bool calc_mode,
-			bool call_for_std_dev_coef) {
+			bool call_for_std_dev_coef,
+			const std::vector<int>& estimate_cov_par_index) {
 			int num_REs = (int)SigmaI.cols();//number of random effect realizations
 			int num_comps = (int)cum_num_rand_eff_cluster_i.size() - 1;//number of different random effect components
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
@@ -3965,45 +3973,48 @@ namespace GPBoost {
                     }
                 }
                 // calculate gradient wrt covariance parameters
-                if (calc_cov_grad) {
+				bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
+                if (calc_cov_grad && some_cov_par_estimated) {
                     vec_t SigmaI_mode = SigmaI * mode_;
                     double explicit_derivative;
                     sp_mat_t I_j(num_REs, num_REs);
                     for (int j = 0; j < num_comps; ++j) {
-                        // calculate explicit derivative of approx. mariginal log-likelihood
-                        std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);
-                        explicit_derivative = 0.;
+						if (estimate_cov_par_index[j] > 0) {
+							// calculate explicit derivative of approx. mariginal log-likelihood
+							std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);
+							explicit_derivative = 0.;
 #pragma omp parallel for schedule(static) reduction(+:explicit_derivative)
-                        for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
-                            triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
-                            explicit_derivative += SigmaI_mode[i] * mode_[i];
-                        }
-                        explicit_derivative *= -0.5;
-                        I_j.setFromTriplets(triplets.begin(), triplets.end());
-                        double cov_par_inv = SigmaI.coeff(cum_num_rand_eff_cluster_i[j], cum_num_rand_eff_cluster_i[j]);
-                        //Stochastic trace: tr((Sigma^(-1) + Z^T W Z)^(-1) dSigma^(-1)/dtheta_j)
-                        vec_t RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV = -cov_par_inv * ((SigmaI_plus_ZtWZ_inv_RV_.cwiseProduct(I_j * PI_RV)).colwise().sum()).transpose(); //old: -1. * ((SigmaI_plus_ZtWZ_inv_RV_.cwiseProduct((I_j * SigmaI.coeff(cum_num_rand_eff_cluster_i[j], cum_num_rand_eff_cluster_i[j])) * PI_RV)).colwise().sum()).transpose();
-                        double trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv = RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV.mean();
-                        if (cg_preconditioner_type_ == "ssor") {
-                            //Variance reduction
-                            //deterministic tr(D^(-1) dSigma^(-1)/dtheta_j)
-                            double tr_D_inv_SigmaI_deriv = -cov_par_inv * (P_SSOR_D_inv_.cwiseProduct(I_j.diagonal())).sum();
-                            //stochastic tr(P^(-1) dP/dtheta_j)
-                            den_mat_t neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV = cov_par_inv * (I_j * DI_L_plus_D_t_PI_RV);
-                            vec_t RVt_PI_P_deriv_PI_RV = -2. * ((PI_RV.cwiseProduct(neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV)).colwise().sum()).transpose();
-                            RVt_PI_P_deriv_PI_RV += ((DI_L_plus_D_t_PI_RV.cwiseProduct(neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV)).colwise().sum()).transpose();
-                            double tr_PI_P_deriv = RVt_PI_P_deriv_PI_RV.mean();
-                            //optimal c
-                            double c_opt;
-                            CalcOptimalC(RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV, RVt_PI_P_deriv_PI_RV, trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv, tr_PI_P_deriv, c_opt);
-                            trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv += c_opt * (tr_D_inv_SigmaI_deriv - tr_PI_P_deriv);
-                        }
-                        explicit_derivative += 0.5 * (trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv + cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);
-                        cov_grad[j] = explicit_derivative;
-                        if (grad_information_wrt_mode_non_zero_) {
-                            // calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-                            cov_grad[j] += SigmaI_plus_ZtWZ_inv_d_mll_d_mode.dot(I_j * (Zt * first_deriv_ll_));
-                        }
+							for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
+								triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
+								explicit_derivative += SigmaI_mode[i] * mode_[i];
+							}
+							explicit_derivative *= -0.5;
+							I_j.setFromTriplets(triplets.begin(), triplets.end());
+							double cov_par_inv = SigmaI.coeff(cum_num_rand_eff_cluster_i[j], cum_num_rand_eff_cluster_i[j]);
+							//Stochastic trace: tr((Sigma^(-1) + Z^T W Z)^(-1) dSigma^(-1)/dtheta_j)
+							vec_t RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV = -cov_par_inv * ((SigmaI_plus_ZtWZ_inv_RV_.cwiseProduct(I_j * PI_RV)).colwise().sum()).transpose(); //old: -1. * ((SigmaI_plus_ZtWZ_inv_RV_.cwiseProduct((I_j * SigmaI.coeff(cum_num_rand_eff_cluster_i[j], cum_num_rand_eff_cluster_i[j])) * PI_RV)).colwise().sum()).transpose();
+							double trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv = RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV.mean();
+							if (cg_preconditioner_type_ == "ssor") {
+								//Variance reduction
+								//deterministic tr(D^(-1) dSigma^(-1)/dtheta_j)
+								double tr_D_inv_SigmaI_deriv = -cov_par_inv * (P_SSOR_D_inv_.cwiseProduct(I_j.diagonal())).sum();
+								//stochastic tr(P^(-1) dP/dtheta_j)
+								den_mat_t neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV = cov_par_inv * (I_j * DI_L_plus_D_t_PI_RV);
+								vec_t RVt_PI_P_deriv_PI_RV = -2. * ((PI_RV.cwiseProduct(neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV)).colwise().sum()).transpose();
+								RVt_PI_P_deriv_PI_RV += ((DI_L_plus_D_t_PI_RV.cwiseProduct(neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV)).colwise().sum()).transpose();
+								double tr_PI_P_deriv = RVt_PI_P_deriv_PI_RV.mean();
+								//optimal c
+								double c_opt;
+								CalcOptimalC(RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV, RVt_PI_P_deriv_PI_RV, trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv, tr_PI_P_deriv, c_opt);
+								trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv += c_opt * (tr_D_inv_SigmaI_deriv - tr_PI_P_deriv);
+							}
+							explicit_derivative += 0.5 * (trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv + cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);
+							cov_grad[j] = explicit_derivative;
+							if (grad_information_wrt_mode_non_zero_) {
+								// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
+								cov_grad[j] += SigmaI_plus_ZtWZ_inv_d_mll_d_mode.dot(I_j * (Zt * first_deriv_ll_));
+							}
+						}
                     }
                 }//end calc_cov_grad
                 // calculate gradient wrt fixed effects
@@ -4084,7 +4095,8 @@ namespace GPBoost {
 				}
 			}
 			// calculate gradient wrt covariance parameters
-			if (calc_cov_grad) {
+			bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
+			if (calc_cov_grad && some_cov_par_estimated) {
 				sp_mat_t ZtWZ = Zt * information_ll_.asDiagonal() * Z;
 				vec_t d_mode_d_par;//derivative of mode wrt to a covariance parameter
 				vec_t v_aux;//auxiliary variable for caclulating d_mode_d_par
@@ -4093,25 +4105,27 @@ namespace GPBoost {
 				sp_mat_t I_j(num_REs, num_REs);//Diagonal matrix with 1 on the diagonal for all random effects of component j and 0's otherwise
 				sp_mat_t I_j_ZtWZ;
 				for (int j = 0; j < num_comps; ++j) {
-					// calculate explicit derivative of approx. mariginal log-likelihood
-					std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);//for constructing I_j
-					explicit_derivative = 0.;
+					if (estimate_cov_par_index[j] > 0) {
+						// calculate explicit derivative of approx. mariginal log-likelihood
+						std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);//for constructing I_j
+						explicit_derivative = 0.;
 #pragma omp parallel for schedule(static) reduction(+:explicit_derivative)
-					for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
-						triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
-						explicit_derivative += SigmaI_mode[i] * mode_[i];
-					}
-					explicit_derivative *= -0.5;
-					I_j.setFromTriplets(triplets.begin(), triplets.end());
-					I_j_ZtWZ = I_j * ZtWZ;
-					SigmaI_plus_ZtWZ_inv = I_j_ZtWZ;
-					CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
-					explicit_derivative += 0.5 * (SigmaI_plus_ZtWZ_inv.cwiseProduct(I_j_ZtWZ)).sum();
-					cov_grad[j] = explicit_derivative;
-					if (grad_information_wrt_mode_non_zero_) {
-						// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-						d_mode_d_par = L_inv.transpose() * (L_inv * (I_j * (Zt * first_deriv_ll_)));
-						cov_grad[j] += d_mll_d_mode.dot(d_mode_d_par);
+						for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
+							triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
+							explicit_derivative += SigmaI_mode[i] * mode_[i];
+						}
+						explicit_derivative *= -0.5;
+						I_j.setFromTriplets(triplets.begin(), triplets.end());
+						I_j_ZtWZ = I_j * ZtWZ;
+						SigmaI_plus_ZtWZ_inv = I_j_ZtWZ;
+						CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
+						explicit_derivative += 0.5 * (SigmaI_plus_ZtWZ_inv.cwiseProduct(I_j_ZtWZ)).sum();
+						cov_grad[j] = explicit_derivative;
+						if (grad_information_wrt_mode_non_zero_) {
+							// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
+							d_mode_d_par = L_inv.transpose() * (L_inv * (I_j * (Zt * first_deriv_ll_)));
+							cov_grad[j] += d_mll_d_mode.dot(d_mode_d_par);
+						}
 					}
 				}
 			}//end calc_cov_grad
@@ -4188,7 +4202,8 @@ namespace GPBoost {
 			vec_t& fixed_effect_grad,
 			double* aux_par_grad,
 			bool calc_mode,
-			bool call_for_std_dev_coef) {
+			bool call_for_std_dev_coef,
+			const std::vector<int>& estimate_cov_par_index) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, num_data,
@@ -4217,7 +4232,7 @@ namespace GPBoost {
 				d_mll_d_mode.array() /= 2. * diag_SigmaI_plus_ZtWZ_.array();
 			}
 			// calculate gradient wrt covariance parameters
-			if (calc_cov_grad) {
+			if (calc_cov_grad && estimate_cov_par_index[0]) {
 				vec_t diag_ZtWZ(num_re_);
 				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_.data(), diag_ZtWZ.data(), true);
 				double explicit_derivative = -0.5 * (mode_.array() * mode_.array()).sum() / sigma2 +
@@ -4300,7 +4315,6 @@ namespace GPBoost {
 		* \param[out] fixed_effect_grad Gradient of approximate marginal log-likelihood wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
 		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
-		* \param num_comps_total Total number of random effect components ( = number of GPs)
 		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxFSVA(const double* y_data,
@@ -4330,7 +4344,8 @@ namespace GPBoost {
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_preconditioner_cluster_i,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_preconditioner_cluster_i,
 			const den_mat_t chol_ip_cross_cov_preconditioner,
-			const chol_den_mat_t chol_fact_sigma_ip_preconditioner) {
+			const chol_den_mat_t chol_fact_sigma_ip_preconditioner,
+			const std::vector<int>& estimate_cov_par_index) {
 			const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 			den_mat_t sigma_ip = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
 			int num_ip = (int)(sigma_ip.rows());
@@ -4380,6 +4395,7 @@ namespace GPBoost {
 					W_deriv_rep = deriv_information_diag_loc_par.replicate(1, num_rand_vec_trace_);
 				}
 				vec_t diag_WI = information_ll_.cwiseInverse();
+				bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
 				if (cg_preconditioner_type_ == "fitc") {
 					const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
 					// P^-1 rand_vec
@@ -4428,100 +4444,102 @@ namespace GPBoost {
 						}
 					}
 					// Calculate gradient wrt covariance parameters
-					if (calc_cov_grad) {
+					if (calc_cov_grad && some_cov_par_estimated) {
 						sp_mat_rm_t SigmaI_deriv_rm, Bt_Dinv_Bgrad_rm, B_t_D_inv_D_grad_D_inv_B_rm;
 						double explicit_derivative, d_log_det_Sigma_W_plus_I_d_cov_pars;
 						int num_par = (int)B_grad.size();
 						den_mat_t sigma_ip_inv_sigma_cross_cov_preconditioner = chol_fact_sigma_ip_preconditioner.solve((*cross_cov_preconditioner).transpose());
 						den_mat_t sigma_ip_inv_cross_cov_preconditioner_PI_Z = sigma_ip_inv_sigma_cross_cov_preconditioner * PI_Z;
 						den_mat_t sigma_ip_inv_cross_cov_PI_Z = sigma_ip_inv_cross_cov_T_cluster_i * PI_Z;
+						CHECK(re_comps_ip_cluster_i.size() == 1);
 						for (int j = 0; j < (int)re_comps_ip_cluster_i.size(); ++j) {
 							for (int ipar = 0; ipar < num_par; ++ipar) {
-								std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
-								den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
-								//if (num_comps_total == 1 && ipar == 0) {
-								//	SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
-								//}
-								//else {
-								SigmaI_deriv_rm = sp_mat_rm_t(B_grad[ipar].transpose()) * B_t_D_inv_rm_.transpose();
-								Bt_Dinv_Bgrad_rm = SigmaI_deriv_rm.transpose();
-								B_t_D_inv_D_grad_D_inv_B_rm = B_t_D_inv_rm_ * sp_mat_rm_t(D_grad[ipar]) * B_t_D_inv_rm_.transpose();
-								SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - B_t_D_inv_D_grad_D_inv_B_rm;
-								Bt_Dinv_Bgrad_rm.resize(0, 0);
-								//}
-								// Derivative of Woodbury matrix
-								den_mat_t sigma_woodbury_grad = sigma_ip_grad;
-								den_mat_t SigmaI_deriv_rm_cross_cov(dim_mode_, num_ip);
+								if (estimate_cov_par_index[ipar] > 0) {
+									std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
+									den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
+									if (ipar == 0) {
+										SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
+									}
+									else {
+										SigmaI_deriv_rm = sp_mat_rm_t(B_grad[ipar].transpose()) * B_t_D_inv_rm_.transpose();
+										Bt_Dinv_Bgrad_rm = SigmaI_deriv_rm.transpose();
+										B_t_D_inv_D_grad_D_inv_B_rm = B_t_D_inv_rm_ * sp_mat_rm_t(D_grad[ipar]) * B_t_D_inv_rm_.transpose();
+										SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - B_t_D_inv_D_grad_D_inv_B_rm;
+										Bt_Dinv_Bgrad_rm.resize(0, 0);
+									}
+									// Derivative of Woodbury matrix
+									den_mat_t sigma_woodbury_grad = sigma_ip_grad;
+									den_mat_t SigmaI_deriv_rm_cross_cov(dim_mode_, num_ip);
 #pragma omp parallel for schedule(static)  
-								for (int ii = 0; ii < num_ip; ii++) {
-									SigmaI_deriv_rm_cross_cov.col(ii) = SigmaI_deriv_rm * (*cross_cov).col(ii);
-								}
-								sigma_woodbury_grad += (*cross_cov).transpose() * SigmaI_deriv_rm_cross_cov;
-								den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (*cross_cov_grad);
-								sigma_woodbury_grad += cross_cov_Bt_D_inv_B_cross_cov_grad + cross_cov_Bt_D_inv_B_cross_cov_grad.transpose();
+									for (int ii = 0; ii < num_ip; ii++) {
+										SigmaI_deriv_rm_cross_cov.col(ii) = SigmaI_deriv_rm * (*cross_cov).col(ii);
+									}
+									sigma_woodbury_grad += (*cross_cov).transpose() * SigmaI_deriv_rm_cross_cov;
+									den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (*cross_cov_grad);
+									sigma_woodbury_grad += cross_cov_Bt_D_inv_B_cross_cov_grad + cross_cov_Bt_D_inv_B_cross_cov_grad.transpose();
 
-								vec_t SigmaI_deriv_mode_part = SigmaI_deriv_rm * mode_;
-								vec_t SigmaI_mode = SigmaI_rm * mode_;
-								SigmaI_deriv_mode = SigmaI_deriv_mode_part - SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_deriv_mode_part)) -
-									SigmaI_deriv_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
-									SigmaI_rm * ((*cross_cov_grad) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
-									SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov_grad).transpose() * SigmaI_mode)) +
-									SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve(sigma_woodbury_grad * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)));
-								explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode));
-								den_mat_t PP_deriv_sample_vec = (*cross_cov_grad) * sigma_ip_inv_cross_cov_PI_Z + sigma_ip_inv_cross_cov_T_cluster_i.transpose() * ((*cross_cov_grad).transpose() * PI_Z) -
-									sigma_ip_inv_cross_cov_T_cluster_i.transpose() * (sigma_ip_grad * sigma_ip_inv_cross_cov_PI_Z);
+									vec_t SigmaI_deriv_mode_part = SigmaI_deriv_rm * mode_;
+									vec_t SigmaI_mode = SigmaI_rm * mode_;
+									SigmaI_deriv_mode = SigmaI_deriv_mode_part - SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_deriv_mode_part)) -
+										SigmaI_deriv_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
+										SigmaI_rm * ((*cross_cov_grad) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
+										SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov_grad).transpose() * SigmaI_mode)) +
+										SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve(sigma_woodbury_grad * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)));
+									explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode));
+									den_mat_t PP_deriv_sample_vec = (*cross_cov_grad) * sigma_ip_inv_cross_cov_PI_Z + sigma_ip_inv_cross_cov_T_cluster_i.transpose() * ((*cross_cov_grad).transpose() * PI_Z) -
+										sigma_ip_inv_cross_cov_T_cluster_i.transpose() * (sigma_ip_grad * sigma_ip_inv_cross_cov_PI_Z);
 
-								den_mat_t SigmaI_deriv_sample_vec = PP_deriv_sample_vec;
+									den_mat_t SigmaI_deriv_sample_vec = PP_deriv_sample_vec;
 #pragma omp parallel for schedule(static)  
-								for (int ii = 0; ii < num_rand_vec_trace_; ii++) {
-									SigmaI_deriv_sample_vec.col(ii) -= D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(SigmaI_deriv_rm * D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(PI_Z.col(ii)))));
-								}
-								vec_t sample_Sigma = (SigmaI_plus_W_inv_Z_.cwiseProduct(SigmaI_deriv_sample_vec)).colwise().sum();
-								double stoch_tr = sample_Sigma.mean();
-								d_log_det_Sigma_W_plus_I_d_cov_pars = stoch_tr;
+									for (int ii = 0; ii < num_rand_vec_trace_; ii++) {
+										SigmaI_deriv_sample_vec.col(ii) -= D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(SigmaI_deriv_rm * D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(PI_Z.col(ii)))));
+									}
+									vec_t sample_Sigma = (SigmaI_plus_W_inv_Z_.cwiseProduct(SigmaI_deriv_sample_vec)).colwise().sum();
+									double stoch_tr = sample_Sigma.mean();
+									d_log_det_Sigma_W_plus_I_d_cov_pars = stoch_tr;
 
-
-								std::shared_ptr<den_mat_t>  cross_cov_preconditioner_grad = re_comps_cross_cov_preconditioner_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
-								den_mat_t sigma_ip_preconditioner_grad = *(re_comps_ip_preconditioner_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
-								// Variance reduction
-								vec_t D_grad_diagonal = D_grad[ipar].diagonal();
-								vec_t D_diagonal = D_inv_rm_.diagonal().cwiseInverse();
-								den_mat_t P_grad_PI_Z = (*cross_cov_preconditioner_grad) * sigma_ip_inv_cross_cov_preconditioner_PI_Z +
-									sigma_ip_inv_sigma_cross_cov_preconditioner.transpose() * ((*cross_cov_preconditioner_grad).transpose() * PI_Z) -
-									sigma_ip_inv_sigma_cross_cov_preconditioner.transpose() * (sigma_ip_preconditioner_grad * sigma_ip_inv_cross_cov_preconditioner_PI_Z);
-								vec_t diagonal_approx_preconditioner_grad_ = vec_t::Zero(dim_mode_);
-								diagonal_approx_preconditioner_grad_.array() += sigma_ip_preconditioner_grad.coeffRef(0, 0);
-								den_mat_t sigma_ip_grad_inv_sigma_cross_cov_preconditioner = sigma_ip_preconditioner_grad * sigma_ip_inv_sigma_cross_cov_preconditioner;
+									std::shared_ptr<den_mat_t>  cross_cov_preconditioner_grad = re_comps_cross_cov_preconditioner_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
+									den_mat_t sigma_ip_preconditioner_grad = *(re_comps_ip_preconditioner_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
+									// Variance reduction
+									vec_t D_grad_diagonal = D_grad[ipar].diagonal();
+									vec_t D_diagonal = D_inv_rm_.diagonal().cwiseInverse();
+									den_mat_t P_grad_PI_Z = (*cross_cov_preconditioner_grad) * sigma_ip_inv_cross_cov_preconditioner_PI_Z +
+										sigma_ip_inv_sigma_cross_cov_preconditioner.transpose() * ((*cross_cov_preconditioner_grad).transpose() * PI_Z) -
+										sigma_ip_inv_sigma_cross_cov_preconditioner.transpose() * (sigma_ip_preconditioner_grad * sigma_ip_inv_cross_cov_preconditioner_PI_Z);
+									vec_t diagonal_approx_preconditioner_grad_ = vec_t::Zero(dim_mode_);
+									diagonal_approx_preconditioner_grad_.array() += sigma_ip_preconditioner_grad.coeffRef(0, 0);
+									den_mat_t sigma_ip_grad_inv_sigma_cross_cov_preconditioner = sigma_ip_preconditioner_grad * sigma_ip_inv_sigma_cross_cov_preconditioner;
 #pragma omp parallel for schedule(static)
-								for (int ii = 0; ii < dim_mode_; ++ii) {
-									diagonal_approx_preconditioner_grad_[ii] -= 2 * sigma_ip_inv_sigma_cross_cov_preconditioner.col(ii).dot((*cross_cov_preconditioner_grad).row(ii))
-										- sigma_ip_inv_sigma_cross_cov_preconditioner.col(ii).dot(sigma_ip_grad_inv_sigma_cross_cov_preconditioner.col(ii));
-								}
-								P_grad_PI_Z += diagonal_approx_preconditioner_grad_.asDiagonal() * PI_Z;
-								double tr_PI_P_grad = (diagonal_approx_preconditioner_grad_.array() * diagonal_approx_inv_preconditioner_.array()).sum();
-								tr_PI_P_grad -= (chol_fact_sigma_ip_preconditioner.solve(sigma_ip_preconditioner_grad)).trace();
-								// Derivative of Woodbury matrix
-								den_mat_t sigma_woodbury_grad_preconditioner = sigma_ip_preconditioner_grad;
-								den_mat_t D_inv_cross_cov = diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner);
-								den_mat_t cross_cov_grad_D_inv_cross_cov = (*cross_cov_preconditioner_grad).transpose() * D_inv_cross_cov;
-								sigma_woodbury_grad_preconditioner += cross_cov_grad_D_inv_cross_cov + cross_cov_grad_D_inv_cross_cov.transpose();
-								sigma_woodbury_grad_preconditioner -= D_inv_cross_cov.transpose() * (diagonal_approx_preconditioner_grad_.asDiagonal() * D_inv_cross_cov);
-								tr_PI_P_grad += (chol_fact_woodbury_preconditioner_.solve(sigma_woodbury_grad_preconditioner)).trace();
-								vec_t sample_P = (PI_Z.cwiseProduct(P_grad_PI_Z)).colwise().sum();
-								CalcOptimalC(sample_Sigma, sample_P, stoch_tr, tr_PI_P_grad, c_opt);
-								d_log_det_Sigma_W_plus_I_d_cov_pars -= c_opt * (sample_P.mean() - tr_PI_P_grad);
+									for (int ii = 0; ii < dim_mode_; ++ii) {
+										diagonal_approx_preconditioner_grad_[ii] -= 2 * sigma_ip_inv_sigma_cross_cov_preconditioner.col(ii).dot((*cross_cov_preconditioner_grad).row(ii))
+											- sigma_ip_inv_sigma_cross_cov_preconditioner.col(ii).dot(sigma_ip_grad_inv_sigma_cross_cov_preconditioner.col(ii));
+									}
+									P_grad_PI_Z += diagonal_approx_preconditioner_grad_.asDiagonal() * PI_Z;
+									double tr_PI_P_grad = (diagonal_approx_preconditioner_grad_.array() * diagonal_approx_inv_preconditioner_.array()).sum();
+									tr_PI_P_grad -= (chol_fact_sigma_ip_preconditioner.solve(sigma_ip_preconditioner_grad)).trace();
+									// Derivative of Woodbury matrix
+									den_mat_t sigma_woodbury_grad_preconditioner = sigma_ip_preconditioner_grad;
+									den_mat_t D_inv_cross_cov = diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner);
+									den_mat_t cross_cov_grad_D_inv_cross_cov = (*cross_cov_preconditioner_grad).transpose() * D_inv_cross_cov;
+									sigma_woodbury_grad_preconditioner += cross_cov_grad_D_inv_cross_cov + cross_cov_grad_D_inv_cross_cov.transpose();
+									sigma_woodbury_grad_preconditioner -= D_inv_cross_cov.transpose() * (diagonal_approx_preconditioner_grad_.asDiagonal() * D_inv_cross_cov);
+									tr_PI_P_grad += (chol_fact_woodbury_preconditioner_.solve(sigma_woodbury_grad_preconditioner)).trace();
+									vec_t sample_P = (PI_Z.cwiseProduct(P_grad_PI_Z)).colwise().sum();
+									CalcOptimalC(sample_Sigma, sample_P, stoch_tr, tr_PI_P_grad, c_opt);
+									d_log_det_Sigma_W_plus_I_d_cov_pars -= c_opt * (sample_P.mean() - tr_PI_P_grad);
 
-								//Log::REInfo("tr final %g", d_log_det_Sigma_W_plus_I_d_cov_pars);
-								explicit_derivative += 0.5 * d_log_det_Sigma_W_plus_I_d_cov_pars;
-								//Log::REInfo("explicit_derivative %g", explicit_derivative);
-								cov_grad[ipar] = explicit_derivative;
-								if (grad_information_wrt_mode_non_zero_) {
-									cov_grad[ipar] -= SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode);
-								}
-								//Log::REInfo("SigmaI_plus_W_inv_d_mll_d_mode %g", SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode));
-							}
-						}
-					}
+									//Log::REInfo("tr final %g", d_log_det_Sigma_W_plus_I_d_cov_pars);
+									explicit_derivative += 0.5 * d_log_det_Sigma_W_plus_I_d_cov_pars;
+									//Log::REInfo("explicit_derivative %g", explicit_derivative);
+									cov_grad[ipar] = explicit_derivative;
+									if (grad_information_wrt_mode_non_zero_) {
+										cov_grad[ipar] -= SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode);
+									}
+									//Log::REInfo("SigmaI_plus_W_inv_d_mll_d_mode %g", SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode));
+								}//end estimate_cov_par_index[ipar] > 0
+							}//end loop ipar
+						}//end loop j
+					}//end calc_cov_grad
 					//Calculate gradient wrt fixed effects
 					vec_t SigmaI_plus_W_inv_diag;
 					if (grad_information_wrt_mode_non_zero_ && ((use_Z_for_duplicates_ && calc_F_grad) || calc_aux_par_grad)) {
@@ -4630,8 +4648,8 @@ namespace GPBoost {
 						}
 						SetGradAuxParsNotEstimated(aux_par_grad);
 					}//end calc_aux_par_grad
-				}
-				else {
+				}//end cg_preconditioner_type_ == "fitc"
+				else {//cg_preconditioner_type_ != "fitc"
 					if (cg_preconditioner_type_ == "vifdu") {
 						den_mat_t W_D_inv_inv_B_invt_rand_vec_trace_I(dim_mode_, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
@@ -4696,146 +4714,149 @@ namespace GPBoost {
 						}
 					}
 					// Calculate gradient wrt covariance parameters
-					if (calc_cov_grad) {
+					if (calc_cov_grad && some_cov_par_estimated) {
 						sp_mat_rm_t SigmaI_deriv_rm, Bt_Dinv_Bgrad_rm, B_t_D_inv_D_grad_D_inv_B_rm;
 						double explicit_derivative, d_log_det_Sigma_W_plus_I_d_cov_pars;
 						int num_par = (int)B_grad.size();
+						CHECK(re_comps_ip_cluster_i.size() == 1);
 						for (int j = 0; j < (int)re_comps_ip_cluster_i.size(); ++j) {
 							for (int ipar = 0; ipar < num_par; ++ipar) {
-								std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
-								den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
-								den_mat_t sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
-								//if (num_comps_total == 1 && ipar == 0) {
-								//	SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
-								//}
-								//else {
-								SigmaI_deriv_rm = sp_mat_rm_t(B_grad[ipar].transpose()) * B_t_D_inv_rm_.transpose();
-								Bt_Dinv_Bgrad_rm = SigmaI_deriv_rm.transpose();
-								B_t_D_inv_D_grad_D_inv_B_rm = B_t_D_inv_rm_ * sp_mat_rm_t(D_grad[ipar]) * B_t_D_inv_rm_.transpose();
-								SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - B_t_D_inv_D_grad_D_inv_B_rm;
-								Bt_Dinv_Bgrad_rm.resize(0, 0);
-								//}
-								// Derivative of Woodbury matrix
-								den_mat_t sigma_woodbury_grad = sigma_ip_grad;
-								den_mat_t SigmaI_deriv_rm_cross_cov(dim_mode_, num_ip);
+								if (estimate_cov_par_index[ipar] > 0) {
+									std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
+									den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
+									den_mat_t sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
+									if (ipar == 0) {
+										SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
+									}
+									else {
+										SigmaI_deriv_rm = sp_mat_rm_t(B_grad[ipar].transpose()) * B_t_D_inv_rm_.transpose();
+										Bt_Dinv_Bgrad_rm = SigmaI_deriv_rm.transpose();
+										B_t_D_inv_D_grad_D_inv_B_rm = B_t_D_inv_rm_ * sp_mat_rm_t(D_grad[ipar]) * B_t_D_inv_rm_.transpose();
+										SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - B_t_D_inv_D_grad_D_inv_B_rm;
+										Bt_Dinv_Bgrad_rm.resize(0, 0);
+									}
+									// Derivative of Woodbury matrix
+									den_mat_t sigma_woodbury_grad = sigma_ip_grad;
+									den_mat_t SigmaI_deriv_rm_cross_cov(dim_mode_, num_ip);
 #pragma omp parallel for schedule(static)  
-								for (int ii = 0; ii < num_ip; ii++) {
-									SigmaI_deriv_rm_cross_cov.col(ii) = SigmaI_deriv_rm * (*cross_cov).col(ii);
-								}
-								sigma_woodbury_grad += (*cross_cov).transpose() * SigmaI_deriv_rm_cross_cov;
-								den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (*cross_cov_grad);
-								sigma_woodbury_grad += cross_cov_Bt_D_inv_B_cross_cov_grad + cross_cov_Bt_D_inv_B_cross_cov_grad.transpose();
+									for (int ii = 0; ii < num_ip; ii++) {
+										SigmaI_deriv_rm_cross_cov.col(ii) = SigmaI_deriv_rm * (*cross_cov).col(ii);
+									}
+									sigma_woodbury_grad += (*cross_cov).transpose() * SigmaI_deriv_rm_cross_cov;
+									den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (*cross_cov_grad);
+									sigma_woodbury_grad += cross_cov_Bt_D_inv_B_cross_cov_grad + cross_cov_Bt_D_inv_B_cross_cov_grad.transpose();
 
-								vec_t SigmaI_deriv_mode_part = SigmaI_deriv_rm * mode_;
-								vec_t SigmaI_mode = SigmaI_rm * mode_;
-								SigmaI_deriv_mode = SigmaI_deriv_mode_part - SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_deriv_mode_part)) -
-									SigmaI_deriv_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
-									SigmaI_rm * ((*cross_cov_grad) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
-									SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov_grad).transpose() * SigmaI_mode)) +
-									SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve(sigma_woodbury_grad * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)));
-								explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode));
-								d_log_det_Sigma_W_plus_I_d_cov_pars = 0;
-								//if (num_comps_total == 1 && ipar == 0) {
-								//	d_log_det_Sigma_W_plus_I_d_cov_pars += dim_mode_;
-								//}
-								//else {
-								d_log_det_Sigma_W_plus_I_d_cov_pars += (D_inv.diagonal().array() * D_grad[ipar].diagonal().array()).sum();
-								//}
-								d_log_det_Sigma_W_plus_I_d_cov_pars -= sigma_ip_inv_sigma_ip_grad.trace();
-								d_log_det_Sigma_W_plus_I_d_cov_pars += (chol_fact_sigma_woodbury.solve(sigma_woodbury_grad)).trace();
-								den_mat_t SigmaI_deriv_sample_vec_part(dim_mode_, num_rand_vec_trace_),
-									SigmaI_sample_vec(dim_mode_, num_rand_vec_trace_), SigmaI_deriv_sample_vec(dim_mode_, num_rand_vec_trace_);
-								den_mat_t sample_vec_final;
-								if (cg_preconditioner_type_ == "vifdu") {
-									sample_vec_final = PI_Z;
-								}
-								else {
-									sample_vec_final = rand_vec_trace_I_;
-								}
-#pragma omp parallel for schedule(static)   
-								for (int i = 0; i < num_rand_vec_trace_; ++i) {
-									SigmaI_deriv_sample_vec_part.col(i) = SigmaI_deriv_rm * sample_vec_final.col(i);
-								}
-#pragma omp parallel for schedule(static)   
-								for (int i = 0; i < num_rand_vec_trace_; ++i) {
-									SigmaI_sample_vec.col(i) = SigmaI_rm * sample_vec_final.col(i);
-								}
-#pragma omp parallel for schedule(static)   
-								for (int i = 0; i < num_rand_vec_trace_; ++i) {
-									SigmaI_deriv_sample_vec.col(i) = SigmaI_deriv_sample_vec_part.col(i) - SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_deriv_sample_vec_part.col(i))) -
-										SigmaI_deriv_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_sample_vec.col(i))) -
-										SigmaI_rm * ((*cross_cov_grad) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_sample_vec.col(i))) -
-										SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov_grad).transpose() * SigmaI_sample_vec.col(i))) +
-										SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve(sigma_woodbury_grad * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_sample_vec.col(i))));
-								}
-								vec_t sample_Sigma = (SigmaI_plus_W_inv_Z_.cwiseProduct(SigmaI_deriv_sample_vec)).colwise().sum();
-								double stoch_tr = sample_Sigma.mean();
-								d_log_det_Sigma_W_plus_I_d_cov_pars += stoch_tr;
-								//Log::REInfo("stoch_tr %g", stoch_tr);
-								//Log::REInfo("d_log_det_Sigma_W_plus_I_d_cov_pars %g", d_log_det_Sigma_W_plus_I_d_cov_pars);
-								if (cg_preconditioner_type_ == "vifdu") {
-									sp_mat_rm_t B_grad_rm = sp_mat_rm_t(B_grad[ipar]);
-									den_mat_t P_grad_PI_Z = SigmaI_deriv_sample_vec;
-									//if (!(num_comps_total == 1 && ipar == 0)) {
-#pragma omp parallel for schedule(static)  
-									for (int ii = 0; ii < num_rand_vec_trace_; ii++) {
-										P_grad_PI_Z.col(ii) += B_grad_rm.transpose() * (information_ll_.cwiseProduct(B_rm_ * PI_Z.col(ii))) +
-											B_rm_.transpose() * (information_ll_.cwiseProduct(B_grad_rm * PI_Z.col(ii)));
-									}
-									//}
-									den_mat_t D_inv_B_cross_cov_grad(dim_mode_, num_ip);
-#pragma omp parallel for schedule(static)  
-									for (int ii = 0; ii < num_ip; ii++) {
-										D_inv_B_cross_cov_grad.col(ii) = D_inv_rm_ * (B_rm_ * (*cross_cov_grad).col(ii));
-									}
-									den_mat_t D_inv_B_grad_cross_cov(dim_mode_, num_ip);
+									vec_t SigmaI_deriv_mode_part = SigmaI_deriv_rm * mode_;
+									vec_t SigmaI_mode = SigmaI_rm * mode_;
+									SigmaI_deriv_mode = SigmaI_deriv_mode_part - SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_deriv_mode_part)) -
+										SigmaI_deriv_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
+										SigmaI_rm * ((*cross_cov_grad) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
+										SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov_grad).transpose() * SigmaI_mode)) +
+										SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve(sigma_woodbury_grad * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)));
+									explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode));
+									d_log_det_Sigma_W_plus_I_d_cov_pars = 0;
 									//if (num_comps_total == 1 && ipar == 0) {
-									//	D_inv_B_grad_cross_cov.setZero();
+									//	d_log_det_Sigma_W_plus_I_d_cov_pars += dim_mode_;
 									//}
 									//else {
-#pragma omp parallel for schedule(static)  
-									for (int ii = 0; ii < num_ip; ii++) {
-										D_inv_B_grad_cross_cov.col(ii) = D_inv_rm_ * (B_grad_rm * (*cross_cov).col(ii));
+									d_log_det_Sigma_W_plus_I_d_cov_pars += (D_inv.diagonal().array() * D_grad[ipar].diagonal().array()).sum();
+									//}
+									d_log_det_Sigma_W_plus_I_d_cov_pars -= sigma_ip_inv_sigma_ip_grad.trace();
+									d_log_det_Sigma_W_plus_I_d_cov_pars += (chol_fact_sigma_woodbury.solve(sigma_woodbury_grad)).trace();
+									den_mat_t SigmaI_deriv_sample_vec_part(dim_mode_, num_rand_vec_trace_),
+										SigmaI_sample_vec(dim_mode_, num_rand_vec_trace_), SigmaI_deriv_sample_vec(dim_mode_, num_rand_vec_trace_);
+									den_mat_t sample_vec_final;
+									if (cg_preconditioner_type_ == "vifdu") {
+										sample_vec_final = PI_Z;
 									}
-									//}
-									den_mat_t D_inv_grad_B_cross_cov(dim_mode_, num_ip);
-									vec_t D_inv_D_grad_D_inv;
-									//if (num_comps_total == 1 && ipar == 0) {
-									//	D_inv_D_grad_D_inv = -D_inv_rm_.diagonal();
-									//}
-									//else {
-									D_inv_D_grad_D_inv = (D_inv_rm_.diagonal().array().square() * D_grad[ipar].diagonal().array()).matrix();
-									//}
-#pragma omp parallel for schedule(static)  
-									for (int ii = 0; ii < num_ip; ii++) {
-										D_inv_grad_B_cross_cov.col(ii) = -D_inv_D_grad_D_inv.cwiseProduct(B_rm_ * (*cross_cov).col(ii));
+									else {
+										sample_vec_final = rand_vec_trace_I_;
 									}
-									den_mat_t D_inv_B_cross_cov_D_inv_B_cross_cov_grad = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_B_cross_cov_grad);
-									den_mat_t D_inv_B_cross_cov_D_inv_B_cross_grad_cov = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_B_grad_cross_cov);
-									den_mat_t D_inv_grad_B_cross_cov_D_inv_B_cross_cov = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_grad_B_cross_cov);
-									den_mat_t sigma_woodbury_woodbury_grad = sigma_woodbury_grad -
-										D_inv_B_cross_cov_D_inv_B_cross_cov_grad -
-										D_inv_B_cross_cov_D_inv_B_cross_cov_grad.transpose() -
-										D_inv_B_cross_cov_D_inv_B_cross_grad_cov -
-										D_inv_B_cross_cov_D_inv_B_cross_grad_cov.transpose() -
-										D_inv_grad_B_cross_cov_D_inv_B_cross_cov -
-										D_inv_grad_B_cross_cov_D_inv_B_cross_cov.transpose() -
-										D_inv_B_cross_cov_.transpose() * (((vec_t)((W_D_inv_inv.array().square() * D_inv_D_grad_D_inv.array()).matrix())).asDiagonal() * D_inv_B_cross_cov_);
-									double tr_PI_P_grad = -(W_D_inv_inv.array() * D_inv_D_grad_D_inv.array()).sum() -
-										(chol_fact_sigma_woodbury.solve(sigma_woodbury_grad)).trace() +
-										(chol_fact_sigma_woodbury_woodbury_.solve(sigma_woodbury_woodbury_grad)).trace();
-									vec_t sample_P = (PI_Z.cwiseProduct(P_grad_PI_Z)).colwise().sum();
-									CalcOptimalC(sample_Sigma, sample_P, stoch_tr, tr_PI_P_grad, c_opt);
-									d_log_det_Sigma_W_plus_I_d_cov_pars -= c_opt * (sample_P.mean() - tr_PI_P_grad);
-								}
-								explicit_derivative += 0.5 * d_log_det_Sigma_W_plus_I_d_cov_pars;
-								cov_grad[ipar] = explicit_derivative;
-								if (grad_information_wrt_mode_non_zero_) {
-									cov_grad[ipar] -= SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode); //add implicit derivative
-								}
-							}
-						}
-					}
+#pragma omp parallel for schedule(static)   
+									for (int i = 0; i < num_rand_vec_trace_; ++i) {
+										SigmaI_deriv_sample_vec_part.col(i) = SigmaI_deriv_rm * sample_vec_final.col(i);
+									}
+#pragma omp parallel for schedule(static)   
+									for (int i = 0; i < num_rand_vec_trace_; ++i) {
+										SigmaI_sample_vec.col(i) = SigmaI_rm * sample_vec_final.col(i);
+									}
+#pragma omp parallel for schedule(static)   
+									for (int i = 0; i < num_rand_vec_trace_; ++i) {
+										SigmaI_deriv_sample_vec.col(i) = SigmaI_deriv_sample_vec_part.col(i) - SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_deriv_sample_vec_part.col(i))) -
+											SigmaI_deriv_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_sample_vec.col(i))) -
+											SigmaI_rm * ((*cross_cov_grad) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_sample_vec.col(i))) -
+											SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov_grad).transpose() * SigmaI_sample_vec.col(i))) +
+											SigmaI_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve(sigma_woodbury_grad * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_sample_vec.col(i))));
+									}
+									vec_t sample_Sigma = (SigmaI_plus_W_inv_Z_.cwiseProduct(SigmaI_deriv_sample_vec)).colwise().sum();
+									double stoch_tr = sample_Sigma.mean();
+									d_log_det_Sigma_W_plus_I_d_cov_pars += stoch_tr;
+									//Log::REInfo("stoch_tr %g", stoch_tr);
+									//Log::REInfo("d_log_det_Sigma_W_plus_I_d_cov_pars %g", d_log_det_Sigma_W_plus_I_d_cov_pars);
+									if (cg_preconditioner_type_ == "vifdu") {
+										sp_mat_rm_t B_grad_rm = sp_mat_rm_t(B_grad[ipar]);
+										den_mat_t P_grad_PI_Z = SigmaI_deriv_sample_vec;
+										//if (!(num_comps_total == 1 && ipar == 0)) {
+#pragma omp parallel for schedule(static)  
+										for (int ii = 0; ii < num_rand_vec_trace_; ii++) {
+											P_grad_PI_Z.col(ii) += B_grad_rm.transpose() * (information_ll_.cwiseProduct(B_rm_ * PI_Z.col(ii))) +
+												B_rm_.transpose() * (information_ll_.cwiseProduct(B_grad_rm * PI_Z.col(ii)));
+										}
+										//}
+										den_mat_t D_inv_B_cross_cov_grad(dim_mode_, num_ip);
+#pragma omp parallel for schedule(static)  
+										for (int ii = 0; ii < num_ip; ii++) {
+											D_inv_B_cross_cov_grad.col(ii) = D_inv_rm_ * (B_rm_ * (*cross_cov_grad).col(ii));
+										}
+										den_mat_t D_inv_B_grad_cross_cov(dim_mode_, num_ip);
+										//if (num_comps_total == 1 && ipar == 0) {
+										//	D_inv_B_grad_cross_cov.setZero();
+										//}
+										//else {
+#pragma omp parallel for schedule(static)  
+										for (int ii = 0; ii < num_ip; ii++) {
+											D_inv_B_grad_cross_cov.col(ii) = D_inv_rm_ * (B_grad_rm * (*cross_cov).col(ii));
+										}
+										//}
+										den_mat_t D_inv_grad_B_cross_cov(dim_mode_, num_ip);
+										vec_t D_inv_D_grad_D_inv;
+										//if (num_comps_total == 1 && ipar == 0) {
+										//	D_inv_D_grad_D_inv = -D_inv_rm_.diagonal();
+										//}
+										//else {
+										D_inv_D_grad_D_inv = (D_inv_rm_.diagonal().array().square() * D_grad[ipar].diagonal().array()).matrix();
+										//}
+#pragma omp parallel for schedule(static)  
+										for (int ii = 0; ii < num_ip; ii++) {
+											D_inv_grad_B_cross_cov.col(ii) = -D_inv_D_grad_D_inv.cwiseProduct(B_rm_ * (*cross_cov).col(ii));
+										}
+										den_mat_t D_inv_B_cross_cov_D_inv_B_cross_cov_grad = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_B_cross_cov_grad);
+										den_mat_t D_inv_B_cross_cov_D_inv_B_cross_grad_cov = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_B_grad_cross_cov);
+										den_mat_t D_inv_grad_B_cross_cov_D_inv_B_cross_cov = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_grad_B_cross_cov);
+										den_mat_t sigma_woodbury_woodbury_grad = sigma_woodbury_grad -
+											D_inv_B_cross_cov_D_inv_B_cross_cov_grad -
+											D_inv_B_cross_cov_D_inv_B_cross_cov_grad.transpose() -
+											D_inv_B_cross_cov_D_inv_B_cross_grad_cov -
+											D_inv_B_cross_cov_D_inv_B_cross_grad_cov.transpose() -
+											D_inv_grad_B_cross_cov_D_inv_B_cross_cov -
+											D_inv_grad_B_cross_cov_D_inv_B_cross_cov.transpose() -
+											D_inv_B_cross_cov_.transpose() * (((vec_t)((W_D_inv_inv.array().square() * D_inv_D_grad_D_inv.array()).matrix())).asDiagonal() * D_inv_B_cross_cov_);
+										double tr_PI_P_grad = -(W_D_inv_inv.array() * D_inv_D_grad_D_inv.array()).sum() -
+											(chol_fact_sigma_woodbury.solve(sigma_woodbury_grad)).trace() +
+											(chol_fact_sigma_woodbury_woodbury_.solve(sigma_woodbury_woodbury_grad)).trace();
+										vec_t sample_P = (PI_Z.cwiseProduct(P_grad_PI_Z)).colwise().sum();
+										CalcOptimalC(sample_Sigma, sample_P, stoch_tr, tr_PI_P_grad, c_opt);
+										d_log_det_Sigma_W_plus_I_d_cov_pars -= c_opt * (sample_P.mean() - tr_PI_P_grad);
+									}
+									explicit_derivative += 0.5 * d_log_det_Sigma_W_plus_I_d_cov_pars;
+									cov_grad[ipar] = explicit_derivative;
+									if (grad_information_wrt_mode_non_zero_) {
+										cov_grad[ipar] -= SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode); //add implicit derivative
+									}
+								}//end estimate_cov_par_index[ipar] > 0
+							}//end loop ipar
+						}//end loop j
+					}//end calc_cov_grad
 					//Calculate gradient wrt fixed effects
 					vec_t SigmaI_plus_W_inv_diag;
 					if (use_Z_for_duplicates_ && (calc_F_grad || calc_aux_par_grad)) {
@@ -4938,9 +4959,9 @@ namespace GPBoost {
 						}
 						SetGradAuxParsNotEstimated(aux_par_grad);
 					}//end calc_aux_par_grad
-				}
-			}
-			else {
+				}//end cg_preconditioner_type_ != "fitc"
+			}//end matrix_inversion_method_ == "iterative"
+			else {// matrix_inversion_method_ == "cholesky"
 				// Calculate (Sigma^-1 + W)^-1
 				sp_mat_t L_inv(dim_mode_, dim_mode_);
 				L_inv.setIdentity();
@@ -4948,14 +4969,15 @@ namespace GPBoost {
 				vec_t SigmaI_plus_W_inv_d_mll_d_mode, SigmaI_plus_W_inv_diag;
 				sp_mat_t SigmaI_plus_W_inv, SigmaI;
 				// Calculate gradient wrt covariance parameters
-				if (calc_cov_grad) {
+				bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
+				bool calc_cov_grad_internal = calc_cov_grad && some_cov_par_estimated;
+				if (calc_cov_grad_internal) {
 					double explicit_derivative;
 					sp_mat_t SigmaI_deriv, BgradT_Dinv_B, Bt_Dinv_Bgrad;
 					sp_mat_t D_inv_B;
 					D_inv_B = D_inv * B;
 					SigmaI = B.transpose() * D_inv * B;
 					int par_count = 0;
-
 					den_mat_t sigma_resid_plus_W_inv_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(information_ll_.asDiagonal() * (*cross_cov));
 					den_mat_t sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov(dim_mode_, num_ip);
 #pragma omp parallel for schedule(static)   
@@ -4966,27 +4988,38 @@ namespace GPBoost {
 					chol_den_mat_t chol_fact_sigma_woodbury_2;
 					chol_fact_sigma_woodbury_2.compute(sigma_woodbury_2);
 					int num_par = (int)B_grad.size();
+					CHECK(re_comps_ip_cluster_i.size() == 1);
 					for (int j = 0; j < (int)re_comps_ip_cluster_i.size(); ++j) {
 						for (int ipar = 0; ipar < num_par; ++ipar) {
-							std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
-							den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
-							den_mat_t sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
-							// Calculate SigmaI_deriv
-							SigmaI_deriv = B_grad[ipar].transpose() * D_inv_B;
-							Bt_Dinv_Bgrad = SigmaI_deriv.transpose();
-							SigmaI_deriv += Bt_Dinv_Bgrad - D_inv_B.transpose() * D_grad[ipar] * D_inv_B;
-							Bt_Dinv_Bgrad.resize(0, 0);
-							// Derivative of Woodbury matrix
-							den_mat_t sigma_woodbury_grad = sigma_ip_grad;
-							sp_mat_rm_t SigmaI_deriv_rm = sp_mat_rm_t(SigmaI_deriv);
-							den_mat_t SigmaI_deriv_rm_cross_cov(dim_mode_, num_ip);
+							std::shared_ptr<den_mat_t> cross_cov_grad;
+							den_mat_t sigma_woodbury_grad, sigma_ip_grad, sigma_ip_inv_sigma_ip_grad, SigmaI_deriv_rm_cross_cov, cross_cov_Bt_D_inv_B_cross_cov_grad;
+							sp_mat_rm_t SigmaI_deriv_rm;
+							if (estimate_cov_par_index[par_count] > 0 || ipar == 0) {
+								cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
+								sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
+								sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
+								// Calculate SigmaI_deriv
+								if (ipar == 0) {
+									SigmaI_deriv = -B.transpose() * D_inv_B;//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
+								}
+								else {
+									SigmaI_deriv = B_grad[ipar].transpose() * D_inv_B;
+									Bt_Dinv_Bgrad = SigmaI_deriv.transpose();
+									SigmaI_deriv += Bt_Dinv_Bgrad - D_inv_B.transpose() * D_grad[ipar] * D_inv_B;
+									Bt_Dinv_Bgrad.resize(0, 0);
+								}
+								// Derivative of Woodbury matrix
+								sigma_woodbury_grad = sigma_ip_grad;
+								SigmaI_deriv_rm = sp_mat_rm_t(SigmaI_deriv);
+								SigmaI_deriv_rm_cross_cov = den_mat_t(dim_mode_, num_ip);
 #pragma omp parallel for schedule(static)  
-							for (int ii = 0; ii < num_ip; ii++) {
-								SigmaI_deriv_rm_cross_cov.col(ii) = SigmaI_deriv_rm * (*cross_cov).col(ii);
+								for (int ii = 0; ii < num_ip; ii++) {
+									SigmaI_deriv_rm_cross_cov.col(ii) = SigmaI_deriv_rm * (*cross_cov).col(ii);
+								}
+								sigma_woodbury_grad += (*cross_cov).transpose() * SigmaI_deriv_rm_cross_cov;
+								cross_cov_Bt_D_inv_B_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (*cross_cov_grad);
+								sigma_woodbury_grad += cross_cov_Bt_D_inv_B_cross_cov_grad + cross_cov_Bt_D_inv_B_cross_cov_grad.transpose();
 							}
-							sigma_woodbury_grad += (*cross_cov).transpose() * SigmaI_deriv_rm_cross_cov;
-							den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (*cross_cov_grad);
-							sigma_woodbury_grad += cross_cov_Bt_D_inv_B_cross_cov_grad + cross_cov_Bt_D_inv_B_cross_cov_grad.transpose();
 							if (ipar == 0) {
 								// Calculate SigmaI_plus_W_inv = L_inv.transpose() * L_inv at non-zero entries of SigmaI_deriv
 								//	Note: fully calculating SigmaI_plus_W_inv = L_inv.transpose() * L_inv is very slow
@@ -5008,45 +5041,47 @@ namespace GPBoost {
 									SigmaI_plus_W_inv_d_mll_d_mode = information_ll_.cwiseInverse().asDiagonal() * (SigmaI_plus_W_inv_d_mll_d_mode_part - sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov * chol_fact_sigma_woodbury_2.solve((*cross_cov).transpose() * SigmaI_plus_W_inv_d_mll_d_mode_part));
 								}
 							}//end if ipar == 0
-							vec_t SigmaI_deriv_mode_part = SigmaI_deriv * mode_;
-							vec_t SigmaI_mode = SigmaI * mode_;
-							vec_t SigmaI_deriv_mode = SigmaI_deriv_mode_part - SigmaI * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_deriv_mode_part)) -
-								SigmaI_deriv * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
-								SigmaI * ((*cross_cov_grad) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
-								SigmaI * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov_grad).transpose() * SigmaI_mode)) +
-								SigmaI * ((*cross_cov) * chol_fact_sigma_woodbury.solve(sigma_woodbury_grad * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)));
-							explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) +
-								(SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
-							explicit_derivative += 0.5 * (D_inv.diagonal().array() * D_grad[ipar].diagonal().array()).sum();
-							explicit_derivative -= 0.5 * sigma_ip_inv_sigma_ip_grad.trace();
-							den_mat_t sigma_woodbury_woodbury_grad = sigma_woodbury_grad;
-							den_mat_t Bt_D_inv_B_cross_cov_grad(dim_mode_, num_ip);
+							if (estimate_cov_par_index[par_count] > 0) {
+								vec_t SigmaI_deriv_mode_part = SigmaI_deriv * mode_;
+								vec_t SigmaI_mode = SigmaI * mode_;
+								vec_t SigmaI_deriv_mode = SigmaI_deriv_mode_part - SigmaI * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_deriv_mode_part)) -
+									SigmaI_deriv * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
+									SigmaI * ((*cross_cov_grad) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)) -
+									SigmaI * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov_grad).transpose() * SigmaI_mode)) +
+									SigmaI * ((*cross_cov) * chol_fact_sigma_woodbury.solve(sigma_woodbury_grad * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * SigmaI_mode)));
+								explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) +
+									(SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
+								explicit_derivative += 0.5 * (D_inv.diagonal().array() * D_grad[ipar].diagonal().array()).sum();
+								explicit_derivative -= 0.5 * sigma_ip_inv_sigma_ip_grad.trace();
+								den_mat_t sigma_woodbury_woodbury_grad = sigma_woodbury_grad;
+								den_mat_t Bt_D_inv_B_cross_cov_grad(dim_mode_, num_ip);
 #pragma omp parallel for schedule(static)  
-							for (int ii = 0; ii < num_ip; ii++) {
-								Bt_D_inv_B_cross_cov_grad.col(ii) = B_t_D_inv_rm_ * (B_rm_ * (*cross_cov_grad).col(ii));
-							}
-							den_mat_t Sigma_I_cross_cov_SigmaI_plus_W_inv_Sigma_I_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov_grad));
-							sigma_woodbury_woodbury_grad -= Sigma_I_cross_cov_SigmaI_plus_W_inv_Sigma_I_cross_cov_grad + Sigma_I_cross_cov_SigmaI_plus_W_inv_Sigma_I_cross_cov_grad.transpose();
-							den_mat_t Sigma_I_cross_cov_SigmaI_plus_W_invSigmaI_deriv_cross_cov = Bt_D_inv_B_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(SigmaI_deriv_rm_cross_cov);
-							sigma_woodbury_woodbury_grad -= Sigma_I_cross_cov_SigmaI_plus_W_invSigmaI_deriv_cross_cov + Sigma_I_cross_cov_SigmaI_plus_W_invSigmaI_deriv_cross_cov.transpose();
-							den_mat_t SigmaI_plus_W_invSigmaI_cross_cov(dim_mode_, num_ip);
+								for (int ii = 0; ii < num_ip; ii++) {
+									Bt_D_inv_B_cross_cov_grad.col(ii) = B_t_D_inv_rm_ * (B_rm_ * (*cross_cov_grad).col(ii));
+								}
+								den_mat_t Sigma_I_cross_cov_SigmaI_plus_W_inv_Sigma_I_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov_grad));
+								sigma_woodbury_woodbury_grad -= Sigma_I_cross_cov_SigmaI_plus_W_inv_Sigma_I_cross_cov_grad + Sigma_I_cross_cov_SigmaI_plus_W_inv_Sigma_I_cross_cov_grad.transpose();
+								den_mat_t Sigma_I_cross_cov_SigmaI_plus_W_invSigmaI_deriv_cross_cov = Bt_D_inv_B_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(SigmaI_deriv_rm_cross_cov);
+								sigma_woodbury_woodbury_grad -= Sigma_I_cross_cov_SigmaI_plus_W_invSigmaI_deriv_cross_cov + Sigma_I_cross_cov_SigmaI_plus_W_invSigmaI_deriv_cross_cov.transpose();
+								den_mat_t SigmaI_plus_W_invSigmaI_cross_cov(dim_mode_, num_ip);
 #pragma omp parallel for schedule(static)  
-							for (int ii = 0; ii < num_ip; ii++) {
-								SigmaI_plus_W_invSigmaI_cross_cov.col(ii) = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(SigmaI_deriv_rm * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov.col(ii)));
-							}
-							sigma_woodbury_woodbury_grad += Bt_D_inv_B_cross_cov.transpose() * SigmaI_plus_W_invSigmaI_cross_cov;
-							explicit_derivative += 0.5 * (chol_fact_sigma_woodbury_woodbury_.solve(sigma_woodbury_woodbury_grad)).trace();
-							cov_grad[par_count] = explicit_derivative;
-							if (grad_information_wrt_mode_non_zero_) {
-								cov_grad[par_count] -= SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode);//add implicit derivative
-							}
+								for (int ii = 0; ii < num_ip; ii++) {
+									SigmaI_plus_W_invSigmaI_cross_cov.col(ii) = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(SigmaI_deriv_rm * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov.col(ii)));
+								}
+								sigma_woodbury_woodbury_grad += Bt_D_inv_B_cross_cov.transpose() * SigmaI_plus_W_invSigmaI_cross_cov;
+								explicit_derivative += 0.5 * (chol_fact_sigma_woodbury_woodbury_.solve(sigma_woodbury_woodbury_grad)).trace();
+								cov_grad[par_count] = explicit_derivative;
+								if (grad_information_wrt_mode_non_zero_) {
+									cov_grad[par_count] -= SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode);//add implicit derivative
+								}
+							}//end estimate_cov_par_index[ipar]
 							par_count++;
-						}
-					}
-				}//end calc_cov_grad
+						}//end loop ipar
+					}//end loop j
+				}//end calc_cov_grad_internal
 				// Calcul
 				if (calc_F_grad || calc_aux_par_grad) {
-					if (!calc_cov_grad) {
+					if (!calc_cov_grad_internal) {
 						if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_) {
 							SigmaI_plus_W_inv = D_inv;
 							CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv, true);
@@ -5182,7 +5217,8 @@ namespace GPBoost {
 			const den_mat_t chol_ip_cross_cov,
 			const chol_den_mat_t chol_fact_sigma_ip,
 			data_size_t cluster_i,
-			REModelTemplate<T_mat, T_chol>* re_model) {
+			REModelTemplate<T_mat, T_chol>* re_model,
+			const std::vector<int>& estimate_cov_par_index) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, B, D_inv, false, Sigma_L_k_, true, mll,
@@ -5258,7 +5294,8 @@ namespace GPBoost {
 					}
 				}
 				// Calculate gradient wrt covariance parameters
-				if (calc_cov_grad) {
+				bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
+				if (calc_cov_grad && some_cov_par_estimated) {
 					sp_mat_rm_t SigmaI_deriv_rm, Bt_Dinv_Bgrad_rm, B_t_D_inv_D_grad_D_inv_B_rm;
 					vec_t SigmaI_deriv_mode;
 					double explicit_derivative, d_log_det_Sigma_W_plus_I_d_cov_pars;
@@ -5269,64 +5306,66 @@ namespace GPBoost {
 							D_inv_B = D_inv[igp] * B[igp];
 						}
 						for (int j = 0; j < num_par; ++j) {
-							// Calculate SigmaI_deriv
-							if (num_sets_re_ == 1) {
-								if (num_comps_total == 1 && j == 0) {
-									SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
+							if (estimate_cov_par_index[j + igp * num_par] > 0) {
+								// Calculate SigmaI_deriv
+								if (num_sets_re_ == 1) {
+									if (num_comps_total == 1 && j == 0) {
+										SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
+									}
+									else {
+										SigmaI_deriv_rm = sp_mat_rm_t(B_grad[0][j].transpose()) * B_t_D_inv_rm_.transpose();
+										Bt_Dinv_Bgrad_rm = SigmaI_deriv_rm.transpose();
+										B_t_D_inv_D_grad_D_inv_B_rm = B_t_D_inv_rm_ * sp_mat_rm_t(D_grad[0][j]) * B_t_D_inv_rm_.transpose();
+										SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - B_t_D_inv_D_grad_D_inv_B_rm;
+										Bt_Dinv_Bgrad_rm.resize(0, 0);
+									}
+									CalcLogDetStochDerivCovParVecchia(dim_mode_, num_comps_total, j, SigmaI_deriv_rm, B_grad[0][j], D_grad[0][j], D_inv_plus_W_inv_diag, PI_Z, WI_PI_Z, d_log_det_Sigma_W_plus_I_d_cov_pars);
 								}
 								else {
-									SigmaI_deriv_rm = sp_mat_rm_t(B_grad[0][j].transpose()) * B_t_D_inv_rm_.transpose();
-									Bt_Dinv_Bgrad_rm = SigmaI_deriv_rm.transpose();
-									B_t_D_inv_D_grad_D_inv_B_rm = B_t_D_inv_rm_ * sp_mat_rm_t(D_grad[0][j]) * B_t_D_inv_rm_.transpose();
-									SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - B_t_D_inv_D_grad_D_inv_B_rm;
-									Bt_Dinv_Bgrad_rm.resize(0, 0);
+									CHECK(num_sets_re_ == 2);
+									if (num_comps_total == 1 && j == 0) {
+										SigmaI_deriv_rm = sp_mat_rm_t(-B[igp].transpose() * D_inv_B);//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
+									}
+									else {
+										SigmaI_deriv_rm = sp_mat_rm_t(B_grad[igp][j].transpose() * D_inv_B);
+										Bt_Dinv_Bgrad_rm = SigmaI_deriv_rm.transpose();
+										SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - sp_mat_rm_t(D_inv_B.transpose() * D_grad[igp][j] * D_inv_B);
+										Bt_Dinv_Bgrad_rm.resize(0, 0);
+									}
+									sp_mat_rm_t SigmaI_deriv_1(dim_mode_per_set_re_, dim_mode_per_set_re_), SigmaI_deriv_2(dim_mode_per_set_re_, dim_mode_per_set_re_);
+									if (igp == 0) {
+										SigmaI_deriv_1 = SigmaI_deriv_rm;
+									}
+									else {
+										SigmaI_deriv_2 = SigmaI_deriv_rm;
+									}
+									GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_rm_t>(SigmaI_deriv_1, SigmaI_deriv_2, SigmaI_deriv_rm);
+									sp_mat_t grad_1(dim_mode_per_set_re_, dim_mode_per_set_re_), grad_2(dim_mode_per_set_re_, dim_mode_per_set_re_), B_grad_all, D_grad_all;
+									if (igp == 0) {
+										grad_1 = B_grad[0][j];
+									}
+									else {
+										grad_2 = B_grad[1][j];
+									}
+									GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_t>(grad_1, grad_2, B_grad_all);
+									if (igp == 0) {
+										grad_1 = D_grad[0][j];
+									}
+									else {
+										grad_2 = D_grad[1][j];
+									}
+									GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_t>(grad_1, grad_2, D_grad_all);
+									CalcLogDetStochDerivCovParVecchia(dim_mode_, num_comps_total, j, SigmaI_deriv_rm, B_grad_all, D_grad_all, D_inv_plus_W_inv_diag,
+										PI_Z, WI_PI_Z, d_log_det_Sigma_W_plus_I_d_cov_pars);
+								}//end num_sets_re_ > 1
+								SigmaI_deriv_mode = SigmaI_deriv_rm * mode_;
+								explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) + d_log_det_Sigma_W_plus_I_d_cov_pars);
+								cov_grad[j + igp * num_par] = explicit_derivative;
+								if (grad_information_wrt_mode_non_zero_) {
+									cov_grad[j + igp * num_par] -= SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode); //add implicit derivative
 								}
-								CalcLogDetStochDerivCovParVecchia(dim_mode_, num_comps_total, j, SigmaI_deriv_rm, B_grad[0][j], D_grad[0][j], D_inv_plus_W_inv_diag, PI_Z, WI_PI_Z, d_log_det_Sigma_W_plus_I_d_cov_pars);
-							}
-							else {
-								CHECK(num_sets_re_ == 2);
-								if (num_comps_total == 1 && j == 0) {
-									SigmaI_deriv_rm = sp_mat_rm_t(-B[igp].transpose() * D_inv_B);//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
-								}
-								else {
-									SigmaI_deriv_rm = sp_mat_rm_t(B_grad[igp][j].transpose() * D_inv_B);
-									Bt_Dinv_Bgrad_rm = SigmaI_deriv_rm.transpose();
-									SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - sp_mat_rm_t(D_inv_B.transpose() * D_grad[igp][j] * D_inv_B);
-									Bt_Dinv_Bgrad_rm.resize(0, 0);
-								}
-								sp_mat_rm_t SigmaI_deriv_1(dim_mode_per_set_re_, dim_mode_per_set_re_), SigmaI_deriv_2(dim_mode_per_set_re_, dim_mode_per_set_re_);
-								if (igp == 0) {
-									SigmaI_deriv_1 = SigmaI_deriv_rm;
-								}
-								else {
-									SigmaI_deriv_2 = SigmaI_deriv_rm;
-								}
-								GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_rm_t>(SigmaI_deriv_1, SigmaI_deriv_2, SigmaI_deriv_rm);
-								sp_mat_t grad_1(dim_mode_per_set_re_, dim_mode_per_set_re_), grad_2(dim_mode_per_set_re_, dim_mode_per_set_re_), B_grad_all, D_grad_all;
-								if (igp == 0) {
-									grad_1 = B_grad[0][j];
-								}
-								else {
-									grad_2 = B_grad[1][j];
-								}
-								GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_t>(grad_1, grad_2, B_grad_all);
-								if (igp == 0) {
-									grad_1 = D_grad[0][j];
-								}
-								else {
-									grad_2 = D_grad[1][j];
-								}
-								GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_t>(grad_1, grad_2, D_grad_all);
-								CalcLogDetStochDerivCovParVecchia(dim_mode_, num_comps_total, j, SigmaI_deriv_rm, B_grad_all, D_grad_all, D_inv_plus_W_inv_diag, 
-									PI_Z, WI_PI_Z, d_log_det_Sigma_W_plus_I_d_cov_pars);
-							}//end num_sets_re_ > 1
-							SigmaI_deriv_mode = SigmaI_deriv_rm * mode_;
-							explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) + d_log_det_Sigma_W_plus_I_d_cov_pars);
-							cov_grad[j + igp * num_par] = explicit_derivative;
-							if (grad_information_wrt_mode_non_zero_) {
-								cov_grad[j + igp * num_par] -= SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode); //add implicit derivative
-							}
-						}
+							}//end estimate_cov_par_index[j + igp * num_par] > 0)
+						}//end loop parameters j
 					}//end loop num_sets_re_
 				}
 				//Calculate gradient wrt fixed effects
@@ -5429,7 +5468,9 @@ namespace GPBoost {
 				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
 				sp_mat_t SigmaI_plus_W_inv;
 				// Calculate gradient wrt covariance parameters
-				if (calc_cov_grad) {
+				bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
+				bool calc_cov_grad_internal = calc_cov_grad && some_cov_par_estimated;
+				if (calc_cov_grad_internal) {
 					double explicit_derivative;
 					int num_par = (int)B_grad[0].size();
 					sp_mat_t SigmaI_deriv, BgradT_Dinv_B, Bt_Dinv_Bgrad;
@@ -5440,7 +5481,7 @@ namespace GPBoost {
 							if (num_comps_total == 1 && j == 0) {
 								SigmaI_deriv = -B[igp].transpose() * D_inv_B;//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
 							}
-							else {
+							else if (estimate_cov_par_index[j + igp * num_par] > 0) {
 								SigmaI_deriv = B_grad[igp][j].transpose() * D_inv_B;
 								Bt_Dinv_Bgrad = SigmaI_deriv.transpose();
 								SigmaI_deriv += Bt_Dinv_Bgrad - D_inv_B.transpose() * D_grad[igp][j] * D_inv_B;
@@ -5477,23 +5518,25 @@ namespace GPBoost {
 									SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
 								}
 							}//end if j == 0
-							vec_t SigmaI_deriv_mode = SigmaI_deriv * mode_;
-							explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) + (SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
-							if (num_comps_total == 1 && j == 0) {
-								explicit_derivative += 0.5 * dim_mode_per_set_re_;
-							}
-							else {
-								explicit_derivative += 0.5 * (D_inv[igp].diagonal().array() * D_grad[igp][j].diagonal().array()).sum();
-							}
-							cov_grad[j + igp * num_par] = explicit_derivative;
-							if (grad_information_wrt_mode_non_zero_) {
-								cov_grad[j + igp * num_par] -= SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode);//add implicit derivative
+							if (estimate_cov_par_index[j + igp * num_par] > 0) {
+								vec_t SigmaI_deriv_mode = SigmaI_deriv * mode_;
+								explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) + (SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
+								if (num_comps_total == 1 && j == 0) {
+									explicit_derivative += 0.5 * dim_mode_per_set_re_;
+								}
+								else {
+									explicit_derivative += 0.5 * (D_inv[igp].diagonal().array() * D_grad[igp][j].diagonal().array()).sum();
+								}
+								cov_grad[j + igp * num_par] = explicit_derivative;
+								if (grad_information_wrt_mode_non_zero_) {
+									cov_grad[j + igp * num_par] -= SigmaI_plus_W_inv_d_mll_d_mode.dot(SigmaI_deriv_mode);//add implicit derivative
+								}
 							}
 						}//end loop over num_par
 					}// end loop over num_sets_re_
-				}//end calc_cov_grad
+				}//end calc_cov_grad_internal
 				if (calc_F_grad || calc_aux_par_grad) {
-					if (!calc_cov_grad) {
+					if (!calc_cov_grad_internal) {
 						if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_) {
 							sp_mat_t L_inv_sqr = L_inv.cwiseProduct(L_inv);
 							SigmaI_plus_W_inv_diag = L_inv_sqr.transpose() * vec_t::Ones(L_inv_sqr.rows());// diagonal of (Sigma^-1 + W) ^ -1
@@ -5624,7 +5667,8 @@ namespace GPBoost {
 			vec_t& fixed_effect_grad,
 			double* aux_par_grad,
 			bool calc_mode,
-			bool call_for_std_dev_coef) {
+			bool call_for_std_dev_coef,
+			const std::vector<int>& estimate_cov_par_index) {
 			int num_ip = (int)((*sigma_ip).rows());
 			CHECK((int)((*cross_cov).rows()) == dim_mode_);
 			CHECK((int)((*cross_cov).cols()) == num_ip);
@@ -5672,70 +5716,73 @@ namespace GPBoost {
 				d_mll_d_mode = (0.5 * SigmaI_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array()).matrix();// gradient of approx. marginal likelihood wrt the mode
 			}
 			// Calculate gradient wrt covariance parameters
-			if (calc_cov_grad) {
+			bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
+			if (calc_cov_grad && some_cov_par_estimated) {
 				vec_t sigma_ip_inv_cross_cov_T_a_vec = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_);// sigma_ip^-1 * cross_cov^T * sigma^-1 * mode
 				vec_t fitc_diag_plus_WI_inv = (fitc_resid_diag + WI).cwiseInverse();
 				int par_count = 0;
 				double explicit_derivative;
 				for (int j = 0; j < (int)re_comps_ip_cluster_i.size(); ++j) {
 					for (int ipar = 0; ipar < re_comps_ip_cluster_i[j]->NumCovPar(); ++ipar) {
-						std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
-						den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
-						den_mat_t sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
-						vec_t fitc_diag_grad = vec_t::Zero(dim_mode_);
-						fitc_diag_grad.array() += sigma_ip_grad.coeffRef(0, 0);
-						den_mat_t sigma_ip_inv_cross_cov_T = chol_fact_sigma_ip.solve((*cross_cov).transpose());
-						den_mat_t sigma_ip_grad_sigma_ip_inv_cross_cov_T = sigma_ip_grad * sigma_ip_inv_cross_cov_T;
-						fitc_diag_grad -= 2 * (sigma_ip_inv_cross_cov_T.cwiseProduct((*cross_cov_grad).transpose())).colwise().sum();
-						fitc_diag_grad += (sigma_ip_inv_cross_cov_T.cwiseProduct(sigma_ip_grad_sigma_ip_inv_cross_cov_T)).colwise().sum();
-						// Derivative of Woodbury matrix
-						den_mat_t sigma_woodbury_grad = sigma_ip_grad;
-						den_mat_t cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad = (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov_grad);
-						sigma_woodbury_grad += cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad + cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad.transpose();
-						cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad.resize(0, 0);
-						vec_t v_aux_grad = fitc_diag_plus_WI_inv;
-						v_aux_grad.array() *= v_aux_grad.array();
-						v_aux_grad.array() *= fitc_diag_grad.array();
-						sigma_woodbury_grad -= (*cross_cov).transpose() * v_aux_grad.asDiagonal() * (*cross_cov);
-						den_mat_t sigma_woodbury_inv_sigma_woodbury_grad = chol_fact_dense_Newton_.solve(sigma_woodbury_grad);
-						// Calculate explicit derivative of approx. mariginal log-likelihood
-						explicit_derivative = -((*cross_cov_grad).transpose() * a_vec_).dot(sigma_ip_inv_cross_cov_T_a_vec) +
-							0.5 * sigma_ip_inv_cross_cov_T_a_vec.dot(sigma_ip_grad * sigma_ip_inv_cross_cov_T_a_vec) -
-							0.5 * a_vec_.dot(fitc_diag_grad.asDiagonal() * a_vec_);//derivative of mode^T Sigma^-1 mode
-						explicit_derivative += 0.5 * sigma_woodbury_inv_sigma_woodbury_grad.trace() -
-							0.5 * sigma_ip_inv_sigma_ip_grad.trace() +
-							0.5 * fitc_diag_grad.dot(fitc_diag_plus_WI_inv);//derivative of log determinant
-						cov_grad[par_count] = explicit_derivative;
-						if (grad_information_wrt_mode_non_zero_) {
-							// Calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-							vec_t SigmaDeriv_first_deriv_ll = (*cross_cov_grad) * (sigma_ip_inv_cross_cov_T * first_deriv_ll_);
-							SigmaDeriv_first_deriv_ll += sigma_ip_inv_cross_cov_T.transpose() * ((*cross_cov_grad).transpose() * first_deriv_ll_);
-							SigmaDeriv_first_deriv_ll -= sigma_ip_inv_cross_cov_T.transpose() * (sigma_ip_grad_sigma_ip_inv_cross_cov_T * first_deriv_ll_);
-							SigmaDeriv_first_deriv_ll += fitc_diag_grad.asDiagonal() * first_deriv_ll_;
-							vec_t rhs = (*cross_cov).transpose() * (fitc_diag_plus_WI_inv.asDiagonal() * SigmaDeriv_first_deriv_ll);
-							vec_t vaux = chol_fact_dense_Newton_.solve(rhs);
-							vec_t d_mode_d_par = WI.asDiagonal() *
-								(fitc_diag_plus_WI_inv.asDiagonal() * SigmaDeriv_first_deriv_ll - fitc_diag_plus_WI_inv.asDiagonal() * ((*cross_cov) * vaux));
-							cov_grad[par_count] += d_mll_d_mode.dot(d_mode_d_par);
-							////for debugging
-							//if (ipar == 0) {
-							//  Log::REInfo("mode_[0:4] = %g, %g, %g, %g, %g ", mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);
-							//  Log::REInfo("a_vec_[0:4] = %g, %g, %g, %g, %g ", a_vec_[0], a_vec_[1], a_vec_[2], a_vec_[3], a_vec_[4]);
-							//  Log::REInfo("d_mll_d_mode[0:2] = %g, %g, %g ", d_mll_d_mode[0], d_mll_d_mode[1], d_mll_d_mode[2]);
-							//}
-							//Log::REInfo("d_mode_d_par[0:2] = %g, %g, %g ", d_mode_d_par[0], d_mode_d_par[1], d_mode_d_par[2]);
-							//double ed1 = -((*cross_cov_grad).transpose() * a_vec_).dot(sigma_ip_inv_cross_cov_T_a_vec);
-							//ed1 += 0.5 * sigma_ip_inv_cross_cov_T_a_vec.dot(sigma_ip_grad * sigma_ip_inv_cross_cov_T_a_vec);
-							//ed1 -= 0.5 * a_vec_.dot(fitc_diag_grad.asDiagonal() * a_vec_);
-							//double ed2 = 0.5 * sigma_woodbury_inv_sigma_woodbury_grad.trace() -
-							//  0.5 * sigma_ip_inv_sigma_ip_grad.trace() +
-							//  0.5 * fitc_diag_grad.dot(fitc_diag_plus_WI_inv);
-							//Log::REInfo("explicit_derivative = %g (%g + %g), d_mll_d_mode.dot(d_mode_d_par) = %g, cov_grad = %g ", 
-							//  explicit_derivative, ed1, ed2, d_mll_d_mode.dot(d_mode_d_par), cov_grad[par_count]);
-						}//end grad_information_wrt_mode_non_zero_
+						if (estimate_cov_par_index[par_count] > 0) {
+							std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
+							den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
+							den_mat_t sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
+							vec_t fitc_diag_grad = vec_t::Zero(dim_mode_);
+							fitc_diag_grad.array() += sigma_ip_grad.coeffRef(0, 0);
+							den_mat_t sigma_ip_inv_cross_cov_T = chol_fact_sigma_ip.solve((*cross_cov).transpose());
+							den_mat_t sigma_ip_grad_sigma_ip_inv_cross_cov_T = sigma_ip_grad * sigma_ip_inv_cross_cov_T;
+							fitc_diag_grad -= 2 * (sigma_ip_inv_cross_cov_T.cwiseProduct((*cross_cov_grad).transpose())).colwise().sum();
+							fitc_diag_grad += (sigma_ip_inv_cross_cov_T.cwiseProduct(sigma_ip_grad_sigma_ip_inv_cross_cov_T)).colwise().sum();
+							// Derivative of Woodbury matrix
+							den_mat_t sigma_woodbury_grad = sigma_ip_grad;
+							den_mat_t cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad = (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov_grad);
+							sigma_woodbury_grad += cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad + cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad.transpose();
+							cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad.resize(0, 0);
+							vec_t v_aux_grad = fitc_diag_plus_WI_inv;
+							v_aux_grad.array() *= v_aux_grad.array();
+							v_aux_grad.array() *= fitc_diag_grad.array();
+							sigma_woodbury_grad -= (*cross_cov).transpose() * v_aux_grad.asDiagonal() * (*cross_cov);
+							den_mat_t sigma_woodbury_inv_sigma_woodbury_grad = chol_fact_dense_Newton_.solve(sigma_woodbury_grad);
+							// Calculate explicit derivative of approx. mariginal log-likelihood
+							explicit_derivative = -((*cross_cov_grad).transpose() * a_vec_).dot(sigma_ip_inv_cross_cov_T_a_vec) +
+								0.5 * sigma_ip_inv_cross_cov_T_a_vec.dot(sigma_ip_grad * sigma_ip_inv_cross_cov_T_a_vec) -
+								0.5 * a_vec_.dot(fitc_diag_grad.asDiagonal() * a_vec_);//derivative of mode^T Sigma^-1 mode
+							explicit_derivative += 0.5 * sigma_woodbury_inv_sigma_woodbury_grad.trace() -
+								0.5 * sigma_ip_inv_sigma_ip_grad.trace() +
+								0.5 * fitc_diag_grad.dot(fitc_diag_plus_WI_inv);//derivative of log determinant
+							cov_grad[par_count] = explicit_derivative;
+							if (grad_information_wrt_mode_non_zero_) {
+								// Calculate implicit derivative (through mode) of approx. mariginal log-likelihood
+								vec_t SigmaDeriv_first_deriv_ll = (*cross_cov_grad) * (sigma_ip_inv_cross_cov_T * first_deriv_ll_);
+								SigmaDeriv_first_deriv_ll += sigma_ip_inv_cross_cov_T.transpose() * ((*cross_cov_grad).transpose() * first_deriv_ll_);
+								SigmaDeriv_first_deriv_ll -= sigma_ip_inv_cross_cov_T.transpose() * (sigma_ip_grad_sigma_ip_inv_cross_cov_T * first_deriv_ll_);
+								SigmaDeriv_first_deriv_ll += fitc_diag_grad.asDiagonal() * first_deriv_ll_;
+								vec_t rhs = (*cross_cov).transpose() * (fitc_diag_plus_WI_inv.asDiagonal() * SigmaDeriv_first_deriv_ll);
+								vec_t vaux = chol_fact_dense_Newton_.solve(rhs);
+								vec_t d_mode_d_par = WI.asDiagonal() *
+									(fitc_diag_plus_WI_inv.asDiagonal() * SigmaDeriv_first_deriv_ll - fitc_diag_plus_WI_inv.asDiagonal() * ((*cross_cov) * vaux));
+								cov_grad[par_count] += d_mll_d_mode.dot(d_mode_d_par);
+								////for debugging
+								//if (ipar == 0) {
+								//  Log::REInfo("mode_[0:4] = %g, %g, %g, %g, %g ", mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);
+								//  Log::REInfo("a_vec_[0:4] = %g, %g, %g, %g, %g ", a_vec_[0], a_vec_[1], a_vec_[2], a_vec_[3], a_vec_[4]);
+								//  Log::REInfo("d_mll_d_mode[0:2] = %g, %g, %g ", d_mll_d_mode[0], d_mll_d_mode[1], d_mll_d_mode[2]);
+								//}
+								//Log::REInfo("d_mode_d_par[0:2] = %g, %g, %g ", d_mode_d_par[0], d_mode_d_par[1], d_mode_d_par[2]);
+								//double ed1 = -((*cross_cov_grad).transpose() * a_vec_).dot(sigma_ip_inv_cross_cov_T_a_vec);
+								//ed1 += 0.5 * sigma_ip_inv_cross_cov_T_a_vec.dot(sigma_ip_grad * sigma_ip_inv_cross_cov_T_a_vec);
+								//ed1 -= 0.5 * a_vec_.dot(fitc_diag_grad.asDiagonal() * a_vec_);
+								//double ed2 = 0.5 * sigma_woodbury_inv_sigma_woodbury_grad.trace() -
+								//  0.5 * sigma_ip_inv_sigma_ip_grad.trace() +
+								//  0.5 * fitc_diag_grad.dot(fitc_diag_plus_WI_inv);
+								//Log::REInfo("explicit_derivative = %g (%g + %g), d_mll_d_mode.dot(d_mode_d_par) = %g, cov_grad = %g ", 
+								//  explicit_derivative, ed1, ed2, d_mll_d_mode.dot(d_mode_d_par), cov_grad[par_count]);
+							}//end grad_information_wrt_mode_non_zero_
+						}//end estimate_cov_par_index[par_count] > 0
 						par_count++;
-					}
-				}
+					}//end loop over ipar
+				}//end loop over j
 			}//end calc_cov_grad
 			// calculate gradient wrt fixed effects
 			vec_t SigmaI_plus_W_inv_d_mll_d_mode;// for implicit derivative
@@ -7948,6 +7995,7 @@ namespace GPBoost {
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
 						PI_Z.col(i) = D_inv_plus_W_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_Z.col(i));
 					}
+					//den_mat_t B_invt_Z(num_data, num_rand_vec_trace_);
 					//TriangularSolve<sp_mat_rm_t, den_mat_t, den_mat_t>(B_rm_, rand_vec_trace_P_, B_invt_Z, true);//it seems that this is not faster (21.11.2024)
 					//TriangularSolve<sp_mat_rm_t, den_mat_t, den_mat_t>(D_inv_plus_W_B_rm_, B_invt_Z, PI_Z, false);
 				}

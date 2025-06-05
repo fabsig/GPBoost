@@ -79,6 +79,9 @@ set_optim_params(gp_model, params = list())
     \item{estimate_aux_pars: \code{boolean} (default = TRUE). 
     If TRUE, additional parameters for non-Gaussian likelihoods 
     are also estimated (e.g., shape parameter of a gamma or negative_binomial likelihood) }
+    \item{estimate_cov_par_index: \code{vector} with \code{integer} (default = -1). 
+    If estimate_cov_par_index[1] >= 0, some covariance parameters might not be estimated, 
+    estimate_cov_par_index[i] is then bool and indicates which ones are estimated }            
     \item{cg_max_num_it: \code{integer} (default = 1000). 
     Maximal number of iterations for conjugate gradient algorithms }
     \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 
