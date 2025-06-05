@@ -662,7 +662,9 @@ gpb.GPModel <- R6::R6Class(
         }
         private$cover_tree_radius <- as.numeric(cover_tree_radius)
         private$ind_points_selection <- as.character(ind_points_selection)
-        if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
+        if (private$cov_function == "space_time_gneiting") {
+          private$cov_par_names <- c(private$cov_par_names,"sigma2", "a", "c", "alpha", "nu", "beta", "delta")
+        } else if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range_time", "GP_range_space")
         } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | 
                    private$cov_function == "exponential_ard") {
@@ -700,6 +702,9 @@ gpb.GPModel <- R6::R6Class(
           }
           if (dim(gp_rand_coef_data)[1] != private$num_data) {
             stop("GPModel: Number of data points in ", sQuote("gp_rand_coef_data"), " does not match number of data points")
+          }
+          if (private$cov_function == "space_time_gneiting") {
+            stop("random coefficients are currently not supported for 'space_time_gneiting' ")
           }
           private$num_gp_rand_coef <- as.integer(dim(gp_rand_coef_data)[2])
           private$gp_rand_coef_data <- gp_rand_coef_data
@@ -2199,7 +2204,9 @@ gpb.GPModel <- R6::R6Class(
     },
     
     determine_num_cov_pars = function(likelihood) {
-      if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time" | private$cov_function == "matern_estimate_shape") {
+      if (private$cov_function == "space_time_gneiting") {
+        num_par_per_GP <- 7L
+      } else if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time" | private$cov_function == "matern_estimate_shape") {
         num_par_per_GP <- 3L
       } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | private$cov_function == "exponential_ard") {
         num_par_per_GP <- 1L + private$dim_coords

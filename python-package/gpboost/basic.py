@@ -4620,7 +4620,9 @@ class GPModel(object):
                 if num_ind_points > 0:
                     self.num_ind_points = num_ind_points
             self.cover_tree_radius = cover_tree_radius
-            if self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
+            if self.cov_function == "space_time_gneiting":
+                self.cov_par_names.extend(["sigma2", "a", "c", "alpha", "nu", "beta", "delta"])
+            elif self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
                 self.cov_par_names.extend(["GP_var", "GP_range_time", "GP_range_space"])
             elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or \
                     self.cov_function == "exponential_ard":
@@ -4647,6 +4649,8 @@ class GPModel(object):
                     raise ValueError("Incorrect number of data points in gp_rand_coef_data")
                 self.num_gp_rand_coef = self.gp_rand_coef_data.shape[1]
                 gp_rand_coef_data_c, _, _ = c_float_array(self.gp_rand_coef_data.flatten(order='F'))
+                if self.cov_function == "space_time_gneiting":
+                    raise ValueError("The 'space_time_gneiting' covariance function does currently not support random coefficients")
                 for ii in range(self.num_gp_rand_coef):
                     if gp_rand_coef_data_names is None:
                         if self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
@@ -4781,7 +4785,9 @@ class GPModel(object):
             self.set_optim_params(params=model_dict["params"])
 
     def __determine_num_cov_pars(self, likelihood):
-        if self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time" or \
+        if self.cov_function == "space_time_gneiting":
+            num_par_per_GP = 7
+        elif self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time" or \
             self.cov_function == "matern_estimate_shape":
             num_par_per_GP = 3
         elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or \
