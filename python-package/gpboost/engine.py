@@ -1154,6 +1154,10 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
                 best_num_boost_round = np.argmin(cvbst[next(iter(cvbst))]) + 1
             all_combinations[param_comb_number] = {'params': param_comb, 'num_boost_round': best_num_boost_round,
                                                    'score': current_score}
+    if best_num_boost_round < 0 or best_score == (1e99 if not higher_better else -1e99):
+        raise ValueError("Did not find any valid parameter combination. " \
+        "Check the 'metric' (is it supported?), search space, and the data provided ")
+        
     if return_all_combinations:
         return {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score,
                     'all_combinations': all_combinations}
@@ -1402,4 +1406,7 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     direction = 'maximize' if metric_higher_better else 'minimize'
     study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=tpe_seed))
     study.optimize(objective_opt, n_trials=n_trials)
+    if best_iter < 0 or best_score == (1e99 if not metric_higher_better else -1e99):
+         raise ValueError("Did not find any valid parameter combination. " \
+         "Check the 'metric' (is it supported?), search space, and the data provided ")
     return {'best_params': study.best_trial.params, 'best_iter': best_iter, 'best_score': study.best_trial.values}
