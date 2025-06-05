@@ -86,7 +86,9 @@ fixed effects linear regression term (if there is one)}
     are also estimated (e.g., shape parameter of a gamma or negative_binomial likelihood) }
     \item{estimate_cov_par_index: \code{vector} with \code{integer} (default = -1). 
     If estimate_cov_par_index[1] >= 0, some covariance parameters might not be estimated, 
-    estimate_cov_par_index[i] is then bool and indicates which ones are estimated }            
+    estimate_cov_par_index[i] is then bool and indicates which ones are estimated. 
+    For instance, estimate_cov_par_index = c(1,1,0) means that the first two covariance parameters 
+    are estimated and the last one not.}            
     \item{cg_max_num_it: \code{integer} (default = 1000). 
     Maximal number of iterations for conjugate gradient algorithms }
     \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 
