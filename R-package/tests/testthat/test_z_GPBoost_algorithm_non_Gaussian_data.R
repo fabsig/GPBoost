@@ -1916,7 +1916,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       filename2 <- tempfile(fileext = ".model")
       gpb.save(bst, filename=filename2, save_raw_data = TRUE)
       # finalize and destroy models
-      bst$finalize()
+      bst$.__enclos_env__$private$finalize()
       expect_null(bst$.__enclos_env__$private$handle)
       rm(bst)
       rm(gp_model)

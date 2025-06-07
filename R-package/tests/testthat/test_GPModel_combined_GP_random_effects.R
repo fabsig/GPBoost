@@ -137,12 +137,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.1,0.9,1.6,0.2),y=y)
     expect_lt(abs(nll-134.3491913),1E-6)
     
-    # Do optimization using optim and e.g. Nelder-Mead
+    # Do optimization using optim
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group)
-    opt <- optim(par=c(0.1,1.5,2,0.2), fn=gp_model$neg_log_likelihood, y=y, method="Nelder-Mead")
+    opt <- optim(par=c(0.1,1.5,2,0.2), fn=gp_model$neg_log_likelihood, 
+                 y=y, method="L-BFGS-B", lower=1E-10)
     expect_lt(sum(abs(opt$par-cov_pars)),1E-3)
     expect_lt(abs(opt$value-(132.4136164)),1E-5)
-    expect_equal(as.integer(opt$counts[1]), 335)
+    expect_equal(as.integer(opt$counts[1]), 30)
   })
   
   test_that("Combined GP and grouped random effects model with linear regression term ", {

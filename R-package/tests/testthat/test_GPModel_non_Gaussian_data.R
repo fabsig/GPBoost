@@ -655,7 +655,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           opt_it <- 37
         }
         expect_equal(gp_model$get_num_optim_iter(), opt_it)
-  
+        
         # Predict training data random effects
         cov_pars <- gp_model$get_cov_pars()
         all_training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
@@ -684,7 +684,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                          predict_response = FALSE, predict_var = TRUE)
         expect_lt(sum(abs(pred_random_effects_crossed[,1] - preds$mu)),TOLERANCE_MEDIUM)
         expect_lt(sum(abs(pred_random_effects_crossed[,2] - (preds$var-cov_pars[1]))),tolerance_loc_1)
-          
+        
         # Prediction
         group_data_pred = cbind(c(1,1,77),c(2,1,98))
         group_rand_coef_data_pred = c(0,0.1,0.3)
@@ -1010,6 +1010,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params_mult$init_cov_pars = init_cov_pars_mult
     params_vecchia_mult <- params_vecchia
     params_vecchia_mult$init_cov_pars = init_cov_pars_mult
+    params_vecchia_mult$fitc_piv_chol_preconditioner_rank <- dim(unique(coords_multiple))[1]
     
     # Simulate data and define expected values
     probs <- pnorm(L %*% b_1) # note: linear predictor is not included in simulation
@@ -1084,7 +1085,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y_multiple)
     expect_lt(abs(nll-nll_multiple),TOLERANCE_STRICT)
     
-    for(inv_method in c("cholesky", "iterative")){
+    for (inv_method in c("cholesky", "iterative")) {
       if(inv_method == "iterative") {
         tolerance_loc_1 <- TOLERANCE_ITERATIVE
         tolerance_loc_2 <- TOLERANCE_ITERATIVE
@@ -1107,6 +1108,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         capture.output( fit(gp_model, y = y, X = X, params = params_vecchia)
                         , file='NUL')
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),tolerance_loc_1)
         if(inv_method != "iterative") {
           expect_equal(gp_model$get_num_optim_iter(), num_it)
         }
@@ -1313,6 +1315,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         
       }# end loop cg_preconditioner_type in loop_cg_PC
     }# end loop inv_method in c("cholesky", "iterative")
+    
+    
+    ## "vecchia" preconditioner
+    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                        likelihood = "bernoulli_probit", gp_approx = "vecchia", 
+                                        num_neighbors = 30, vecchia_ordering = "none",
+                                        matrix_inversion_method = "iterative"), file='NUL')
+    gp_model$set_optim_params(params = params_vecchia)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
+    expect_lt(abs(nll-expected_nll),tolerance_loc_1)
     
     #######################
     ## Other covariance functions
@@ -2250,9 +2262,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   test_that("Gamma regression ", {
-    params <- list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent", 
-                   estimate_aux_pars = FALSE, init_aux_pars = 1.,
-                   lr_cov = 0.1, lr_coef = 0.1, use_nesterov_acc = TRUE, acc_rate_cov = 0.5)
+    params <- OPTIM_PARAMS_BFGS
+    params$init_aux_pars = 1.
+    params$estimate_aux_pars = FALSE
     params_shape <- params
     params_shape$estimate_aux_pars <- TRUE
     shape <- 1
@@ -2269,21 +2281,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
                                            y = y, params = params)
                     , file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.5174554)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 6)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.5175032387)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 4)
     # Prediction
     group_test <- c(1,3,3,9999)
-    pred <- predict(gp_model, y=y, group_data_pred = group_test, predict_cov_mat = TRUE, predict_response = FALSE)
-    expected_mu <- c(0.2095341, -0.9170767, -0.9170767, 0.0000000)
-    expected_cov <- c(0.08105393, 0.00000000, 0.00000000, 0.00000000, 0.00000000,
-                      0.09842279, 0.09842279, 0.00000000, 0.00000000, 0.09842279,
-                      0.09842279, 0.00000000, 0.00000000, 0.00000000, 0.00000000, 0.51745540)
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, 
+                    predict_cov_mat = TRUE, predict_response = FALSE, cov_pars = 0.6)
+    expected_mu <- c(0.2141580841, -0.9414716643, -0.9414716643, 0.0000000)
+    expected_cov <- c(0.08316978821, 0.00000000000, 0.00000000000, 0.00000000000, 0.00000000000, 0.09903395128, 0.09903395128, 0.00000000000, 0.00000000000, 0.09903395128, 0.09903395128, 0.00000000000, 0.00000000000, 0.00000000000, 0.00000000000, 0.60000000000)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     # Predict response
-    pred <- predict(gp_model, y=y, group_data_pred = group_test, predict_var=TRUE, predict_response = TRUE)
-    expected_mu <- c(1.2841038, 0.4198468, 0.4198468, 1.2952811)
-    expected_var <- c(1.9273575, 0.2127346, 0.2127346, 3.9519573)
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, 
+                    predict_var=TRUE, predict_response = TRUE, cov_pars = 0.6)
+    expected_mu <- c(1.2914207620, 0.4098538326, 0.4098538326, 1.3498588076)
+    expected_var <- c(1.9570462290, 0.2029549058, 0.2029549058, 4.8181150451)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_MEDIUM)
     # Evaluate negative log-likelihood
@@ -2298,16 +2310,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-105.1597249), TOLERANCE_MEDIUM)
-    # Also estimate shape parameter with gradient descent
-    params_shape$optimizer_cov <- "gradient_descent"
+    # Also estimate shape parameter with lbfgs
+    params_shape$optimizer_cov <- "lbfgs"
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
                                            y = y, params = params_shape), file='NUL')
-    cov_pars <- c(0.5198431)
-    aux_pars <- c(0.970999)
+    cov_pars <- c(0.5141245271 )
+    aux_pars <- c(0.9719437296 )
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 23)
+    expect_equal(gp_model$get_num_optim_iter(), 5)
     # Can set learning rate for auxiliary parameters via lr_cov
+    params_shape$optimizer_cov <- "gradient_descent"
     params_temp <- params_shape
     params_temp$maxit = 1
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
@@ -2319,6 +2332,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            y = y, params = params_temp), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.998025)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-0.9985453)),TOLERANCE_STRICT)
+    # fix some covariance parameters
+    params_loc <- params_shape
+    params_loc$optimizer_cov = "lbfgs"
+    params_loc$estimate_cov_par_index <- c(0)
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
+                                           y = y, params = params_loc), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-1)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-0.9762847373)),TOLERANCE_STRICT)
     
     # Multiple random effects
     mu <- exp(Z1 %*% b_gr_1 + Z2 %*% b_gr_2 + Z3 %*% b_gr_3)
@@ -2329,9 +2350,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            ind_effect_group_rand_coef = 1, likelihood = "gamma",
                                            y = y, params = params)
                     , file='NUL')
-    cov_pars <- c(0.5050690, 1.2043329, 0.5280103)
+    cov_pars <- c(0.5080507200, 1.2045682905, 0.5297377706)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 10)
+    expect_equal(gp_model$get_num_optim_iter(), 5)
     # Prediction
     group_data_pred = cbind(c(1,1,77),c(2,1,98))
     group_rand_coef_data_pred = c(0,0.1,0.3)
@@ -2377,11 +2398,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
                                            ind_effect_group_rand_coef = 1, likelihood = "gamma",
                                            y = y, params = params_shape), file='NUL')
-    cov_pars <- c(0.5033402643, 1.2017290249, 0.5217615556)
-    aux_pars <- c(0.9817837883 )
+    cov_pars <- c(0.5052899481, 1.2018984119, 0.5230376096)
+    aux_pars <- c(0.9820532321 )
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
-    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-123.5177485), TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-123.5177217), TOLERANCE_STRICT)
     # Also estimate shape parameter with gradient descent using internal initialization
     params_shape_no_init <- params_shape
     params_shape_no_init$init_aux_pars <- NULL
@@ -2394,6 +2415,25 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 34)
+    # fix some covariance parameters
+    params_loc <- params_shape
+    params_loc$optimizer_cov = "lbfgs"
+    params_loc$estimate_cov_par_index <- c(0,0,1)
+    params_loc$init_cov_pars <- c(1,1,1)
+    cov_pars_fix <- c(1,1,0.5122295)
+    aux_pars_fix <- 0.9857217
+    capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
+                                           ind_effect_group_rand_coef = 1, likelihood = "gamma",
+                                           y = y, params = params_loc), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[1:2]-params_loc$init_cov_pars[1:2])),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_fix)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_fix)),TOLERANCE_STRICT)
+    capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2), group_rand_coef_data = x,
+                                           ind_effect_group_rand_coef = 1, likelihood = "gamma",
+                                           y = y, params = params_loc, matrix_inversion_method = "iterative"), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[1:2]-params_loc$init_cov_pars[1:2])),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_fix)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_fix)),TOLERANCE_LOOSE)
     
     # Gaussian process model
     mu <- exp(L %*% b_1)
@@ -2406,14 +2446,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
                                            likelihood = "gamma", y = y, params = params_gp)
                     , file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.0649094, 0.2738999))),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 8)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1.0649277352, 0.2738906496))),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 5)
     # Prediction
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
-    expected_mu <- c(0.3376250, 0.3023855, 0.7810425)
-    expected_cov <- c(0.4567916157, 0.4033257822, -0.0002256179, 0.4033257822, 0.4540419202, 
-                      -0.0002258048, -0.0002256179, -0.0002258048, 0.3368598330)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                    predict_cov_mat = TRUE, predict_response = FALSE, cov_pars = c(1,0.3))
+    expected_mu <- c(0.3402190964, 0.3032421536, 0.8049749290)
+    expected_cov <- c(0.4115761683055, 0.3656963345817, -0.0002730842313, 0.3656963345817, 0.4093969989207, -0.0002761274978, -0.0002730842313, -0.0002761274978, 0.3034576099586)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     # Evaluate approximate negative marginal log-likelihood
@@ -2439,6 +2479,37 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 26)
+    # fix some covariance parameters
+    params_loc <- params_shape_gp
+    params_loc$optimizer_cov = "lbfgs"
+    params_loc$estimate_cov_par_index <- c(0,0)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                           likelihood = "gamma", y = y, params = params_loc), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[1:2]-params_loc$init_cov_pars[1:2])),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(1,0.1786481))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-0.9902641)),TOLERANCE_STRICT)
+    
+    params_loc$init_aux_pars <- 2
+    params_loc$fitc_piv_chol_preconditioner_rank <- 60
+    params_loc$num_rand_vec_trace = 100
+    for (estimate_cov_par_index in list(c(0,0),c(1,0),c(0,1))) {
+      params_loc$estimate_cov_par_index <- estimate_cov_par_index
+      for(gp_approx in c("none", "vecchia", "full_scale_vecchia", "fitc")) {
+        for (matrix_inversion_method in c("cholesky", "iterative")) {
+          if (matrix_inversion_method == "iterative" && !(gp_approx %in% c("vecchia", "full_scale_vecchia"))) {
+            next
+          }
+          capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                                 likelihood = "gamma", y = y, params = params_loc, gp_approx=gp_approx, 
+                                                 num_ind_points =50, num_neighbors = 20, matrix_inversion_method = matrix_inversion_method), file='NUL')
+          ind_not <- which(estimate_cov_par_index == 0)
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[ind_not]-params_loc$init_cov_pars[ind_not])),TOLERANCE_STRICT)
+          if (length(ind_not) == 2) {
+            expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-1)),0.05)
+          }
+        }
+      }
+    }
     
     ## Grouped random effects model with a linear predictor
     params_shape$init_cov_pars <- params$init_cov_pars <- NULL
@@ -2446,8 +2517,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y_lin <- qgamma(sim_rand_unif(n=n, init_c=0.532), scale = mu_lin/shape, shape = shape)
     gp_model <- fitGPModel(group_data = group, likelihood = "gamma",
                            y = y_lin, X=X, params = params)
-    cov_pars <- c(0.4764449635)
-    coef <- c(-0.07040423872, 1.89851821279)
+    cov_pars <- c(0.4758553032)
+    coef <- c(-0.07265257707, 1.89902842379)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_MEDIUM)
     # Also estimate shape parameter
@@ -2485,17 +2556,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            group_data = group, likelihood = "gamma", y = y, params = params_cb)
                     , file='NUL')
-    cov_pars <- c(0.56585185, 0.62507125, 0.08278787)
+    cov_pars <- c(0.56752917723, 0.62600814972, 0.08320722994)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 9)
+    expect_equal(gp_model$get_num_optim_iter(), 6)
     # Prediction
     coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
     group_test <- c(1,3,3)
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, group_data_pred=group_test,
-                    predict_cov_mat = TRUE, predict_response = FALSE)
-    expected_mu <- c(0.28574903, -0.67562130, 0.08821624)
-    expected_cov <- c(0.649420831, 0.448952853, 0.007415143, 0.448952853, 0.683363103, 
-                      0.126645556, 0.007415143, 0.126645556, 0.531015480)
+                    predict_cov_mat = TRUE, predict_response = FALSE, cov_pars = c(0.5,0.6,0.1))
+    expected_mu <- c(0.25198471751, -0.69948330411, 0.09027905426)
+    expected_cov <- c(0.593567787342, 0.420156335862, 0.007140959113, 0.420156335862, 0.630682357298, 0.119642413505, 0.007140959113, 0.119642413505, 0.474857495120)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     # Evaluate approximate negative marginal log-likelihood
@@ -2533,18 +2603,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              likelihood = "gamma", y = y, params = params,
                                              gp_approx = "vecchia", num_neighbors = 30, vecchia_ordering = "random",
                                              matrix_inversion_method = inv_method), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.9484890, 0.0731435))),tolerance_loc_2)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.94860599912, 0.07302133047))),tolerance_loc_2)
       if(inv_method != "iterative"){
-        expect_lt(gp_model$get_num_optim_iter(), 11)
-        expect_gt(gp_model$get_num_optim_iter(), 8) 
+        expect_lt(gp_model$get_num_optim_iter(), 7)
+        expect_gt(gp_model$get_num_optim_iter(), 4) 
       }
       # Prediction
       coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
       gp_model$set_prediction_data(nsim_var_pred = 10000)
-      pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
-      expected_mu <- c(-0.1159426, -0.1028064, -0.3223582)
-      expected_cov <- c(8.091398e-01, 1.079958e-01, -4.403387e-07, 1.079958e-01, 
-                        8.055727e-01, -4.442709e-07, -4.403387e-07, -4.442709e-07, 6.957873e-01)
+      pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+                      predict_cov_mat = TRUE, predict_response = FALSE, cov_pars = c(1,0.1))
+      expected_mu <- c(-0.1635515155, -0.1513173578, -0.2696781117)
+      expected_cov <- c( 7.535277673e-01, 1.531939015e-01, -4.980911538e-06, 1.531939015e-01, 7.492727114e-01, -4.779232329e-06, -4.980911538e-06, -4.779232329e-06, 6.259940393e-01)
       expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
       adjust_tol <- 2
       if (inv_method == "iterative") adjust_tol <- 1.5
@@ -3351,6 +3421,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   test_that("t likelihood", {
+    
     params = OPTIM_PARAMS_BFGS
     init_cov_pars = c(1,mean(dist(coords))/3)
     params$init_cov_pars = init_cov_pars

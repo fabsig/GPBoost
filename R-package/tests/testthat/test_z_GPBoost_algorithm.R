@@ -1468,7 +1468,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       filename_save_raw_data <- tempfile(fileext = ".model")
       gpb.save(bst, filename=filename_save_raw_data, save_raw_data = TRUE)
       # finalize and destroy models
-      bst$finalize()
+      bst$.__enclos_env__$private$finalize()
       expect_null(bst$.__enclos_env__$private$handle)
       rm(bst)
       rm(gp_model)
@@ -1520,7 +1520,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       filename <- tempfile(fileext = ".model")
       gpb.save(bst, filename=filename, save_raw_data = FALSE)
       # finalize and destroy models
-      bst$finalize()
+      bst$.__enclos_env__$private$finalize()
       expect_null(bst$.__enclos_env__$private$handle)
       rm(bst)
       rm(gp_model)
@@ -1552,7 +1552,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                                    start_iteration = start_iteration)
       model_str_raw_data <- bst$save_model_to_string(save_raw_data = TRUE)
       # finalize and destroy models
-      bst$finalize()
+      bst$.__enclos_env__$private$finalize()
       expect_null(bst$.__enclos_env__$private$handle)
       rm(bst)
       rm(gp_model)
