@@ -115,13 +115,35 @@ public:
         {
             problem_str = "Inf";
         }
+        std::string ll_str;
+        if (f.IsGaussLikelihood())
+        {
+            ll_str = "negative log-likelihood";
+        }
+        else
+        {
+            ll_str = "approximate negative marginal log-likelihood";
+        }
         if (problem_str != "none")
         {
-            Log::REFatal((problem_str + " occurred in initial approximate negative marginal log-likelihood. "
+            Log::REFatal((problem_str + " occurred in initial " + ll_str + "."
                 "Possible solutions: try other initial values ('init_cov_pars'" + init_coef_str + ") "
                 "or other tuning parameters in case you apply the GPBoost algorithm (e.g., learning_rate)").c_str());
         }
-        Log::REDebug("Initial approximate negative marginal log-likelihood: %g", fx);
+
+        if (f.ProfileOutErrorVariance() && f.ProfileOutRegreCoef())
+        {
+            ll_str += " (after pofiling out the error variance and regression coefficients)";
+        }
+        else if (f.ProfileOutErrorVariance() && !(f.ProfileOutRegreCoef()))
+        {
+            ll_str += " (after pofiling out the error variance)";
+        }
+        else if (!(f.ProfileOutErrorVariance()) && f.ProfileOutRegreCoef())
+        {
+            ll_str += " ( after pofiling out the regression coefficients)";
+        }
+        Log::REDebug("Initial %s: %g", ll_str.c_str(), fx);
 
         m_gnorm = m_grad.norm();
         if (fpast > 0)
