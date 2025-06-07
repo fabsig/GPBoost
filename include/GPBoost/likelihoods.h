@@ -7985,15 +7985,11 @@ namespace GPBoost {
 				//P^(-1) Z
 				if (cg_preconditioner_type_ == "vadu") {
 					//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
-					den_mat_t B_invt_Z(num_data, num_rand_vec_trace_);
 					PI_Z.resize(num_data, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)  
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						B_invt_Z.col(i) = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_trace_P_.col(i));
-					}
-#pragma omp parallel for schedule(static)   
-					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						PI_Z.col(i) = D_inv_plus_W_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_Z.col(i));
+						vec_t B_invt_Z = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_trace_P_.col(i));
+						PI_Z.col(i) = D_inv_plus_W_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_Z);
 					}
 					//den_mat_t B_invt_Z(num_data, num_rand_vec_trace_);
 					//TriangularSolve<sp_mat_rm_t, den_mat_t, den_mat_t>(B_rm_, rand_vec_trace_P_, B_invt_Z, true);//it seems that this is not faster (21.11.2024)
@@ -8001,15 +7997,11 @@ namespace GPBoost {
 				}
 				else if (cg_preconditioner_type_ == "incomplete_cholesky") {
 					//P^(-1) = L^(-1) L^(-T)
-					den_mat_t L_invt_Z(num_data, num_rand_vec_trace_);
 					PI_Z.resize(num_data, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						L_invt_Z.col(i) = (L_SigmaI_plus_W_rm_.transpose().template triangularView<Eigen::UpLoType::Upper>()).solve(rand_vec_trace_P_.col(i));
-					}
-#pragma omp parallel for schedule(static)   
-					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						PI_Z.col(i) = L_SigmaI_plus_W_rm_.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_Z.col(i));
+						vec_t L_invt_Z = (L_SigmaI_plus_W_rm_.transpose().template triangularView<Eigen::UpLoType::Upper>()).solve(rand_vec_trace_P_.col(i));
+						PI_Z.col(i) = L_SigmaI_plus_W_rm_.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_Z);
 					}
 				}
 				den_mat_t Z_SigmaI_plus_W_inv_W_deriv_PI_Z;
