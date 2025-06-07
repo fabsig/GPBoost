@@ -71,7 +71,7 @@ where F(X) is a sum (="ensemble") of trees, xi is an independent error term, and
 y ~ p(y|m)
 m = G(F(X) + Zb)
 ```
-where G() is a so-called link function. See [here](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) for a list of [currently supported likelihoods](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst) p(y|m).
+where G() is a so-called link function. See [here for a list of currently supported likelihoods](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood) p(y|m).
 
 **Estimating or training** the above-mentioned models means learning both the covariance parameters (aka hyperparameters) of the random effects and the predictor function F(X). Both the GPBoost and the LaGaBoost algorithms iteratively learn the covariance parameters and add a tree to the ensemble of trees F(X) using a [functional gradient and/or a Newton boosting step](https://www.sciencedirect.com/science/article/abs/pii/S0957417420308381). See [Sigrist (2022, JMLR)](https://www.jmlr.org/papers/v23/20-322.html) and [Sigrist (2023, TPAMI)](https://ieeexplore.ieee.org/document/9759834) for more details.
 
@@ -127,6 +127,7 @@ where G() is a so-called link function. See [here](https://github.com/fabsig/GPB
 
 - Sigrist Fabio. "[Gaussian Process Boosting](https://www.jmlr.org/papers/v23/20-322.html)". *Journal of Machine Learning Research* (2022).
 - Sigrist Fabio. "[Latent Gaussian Model Boosting](https://ieeexplore.ieee.org/document/9759834)". *IEEE Transactions on Pattern Analysis and Machine Intelligence* (2023).
+- Kündig Pascal and Sigrist Fabio. "[Iterative Methods for Vecchia-Laplace Approximations for Latent Gaussian Process Models](https://www.tandfonline.com/doi/full/10.1080/01621459.2024.2410004)". *Journal of the American Statistical Association* (2024, in press)
 - Guolin Ke, Qi Meng, Thomas Finley, Taifeng Wang, Wei Chen, Weidong Ma, Qiwei Ye, Tie-Yan Liu. "[LightGBM: A Highly Efficient Gradient Boosting Decision Tree](https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree)". *Advances in Neural Information Processing Systems* 30 (2017).
 - Williams, Christopher KI, and Carl Edward Rasmussen. *Gaussian processes for machine learning*. MIT press, 2006.
 - Pinheiro, Jose, and Douglas Bates. *Mixed-effects models in S and S-PLUS*. Springer science & business media, 2006.
