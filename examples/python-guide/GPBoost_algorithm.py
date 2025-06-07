@@ -231,7 +231,7 @@ gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(data=X, label=y)
 cvbst = gpb.cv(params=params, train_set=data_train, gp_model=gp_model, 
                num_boost_round=1000, early_stopping_rounds=20,
-               nfold=5, verbose_eval=True, show_stdv=False, seed=1)
+               nfold=5, verbose_eval=True, show_stdv=False, seed=1, metric=metric)
 metric_name = list(cvbst.keys())[0]
 print("Best number of iterations: " + str(np.argmin(cvbst[metric_name]) + 1))
 

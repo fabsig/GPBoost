@@ -249,7 +249,7 @@ nx = 30  # test data: number of grid points on each axis
 coords_test_aux = np.arange(0, 1, 1 / nx)
 coords_test_x1, coords_test_x2 = np.meshgrid(coords_test_aux, coords_test_aux)
 coords_test = np.column_stack((coords_test_x1.flatten(), coords_test_x2.flatten()))
-coords = np.row_stack((coords_train, coords_test))
+coords = np.vstack((coords_train, coords_test))
 ntest = nx * nx
 n = ntrain + ntest
 sigma2_1 = 0.25  # marginal variance of GP
@@ -293,9 +293,9 @@ gp_model.fit(y=y_train)
 gp_model.summary()
 
 # Other covariance functions:
-# gp_model = gpb.GPModel(gp_coords=coords, cov_function="gaussian", likelihood=likelihood)
-# gp_model = gpb.GPModel(gp_coords=coords, cov_function="matern", cov_fct_shape=1., likelihood=likelihood)
-# gp_model = gpb.GPModel(gp_coords=coords, cov_function="powered_exponential", cov_fct_shape=1.1, likelihood=likelihood)
+# gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="gaussian", likelihood=likelihood)
+# gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1., likelihood=likelihood)
+# gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="powered_exponential", cov_fct_shape=1.1, likelihood=likelihood)
 
 # Optional arguments for the 'params' argument of the 'fit' function:
 # - monitoring convergence: "trace": True
@@ -305,10 +305,7 @@ gp_model.summary()
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
 #gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5, 
 #                       likelihood=likelihood)
-#gp_model.fit(y=y, X=X, params={"trace": True, 
-#                               "std_dev": True,
-#                               "optimizer_cov": "gradient_descent", "lr_cov": 0.1,
-#                               "use_nesterov_acc": True, "maxit": 100})
+#gp_model.fit(y=y, X=X, params={"trace": True, "std_dev": True})
 
 #--------------------Prediction----------------
 # Prediction of latent variable

@@ -294,26 +294,23 @@ gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fc
 summary(gp_model)
 
 ## Other covariance functions:
-# gp_model <- fitGPModel(gp_coords = coords, cov_function = "gaussian",
+# gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "gaussian",
 #                        likelihood = likelihood, y = y_train)
-# gp_model <- fitGPModel(gp_coords = coords,
+# gp_model <- fitGPModel(gp_coords = coords_train,
 #                        cov_function = "matern", cov_fct_shape=1.,
 #                        likelihood = likelihood, y = y_train)
-# gp_model <- fitGPModel(gp_coords = coords,
+# gp_model <- fitGPModel(gp_coords = coords_train,
 #                        cov_function = "powered_exponential", cov_fct_shape=1.1,
 #                        likelihood = likelihood, y = y_train)
 
 # Optional arguments for the 'params' argument of the 'fit' function:
-# - monitoring convergence: trace=TRUE
+# - monitoring convergence: trace = TRUE
 # - obtain standard deviations: std_dev = TRUE
 # - change optimization algorithm options (see below)
 # For available optimization options, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-# gp_model <- fitGPModel(group_data = group, y = y, X = X,
-#                        params = list(trace=TRUE,
-#                                      std_dev = TRUE,
-#                                      optimizer_cov= "gradient_descent",
-#                                      lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 100))
+# gp_model <- fitGPModel(gp_coords = coords_train, y = y_train, X = X,
+#                        params = list(trace = TRUE, std_dev = TRUE))
 
 #--------------------Prediction----------------
 # Prediction of latent variable
